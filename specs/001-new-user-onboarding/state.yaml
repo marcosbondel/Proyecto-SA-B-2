@@ -1,0 +1,19 @@
+id: 001
+slug: new-user-onboarding
+title: New user onboarding
+
+type: feature
+phase: specify
+
+created: 2026-08-05
+owner: TBD
+
+gate_spec: pending
+gate_plan: pending
+gate_tasks: pending
+gate_verify: pending
+gate_review: pending
+
+adrs: none
+architecture_updates: none
+supersedes: none

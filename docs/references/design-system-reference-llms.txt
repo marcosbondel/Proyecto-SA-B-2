@@ -1,0 +1,8 @@
+Design System Reference For Agents
+
+Status: Placeholder
+Retrieved: Not applicable
+
+Use this file to store project-specific design system rules once a design
+system exists. Include tokens, spacing, typography, component usage, and links
+to canonical sources.
