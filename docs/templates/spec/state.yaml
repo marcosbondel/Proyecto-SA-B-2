@@ -1,0 +1,34 @@
+# Machine-readable state for one spec. Scripts and hooks read this file, so keep
+# it flat: one key per line, no nesting. `scripts/agent-checks/spec-state.sh`
+# is the only thing that should edit the phase and gate lines.
+
+id: NNN
+slug: slug-here
+title: Title here
+
+# feature  → user-visible behaviour. Full spec required.
+# refactor → internal restructuring, no behaviour change.
+# infra    → deployment, pipelines, environments.
+# debt     → cleanup carried over from a shipped spec.
+# fix      → defect repair with a known reproduction.
+type: feature
+
+# specify → plan → tasks → implement → verify → review → done
+phase: specify
+
+created: YYYY-MM-DD
+owner: TBD
+
+# pending | approved | waived
+# Only a human approves a gate, through /spec-approve. An agent that edits these
+# lines directly is bypassing the control the engineer owns.
+gate_spec: pending
+gate_plan: pending
+gate_tasks: pending
+gate_verify: pending
+gate_review: pending
+
+# Comma-separated paths, or "none".
+adrs: none
+architecture_updates: none
+supersedes: none
