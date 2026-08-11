@@ -1,0 +1,43 @@
+{
+  "name": "web",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@artmizu/nuxt-prometheus": "3.0.4",
+    "@hypernym/nuxt-anime": "2.1.1",
+    "@i2d/nuxt-pdf-frame": "0.6.1",
+    "@jasy/nuxt": "1.0.0-alpha.7",
+    "@nuxt/eslint": "1.17.0",
+    "@nuxt/ui": "4.10.0",
+    "@tiptap/core": "^3.29.2",
+    "@tiptap/extension-bubble-menu": "^3.29.2",
+    "@tiptap/extension-code": "^3.29.2",
+    "@tiptap/extension-collaboration": "^3.29.2",
+    "@tiptap/extension-drag-handle": "^3.29.2",
+    "@tiptap/extension-drag-handle-vue-3": "^3.29.2",
+    "@tiptap/extension-floating-menu": "^3.29.2",
+    "@tiptap/extension-horizontal-rule": "^3.29.2",
+    "@tiptap/extension-image": "^3.29.2",
+    "@tiptap/extension-mention": "^3.29.2",
+    "@tiptap/extension-node-range": "^3.29.2",
+    "@tiptap/extension-placeholder": "^3.29.2",
+    "@tiptap/markdown": "^3.29.2",
+    "@tiptap/pm": "^3.29.2",
+    "@tiptap/starter-kit": "^3.29.2",
+    "@tiptap/suggestion": "^3.29.2",
+    "@tiptap/vue-3": "^3.29.2",
+    "eslint": "^10.8.1",
+    "nuxt": "^4.5.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vue": "^3.5.41",
+    "vue-router": "^5.2.0"
+  }
+}
