@@ -18,6 +18,10 @@
       "headers": {
         "Authorization": "Bearer ${GITHUB_TOKEN}"
       }
+    },
+    "notion": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
     }
   }
 }
