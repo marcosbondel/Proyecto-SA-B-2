@@ -40,14 +40,21 @@ it in AGENTS.md in the same change.
 ## Spec Workflow
 
 Spec-driven work runs on **[Spec Kit](https://github.com/github/spec-kit)**
-(`speckit`). The home-grown `/spec-*` command set that used to live here was
-removed: its commands, its `spec-state.sh` state machine, its `state.yaml` gates,
-its enforcement hooks under `scripts/agent-checks/`, `docs/SPEC_WORKFLOW.md`, the
-`docs/templates/spec/` templates, and the `specs/` tree are all gone.
+(`speckit` v0.12.2, under `.specify/`). The home-grown `/spec-*` command set that
+used to live here was removed: its commands, its `spec-state.sh` state machine,
+its `state.yaml` gates, its enforcement hooks under `scripts/agent-checks/`,
+`docs/SPEC_WORKFLOW.md`, and the `docs/templates/spec/` templates are all gone.
+Do not reference or recreate them.
 
-Spec Kit is **not initialized yet**. Until it is, there is no spec tooling in the
-repository — do not reference or attempt to run any `/spec-*` command, and do not
-recreate the deleted scripts.
+The ten workflows are available here as skills: `/speckit-constitution`,
+`/speckit-specify`, `/speckit-clarify`, `/speckit-plan`, `/speckit-tasks`,
+`/speckit-analyze`, `/speckit-checklist`, `/speckit-implement`,
+`/speckit-converge`, `/speckit-taskstoissues`. **Claude uses hyphens**; the same
+workflows are invoked with dots (`/speckit.plan`) from opencode, which shares the
+identical file. When a skill body names a command with a dot, convert it.
+
+Their real content lives in `.agents/skills/speckit-<name>/SKILL.md` —
+`.claude/skills/` only symlinks to it. Edit the `.agents/` side.
 
 ## The Harness
 
@@ -82,7 +89,13 @@ Nothing validates that chain automatically any more.
 ## Editing The Scaffolding
 
 `.agents/` holds the real files; `.claude/agents/` and `.claude/skills/` are
-relative symlinks into it. **Always edit the `.agents/` side.** Adding a role
-means writing the `.agents/` file and creating the symlink by hand
+relative symlinks into it — all 24 skills, including the ten from Spec Kit.
+**Always edit the `.agents/` side.** Adding a role means writing the `.agents/`
+file and creating the symlink by hand
 (`ln -s ../../.agents/roles/<name>.md .claude/agents/<name>.md`); new roles also
 get a row in [docs/AI_PROJECT_AGENTS.md](docs/AI_PROJECT_AGENTS.md).
+
+A Spec Kit upgrade replaces those symlinks with per-tool copies. If
+`specify integration upgrade` ever runs, re-collapse the ten speckit skills into
+`.agents/skills/` and re-link both `.claude/skills/` and `.opencode/commands/`,
+or Claude and opencode silently drift apart. See AGENTS.md for the layout.
