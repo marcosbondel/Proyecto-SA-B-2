@@ -1,1 +1,0 @@
-../../.agents/commands/spec-plan.md

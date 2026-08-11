@@ -5,60 +5,50 @@ Short map for AI agents working in this repository. Durable knowledge lives in
 
 ## Repo Status
 
-Agent-first scaffold. **No application code, runtime, or framework exists yet**:
-`apps/` is intentionally empty and `ARCHITECTURE.md` is a placeholder. There are
-no build, test, or lint commands — do not invent them. When the stack is chosen,
-record it in `ARCHITECTURE.md` and install stack-specific skills in the same
-change (see [docs/AI_PROJECT_SKILLS.md](docs/AI_PROJECT_SKILLS.md)).
+`apps/web/` holds a Nuxt 4 application (pnpm, `@nuxt/ui`) scaffolded from the
+starter template — it is the only application code so far. `ARCHITECTURE.md` is
+still a placeholder: the module boundaries and the rest of the stack have not
+been decided or recorded yet.
 
-## Verification
+## Commands
 
-- `sh scripts/agent-checks/check-doc-structure.sh` — fails when a required doc
-  is missing, so deleting a "placeholder" doc breaks it. To make a doc
-  required, add its path to the script.
-- `sh scripts/agent-checks/validate-spec-structure.sh` — fails when a spec's
-  phase outran its gate, its artifacts do not match its phase, or its tasks and
-  evidence reference acceptance criteria the spec never defined.
-- The hook scripts in `scripts/agent-checks/` need `jq` on PATH.
+Run from `apps/web/`:
+
+```bash
+pnpm install
+pnpm dev        # nuxt dev
+pnpm build      # nuxt build
+pnpm generate   # nuxt generate
+pnpm preview    # nuxt preview
+```
+
+There is **no test or lint script defined yet** — `package.json` has none, so do
+not claim a suite passed. `@nuxt/eslint` is a dependency but has no wired
+script. Adding either means adding it to `apps/web/package.json` and recording
+it here in the same change.
 
 ## Workflow
 
-Every change goes through a spec in `specs/<NNN-slug>/`. The phases are
-specify → plan → tasks → implement → verify → review → done, each separated by a
-gate that only a human approves.
+Spec-driven work runs on **[Spec Kit](https://github.com/github/spec-kit)**
+(`speckit`), not on anything in this repository. The previous home-grown
+`/spec-*` command set, its state machine, and its enforcement hooks were removed
+in favour of it.
 
-```
-/spec-new "<idea>"      → specs/NNN-slug/spec.md      (product-mvp)
-/spec-approve NNN spec
-/spec-plan NNN          → plan.md, ADR if needed      (architect, planner)
-/spec-approve NNN plan
-/spec-tasks NNN         → tasks.md                    (planner)
-/spec-approve NNN tasks     ← this is what unblocks code
-/spec-build NNN         → the diff                    (backend/frontend/mobile)
-/spec-verify NNN        → evidence.md                 (qa)
-/spec-approve NNN verify
-/spec-review NNN        → findings                    (reviewer, security)
-/spec-approve NNN review
-/spec-close NNN         → docs/ updated, spec archived
-```
+Spec Kit is **not initialized yet** — until someone runs its init, there are no
+spec commands available and no `specs/` directory. Do not reference `/spec-new`,
+`/spec-approve`, `scripts/agent-checks/`, `state.yaml`, or `docs/SPEC_WORKFLOW.md`:
+none of them exist any more.
 
-`/spec-status` shows where everything stands. Full contract:
-[docs/SPEC_WORKFLOW.md](docs/SPEC_WORKFLOW.md). Role roster and invocation
-rules: [docs/AI_PROJECT_AGENTS.md](docs/AI_PROJECT_AGENTS.md). Skill catalogue:
-[docs/AI_PROJECT_SKILLS.md](docs/AI_PROJECT_SKILLS.md).
-
-- `specs/` holds the work and is archived when a spec closes. `docs/` holds the
-  knowledge that outlives it. `/spec-close` is where the second gets written —
-  it is not optional bookkeeping.
-- Writing production code with no approved task list is **blocked by a hook**,
-  not discouraged by a rule. If it fires, the work is unspecced: say so and hand
-  it back rather than routing around it.
-- Trivial changes — typos, formatting, comments — need no spec. An agent cannot
-  make that call for itself; it hands the change to a human.
+- When Spec Kit is initialized, its own commands and templates define the phase
+  order and the artifact layout. This file should then link to them rather than
+  restate them.
+- The roles in `.agents/roles/` are independent of any spec tool. They take a
+  task and its acceptance criteria as input, wherever those come from.
+- Nothing is enforced by a hook any more. The gates that used to block
+  unspecced code are gone, so the discipline is now a convention: get the spec
+  and the plan agreed before writing production code.
 - When a skill's advice conflicts with `AGENTS.md`, `ARCHITECTURE.md`, or
-  `docs/`, the repository wins. Two skills carry upstream paths that do not
-  apply here; the override table is in
-  [docs/SPEC_WORKFLOW.md](docs/SPEC_WORKFLOW.md).
+  `docs/`, the repository wins.
 - Update stale docs in the same change that makes them stale.
 
 ## Layout Notes
@@ -66,28 +56,24 @@ rules: [docs/AI_PROJECT_AGENTS.md](docs/AI_PROJECT_AGENTS.md). Skill catalogue:
 - `.agents/skills/<name>/` is the real skill content (pinned by
   `skills-lock.json`); `.claude/skills/` is relative symlinks into it. Fresh
   clones need no install step. Edit the `.agents/` side only.
-- `.agents/roles/<name>.md` and `.agents/commands/<name>.md` are the real role
-  and slash-command definitions; `.claude/agents/` and `.claude/commands/` are
-  symlinks into them.
-- Role restrictions are structural, enforced by hooks in `scripts/agent-checks/`:
-  - `design`/`reviewer`/`security` have no write tools at all.
-  - `product-mvp`/`architect`/`planner` write `docs/**`, the root docs, and
-    only the spec artifact each one owns — `spec.md` for `product-mvp`,
-    `plan.md` and `tasks.md` for `planner`.
-  - `backend`/`frontend`/`mobile`/`infra-aws` cannot write production code
-    until some spec has its tasks gate approved.
-  - `infra-aws` can plan but never apply.
-- `state.yaml` is written by `scripts/agent-checks/spec-state.sh` and nothing
-  else. Gate approval is the engineer's control point; an agent that could edit
-  those lines could approve its own work.
+- `.agents/roles/<name>.md` holds the real role definitions; `.claude/agents/`
+  is symlinks into them.
+- Role restrictions are now only what the frontmatter declares:
+  - `design`, `reviewer`, and `security` have no write tools at all
+    (`disallowedTools`), so they cannot fix what they find.
+  - Every other role is unrestricted. `product-mvp`, `planner`, and `qa` used to
+    be limited to one artifact each by a hook; that limit is documented
+    behaviour now, not an enforced one.
+  - `infra-aws` used to be blocked from running mutating cloud commands by a
+    hook. **That block is gone** — it must not run `terraform apply`,
+    `aws ... create/delete/update`, or any other mutating command, and hands
+    them to a human instead.
 
 ## Maintenance Conventions
 
 - Adding a role: write `.agents/roles/<name>.md`, symlink it with
   `ln -s ../../.agents/roles/<name>.md .claude/agents/<name>.md`, and add a row
   to the roster in `docs/AI_PROJECT_AGENTS.md`.
-- Adding a command: write `.agents/commands/<name>.md`, symlink it with
-  `ln -s ../../.agents/commands/<name>.md .claude/commands/<name>.md`.
 - Adding a skill:
   `npx skills add <owner/repo> --skill <name> -a universal -a claude-code -y`.
   Repeat `--skill` for several skills — a comma-separated list is silently

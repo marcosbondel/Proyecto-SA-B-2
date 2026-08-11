@@ -10,9 +10,7 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
-      "Bash(npx skills list)",
-      "Bash(./scripts/agent-checks/:*)",
-      "Bash(sh scripts/agent-checks/:*)"
+      "Bash(npx skills list)"
     ],
     "deny": [
       "Read(./.env)",

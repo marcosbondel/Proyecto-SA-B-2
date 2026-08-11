@@ -5,104 +5,84 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Start Here
 
 **[AGENTS.md](AGENTS.md) is the operational source of truth for agents working in
-this repository.** Read it before acting. It carries the repo status, the spec
+this repository.** Read it before acting. It carries the repo status, the
 workflow, the layout rules, and the maintenance conventions, and it is shared
 with every AI tool — not just Claude Code. This file only adds Claude-specific
 context on top of it.
 
 When AGENTS.md and this file disagree, AGENTS.md wins. When a skill's advice
-conflicts with either, the repository wins (override table in
-[docs/SPEC_WORKFLOW.md](docs/SPEC_WORKFLOW.md)).
+conflicts with either, the repository wins.
 
 ## Repo Status
 
-This is an agent-first scaffold with **no application code and no chosen stack**.
-`apps/` is empty and `ARCHITECTURE.md` is a placeholder. There is no package
-manager, build, lint, or test command — do not invent one, and do not assume one
-exists because a role file mentions "run the tests". Choosing a stack is a human
-decision recorded in `ARCHITECTURE.md`; the implementing roles are deliberately
-blocked until it happens.
+`apps/web/` holds a Nuxt 4 application (pnpm, `@nuxt/ui`) scaffolded from the
+starter template. `ARCHITECTURE.md` is still a placeholder — the module
+boundaries and the rest of the stack are a human decision that has not been
+recorded yet.
 
 ## Commands
 
-Verification (the only runnable commands in the repo; the hook scripts need `jq`
-on PATH):
+Run from `apps/web/`:
 
 ```bash
-sh scripts/agent-checks/check-doc-structure.sh      # required docs still exist
-sh scripts/agent-checks/validate-spec-structure.sh  # spec phase/artifacts/AC chain
+pnpm install
+pnpm dev        # nuxt dev
+pnpm build      # nuxt build
+pnpm generate   # nuxt generate
+pnpm preview    # nuxt preview
 ```
 
-Spec state — every `/spec-*` command shells out to this, and it is the only
-writer of `state.yaml`:
+That is the whole list. There is **no test and no lint script** — do not invent
+one, and do not assume a suite exists because a role file mentions "run the
+tests". Adding either means adding it to `apps/web/package.json` and recording
+it in AGENTS.md in the same change.
 
-```bash
-./scripts/agent-checks/spec-state.sh list              # every spec, phase, gates
-./scripts/agent-checks/spec-state.sh next-id           # next free spec number
-./scripts/agent-checks/spec-state.sh path <id>         # id → directory
-./scripts/agent-checks/spec-state.sh get <id> <key>
-./scripts/agent-checks/spec-state.sh advance <id>      # exit 3 if the gate refuses
-./scripts/agent-checks/spec-state.sh approve <id> <gate>   # human action only
-./scripts/agent-checks/spec-state.sh implementable     # exit 0 if code is unblocked
-```
+## Spec Workflow
 
-`<id>` accepts `7`, `007`, `007-slug`, or `slug`. Gates and `phase` cannot be set
-via `set` — only through `approve`/`waive` and `advance`.
+Spec-driven work runs on **[Spec Kit](https://github.com/github/spec-kit)**
+(`speckit`). The home-grown `/spec-*` command set that used to live here was
+removed: its commands, its `spec-state.sh` state machine, its `state.yaml` gates,
+its enforcement hooks under `scripts/agent-checks/`, `docs/SPEC_WORKFLOW.md`, the
+`docs/templates/spec/` templates, and the `specs/` tree are all gone.
 
-The workflow itself runs through the `/spec-*` slash commands
-(`/spec-new`, `/spec-plan`, `/spec-tasks`, `/spec-approve`, `/spec-build`,
-`/spec-verify`, `/spec-review`, `/spec-close`, `/spec-status`) — see AGENTS.md
-for the ordering and [docs/SPEC_WORKFLOW.md](docs/SPEC_WORKFLOW.md) for the
-contract behind each phase.
+Spec Kit is **not initialized yet**. Until it is, there is no spec tooling in the
+repository — do not reference or attempt to run any `/spec-*` command, and do not
+recreate the deleted scripts.
 
-## Architecture Of The Harness
+## The Harness
 
-The system under construction has no architecture yet; the *harness* does, and
-it is what you have to understand to be productive here.
+Two altitudes still hold, and they are worth keeping when Spec Kit lands: work
+that is archived when it ships lives with the spec, and knowledge that must stay
+true lives in `docs/`. Promoting the second out of the first is what keeps the
+repo from going stale.
 
-**Two altitudes, split by lifespan.** `specs/NNN-slug/` holds the work (a change,
-archived when it closes). `docs/` holds the knowledge (the system as it stands,
-permanent). `/spec-close` is the only place the second gets written from the
-first — losing that step is how the repo goes stale.
+**What is still enforced.** Only what a role's frontmatter declares:
 
-**Restrictions are structural, not advisory.** Roles are markdown files in
-`.agents/roles/` whose frontmatter wires `PreToolUse` hooks and removes tools:
-
-- `validate-implementation-gate.sh` — on `backend`, `frontend`, `mobile`,
-  `infra-aws`. Refuses writes to production code unless some spec has
-  `gate_tasks` approved and sits in `implement`/`verify`/`review`. Docs, specs,
-  scripts, and agent scaffolding are never gated, so reporting a blocker never
-  requires passing the gate that blocked you.
-- `validate-docs-write.sh` — takes the allowed filenames as arguments, giving
-  each spec artifact exactly one writing role (`spec.md` → `product-mvp`,
-  `plan.md`/`tasks.md` → `planner`, `evidence.md` → `qa`).
-- `validate-infra-command.sh` — `infra-aws` plans but never applies.
 - `design`, `reviewer`, `security` have `disallowedTools: Write, Edit,
-  NotebookEdit` — no write tools at all.
+  NotebookEdit` — no write tools at all. A reviewer that could fix what it finds
+  would stop reviewing and start implementing.
 
-If a hook fires, the work is unspecced or out of role. Say so and hand it back;
-routing around it defeats the only real enforcement in the system.
+**What is no longer enforced** — these were hooks, and the hooks were deleted
+with the scripts they called. They are conventions now, and nothing will stop an
+agent from breaking them:
 
-**`state.yaml` is flat on purpose** — one key per line, no nesting — so
-`spec-state.sh` and the hooks can parse it with `grep`/`awk` and no YAML
-dependency. No agent may write it.
+- Implementing roles (`backend`, `frontend`, `mobile`, `infra-aws`) could not
+  write production code without an approved task list. That gate is gone.
+- `product-mvp`, `planner`, and `qa` were each limited to the single spec
+  artifact they own. That limit is documentation now.
+- `infra-aws` was blocked from running mutating cloud commands. **Treat this as
+  a hard rule anyway**: it plans, it never applies, and mutating commands go to
+  a human.
 
-**Traceability keys.** The spec number survives archival (directory, branch, ADR,
-`docs/TECH_DEBT.md` rows). Inside a spec, `AC-NN` ties intent to proof:
-`spec.md` defines it → `plan.md` says how it is verified → `tasks.md` says which
-task advances it → `evidence.md` shows the real command output →
-`reviewer` checks the diff against it. `validate-spec-structure.sh` fails a spec
-whose tasks or evidence cite an `AC-NN` the spec never defined.
+**Traceability.** Acceptance-criteria IDs still tie intent to proof: `spec.md`
+defines them → the plan says how each is verified → a task advances it →
+evidence shows the real command output → `reviewer` checks the diff against it.
+Nothing validates that chain automatically any more.
 
 ## Editing The Scaffolding
 
-`.agents/` holds the real files; `.claude/agents/`, `.claude/commands/`, and
-`.claude/skills/` are relative symlinks into it. **Always edit the `.agents/`
-side.** Adding a role or command means writing the `.agents/` file and creating
-the symlink by hand (`ln -s ../../.agents/roles/<name>.md
-.claude/agents/<name>.md`); new roles also get a row in
-[docs/AI_PROJECT_AGENTS.md](docs/AI_PROJECT_AGENTS.md).
-
-Deleting a doc that looks like a placeholder will break
-`check-doc-structure.sh` — its required-path list is the definition of which
-docs must exist. Templates for new spec artifacts live in `docs/templates/spec/`.
+`.agents/` holds the real files; `.claude/agents/` and `.claude/skills/` are
+relative symlinks into it. **Always edit the `.agents/` side.** Adding a role
+means writing the `.agents/` file and creating the symlink by hand
+(`ln -s ../../.agents/roles/<name>.md .claude/agents/<name>.md`); new roles also
+get a row in [docs/AI_PROJECT_AGENTS.md](docs/AI_PROJECT_AGENTS.md).

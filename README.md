@@ -3,53 +3,48 @@
 Agent-first project scaffold inspired by OpenAI's "Harness engineering"
 recommendations.
 
-Engineers direct; agents implement, verify, and review. The workflow is
-spec-driven and the gates are enforced by the harness, not by good intentions.
+Engineers direct; agents implement, verify, and review. Spec-driven work runs on
+[Spec Kit](https://github.com/github/spec-kit).
 
 ## Structure
 
 - `AGENTS.md`: short operational map for agents.
-- `ARCHITECTURE.md`: top-level technical map.
-- `specs/`: the work — one directory per spec, archived when it ships.
-- `docs/`: the knowledge that outlives a spec. Source of truth.
-- `apps/`: application code, once a stack is chosen.
+- `ARCHITECTURE.md`: top-level technical map. Still a placeholder.
+- `docs/`: the knowledge that outlives a change. Source of truth.
+- `apps/web/`: the Nuxt 4 application.
 - `.agents/skills/`: installed agent skills, shared across AI tools.
 - `.agents/roles/`: role agents (backend, frontend, qa, reviewer, and so on),
   symlinked into `.claude/agents/`.
-- `.agents/commands/`: the `/spec-*` slash commands that drive the workflow,
-  symlinked into `.claude/commands/`.
-- `scripts/agent-checks/`: spec state, structural validation, and the hook
-  scripts that enforce role boundaries.
 
 ## The Loop
 
-```
-/spec-new "add tenant-scoped search"
-/spec-approve 002 spec        ← you decide, not the agent
-/spec-plan 002
-/spec-approve 002 plan
-/spec-tasks 002
-/spec-approve 002 tasks       ← this is what unblocks code
-/spec-build 002
-/spec-verify 002
-/spec-approve 002 verify
-/spec-review 002
-/spec-approve 002 review
-/spec-close 002
-```
+Spec-driven development is handled by Spec Kit and its `/speckit.*` commands.
+**It is not initialized in this repository yet** — until it is, there is no spec
+workflow here.
 
-`/spec-status` at any point shows every spec, its phase, and whether it is
-waiting on a human or on work. See [docs/SPEC_WORKFLOW.md](docs/SPEC_WORKFLOW.md).
+The home-grown `/spec-*` commands, their state machine, and their enforcement
+hooks were removed in favour of Spec Kit. If you find a reference to
+`/spec-new`, `scripts/agent-checks/`, `state.yaml`, or `docs/SPEC_WORKFLOW.md`
+anywhere, it is stale — delete it.
 
 ## First Steps
 
-1. Answer the open questions in `specs/001-new-user-onboarding/spec.md`, or
-   archive it and start your own with `/spec-new`.
-2. Choose a stack and record it in `ARCHITECTURE.md` — every implementing role
-   is deliberately blocked until you do.
+1. Initialize Spec Kit and record how it is wired here.
+2. Choose the rest of the stack and record it in `ARCHITECTURE.md` — it is still
+   a placeholder.
 3. Install the stack-specific skills in that same change
    ([docs/AI_PROJECT_SKILLS.md](docs/AI_PROJECT_SKILLS.md)).
 4. Capture the first architectural decision as an ADR in `docs/design-docs/`.
+5. Add a test and a lint script to `apps/web/package.json`. There are none, so
+   nothing can currently be verified beyond a build.
+
+## Development
+
+```bash
+cd apps/web
+pnpm install
+pnpm dev
+```
 
 ## Philosophy
 
@@ -57,7 +52,8 @@ The repo should be easy for humans and agents to inspect, verify, and improve.
 Important knowledge belongs in versioned files, not only in chat, meetings, or
 memory.
 
-Restrictions are structural. A reviewer that could fix what it finds would stop
-reviewing and start implementing; an agent that could approve its own gate would
-approve it. So the harness removes the tool rather than asking the model to
-behave.
+Restrictions are structural where the harness still allows it: `design`,
+`reviewer`, and `security` have no write tools, because a reviewer that could fix
+what it finds would stop reviewing and start implementing. The gates that used to
+block unspecced code were enforced by hooks that are now gone — that discipline
+is a convention until Spec Kit replaces it.

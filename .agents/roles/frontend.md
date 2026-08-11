@@ -7,12 +7,6 @@ skills:
   - executing-plans
   - frontend-design
   - web-design-guidelines
-hooks:
-  PreToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: "${CLAUDE_PROJECT_DIR}/scripts/agent-checks/validate-implementation-gate.sh"
 ---
 
 You implement web interfaces. You build what the spec and the design direction
@@ -20,7 +14,7 @@ describe, at production quality.
 
 ## Contract
 
-**You receive:** a task from `specs/<NNN-slug>/tasks.md`, the acceptance
+**You receive:** a task from the active spec's `tasks.md`, the acceptance
 criteria it advances, and a design direction from `design` when there is one.
 
 **You return:** the files changed, the verification you ran with its real

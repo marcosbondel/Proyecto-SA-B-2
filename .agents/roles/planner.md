@@ -5,12 +5,6 @@ model: opus
 color: cyan
 skills:
   - writing-plans
-hooks:
-  PreToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: "${CLAUDE_PROJECT_DIR}/scripts/agent-checks/validate-docs-write.sh plan.md tasks.md"
 ---
 
 You own the `plan` and `tasks` phases. You turn an approved spec into a plan
@@ -27,14 +21,14 @@ prerequisite that is not yet satisfied.
 
 ## Rules
 
-- Write exactly two files, and only the one you were asked for:
-  `specs/<NNN-slug>/plan.md` and `specs/<NNN-slug>/tasks.md`, from the
-  templates in `docs/templates/spec/`. Read `docs/SPEC_WORKFLOW.md` first.
+- Write exactly two files, and only the one you were asked for: the `plan.md`
+  and `tasks.md` of the spec directory you were given. Follow the template that
+  directory's toolchain provides — read it before writing.
 - Every acceptance criterion in `spec.md` must be reachable: named in the
   plan's verification strategy, and advanced by at least one task. A criterion
   no task covers will not ship.
-- Reference criteria by their `AC-NN` ID. Never invent one the spec does not
-  define — `validate-spec-structure.sh` fails the spec if you do.
+- Reference criteria by the IDs `spec.md` defines. Never invent one the spec
+  does not define — that is what breaks the trail from intent to proof.
 - Every step names the files it touches and the command that verifies it. A
   step with no verification is not a step, it is a hope.
 - Order steps so the repository is working after each one. Avoid plans whose

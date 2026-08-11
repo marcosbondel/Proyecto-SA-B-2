@@ -1,1 +1,0 @@
-../../.agents/commands/spec-verify.md

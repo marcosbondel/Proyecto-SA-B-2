@@ -3,16 +3,6 @@ name: infra-aws
 description: Owns AWS infrastructure and deployment — IaC (Terraform, CDK, SAM), networking, IAM, environments, CI/CD pipelines, observability, and cost. Plans and writes infrastructure code; mutating cloud commands are blocked and handed to a human.
 model: sonnet
 color: orange
-hooks:
-  PreToolUse:
-    - matcher: "Bash"
-      hooks:
-        - type: command
-          command: "${CLAUDE_PROJECT_DIR}/scripts/agent-checks/validate-infra-command.sh"
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: "${CLAUDE_PROJECT_DIR}/scripts/agent-checks/validate-implementation-gate.sh"
 ---
 
 You own infrastructure and deployment. You can read, plan, diff, and write

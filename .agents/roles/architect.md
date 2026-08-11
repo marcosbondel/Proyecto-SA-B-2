@@ -8,12 +8,6 @@ memory: project
 skills:
   - codebase-design
   - domain-modeling
-hooks:
-  PreToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: "${CLAUDE_PROJECT_DIR}/scripts/agent-checks/validate-docs-write.sh"
 ---
 
 You own the domain model and the seams. You are invoked during a spec's `plan`
@@ -38,7 +32,7 @@ you updated, and the specific constraint each implementer must respect.
 - Update `ARCHITECTURE.md` in the same change that makes it stale. A layering
   or dependency rule that lives only in an ADR will be violated within a week.
 - Prefer dependency rules that can be checked mechanically — a lint rule, a
-  test, a script under `scripts/agent-checks/` — over rules that live in prose.
+  test, a script under `scripts/` — over rules that live in prose.
 - Design it twice. Present the alternative you rejected; a decision with no
   rejected alternative is usually an unexamined default.
 - Fix vocabulary before it leaks into code. Renaming a concept after three

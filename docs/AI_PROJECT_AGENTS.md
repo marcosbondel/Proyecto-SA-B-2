@@ -59,33 +59,34 @@ owned by one vendor's directory name.
 - `.agents/roles/<name>.md` holds the real definition. Single source of truth.
 - `.claude/agents/<name>.md` is a relative symlink into `.agents/roles/`,
   because Claude Code reads `.claude/agents/` and nothing else.
-- `.agents/commands/<name>.md` holds the `/spec-*` slash commands, symlinked the
-  same way into `.claude/commands/`. A command is the procedure the orchestrator
-  follows; a role is the worker it delegates to. Keeping them in `.agents/` means
-  the workflow is portable even though the `/` invocation is not.
-- `scripts/agent-checks/` holds the hook scripts that enforce role boundaries
-  and the spec-state machinery the commands drive.
+There is no `.agents/commands/` any more. It held the home-grown `/spec-*` slash
+commands; those were removed in favour of [Spec Kit](https://github.com/github/spec-kit),
+which brings its own commands. The hook scripts they drove, under
+`scripts/agent-checks/`, went with them.
 
-Caveat worth knowing: unlike `.agents/skills/`, the `.agents/roles/` and
-`.agents/commands/` paths are conventions of this repository, not cross-vendor
-standards. No other CLI reads them today, and `npx skills` does not manage them.
-The symlinks are what make them work.
+Caveat worth knowing: unlike `.agents/skills/`, the `.agents/roles/` path is a
+convention of this repository, not a cross-vendor standard. No other CLI reads it
+today, and `npx skills` does not manage it. The symlinks are what make it work.
 
 ## The Roster
 
-| Role | Model | Writes? | Preloaded skills | Phase |
-| --- | --- | --- | --- | --- |
-| `product-mvp` | opus | docs + `spec.md` (hook) | `spec-driven-development` | specify |
-| `architect` | opus | docs only (hook) | `codebase-design`, `domain-modeling` | plan (before `planner`) |
-| `planner` | opus | docs + `plan.md`, `tasks.md` (hook) | `writing-plans` | plan, tasks |
-| `backend` | sonnet | yes, gated (hook) | `executing-plans`, `systematic-debugging` | implement |
-| `frontend` | sonnet | yes, gated (hook) | `executing-plans`, `frontend-design`, `web-design-guidelines` | implement |
-| `mobile` | sonnet | yes, gated (hook) | `executing-plans`, `frontend-design` | implement |
-| `design` | sonnet | **no** (blocked) | `frontend-design`, `web-design-guidelines` | before implement |
-| `qa` | sonnet | tests + `evidence.md` | `verification-before-completion`, `systematic-debugging` | verify |
-| `reviewer` | opus | **no** (blocked) | `code-review` | review |
-| `security` | opus | **no** (blocked) | `security-audit` | review |
-| `infra-aws` | sonnet | yes, gated, no apply (hooks) | — | implement (infra) |
+"Writes?" is what the harness actually enforces. **Blocked** is structural, via
+`disallowedTools`. Everything else is now unrestricted at the tool level — the
+"should write" column is a convention the role's own prompt carries.
+
+| Role | Model | Writes? | Should write | Preloaded skills | Phase |
+| --- | --- | --- | --- | --- | --- |
+| `product-mvp` | opus | unrestricted | docs + `spec.md` | `spec-driven-development` | specify |
+| `architect` | opus | unrestricted | docs only | `codebase-design`, `domain-modeling` | plan (before `planner`) |
+| `planner` | opus | unrestricted | docs + `plan.md`, `tasks.md` | `writing-plans` | plan, tasks |
+| `backend` | sonnet | unrestricted | server-side code + tests | `executing-plans`, `systematic-debugging` | implement |
+| `frontend` | sonnet | unrestricted | web UI code | `executing-plans`, `frontend-design`, `web-design-guidelines` | implement |
+| `mobile` | sonnet | unrestricted | mobile code | `executing-plans`, `frontend-design` | implement |
+| `design` | sonnet | **no** (blocked) | — | `frontend-design`, `web-design-guidelines` | before implement |
+| `qa` | sonnet | unrestricted | tests + `evidence.md` | `verification-before-completion`, `systematic-debugging` | verify |
+| `reviewer` | opus | **no** (blocked) | — | `code-review` | review |
+| `security` | opus | **no** (blocked) | — | `security-audit` | review |
+| `infra-aws` | sonnet | unrestricted | IaC only, never applies | — | implement (infra) |
 
 ### Restrictions Are Structural, Not Advisory
 
@@ -96,39 +97,32 @@ tools, so it is not an instruction they can rationalize their way past.
 This matters more than it looks. A reviewer that can fix what it finds stops
 reviewing and starts implementing, and the finding never gets written down.
 
-The rest carry a `PreToolUse` hook instead, because their restriction is
-conditional rather than absolute:
+### What Used To Be Enforced And No Longer Is
 
-- `product-mvp`, `architect`, `planner` →
-  [`validate-docs-write.sh`](../scripts/agent-checks/validate-docs-write.sh)
-  blocks Write and Edit outside `docs/**`, `ARCHITECTURE.md`, `AGENTS.md`, and
-  `README.md`. The script takes the spec artifacts a role owns as **arguments**,
-  which is how `product-mvp` gets `spec.md` and nothing else, and `planner` gets
-  `plan.md` and `tasks.md` and nothing else. Nobody gets `state.yaml`.
-- `backend`, `frontend`, `mobile`, `infra-aws` →
-  [`validate-implementation-gate.sh`](../scripts/agent-checks/validate-implementation-gate.sh)
-  blocks writes to production code while no spec has `gate_tasks` approved and a
-  phase of `implement`, `verify`, or `review`. Docs, specs, and scripts are
-  never gated — reporting a blocker must not require passing the gate that
-  blocked you.
-- `infra-aws` also →
-  [`validate-infra-command.sh`](../scripts/agent-checks/validate-infra-command.sh)
-  allows `plan`, `diff`, and every read-only command, and blocks `apply`,
-  `deploy`, `destroy`, `kubectl apply`, `aws s3 rm`, and the rest of the
-  mutating set. The agent hands those commands to a human.
+The other eight roles carried `PreToolUse` hooks calling scripts under
+`scripts/agent-checks/`. Those scripts were deleted along with the home-grown
+spec workflow, and the hooks were removed from the role frontmatter with them.
+The restrictions they enforced are now conventions, stated in each role's prompt
+and enforced by nothing:
 
-Every script reads the hook payload on stdin and exits 2 to block, which feeds
-the reason back to the agent. Extend the pattern list in the infra script as the
-stack grows — prefer blocking one command too many over losing a database.
+- `product-mvp`, `architect`, `planner` were blocked from writing outside
+  `docs/**`, `ARCHITECTURE.md`, `AGENTS.md`, `README.md`, and the one spec
+  artifact each owned. They can now write anywhere.
+- `backend`, `frontend`, `mobile`, `infra-aws` could not write production code
+  until a spec's task list was approved. There is no gate at all now.
+- `infra-aws` was blocked from `apply`, `deploy`, `destroy`, `kubectl apply`,
+  `aws s3 rm`, and the rest of the mutating set. **It can now run them.** Treat
+  "plans but never applies" as a hard rule in its prompt and hand mutating
+  commands to a human.
 
-### Why The Gate Is Coarse
+If Spec Kit or a future gate reintroduces enforcement, this is the seam to wire
+it into: a `PreToolUse` hook in the role frontmatter, a script that reads the
+hook payload on stdin and exits 2 to block, so the reason feeds back to the
+agent.
 
-`validate-implementation-gate.sh` asks "is the factory cleared to build?", not
-"does this line belong to task T-04". Enforcing the finer question would block
-honest work far more often than it caught a real violation, and task ownership
-is already legible in `tasks.md` where `reviewer` can check it. Structural
-enforcement is for the boundary that must never be crossed; everything else is a
-prompt and a review.
+Structural enforcement is for the boundary that must never be crossed;
+everything else is a prompt and a review. Right now only the three read-only
+roles have such a boundary.
 
 ### Memory
 
@@ -194,8 +188,8 @@ team only when the workers need to **argue**, not just report:
 
 Spawn one by naming the role definitions:
 
-> Spawn a team using the backend, frontend, and qa agent types to implement
-> specs/007-tenant-search/tasks.md. Require plan approval before any teammate
+> Spawn a team using the backend, frontend, and qa agent types to implement the
+> tasks.md of the tenant-search spec. Require plan approval before any teammate
 > makes changes.
 
 Three things to know before you do:
@@ -214,31 +208,30 @@ Start with 3–5 teammates. Three focused teammates outperform five scattered on
 
 ## The Loop, With Roles
 
-Each phase has a command that dispatches it and a role that owns it. The full
-contract is [SPEC_WORKFLOW.md](SPEC_WORKFLOW.md).
+Each phase has a role that owns it. The commands that used to dispatch them were
+removed with the home-grown workflow; [Spec Kit](https://github.com/github/spec-kit)
+supplies the procedure now, and this table is the role mapping to hang it on.
 
-| Phase | Command | Role | Output |
-| --- | --- | --- | --- |
-| specify | `/spec-new` | `product-mvp` | `specs/NNN-slug/spec.md` |
-| plan | `/spec-plan` | `architect`, then `planner` | ADR in `docs/design-docs/`, `plan.md` |
-| tasks | `/spec-tasks` | `planner` | `tasks.md` |
-| implement | `/spec-build` | `backend`, `frontend`, `mobile`, `infra-aws` | the diff |
-| verify | `/spec-verify` | `qa` | `evidence.md`, criteria with real output |
-| review | `/spec-review` | `reviewer`, `security` | findings with failure scenarios |
-| done | `/spec-close` | main thread | `docs/` updated, spec archived |
+| Phase | Role | Output |
+| --- | --- | --- |
+| specify | `product-mvp` | `spec.md` |
+| plan | `architect`, then `planner` | ADR in `docs/design-docs/`, `plan.md` |
+| tasks | `planner` | `tasks.md` |
+| implement | `backend`, `frontend`, `mobile`, `infra-aws` | the diff |
+| verify | `qa` | `evidence.md`, criteria with real output |
+| review | `reviewer`, `security` | findings with failure scenarios |
+| done | main thread | `docs/` updated |
 
-Between every pair of phases sits a gate that only a human approves, with
-`/spec-approve <id> <gate>`. Agents propose; engineers approve. That is the
-whole steering model, and `state.yaml` is deliberately not agent-writable so it
-stays that way.
+Between every pair of phases sits a human decision. Agents propose; engineers
+approve. Nothing enforces that ordering any more — the gates that did were
+deleted — so it holds only as long as the orchestrator respects it.
 
-`design` sits outside the phase chain: invoke it before `/spec-build` when a
+`design` sits outside the phase chain: invoke it before implementation when a
 spec introduces new UI, and hand its direction to `frontend` or `mobile`.
 
 The main conversation is the orchestrator. It is not a role and has no file —
-that is you and the session you are in. It is also the only thing that runs
-`spec-state.sh`, because phase transitions belong to the workflow, not to any
-one worker.
+that is you and the session you are in. Phase transitions belong to it, not to
+any one worker.
 
 ## Agents Versus Skills
 
