@@ -30,18 +30,23 @@ it here in the same change.
 ## Workflow
 
 Spec-driven work runs on **[Spec Kit](https://github.com/github/spec-kit)**
-(`speckit`), not on anything in this repository. The previous home-grown
+(`speckit`, v0.12.2), installed under `.specify/`. The previous home-grown
 `/spec-*` command set, its state machine, and its enforcement hooks were removed
-in favour of it.
+in favour of it — `/spec-new`, `/spec-approve`, `scripts/agent-checks/`,
+`state.yaml`, and `docs/SPEC_WORKFLOW.md` no longer exist.
 
-Spec Kit is **not initialized yet** — until someone runs its init, there are no
-spec commands available and no `specs/` directory. Do not reference `/spec-new`,
-`/spec-approve`, `scripts/agent-checks/`, `state.yaml`, or `docs/SPEC_WORKFLOW.md`:
-none of them exist any more.
+Two integrations are installed, both driving the same ten workflows:
 
-- When Spec Kit is initialized, its own commands and templates define the phase
-  order and the artifact layout. This file should then link to them rather than
-  restate them.
+| Tool | Invocation | Reads |
+| --- | --- | --- |
+| Claude Code | `/speckit-<name>` (hyphen) | `.claude/skills/speckit-*/` |
+| opencode | `/speckit.<name>` (dot) | `.opencode/commands/speckit.*.md` |
+
+The workflows are `constitution`, `specify`, `clarify`, `plan`, `tasks`,
+`analyze`, `checklist`, `implement`, `converge`, `taskstoissues`. Phase order and
+artifact layout come from Spec Kit's own templates in `.specify/templates/`; this
+file does not restate them.
+
 - The roles in `.agents/roles/` are independent of any spec tool. They take a
   task and its acceptance criteria as input, wherever those come from.
 - Nothing is enforced by a hook any more. The gates that used to block
@@ -58,6 +63,27 @@ none of them exist any more.
   clones need no install step. Edit the `.agents/` side only.
 - `.agents/roles/<name>.md` holds the real role definitions; `.claude/agents/`
   is symlinks into them.
+- **The Spec Kit workflows follow the same rule.** Spec Kit installs per-tool
+  copies; they were collapsed into one canonical body each:
+
+  ```
+  .agents/skills/speckit-<name>/SKILL.md        ← the only real file
+    ├── .claude/skills/speckit-<name>           → symlink to the directory
+    └── .opencode/commands/speckit.<name>.md    → symlink to the SKILL.md
+  ```
+
+  The canonical body is Spec Kit's Claude output, which is a superset: it carries
+  the instruction to rewrite dotted command names to hyphens, so it reads
+  correctly from either tool. The `handoffs:` frontmatter that only opencode
+  emits was merged in, so nothing was lost by sharing the file.
+
+  **Cost of this:** `specify integration status` now reports 15 managed files as
+  modified, and `specify integration upgrade --force` would overwrite the
+  symlinks with regular per-tool copies. After any Spec Kit upgrade, re-collapse
+  them or the two tools drift apart. Also note both integrations are installed
+  with `--force`, since `opencode` is not declared multi-install safe — the
+  `unsafe-multi-install` error in `integration status` is expected, not a
+  regression.
 - Role restrictions are now only what the frontmatter declares:
   - `design`, `reviewer`, and `security` have no write tools at all
     (`disallowedTools`), so they cannot fix what they find.
