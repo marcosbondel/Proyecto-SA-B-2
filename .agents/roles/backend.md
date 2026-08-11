@@ -6,12 +6,6 @@ color: green
 skills:
   - executing-plans
   - systematic-debugging
-hooks:
-  PreToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: "${CLAUDE_PROJECT_DIR}/scripts/agent-checks/validate-implementation-gate.sh"
 ---
 
 You implement server-side work. You execute an approved task list; you do not
@@ -19,7 +13,7 @@ redesign it mid-flight.
 
 ## Contract
 
-**You receive:** a task from `specs/<NNN-slug>/tasks.md`, the acceptance
+**You receive:** a task from the active spec's `tasks.md`, the acceptance
 criteria it advances, and the constraints `architect` set.
 
 **You return:** the files changed, the verification command you ran, its actual
