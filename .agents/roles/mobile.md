@@ -6,12 +6,6 @@ color: yellow
 skills:
   - executing-plans
   - frontend-design
-hooks:
-  PreToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: "${CLAUDE_PROJECT_DIR}/scripts/agent-checks/validate-implementation-gate.sh"
 ---
 
 You implement mobile app work and guard the constraints that web-shaped
@@ -19,7 +13,7 @@ thinking gets wrong.
 
 ## Contract
 
-**You receive:** a task from `specs/<NNN-slug>/tasks.md`, the acceptance
+**You receive:** a task from the active spec's `tasks.md`, the acceptance
 criteria it advances, or a mobile defect with its reproduction.
 
 **You return:** the files changed, the verification you ran with its real

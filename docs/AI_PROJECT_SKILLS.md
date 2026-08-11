@@ -90,9 +90,9 @@ Use the optional Tailwind skill only when Tailwind is part of the stack.
 ## Spec-Driven Development Skills
 
 Spec-driven development is the primary workflow here, and it is implemented by
-this repository rather than by any one skill: the phases, the gates, and the
-file layout come from [SPEC_WORKFLOW.md](SPEC_WORKFLOW.md) and the `/spec-*`
-commands.
+[Spec Kit](https://github.com/github/spec-kit) rather than by any one skill: the
+phases and the file layout come from its commands and templates. The skills
+below carry the reasoning; Spec Kit carries the procedure.
 
 Recommended:
 
@@ -109,14 +109,14 @@ see:
 
 | Skill | Says | Here |
 | --- | --- | --- |
-| `spec-driven-development` | `tasks/plan.md`, `tasks/todo.md` | `specs/NNN-slug/plan.md`, `tasks.md` |
-| `writing-plans` | `docs/superpowers/plans/YYYY-MM-DD-*.md` | `specs/NNN-slug/plan.md` |
+| `spec-driven-development` | `tasks/plan.md`, `tasks/todo.md` | the spec directory Spec Kit creates |
+| `writing-plans` | `docs/superpowers/plans/YYYY-MM-DD-*.md` | the spec directory's `plan.md` |
 
 `spec-driven-development` also references four skills that are not installed
 (`planning-and-task-breakdown`, `incremental-implementation`,
 `test-driven-development`, `context-engineering`) and `/plan` and `/build`
-commands that do not exist here. Use it for its vocabulary and its gated-phase
-discipline; take the layout from `docs/templates/spec/`.
+commands that do not exist here. Use it for its vocabulary and its phase
+discipline; take the layout from Spec Kit's own templates.
 
 ## Frontend Stack
 
@@ -402,9 +402,9 @@ Phrasing that reliably reaches each installed skill:
 
 | Say something like | Skill that answers |
 | --- | --- |
-| "start a spec for X", "requirements are still vague" | `spec-driven-development` — but prefer `/spec-new`, which also scaffolds the state |
-| "write a plan for this", "break this into steps" | `writing-plans` — reached by `/spec-plan` and `/spec-tasks` |
-| "work through the plan", "continue the plan" | `executing-plans` — reached by `/spec-build` |
+| "start a spec for X", "requirements are still vague" | `spec-driven-development` — but prefer Spec Kit's own command, which also scaffolds the directory |
+| "write a plan for this", "break this into steps" | `writing-plans` |
+| "work through the plan", "continue the plan" | `executing-plans` |
 | "this is broken/failing/slow", "why does this throw?" | `systematic-debugging` |
 | "is this done?", "before you commit", "confirm it passes" | `verification-before-completion` |
 | "review my changes", "review since `main`" | `code-review` |
@@ -419,18 +419,18 @@ Phrasing that reliably reaches each installed skill:
 
 ### Which Skill Serves Which Phase
 
-The skills carry knowledge; the `/spec-*` commands carry the procedure. Each
-phase of [SPEC_WORKFLOW.md](SPEC_WORKFLOW.md) pulls in the skills that apply:
+The skills carry knowledge; Spec Kit carries the procedure. Each phase pulls in
+the skills that apply:
 
-| Phase | Command | Skills in play |
-| --- | --- | --- |
-| specify | `/spec-new` | `spec-driven-development` |
-| plan | `/spec-plan` | `domain-modeling` and `codebase-design` when vocabulary or seams move, then `writing-plans` |
-| tasks | `/spec-tasks` | `writing-plans` |
-| implement | `/spec-build` | `executing-plans`, `frontend-design` for new UI, `systematic-debugging` when something breaks |
-| verify | `/spec-verify` | `verification-before-completion`, `systematic-debugging` |
-| review | `/spec-review` | `code-review`, `security-audit` when the change touches auth or data exposure, `web-design-guidelines` when it touches UI |
-| done | `/spec-close` | `domain-modeling` for the ADRs that outlive the spec |
+| Phase | Skills in play |
+| --- | --- |
+| specify | `spec-driven-development` |
+| plan | `domain-modeling` and `codebase-design` when vocabulary or seams move, then `writing-plans` |
+| tasks | `writing-plans` |
+| implement | `executing-plans`, `frontend-design` for new UI, `systematic-debugging` when something breaks |
+| verify | `verification-before-completion`, `systematic-debugging` |
+| review | `code-review`, `security-audit` when the change touches auth or data exposure, `web-design-guidelines` when it touches UI |
+| done | `domain-modeling` for the ADRs that outlive the spec |
 
 Do not debug by guessing — `systematic-debugging` reproduces first. And
 `verification-before-completion` is why `qa` refuses to call work done without

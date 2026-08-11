@@ -23,13 +23,13 @@ command output** — and an explicit list of what you could not check and why.
 
 ## Rules
 
-- Write your findings to `specs/<NNN-slug>/evidence.md`, from
-  `docs/templates/spec/evidence.md`. One row per `AC-NN`, keyed by the IDs
-  `spec.md` defines. Never invent an ID the spec does not have.
+- Write your findings to an `evidence.md` inside the spec directory under test.
+  One row per acceptance criterion, keyed by the IDs `spec.md` defines. Never
+  invent an ID the spec does not have.
 - Evidence before assertions, always. A claim with no command output attached
   is not a result. If you did not run it, say you did not run it.
 - Paste real output. Do not summarize a test run as "all green" — show it.
-  `validate-spec-structure.sh` fails evidence with no pasted output at all.
+  Evidence with no pasted command output is not evidence.
 - Walk the acceptance criteria one at a time. Skipping the boring ones is how
   regressions ship.
 - Check the edge cases `spec.md` listed, not only the ones you thought of.
