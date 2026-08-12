@@ -95,12 +95,12 @@ Una dependencia del toolchain con su versión exacta y su evidencia de soporte.
 
 ```text
 apps/gateway ──────────────┐
-                           ├──> packages/contracts
-services/* ────────────────┤         ▲
-                           ├──> packages/messaging
-                           └──> packages/tooling (dev)
+                           ├──> apps/packages/contracts
+apps/services/* ────────────────┤         ▲
+                           ├──> apps/packages/messaging
+                           └──> apps/packages/tooling (dev)
 
-services/<A> ──✗──> services/<B>     (prohibido, lint lo rechaza)
+apps/services/<A> ──✗──> apps/services/<B>     (prohibido, lint lo rechaza)
 application ──✗──> infrastructure    (prohibido, lint lo rechaza)
 domain ──✗──> cualquier otra capa    (prohibido, lint lo rechaza)
 ```
