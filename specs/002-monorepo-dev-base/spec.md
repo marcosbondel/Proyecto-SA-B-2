@@ -120,6 +120,7 @@ Un integrante nuevo configura su entorno copiando los `.env.example` de cada apl
 - **FR-011**: La raíz MUST ofrecer scripts para: instalar, desarrollar, lint, formato, pruebas unitarias, pruebas de contrato y build.
 - **FR-012**: La configuración de TypeScript, ESLint y Prettier MUST ser común y compartida, y MUST NOT ocultar errores de compilación para hacer pasar el build.
 - **FR-013**: Cada aplicación MUST tener un `.env.example` con nombres y placeholders (sin secretos reales) y MUST validar las variables obligatorias al arrancar, fallando con un mensaje que nombre la variable faltante.
+  > **Cumplimiento parcial aceptado, 2026-08-12.** Las siete aplicaciones tienen `.env.example`. La validación al arrancar la implementan seis: Gateway y los cinco servicios. `apps/web` no la tiene — implementarla exige modificar el código de la aplicación Nuxt, que FR-018 prohíbe, y hoy la web no declara ninguna variable obligatoria al arrancar, así que no hay nada que validar. **El responsable aceptó la brecha como deuda** en lugar de romper FR-018 por una validación vacía. Queda como TD-011 y se cierra en el ticket que conecte el frontend con el Gateway, cuando `NUXT_PUBLIC_API_BASE_URL` pase a ser obligatoria de verdad.
 - **FR-014**: MUST existir un README de desarrollo local con los comandos exactos y el orden de arranque, y MUST documentarse qué archivos son generados y no editables a mano.
 
 **Trazabilidad de pendientes**
