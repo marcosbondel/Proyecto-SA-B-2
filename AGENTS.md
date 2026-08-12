@@ -71,6 +71,10 @@ The workflows are `constitution`, `specify`, `clarify`, `plan`, `tasks`,
 artifact layout come from Spec Kit's own templates in `.specify/templates/`; this
 file does not restate them.
 
+- Every ticket gets its own branch: before starting work on ticket `T-XX`,
+  create `feature/T-XX` from the latest `origin/develop`
+  (`git fetch origin && git switch -c feature/T-XX origin/develop`) and keep
+  every commit for that ticket on it.
 - The roles in `.agents/roles/` are independent of any spec tool. They take a
   task and its acceptance criteria as input, wherever those come from.
 - Nothing is enforced by a hook any more. The gates that used to block
