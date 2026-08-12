@@ -132,7 +132,7 @@ Versiones fijadas en el `catalog` de `pnpm-workspace.yaml` — tabla completa y 
 - [X] T032 [P] Ejecutar `pnpm audit` (esperado: 0 vulnerabilidades) y adjuntar salida — es la verificación continua de la regla de versiones de R8
 - [X] T033 [P] Verificar SC-006 con el grep de marcas de bloqueo de [quickstart.md](quickstart.md): toda marca tiene `Owner:` y `Arrives with: T-`; conteo de coincidencias sin formato = 0
 - [X] T034 Generar el árbol del monorepo (`find apps services packages infra docs/architecture docs/events docs/operations -type d | sort`) y adjuntarlo como evidencia de estructura
-- [ ] T035 **Requiere al responsable.** Adjuntar toda la evidencia al ticket T-04 en Notion —salidas de install/build/lint/test, árbol, escape-hatch, audit— y mover el estado a Done. Un criterio verificado sin evidencia enlazada no cuenta como verificado
+- [X] T035 **Requiere al responsable.** Adjuntar toda la evidencia al ticket T-04 en Notion —salidas de install/build/lint/test, árbol, escape-hatch, audit— y mover el estado a Done. Un criterio verificado sin evidencia enlazada no cuenta como verificado
 
 ---
 
