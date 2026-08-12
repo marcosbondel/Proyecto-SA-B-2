@@ -5,10 +5,17 @@ Short map for AI agents working in this repository. Durable knowledge lives in
 
 ## Repo Status
 
-`apps/web/` holds the current Nuxt 4 application (pnpm, `@nuxt/ui`) and is the
-only application code so far. `ARCHITECTURE.md` records the selected Bank USAC
-target architecture; the backend services, Gateway, and deployment are not
-implemented yet.
+A pnpm workspace with everything under `apps/`: the Gateway and the Nuxt
+frontend at the top level, the five domain services under `apps/services/`, and
+`@bank/contracts`, `@bank/messaging` and `@bank/tooling` under
+`apps/packages/`. All seven applications install, build, lint and test from a
+clean checkout.
+
+What exists is scaffolding: health checks, boot-time environment validation,
+the shared message envelope and the RabbitMQ adapter. The `domain` and
+`application` layers are deliberately empty — no banking rule is implemented.
+`ARCHITECTURE.md` records the target architecture; local infrastructure (T-06)
+and deployment (T-16) are not built yet.
 
 ## Project Documentation
 
@@ -36,20 +43,38 @@ Consult these documents before making decisions or describing the repository:
 
 ## Commands
 
-Run from `apps/web/`:
+Run from the **repository root**, not from an application directory. The
+repository is a pnpm workspace: Node 24.19.0 (`.nvmrc`) and pnpm 11.21.0
+(`packageManager`) are enforced, and `engines.node` refuses anything older.
 
 ```bash
-pnpm install
-pnpm dev        # nuxt dev
-pnpm build      # nuxt build
-pnpm generate   # nuxt generate
-pnpm preview    # nuxt preview
+pnpm install        # whole workspace, one lockfile
+pnpm build          # shared packages, then the seven applications
+pnpm lint           # includes the executable isolation rules
+pnpm test           # unit tests for every application and package
+pnpm test:contract  # contract tests over @bank/contracts
+pnpm format         # prettier
+pnpm dev            # every application in watch mode
 ```
 
-There is **no test or lint script defined yet** — `package.json` has none, so do
-not claim a suite passed. `@nuxt/eslint` is a dependency but has no wired
-script. Adding either means adding it to `apps/web/package.json` and recording
-it here in the same change.
+Per application: `pnpm --filter <name> <command>`, where `<name>` is `gateway`,
+`web`, `customer-service`, `account-service`, `transaction-service`,
+`payment-service` or `notification-audit-service`.
+
+`pnpm build` must run before testing a single application in a fresh clone: the
+shared packages are consumed from `dist/`. `pnpm --filter <app>... build` (three
+dots) builds an application together with its dependencies.
+
+`apps/web` now has `lint` (`eslint .`, via the already-installed `@nuxt/eslint`)
+and `test` (`node --test`, one smoke test) — added by T-04 so `pnpm lint` and
+`pnpm test` cover all seven applications. It has **no component-level test
+framework**; that needs a Nuxt-native runner and is recorded as TD-010. Do not
+claim component coverage.
+
+**Lint enforces architecture, not just style.** A service importing another
+service, a `domain` file importing a framework, or an `application` file
+importing `infrastructure` fails `pnpm lint`. The rules live in
+`apps/packages/tooling/eslint.base.mjs`. See the README for the full list.
 
 ## Workflow
 

@@ -30,7 +30,7 @@
 
 **Verificación.** `npm view @nestjs/core`: 11.1.29, publicado 2026-08-10 — línea activa. El enunciado (§4.3) permite Spring Boot 4 o NestJS; el equipo ya decidió NestJS (ticket T-03).
 
-**Nota de paquete.** El transporte RabbitMQ de NestJS vive dentro de `@nestjs/microservices` — no existe `@nestjs/platform-rabbitmq` como paquete separado (404 en el registro). Para el adaptador de `packages/messaging` se usa `amqplib` **2.0.1** con `amqp-connection-manager` **5.0.0** (reconexión y retries), sin framework encima.
+**Nota de paquete.** El transporte RabbitMQ de NestJS vive dentro de `@nestjs/microservices` — no existe `@nestjs/platform-rabbitmq` como paquete separado (404 en el registro). Para el adaptador de `apps/packages/messaging` se usa `amqplib` **2.0.1** con `amqp-connection-manager` **5.0.0** (reconexión y retries), sin framework encima.
 
 ---
 
@@ -38,7 +38,7 @@
 
 **Decisión.** `jest` **30.4.2**, `ts-jest` **29.4.12**, `@types/jest` **30.0.0**.
 
-**Verificación.** ts-jest 29.4.12 declara peers `jest: ^29 || ^30` y `@jest/transform: ^29 || ^30` — compatible con Jest 30. Una prueba mínima por aplicación (SC-002) más `test:contract` raíz con un ejemplo sobre `packages/contracts`.
+**Verificación.** ts-jest 29.4.12 declara peers `jest: ^29 || ^30` y `@jest/transform: ^29 || ^30` — compatible con Jest 30. Una prueba mínima por aplicación (SC-002) más `test:contract` raíz con un ejemplo sobre `apps/packages/contracts`.
 
 **Alternativas consideradas.** Vitest 4.1.10: activo y sin vulnerabilidades, pero introduciría un segundo runner distinto al estándar NestJS del equipo sin causa; rechazada por uniformidad.
 
@@ -116,7 +116,7 @@ Los pendientes detectados y no resueltos se registran además en `docs/TECH_DEBT
 
 | Ubicación | Falta | Llega con |
 |---|---|---|
-| `packages/contracts/src/events/` | Contratos de eventos del dominio y la Saga | T-05 |
+| `apps/packages/contracts/src/events/` | Contratos de eventos del dominio y la Saga | T-05 |
 | `infra/docker/` | Compose/local stack con PostgreSQL 18.4 y RabbitMQ 4.3.4 | T-06 |
 | `infra/k8s/` | Manifiestos para kind | T-16 |
 | `docs/architecture/` | Diagramas y ADRs | T-07 / T-03 |
