@@ -1,0 +1,71 @@
+# Bank USAC workspace.
+#
+# Shared dependency versions live ONLY in the catalog below; every package.json
+# references them with `catalog:` instead of repeating a range. Each entry was
+# checked against OSV (npm ecosystem) on 2026-08-12 with zero known
+# vulnerabilities and an active support line — see
+# specs/002-monorepo-dev-base/research.md (R8) for the evidence table.
+#
+# Update rule: before changing a version here, query OSV and run `pnpm audit`.
+# A dependency with an open vulnerability does not enter the catalog.
+
+# Every unit of code lives under apps/: the outward-facing applications at the
+# top level, the five domain services under apps/services/, and the shared
+# packages under apps/packages/. The repository root holds configuration only.
+packages:
+  - 'apps/*'
+  - 'apps/services/*'
+  - 'apps/packages/*'
+
+# Forced resolutions for transitive dependencies we do not declare ourselves.
+#
+# esbuild: `@nuxt/ui > @nuxt/fonts > fontless` pulls 0.27.x, which carries
+# GHSA-g7r4-m6w7-qqqr (low; the dev server answers any origin). Patched in
+# 0.28.1, and the Nuxt toolchain already resolves 0.28.2 elsewhere in the tree,
+# so this only collapses the two copies onto the fixed one. Drop the override
+# once @nuxt/fonts ships a release that resolves it on its own.
+overrides:
+  esbuild: '>=0.28.1'
+
+# Dependencies allowed to run install scripts. Each one belongs to the Nuxt /
+# Vite toolchain that `apps/web` already used before the workspace existed;
+# they fetch or compile a platform-native binary and cannot work without it.
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+  vue-demi: true
+
+catalog:
+  # Language and runtime types
+  typescript: 6.0.3
+  '@types/node': 24.13.3
+
+  # NestJS 11 (services and gateway)
+  '@nestjs/cli': 11.0.24
+  '@nestjs/common': 11.1.29
+  '@nestjs/core': 11.1.29
+  '@nestjs/microservices': 11.1.29
+  '@nestjs/platform-express': 11.1.29
+  '@nestjs/testing': 11.1.29
+  reflect-metadata: 0.2.2
+  rxjs: 7.8.2
+
+  # Configuration validation
+  class-transformer: 0.5.1
+  class-validator: 0.15.1
+
+  # Messaging transport (technical adapter only)
+  amqp-connection-manager: 5.0.0
+  amqplib: 2.0.1
+
+  # Testing
+  '@types/jest': 30.0.0
+  jest: 30.4.2
+  ts-jest: 29.4.12
+
+  # Lint and format
+  '@eslint/js': 10.0.1
+  eslint: 10.8.1
+  eslint-config-prettier: 10.1.8
+  prettier: 3.9.6
+  typescript-eslint: 8.67.0
