@@ -1,0 +1,12 @@
+{
+  "extends": "@bank/tooling/tsconfig.base.json",
+  "compilerOptions": {
+    // Covers src/ and test/. The build uses tsconfig.build.json, which narrows
+    // rootDir to src/ so that dist/ mirrors the source tree.
+    "rootDir": ".",
+    "outDir": "./dist",
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage"]
+}
