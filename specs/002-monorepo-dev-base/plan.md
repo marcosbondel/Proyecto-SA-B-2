@@ -37,7 +37,7 @@ La versión de RabbitMQ **no puede ser 4.2.x**: su soporte comunitario terminó 
 
 **Storage**: Ninguna en este ticket. Las bases PostgreSQL (una por servicio, fuera del cluster) se levantan en T-06; aquí solo se fija la versión de referencia (18.4) y los placeholders de conexión en los `.env.example`.
 
-**Testing**: Jest 30.4.2 + ts-jest por aplicación (prueba mínima por app) y un script raíz `test:contract` con una prueba de contrato mínima de ejemplo sobre `packages/contracts`, que T-05 reemplazará con los contratos de eventos reales.
+**Testing**: Jest 30.4.2 + ts-jest por aplicación (prueba mínima por app) y un script raíz `test:contract` con una prueba de contrato mínima de ejemplo sobre `apps/packages/contracts`, que T-05 reemplazará con los contratos de eventos reales.
 
 **Target Platform**: Máquinas de desarrollo (macOS/Linux) con Node 24 y pnpm 11. Despliegue local en kind llega con T-06/T-16 y no se anticipa aquí.
 
@@ -58,9 +58,9 @@ La versión de RabbitMQ **no puede ser 4.2.x**: su soporte comunitario terminó 
 | I. Exactly Five Microservices | **Conforming** | El árbol crea exactamente Customer, Account, Transaction, Payment y Notification & Audit. Gateway no es un servicio de negocio. |
 | II. One Database Per Service, No Cross-Access | **Conforming** | No hay código de base de datos en este ticket. El aislamiento se garantiza por construcción: cada servicio tiene su propio `.env.example` con su propia base, y la regla de lint de FR-007 prohíbe importar dominio ajeno. |
 | III. Databases Outside The Cluster | **Conforming** | No se escriben manifiestos Kubernetes en este ticket (T-16). Las bases serán contenedores Docker locales (T-06), fuera del cluster por definición. |
-| IV. Asynchronous Service Communication Only | **Conforming** | Los esqueletos de servicios no exponen endpoints HTTP de negocio; solo health/readiness (permitido explícitamente por T-03). El transporte RabbitMQ vive en `packages/messaging` como adaptador técnico. Ningún servicio importa código de otro. |
+| IV. Asynchronous Service Communication Only | **Conforming** | Los esqueletos de servicios no exponen endpoints HTTP de negocio; solo health/readiness (permitido explícitamente por T-03). El transporte RabbitMQ vive en `apps/packages/messaging` como adaptador técnico. Ningún servicio importa código de otro. |
 | V. Gateway-Only Entry With No Business Logic | **Conforming** | `apps/gateway` es la única aplicación HTTP de entrada; su esqueleto contiene validación de forma y publicación, sin reglas bancarias. |
-| VI. Saga For Distributed Operations | **N/A en este ticket** | No hay operaciones distribuidas todavía. La Saga de transferencias se diseña en T-05; `packages/contracts` queda listo para recibirla. |
+| VI. Saga For Distributed Operations | **N/A en este ticket** | No hay operaciones distribuidas todavía. La Saga de transferencias se diseña en T-05; `apps/packages/contracts` queda listo para recibirla. |
 | VII. Local Kubernetes Deployment | **N/A en este ticket** | `infra/k8s` se crea con marca de bloqueo hacia T-16; no se despliega nada aquí. |
 | VIII. SRE From Design | **Conforming (nivel esqueleto)** | Cada esqueleto incluye health check, validación de variables de entorno al arrancar y el sobre base de mensaje con `correlationId`, `causationId` e `idempotencyKey` (regla de T-03). La definición formal de SLI/SLO/SLA llega con T-03; la instrumentación con T-08 a T-12. |
 
@@ -87,18 +87,18 @@ specs/002-monorepo-dev-base/
 ```text
 .
 ├── apps/
-│   ├── gateway/                     # CREAR — esqueleto NestJS, entrada HTTP única
-│   └── web/                         # EXISTENTE — se integra al workspace, sin tocar su código
-├── services/
-│   ├── customer-service/            # CREAR — esqueleto NestJS + 4 capas
-│   ├── account-service/             # CREAR
-│   ├── transaction-service/         # CREAR
-│   ├── payment-service/             # CREAR
-│   └── notification-audit-service/  # CREAR
-├── packages/
-│   ├── contracts/                   # CREAR — DTOs/schemas de transporte; eventos llegan con T-05
-│   ├── messaging/                   # CREAR — adaptador técnico RabbitMQ (amqplib)
-│   └── tooling/                     # CREAR — configs compartidas TS/ESLint/Prettier/jest
+│   ├── gateway/                         # CREAR — esqueleto NestJS, entrada HTTP única
+│   ├── web/                             # EXISTENTE — se integra al workspace, sin tocar su código
+│   ├── services/
+│   │   ├── customer-service/            # CREAR — esqueleto NestJS + 4 capas
+│   │   ├── account-service/             # CREAR
+│   │   ├── transaction-service/         # CREAR
+│   │   ├── payment-service/             # CREAR
+│   │   └── notification-audit-service/  # CREAR
+│   └── packages/
+│       ├── contracts/                   # CREAR — DTOs/schemas de transporte; eventos llegan con T-05
+│       ├── messaging/                   # CREAR — adaptador técnico RabbitMQ (amqplib)
+│       └── tooling/                     # CREAR — configs compartidas TS/ESLint/Prettier/jest
 ├── infra/
 │   ├── docker/                      # CREAR con marca de bloqueo → T-06
 │   └── k8s/                         # CREAR con marca de bloqueo → T-16
@@ -114,7 +114,7 @@ specs/002-monorepo-dev-base/
 Estructura interna de cada servicio (las cuatro capas de FR-005):
 
 ```text
-services/<name>/
+apps/services/<name>/
 ├── src/
 │   ├── domain/          # entidades, value objects, errores, invariantes (vacío: T-02)
 │   ├── application/     # casos de uso, comandos, puertos, políticas (vacío: T-02/T-05)
@@ -124,11 +124,15 @@ services/<name>/
 ├── test/                # prueba mínima (SC-002)
 ├── .env.example         # placeholders, sin secretos
 ├── package.json
-├── tsconfig.json        # extiende packages/tooling
+├── tsconfig.json        # extiende apps/packages/tooling
 └── nest-cli.json
 ```
 
-**Structure Decision**: la estructura es la literal del ticket T-04 (fuente autorizada). `services/` y `apps/` se mantienen separados como manda el ticket: `apps/` contiene las aplicaciones de cara al exterior (Gateway, web) y `services/` los cinco microservicios de dominio. La regla de aislamiento FR-007 se implementa con `no-restricted-imports` de ESLint por directorio más `tsc --noEmit` estricto; el detalle queda en [contracts/workspace-contracts.md](contracts/workspace-contracts.md).
+**Structure Decision**: **todo el código vive bajo `apps/`** — decisión del responsable durante la implementación, 2026-08-12. La raíz del repositorio queda solo con configuración (`package.json`, `pnpm-workspace.yaml`, `.nvmrc`, `prettier.config.mjs`), y los comandos se siguen corriendo desde la raíz.
+
+Se conserva la distinción de tres niveles que pide el ticket, anidada un nivel más abajo: `apps/` para las aplicaciones de cara al exterior (Gateway, web), `apps/services/` para los cinco microservicios de dominio, y `apps/packages/` para los paquetes compartidos. Frente a la alternativa plana (todo directo en `apps/`), se eligió la anidada porque un directorio plano borra la diferencia entre un servicio desplegable y una librería compartida, que es justo la diferencia que las reglas de aislamiento defienden.
+
+La regla de aislamiento FR-007 se implementa con `no-restricted-imports` de ESLint por directorio más `tsc --noEmit` estricto; el detalle queda en [contracts/workspace-contracts.md](contracts/workspace-contracts.md).
 
 ## Complexity Tracking
 
