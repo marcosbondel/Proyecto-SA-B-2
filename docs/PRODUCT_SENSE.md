@@ -1,30 +1,49 @@
 # Product Sense
 
-This document captures product judgment that should compound over time.
-
 ## Product North Star
 
-To be defined.
+> **Blocked**: The team has not yet approved a concise north-star statement
+> beyond the assignment's distributed banking scope. Owner: Marcos Bonifasi.
+> Arrives with: T-02.
 
 ## Users
 
-To be defined.
+The product serves people and systems that need banking operations to be
+traceable and reliable:
+
+- Customers who register, validate their identity, manage accounts, and review
+  balances and transactions.
+- Operators and reviewers who need payment, notification, and audit events to
+  be visible.
+- The project team, who uses the system to demonstrate asynchronous
+  microservice behavior, distributed workflows, and SRE practices.
 
 ## Core Workflows
 
-To be defined. Each one arrives as a spec under `specs/`; what survives its
-archival belongs here.
+The assignment defines these product workflows:
 
-## Taste Notes
+1. Register and validate a customer, including identity-document handling.
+2. Create and consult a bank account and its balance.
+3. Transfer funds between accounts with validation, transaction recording, and
+   Saga compensation where required.
+4. Process internal or external payments.
+5. Send notifications and record audit events for system activity.
 
-- Prefer clarity over novelty unless the product explicitly needs delight.
-- Make the primary action obvious.
-- Avoid hidden dependencies on tribal knowledge.
-- Update specs when user-facing behavior changes.
+The exact user journey, authorization rules, and interaction copy for each
+workflow are product decisions for the corresponding feature tickets.
 
-## Questions To Answer Early
+> **Blocked**: Detailed workflow acceptance criteria and the product north
+> star are not part of T-01. Owner: Marcos Bonifasi. Arrives with: T-02.
 
-- What problem is this product solving?
-- Who feels the pain most acutely?
-- What is the smallest complete workflow worth shipping?
-- What must be reliable from day one?
+## Product Principles
+
+- Make the current state of a banking operation clear.
+- Prefer a safe, traceable action over a fast-looking but ambiguous result.
+- Keep service boundaries invisible to the user while preserving their
+  reliability guarantees.
+- Use the [design system](DESIGN.md) for every interface decision.
+
+## Scope Boundary
+
+T-01 records the domain flows and the system baseline. It does not implement
+  customer, account, transaction, payment, notification, or audit behavior.
