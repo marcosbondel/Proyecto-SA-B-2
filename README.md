@@ -194,4 +194,4 @@ with an open vulnerability does not enter the catalog.
 Spec-driven work uses [Spec Kit](https://github.com/github/spec-kit) under
 `.specify/`. The available workflows are documented in [AGENTS.md](AGENTS.md).
 
-<!-- test: verifying commit authorship attribution, safe to remove -->
+<!-- test: verifying PR authorship attribution via feature branch, safe to remove -->
