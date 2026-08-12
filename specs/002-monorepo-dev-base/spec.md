@@ -84,7 +84,7 @@ Un integrante nuevo configura su entorno copiando los `.env.example` de cada apl
 ### Edge Cases
 
 - **La aplicación web ya existe con su propio lockfile.** Integrarla al workspace no debe romper su instalación ni su build; si la integración rompe algo, el hallazgo se reporta y se ajusta la integración antes que forzar el cambio.
-- **Los paquetes compartidos aún no tienen consumidores reales.** `packages/contracts`, `packages/messaging` y `packages/tooling` deben compilar aunque su contenido sea mínimo; el contenido de eventos llega con T-05.
+- **Los paquetes compartidos aún no tienen consumidores reales.** `apps/packages/contracts`, `apps/packages/messaging` y `apps/packages/tooling` deben compilar aunque su contenido sea mínimo; el contenido de eventos llega con T-05.
 - **Las decisiones de T-03 no están formalizadas en ADRs.** El stack (TypeScript, NestJS, pnpm, RabbitMQ, PostgreSQL) está vigente en el ticket T-03 de Notion y se toma como fuente; la formalización en ADRs queda en T-03 y no bloquea este esqueleto.
 - **El dominio no está definido (T-02 sin trabajar).** Las capas `domain` de los servicios quedan vacías de entidades: se crea la estructura de capas, no el modelo. Cualquier necesidad de modelo que aparezca se registra como tarea de T-02/T-05, no se inventa.
 - **Variables de entorno con valores reales.** Los `.env.example` llevan solo nombres y placeholders; ningún secreto real se escribe en el repo (regla ya vigente en `docs/SECURITY.md`).
@@ -97,7 +97,8 @@ Un integrante nuevo configura su entorno copiando los `.env.example` de cada apl
 
 **Estructura del monorepo**
 
-- **FR-001**: El repositorio MUST organizarse como monorepo con la estructura: `apps/gateway`, `apps/web`, `services/customer-service`, `services/account-service`, `services/transaction-service`, `services/payment-service`, `services/notification-audit-service`, `packages/contracts`, `packages/messaging`, `packages/tooling`, `infra/docker`, `infra/k8s`, `docs/architecture`, `docs/events`, `docs/operations`.
+- **FR-001**: El repositorio MUST organizarse como monorepo con la estructura: `apps/gateway`, `apps/web`, `apps/services/customer-service`, `apps/services/account-service`, `apps/services/transaction-service`, `apps/services/payment-service`, `apps/services/notification-audit-service`, `apps/packages/contracts`, `apps/packages/messaging`, `apps/packages/tooling`, `infra/docker`, `infra/k8s`, `docs/architecture`, `docs/events`, `docs/operations`. Todo el código MUST vivir bajo `apps/`; la raíz del repositorio MUST contener solo configuración del workspace.
+  > **Cambio de estructura, 2026-08-12.** La versión original de FR-001 ponía `services/*` y `packages/*` en la raíz, tal como los lista el ticket T-04. El responsable decidió durante la implementación que todo el código cuelgue de `apps/`. Los tres niveles del ticket se conservan, anidados: aplicaciones de cara al exterior en `apps/`, microservicios en `apps/services/`, paquetes compartidos en `apps/packages/`. Ningún otro requisito cambia — el conteo de servicios, el aislamiento y los comandos raíz son los mismos.
 - **FR-002**: El monorepo MUST contener exactamente los cinco servicios del dominio (Customer, Account, Transaction, Payment, Notification & Audit), cada uno como aplicación independiente con su propio build.
 - **FR-003**: La aplicación web existente (`apps/web/`, Nuxt 4.5) MUST integrarse al workspace del monorepo conservando su instalación y build funcionales.
 - **FR-004**: El workspace MUST exponer comandos raíz que operan sobre todo el monorepo y comandos equivalentes por aplicación.
@@ -110,9 +111,9 @@ Un integrante nuevo configura su entorno copiando los `.env.example` de cada apl
 
 **Paquetes compartidos**
 
-- **FR-008**: `packages/contracts` MUST contener únicamente schemas y DTOs de transporte, y MUST NOT contener entidades, repositorios, casos de uso ni reglas de negocio de ningún servicio.
-- **FR-009**: `packages/contracts` MUST compilar y ser consumible por el Gateway y por los servicios.
-- **FR-010**: `packages/messaging` MUST limitarse a adaptadores técnicos reutilizables; cada servicio conserva la decisión sobre sus casos de uso y políticas de dominio.
+- **FR-008**: `apps/packages/contracts` MUST contener únicamente schemas y DTOs de transporte, y MUST NOT contener entidades, repositorios, casos de uso ni reglas de negocio de ningún servicio.
+- **FR-009**: `apps/packages/contracts` MUST compilar y ser consumible por el Gateway y por los servicios.
+- **FR-010**: `apps/packages/messaging` MUST limitarse a adaptadores técnicos reutilizables; cada servicio conserva la decisión sobre sus casos de uso y políticas de dominio.
 
 **Herramientas y scripts**
 
@@ -156,7 +157,7 @@ Un integrante nuevo configura su entorno copiando los `.env.example` de cada apl
 - El stack se toma de las decisiones vigentes del ticket T-03 en Notion (TypeScript, NestJS, pnpm workspaces, RabbitMQ, PostgreSQL, Docker, kind), escritas por el responsable de T-03 y T-04, que es la misma persona. La formalización de esas decisiones en ADRs queda en T-03 y no bloquea este esqueleto.
 - T-02 (límites de dominio) no está trabajado; los servicios se crean con la estructura de capas pero sin entidades ni casos de uso de dominio. Los nombres de los cinco servicios sí están fijados por el enunciado y el ticket.
 - El gestor de paquetes del workspace es pnpm, por ser el que ya usa `apps/web/`; no se introduce una segunda herramienta.
-- Los contratos de eventos del dominio (contenido de `packages/contracts`) llegan con T-05; este ticket entrega el paquete compilable con su estructura y un ejemplo mínimo de DTO de transporte.
+- Los contratos de eventos del dominio (contenido de `apps/packages/contracts`) llegan con T-05; este ticket entrega el paquete compilable con su estructura y un ejemplo mínimo de DTO de transporte.
 - `infra/docker` e `infra/k8s` se crean como directorios con marca de bloqueo hacia T-06/T-16; no se escriben manifiestos finales.
 - `docs/architecture`, `docs/events` y `docs/operations` se crean con marca de bloqueo hacia T-07; la documentación duradera existente (`docs/*.md`) se actualiza solo donde el estado del repo cambia (por ejemplo `docs/TECH_DEBT.md` y, si aplica, el índice de `AGENTS.md`).
 - La validación de variables de entorno al arrancar usa el mecanismo estándar del framework de cada aplicación; el modelo de secretos completo llega con T-03/T-06.

@@ -31,17 +31,16 @@ done
 
 ```bash
 # 1. Intento de importar dominio de otro servicio (debe fallar):
-mkdir -p /tmp/bank-usac-verify/services/account-service/src/application
-cat > services/account-service/src/application/escape-hatch.ts <<'EOF'
+cat > apps/services/account-service/src/application/escape-hatch.ts <<'EOF'
 import { CustomerEntity } from '../../../customer-service/src/domain/customer.entity';
 export const leak = CustomerEntity;
 EOF
 pnpm --filter account-service lint
 # Esperado: error de no-restricted-imports. Borrar el archivo después:
-rm services/account-service/src/application/escape-hatch.ts
+rm apps/services/account-service/src/application/escape-hatch.ts
 
 # 2. Ninguna dependencia apunta contra el dominio:
-grep -rn "from '.*infrastructure" services/*/src/domain services/*/src/application
+grep -rn "from '.*infrastructure" apps/services/*/src/domain apps/services/*/src/application
 # Esperado: sin salida.
 ```
 
@@ -57,7 +56,7 @@ pnpm --filter @bank/contracts build && pnpm test:contract
 
 ```bash
 # El paquete no contiene lógica de negocio:
-grep -rniE "entity|repository|use-?case" packages/contracts/src --include="*.ts" -l
+grep -rniE "entity|repository|use-?case" apps/packages/contracts/src --include="*.ts" -l
 # Esperado: sin salida (los eventos de dominio llegan con T-05).
 ```
 
@@ -78,7 +77,7 @@ pnpm --filter transaction-service test
 ## SC-006 — Cero pendientes sin marcar
 
 ```bash
-grep -rn "Blocked" infra/ docs/architecture/ docs/events/ docs/operations/ packages/contracts/src/ | grep -cv "Owner:.*Arrives with: T-"
+grep -rn "Blocked" infra/ docs/architecture/ docs/events/ docs/operations/ apps/packages/contracts/src/ | grep -cv "Owner:.*Arrives with: T-"
 ```
 
 **Esperado**: `0` — toda marca de bloqueo tiene responsable y ticket destino.
@@ -105,7 +104,7 @@ pnpm --filter web build
 
 Comprobación manual sobre el árbol resultante:
 
-1. ¿`packages/contracts/` compila y tiene dónde poner los eventos? → T-05 desbloqueado.
+1. ¿`apps/packages/contracts/` compila y tiene dónde poner los eventos? → T-05 desbloqueado.
 2. ¿`infra/docker/` existe con su marca de bloqueo y las versiones fijadas (PostgreSQL 18.4, RabbitMQ 4.3.4)? → T-06 desbloqueado.
 3. ¿`docs/architecture/`, `docs/events/`, `docs/operations/` existen con marca de bloqueo? → T-07 desbloqueado.
 
@@ -114,12 +113,28 @@ Comprobación manual sobre el árbol resultante:
 ## FR-013 — Validación de variables al arrancar
 
 ```bash
-cd services/customer-service && cp .env.example .env
-# Borrar DATABASE_URL del .env, luego:
-pnpm dev
+pnpm build                                   # las apps se ejecutan desde dist/
+cd apps/services/customer-service
+grep -v '^DATABASE_URL' .env.example > .env  # copia sin la variable obligatoria
+pnpm start; echo "EXIT CODE: $?"
 ```
 
-**Esperado**: el proceso falla de inmediato con un mensaje que nombra `DATABASE_URL`; código de salida distinto de cero.
+**Esperado**: el proceso falla de inmediato con un mensaje que nombra `DATABASE_URL` y sale con código distinto de cero:
+
+```text
+Invalid environment for "customer-service". Offending variables: DATABASE_URL
+  - DATABASE_URL: DATABASE_URL should not be empty; DATABASE_URL must be a string
+EXIT CODE: 1
+```
+
+Se usa `pnpm start` y no `pnpm dev` porque `nest start --watch` se queda observando archivos tras el fallo y no propaga el código de salida; el criterio pide un código distinto de cero, y eso solo lo demuestra el binario construido. Borrar el `.env` al terminar.
+
+Con el `.env` completo el servicio arranca en modo health-check, sin broker ni base:
+
+```bash
+cp .env.example .env && node dist/main.js &
+curl -s http://localhost:3001/health   # {"status":"ok","application":"customer-service"}
+```
 
 ---
 

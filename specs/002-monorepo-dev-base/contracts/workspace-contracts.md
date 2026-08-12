@@ -14,11 +14,13 @@ Desde la raíz del repositorio:
 | `pnpm build` | Compila las 7 aplicaciones y los 3 paquetes | SC-001, SC-002 |
 | `pnpm lint` | Lint de todo el monorepo, incluidas las reglas de aislamiento | SC-003 |
 | `pnpm test` | Pruebas unitarias de todas las aplicaciones | SC-005 |
-| `pnpm test:contract` | Prueba de contrato mínima sobre `packages/contracts` | SC-004 |
+| `pnpm test:contract` | Prueba de contrato mínima sobre `apps/packages/contracts` | SC-004 |
 | `pnpm format` | Prettier sobre todo el repo | — |
 | `pnpm dev` | Arranque local documentado en README (orden en §4) | — |
 
 Todo comando raíz tiene su equivalente por aplicación vía `pnpm --filter <nombre> <comando>` (FR-004). Ejemplo: `pnpm --filter customer-service test`.
+
+**Orden obligatorio en un clon nuevo: `pnpm build` antes de probar una sola aplicación.** `@bank/contracts` y `@bank/messaging` se consumen desde su `dist/`, así que una aplicación aislada no compila ni prueba hasta que sus paquetes existan. `pnpm -r` resuelve el orden topológico solo; para una aplicación suelta, `pnpm --filter <app>... build` (tres puntos) la construye junto con sus dependencias.
 
 ## 2. Reglas de importación (FR-006, FR-007, SC-003)
 
@@ -26,18 +28,18 @@ Implementadas con `no-restricted-imports` de ESLint por directorio, más `tsc --
 
 | Desde | Puede importar | Prohibido importar |
 |---|---|---|
-| `services/<A>/src/domain/**` | nada fuera de `domain` | todo lo demás |
-| `services/<A>/src/application/**` | `domain`, `@bank/contracts` | `infrastructure`, `interfaces`, otros servicios |
-| `services/<A>/src/infrastructure/**` | `application`, `domain`, `@bank/contracts`, `@bank/messaging` | `interfaces`, otros servicios |
-| `services/<A>/src/interfaces/**` | `application`, `@bank/contracts` | `infrastructure` (salvo wiring en `main.ts`), otros servicios |
-| `apps/gateway/src/**` | `@bank/contracts`, `@bank/messaging` | `services/**` (cualquier capa) |
-| `packages/contracts/**` | nada externo al paquete | dominio de cualquier servicio |
-| `packages/messaging/**` | `@bank/contracts` (sobre base) | dominio de cualquier servicio |
+| `apps/services/<A>/src/domain/**` | nada fuera de `domain` | todo lo demás |
+| `apps/services/<A>/src/application/**` | `domain`, `@bank/contracts` | `infrastructure`, `interfaces`, otros servicios |
+| `apps/services/<A>/src/infrastructure/**` | `application`, `domain`, `@bank/contracts`, `@bank/messaging` | `interfaces`, otros servicios |
+| `apps/services/<A>/src/interfaces/**` | `application`, `@bank/contracts` | `infrastructure` (salvo wiring en `main.ts`), otros servicios |
+| `apps/gateway/src/**` | `@bank/contracts`, `@bank/messaging` | `apps/services/**` (cualquier capa) |
+| `apps/packages/contracts/**` | nada externo al paquete | dominio de cualquier servicio |
+| `apps/packages/messaging/**` | `@bank/contracts` (sobre base) | dominio de cualquier servicio |
 
 **Ejemplo que debe fallar** (usado como prueba de SC-003 en quickstart):
 
 ```ts
-// services/account-service/src/application/any.use-case.ts
+// apps/services/account-service/src/application/any.use-case.ts
 import { CustomerEntity } from '../../../customer-service/src/domain/customer.entity';
 // → error de lint: cross-service domain import
 ```
@@ -65,6 +67,8 @@ import { CustomerEntity } from '../../../customer-service/src/domain/customer.en
 | `**/coverage/**` | pruebas |
 | `**/node_modules/**` | instalación |
 | `apps/web/.nuxt/tsconfig*.json` | `nuxt prepare` (postinstall) |
+
+El lockfile de la raíz es el único: `apps/web/pnpm-lock.yaml` se eliminó al integrar la web al workspace. Un lockfile anidado queda ignorado por pnpm y solo produce confusión sobre cuál manda.
 
 ## 6. Catálogo de versiones y regla de actualización (R8)
 
