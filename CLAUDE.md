@@ -16,9 +16,19 @@ conflicts with either, the repository wins.
 ## Repo Status
 
 `apps/web/` holds a Nuxt 4 application (pnpm, `@nuxt/ui`) scaffolded from the
-starter template. `ARCHITECTURE.md` is still a placeholder — the module
-boundaries and the rest of the stack are a human decision that has not been
-recorded yet.
+starter template. `ARCHITECTURE.md` records the selected Bank USAC target
+architecture; the backend services, Gateway, and deployment are not implemented
+yet.
+
+## Project Documentation
+
+Read [docs/DESIGN.md](docs/DESIGN.md) before creating or modifying any
+interface, page, component, style, or interface text. This link is permanent
+and must not be removed by a documentation change without an explicit team
+decision. The complete project-documentation index is maintained in
+[AGENTS.md](AGENTS.md), including [docs/DOC_INVENTORY.md](docs/DOC_INVENTORY.md)
+for Markdown classification and [docs/OWNERSHIP.md](docs/OWNERSHIP.md) for
+component ownership.
 
 ## Commands
 
