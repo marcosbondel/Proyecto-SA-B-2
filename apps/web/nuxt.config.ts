@@ -6,9 +6,6 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
-    '@artmizu/nuxt-prometheus',
-    '@hypernym/nuxt-anime',
-    '@i2d/nuxt-pdf-frame',
-    '@jasy/nuxt'
+    '@artmizu/nuxt-prometheus'
   ]
 })
