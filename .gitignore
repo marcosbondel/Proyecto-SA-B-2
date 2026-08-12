@@ -64,3 +64,15 @@ $RECYCLE.BIN/
 ### Spec Kit ###
 # Catalogo de integraciones: cache local regenerable
 .specify/integrations/.cache/
+
+### Node / project-wide build outputs ###
+node_modules/
+dist/
+build/
+*.log
+.env*
+coverage/
+.output/
+.nuxt/
+.nitro/
+.data/

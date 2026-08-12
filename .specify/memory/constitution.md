@@ -1,50 +1,114 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+- Version change: template -> 1.0.0
+- Modified principles: none; the eight principles are ratified for the first time.
+- Added sections: eight non-negotiable architecture principles and executable governance.
+- Removed sections: unused template placeholder sections.
+- Templates requiring updates: reviewed; no project-specific principle copy exists in the generic Spec Kit templates.
+- Follow-up TODOs: none.
+-->
+
+# Bank USAC Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Exactly Five Microservices
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+The system MUST contain exactly five microservices: Customer, Account,
+Transaction, Payment, and Notification & Audit. Their responsibilities MUST be
+clearly delimited. A plan is non-conforming if it introduces a sixth deployable
+service, merges two of these services, or assigns a service a responsibility
+that belongs to another service.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+Source: project assignment section 4.2, page 8. The assignment penalizes
+mixed responsibilities and god-object services (critical observations, page 7).
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. One Database Per Service With No Cross-Access
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+Each microservice MUST own its own database and MUST NOT access another
+service's database. A plan is non-conforming if services share a schema or
+instance, a service queries another service's tables, or a query joins data
+from two domains. Data owned by another service MUST arrive through events.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Source: mandatory design rules, page 7.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Databases Outside The Cluster
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Service databases MUST run outside the Kubernetes cluster, as Docker
+containers or local services. A plan is non-conforming if a Kubernetes
+manifest deploys a database engine inside the cluster.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+Source: project assignment section 4.2, page 8, and section 4.3, page 14.
+
+### IV. Asynchronous Service Communication Only
+
+Communication between services MUST be completely asynchronous. There MUST be
+no HTTP calls between services and no direct coupling. A plan is non-conforming
+if a service exposes or consumes another service's HTTP endpoint, imports
+another service's code, or blocks while waiting for a synchronous response.
+Asynchronous request/reply over the broker is allowed.
+
+Source: project assignment section 4.2, page 8, and mandatory design rules,
+page 7. The assignment penalizes direct communication and unclear events
+(critical observations, page 7).
+
+### V. Gateway-Only Entry With No Business Logic
+
+The API Gateway MUST be the only external entry point and MUST NOT contain
+business logic. It may route, authenticate, and aggregate responses, but
+domain decisions MUST remain in the owning service. A plan is non-conforming if
+an external client reaches a service directly or if the Gateway makes a domain
+decision.
+
+Source: project assignment section 4.2, page 8; the no-business-logic rule is
+also a recorded team decision.
+
+### VI. Saga For Distributed Operations
+
+Every operation that spans two or more services MUST use a Saga with defined
+compensation steps. A plan is non-conforming if it uses a blocking distributed
+transaction or leaves a distributed operation without compensation. The
+recommended implementation style is choreography.
+
+Source: expected patterns, page 7.
+
+### VII. Local Kubernetes Deployment
+
+The system MUST be deployed locally in a Kubernetes cluster using Docker
+containers. Kubernetes orchestration is mandatory. A plan is non-conforming if
+it runs services directly on the host, uses only Docker Compose, or targets a
+remote cluster.
+
+Source: project assignment section 4.2, page 8, and section 4.3, page 14.
+
+### VIII. SRE From Design
+
+Every service design MUST address idempotency, retries, error handling,
+eventual consistency, and propagation of a `correlationId`. A plan is
+non-conforming if it omits how these concerns are guaranteed for the service.
+The project also requires SLI, SLO, and SLA definitions and diagrams that show
+the design clearly.
+
+Source: project assignment section 4.2, page 8, mandatory SRE considerations,
+page 7, and deliverables in section 4.4.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- This constitution governs every spec, plan, task list, implementation, and
+  review in the repository. When another document conflicts with it, this
+  constitution wins.
+- The eight principles are derived from mandatory project requirements and are
+  not optional team preferences. Their conformance checks are part of every
+  future planning gate.
+- An amendment MUST record its reason, date, and affected principle. Semantic
+  versioning applies: MAJOR changes remove or redefine a principle, MINOR adds
+  a principle or materially expands governance, and PATCH clarifies wording
+  without changing the rule.
+- Every future spec and plan MUST state a verdict for each applicable
+  principle. A non-conforming verdict blocks implementation until the artifact
+  is corrected or the complexity is explicitly justified.
+- The architecture description in `ARCHITECTURE.md` MUST retain the same eight
+  constraints. Changes to either materialization MUST update the other in the
+  same change.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-08-11 | **Last Amended**: 2026-08-11
