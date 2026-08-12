@@ -1,59 +1,90 @@
-# The Crazy Template
+# Bank USAC
 
-Agent-first project scaffold inspired by OpenAI's "Harness engineering"
-recommendations.
+**Software Avanzado | Second Semester 2026 | Section B | Group 2**
 
-Engineers direct; agents implement, verify, and review. Spec-driven work runs on
-[Spec Kit](https://github.com/github/spec-kit).
+Bank USAC is a distributed banking system built as an academic project. It
+uses five independently owned microservices, an API Gateway, asynchronous
+RabbitMQ messaging, separate PostgreSQL databases outside a local Kubernetes
+cluster, and a Nuxt frontend. The architecture applies Clean Architecture and
+Saga choreography so distributed operations remain observable and resilient.
 
-## Structure
+## Team
 
-- `AGENTS.md`: short operational map for agents.
-- `ARCHITECTURE.md`: top-level technical map. Still a placeholder.
-- `docs/`: the knowledge that outlives a change. Source of truth.
-- `apps/web/`: the Nuxt 4 application.
-- `.agents/skills/`: installed agent skills, shared across AI tools.
-- `.agents/roles/`: role agents (backend, frontend, qa, reviewer, and so on),
-  symlinked into `.claude/agents/`.
+| Member | Student ID | Role |
+| --- | --- | --- |
+| Enner Esai Mendizabal Castro | 202302220 | AI Engineer; Customer and Account Services |
+| David Estuardo Barrios Ramirez | 202300769 | AI Engineer; Transaction and Payment Services |
+| Marcos Daniel Bonifasi de Leon | 202202410 | AI Project Manager and Tech Lead; Gateway, frontend, infrastructure, SRE, Notification & Audit, and documentation |
 
-## The Loop
+All three members share responsibility for event contracts, integration,
+testing, and final review. See [docs/OWNERSHIP.md](docs/OWNERSHIP.md) for the
+single primary owner of every component.
 
-Spec-driven development is handled by Spec Kit and its `/speckit.*` commands.
-**It is not initialized in this repository yet** — until it is, there is no spec
-workflow here.
+## What This Is
 
-The home-grown `/spec-*` commands, their state machine, and their enforcement
-hooks were removed in favour of Spec Kit. If you find a reference to
-`/spec-new`, `scripts/agent-checks/`, `state.yaml`, or `docs/SPEC_WORKFLOW.md`
-anywhere, it is stale — delete it.
+The system models the core flows of a banking platform:
 
-## First Steps
+- Customer registration and identity validation.
+- Bank account creation, balance queries, and account state changes.
+- Transfers between accounts through an asynchronous Saga.
+- Internal and external payment processing.
+- Notifications, audit events, and distributed observability foundations.
 
-1. Initialize Spec Kit and record how it is wired here.
-2. Choose the rest of the stack and record it in `ARCHITECTURE.md` — it is still
-   a placeholder.
-3. Install the stack-specific skills in that same change
-   ([docs/AI_PROJECT_SKILLS.md](docs/AI_PROJECT_SKILLS.md)).
-4. Capture the first architectural decision as an ADR in `docs/design-docs/`.
-5. Add a test and a lint script to `apps/web/package.json`. There are none, so
-   nothing can currently be verified beyond a build.
+The current repository is the documented starting point. The backend and
+business features are not implemented yet.
+
+## Repository Layout
+
+- `apps/web/` - the Nuxt frontend application.
+- `docs/` - durable project documentation, decisions, ownership, methodology,
+  and quality records.
+- `specs/` - archived and active Spec Kit artifacts for feature work.
+- `.specify/` - Spec Kit workflow state, templates, and constitution.
+- `.agents/` - canonical role and skill definitions used by the agent harness.
+- `.claude/` and `.opencode/` - tool integrations that link to canonical
+  harness content.
+- `docs/references/` - assignment and external reference material.
+
+The future backend service layout is deliberately not described here; it is a
+decision for T-04.
+
+## Documentation
+
+- [Architecture](ARCHITECTURE.md) - system shape, constraints, stack, and
+  dependency rules.
+- [Design system](docs/DESIGN.md) - visual tokens, components, states, and
+  domain formats.
+- [Ownership](docs/OWNERSHIP.md) - primary owners and shared work.
+- [Methodology](docs/METHODOLOGY.md) - sprints, milestones, evidence, and
+  blockers.
+- [Product sense](docs/PRODUCT_SENSE.md) - users and core workflows.
+- [Frontend](docs/FRONTEND.md) - verified frontend stack and conventions.
+- [Security](docs/SECURITY.md) - data classes and security scope.
+- [Reliability](docs/RELIABILITY.md) - SRE requirements and observability.
+- [Quality score](docs/QUALITY_SCORE.md) - current quality assessment.
+- [Technical debt](docs/TECH_DEBT.md) - actionable open debt.
+- [Documentation inventory](docs/DOC_INVENTORY.md) - classification and
+  coverage rules for every Markdown file.
+- [AI project agents](docs/AI_PROJECT_AGENTS.md) - agent roles and boundaries.
+- [AI project skills](docs/AI_PROJECT_SKILLS.md) - installed and deferred
+  skills.
+- [Design documents](docs/design-docs/index.md) - durable design records.
 
 ## Development
 
+Run commands from `apps/web/`:
+
 ```bash
-cd apps/web
 pnpm install
 pnpm dev
+pnpm build
+pnpm generate
+pnpm preview
 ```
 
-## Philosophy
+There is currently no test script and no lint script in `apps/web/package.json`.
+The available automated application check is `pnpm build`; adding test or lint
+commands is separate technical debt recorded in `docs/TECH_DEBT.md`.
 
-The repo should be easy for humans and agents to inspect, verify, and improve.
-Important knowledge belongs in versioned files, not only in chat, meetings, or
-memory.
-
-Restrictions are structural where the harness still allows it: `design`,
-`reviewer`, and `security` have no write tools, because a reviewer that could fix
-what it finds would stop reviewing and start implementing. The gates that used to
-block unspecced code were enforced by hooks that are now gone — that discipline
-is a convention until Spec Kit replaces it.
+Spec-driven work uses [Spec Kit](https://github.com/github/spec-kit) under
+`.specify/`. The available workflows are documented in [AGENTS.md](AGENTS.md).
