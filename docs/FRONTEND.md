@@ -1,29 +1,48 @@
 # Frontend
 
-Use this document once the project has a frontend surface.
+## Stack
 
-## Standards
+The current frontend is a Nuxt 4.5.2 application using Vue 3.5.41,
+`@nuxt/ui` 4.10.0, Tailwind CSS 4.3.3, and TypeScript 6.0.3. Package
+installation and production builds use pnpm from `apps/web/`.
 
-- Document framework, routing, state, styling, and component conventions.
-- Keep reusable UI patterns discoverable.
-- Prefer accessible, keyboard-friendly controls.
-- Verify responsive layouts at mobile and desktop widths.
-- Capture screenshots or visual notes for important flows when useful.
+## Component Organization
 
-## Expected Sections
+The frontend will use a shared Nuxt shell and organize feature components by
+microservice ownership: Customer, Account, Transaction, Payment, and
+Notification & Audit. Shared components consume the tokens and component
+conventions in [DESIGN.md](DESIGN.md), rather than redefining them per service.
 
-- Framework and build tooling.
-- Component organization.
-- Styling conventions.
-- Accessibility expectations.
-- Browser verification checklist.
+The repository currently contains only the starter `app/app.vue`; the Bank USAC
+feature surfaces have not been implemented yet.
+
+## Styling
+
+Use the tokens, responsive layout, typography, component mapping, and state
+conventions in [DESIGN.md](DESIGN.md). The shell uses Nuxt UI components and
+Tailwind utilities. No local style value should contradict the design system.
+
+## Accessibility
+
+Every screen follows the accessibility requirements in [DESIGN.md](DESIGN.md):
+associated labels, visible focus, AA contrast, adjacent errors, keyboard
+access, and meaningful mobile layouts.
+
+## Routing And State
+
+> **Blocked**: Route names, navigation structure, and the shared state
+> conventions depend on the Gateway contract and frontend shell. Owner: Marcos
+> Bonifasi. Arrives with: T-13.
 
 ## Verification
 
-Add exact commands here once available, for example:
+The commands currently available from `apps/web/` are:
 
 ```sh
-pnpm run lint
-pnpm run type-check
-pnpm test
+pnpm install
+pnpm build
+pnpm generate
 ```
+
+There is no test or lint script yet; that gap is tracked as TD-004 in
+[TECH_DEBT.md](TECH_DEBT.md).
