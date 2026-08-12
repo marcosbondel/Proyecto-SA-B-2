@@ -109,7 +109,7 @@ see:
 
 | Skill | Says | Here |
 | --- | --- | --- |
-| `spec-driven-development` | `tasks/plan.md`, `tasks/todo.md` | the spec directory Spec Kit creates |
+| `spec-driven-development` | upstream task-plan and task-backlog paths | the spec directory Spec Kit creates |
 | `writing-plans` | `docs/superpowers/plans/YYYY-MM-DD-*.md` | the spec directory's `plan.md` |
 
 `spec-driven-development` also references four skills that are not installed
@@ -308,10 +308,10 @@ npx skills add https://github.com/obra/superpowers --skill verification-before-c
 
 ## Installed In This Project
 
-Installed project-level and agent-neutral. Because this repository is still a
-documentation scaffold with no runtime or framework selected, only
-stack-agnostic skills are installed. Stack-specific skills are deliberately
-deferred until [ARCHITECTURE.md](../ARCHITECTURE.md) names a runtime.
+Installed project-level and agent-neutral. The repository now has a selected
+Nuxt frontend and a documented NestJS/RabbitMQ backend target. Backend,
+database, and deployment skills remain deferred until those implementation
+surfaces exist and their owners request them.
 
 | Skill | Source | Role |
 | --- | --- | --- |

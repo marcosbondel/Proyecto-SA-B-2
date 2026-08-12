@@ -5,10 +5,34 @@ Short map for AI agents working in this repository. Durable knowledge lives in
 
 ## Repo Status
 
-`apps/web/` holds a Nuxt 4 application (pnpm, `@nuxt/ui`) scaffolded from the
-starter template — it is the only application code so far. `ARCHITECTURE.md` is
-still a placeholder: the module boundaries and the rest of the stack have not
-been decided or recorded yet.
+`apps/web/` holds the current Nuxt 4 application (pnpm, `@nuxt/ui`) and is the
+only application code so far. `ARCHITECTURE.md` records the selected Bank USAC
+target architecture; the backend services, Gateway, and deployment are not
+implemented yet.
+
+## Project Documentation
+
+Consult these documents before making decisions or describing the repository:
+
+- [README.md](README.md): project identity, team, layout, and development entry points.
+- [ARCHITECTURE.md](ARCHITECTURE.md): system boundaries, stack, constraints, and dependency rules.
+- [docs/DESIGN.md](docs/DESIGN.md): **must be read before creating or modifying any interface, page, component, style, or interface text**. This link is permanent and must not be removed by a documentation change without an explicit team decision.
+- [docs/OWNERSHIP.md](docs/OWNERSHIP.md): primary owner before changing a component.
+- [docs/METHODOLOGY.md](docs/METHODOLOGY.md): milestones, status transitions, evidence, and blockers.
+- [docs/PRODUCT_SENSE.md](docs/PRODUCT_SENSE.md): users and banking workflows before product-facing changes.
+- [docs/FRONTEND.md](docs/FRONTEND.md): verified frontend stack and conventions before frontend work.
+- [docs/SECURITY.md](docs/SECURITY.md): data classes and security boundaries before handling sensitive data.
+- [docs/RELIABILITY.md](docs/RELIABILITY.md): SRE requirements before service or infrastructure design.
+- [docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md): current quality assessment at milestone reviews.
+- [docs/TECH_DEBT.md](docs/TECH_DEBT.md): open debt before adding or closing follow-up work.
+- [docs/DOC_INVENTORY.md](docs/DOC_INVENTORY.md): document class and ownership before editing Markdown.
+- [docs/AI_PROJECT_AGENTS.md](docs/AI_PROJECT_AGENTS.md): role capabilities and restrictions before delegating work.
+- [docs/AI_PROJECT_SKILLS.md](docs/AI_PROJECT_SKILLS.md): installed skills and stack-specific skill policy.
+- [docs/design-docs/index.md](docs/design-docs/index.md): durable design records before recording a new decision.
+- [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md): repository operating beliefs before changing agent practice.
+- [docs/references/README.md](docs/references/README.md): how to add or consult external references.
+- [apps/web/README.md](apps/web/README.md): Nuxt starter-level application commands when working inside the web app.
+- [.specify/memory/constitution.md](.specify/memory/constitution.md): mandatory architecture principles before writing a spec or plan.
 
 ## Commands
 
