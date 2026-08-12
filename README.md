@@ -30,23 +30,45 @@ The system models the core flows of a banking platform:
 - Internal and external payment processing.
 - Notifications, audit events, and distributed observability foundations.
 
-The current repository is the documented starting point. The backend and
-business features are not implemented yet.
+The monorepo and its development base exist: seven applications and three
+shared packages that install, build, lint and test from a clean checkout. What
+they contain is scaffolding — health checks, environment validation and the
+shared message envelope. No banking rule is implemented yet.
 
 ## Repository Layout
 
-- `apps/web/` - the Nuxt frontend application.
-- `docs/` - durable project documentation, decisions, ownership, methodology,
-  and quality records.
-- `specs/` - archived and active Spec Kit artifacts for feature work.
-- `.specify/` - Spec Kit workflow state, templates, and constitution.
-- `.agents/` - canonical role and skill definitions used by the agent harness.
-- `.claude/` and `.opencode/` - tool integrations that link to canonical
-  harness content.
-- `docs/references/` - assignment and external reference material.
+Every unit of code lives under `apps/`. The repository root holds
+configuration only.
 
-The future backend service layout is deliberately not described here; it is a
-decision for T-04.
+```text
+apps/
+├── gateway/                         # API Gateway — the only external entry point
+├── web/                             # Nuxt frontend
+├── services/
+│   ├── customer-service/            # port 3001
+│   ├── account-service/             # port 3002
+│   ├── transaction-service/         # port 3003
+│   ├── payment-service/             # port 3004
+│   └── notification-audit-service/  # port 3005
+└── packages/
+    ├── contracts/                   # @bank/contracts — message envelope and transport DTOs
+    ├── messaging/                   # @bank/messaging — RabbitMQ adapter
+    └── tooling/                     # @bank/tooling — shared TS/ESLint/Prettier/Jest config
+infra/docker/                        # local PostgreSQL and RabbitMQ stack (T-06)
+infra/k8s/                           # kind manifests (T-16)
+docs/                                # durable project documentation
+specs/                               # Spec Kit artifacts for feature work
+```
+
+Each of the five services carries the four Clean Architecture layers —
+`domain`, `application`, `infrastructure`, `interfaces` — and dependencies
+point inward. That direction is enforced by lint, not by convention: see
+[Isolation rules](#isolation-rules).
+
+The rest of the scaffolding: `.specify/` holds Spec Kit workflow state,
+templates and the constitution; `.agents/` holds the canonical role and skill
+definitions; `.claude/` and `.opencode/` link to them; `docs/references/` holds
+assignment material.
 
 ## Documentation
 
@@ -72,19 +94,102 @@ decision for T-04.
 
 ## Development
 
-Run commands from `apps/web/`:
+### Prerequisites
+
+| Tool | Version | Why pinned here |
+| --- | --- | --- |
+| Node.js | 24.19.0 (LTS Krypton) | `.nvmrc`; `engines.node` refuses anything older |
+| pnpm | 11.21.0 | `packageManager` in the root `package.json` |
 
 ```bash
-pnpm install
-pnpm dev
-pnpm build
-pnpm generate
-pnpm preview
+nvm use            # reads .nvmrc
+corepack enable    # or: npm i -g pnpm@11.21.0
 ```
 
-There is currently no test script and no lint script in `apps/web/package.json`.
-The available automated application check is `pnpm build`; adding test or lint
-commands is separate technical debt recorded in `docs/TECH_DEBT.md`.
+### Commands
+
+Run all of them from the **repository root**.
+
+| Command | What it does |
+| --- | --- |
+| `pnpm install` | Installs the whole workspace — nine packages, one lockfile |
+| `pnpm build` | Builds the shared packages, then the seven applications |
+| `pnpm lint` | Lints everything, including the isolation rules below |
+| `pnpm test` | Unit tests for every application and package |
+| `pnpm test:contract` | The contract tests over `@bank/contracts` |
+| `pnpm format` | Prettier over the repository |
+| `pnpm dev` | Every application in watch mode, in parallel |
+
+Every command has a per-application form:
+
+```bash
+pnpm --filter customer-service test
+pnpm --filter gateway lint
+pnpm --filter web build
+```
+
+Application names are `gateway`, `web`, `customer-service`, `account-service`,
+`transaction-service`, `payment-service`, `notification-audit-service`. The
+shared packages are `@bank/contracts`, `@bank/messaging` and `@bank/tooling`.
+
+**Build the shared packages before running one application on its own.** They
+are consumed from `dist/`, so a fresh clone needs a `pnpm build` first — or use
+`pnpm --filter gateway... build` (three dots) to build an application together
+with its dependencies.
+
+### Local startup order
+
+1. `pnpm install`
+2. Copy each `.env.example` to `.env` in the same directory and fill in local
+   values. Never commit a `.env`.
+3. Start the local infrastructure — PostgreSQL and RabbitMQ.
+   **Blocked until T-06.** Until then the applications boot in health-check
+   mode with no broker connection, which is enough to develop against.
+4. `pnpm dev`, or `pnpm --filter <app> dev` for a single application.
+
+Every application answers `GET /health` on its own port once running:
+
+```bash
+curl http://localhost:3001/health
+# {"status":"ok","application":"customer-service"}
+```
+
+A missing required variable fails the boot immediately and names it, rather
+than surfacing later as a runtime error:
+
+```text
+Invalid environment for "customer-service". Offending variables: DATABASE_URL
+  - DATABASE_URL: DATABASE_URL should not be empty; DATABASE_URL must be a string
+```
+
+### Isolation rules
+
+Three architectural rules are executable, not advisory. Breaking one fails
+`pnpm lint`:
+
+- A service never imports another service. Data owned elsewhere arrives as an
+  event.
+- Inside a service, dependencies point inward. `domain` imports nothing —
+  not another layer, not a framework. `application` never imports
+  `infrastructure` or `interfaces`. Wiring lives in `src/main.ts`, which sits
+  outside every layer on purpose.
+- The gateway never links against service code, and a shared package never
+  imports a service domain.
+
+### Generated files — do not edit by hand
+
+| Path | Produced by |
+| --- | --- |
+| `pnpm-lock.yaml` | `pnpm install` |
+| `**/dist/` | `pnpm build` |
+| `**/coverage/` | `pnpm test` |
+| `**/node_modules/` | `pnpm install` |
+| `apps/web/.nuxt/`, `apps/web/.output/` | `nuxt prepare` (postinstall) and `nuxt build` |
+
+Shared dependency versions are not declared per package. They live once in the
+`catalog` of `pnpm-workspace.yaml`, and each `package.json` refers to them with
+`catalog:`. Before changing one, query OSV and run `pnpm audit`: a dependency
+with an open vulnerability does not enter the catalog.
 
 Spec-driven work uses [Spec Kit](https://github.com/github/spec-kit) under
 `.specify/`. The available workflows are documented in [AGENTS.md](AGENTS.md).
