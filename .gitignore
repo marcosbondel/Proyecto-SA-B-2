@@ -70,9 +70,15 @@ node_modules/
 dist/
 build/
 *.log
-.env*
 coverage/
 .output/
 .nuxt/
 .nitro/
 .data/
+*.tsbuildinfo
+
+### Local environment ###
+# Real values stay out of the repo; the committed templates do not.
+.env
+.env.*
+!.env.example
