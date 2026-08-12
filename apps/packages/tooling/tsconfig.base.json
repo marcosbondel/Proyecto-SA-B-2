@@ -1,0 +1,40 @@
+{
+  // Shared strict TypeScript configuration (FR-012). No check below may be
+  // relaxed to make a build pass; if a skeleton does not compile in strict
+  // mode, the skeleton is what gets fixed.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "node16",
+    "moduleResolution": "node16",
+
+    "strict": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": false,
+    // Required by ts-jest under Node16 module resolution, and a stricter
+    // guarantee besides: every file must be transpilable on its own.
+    "isolatedModules": true,
+
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    // Legacy [[Set]] semantics are what NestJS and class-validator decorators
+    // expect; ES2022 [[Define]] fields overwrite decorated properties.
+    "useDefineForClassFields": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    // Deliberately not incremental. `nest build` deletes dist/ but not the
+    // .tsbuildinfo beside the config, so the next build would believe its
+    // output already exists and emit nothing — a silent broken rebuild.
+    "pretty": true
+  }
+}

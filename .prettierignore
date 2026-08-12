@@ -1,0 +1,26 @@
+# Generated — see contracts/workspace-contracts.md §5
+node_modules/
+dist/
+coverage/
+pnpm-lock.yaml
+apps/web/.nuxt/
+apps/web/.output/
+
+# Prose is wrapped by hand in this repository, at a deliberate width that
+# Prettier would reflow. Formatting Markdown here means a 70-file diff that
+# says nothing.
+**/*.md
+
+# The web app predates the workspace and is only integrated into it, not
+# restyled (FR-018).
+apps/web/
+
+# Agent harness and tool configuration, owned outside this repository's
+# formatting policy.
+.agents/
+.claude/
+.opencode/
+.specify/
+.mcp.json
+opencode.json
+skills-lock.json
