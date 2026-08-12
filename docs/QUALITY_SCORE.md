@@ -1,27 +1,25 @@
 # Quality Score
 
-Track project quality by domain and layer. This document should become more
-specific as the codebase grows.
+Scores use a five-point scale:
 
-## Scale
-
-- 5: Excellent; verified, documented, and low-risk.
-- 4: Good; minor gaps or missing automation.
-- 3: Usable; meaningful gaps are known.
-- 2: Risky; fragile or under-specified.
-- 1: Poor; needs focused repair before expansion.
+- **5:** Excellent; verified, documented, and low-risk.
+- **4:** Good; a small number of known gaps remain.
+- **3:** Usable; meaningful gaps are explicitly tracked.
+- **2:** Risky; important behavior is under-specified.
+- **1:** Poor; focused repair is required before expansion.
 
 ## Current Scores
 
-| Area | Score | Notes |
+| Area | Score | Rationale for the post-T-01 assessment |
 | --- | ---: | --- |
-| Product clarity | 2 | Initial scope is not documented yet. |
-| Architecture | 2 | Scaffold exists; application architecture is not defined. |
-| Reliability | 2 | Reliability targets need to be chosen. |
-| Security | 2 | Security model needs to be defined. |
-| Documentation | 3 | Agent-first structure exists; content needs project specifics. |
+| Product clarity | 4 | Bank USAC users and five core workflows are recorded; the concise north-star statement and detailed acceptance criteria remain with T-02. |
+| Architecture | 4 | Stack, service boundaries, data ownership, asynchronous rules, Saga, Kubernetes, and SRE constraints are documented; backend code and deployment remain future work. |
+| Reliability | 3 | Required SRE concerns and correlation tracing are explicit; SLI, SLO, SLA values and runtime evidence arrive with T-03 and T-18. |
+| Security | 3 | Assignment-derived data classes and the Gateway/database boundaries are recorded; access control and secret-loading decisions arrive with T-03 and T-06. |
+| Documentation | 4 | The project now has an ownership record, methodology, design system, inventory, architecture, and adapted guides; test and lint automation remain TD-004. |
 
 ## Review Cadence
 
-Review this file whenever a major workflow, architecture boundary, or release
-target changes.
+Review this file at each milestone boundary and whenever a major architecture,
+security, reliability, or delivery decision changes. Update the score with the
+evidence that caused the movement.
