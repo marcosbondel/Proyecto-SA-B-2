@@ -15,10 +15,13 @@ conflicts with either, the repository wins.
 
 ## Repo Status
 
-`apps/web/` holds a Nuxt 4 application (pnpm, `@nuxt/ui`) scaffolded from the
-starter template. `ARCHITECTURE.md` records the selected Bank USAC target
-architecture; the backend services, Gateway, and deployment are not implemented
-yet.
+A pnpm workspace with all code under `apps/`: Gateway and the Nuxt frontend at
+the top level, the five domain services under `apps/services/`, and
+`@bank/contracts`, `@bank/messaging`, `@bank/tooling` under `apps/packages/`.
+Seven applications, all of them building, linting and testing. The contents are
+scaffolding — health checks, environment validation, the shared message
+envelope; the `domain` and `application` layers are empty on purpose. Local
+infrastructure (T-06) and deployment (T-16) are not built yet.
 
 ## Project Documentation
 
@@ -32,20 +35,32 @@ component ownership.
 
 ## Commands
 
-Run from `apps/web/`:
+Run from the **repository root**, never from an application directory. Node
+24.19.0 (`.nvmrc`) and pnpm 11.21.0 (`packageManager`) are enforced.
 
 ```bash
-pnpm install
-pnpm dev        # nuxt dev
-pnpm build      # nuxt build
-pnpm generate   # nuxt generate
-pnpm preview    # nuxt preview
+pnpm install        # whole workspace, one lockfile
+pnpm build          # shared packages, then the seven applications
+pnpm lint           # style *and* the executable isolation rules
+pnpm test           # unit tests everywhere
+pnpm test:contract  # contract tests over @bank/contracts
+pnpm format
+pnpm dev
 ```
 
-That is the whole list. There is **no test and no lint script** — do not invent
-one, and do not assume a suite exists because a role file mentions "run the
-tests". Adding either means adding it to `apps/web/package.json` and recording
-it in AGENTS.md in the same change.
+Per application: `pnpm --filter <name> <command>`. `pnpm build` must precede
+testing a single application in a fresh clone — the shared packages are
+consumed from `dist/`.
+
+Two things worth knowing before you claim anything passed:
+
+- **Lint enforces architecture.** A cross-service import, a framework import in
+  `domain`, or an `infrastructure` import in `application` fails `pnpm lint`.
+  The rules live in `apps/packages/tooling/eslint.base.mjs`. If one blocks you,
+  the design is wrong — do not add an exception to make it pass.
+- **`apps/web` has no component test framework.** Its `test` script is one
+  `node --test` smoke test, not a Vue suite (TD-010). Do not claim component
+  coverage. The six NestJS applications use Jest and do have real tests.
 
 ## Spec Workflow
 

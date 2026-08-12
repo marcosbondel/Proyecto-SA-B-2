@@ -1,0 +1,28 @@
+{
+  "name": "@bank/tooling",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared TypeScript, ESLint, Prettier and Jest configuration for the Bank USAC monorepo. Configuration only — no runtime code.",
+  "license": "MIT",
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./eslint.base.mjs": "./eslint.base.mjs",
+    "./prettier.config.mjs": "./prettier.config.mjs",
+    "./jest.base.mjs": "./jest.base.mjs"
+  },
+  "files": [
+    "tsconfig.base.json",
+    "eslint.base.mjs",
+    "prettier.config.mjs",
+    "jest.base.mjs"
+  ],
+  "dependencies": {
+    "@eslint/js": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}
