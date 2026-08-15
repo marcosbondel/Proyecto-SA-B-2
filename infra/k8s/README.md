@@ -74,10 +74,10 @@ it and it adds operational overhead for a single-cluster academic deployment.
 - Raw `kubectl apply -f *.yaml` manifests applied by hand. Every workload in
   this directory is rendered and released through the Helm chart so that
   `helm upgrade --install` (not a sequence of `kubectl apply` commands) is the
-  single deployment command T-16 documents and T-17 relies on for repeatable
+  single deployment command T-22 documents and T-23 relies on for repeatable
   test runs.
 - Hardcoded image tags inside templates — tags are chart values so the same
   chart can be released against different builds without editing templates.
 
 > **Blocked**: No Helm chart is written yet; this ticket explicitly excludes
-> it (FR-017). Owner: Marcos Bonifasi. Arrives with: T-16.
+> it (FR-017). Owner: Marcos Bonifasi. Arrives with: T-22.
