@@ -17,15 +17,20 @@ transaction.
 
 | Service | Responsibility | Owned data |
 | --- | --- | --- |
-| Customer Service | Register customers, validate identity, and manage customer details. | Customer identity, document, contact, birth date, address, and username. |
-| Account Service | Create accounts, expose balances, update balances, and deactivate inactive low-balance accounts. | Accounts, customer references, balances, and account state. |
-| Transaction Service | Validate funds, coordinate transfers, and record transaction state. | Transaction id, source and target accounts, amount, and status. |
-| Payment Service | Process internal or external payments and validate payment operations. | Payment id, transaction reference, and payment status. |
-| Notification & Audit Service | Publish notifications, record audit events, and provide distributed logging foundations. | Event id, event type, timestamp, and event payload. |
+| Customer Service | Register customers, authenticate them, activate them by email, validate identity, and manage customer details. | Customer identity, document, contact, birth date, address, username, access credential, role, identity status, and email verification. |
+| Account Service | Create accounts, expose balances, update balances, and deactivate inactive low-balance accounts. | Accounts, customer references, balances, account state, account type, and last activity. |
+| Transaction Service | Validate funds, coordinate transfers, and record transaction state. | Transaction id, source and target accounts, amount, status, idempotency key, and timestamps. |
+| Payment Service | Process internal or external payments and validate payment operations. | Payment id, transaction reference, payment status, attempt number, and failure reason. |
+| Notification & Audit Service | Publish notifications, record audit events, and provide distributed logging foundations. | Event id, event type, timestamp, payload, correlation id, origin, and notification delivery state. |
 
 The services exchange events and asynchronous request/reply messages through
 RabbitMQ. No service reads another service's database. The API Gateway is the
 only external entry point and does not make domain decisions.
+
+The attribute-level ownership matrix, the entity states and invariants, the
+actors, the business flows, and the command and event catalogue are the domain
+model in [docs/domain/](docs/domain/README.md). This table is the summary; that
+directory is the contract.
 
 ## Non-Negotiable Constraints
 
@@ -55,7 +60,10 @@ These constraints are the executable architecture contract in
    patterns, page 7.
 7. **Local Kubernetes deployment.** Services and the Gateway are containerized
    with Docker and deployed to a local Kubernetes cluster using kind. Databases
-   remain outside the cluster. Source: assignment sections 4.2 and 4.3, pages
+   remain outside the cluster. The cluster is released through a Helm chart
+   (`helm upgrade --install`), not by applying raw manifests by hand — Helm is
+   listed as supporting material in the assignment and keeps the release
+   reproducible and versioned. Source: assignment sections 4.2 and 4.3, pages
    8 and 14.
 8. **SRE from design.** Each service addresses idempotency, retries, error
    handling, eventual consistency, and `correlationId` propagation. SLI, SLO,
@@ -74,7 +82,8 @@ eight constraints.
 - **Messaging:** RabbitMQ with event-driven communication and asynchronous
   request/reply.
 - **Persistence:** one PostgreSQL database per service, outside the cluster.
-- **Runtime:** Docker containers in a local kind Kubernetes cluster.
+- **Runtime:** Docker containers in a local kind Kubernetes cluster, released
+  through a single Helm chart (`infra/k8s/helm/bank-usac`).
 - **Service structure:** Clean Architecture inside each service.
 - **Distributed workflows:** Saga by choreography.
 
@@ -126,7 +135,7 @@ RabbitMQ clients, or other services.
   stack plus `@artmizu/nuxt-prometheus`, which is retained as pending debt for
   the observability ticket T-18.
 - The backend services, Gateway, RabbitMQ topology, PostgreSQL databases,
-  Docker images, Kubernetes manifests, and Saga implementation are future
+  Docker images, the Kubernetes Helm chart, and Saga implementation are future
   work. They are not presented as existing here.
 
 ## Related Docs
