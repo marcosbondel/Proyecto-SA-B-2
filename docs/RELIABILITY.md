@@ -18,13 +18,13 @@ owning workflow confirms completion.
 
 > **Blocked**: Service-level indicators, objectives, agreements, formulas,
 > sources, and target values have not been approved. Owner: Marcos Bonifasi.
-> Arrives with: T-03. T-18 measures the definitions; it does not create them.
+> Arrives with: T-03. T-24 measures the definitions; it does not create them.
 
 ## Observability
 
 Notification & Audit Service provides the domain foundation for audit events and
 distributed logging. The project retains `@artmizu/nuxt-prometheus` in the web
-manifest while its justification remains open in TD-006 for T-18.
+manifest while its justification remains open in TD-006 for T-24.
 
 Every future service must make correlation context, retries, failures, and
 eventual completion observable without changing business outcomes.

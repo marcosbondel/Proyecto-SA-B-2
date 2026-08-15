@@ -24,6 +24,7 @@ Consult these documents before making decisions or describing the repository:
 - [README.md](README.md): project identity, team, layout, and development entry points.
 - [ARCHITECTURE.md](ARCHITECTURE.md): system boundaries, stack, constraints, and dependency rules.
 - [docs/DESIGN.md](docs/DESIGN.md): **must be read before creating or modifying any interface, page, component, style, or interface text**. This link is permanent and must not be removed by a documentation change without an explicit team decision.
+- [docs/domain/](docs/domain/README.md): **the domain model as a functional contract** — which service owns which data, which invariants it protects, and which commands and events it handles. Read it before implementing any service, designing an event, or adding a business rule.
 - [docs/OWNERSHIP.md](docs/OWNERSHIP.md): primary owner before changing a component.
 - [docs/METHODOLOGY.md](docs/METHODOLOGY.md): milestones, status transitions, evidence, and blockers.
 - [docs/PRODUCT_SENSE.md](docs/PRODUCT_SENSE.md): users and banking workflows before product-facing changes.
