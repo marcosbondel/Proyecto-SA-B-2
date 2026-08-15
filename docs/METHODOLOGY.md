@@ -12,15 +12,27 @@ decisions and implementation evidence.
 | Milestone | Date | Tickets | Objective |
 | --- | --- | --- | --- |
 | H1 - Complete design | 2026-08-18 | T-01 to T-05 | Domain, decisions, contracts, architecture, and the documented repository baseline are complete. |
-| H2 - Local foundation and shell | 2026-08-20 | T-06, T-07, T-13 | Local infrastructure, diagrams, Gateway contract, and frontend shell are available. |
-| H3 - Services and frontends | 2026-08-26 | T-08 to T-12 | All five services and their assigned frontend surfaces are implemented. |
-| H4 - Containers and Kubernetes | 2026-08-30 | T-15, T-16 | Docker images and the local kind deployment are validated. |
-| H5 - Integration and resilience | 2026-08-31 | T-17 | Saga integration, failure handling, and resilience tests are complete. |
-| H6 - Final evidence and SRE | 2026-09-02 | T-18, T-19 | SRE measurements, final documentation, and traceability evidence are complete. |
+| H2 - Local foundation and shell | 2026-08-20 | T-06, T-07 to T-14, T-15 | Local infrastructure, the eight diagrams, Gateway contract, and frontend shell are available. |
+| H3 - Services and frontends | 2026-08-26 | T-16 to T-20 | All five services and their assigned frontend surfaces are implemented. |
+| H4 - Containers and Kubernetes | 2026-08-30 | T-21, T-22 | Docker images and the local kind deployment are validated. |
+| H5 - Integration and resilience | 2026-08-31 | T-23 | Saga integration, failure handling, and resilience tests are complete. |
+| H6 - Final evidence and SRE | 2026-09-02 | T-24, T-25 | SRE measurements, final documentation, and traceability evidence are complete. |
 
-T-14 was absorbed into the per-service frontend work in T-08 through T-12 and
-does not represent a separate delivery item. The project has a delivery buffer
-through 2026-09-03.
+The project has a delivery buffer through 2026-09-03.
+
+### Renumbering, 2026-08-14
+
+The original T-07 bundled all mandatory diagrams into one ticket. It was split
+into **one ticket per diagram** (T-07 to T-14) so each has its own owner,
+acceptance criteria and delivery format; the two sequence diagrams are separate
+tickets because the transfer one models the entire Saga.
+
+Everything after shifted: the Gateway moved to **T-15** — ahead of the services,
+which is its real execution order, since they build their frontends against it —
+the five services became **T-16 to T-20**, and the rest ran through **T-25**.
+
+The old frontend ticket T-14 had already been absorbed into the per-service
+frontend work and is retired; its number now belongs to the use-case diagram.
 
 ## Source Of Truth
 

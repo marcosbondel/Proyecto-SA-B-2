@@ -14,7 +14,7 @@ Scores use a five-point scale:
 | --- | ---: | --- |
 | Product clarity | 4 | Bank USAC users and five core workflows are recorded; the concise north-star statement and detailed acceptance criteria remain with T-02. |
 | Architecture | 4 | Stack, service boundaries, data ownership, asynchronous rules, Saga, Kubernetes, and SRE constraints are documented; backend code and deployment remain future work. |
-| Reliability | 3 | Required SRE concerns and correlation tracing are explicit; SLI, SLO, SLA values and runtime evidence arrive with T-03 and T-18. |
+| Reliability | 3 | Required SRE concerns and correlation tracing are explicit; SLI, SLO, SLA values and runtime evidence arrive with T-03 and T-24. |
 | Security | 3 | Assignment-derived data classes and the Gateway/database boundaries are recorded; access control and secret-loading decisions arrive with T-03 and T-06. |
 | Documentation | 4 | The project now has an ownership record, methodology, design system, inventory, architecture, and adapted guides; test and lint automation remain TD-004. |
 

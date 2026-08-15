@@ -133,7 +133,7 @@ RabbitMQ clients, or other services.
   routes, backend, or business logic.
 - The web dependency manifest contains only the currently justified frontend
   stack plus `@artmizu/nuxt-prometheus`, which is retained as pending debt for
-  the observability ticket T-18.
+  the observability ticket T-24.
 - The backend services, Gateway, RabbitMQ topology, PostgreSQL databases,
   Docker images, the Kubernetes Helm chart, and Saga implementation are future
   work. They are not presented as existing here.

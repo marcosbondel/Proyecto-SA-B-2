@@ -20,7 +20,7 @@ introducing local values.
 
 ## Color
 
-Tokens map directly to the Nuxt UI theme applied by T-13.
+Tokens map directly to the Nuxt UI theme applied by T-15.
 
 | Token | Value | Use |
 | --- | --- | --- |
