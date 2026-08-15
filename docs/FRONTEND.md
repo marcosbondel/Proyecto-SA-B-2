@@ -32,7 +32,7 @@ access, and meaningful mobile layouts.
 
 > **Blocked**: Route names, navigation structure, and the shared state
 > conventions depend on the Gateway contract and frontend shell. Owner: Marcos
-> Bonifasi. Arrives with: T-13.
+> Bonifasi. Arrives with: T-15.
 
 ## Verification
 
