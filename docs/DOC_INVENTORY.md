@@ -35,6 +35,13 @@ not require a new row for every generated link or vendor file.
 | `docs/RELIABILITY.md` | project | Marcos Bonifasi | blocked | 2026-08-11 |
 | `docs/SECURITY.md` | project | Marcos Bonifasi | blocked | 2026-08-11 |
 | `docs/TECH_DEBT.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `docs/domain/README.md` | project | Marcos Bonifasi | current | 2026-08-14 |
+| `docs/domain/bounded-contexts.md` | project | Marcos Bonifasi | current | 2026-08-14 |
+| `docs/domain/entities.md` | project | Marcos Bonifasi | current | 2026-08-14 |
+| `docs/domain/actors.md` | project | Marcos Bonifasi | current | 2026-08-14 |
+| `docs/domain/use-cases.md` | project | Marcos Bonifasi | current | 2026-08-14 |
+| `docs/domain/message-catalog.md` | project | Marcos Bonifasi | current | 2026-08-14 |
+| `docs/design-docs/PROMPT_MOCKUP.MD` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/design-docs/core-beliefs.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/design-docs/index.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/references/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
