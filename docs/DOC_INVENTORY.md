@@ -41,6 +41,7 @@ not require a new row for every generated link or vendor file.
 | `docs/domain/actors.md` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/domain/use-cases.md` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/domain/message-catalog.md` | project | Marcos Bonifasi | current | 2026-08-14 |
+| `docs/design-docs/PROMPT_MOCKUP.MD` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/design-docs/core-beliefs.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/design-docs/index.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/references/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
