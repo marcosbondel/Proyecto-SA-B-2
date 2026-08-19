@@ -1,0 +1,22 @@
+# Spec Kit extension hooks.
+#
+# `/speckit-specify` reads this file before it writes a spec and runs whatever
+# is registered under `hooks.before_specify`. Spec Kit on its own never creates
+# a branch: `create-new-feature.sh` computes a name and creates the spec
+# directory, but never touches git. That missing half lives here.
+
+hooks:
+  before_specify:
+    - extension: git
+      command: speckit.git.branch
+      description: >-
+        Creates the feature branch, or switches to it if it already exists,
+        before the specification is written. Follows this repository's
+        convention: one branch per ticket, `feature/T-NN`, cut from
+        `origin/develop`.
+      prompt: >-
+        Create the branch for this feature. If the request names a ticket
+        (T-05, T-12, ...), pass it with `--ticket`; otherwise the script falls
+        back to Spec Kit's own numbering.
+      optional: false
+      enabled: true
