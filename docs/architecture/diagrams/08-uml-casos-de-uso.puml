@@ -1,0 +1,71 @@
+@startuml
+left to right direction
+
+' Estilos opcionales para asemejarse a un diagrama formal
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #e1f5fe
+    BorderColor #0288d1
+    ArrowColor #333333
+}
+skinparam actor {
+    BackgroundColor #f9f9f9
+    BorderColor #333333
+}
+
+actor "Cliente" as CLI
+actor "Cajero Receptor" as CAJ
+actor "Administrador" as ADM
+
+rectangle "Bank USAC - Sistema Bancario" {
+    usecase "Registrarse" as UC1
+    usecase "Verificar propio correo" as UC2
+    usecase "Iniciar sesión" as UC3
+    usecase "Abrir cuenta" as UC4
+    usecase "Consultar saldo" as UC5
+    usecase "Transferir dinero" as UC6
+    usecase "Actualizar datos del cliente" as UC7
+    usecase "Validar foto del documento" as UC8
+    usecase "Activar/desactivar cuenta\nmanualmente" as UC9
+    usecase "Asignar roles" as UC10
+    usecase "Leer auditoría y\nnotificaciones" as UC11
+}
+
+' Relaciones Include/Extend
+' include: del caso base apunta al incluido
+UC4 .> UC3 : <<include>>
+UC6 .> UC3 : <<include>>
+' extend: de la extensión apunta al caso base
+UC2 .> UC3 : <<extend>>
+
+' Conexiones Cliente
+CLI -- UC1
+CLI -- UC2
+CLI -- UC3
+CLI -- UC4
+CLI -- UC5
+CLI -- UC6
+CLI -- UC7
+
+' Conexiones Cajero Receptor
+CAJ -- UC1
+CAJ -- UC3
+CAJ -- UC4
+CAJ -- UC5
+CAJ -- UC6
+CAJ -- UC7
+CAJ -- UC8
+
+' Conexiones Administrador
+ADM -- UC1
+ADM -- UC3
+ADM -- UC4
+ADM -- UC5
+ADM -- UC6
+ADM -- UC7
+ADM -- UC8
+ADM -- UC9
+ADM -- UC10
+ADM -- UC11
+
+@enduml
