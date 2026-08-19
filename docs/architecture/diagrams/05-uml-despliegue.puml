@@ -1,0 +1,133 @@
+@startuml
+skinparam handwritten false
+skinparam defaultFontName Arial
+skinparam node {
+    BackgroundColor<<Node>> #ffffff
+    BackgroundColor<<Pod>> #eaff8f
+    BackgroundColor<<Service>> #bae7ff
+    BackgroundColor<<Database>> #ffccc7
+    BackgroundColor<<Broker>> #fffb8f
+}
+skinparam artifact {
+    BackgroundColor #f5f5f5
+}
+
+node "🖥️ Host Machine (Entorno Local)" as Host <<Device>> {
+
+    node "Docker Engine" as Docker <<Execution Environment>> {
+        database "Customer DB\n(db: customer_db)" as db_cust <<Database>>
+        database "Account DB\n(db: account_db)" as db_acc <<Database>>
+        database "Transaction DB\n(db: tx_db)" as db_tx <<Database>>
+        database "Payment DB\n(db: payment_db)" as db_pay <<Database>>
+        database "Notification DB\n(db: notif_db)" as db_notif <<Database>>
+
+        queue "AMQP Broker\n(RabbitMQ 4.3.4)" as broker <<Broker>>
+    }
+
+    node "Kubernetes Cluster (kind)" as K8s <<Execution Environment>> {
+        note right of K8s : ⚠️ Limitación Explícita:\nCluster Single-Node\n\n⚠️ Regla de Diseño:\nCero comunicación HTTP entre\nservicios (negocio asíncrono).
+
+        artifact "bank-usac" as helm <<Helm Chart>>
+        
+        node "kind-control-plane" as K8sNode <<Node>> {
+            
+            ' Componente nativo de K8s que hace los Health Checks
+            component "Kubelet\n(K8s Control Plane)" as kubelet <<Kubernetes>>
+            
+            package "Namespace: bank-usac" <<Namespace>> {
+                
+                artifact "ConfigMap\n(Shared configs)" as cm <<Configuration>>
+                artifact "Secret\n(Not versioned)" as secret <<Configuration>>
+
+                ' Gateway (Único expuesto)
+                node "gateway" as dep_gw <<Deployment>> {
+                    node "gateway-pod" as pod_gw <<Pod>>
+                }
+                interface "gateway-svc" as svc_gw <<Service>>
+                svc_gw -down- pod_gw
+
+                ' Frontend
+                node "web" as dep_front <<Deployment>> {
+                    node "web-pod" as pod_front <<Pod>>
+                }
+                interface "web-svc" as svc_front <<Service>>
+                svc_front -down- pod_front
+
+                ' Backend Services (Solo reciben tráfico interno de K8s para Health Checks)
+                node "customer-service" as dep_cust <<Deployment>> {
+                    node "customer-pod" as pod_cust <<Pod>>
+                }
+                interface "customer-svc" as svc_cust <<Service>>
+                svc_cust -down- pod_cust
+
+                node "account-service" as dep_acc <<Deployment>> {
+                    node "account-pod" as pod_acc <<Pod>>
+                }
+                interface "account-svc" as svc_acc <<Service>>
+                svc_acc -down- pod_acc
+
+                node "transaction-service" as dep_tx <<Deployment>> {
+                    node "transaction-pod" as pod_tx <<Pod>>
+                }
+                interface "transaction-svc" as svc_tx <<Service>>
+                svc_tx -down- pod_tx
+
+                node "payment-service" as dep_pay <<Deployment>> {
+                    node "payment-pod" as pod_pay <<Pod>>
+                }
+                interface "payment-svc" as svc_pay <<Service>>
+                svc_pay -down- pod_pay
+
+                node "notification-audit-service" as dep_notif <<Deployment>> {
+                    node "notification-pod" as pod_notif <<Pod>>
+                }
+                interface "notification-svc" as svc_notif <<Service>>
+                svc_notif -down- pod_notif
+                
+                interface "Ingress / Port-forward" as ingress <<Ingress>>
+            }
+        }
+    }
+}
+
+' Relaciones de Despliegue y Configuración
+helm ..> K8sNode : <<deploy>>
+pod_cust ..> cm : <<use>>
+pod_cust ..> secret : <<use>>
+
+' =========================================================
+' TRÁFICO HTTP (Síncrono) - Limitado por README
+' =========================================================
+' 1. El Ingress SOLO expone el Gateway (según README)
+ingress --> svc_gw : HTTP/REST (Sync)
+
+' 2. El Gateway enruta la UI estática al frontend
+pod_gw --> svc_front : HTTP/REST (Sync)\n[Proxy UI]
+
+' 3. Monitoreo Interno de K8s (Resuelve el "Misterio" de los Services flotantes)
+kubelet --> svc_cust : HTTP (Sync)\n[Liveness/Readiness Probes]
+kubelet --> svc_acc : HTTP (Sync)\n[Liveness/Readiness Probes]
+kubelet --> svc_tx : HTTP (Sync)\n[Liveness/Readiness Probes]
+kubelet --> svc_pay : HTTP (Sync)\n[Liveness/Readiness Probes]
+kubelet --> svc_notif : HTTP (Sync)\n[Liveness/Readiness Probes]
+
+' =========================================================
+' CONECTIVIDAD HOST <-> CLUSTER (Bases de datos)
+' =========================================================
+pod_cust ...> db_cust : TCP/IP JDBC (Sync)\n[host.docker.internal:5432]
+pod_acc ...> db_acc : TCP/IP JDBC (Sync)\n[host.docker.internal:5433]
+pod_tx ...> db_tx : TCP/IP JDBC (Sync)\n[host.docker.internal:5434]
+pod_pay ...> db_pay : TCP/IP JDBC (Sync)\n[host.docker.internal:5435]
+pod_notif ...> db_notif : TCP/IP JDBC (Sync)\n[host.docker.internal:5436]
+
+' =========================================================
+' NEGOCIO ASÍNCRONO (RabbitMQ)
+' =========================================================
+pod_gw ...> broker : AMQP (Async)\n[host.docker.internal:5672]
+pod_cust ...> broker : AMQP (Async)\n[host.docker.internal:5672]
+pod_acc ...> broker : AMQP (Async)\n[host.docker.internal:5672]
+pod_tx ...> broker : AMQP (Async)\n[host.docker.internal:5672]
+pod_pay ...> broker : AMQP (Async)\n[host.docker.internal:5672]
+broker ...> pod_notif : AMQP (Async)\n[Consume evento]
+
+@enduml
