@@ -98,6 +98,20 @@ The workflows are `constitution`, `specify`, `clarify`, `plan`, `tasks`,
 artifact layout come from Spec Kit's own templates in `.specify/templates/`; this
 file does not restate them.
 
+**One eleventh workflow is local to this repository**: `git-branch`
+(`/speckit-git-branch`, `/speckit.git.branch`). Spec Kit never creates a git
+branch — `create-new-feature.sh` computes a name, creates the spec directory and
+stops — so branch creation is registered as a `before_specify` hook in
+`.specify/extensions.yml` and does the work in
+`.specify/scripts/bash/create-feature-branch.sh`. It runs automatically on every
+`/speckit-specify`. Because `specify` does not manage it, a Spec Kit upgrade
+leaves it alone; the ten upstream workflows are the ones that need re-collapsing.
+
+**Ticket numbers and spec numbers are different sequences.** Spec `004` is ticket
+T-03, spec `003` is T-02. Never derive one from the other: the hook takes the
+ticket from `--ticket` or from the request text, and falls back to Spec Kit's
+numbering when there is none.
+
 - Every ticket gets its own branch: before starting work on ticket `T-XX`,
   create `feature/T-XX` from the latest `origin/develop`
   (`git fetch origin && git switch -c feature/T-XX origin/develop`) and keep
@@ -126,6 +140,10 @@ file does not restate them.
     ├── .claude/skills/speckit-<name>           → symlink to the directory
     └── .opencode/commands/speckit.<name>.md    → symlink to the SKILL.md
   ```
+
+  The repository-local `speckit-git-branch` follows the identical layout, so a
+  new workflow is added by writing the `.agents/` file and creating the two
+  symlinks by hand.
 
   The canonical body is Spec Kit's Claude output, which is a superset: it carries
   the instruction to rewrite dotted command names to hyphens, so it reads
