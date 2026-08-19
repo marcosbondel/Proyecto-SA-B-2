@@ -1,0 +1,135 @@
+flowchart TB
+    %% Definición de estilos para claridad visual
+    classDef host fill:#f0f4f8,stroke:#000,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef k8s fill:#e6f7ff,stroke:#0050b3,stroke-width:2px;
+    classDef k8sNode fill:#ffffff,stroke:#0050b3,stroke-width:2px;
+    classDef namespace fill:#f9f0ff,stroke:#722ed1,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef db fill:#ffccc7,stroke:#a8071a,stroke-width:1px;
+    classDef broker fill:#fffb8f,stroke:#ad8b00,stroke-width:1px;
+    classDef pod fill:#eaff8f,stroke:#5b8c00,stroke-width:1px;
+    classDef svc fill:#bae7ff,stroke:#0050b3,stroke-width:1px;
+    classDef config fill:#d9d9d9,stroke:#595959,stroke-width:1px;
+    classDef k8sCtrl fill:#d4b106,stroke:#876800,stroke-width:1px,color:#fff;
+
+    subgraph LocalHost ["🖥️ Host Machine (Entorno Local)"]
+        
+        subgraph DockerCompose ["🐳 Docker Engine (infra/docker)"]
+            direction TB
+            subgraph DBs ["Bases de Datos (PostgreSQL 18.4)"]
+                DB_Cust[("Customer DB\n(db: customer_db)")]:::db
+                DB_Acc[("Account DB\n(db: account_db)")]:::db
+                DB_Tx[("Transaction DB\n(db: tx_db)")]:::db
+                DB_Pay[("Payment DB\n(db: payment_db)")]:::db
+                DB_Notif[("Notification DB\n(db: notif_db)")]:::db
+            end
+            Broker{{"RabbitMQ 4.3.4-management\n(AMQP Broker)"}}:::broker
+        end
+
+        subgraph K8sCluster ["☸️ Kubernetes Cluster (kind) - ⚠️ Limitación: Single-Node"]
+            HelmRelease[["📦 Helm Release\n(infra/k8s/helm/bank-usac)"]]:::config
+
+            subgraph K8sNode ["🖥️ Node: kind-control-plane"]
+                
+                Kubelet("⚙️ Kubelet\n(K8s Control Plane)"):::k8sCtrl
+
+                subgraph K8sNamespace ["🏷️ Namespace: bank-usac"]
+
+                    CM["📄 ConfigMap\n(Shared configs)"]:::config
+                    Secret["🔐 Secret\n(NO versionado)"]:::config
+
+                    Ingress{{"🌐 Ingress / port-forward\n(Exposición pública)"}}:::svc
+
+                    subgraph DepGw ["Deployment: gateway"]
+                        PodGw("Pod(s): gateway\nReplicaCount: 1"):::pod
+                    end
+                    SvcGw[["Service: gateway-svc\n(ClusterIP)"]]:::svc
+                    SvcGw -.-> PodGw
+
+                    subgraph DepFront ["Deployment: web (frontend)"]
+                        PodFront("Pod(s): web\nReplicaCount: 1"):::pod
+                    end
+                    SvcFront[["Service: web-svc\n(ClusterIP)"]]:::svc
+                    SvcFront -.-> PodFront
+
+                    %% Microservicios backend (Solo reciben tráfico de Kubelet)
+                    subgraph DepCust ["Deployment: customer-service"]
+                        PodCust("Pod(s): customer-service\nReplicaCount: 1"):::pod
+                    end
+                    SvcCust[["Service: customer-svc\n(ClusterIP)"]]:::svc
+                    SvcCust -.-> PodCust
+
+                    subgraph DepAcc ["Deployment: account-service"]
+                        PodAcc("Pod(s): account-service\nReplicaCount: 1"):::pod
+                    end
+                    SvcAcc[["Service: account-svc\n(ClusterIP)"]]:::svc
+                    SvcAcc -.-> PodAcc
+
+                    subgraph DepTx ["Deployment: transaction-service"]
+                        PodTx("Pod(s): transaction-service\nReplicaCount: 1"):::pod
+                    end
+                    SvcTx[["Service: transaction-svc\n(ClusterIP)"]]:::svc
+                    SvcTx -.-> PodTx
+
+                    subgraph DepPay ["Deployment: payment-service"]
+                        PodPay("Pod(s): payment-service\nReplicaCount: 1"):::pod
+                    end
+                    SvcPay[["Service: payment-svc\n(ClusterIP)"]]:::svc
+                    SvcPay -.-> PodPay
+
+                    subgraph DepNotif ["Deployment: notification-audit-service"]
+                        PodNotif("Pod(s): notification-audit-service\nReplicaCount: 1"):::pod
+                    end
+                    SvcNotif[["Service: notification-svc\n(ClusterIP)"]]:::svc
+                    SvcNotif -.-> PodNotif
+                end
+            end
+        end
+    end
+
+    %% Relaciones de K8s y Configuración
+    HelmRelease -. "Administra" .-> K8sNamespace
+    PodCust -. "Consume" .-> CM
+    PodCust -. "Consume" .-> Secret
+    PodAcc -. "Consume" .-> CM
+    PodAcc -. "Consume" .-> Secret
+
+    %% =========================================================
+    %% TRÁFICO HTTP (Síncrono) - Limitado por README
+    %% =========================================================
+    %% 1. Ingress SOLO al Gateway (Según README k8s)
+    Ingress == "HTTP/REST (Sync)" ==> SvcGw
+
+    %% 2. Gateway enruta UI al frontend
+    PodGw -- "HTTP/REST (Sync)\n[Proxy UI]" --> SvcFront
+
+    %% 3. Monitoreo Interno K8s (Resuelve los services vacíos)
+    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcCust
+    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcAcc
+    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcTx
+    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcPay
+    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcNotif
+
+    %% =========================================================
+    %% CONECTIVIDAD HOST <-> CLUSTER (Bases de datos)
+    %% =========================================================
+    PodCust -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5432]" --> DB_Cust
+    PodAcc -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5433]" --> DB_Acc
+    PodTx -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5434]" --> DB_Tx
+    PodPay -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5435]" --> DB_Pay
+    PodNotif -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5436]" --> DB_Notif
+
+    %% =========================================================
+    %% NEGOCIO ASÍNCRONO (AMQP Broker)
+    %% =========================================================
+    PodGw -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
+    PodCust -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
+    PodAcc -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
+    PodTx -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
+    PodPay -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
+    Broker -. "AMQP (Async)\n[Consume evento]" .-> PodNotif
+
+    %% Aplicar clases principales
+    class LocalHost host;
+    class K8sCluster k8s;
+    class K8sNode k8sNode;
+    class K8sNamespace namespace;
