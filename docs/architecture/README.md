@@ -4,10 +4,22 @@ Diagrams and architecture decision records for Bank USAC. The selected target
 architecture is recorded in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md);
 this directory holds the decisions behind it and the diagrams that show it.
 
+## Contents
+
+- [`adr/`](adr/README.md) — **the eleven decision records**, written in T-03.
+  Backend and frontend stack, communication model, broker, persistence,
+  containers, local orchestration, internal service architecture, distributed
+  transactions, authentication and the diagramming toolchain.
+- [`decision-matrix.md`](decision-matrix.md) — the consolidated view: decision,
+  rejected alternatives, accepted trade-off and consequence, with the assignment
+  penalties each decision avoids.
+- `diagrams/` — the eight required diagrams. Not written yet; see the table
+  below.
+
 ## What belongs here
 
 - One ADR per decision, numbered and dated, with the alternatives that were
-  rejected and why.
+  rejected and why. **Done** — they live in [`adr/`](adr/README.md).
 - The eight diagrams the assignment requires. **One ticket per diagram**
   (T-07 to T-14); the two sequence diagrams are separate tickets because the
   transfer one models the whole Saga and is far harder than the other.
@@ -38,6 +50,12 @@ Every diagram ships **both**, and they must agree:
    is reviewable in Git and in pull requests. **Generating it with AI is
    allowed**; shipping it unreviewed is not.
 
+This two-artefact rule is the decision recorded in
+[ADR-011](adr/ADR-011-diagramming-toolchain.md), which also rejects PlantUML as a
+third format: each additional copy is another thing that can drift from the
+others, and the gap it would close — Mermaid's missing UML use-case diagram — is
+already covered authoritatively by Lucid.
+
 If the Lucid export and the Mermaid source disagree, the diagram is not done —
 the rubric penalises documentation inconsistency by 25 % (§8.3).
 
@@ -64,4 +82,9 @@ The eight principles in `.specify/memory/constitution.md` are already binding
 and do not wait for this directory. What is missing is the written reasoning,
 not the rules.
 
-> **Blocked**: The ADRs and diagrams are not written; the technology decisions live in the T-03 Notion ticket and are not formalised yet. Owner: Marcos Bonifasi. Arrives with: T-03 and T-07.
+> **Blocked**: The eight diagrams are not drawn. Owner: Marcos Bonifasi. Arrives
+> with: T-07 to T-14, one ticket per diagram.
+>
+> The ADRs are **no longer blocked**: the eleven decision records were written in
+> T-03 and live in [`adr/`](adr/README.md), with the consolidated view in
+> [`decision-matrix.md`](decision-matrix.md).
