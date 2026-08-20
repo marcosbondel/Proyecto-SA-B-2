@@ -26,7 +26,7 @@ Un integrante que empieza Account Service necesita saber exactamente qué campos
 
 **Why this priority**: es lo que desbloquea T-06 y los seis tickets de implementación. §8.1 exige "Eventos definidos (nombres, payloads, flujo)" como requisito (p. 20), y el paso 4 de la metodología pide nombre, estructura del payload y convenciones (p. 17). Sin payloads, tres personas implementando en paralelo producen tres interpretaciones del mismo mensaje y la integración falla al final, cuando ya no hay tiempo.
 
-**Independent Test**: se entrega solo. Se toma la lista de los 35 mensajes de `docs/domain/message-catalog.md`, más los 6 de solicitud y respuesta que esta feature añade, y se verifica que cada uno de los 41 tiene un contrato ejecutable con sus campos tipados, y una entrada documental con productor, consumidores, precondiciones, efectos y comportamiento ante error.
+**Independent Test**: se entrega solo. Se toma la lista de los 35 mensajes de `docs/domain/message-catalog.md`, más los 7 que esta feature añade, y se verifica que cada uno de los 42 tiene un contrato ejecutable con sus campos tipados, y una entrada documental con productor, consumidores, precondiciones, efectos y comportamiento ante error.
 
 **Acceptance Scenarios**:
 
@@ -154,7 +154,7 @@ Un consumidor que recibe un mensaje malformado, de una versión que no entiende 
 ### Functional Requirements
 
 - **FR-001**: Cada uno de los 13 comandos y 22 eventos de `docs/domain/message-catalog.md` MUST tener un contrato con sus campos, tipos, obligatoriedad y valores permitidos, publicado en el paquete de contratos compartido.
-- **FR-001a**: La feature MUST contratar además los **seis mensajes que T-02 no lista** y que el ticket exige: dos solicitudes nuevas (`transaction.status.requested`, `audit.query.requested`) y cuatro respuestas (a `customer.authenticate`, a `account.balance.query`, a `transaction.status.requested` y a `audit.query.requested`). El total contratado es de **41 mensajes**.
+- **FR-001a**: La feature MUST contratar además los **siete mensajes que T-02 no lista** y que el ticket exige: dos solicitudes nuevas (`transaction.status.requested`, `audit.query.requested`), cuatro respuestas (a `customer.authenticate`, a `account.balance.query`, a `transaction.status.requested` y a `audit.query.requested`) y un evento de rechazo (`customer.email.verification.rejected`), sin el cual FR-020 no se puede satisfacer porque no habría dónde distinguir token expirado de token inválido. El total contratado es de **42 mensajes**.
 - **FR-001b**: La ampliación de FR-001a MUST quedar registrada como nota explícita sobre `docs/domain/message-catalog.md`, declarando que **respuesta** es una tercera categoría que T-02 no contempló y que no invalida sus comprobaciones de coherencia: una respuesta no es un evento huérfano porque su único destinatario es quien preguntó.
 - **FR-002**: Los nombres de los mensajes MUST ser los de `docs/domain/message-catalog.md`. Donde el texto del ticket use otro nombre, prevalece T-02, y la divergencia MUST quedar registrada por escrito.
 - **FR-003**: Cada mensaje MUST declarar si es **comando**, **evento** o **respuesta**, con la regla que los distingue: un comando tiene exactamente un manejador, un evento puede tener varios consumidores, una respuesta se empareja con una solicitud.
@@ -203,7 +203,7 @@ Un consumidor que recibe un mensaje malformado, de una versión que no entiende 
 
 ### Measurable Outcomes
 
-- **SC-001**: Los **41** mensajes tienen contrato —los 35 del catálogo de dominio más los 6 de solicitud y respuesta que esta feature añade—; ninguno queda sin definir.
+- **SC-001**: Los **42** mensajes tienen contrato —los 35 del catálogo de dominio más los 7 que esta feature añade—; ninguno queda sin definir.
 - **SC-002**: Un integrante que no participó en el diseño implementa un consumidor cualquiera **sin hacer una sola pregunta** que no esté contestada en el catálogo.
 - **SC-003**: Dado un `correlationId` tomado de cualquier mensaje, la cadena causal completa de su flujo se reconstruye **sin ambigüedad y sin consultar código**.
 - **SC-004**: Los **seis** escenarios de la Saga están documentados con la secuencia de mensajes y el estado final de la transacción; ninguno queda descrito sólo en prosa general.
@@ -244,4 +244,4 @@ Un consumidor que recibe un mensaje malformado, de una versión que no entiende 
 | Nuevo ADR (T-03 ampliado) | Registrar la elección de almacenamiento de objetos para la foto del documento, con sus alternativas descartadas | Ningún ADR vigente la contempla; sin ADR, la decisión lee como preferencia y arriesga el criterio 1.3 de la rúbrica |
 | T-06 | Provisionar el almacenamiento de objetos y sus credenciales en la infraestructura local | Sin él, el registro de cliente con foto no se puede demostrar |
 | T-11 | Incluir el almacenamiento de objetos en el diagrama de despliegue | Un componente desplegado que no aparece en el diagrama rompe la consistencia entre diagramas que exige el paso 5 de la metodología (p. 17) |
-| `docs/domain/message-catalog.md` | Nota de ampliación: la categoría **respuesta** y los seis mensajes que esta feature añade | El catálogo de T-02 declara 13 comandos y 22 eventos sin huérfanos; la ampliación debe constar para que esa afirmación siga siendo verificable |
+| `docs/domain/message-catalog.md` | Nota de ampliación: la categoría **respuesta** y los siete mensajes que esta feature añade | El catálogo de T-02 declara 13 comandos y 22 eventos sin huérfanos; la ampliación debe constar para que esa afirmación siga siendo verificable |
