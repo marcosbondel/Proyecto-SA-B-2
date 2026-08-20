@@ -121,6 +121,13 @@ numbering when there is none.
 - Nothing is enforced by a hook any more. The gates that used to block
   unspecced code are gone, so the discipline is now a convention: get the spec
   and the plan agreed before writing production code.
+- **Every commit has a human author, and authorship is always confirmed.**
+  Before running `git commit`, ask who the author is; if it differs from the
+  configured `user.name`/`user.email`, commit with
+  `git commit --author="Name <email>"`. Never add `Co-authored-by` trailers
+  for AI tools (Claude, opencode, Copilot or any other) — Claude Code's
+  default trailer is disabled in `.claude/settings.json`
+  (`includeCoAuthoredBy: false`).
 - When a skill's advice conflicts with `AGENTS.md`, `ARCHITECTURE.md`, or
   `docs/`, the repository wins.
 - Update stale docs in the same change that makes them stale.
