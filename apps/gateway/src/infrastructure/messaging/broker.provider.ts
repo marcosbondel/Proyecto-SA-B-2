@@ -1,7 +1,13 @@
+import { EXCHANGES } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
 
-/** Topic exchange every message in the system passes through. */
-export const BANK_EXCHANGE = 'bank.events';
+/**
+ * The exchanges the gateway declares on connect.
+ *
+ * The names come from `@bank/contracts`, which owns the topology; the gateway
+ * neither invents them nor keeps a second copy (T-05, R10).
+ */
+export const GATEWAY_EXCHANGES = [EXCHANGES.commands, EXCHANGES.events, EXCHANGES.replies] as const;
 
 /**
  * Builds the broker the gateway publishes through.
@@ -12,5 +18,9 @@ export const BANK_EXCHANGE = 'bank.events';
  * process from reporting its own liveness.
  */
 export function createMessageBroker(rabbitmqUrl: string): MessageBroker {
-  return new MessageBroker({ url: rabbitmqUrl, exchange: BANK_EXCHANGE });
+  return new MessageBroker({
+    url: rabbitmqUrl,
+    exchanges: GATEWAY_EXCHANGES,
+    errorExchange: EXCHANGES.errors,
+  });
 }
