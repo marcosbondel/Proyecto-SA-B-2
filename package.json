@@ -2,7 +2,7 @@
   "name": "bank-usac",
   "version": "0.0.0",
   "private": true,
-  "description": "Bank USAC monorepo — API Gateway, web app, five domain microservices, and shared packages.",
+  "description": "Bank USAC monorepo \u2014 API Gateway, web app, five domain microservices, and shared packages.",
   "license": "MIT",
   "packageManager": "pnpm@11.21.0",
   "engines": {
@@ -13,6 +13,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:contract": "pnpm --filter @bank/contracts test",
+    "typecheck": "pnpm -r typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "pnpm -r --parallel dev"
