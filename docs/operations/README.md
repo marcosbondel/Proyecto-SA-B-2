@@ -20,7 +20,11 @@ sources, five SLO with numeric thresholds and an academic SLA; they live in
 [`../RELIABILITY.md`](../RELIABILITY.md) and are not restated here. T-24 measures
 them.
 
-> **Blocked**: The runbooks are not written, and the retry, timeout and
-> dead-letter policy per consumer is not defined. Owner: Marcos Bonifasi.
-> Arrives with: T-06 for bringing the local stack up, T-05 for the per-consumer
-> policy, and T-23 for the stalled-Saga procedure.
+**The delivery policy is defined.** T-05 fixed the per-consumer retry ladder
+(1 s, 5 s, 30 s, three retries at most), the dead-letter queue of every consumer
+and the headers a parked message carries. It lives in
+[`../events/topology.md`](../events/topology.md) and is not restated here.
+
+> **Blocked**: The runbooks are not written. Owner: Marcos Bonifasi. Arrives
+> with: T-06 for bringing the local stack up, and T-23 for the stalled-Saga
+> procedure.

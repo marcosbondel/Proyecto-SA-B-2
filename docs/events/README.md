@@ -1,29 +1,46 @@
 # Events
 
-The catalogue of domain events: what each one means, who publishes it, who
-consumes it, and how it is versioned. Events are the only interface between
-services (constitution IV), so this catalogue is the system's public contract
-with itself.
+How the system talks to itself: the envelope every message travels in, the
+payload of each of the forty-two contracts, the broker topology that carries
+them, and the transfer Saga they compose into.
+
+## The documents
+
+| Document | What it answers |
+| --- | --- |
+| [`envelope.md`](envelope.md) | What every message carries regardless of its contents, and why the version is written twice |
+| [`catalog.md`](catalog.md) | The payload of all forty-two messages, with producer, consumers, preconditions, effects and error behaviour |
+| [`topology.md`](topology.md) | Exchanges, queues, routing keys, the retry ladder and the dead-letter queues |
+| [`saga-transfer.md`](saga-transfer.md) | The transfer step by step, its two endings, and its six failure scenarios |
+| [`examples/`](examples/) | Complete worked flows — happy path, rejection, compensation |
 
 ## Relationship to the domain model
 
-**Which events exist is already decided.** T-02 fixed the name, the producing
-service, the consumers and the flow of all 13 commands and 22 events in
-[`../domain/message-catalog.md`](../domain/message-catalog.md). That catalogue is
-the starting point for everything here; this directory does not re-decide it.
+**Which messages exist was decided by T-02.** The name, the producing service,
+the consumers and the flow of the thirty-five original messages live in
+[`../domain/message-catalog.md`](../domain/message-catalog.md), together with the
+seven that T-05 added and recorded there as an extension. This directory does not
+re-decide any of that; it decides how they are serialized.
 
 ## Relationship to the code
 
-This directory documents the events; the executable shapes live in
-[`../../apps/packages/contracts/src/events/`](../../apps/packages/contracts/src/events/).
-The two arrive together — a documented event with no contract cannot be
-published, and a contract with no documentation cannot be consumed safely.
+The executable contracts live in
+[`../../apps/packages/contracts/src/events/`](../../apps/packages/contracts/src/events/),
+and `catalog.md` and the worked examples are **generated from them**:
 
-## What each entry adds on top of the catalogue
+```bash
+pnpm --filter @bank/contracts build
+pnpm --filter @bank/contracts schema:emit    # JSON Schema, one file per contract
+pnpm --filter @bank/contracts docs:catalog   # regenerates catalog.md
+pnpm --filter @bank/contracts docs:examples  # regenerates the worked flows
+```
 
-- Version suffix and compatibility rules (`account.opened.v1`).
-- Payload shape, field by field, and which field carries the idempotency key.
-- Exchange, queue and routing-key naming conventions.
-- Serialization format, retry and dead-letter policy.
+A document that cannot drift from the code is worth more than one that reads
+better, so the field tables are derived and only the reasoning is written by hand.
 
-> **Blocked**: Payload shape, versioning and topic conventions are not written. The producer/consumer catalogue they build on is done and lives in [`../domain/message-catalog.md`](../domain/message-catalog.md). Owner: Marcos Bonifasi. Arrives with: T-05.
+## What is not here
+
+Runbooks, the local stack and the broker's own configuration are
+[`../operations/`](../operations/README.md) and **T-06**. The formal UML sequence
+diagram of the Saga is **T-13**; the state diagram in `saga-transfer.md` is its
+input, not its replacement.
