@@ -113,6 +113,42 @@ The executable shapes will live in
 documented in [`docs/events/`](../events/README.md). Neither exists yet, and neither is created
 by this model.
 
+## Extension recorded by T-05
+
+The thirty-five messages above are unchanged. T-05 contracted them and, in doing so, needed
+**seven more** that this catalogue does not list. They are recorded here so the counts above
+stay verifiable rather than quietly wrong.
+
+**`reply` is a third category.** This catalogue knows commands and events. A reply answers one
+asker and nobody else, which is why it is neither: it is not a command, because it expresses no
+intention, and it is not an event, because it narrates nothing that another service may react
+to. T-02 named two interactions "async request/reply" without contracting the answer; those
+answers are two of the seven.
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| reply | `customer.authenticate.replied` | T-02 named the request/reply interaction; the answer had no contract. Carries claims, never a token |
+| reply | `account.balance.replied` | Same: the query existed, the answer did not |
+| command | `transaction.status.requested` | The five-second reply timeout does not cancel the transfer, so the caller needs a way to come back and ask |
+| reply | `transaction.status.replied` | The answer to the above |
+| command | `audit.query.requested` | The assignment requires the audit trail to be consultable by `correlationId` |
+| reply | `audit.query.replied` | The answer to the above |
+| event | `customer.email.verification.rejected` | FR-020 of T-05 requires distinguishing an expired activation link from an invalid one, and no message here could carry that distinction |
+
+**Why this does not break check M-2.** A reply has exactly one recipient, which looks like an
+orphan by the letter of "every event has at least one consumer". It is not: its single
+recipient is whoever asked, and a reply nobody asked for is never produced. M-2 is a rule about
+**events**, and the four replies are not events.
+
+**Why the seventh is an event and not a reply.** `customer.email.verification.rejected` follows
+the shape this catalogue already uses for `customer.login.rejected` — a refusal recorded for
+audit rather than answered to the caller. Modelling it any other way would have introduced a
+second pattern for the same situation.
+
+The payload of all forty-two lives in [`../events/catalog.md`](../events/catalog.md).
+
+---
+
 ## Coherence checks
 
 Verifiable against the tables above without reading any code.

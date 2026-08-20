@@ -3,12 +3,14 @@
 The decisions that shape how Bank USAC is built and deployed, each with the alternatives that
 were rejected and the technical reason for rejecting them.
 
-Eleven decisions. Ten were already made and scattered across `ARCHITECTURE.md`, the
+Twelve decisions. Ten were already made and scattered across `ARCHITECTURE.md`, the
 constitution and the ticket board; what was missing was the written reasoning. The eleventh,
-authentication, was decided on 2026-08-14.
+authentication, was decided on 2026-08-14. The twelfth, object storage for identity-document
+photos, was decided on 2026-08-19 during T-05 and is the first record that does not come from
+T-03.
 
-Source ticket: T-03. Assignment: `docs/references/780_Proyecto_1_2S2026.pdf`, revision
-2026-08-13.
+Source tickets: T-03 (ADR-001 … ADR-011) and T-05 (ADR-012). Assignment:
+`docs/references/780_Proyecto_1_2S2026.pdf`, revision 2026-08-13.
 
 ## Governance
 
@@ -62,6 +64,7 @@ Every ADR carries the same sections, so the set can be audited as a whole:
 | [ADR-009](ADR-009-distributed-transactions.md) | Implement the transfer as a Saga by choreography | Proposed | 2026-08-15 |
 | [ADR-010](ADR-010-authentication.md) | Issue and validate the session JWT in the Gateway | Proposed | 2026-08-15 |
 | [ADR-011](ADR-011-diagramming-toolchain.md) | Ship every diagram as a Lucid document and a Mermaid source | Proposed | 2026-08-15 |
+| [ADR-012](ADR-012-object-storage.md) | Carry identity-document photos through object storage, never inside a message | Proposed | 2026-08-19 |
 
 The consolidated view — decision, rejected alternatives, accepted trade-off and consequence in
 one table — is [`../decision-matrix.md`](../decision-matrix.md). It indexes these records; it
@@ -69,8 +72,14 @@ does not restate their reasoning.
 
 ## Approval
 
-> **Pending.** The eleven ADRs are `Proposed`. They become `Accepted` when the team approves
-> the `feature/T-03` pull request, which is the recorded approval for both these decisions and
-> the SLI/SLO/SLA definition in [`../../RELIABILITY.md`](../../RELIABILITY.md).
+> **Pending.** All twelve ADRs are `Proposed`, and they are approved by two different pull
+> requests.
+>
+> ADR-001 … ADR-011 become `Accepted` with the `feature/T-03` pull request, which is the
+> recorded approval for both those decisions and the SLI/SLO/SLA definition in
+> [`../../RELIABILITY.md`](../../RELIABILITY.md).
+>
+> ADR-012 becomes `Accepted` with the `feature/T-05` pull request, together with the message
+> contracts that depend on it.
 >
 > Approved by: _pending_ · Date: _pending_

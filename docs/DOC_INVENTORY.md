@@ -41,6 +41,12 @@ not require a new row for every generated link or vendor file.
 | `docs/domain/actors.md` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/domain/use-cases.md` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/domain/message-catalog.md` | project | Marcos Bonifasi | current | 2026-08-14 |
+| `docs/events/README.md` | project | Marcos Bonifasi | current | 2026-08-19 |
+| `docs/events/envelope.md` | project | Marcos Bonifasi | current | 2026-08-19 |
+| `docs/events/catalog.md` | generated | Marcos Bonifasi | current | 2026-08-19 |
+| `docs/events/topology.md` | project | Marcos Bonifasi | current | 2026-08-19 |
+| `docs/events/saga-transfer.md` | project | Marcos Bonifasi | current | 2026-08-19 |
+| `docs/architecture/adr/ADR-012-object-storage.md` | project | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/design-docs/PROMPT_MOCKUP.MD` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/architecture/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/decision-matrix.md` | project | Marcos Bonifasi | current | 2026-08-15 |

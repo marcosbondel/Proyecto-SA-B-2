@@ -23,8 +23,16 @@ RabbitMQ **must not** be 4.2.x: community support for that series ended on
 
 - One PostgreSQL service per microservice, each with its own database and
   credentials. A shared instance would break constitution II.
-- RabbitMQ with the management plugin, and the topic exchange the applications
-  publish to (`bank.events`).
+- RabbitMQ with the management plugin, and the **four** topic exchanges the
+  applications publish to: `bank.commands`, `bank.events`, `bank.replies` and
+  `bank.errors`. Commands and events are separate exchanges because they are
+  different kinds of statement with different rules — one handler versus many.
+  The names, the queues, the bindings and the retry arguments are fixed by
+  [`docs/events/topology.md`](../../docs/events/topology.md) (T-05); this ticket
+  declares them, it does not decide them.
+- No delayed-message plugin is needed. The retry backoff is built from queues
+  with `x-message-ttl` that dead-letter back to the queue that failed, which the
+  pinned `rabbitmq:4.3.4-management` image supports as it ships.
 - No application containers: those are built by the deployment ticket.
 
 > **Blocked**: The Compose file, the per-service databases and the broker topology are not written yet. Owner: Marcos Bonifasi. Arrives with: T-06.
