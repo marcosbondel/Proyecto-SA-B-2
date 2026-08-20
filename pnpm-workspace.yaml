@@ -54,6 +54,11 @@ catalog:
   class-transformer: 0.5.1
   class-validator: 0.15.1
 
+  # Message contract schemas (@bank/contracts). Checked against OSV (npm
+  # ecosystem) and `pnpm audit` on 2026-08-19 with zero known vulnerabilities
+  # — see specs/005-event-contracts-saga/research.md (R1).
+  zod: 4.4.3
+
   # Messaging transport (technical adapter only)
   amqp-connection-manager: 5.0.0
   amqplib: 2.0.1
