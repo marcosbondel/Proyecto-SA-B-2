@@ -1,0 +1,23 @@
+=== Scenario A: one PostgreSQL down, the other four still serve ===
+ Container postgres-customer Stopping 
+ Container postgres-customer Stopped 
+A: other databases still accept connections -> PASS
+ Container postgres-customer Starting 
+ Container postgres-customer Started 
+
+=== Scenario B: wrong service credentials are rejected ===
+B: cross-credentials rejected -> PASS
+
+=== Scenario C: RabbitMQ unavailable produces visible error, reconnect works ===
+ Container rabbitmq Stopping 
+ Container rabbitmq Stopped 
+C: management API unreachable while broker is down -> PASS
+ Container rabbitmq Starting 
+ Container rabbitmq Started 
+C: broker reconnected after restart -> PASS
+
+=== Scenario D: durable queue preserves messages while consumer is stopped ===
+D: published 1 persistent message to test.failure.d
+D: consumed preserved message -> PASS
+
+RESULT: PASS

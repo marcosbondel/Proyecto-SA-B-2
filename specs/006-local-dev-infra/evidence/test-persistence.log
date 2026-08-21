@@ -1,0 +1,61 @@
+NOTICE:  relation "persistence_check" already exists, skipping
+CREATE TABLE
+INSERT 0 1
+Wrote marker to customer
+NOTICE:  relation "persistence_check" already exists, skipping
+CREATE TABLE
+INSERT 0 1
+Wrote marker to account
+NOTICE:  relation "persistence_check" already exists, skipping
+CREATE TABLE
+INSERT 0 1
+Wrote marker to transaction
+NOTICE:  relation "persistence_check" already exists, skipping
+CREATE TABLE
+INSERT 0 1
+Wrote marker to payment
+NOTICE:  relation "persistence_check" already exists, skipping
+CREATE TABLE
+INSERT 0 1
+Wrote marker to notification_audit
+Restarting stack (stop/start) ...
+ Container postgres-notification-audit Stopping 
+ Container postgres-account Stopping 
+ Container postgres-transaction Stopping 
+ Container minio-init Stopping 
+ Container postgres-payment Stopping 
+ Container postgres-customer Stopping 
+ Container rabbitmq Stopping 
+ Container minio-init Stopped 
+ Container minio Stopping 
+ Container minio Stopped 
+ Container postgres-notification-audit Stopped 
+ Container postgres-transaction Stopped 
+ Container postgres-payment Stopped 
+ Container postgres-account Stopped 
+ Container postgres-customer Stopped 
+ Container rabbitmq Stopped 
+ Container postgres-payment Starting 
+ Container postgres-notification-audit Starting 
+ Container postgres-account Starting 
+ Container postgres-customer Starting 
+ Container postgres-transaction Starting 
+ Container minio Starting 
+ Container rabbitmq Starting 
+ Container postgres-notification-audit Started 
+ Container postgres-payment Started 
+ Container postgres-customer Started 
+ Container rabbitmq Started 
+ Container postgres-transaction Started 
+ Container postgres-account Started 
+ Container minio Started 
+ Container minio Waiting 
+ Container minio Healthy 
+ Container minio-init Starting 
+ Container minio-init Started 
+FOUND marker in customer
+FOUND marker in account
+FOUND marker in transaction
+FOUND marker in payment
+FOUND marker in notification_audit
+RESULT: PASS
