@@ -1,0 +1,19 @@
+C4Context
+    title Bank USAC — Diagrama de Contexto (C4 Nivel 1)
+
+    Person(cajero, "Cajero Receptor <br>[CAJERO_RECEPTOR]", "Personal en ventanilla.<br>Registra clientes, abre cuentas<br>y transfiere por el cliente presente.")
+    Person(admin, "Administrador <br>[ADMINISTRADOR]", "Supervisa: gestiona roles,<br>activa/desactiva cuentas y<br>consulta la auditoría.")
+    Person(cliente, "Cliente [CLIENTE]", "Cuentahabiente. Opera sobre<br>sus propias cuentas: consulta<br>saldo, transfiere y gestiona datos.")
+    System_Ext(proveedorPagos, "Proveedor de Pagos", "Procesa pagos externos que<br>el banco no resuelve internamente.")
+    System(bankusac, "Bank USAC", "Sistema bancario distribuido. Gestiona clientes,<br>cuentas, transferencias, pagos y auditoría.<br>Único acceso web; autentica y coordina de<br>forma asíncrona los servicios.")
+    System_Ext(correo, "Servicio de Correo Electrónico", "Entrega al cliente el enlace<br>de activación de cuenta.")
+
+    Rel(cliente, bankusac, "Consulta y gestiona cuentas")
+    Rel(cajero, bankusac, "Atiende clientes")
+    Rel(admin, bankusac, "Supervisa cuentas y auditoría")
+
+    Rel(bankusac, correo, "Correo<br>de activación")
+    Rel(correo, cliente, "Enlace de activación")
+    Rel(bankusac, proveedorPagos, "Pagos<br>externos")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
