@@ -7,7 +7,7 @@ disagree.
 
 Assignment references are to `docs/references/780_Proyecto_1_2S2026.pdf`, revision 2026-08-13.
 
-## The eleven decisions
+## The thirteen decisions
 
 | Decision | ADR | Chosen | Rejected alternatives | Accepted trade-off | Operational consequence | Assignment rule |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -21,8 +21,9 @@ Assignment references are to `docs/references/780_Proyecto_1_2S2026.pdf`, revisi
 | Service internal architecture | [ADR-008](adr/ADR-008-service-internal-architecture.md) | Clean Architecture, four layers | NestJS default MVC layering; flat structure; hexagonal (same idea, different vocabulary) | **More files and indirection across five services** | Boundaries are executable: `pnpm lint` fails on a cross-layer or cross-service import | Not constrained (p. 7 penalises the failure mode) |
 | Distributed transactions | [ADR-009](adr/ADR-009-distributed-transactions.md) | Saga by choreography | Orchestration; 2PC; no compensation | **The flow is not visible in one file**; compensation is hard to get right | Every step idempotent; `FAILED` and `COMPENSATED` are distinguishable states | p. 7; §6 step 6 p. 17; §8.1 p. 20 |
 | Authentication | [ADR-010](adr/ADR-010-authentication.md) | JWT issued and validated in the Gateway, HS256, 1 h | Customer Service as issuer; RS256; per-service validation; stateful sessions | **No revocation before expiry**; services trust identity rather than verifying it | Identity costs no database lookup; the secret lives in exactly one component | §4.1 p. 5 |
-| Diagramming toolchain | [ADR-011](adr/ADR-011-diagramming-toolchain.md) | Lucid + Mermaid, two artefacts per diagram | PlantUML as a third format; Lucid only; Mermaid only | **Sixteen artefacts to keep in sync** | Architecture changes are reviewable in pull requests via the `.mmd` diff | Not constrained (§4.2 p. 13 fixes the properties, not the tool) |
+| Diagramming toolchain (superseded) | [ADR-011](adr/ADR-011-diagramming-toolchain.md) | Lucid + Mermaid, two artefacts per diagram | PlantUML as a third format; Lucid only; Mermaid only | **Sixteen artefacts to keep in sync** | Architecture changes are reviewable in pull requests via the `.mmd` diff | Not constrained (§4.2 p. 13 fixes the properties, not the tool) |
 | Large-payload transport | [ADR-012](adr/ADR-012-object-storage.md) | Identity-document photos travel through S3-compatible object storage (MinIO); messages carry only a reference and a SHA-256 | Base64 bytes inside the command; a database owned by the Gateway; an HTTP upload endpoint on Customer Service | **One more component to provision, plus a failure mode that did not exist: a reference to a missing object** | Every message payload stays under 64 KB, so retry and dead-letter behaviour are uniform across all 42 contracts | §4.1 p. 5 constrains the requirement, not the mechanism |
+| Diagramming toolchain (current) | [ADR-013](adr/ADR-013-diagramming-toolchain-revision.md), supersedes ADR-011 | Mermaid + PlantUML required per diagram, Lucid optional | Lucid + PlantUML + Mermaid all required; PlantUML + Lucid without Mermaid; ADR-011's Lucid + Mermaid only | **Two required text sources to keep in sync, plus a PlantUML render toolchain (Java or a render server)** | Architecture changes are reviewable via both the `.mmd` and `.puml` diffs; PlantUML gives native UML use-case notation for the one diagram Mermaid can't express | Not constrained (§4.2 p. 13 fixes the properties, not the tool) |
 
 ## The two database penalties are separate rules
 
@@ -43,7 +44,7 @@ independently.
 | No real asynchrony | 50 % | [ADR-003](adr/ADR-003-communication-model.md), [ADR-004](adr/ADR-004-message-broker.md) |
 | Disguised monolithic architecture | 100 % | [ADR-005](adr/ADR-005-persistence.md), [ADR-008](adr/ADR-008-service-internal-architecture.md) |
 | No local Kubernetes deployment | 100 % | [ADR-006](adr/ADR-006-containerization.md), [ADR-007](adr/ADR-007-local-orchestration.md) |
-| Inconsistency between diagrams and code | 25 % | [ADR-011](adr/ADR-011-diagramming-toolchain.md) |
+| Inconsistency between diagrams and code | 25 % | [ADR-013](adr/ADR-013-diagramming-toolchain-revision.md) (supersedes ADR-011) |
 
 All five are listed in §8.3, page 27.
 
@@ -53,7 +54,7 @@ All five are listed in §8.3, page 27.
 | --- | --- | --- |
 | **T-05** | Payloads, exchange and routing-key naming, serialization, retry policy; **and the verified-identity field in the envelope** | ADR-003, ADR-004, ADR-009, ADR-010 |
 | **T-06** | Compose stack: one PostgreSQL per service plus RabbitMQ, on a network the kind nodes can join | ADR-004, ADR-005, ADR-007 |
-| **T-07 … T-14** | Two agreeing artefacts per diagram, Lucid link registered | ADR-011 |
+| **T-07 … T-14** | Agreeing Mermaid + PlantUML sources per diagram; Lucid document and link optional | ADR-013 |
 | **T-15** | Gateway contract and per-endpoint authorization, using the actor matrix as input | ADR-010 |
 | **T-16 … T-20** | Idempotent handlers, own migrations, `pnpm lint` passing with no added exceptions | ADR-003, ADR-005, ADR-008, ADR-009 |
 | **T-21** | Dockerfiles for the six application workloads, with no baked secrets | ADR-006 |
