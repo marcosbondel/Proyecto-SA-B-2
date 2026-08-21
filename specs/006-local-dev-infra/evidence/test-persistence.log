@@ -1,0 +1,56 @@
+CREATE TABLE
+INSERT 0 1
+Wrote marker to customer
+CREATE TABLE
+INSERT 0 1
+Wrote marker to account
+CREATE TABLE
+INSERT 0 1
+Wrote marker to transaction
+CREATE TABLE
+INSERT 0 1
+Wrote marker to payment
+CREATE TABLE
+INSERT 0 1
+Wrote marker to notification_audit
+Restarting stack (stop/start) ...
+ Container minio-init Stopping 
+ Container postgres-transaction Stopping 
+ Container postgres-notification-audit Stopping 
+ Container postgres-payment Stopping 
+ Container postgres-account Stopping 
+ Container rabbitmq Stopping 
+ Container postgres-customer Stopping 
+ Container minio-init Stopped 
+ Container minio Stopping 
+ Container minio Stopped 
+ Container postgres-transaction Stopped 
+ Container postgres-customer Stopped 
+ Container postgres-notification-audit Stopped 
+ Container postgres-account Stopped 
+ Container postgres-payment Stopped 
+ Container rabbitmq Stopped 
+ Container postgres-customer Starting 
+ Container minio Starting 
+ Container rabbitmq Starting 
+ Container postgres-account Starting 
+ Container postgres-transaction Starting 
+ Container postgres-payment Starting 
+ Container postgres-notification-audit Starting 
+ Container postgres-customer Started 
+ Container postgres-notification-audit Started 
+ Container minio Started 
+ Container minio Waiting 
+ Container postgres-transaction Started 
+ Container rabbitmq Started 
+ Container postgres-payment Started 
+ Container postgres-account Started 
+ Container minio Healthy 
+ Container minio-init Starting 
+ Container minio-init Started 
+FOUND marker in customer
+FOUND marker in account
+FOUND marker in transaction
+FOUND marker in payment
+FOUND marker in notification_audit
+RESULT: PASS

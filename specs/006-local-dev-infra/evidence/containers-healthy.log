@@ -1,0 +1,8 @@
+NAME                          IMAGE                                      COMMAND                  SERVICE                       CREATED          STATUS                    PORTS
+minio                         minio/minio:RELEASE.2024-11-07T00-52-20Z   "/usr/bin/docker-ent…"   minio                         20 seconds ago   Up 20 seconds (healthy)   0.0.0.0:9002->9000/tcp, [::]:9002->9000/tcp, 0.0.0.0:9003->9001/tcp, [::]:9003->9001/tcp
+postgres-account              postgres:18.4                              "docker-entrypoint.s…"   postgres-account              20 seconds ago   Up 20 seconds (healthy)   0.0.0.0:5434->5432/tcp, [::]:5434->5432/tcp
+postgres-customer             postgres:18.4                              "docker-entrypoint.s…"   postgres-customer             20 seconds ago   Up 20 seconds (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+postgres-notification-audit   postgres:18.4                              "docker-entrypoint.s…"   postgres-notification-audit   20 seconds ago   Up 20 seconds (healthy)   0.0.0.0:5437->5432/tcp, [::]:5437->5432/tcp
+postgres-payment              postgres:18.4                              "docker-entrypoint.s…"   postgres-payment              20 seconds ago   Up 20 seconds (healthy)   0.0.0.0:5436->5432/tcp, [::]:5436->5432/tcp
+postgres-transaction          postgres:18.4                              "docker-entrypoint.s…"   postgres-transaction          20 seconds ago   Up 20 seconds (healthy)   0.0.0.0:5435->5432/tcp, [::]:5435->5432/tcp
+rabbitmq                      rabbitmq:4.3.4-management                  "docker-entrypoint.s…"   rabbitmq                      20 seconds ago   Up 20 seconds (healthy)   0.0.0.0:5673->5672/tcp, [::]:5673->5672/tcp, 0.0.0.0:15673->15672/tcp, [::]:15673->15672/tcp
