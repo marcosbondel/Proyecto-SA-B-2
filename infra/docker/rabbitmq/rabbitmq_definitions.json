@@ -1,0 +1,484 @@
+{
+  "rabbit_version": "4.3.4",
+  "rabbitmq_version": "4.3.4",
+  "product_name": "RabbitMQ",
+  "product_version": "4.3.4",
+  "users": [
+    {
+      "name": "admin",
+      "password": "changeme",
+      "tags": "administrator"
+    },
+    {
+      "name": "bank_app",
+      "password": "changeme",
+      "tags": ""
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "admin",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "bank_app",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "topic_permissions": [],
+  "parameters": [],
+  "global_parameters": [
+    {
+      "name": "cluster_name",
+      "value": "rabbit@rabbitmq"
+    }
+  ],
+  "policies": [],
+  "queues": [
+    {
+      "name": "customer.commands",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "customer.commands.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "customer.commands"
+      }
+    },
+    {
+      "name": "customer.commands.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "customer.commands"
+      }
+    },
+    {
+      "name": "customer.commands.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "customer.commands"
+      }
+    },
+    {
+      "name": "customer.commands.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "account.commands",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "account.commands.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "account.commands"
+      }
+    },
+    {
+      "name": "account.commands.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "account.commands"
+      }
+    },
+    {
+      "name": "account.commands.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "account.commands"
+      }
+    },
+    {
+      "name": "account.commands.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "transaction.commands",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "transaction.commands.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "transaction.commands"
+      }
+    },
+    {
+      "name": "transaction.commands.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "transaction.commands"
+      }
+    },
+    {
+      "name": "transaction.commands.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "transaction.commands"
+      }
+    },
+    {
+      "name": "transaction.commands.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "transaction.saga",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "transaction.saga.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "transaction.saga"
+      }
+    },
+    {
+      "name": "transaction.saga.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "transaction.saga"
+      }
+    },
+    {
+      "name": "transaction.saga.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "transaction.saga"
+      }
+    },
+    {
+      "name": "transaction.saga.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "payment.commands",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "payment.commands.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "payment.commands"
+      }
+    },
+    {
+      "name": "payment.commands.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "payment.commands"
+      }
+    },
+    {
+      "name": "payment.commands.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "payment.commands"
+      }
+    },
+    {
+      "name": "payment.commands.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.all",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.all.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.all"
+      }
+    },
+    {
+      "name": "audit.all.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.all"
+      }
+    },
+    {
+      "name": "audit.all.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.all"
+      }
+    },
+    {
+      "name": "audit.all.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "bank.commands",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "bank.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "bank.replies",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "bank.errors",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "bank.commands",
+      "vhost": "/",
+      "destination": "customer.commands",
+      "destination_type": "queue",
+      "routing_key": "customer.*.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.commands",
+      "vhost": "/",
+      "destination": "account.commands",
+      "destination_type": "queue",
+      "routing_key": "account.#",
+      "arguments": {}
+    },
+    {
+      "source": "bank.commands",
+      "vhost": "/",
+      "destination": "transaction.commands",
+      "destination_type": "queue",
+      "routing_key": "transfer.requested.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.commands",
+      "vhost": "/",
+      "destination": "transaction.commands",
+      "destination_type": "queue",
+      "routing_key": "transaction.status.requested.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "transaction.saga",
+      "destination_type": "queue",
+      "routing_key": "account.debited.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "transaction.saga",
+      "destination_type": "queue",
+      "routing_key": "account.debit.rejected.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "transaction.saga",
+      "destination_type": "queue",
+      "routing_key": "account.credited.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "transaction.saga",
+      "destination_type": "queue",
+      "routing_key": "account.credit.rejected.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "transaction.saga",
+      "destination_type": "queue",
+      "routing_key": "account.debit.compensated.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "transaction.saga",
+      "destination_type": "queue",
+      "routing_key": "payment.succeeded.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "transaction.saga",
+      "destination_type": "queue",
+      "routing_key": "payment.failed.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.commands",
+      "vhost": "/",
+      "destination": "payment.commands",
+      "destination_type": "queue",
+      "routing_key": "payment.requested.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "audit.all",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    },
+    {
+      "source": "bank.commands",
+      "vhost": "/",
+      "destination": "audit.all",
+      "destination_type": "queue",
+      "routing_key": "audit.query.requested.v1",
+      "arguments": {}
+    }
+  ]
+}

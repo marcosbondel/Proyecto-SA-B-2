@@ -1,0 +1,87 @@
+import { z } from 'zod';
+
+import { catalog } from '../../src/events';
+
+/**
+ * SC-009. Two messages carry a bearer secret because they have to: the
+ * credential on the way in, and the activation token from the link. Both are
+ * documented, and both are the *only* place that value appears.
+ *
+ * The allowlist is the point of this test. A third message that starts carrying
+ * a secret fails it, which is the moment somebody should be asked why.
+ */
+const ALLOWED: Readonly<Record<string, readonly string[]>> = {
+  'customer.register.v1': ['credential'],
+  'customer.authenticate.v1': ['credential'],
+  'customer.verify-email.v1': ['activationToken'],
+};
+
+const FORBIDDEN = /password|passwd|secret|jwt|bearer|signature|privatekey|apikey/i;
+const BYTES = /bytes|binary|base64|blob|imagedata|payloadcontent/i;
+
+interface Field {
+  readonly name: string;
+  readonly type: string | undefined;
+}
+
+/**
+ * Every field a contract declares, nested objects included, with its type.
+ *
+ * The type matters: `sizeBytes` is an integer that *describes* how large the
+ * document is, and flagging it would be a false alarm. What must never exist is
+ * a **string** that could hold the bytes themselves.
+ */
+function fieldsOf(schema: unknown, seen: Field[] = []): Field[] {
+  const json = z.toJSONSchema(schema as z.ZodType, {
+    io: 'input',
+    unrepresentable: 'any',
+  }) as Record<string, unknown>;
+
+  const walk = (node: Record<string, unknown>): void => {
+    const properties = node['properties'] as Record<string, Record<string, unknown>> | undefined;
+    if (properties !== undefined) {
+      for (const [key, child] of Object.entries(properties)) {
+        seen.push({ name: key, type: child['type'] as string | undefined });
+        walk(child);
+      }
+    }
+
+    for (const key of ['oneOf', 'anyOf', 'allOf']) {
+      for (const branch of (node[key] as Record<string, unknown>[] | undefined) ?? []) {
+        walk(branch);
+      }
+    }
+
+    const items = node['items'] as Record<string, unknown> | undefined;
+    if (items !== undefined) walk(items);
+  };
+
+  walk(json);
+  return seen;
+}
+
+describe.each(catalog.map((c) => [c.name, c] as const))('%s', (name, contract) => {
+  const fields = fieldsOf(contract.schema);
+  const names = fields.map((field) => field.name);
+  const allowed = ALLOWED[name] ?? [];
+
+  it('declares no field that looks like a password, token or signing secret', () => {
+    const offenders = names.filter((field) => FORBIDDEN.test(field) && !allowed.includes(field));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('declares no string field that could carry raw bytes', () => {
+    const offenders = fields
+      .filter((field) => field.type === 'string' && BYTES.test(field.name))
+      .map((field) => field.name);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('carries a bearer secret only where it is documented and allowed', () => {
+    const carried = names.filter((field) => /credential|token/i.test(field));
+
+    expect(carried.every((field) => allowed.includes(field))).toBe(true);
+  });
+});

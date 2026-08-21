@@ -15,16 +15,22 @@ const recordingHandler = (messageType: string, seen: MessageEnvelope<unknown>[])
 describe('payment-service inbound message router', () => {
   it('hands a delivery to the handler that claimed its type', async () => {
     const seen: MessageEnvelope<unknown>[] = [];
-    const router = new InboundMessageRouter([recordingHandler('amount.quoted.v1', seen)]);
-    const envelope = createEnvelope({ reference: 'INV-1' }, { messageType: 'amount.quoted.v1' });
+    const router = new InboundMessageRouter([recordingHandler('payment.succeeded.v1', seen)]);
+    const envelope = createEnvelope(
+      { reference: 'INV-1' },
+      { messageType: 'payment.succeeded.v1', producer: 'payment-service', identity: null },
+    );
 
     await expect(router.route(envelope)).resolves.toBe(true);
     expect(seen).toEqual([envelope]);
   });
 
   it('reports an unclaimed message instead of failing', async () => {
-    const router = new InboundMessageRouter([recordingHandler('amount.quoted.v1', [])]);
-    const envelope = createEnvelope({}, { messageType: 'something.else.v1' });
+    const router = new InboundMessageRouter([recordingHandler('payment.succeeded.v1', [])]);
+    const envelope = createEnvelope(
+      {},
+      { messageType: 'something.else.v1', producer: 'payment-service', identity: null },
+    );
 
     await expect(router.route(envelope)).resolves.toBe(false);
   });
@@ -35,8 +41,8 @@ describe('payment-service inbound message router', () => {
     expect(
       () =>
         new InboundMessageRouter([
-          recordingHandler('amount.quoted.v1', seen),
-          recordingHandler('amount.quoted.v1', seen),
+          recordingHandler('payment.succeeded.v1', seen),
+          recordingHandler('payment.succeeded.v1', seen),
         ]),
     ).toThrow(/Two handlers claim/);
   });

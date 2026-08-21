@@ -1,0 +1,111 @@
+[
+  {
+    "messageId": "63663076-968f-4da2-a6a1-233452c2c92e",
+    "messageType": "transfer.requested.v1",
+    "messageVersion": 1,
+    "producer": "gateway",
+    "correlationId": "63663076-968f-4da2-a6a1-233452c2c92e",
+    "causationId": null,
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.468Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "sourceAccount": "11111111-1111-4111-8111-111111111111",
+      "targetAccount": "22222222-2222-4222-8222-222222222222",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      }
+    }
+  },
+  {
+    "messageId": "a545eea9-4fef-4a5d-a162-f101506df479",
+    "messageType": "transaction.initiated.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "63663076-968f-4da2-a6a1-233452c2c92e",
+    "causationId": "63663076-968f-4da2-a6a1-233452c2c92e",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.468Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "sourceAccount": "11111111-1111-4111-8111-111111111111",
+      "targetAccount": "22222222-2222-4222-8222-222222222222",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      },
+      "status": "PENDING",
+      "createdAt": "2026-08-19T14:32:07.482Z"
+    }
+  },
+  {
+    "messageId": "bf162fb1-6a38-4b3d-99a3-d9942cea8a0a",
+    "messageType": "account.debit.requested.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "63663076-968f-4da2-a6a1-233452c2c92e",
+    "causationId": "a545eea9-4fef-4a5d-a162-f101506df479",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.468Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "accountId": "11111111-1111-4111-8111-111111111111",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      }
+    }
+  },
+  {
+    "messageId": "b4709d97-a69f-461f-81e8-fd609d5da773",
+    "messageType": "account.debit.rejected.v1",
+    "messageVersion": 1,
+    "producer": "account-service",
+    "correlationId": "63663076-968f-4da2-a6a1-233452c2c92e",
+    "causationId": "bf162fb1-6a38-4b3d-99a3-d9942cea8a0a",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.468Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "accountId": "11111111-1111-4111-8111-111111111111",
+      "reason": "INSUFFICIENT_FUNDS"
+    }
+  },
+  {
+    "messageId": "a73b4c50-c0f7-4646-93d4-754aca994c38",
+    "messageType": "transaction.failed.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "63663076-968f-4da2-a6a1-233452c2c92e",
+    "causationId": "b4709d97-a69f-461f-81e8-fd609d5da773",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.468Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "status": "FAILED",
+      "reason": "INSUFFICIENT_FUNDS",
+      "failedAt": "2026-08-19T14:32:08.200Z"
+    }
+  }
+]

@@ -1,0 +1,70 @@
+$ pnpm -r test
+Scope: 10 of 11 workspace projects
+apps/web test$ node --test "test/**/*.test.mjs"
+apps/web test: ✔ nuxt.config.ts still declares the modules the architecture depends on (1.49575ms)
+apps/web test: ✔ the root component Nuxt builds from exists and is not empty (0.366417ms)
+apps/web test: ℹ tests 2
+apps/web test: ℹ suites 0
+apps/web test: ℹ pass 2
+apps/web test: ℹ fail 0
+apps/web test: ℹ cancelled 0
+apps/web test: ℹ skipped 0
+apps/web test: ℹ todo 0
+apps/web test: ℹ duration_ms 33.009875
+apps/web test: Done
+apps/packages/contracts test$ jest
+apps/packages/contracts test: Test Suites: 12 passed, 12 total
+apps/packages/contracts test: Tests:       363 passed, 363 total
+apps/packages/contracts test: Snapshots:   0 total
+apps/packages/contracts test: Time:        0.455 s, estimated 1 s
+apps/packages/contracts test: Ran all test suites.
+apps/packages/contracts test: Done
+apps/packages/messaging test$ jest
+apps/services/customer-service test$ jest
+apps/services/notification-audit-service test$ jest
+apps/services/account-service test$ jest
+apps/packages/messaging test: Test Suites: 1 skipped, 4 passed, 4 of 5 total
+apps/packages/messaging test: Tests:       2 skipped, 29 passed, 31 total
+apps/packages/messaging test: Snapshots:   0 total
+apps/packages/messaging test: Time:        0.569 s, estimated 37 s
+apps/packages/messaging test: Ran all test suites.
+apps/packages/messaging test: Done
+apps/services/payment-service test$ jest
+apps/services/customer-service test: Test Suites: 3 passed, 3 total
+apps/services/customer-service test: Tests:       7 passed, 7 total
+apps/services/customer-service test: Snapshots:   0 total
+apps/services/customer-service test: Time:        0.681 s, estimated 1 s
+apps/services/customer-service test: Ran all test suites.
+apps/services/notification-audit-service test: Test Suites: 3 passed, 3 total
+apps/services/notification-audit-service test: Tests:       7 passed, 7 total
+apps/services/notification-audit-service test: Snapshots:   0 total
+apps/services/notification-audit-service test: Time:        0.682 s, estimated 1 s
+apps/services/notification-audit-service test: Ran all test suites.
+apps/services/account-service test: Test Suites: 3 passed, 3 total
+apps/services/account-service test: Tests:       7 passed, 7 total
+apps/services/account-service test: Snapshots:   0 total
+apps/services/account-service test: Time:        0.683 s, estimated 1 s
+apps/services/account-service test: Ran all test suites.
+apps/services/account-service test: Done
+apps/services/transaction-service test$ jest
+apps/services/notification-audit-service test: Done
+apps/services/customer-service test: Done
+apps/services/payment-service test: Test Suites: 3 passed, 3 total
+apps/services/payment-service test: Tests:       7 passed, 7 total
+apps/services/payment-service test: Snapshots:   0 total
+apps/services/payment-service test: Time:        0.34 s, estimated 1 s
+apps/services/payment-service test: Ran all test suites.
+apps/services/payment-service test: Done
+apps/services/transaction-service test: Test Suites: 3 passed, 3 total
+apps/services/transaction-service test: Tests:       7 passed, 7 total
+apps/services/transaction-service test: Snapshots:   0 total
+apps/services/transaction-service test: Time:        0.325 s, estimated 1 s
+apps/services/transaction-service test: Ran all test suites.
+apps/services/transaction-service test: Done
+apps/gateway test$ jest
+apps/gateway test: Test Suites: 3 passed, 3 total
+apps/gateway test: Tests:       9 passed, 9 total
+apps/gateway test: Snapshots:   0 total
+apps/gateway test: Time:        0.301 s, estimated 1 s
+apps/gateway test: Ran all test suites.
+apps/gateway test: Done
