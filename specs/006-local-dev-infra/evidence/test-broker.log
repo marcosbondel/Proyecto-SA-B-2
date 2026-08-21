@@ -2,5 +2,5 @@ $ jest -- broker.integration
 Test Suites: 1 passed, 1 total
 Tests:       2 passed, 2 total
 Snapshots:   0 total
-Time:        36.44 s
+Time:        36.471 s, estimated 37 s
 Ran all test suites matching broker.integration.
