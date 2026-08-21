@@ -1,0 +1,30 @@
+OWN OK: customer_app -> customer
+CROSS REJECTED OK: customer_app -> account
+CROSS REJECTED OK: customer_app -> transaction
+CROSS REJECTED OK: customer_app -> payment
+CROSS REJECTED OK: customer_app -> notification_audit
+CROSS REJECTED OK: account_app -> customer
+OWN OK: account_app -> account
+CROSS REJECTED OK: account_app -> transaction
+CROSS REJECTED OK: account_app -> payment
+CROSS REJECTED OK: account_app -> notification_audit
+CROSS REJECTED OK: transaction_app -> customer
+CROSS REJECTED OK: transaction_app -> account
+OWN OK: transaction_app -> transaction
+CROSS REJECTED OK: transaction_app -> payment
+CROSS REJECTED OK: transaction_app -> notification_audit
+CROSS REJECTED OK: payment_app -> customer
+CROSS REJECTED OK: payment_app -> account
+CROSS REJECTED OK: payment_app -> transaction
+OWN OK: payment_app -> payment
+CROSS REJECTED OK: payment_app -> notification_audit
+CROSS REJECTED OK: notification_audit_app -> customer
+CROSS REJECTED OK: notification_audit_app -> account
+CROSS REJECTED OK: notification_audit_app -> transaction
+CROSS REJECTED OK: notification_audit_app -> payment
+OWN OK: notification_audit_app -> notification_audit
+
+Summary:
+  Own connections accepted:     5 / 5
+  Cross connections rejected:   20 / 20
+RESULT: PASS
