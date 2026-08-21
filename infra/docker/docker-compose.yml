@@ -1,3 +1,5 @@
+name: bonking
+
 services:
   postgres-customer:
     image: postgres:18.4
