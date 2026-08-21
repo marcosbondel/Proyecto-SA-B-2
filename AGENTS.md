@@ -131,6 +131,13 @@ numbering when there is none.
 - When a skill's advice conflicts with `AGENTS.md`, `ARCHITECTURE.md`, or
   `docs/`, the repository wins.
 - Update stale docs in the same change that makes them stale.
+- **Never add Claude, or any AI agent, as a co-author on a commit** (no
+  `Co-Authored-By: Claude`/similar trailer, no author/committer identity for
+  an agent). Only the project's current human members may appear as author or
+  committer: Enner Mendizabal, David Barrios (`DavidBarrios45`), and Marcos
+  Bonifasi. See the [team-commit-pr](.agents/skills/team-commit-pr/SKILL.md)
+  skill for the fixed roster and the explicit-confirmation flow required to
+  attribute a commit to one of them.
 
 ## Layout Notes
 
