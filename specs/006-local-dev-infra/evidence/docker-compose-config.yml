@@ -1,4 +1,4 @@
-name: docker
+name: bonking
 services:
   minio:
     command:
@@ -39,7 +39,7 @@ services:
         volume: {}
   minio-init:
     command:
-      - sh /init-minio.sh
+      - /init-minio.sh
     container_name: minio-init
     depends_on:
       minio:
@@ -247,16 +247,16 @@ networks:
     driver: bridge
 volumes:
   minio-data:
-    name: docker_minio-data
+    name: bonking_minio-data
   pgdata-account:
-    name: docker_pgdata-account
+    name: bonking_pgdata-account
   pgdata-customer:
-    name: docker_pgdata-customer
+    name: bonking_pgdata-customer
   pgdata-notification-audit:
-    name: docker_pgdata-notification-audit
+    name: bonking_pgdata-notification-audit
   pgdata-payment:
-    name: docker_pgdata-payment
+    name: bonking_pgdata-payment
   pgdata-transaction:
-    name: docker_pgdata-transaction
+    name: bonking_pgdata-transaction
   rabbitmq-data:
-    name: docker_rabbitmq-data
+    name: bonking_rabbitmq-data
