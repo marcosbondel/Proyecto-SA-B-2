@@ -1,165 +1,183 @@
-# Bank USAC Design System
+---
+name: Bank USAC Core
+colors:
+  surface: '#fbf8ff'
+  surface-dim: '#dad9e6'
+  surface-bright: '#fbf8ff'
+  surface-container-lowest: '#ffffff'
+  surface-container-low: '#f4f2ff'
+  surface-container: '#eeecfa'
+  surface-container-high: '#e8e7f5'
+  surface-container-highest: '#e2e1ef'
+  on-surface: '#1a1b24'
+  on-surface-variant: '#444656'
+  inverse-surface: '#2f303a'
+  inverse-on-surface: '#f1effd'
+  outline: '#747688'
+  outline-variant: '#c4c5d9'
+  surface-tint: '#1947f3'
+  primary: '#002db5'
+  on-primary: '#ffffff'
+  primary-container: '#053fed'
+  on-primary-container: '#c4ccff'
+  inverse-primary: '#bac3ff'
+  secondary: '#4a59a5'
+  on-secondary: '#ffffff'
+  secondary-container: '#9dacfe'
+  on-secondary-container: '#2d3d88'
+  tertiary: '#811500'
+  on-tertiary: '#ffffff'
+  tertiary-container: '#ab2102'
+  on-tertiary-container: '#ffc0b2'
+  error: '#ba1a1a'
+  on-error: '#ffffff'
+  error-container: '#ffdad6'
+  on-error-container: '#93000a'
+  primary-fixed: '#dee1ff'
+  primary-fixed-dim: '#bac3ff'
+  on-primary-fixed: '#001159'
+  on-primary-fixed-variant: '#0031c4'
+  secondary-fixed: '#dee1ff'
+  secondary-fixed-dim: '#b9c3ff'
+  on-secondary-fixed: '#001158'
+  on-secondary-fixed-variant: '#31408b'
+  tertiary-fixed: '#ffdad3'
+  tertiary-fixed-dim: '#ffb4a4'
+  on-tertiary-fixed: '#3d0500'
+  on-tertiary-fixed-variant: '#8c1800'
+  background: '#fbf8ff'
+  on-background: '#1a1b24'
+  surface-variant: '#e2e1ef'
+typography:
+  hero-number:
+    fontFamily: Inter
+    fontSize: 48px
+    fontWeight: '700'
+    lineHeight: 56px
+    letterSpacing: -0.02em
+  h1:
+    fontFamily: Inter
+    fontSize: 32px
+    fontWeight: '700'
+    lineHeight: 40px
+  h2:
+    fontFamily: Inter
+    fontSize: 20px
+    fontWeight: '600'
+    lineHeight: 28px
+  body:
+    fontFamily: Inter
+    fontSize: 16px
+    fontWeight: '400'
+    lineHeight: 24px
+  body-medium:
+    fontFamily: Inter
+    fontSize: 16px
+    fontWeight: '500'
+    lineHeight: 24px
+  small:
+    fontFamily: Inter
+    fontSize: 14px
+    fontWeight: '400'
+    lineHeight: 20px
+  caption:
+    fontFamily: Inter
+    fontSize: 12px
+    fontWeight: '400'
+    lineHeight: 16px
+rounded:
+  sm: 0.25rem
+  DEFAULT: 0.5rem
+  md: 0.75rem
+  lg: 1rem
+  xl: 1.5rem
+  full: 9999px
+spacing:
+  base: 8px
+  compact: 8px
+  default: 16px
+  loose: 24px
+  section: 32px
+  container-max: 1200px
+  margin-mobile: 16px
+  margin-desktop: 24px
+---
 
-This document is the visual and interaction source of truth for Bank USAC.
-The baseline was supplied and approved by Marcos Bonifasi for T-01 on
-2026-08-11. Future UI work MUST use these tokens and conventions instead of
-introducing local values.
+## Brand & Style
 
-## Principles
+This design system embodies "Calm Confidence" for modern banking. It prioritizes clarity, operational truth, and financial legibility above all else. The aesthetic is a refined blend of **Minimalism** and **Corporate Modern**, utilizing generous whitespace and a purposeful color palette to ensure that complex financial data remains scannable and unintimidating.
 
-- **Make money legible.** Amounts, balances, fees, and transaction states are
-  visually distinct and easy to scan.
-- **Make asynchronous state explicit.** Accepted work is not completed work;
-  the interface never hides a pending Saga behind a generic spinner.
-- **Prefer calm confidence.** Use clear hierarchy, restrained motion, and
-  direct labels for actions that affect money or identity.
-- **Prevent accidental actions.** Primary actions are obvious, destructive
-  actions require context, and validation errors appear where they occur.
-- **Design for operational truth.** Feedback reflects the actual state of the
-  distributed workflow, including timeout, retry, and eventual completion.
+The experience is designed to be:
+- **Legible:** Money-related data is the hero of the interface.
+- **Explicit:** Asynchronous states and pending workflows are never hidden.
+- **Safe:** Destructive actions are contextualized, and validation is local and immediate.
+- **Authentic:** The UI reflects the real-time state of distributed banking operations.
 
-## Color
+## Colors
 
-Tokens map directly to the Nuxt UI theme applied by T-13.
+The palette has transitioned to a deep, trustworthy execution using authoritative blues and professional grays. This shift emphasizes stability, security, and digital-first banking precision.
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `primary` | `#8CE071` | Primary actions, active navigation, progress, and positive metrics. |
-| `primary-contrast` | `#1A201D` | Text or dark controls paired with the primary accent. |
-| `surface` | `#FFFFFF` | Main background and card surfaces. |
-| `surface-muted` | `#F7F9F8` | Sidebar, subsections, disabled or inactive surfaces. |
-| `border` | `#E5E7EB` | Input borders, table rules, and component boundaries. |
-| `text` | `#111827` | Headings, values, and primary body text. |
-| `text-muted` | `#6B7280` | Metadata, placeholders, subtitles, and table headers. |
-| `success` | `#2F9E44` | Completed operations and positive outcomes. |
-| `warning` | `#F59E0B` | Pending actions, warnings, and attention states. |
-| `error` | `#EF4444` | Failed transactions, destructive actions, and validation errors. |
-| `info` | `#6366F1` | Neutral administrative and informational states. |
-
-Status backgrounds use a light tint of the corresponding semantic token, with
-the semantic token as the foreground. Text on `primary` uses
-`primary-contrast`; text on `primary-contrast` uses `surface`.
+### Usage Rules:
+- **Primary (#2A53FD):** A vibrant digital blue used for primary actions and brand highlights. It represents reliability and the core technological engine of the bank.
+- **Secondary (#6372C0):** A muted, periwinkle-leaning blue used for supportive elements, secondary actions, and subtle UI accents.
+- **Neutral (#767682):** A cool-toned slate neutral used for borders, secondary text, and structural definition.
+- **Tertiary (#AB2102):** A deep, burnt orange/red reserved for specialized alerts, specific high-visibility data points, or "hot" financial states that require a clear departure from the blue-dominant theme.
 
 ## Typography
 
-The primary family is **Inter**, with the system sans-serif stack as a loading
-fallback: `Inter, ui-sans-serif, system-ui, sans-serif`. Use weights 400
-(regular), 500 (medium), 600 (semibold), and 700 (bold).
+The design system uses **Inter** for all roles to maintain a clean, utilitarian aesthetic. 
 
-| Role | Size | Weight | Use |
-| --- | ---: | ---: | --- |
-| Hero number | 48px | 700 | Dashboard totals and high-priority metrics. |
-| H1 | 32px | 700 | Page titles. |
-| H2 | 20px | 600 | Section and card titles. |
-| Body | 16px | 400 or 500 | Main content and list items. |
-| Small | 14px | 400 or 500 | Controls, table values, and supporting copy. |
-| Caption | 12px | 400 | Metadata, labels, dates, and chart axes. |
+### Tabular Figures
+For all financial values (balances, amounts, transaction lists), the CSS property `font-variant-numeric: tabular-nums lining-nums` is **mandatory**. This ensures vertical alignment of currency digits, which is critical for scanning lists of transactions and comparing balances.
 
-Amounts, balances, identifiers, and tabular transaction values MUST use
-`font-variant-numeric: tabular-nums lining-nums` so columns align and values
-remain easy to compare.
+### Formatting
+- **Currency:** Prefix with `Q `, use comma separators for thousands, and always show two decimal places (e.g., `Q 1,250.00`).
+- **Locale:** All dates and numbers follow `es-GT` formatting.
 
-## Spacing & Layout
+## Layout & Spacing
 
-The spacing system uses an 8px base grid: `8px`, `16px`, `24px`, `32px`,
-`40px`, `48px`, and `64px`. Use `8px` for compact label-control groupings,
-`16px` for component internals, and `16px` to `24px` between related sections.
-Cards use `20px` to `24px` internal padding.
+This design system uses an **8px base grid** to maintain strict alignment and mathematical rhythm. 
 
-The application uses a fixed left navigation rail on desktop, a top header for
-search, context actions, notifications, and profile, and a fluid central
-content area.
+### Layout Model
+- **Desktop (>= 1024px):** Fixed left navigation rail with a fluid central content area capped at 1200px.
+- **Tablet (768px - 1023px):** Compact icon-only navigation rail.
+- **Mobile (< 768px):** Single column content with a collapsed sidebar (hamburger menu) and 16px side margins.
 
-| Layout token | Value |
-| --- | --- |
-| Content max width | `1200px` |
-| Mobile side padding | `16px` |
-| Desktop side padding | `24px` |
-| Mobile | `< 768px`; collapse the sidebar and use a single content column. |
-| Tablet | `768px - 1023px`; use a compact navigation rail and one or two columns. |
-| Desktop | `>= 1024px`; show the full navigation rail and card grid. |
-| Wide desktop | `>= 1280px`; allow the full `1200px` content container. |
+### Sectional Spacing
+- **Internal Card Padding:** 20px to 24px.
+- **Label-to-Control:** 8px.
+- **Component-to-Component:** 16px.
 
-Use a 3-column metric grid only when each card remains readable; use a 2-column
-main-content and auxiliary-panel split for detailed banking workflows.
+## Elevation & Depth
+
+Hierarchy is established through **Tonal Layers** and clean lines. The UI relies on subtle shifts in surface-container colors and crisp borders to define structure.
+
+- **Cards:** Use a 1px border or a very subtle ambient shadow (low opacity, 4-8px blur). Against the neutral background, structural definition comes from subtle surface tints.
+- **Modals:** Use a centered overlay with a soft backdrop blur to maintain focus while keeping the underlying context visible.
+- **Interaction:** Buttons and interactive cards may lift slightly (increased shadow) on hover to indicate clickability.
+
+## Shapes
+
+The shape language balances approachability with professional structure.
+- **Cards & Surfaces:** Use large radii between **16px and 24px** to create a modern, friendly banking feel.
+- **Interactive Elements:** Buttons and Input fields use a tighter radius of **8px (0.5rem)**.
+- **Secondary Pills:** Only used for badges and small secondary tags/actions.
 
 ## Components
 
-Use the Nuxt UI 4.10 components already selected by the team:
+### Buttons
+- **Primary:** Solid `#2A53FD` (Blue) with high-contrast white text.
+- **Secondary:** Solid `#6372C0` (Slate Blue) or outlined with a neutral border for secondary utility.
+- **High-Contrast:** Solid dark neutral with white text.
 
-- **Forms:** `UForm` and `UFormField`, with one associated label and one local
-  validation message per field.
-- **Tables:** `UTable`, with generous row padding, no vertical dividers, and
-  action menus aligned to the right.
-- **Statuses:** `UBadge` for compact state labels, `UAlert` for explanatory
-  feedback, and `USkeleton` for loading placeholders.
-- **Feedback:** `useToast` for transient confirmation or system feedback; do
-  not use a toast as the only place for an important error.
-- **Modals:** `UModal` for confirmation, focused detail, or destructive-action
-  context. Keep the triggering action visible in the dialog.
-- **File uploads:** `UFileUpload` for identity documents and future evidence
-  files; show accepted formats, size constraints, progress, and failure state.
-- **Buttons:** solid `primary` for the main action, outlined `surface` plus
-  `border` for secondary actions, and `primary-contrast` with `surface` text
-  for high-contrast actions. Use 8px to 12px corner radius; use pill shapes
-  only for compact secondary actions and badges.
-- **Cards:** white surfaces with 16px to 24px radius and either a subtle shadow
-  or a 1px border, never both at strong intensity.
-- **Icons and avatars:** line icons for navigation and actions; filled icons
-  only for categories or file types; avatars are circular at 24px to 40px.
+### Form Fields
+Inputs use a white background with a neutral border. On focus, the border transitions to the primary blue. Labels must be visible and placed above the field with 8px spacing.
 
-Charts use rounded bar tops, exact-value hover tooltips, and clean donut gaps.
-Use related green, dark-green, and neutral hues so data visualization does not
-compete with transaction status colors.
+### Cards
+Cards are the primary container for financial data. They must use 20-24px padding. Financial "Hero" cards (e.g., balance displays) can utilize the secondary-container colors or primary blue to stand out from standard neutral data cards.
 
-## UI States
+### Badges & Statuses
+Use semantic colors with 10% opacity backgrounds. "Alert" or "Warm" states should utilize the tertiary red (#AB2102) to provide a clear visual departure from the blue-dominant brand colors.
 
-Every data-bearing screen and action defines these states where applicable:
-
-1. **Initial:** explain the task and show the primary action without implying
-   that data already exists.
-2. **Empty:** explain why the collection is empty and provide the next useful
-   action.
-3. **Local validation:** identify the field, explain the correction, and keep
-   valid input intact.
-4. **Sending:** disable duplicate submission, show progress, and retain the
-   entered context.
-5. **Pending:** the request was accepted but the distributed operation is not
-   complete. Show the tracking or transaction identifier when available.
-6. **Success:** show only after the owning workflow confirms completion, with a
-   concise summary and next action.
-7. **Business error:** explain the domain reason, such as insufficient funds,
-   without exposing implementation details.
-8. **Timeout:** state that completion is unknown, preserve the identifier, and
-   offer status refresh rather than claiming failure.
-9. **Retry:** provide a safe retry action that is idempotent or explicitly
-   explains what will be retried.
-
-Pending MUST remain visually and textually distinct from success. An HTTP 202
-or an accepted event is not a completed banking operation.
-
-## Accessibility
-
-- Every form control has an associated visible label or an equivalent announced
-  accessible name.
-- Focus indicators remain visible and use the primary or contrast token with
-  sufficient contrast.
-- Text and controls meet WCAG AA contrast targets; color is never the only
-  signal for transaction state.
-- Validation and business errors appear adjacent to the relevant field or
-  action and are announced to assistive technology when dynamically inserted.
-- Keyboard users can reach every action, modal control, table action, and file
-  upload control in a logical order.
-- Responsive layouts preserve readable text, usable touch targets, and the
-  distinction between pending and completed operations on mobile.
-
-## Domain Formats
-
-- **Currency:** display Guatemalan quetzales with a `Q` prefix, a space, comma
-  thousands separators, and exactly two decimal places: `Q 1,250.00`.
-- **Amounts:** use a decimal-safe domain value and format only at the UI
-  boundary. Negative values retain the sign before the amount.
-- **Dates:** use the `es-GT` locale through the platform date formatter and
-  include the timezone when a timestamp represents an event.
-- **Identifiers:** preserve the original case and never truncate a value that
-  a user must copy or compare; provide a copy action for long identifiers.
+### Tables
+Tables are borderless between columns, using only horizontal dividers in neutral tones. All currency columns must be right-aligned and use tabular numbers.

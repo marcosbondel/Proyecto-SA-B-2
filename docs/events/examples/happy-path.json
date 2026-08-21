@@ -1,0 +1,217 @@
+[
+  {
+    "messageId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "messageType": "transfer.requested.v1",
+    "messageVersion": 1,
+    "producer": "gateway",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": null,
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.466Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "sourceAccount": "11111111-1111-4111-8111-111111111111",
+      "targetAccount": "22222222-2222-4222-8222-222222222222",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      }
+    }
+  },
+  {
+    "messageId": "354f0fbf-5c12-4724-b74d-cb25e9a087e2",
+    "messageType": "transaction.initiated.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.467Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "sourceAccount": "11111111-1111-4111-8111-111111111111",
+      "targetAccount": "22222222-2222-4222-8222-222222222222",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      },
+      "status": "PENDING",
+      "createdAt": "2026-08-19T14:32:07.482Z"
+    }
+  },
+  {
+    "messageId": "aef3c5da-5ef4-4bde-a09f-bd76193a3c9d",
+    "messageType": "account.debit.requested.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": "354f0fbf-5c12-4724-b74d-cb25e9a087e2",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.467Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "accountId": "11111111-1111-4111-8111-111111111111",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      }
+    }
+  },
+  {
+    "messageId": "dd9f6758-82bf-4b55-ab8b-ea21c41fc648",
+    "messageType": "account.debited.v1",
+    "messageVersion": 1,
+    "producer": "account-service",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": "aef3c5da-5ef4-4bde-a09f-bd76193a3c9d",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.467Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "accountId": "11111111-1111-4111-8111-111111111111",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      },
+      "balanceAfter": {
+        "amountMinor": 85000,
+        "currency": "GTQ"
+      },
+      "debitedAt": "2026-08-19T14:32:08.100Z"
+    }
+  },
+  {
+    "messageId": "99294d4f-24cb-48a9-b239-cc2a803dadd4",
+    "messageType": "payment.requested.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": "dd9f6758-82bf-4b55-ab8b-ea21c41fc648",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.467Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "paymentId": "44444444-4444-4444-8444-444444444444",
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      }
+    }
+  },
+  {
+    "messageId": "985f82e3-1bde-4943-b349-b64854e2e5e2",
+    "messageType": "payment.succeeded.v1",
+    "messageVersion": 1,
+    "producer": "payment-service",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": "99294d4f-24cb-48a9-b239-cc2a803dadd4",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.467Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "paymentId": "44444444-4444-4444-8444-444444444444",
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "status": "SUCCEEDED",
+      "attempt": 1,
+      "succeededAt": "2026-08-19T14:32:08.900Z"
+    }
+  },
+  {
+    "messageId": "f8723c98-74fe-47d9-b52e-1c25fc479c88",
+    "messageType": "account.credit.requested.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": "985f82e3-1bde-4943-b349-b64854e2e5e2",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.467Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "accountId": "22222222-2222-4222-8222-222222222222",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      }
+    }
+  },
+  {
+    "messageId": "d1c8c41f-2d14-44cd-af25-5ee4c104befd",
+    "messageType": "account.credited.v1",
+    "messageVersion": 1,
+    "producer": "account-service",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": "f8723c98-74fe-47d9-b52e-1c25fc479c88",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.468Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "accountId": "22222222-2222-4222-8222-222222222222",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      },
+      "balanceAfter": {
+        "amountMinor": 115000,
+        "currency": "GTQ"
+      },
+      "reactivated": false,
+      "creditedAt": "2026-08-19T14:32:09.400Z"
+    }
+  },
+  {
+    "messageId": "2412809e-4e84-41bd-b4ca-85549db29cac",
+    "messageType": "transaction.completed.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "8d0ec54a-1b15-4863-8ebc-a934830bc59b",
+    "causationId": "d1c8c41f-2d14-44cd-af25-5ee4c104befd",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-08-19T16:55:31.468Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "sourceAccount": "11111111-1111-4111-8111-111111111111",
+      "targetAccount": "22222222-2222-4222-8222-222222222222",
+      "amount": {
+        "amountMinor": 15000,
+        "currency": "GTQ"
+      },
+      "status": "COMPLETED",
+      "completedAt": "2026-08-19T14:32:09.500Z"
+    }
+  }
+]

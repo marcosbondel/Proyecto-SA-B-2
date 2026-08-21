@@ -1,0 +1,94 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { catalog, catalogByName } from '../../src/events';
+import { messageTypeName, versionOf } from '../../src/schemas/primitives';
+
+const REPO_ROOT = join(__dirname, '..', '..', '..', '..', '..');
+const DOMAIN_CATALOGUE = join(REPO_ROOT, 'docs', 'domain', 'message-catalog.md');
+
+/**
+ * The names T-02 fixed, read out of the document that fixed them.
+ *
+ * Reading the markdown rather than hard-coding a list is the point: if somebody
+ * renames a message in the domain catalogue without contracting it, this test
+ * fails instead of the two documents drifting apart in silence.
+ */
+function namesFromDomainCatalogue(): string[] {
+  const markdown = readFileSync(DOMAIN_CATALOGUE, 'utf8');
+  const names = new Set<string>();
+
+  for (const line of markdown.split('\n')) {
+    // Only the first cell of a table row names a message.
+    const match = /^\|\s*`([a-z][a-z0-9.-]*)`/.exec(line);
+    if (match?.[1] !== undefined && match[1].includes('.')) {
+      names.add(match[1]);
+    }
+  }
+
+  return [...names].sort();
+}
+
+describe('the catalogue as a whole', () => {
+  it('contracts every message, and exactly the number the spec fixed', () => {
+    expect(catalog).toHaveLength(42);
+  });
+
+  it('gives every message a version suffix, so it can be routed by version', () => {
+    for (const contract of catalog) {
+      expect(messageTypeName.safeParse(contract.name).success).toBe(true);
+      expect(versionOf(contract.name)).toBe(1);
+    }
+  });
+
+  it('has no duplicate names, which would let one contract shadow another', () => {
+    expect(catalogByName.size).toBe(catalog.length);
+  });
+
+  it('gives every command exactly one handler', () => {
+    for (const contract of catalog.filter((c) => c.category === 'command')) {
+      expect(contract.consumers).toHaveLength(1);
+    }
+  });
+
+  it('leaves no event without a consumer', () => {
+    for (const contract of catalog.filter((c) => c.category === 'event')) {
+      expect(contract.consumers.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('addresses every reply to exactly one asker', () => {
+    for (const contract of catalog.filter((c) => c.category === 'reply')) {
+      expect(contract.consumers).toHaveLength(1);
+    }
+  });
+});
+
+describe('coherence with the domain catalogue that T-02 closed', () => {
+  const domainNames = namesFromDomainCatalogue();
+
+  it('reads the 35 messages T-02 fixed', () => {
+    expect(domainNames).toHaveLength(35);
+  });
+
+  it('contracts every one of them, with a version suffix', () => {
+    const missing = domainNames.filter((name) => !catalogByName.has(`${name}.v1`));
+
+    expect(missing).toEqual([]);
+  });
+
+  it('adds exactly the seven messages recorded as an extension, and no others', () => {
+    const known = new Set(domainNames.map((name) => `${name}.v1`));
+    const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
+
+    expect(added.sort()).toEqual([
+      'account.balance.replied.v1',
+      'audit.query.replied.v1',
+      'audit.query.requested.v1',
+      'customer.authenticate.replied.v1',
+      'customer.email.verification.rejected.v1',
+      'transaction.status.replied.v1',
+      'transaction.status.requested.v1',
+    ]);
+  });
+});

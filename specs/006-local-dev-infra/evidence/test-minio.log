@@ -1,0 +1,22 @@
+ Container minio Running 
+ Container minio Waiting 
+ Container minio Healthy 
+ Container bonking-minio-init-run-b90a6cc2c9b3 Creating 
+ Container bonking-minio-init-run-b90a6cc2c9b3 Created 
+Waiting for MinIO at http://minio:9000 ...
+MinIO is healthy
+Bucket customer-identity-documents: OK
+Lifecycle rules for customer-identity-documents:
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│ Expiration for latest version (Expiration)                                            │
+├──────────────────────┬─────────┬────────┬──────┬────────────────┬─────────────────────┤
+│ ID                   │ STATUS  │ PREFIX │ TAGS │ DAYS TO EXPIRE │ EXPIRE DELETEMARKER │
+├──────────────────────┼─────────┼────────┼──────┼────────────────┼─────────────────────┤
+│ da3ri0u3ih5s7jv0ao10 │ Enabled │ -      │ -    │              1 │ false               │
+└──────────────────────┴─────────┴────────┴──────┴────────────────┴─────────────────────┘
+Lifecycle rule: OK
+Application user info:
+AccessKey: bank_app
+Status: enabled
+PolicyName: app-bucket-policy
+MemberOf: []

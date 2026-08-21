@@ -1,0 +1,24 @@
+$ pnpm -r lint
+Scope: 10 of 11 workspace projects
+apps/web lint$ eslint .
+apps/web lint: Done
+apps/packages/contracts lint$ eslint .
+apps/packages/contracts lint: Done
+apps/packages/messaging lint$ eslint .
+apps/services/notification-audit-service lint$ eslint .
+apps/services/account-service lint$ eslint .
+apps/services/customer-service lint$ eslint .
+apps/services/customer-service lint: Done
+apps/services/notification-audit-service lint: Done
+apps/services/account-service lint: Done
+apps/services/payment-service lint$ eslint .
+apps/services/transaction-service lint$ eslint .
+apps/packages/messaging lint: /Users/marcosbondel/Documents/uni/2026/segundo semestre/SA/lab/Proyecto-SA-B-2/apps/packages/messaging/test/broker.integration.spec.ts
+apps/packages/messaging lint:   30:7  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+apps/packages/messaging lint: ✖ 1 problem (0 errors, 1 warning)
+apps/packages/messaging lint:   0 errors and 1 warning potentially fixable with the `--fix` option.
+apps/packages/messaging lint: Done
+apps/services/payment-service lint: Done
+apps/services/transaction-service lint: Done
+apps/gateway lint$ eslint .
+apps/gateway lint: Done

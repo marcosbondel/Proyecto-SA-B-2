@@ -19,8 +19,14 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "lint": "eslint .",
+    "schema:emit": "node scripts/emit-json-schema.mjs",
     "test": "jest",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "docs:catalog": "node scripts/emit-catalog-doc.mjs",
+    "docs:examples": "node scripts/emit-saga-examples.mjs"
+  },
+  "dependencies": {
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@bank/tooling": "workspace:*",
