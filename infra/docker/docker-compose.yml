@@ -1,0 +1,178 @@
+services:
+  postgres-customer:
+    image: postgres:18.4
+    container_name: postgres-customer
+    environment:
+      POSTGRES_DB: ${CUSTOMER_POSTGRES_DB}
+      POSTGRES_USER: ${CUSTOMER_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${CUSTOMER_POSTGRES_PASSWORD}
+    ports:
+      - "${CUSTOMER_POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata-customer:/var/lib/postgresql
+    networks:
+      - bank-usac-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${CUSTOMER_POSTGRES_USER} -d $${CUSTOMER_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  postgres-account:
+    image: postgres:18.4
+    container_name: postgres-account
+    environment:
+      POSTGRES_DB: ${ACCOUNT_POSTGRES_DB}
+      POSTGRES_USER: ${ACCOUNT_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${ACCOUNT_POSTGRES_PASSWORD}
+    ports:
+      - "${ACCOUNT_POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata-account:/var/lib/postgresql
+    networks:
+      - bank-usac-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${ACCOUNT_POSTGRES_USER} -d $${ACCOUNT_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  postgres-transaction:
+    image: postgres:18.4
+    container_name: postgres-transaction
+    environment:
+      POSTGRES_DB: ${TRANSACTION_POSTGRES_DB}
+      POSTGRES_USER: ${TRANSACTION_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${TRANSACTION_POSTGRES_PASSWORD}
+    ports:
+      - "${TRANSACTION_POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata-transaction:/var/lib/postgresql
+    networks:
+      - bank-usac-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${TRANSACTION_POSTGRES_USER} -d $${TRANSACTION_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  postgres-payment:
+    image: postgres:18.4
+    container_name: postgres-payment
+    environment:
+      POSTGRES_DB: ${PAYMENT_POSTGRES_DB}
+      POSTGRES_USER: ${PAYMENT_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${PAYMENT_POSTGRES_PASSWORD}
+    ports:
+      - "${PAYMENT_POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata-payment:/var/lib/postgresql
+    networks:
+      - bank-usac-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${PAYMENT_POSTGRES_USER} -d $${PAYMENT_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  postgres-notification-audit:
+    image: postgres:18.4
+    container_name: postgres-notification-audit
+    environment:
+      POSTGRES_DB: ${NOTIFICATION_AUDIT_POSTGRES_DB}
+      POSTGRES_USER: ${NOTIFICATION_AUDIT_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${NOTIFICATION_AUDIT_POSTGRES_PASSWORD}
+    ports:
+      - "${NOTIFICATION_AUDIT_POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata-notification-audit:/var/lib/postgresql
+    networks:
+      - bank-usac-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${NOTIFICATION_AUDIT_POSTGRES_USER} -d $${NOTIFICATION_AUDIT_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:4.3.4-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "${RABBITMQ_AMQP_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/rabbitmq_definitions.json:/etc/rabbitmq/definitions.json:ro
+    networks:
+      - bank-usac-local
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - bank-usac-local
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    container_name: minio-init
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_APP_USER: ${MINIO_APP_USER}
+      MINIO_APP_PASSWORD: ${MINIO_APP_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      MINIO_RETENTION_HOURS: ${MINIO_RETENTION_HOURS}
+    volumes:
+      - ./scripts/init-minio.sh:/init-minio.sh:ro
+    networks:
+      - bank-usac-local
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/init-minio.sh"]
+    restart: "no"
+
+networks:
+  bank-usac-local:
+    name: bank-usac-local
+    driver: bridge
+
+volumes:
+  pgdata-customer:
+  pgdata-account:
+  pgdata-transaction:
+  pgdata-payment:
+  pgdata-notification-audit:
+  rabbitmq-data:
+  minio-data:
