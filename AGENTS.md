@@ -12,10 +12,10 @@ frontend at the top level, the five domain services under `apps/services/`, and
 clean checkout.
 
 What exists is scaffolding: health checks, boot-time environment validation,
-the shared message envelope and the RabbitMQ adapter. The `domain` and
-`application` layers are deliberately empty — no banking rule is implemented.
-`ARCHITECTURE.md` records the target architecture; local infrastructure (T-06)
-and deployment (T-16) are not built yet.
+the shared message envelope and the RabbitMQ adapter, and the local Docker
+Compose stack for development (T-06). The `domain` and `application` layers are
+deliberately empty — no banking rule is implemented. `ARCHITECTURE.md` records
+the target architecture; deployment (T-16) is not built yet.
 
 ## Project Documentation
 
