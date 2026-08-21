@@ -39,30 +39,39 @@ this directory holds the decisions behind it and the diagrams that show it.
   assignment lists it separately from the C4 + UML block (§4.2 bullet
   "Diagramas de arquitectura"; §4.4 "Diagramas arquitectónicos").
 
-## Delivery format — two artefacts per diagram
+## Delivery format — two required sources, one optional export
 
-Every diagram ships **both**, and they must agree:
+Every diagram ships **two required, versioned text sources that must agree**,
+plus one optional visual artefact:
 
-1. **LucidChart** — the editable document, plus an export committed to
-   `diagrams/` as **image (PNG or SVG) and/or PDF**. Register the Lucid link
-   in the table above as each diagram lands.
-2. **Mermaid** — a versioned `.mmd` source in `diagrams/`, so the architecture
+1. **Mermaid** — a versioned `.mmd` source in `diagrams/`, so the architecture
    is reviewable in Git and in pull requests. **Generating it with AI is
    allowed**; shipping it unreviewed is not.
+2. **PlantUML** — a versioned `.puml` source in `diagrams/`, plus its export
+   (PNG, SVG or PDF) committed alongside it. **Generating it with AI is
+   allowed**; shipping it unreviewed is not.
+3. **LucidChart** (optional) — the editable document, plus an export committed
+   to `diagrams/` if the team produces one. Register the Lucid link in the
+   table above only when a Lucid document exists; it is not required for a
+   diagram to be done.
 
-This two-artefact rule is the decision recorded in
-[ADR-011](adr/ADR-011-diagramming-toolchain.md), which also rejects PlantUML as a
-third format: each additional copy is another thing that can drift from the
-others, and the gap it would close — Mermaid's missing UML use-case diagram — is
-already covered authoritatively by Lucid.
+This is the decision recorded in
+[ADR-013](adr/ADR-013-diagramming-toolchain-revision.md), which supersedes
+[ADR-011](adr/ADR-011-diagramming-toolchain.md): PlantUML is now required
+alongside Mermaid, and Lucid — previously required — is optional.
 
-If the Lucid export and the Mermaid source disagree, the diagram is not done —
-the rubric penalises documentation inconsistency by 25 % (§8.3).
+If the Mermaid and PlantUML sources disagree, the diagram is not done — the
+rubric penalises documentation inconsistency by 25 % (§8.3). A Lucid export
+that disagrees with either required source is also not done, if one is
+shipped.
 
 Mermaid covers seven of the eight natively (`C4Context`, `C4Container`,
 `C4Component`, `C4Deployment`, `sequenceDiagram`). **Use cases are the
 exception**: Mermaid has no UML use-case diagram, so that one uses a
-`flowchart` approximation and the LucidChart artefact is authoritative.
+`flowchart` approximation. PlantUML covers all eight natively, including UML
+use cases (`usecase`, `<<include>>`/`<<extend>>`) and C4 notation via the
+`C4-PlantUML` library, so **for the use-case diagram, PlantUML is the
+authoritative artefact** — it replaces Lucid in that role.
 - The mapping from each constitution principle to where it is enforced.
 
 The written use-case records that accompany diagram 7 — actor, preconditions,
