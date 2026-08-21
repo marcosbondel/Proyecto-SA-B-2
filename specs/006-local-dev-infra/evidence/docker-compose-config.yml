@@ -1,0 +1,262 @@
+name: docker
+services:
+  minio:
+    command:
+      - server
+      - /data
+      - --console-address
+      - :9001
+    container_name: minio
+    environment:
+      MINIO_ROOT_PASSWORD: changeme
+      MINIO_ROOT_USER: minioadmin
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:9000/minio/health/live
+      timeout: 5s
+      interval: 5s
+      retries: 10
+      start_period: 10s
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    networks:
+      bank-usac-local: null
+    ports:
+      - mode: ingress
+        target: 9000
+        published: "9002"
+        protocol: tcp
+      - mode: ingress
+        target: 9001
+        published: "9003"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: minio-data
+        target: /data
+        volume: {}
+  minio-init:
+    command:
+      - sh /init-minio.sh
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+        required: true
+    entrypoint:
+      - /bin/sh
+      - -c
+    environment:
+      MINIO_APP_PASSWORD: changeme
+      MINIO_APP_USER: bank_app
+      MINIO_BUCKET: customer-identity-documents
+      MINIO_RETENTION_HOURS: "24"
+      MINIO_ROOT_PASSWORD: changeme
+      MINIO_ROOT_USER: minioadmin
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    networks:
+      bank-usac-local: null
+    restart: "no"
+    volumes:
+      - type: bind
+        source: /Users/marcosbondel/Documents/uni/2026/segundo semestre/SA/lab/Proyecto-SA-B-2/infra/docker/scripts/init-minio.sh
+        target: /init-minio.sh
+        read_only: true
+        bind: {}
+  postgres-account:
+    container_name: postgres-account
+    environment:
+      POSTGRES_DB: account
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_USER: account_app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${ACCOUNT_POSTGRES_USER} -d $${ACCOUNT_POSTGRES_DB}
+      timeout: 5s
+      interval: 5s
+      retries: 10
+      start_period: 10s
+    image: postgres:18.4
+    networks:
+      bank-usac-local: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5434"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: pgdata-account
+        target: /var/lib/postgresql
+        volume: {}
+  postgres-customer:
+    container_name: postgres-customer
+    environment:
+      POSTGRES_DB: customer
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_USER: customer_app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${CUSTOMER_POSTGRES_USER} -d $${CUSTOMER_POSTGRES_DB}
+      timeout: 5s
+      interval: 5s
+      retries: 10
+      start_period: 10s
+    image: postgres:18.4
+    networks:
+      bank-usac-local: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5433"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: pgdata-customer
+        target: /var/lib/postgresql
+        volume: {}
+  postgres-notification-audit:
+    container_name: postgres-notification-audit
+    environment:
+      POSTGRES_DB: notification_audit
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_USER: notification_audit_app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${NOTIFICATION_AUDIT_POSTGRES_USER} -d $${NOTIFICATION_AUDIT_POSTGRES_DB}
+      timeout: 5s
+      interval: 5s
+      retries: 10
+      start_period: 10s
+    image: postgres:18.4
+    networks:
+      bank-usac-local: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5437"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: pgdata-notification-audit
+        target: /var/lib/postgresql
+        volume: {}
+  postgres-payment:
+    container_name: postgres-payment
+    environment:
+      POSTGRES_DB: payment
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_USER: payment_app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${PAYMENT_POSTGRES_USER} -d $${PAYMENT_POSTGRES_DB}
+      timeout: 5s
+      interval: 5s
+      retries: 10
+      start_period: 10s
+    image: postgres:18.4
+    networks:
+      bank-usac-local: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5436"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: pgdata-payment
+        target: /var/lib/postgresql
+        volume: {}
+  postgres-transaction:
+    container_name: postgres-transaction
+    environment:
+      POSTGRES_DB: transaction
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_USER: transaction_app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${TRANSACTION_POSTGRES_USER} -d $${TRANSACTION_POSTGRES_DB}
+      timeout: 5s
+      interval: 5s
+      retries: 10
+      start_period: 10s
+    image: postgres:18.4
+    networks:
+      bank-usac-local: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5435"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: pgdata-transaction
+        target: /var/lib/postgresql
+        volume: {}
+  rabbitmq:
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_PASS: changeme
+      RABBITMQ_DEFAULT_USER: admin
+    healthcheck:
+      test:
+        - CMD
+        - rabbitmq-diagnostics
+        - ping
+      timeout: 5s
+      interval: 5s
+      retries: 10
+      start_period: 15s
+    image: rabbitmq:4.3.4-management
+    networks:
+      bank-usac-local: null
+    ports:
+      - mode: ingress
+        target: 5672
+        published: "5673"
+        protocol: tcp
+      - mode: ingress
+        target: 15672
+        published: "15673"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: rabbitmq-data
+        target: /var/lib/rabbitmq
+        volume: {}
+      - type: bind
+        source: /Users/marcosbondel/Documents/uni/2026/segundo semestre/SA/lab/Proyecto-SA-B-2/infra/docker/rabbitmq/rabbitmq.conf
+        target: /etc/rabbitmq/rabbitmq.conf
+        read_only: true
+        bind: {}
+      - type: bind
+        source: /Users/marcosbondel/Documents/uni/2026/segundo semestre/SA/lab/Proyecto-SA-B-2/infra/docker/rabbitmq/rabbitmq_definitions.json
+        target: /etc/rabbitmq/definitions.json
+        read_only: true
+        bind: {}
+networks:
+  bank-usac-local:
+    name: bank-usac-local
+    driver: bridge
+volumes:
+  minio-data:
+    name: docker_minio-data
+  pgdata-account:
+    name: docker_pgdata-account
+  pgdata-customer:
+    name: docker_pgdata-customer
+  pgdata-notification-audit:
+    name: docker_pgdata-notification-audit
+  pgdata-payment:
+    name: docker_pgdata-payment
+  pgdata-transaction:
+    name: docker_pgdata-transaction
+  rabbitmq-data:
+    name: docker_rabbitmq-data
