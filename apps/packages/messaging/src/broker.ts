@@ -202,6 +202,8 @@ export class MessageBroker {
     validate: MessageValidator | undefined,
   ): Promise<void> {
     const routingKey = message.fields.routingKey;
+    const originalRoutingKey =
+      (message.properties.headers?.['x-original-routing-key'] as string | undefined) ?? routingKey;
     const attempt = this.#retryPolicy.attemptOf(message.properties.headers);
 
     let envelope: MessageEnvelope<unknown>;
@@ -213,7 +215,7 @@ export class MessageBroker {
         attempt,
         kind: 'invalid',
         reason: describe(error),
-        routingKey,
+        routingKey: originalRoutingKey,
       });
       return;
     }
@@ -224,7 +226,7 @@ export class MessageBroker {
         attempt,
         kind: 'invalid',
         reason: verdict.reason,
-        routingKey,
+        routingKey: originalRoutingKey,
       });
       return;
     }
@@ -240,7 +242,7 @@ export class MessageBroker {
           attempt,
           kind: 'handler-error',
           reason: describe(error),
-          routingKey,
+          routingKey: originalRoutingKey,
         });
         return;
       }
@@ -250,7 +252,11 @@ export class MessageBroker {
         message.content,
         {
           ...message.properties,
-          headers: { ...message.properties.headers, [ATTEMPT_HEADER]: attempt + 1 },
+          headers: {
+            ...message.properties.headers,
+            [ATTEMPT_HEADER]: attempt + 1,
+            'x-original-routing-key': originalRoutingKey,
+          },
         },
       );
       channel.ack(message);
