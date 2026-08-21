@@ -1,6 +1,7 @@
 # ADR-011: Ship every diagram as a Lucid document and a Mermaid source
 
-- **Status**: Proposed
+- **Status**: Superseded
+- **Superseded by**: [ADR-013](ADR-013-diagramming-toolchain-revision.md)
 - **Date**: 2026-08-15
 - **Deciders**: Bank USAC team (approved in the `feature/T-03` pull request)
 - **Assignment reference**: Not constrained by the assignment; team decision. The assignment
