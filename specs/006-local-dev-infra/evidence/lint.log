@@ -5,11 +5,11 @@ apps/web lint: Done
 apps/packages/contracts lint$ eslint .
 apps/packages/contracts lint: Done
 apps/packages/messaging lint$ eslint .
-apps/services/account-service lint$ eslint .
 apps/services/notification-audit-service lint$ eslint .
+apps/services/account-service lint$ eslint .
 apps/services/customer-service lint$ eslint .
-apps/services/notification-audit-service lint: Done
 apps/services/customer-service lint: Done
+apps/services/notification-audit-service lint: Done
 apps/services/account-service lint: Done
 apps/services/payment-service lint$ eslint .
 apps/services/transaction-service lint$ eslint .
