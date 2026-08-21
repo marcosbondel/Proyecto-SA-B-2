@@ -1,0 +1,24 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title Bank USAC — Diagrama de Contexto (C4 Nivel 1)
+
+Person(cliente, "Cliente [CLIENTE]", "Cuentahabiente. Opera sobre sus propias cuentas: consulta saldo, transfiere y gestiona datos.")
+Person(cajero, "Cajero Receptor [CAJERO_RECEPTOR]", "Personal en ventanilla. Registra clientes, abre cuentas y transfiere por el cliente presente.")
+Person(admin, "Administrador [ADMINISTRADOR]", "Supervisa: gestiona roles, activa/desactiva cuentas y consulta la auditoría.")
+
+System(bankusac, "Bank USAC", "Sistema bancario distribuido. Gestiona clientes, cuentas, transferencias, pagos y auditoría. Único acceso web; autentica y coordina de forma asíncrona los servicios.")
+
+System_Ext(correo, "Servicio de Correo Electrónico ", "Entrega al cliente el enlace de activación de cuenta.")
+System_Ext(proveedorPagos, "Proveedor de Pagos ", "Procesa pagos externos que el banco no resuelve internamente.")
+
+Rel(cliente, bankusac, "Consulta y gestiona sus cuentas", "Interacción de usuario")
+Rel(cajero, bankusac, "Atiende clientes en ventanilla", "Interacción de usuario")
+Rel(admin, bankusac, "Supervisa cuentas y auditoría", "Interacción de usuario")
+
+Rel(bankusac, correo, "Solicita correo de activación")
+Rel(correo, cliente, "Entrega enlace de activación ")
+Rel(bankusac, proveedorPagos, "Procesa pagos externos")
+
+SHOW_LEGEND()
+@enduml
