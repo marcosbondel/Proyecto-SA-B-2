@@ -26,8 +26,8 @@ apps/web build: node_modules/.cache/nuxt/.nuxt/dist/client/_nuxt/Dw9C1B2-.js    
 apps/web build: node_modules/.cache/nuxt/.nuxt/dist/client/_nuxt/BtsCWUBO.js             27.43 kB │ gzip: 10.67 kB
 apps/web build: node_modules/.cache/nuxt/.nuxt/dist/client/_nuxt/DOckmFBn.js             74.95 kB │ gzip: 27.04 kB
 apps/web build: node_modules/.cache/nuxt/.nuxt/dist/client/_nuxt/bIjCdrsT.js             76.37 kB │ gzip: 29.56 kB
-apps/web build: ℹ ✓ built in 262ms
-apps/web build: ✔ Client built in 283ms
+apps/web build: ℹ ✓ built in 293ms
+apps/web build: ✔ Client built in 323ms
 apps/web build: ℹ Building server...
 apps/web build: ℹ vite v8.2.1 building ssr environment for production...
 apps/web build: [2K
@@ -46,8 +46,8 @@ apps/web build: node_modules/.cache/nuxt/.nuxt/dist/server/_nuxt/render-BI-Mqx88
 apps/web build: node_modules/.cache/nuxt/.nuxt/dist/server/_nuxt/head-EGdyUh8U.js                     12.76 kB │ map:  36.40 kB
 apps/web build: node_modules/.cache/nuxt/.nuxt/dist/server/_nuxt/components-Do3KHqHg.js               18.80 kB │ map:  38.08 kB
 apps/web build: node_modules/.cache/nuxt/.nuxt/dist/server/server.mjs                                129.54 kB │ map: 306.00 kB
-apps/web build: ℹ ✓ built in 148ms
-apps/web build: ✔ Server built in 153ms
+apps/web build: ℹ ✓ built in 153ms
+apps/web build: ✔ Server built in 158ms
 apps/web build: [nitro] ✔ Generated public .output/public
 apps/web build: [nitro] ℹ Building Nuxt Nitro server (preset: node-server, compatibility date: 2025-07-07)
 apps/web build: [nitro] ✔ Nuxt Nitro server built
@@ -75,7 +75,7 @@ apps/web build:   ├─ .output/server/chunks/virtual/entry.mjs (155 kB) (42.8 
 apps/web build:   ├─ .output/server/chunks/virtual/entry.mjs.map (10.9 kB) (1.72 kB gzip)
 apps/web build:   ├─ .output/server/chunks/virtual/precomputed.mjs (8.08 kB) (1.11 kB gzip)
 apps/web build:   ├─ .output/server/chunks/virtual/precomputed.mjs.map (181 B) (150 B gzip)
-apps/web build:   ├─ .output/server/chunks/virtual/styles.mjs (1.24 kB) (373 B gzip)
+apps/web build:   ├─ .output/server/chunks/virtual/styles.mjs (1.24 kB) (374 B gzip)
 apps/web build:   ├─ .output/server/chunks/virtual/styles.mjs.map (164 B) (142 B gzip)
 apps/web build:   ├─ .output/server/index.mjs (573 B) (276 B gzip)
 apps/web build:   └─ .output/server/package.json (1.17 kB) (496 B gzip)
@@ -87,15 +87,15 @@ apps/web build: Done
 apps/packages/contracts build$ tsc -p tsconfig.build.json
 apps/packages/contracts build: Done
 apps/packages/messaging build$ tsc -p tsconfig.build.json
-apps/services/customer-service build$ nest build
 apps/services/account-service build$ nest build
+apps/services/customer-service build$ nest build
 apps/services/notification-audit-service build$ nest build
 apps/packages/messaging build: Done
 apps/services/payment-service build$ nest build
-apps/services/notification-audit-service build: Done
-apps/services/transaction-service build$ nest build
-apps/services/account-service build: Done
 apps/services/customer-service build: Done
+apps/services/transaction-service build$ nest build
+apps/services/notification-audit-service build: Done
+apps/services/account-service build: Done
 apps/services/payment-service build: Done
 apps/services/transaction-service build: Done
 apps/gateway build$ nest build
