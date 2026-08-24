@@ -1,0 +1,96 @@
+@startuml 03-c4-contenedores
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+' Configuraciones estéticas para evitar líneas cruzadas
+LAYOUT_TOP_DOWN()
+SHOW_PERSON_OUTLINE()
+skinparam wrapWidth 300
+skinparam maxMessageSize 150
+
+title Diagrama de Contenedores (Nivel 2) - Bank USAC
+
+' --- 1. CAPA SUPERIOR: ACTORES (Heredados exactos del C1) ---
+together {
+    Person(cliente, "Cliente [CLIENTE]", "Cuentahabiente. Opera sobre sus propias cuentas: consulta saldo, transfiere y gestiona datos.")
+    Person(cajero, "Cajero Receptor [CAJERO_RECEPTOR]", "Personal en ventanilla. Registra clientes, abre cuentas y transfiere por el cliente presente.")
+    Person(admin, "Administrador [ADMINISTRADOR]", "Supervisa: gestiona roles, activa/desactiva cuentas y consulta la auditoría.")
+}
+
+' --- 2. CAPA INTERMEDIA: ZOOM A "Bank USAC" ---
+System_Boundary(k8s, "Bank USAC (Kubernetes Cluster)") {
+    Container(frontend, "Frontend Web", "Nuxt 4 + Vue 3 + @nuxt/ui", "Único cliente externo del Gateway; custodia el JWT de sesión.")
+    Container(gateway, "API Gateway", "NestJS", "ÚNICO punto de entrada. Autentica y traduce HTTP síncrono a asíncrono. Sin BD.")
+    
+    Container(rabbitmq, "Message Broker", "RabbitMQ", "Columna vertebral de mensajería asíncrona.")
+
+    ' Agrupamos los microservicios en fila horizontal
+    together {
+        Container(customer, "Customer Service", "NestJS", "Identidad del cliente.")
+        Container(account, "Account Service", "NestJS", "Cuentas y balances.")
+        Container(transaction, "Transaction Service", "NestJS", "Orquestación de transacciones.")
+        Container(payment, "Payment Service", "NestJS", "Procesamiento de pagos y reintentos.")
+        Container(notification, "Notification & Audit", "NestJS", "Notificaciones y auditoría (terminal).")
+    }
+}
+
+' --- 3. CAPA INFERIOR: BASES DE DATOS EXTERNAS ---
+' Cumplimiento explícito de la rúbrica: externas al clúster
+together {
+    ContainerDb(customer_db, "Customer DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+    ContainerDb(account_db, "Account DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+    ContainerDb(transaction_db, "Transaction DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+    ContainerDb(payment_db, "Payment DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+    ContainerDb(notification_db, "Notification DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+}
+
+' --- SISTEMAS EXTERNOS (Heredados del C1) ---
+System_Ext(proveedorPagos, "Proveedor de Pagos", "Procesa pagos externos que el banco no resuelve internamente.")
+System_Ext(correo, "Servicio de Correo Electrónico", "Entrega al cliente el enlace de activación de cuenta.")
+
+
+' =========================================================
+' RELACIONES
+' =========================================================
+
+' Actores -> Frontend (Hacia abajo)
+Rel_D(cliente, frontend, "Consulta y gestiona sus cuentas", "HTTPS")
+Rel_D(cajero, frontend, "Atiende clientes en ventanilla", "HTTPS")
+Rel_D(admin, frontend, "Supervisa cuentas y auditoría", "HTTPS")
+
+' Frontend -> Gateway (Hacia abajo)
+Rel_D(frontend, gateway, "Consume la API REST portando el JWT", "HTTPS / REST / JSON")
+
+' Gateway -> Microservicios (Hacia abajo)
+Rel_D(gateway, customer, "Delega identidad", "AMQP | cmd: customer.register\ncmd: customer.verify-email\ncmd: customer.update\ncmd: customer.validate-identity\nreq/rep: customer.authenticate")
+Rel_D(gateway, account, "Delega cuentas", "AMQP | cmd: account.create\ncmd: account.set-status\nreq/rep: account.balance.query")
+Rel_D(gateway, transaction, "Delega transferencias", "AMQP | cmd: transfer.requested")
+
+' Sagas de Transacción (Horizontales)
+Rel_R(transaction, account, "Solicita afectación de saldo", "AMQP | cmd: account.debit.requested\ncmd: account.credit.requested\ncmd: account.debit.compensation.requested")
+Rel_L(account, transaction, "Emite resultado de afectación", "AMQP | ev: account.debited\nev: account.debit.rejected\nev: account.credited\nev: account.credit.rejected\nev: account.debit.compensated")
+
+Rel_R(transaction, payment, "Solicita procesamiento de pago", "AMQP | cmd: payment.requested")
+Rel_L(payment, transaction, "Emite estado de pago", "AMQP | ev: payment.succeeded\nev: payment.failed")
+
+' Auditoría (Hacia Notificación, que es terminal)
+Rel_D(gateway, notification, "Emite auditoría", "AMQP | evento")
+Rel_D(customer, notification, "Emite auditoría", "AMQP | evento")
+Rel_D(account, notification, "Emite auditoría", "AMQP | evento")
+Rel_D(transaction, notification, "Emite auditoría", "AMQP | evento")
+Rel_D(payment, notification, "Emite auditoría", "AMQP | evento")
+
+' Microservicios -> Bases de Datos (Estrictamente hacia abajo)
+Rel_D(customer, customer_db, "Lee/Escribe", "TCP/IP")
+Rel_D(account, account_db, "Lee/Escribe", "TCP/IP")
+Rel_D(transaction, transaction_db, "Lee/Escribe", "TCP/IP")
+Rel_D(payment, payment_db, "Lee/Escribe", "TCP/IP")
+Rel_D(notification, notification_db, "Escribe", "TCP/IP")
+
+' Microservicios -> Sistemas Externos
+Rel_D(payment, proveedorPagos, "Procesa pagos externos", "API")
+Rel_D(notification, correo, "Solicita correo de activación", "SMTP")
+
+' Flujo Externo -> Actor (Trazabilidad del C1)
+Rel(correo, cliente, "Entrega enlace de activación", "Correo electrónico")
+
+@enduml
