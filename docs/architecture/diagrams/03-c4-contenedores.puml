@@ -1,96 +1,87 @@
 @startuml 03-c4-contenedores
+
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 
-' Configuraciones estéticas para evitar líneas cruzadas
-LAYOUT_TOP_DOWN()
-SHOW_PERSON_OUTLINE()
-skinparam wrapWidth 300
-skinparam maxMessageSize 150
+title Diagrama de Contenedores - Bank USAC
 
-title Diagrama de Contenedores (Nivel 2) - Bank USAC
+LAYOUT_LEFT_RIGHT()
+UpdateElementStyle("person", $bgColor="#FFFFFF", $fontColor="#398819", $borderColor="#398819")
+UpdateElementStyle("system", $bgColor="#FFFFFF", $fontColor="#EF9425", $borderColor="#EF9425")
+UpdateElementStyle("external_system", $bgColor="#FFFFFF", $fontColor="#C11926", $borderColor="#C11926")
+UpdateElementStyle("container", $bgColor="#FFFFFF", $fontColor="#1168BD", $borderColor="#1168BD")
+UpdateElementStyle("database", $bgColor="#FFFFFF", $fontColor="#1168BD", $borderColor="#1168BD")
 
-' --- 1. CAPA SUPERIOR: ACTORES (Heredados exactos del C1) ---
-together {
-    Person(cliente, "Cliente [CLIENTE]", "Cuentahabiente. Opera sobre sus propias cuentas: consulta saldo, transfiere y gestiona datos.")
-    Person(cajero, "Cajero Receptor [CAJERO_RECEPTOR]", "Personal en ventanilla. Registra clientes, abre cuentas y transfiere por el cliente presente.")
-    Person(admin, "Administrador [ADMINISTRADOR]", "Supervisa: gestiona roles, activa/desactiva cuentas y consulta la auditoría.")
-}
+Person(cliente, "Cliente", "Rol CLIENTE: consulta saldo, transfiere y gestiona sus datos.")
+Person(cajero, "Cajero Receptor", "Rol CAJERO_RECEPTOR: atiende clientes en ventanilla.")
+Person(admin, "Administrador", "Rol ADMINISTRADOR: supervisa clientes, cuentas y auditoría.")
 
-' --- 2. CAPA INTERMEDIA: ZOOM A "Bank USAC" ---
-System_Boundary(k8s, "Bank USAC (Kubernetes Cluster)") {
-    Container(frontend, "Frontend Web", "Nuxt 4 + Vue 3 + @nuxt/ui", "Único cliente externo del Gateway; custodia el JWT de sesión.")
-    Container(gateway, "API Gateway", "NestJS", "ÚNICO punto de entrada. Autentica y traduce HTTP síncrono a asíncrono. Sin BD.")
-    
-    Container(rabbitmq, "Message Broker", "RabbitMQ", "Columna vertebral de mensajería asíncrona.")
+System_Ext(correo, "Servicio de Correo Electrónico (Simulado)", "Entrega el enlace de activación de cuenta.")
+System_Ext(proveedor, "Proveedor de Pagos (Simulado)", "Procesa pagos externos.")
 
-    ' Agrupamos los microservicios en fila horizontal
-    together {
-        Container(customer, "Customer Service", "NestJS", "Identidad del cliente.")
-        Container(account, "Account Service", "NestJS", "Cuentas y balances.")
-        Container(transaction, "Transaction Service", "NestJS", "Orquestación de transacciones.")
-        Container(payment, "Payment Service", "NestJS", "Procesamiento de pagos y reintentos.")
-        Container(notification, "Notification & Audit", "NestJS", "Notificaciones y auditoría (terminal).")
+System_Boundary(bankusac, "Bank USAC") {
+    Boundary(cluster, "Kubernetes Cluster") {
+        Container(frontend, "Frontend", "Nuxt 4 + @nuxt/ui", "Interfaz de los tres actores; sin lógica de negocio.", $tags="Web Browser")
+        Container(gateway, "API Gateway", "NestJS", "Único entrypoint; valida JWT, traduce HTTP a AMQP y no tiene BD.", $tags="Server-Side Application")
+
+        Container(customer, "Customer Service", "NestJS", "Identidad del cliente.", $tags="Server-Side Application")
+        Container(account, "Account Service", "NestJS", "Cuentas y balances.", $tags="Server-Side Application")
+        Container(transaction, "Transaction Service", "NestJS", "Orquestación de transferencias y Saga.", $tags="Server-Side Application")
+        Container(payment, "Payment Service", "NestJS", "Procesamiento de pagos y reintentos.", $tags="Server-Side Application")
+        Container(notification, "Notification & Audit Service", "NestJS", "Auditoría y notificaciones; terminal.", $tags="Server-Side Application")
+    }
+
+    Boundary(infrastructure, "Infraestructura externa al cluster: Docker en el host") {
+        Container(rabbitmq, "RabbitMQ", "RabbitMQ 4.3.4-management / AMQP", "Broker central de mensajería asíncrona, fuera de kind.", $tags="Message Broker")
+        ContainerDb(customer_db, "Customer DB", "PostgreSQL", "Base exclusiva de Customer Service.")
+        ContainerDb(account_db, "Account DB", "PostgreSQL", "Base exclusiva de Account Service.")
+        ContainerDb(transaction_db, "Transaction DB", "PostgreSQL", "Base exclusiva de Transaction Service.")
+        ContainerDb(payment_db, "Payment DB", "PostgreSQL", "Base exclusiva de Payment Service.")
+        ContainerDb(notification_db, "Notification DB", "PostgreSQL", "Base exclusiva de Notification & Audit Service.")
     }
 }
 
-' --- 3. CAPA INFERIOR: BASES DE DATOS EXTERNAS ---
-' Cumplimiento explícito de la rúbrica: externas al clúster
-together {
-    ContainerDb(customer_db, "Customer DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
-    ContainerDb(account_db, "Account DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
-    ContainerDb(transaction_db, "Transaction DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
-    ContainerDb(payment_db, "Payment DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
-    ContainerDb(notification_db, "Notification DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
-}
+Rel(cliente, frontend, "Interacción de usuario | UI")
+Rel(cajero, frontend, "Interacción de usuario | UI")
+Rel(admin, frontend, "Interacción de usuario | UI")
+Rel(frontend, gateway, "Frontend -> API Gateway | HTTPS/REST/JSON | request síncrono")
 
-' --- SISTEMAS EXTERNOS (Heredados del C1) ---
-System_Ext(proveedorPagos, "Proveedor de Pagos", "Procesa pagos externos que el banco no resuelve internamente.")
-System_Ext(correo, "Servicio de Correo Electrónico", "Entrega al cliente el enlace de activación de cuenta.")
+Rel(gateway, rabbitmq, "Publica comandos de Customer y Account | AMQP | comando/request-reply | correlationId")
+Rel(rabbitmq, customer, "Gateway -> Customer: customer.register, customer.authenticate (request/reply), customer.verify-email, customer.update, customer.validate-identity | AMQP | comando/request-reply | correlationId")
+Rel(customer, rabbitmq, "Publica respuesta customer.authenticate | AMQP | request-reply | correlationId")
+Rel(rabbitmq, gateway, "Customer -> Gateway: customer.authenticate (request/reply) | AMQP | respuesta | correlationId")
 
+Rel(rabbitmq, account, "Gateway -> Account: account.create, account.balance.query (request/reply), account.set-status | AMQP | comando/request-reply | correlationId")
+Rel(account, rabbitmq, "Publica respuesta account.balance.query | AMQP | request-reply | correlationId")
+Rel(rabbitmq, gateway, "Account -> Gateway: account.balance.query (request/reply) | AMQP | respuesta | correlationId")
 
-' =========================================================
-' RELACIONES
-' =========================================================
+Rel(gateway, rabbitmq, "Publica transfer.requested | AMQP | comando | correlationId")
+Rel(rabbitmq, transaction, "Gateway -> Transaction: transfer.requested | AMQP | comando | correlationId")
 
-' Actores -> Frontend (Hacia abajo)
-Rel_D(cliente, frontend, "Consulta y gestiona sus cuentas", "HTTPS")
-Rel_D(cajero, frontend, "Atiende clientes en ventanilla", "HTTPS")
-Rel_D(admin, frontend, "Supervisa cuentas y auditoría", "HTTPS")
+Rel(transaction, rabbitmq, "Publica account.debit.requested, account.credit.requested, account.debit.compensation.requested | AMQP | comandos | correlationId")
+Rel(rabbitmq, account, "Transaction -> Account: account.debit.requested, account.credit.requested, account.debit.compensation.requested | AMQP | comandos | correlationId")
+Rel(account, rabbitmq, "Publica account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated | AMQP | eventos | correlationId")
+Rel(rabbitmq, transaction, "Account -> Transaction: account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated | AMQP | eventos | correlationId")
 
-' Frontend -> Gateway (Hacia abajo)
-Rel_D(frontend, gateway, "Consume la API REST portando el JWT", "HTTPS / REST / JSON")
+Rel(transaction, rabbitmq, "Publica payment.requested | AMQP | comando | correlationId")
+Rel(rabbitmq, payment, "Transaction -> Payment: payment.requested | AMQP | comando | correlationId")
+Rel(payment, rabbitmq, "Publica payment.succeeded, payment.failed | AMQP | eventos | correlationId")
+Rel(rabbitmq, transaction, "Payment -> Transaction: payment.succeeded, payment.failed | AMQP | eventos | correlationId")
 
-' Gateway -> Microservicios (Hacia abajo)
-Rel_D(gateway, customer, "Delega identidad", "AMQP | cmd: customer.register\ncmd: customer.verify-email\ncmd: customer.update\ncmd: customer.validate-identity\nreq/rep: customer.authenticate")
-Rel_D(gateway, account, "Delega cuentas", "AMQP | cmd: account.create\ncmd: account.set-status\nreq/rep: account.balance.query")
-Rel_D(gateway, transaction, "Delega transferencias", "AMQP | cmd: transfer.requested")
+Rel(gateway, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(customer, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(account, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(transaction, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(payment, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(rabbitmq, notification, "Todos los servicios -> Notification & Audit Service: audit.recorded | AMQP | evento | correlationId")
 
-' Sagas de Transacción (Horizontales)
-Rel_R(transaction, account, "Solicita afectación de saldo", "AMQP | cmd: account.debit.requested\ncmd: account.credit.requested\ncmd: account.debit.compensation.requested")
-Rel_L(account, transaction, "Emite resultado de afectación", "AMQP | ev: account.debited\nev: account.debit.rejected\nev: account.credited\nev: account.credit.rejected\nev: account.debit.compensated")
+Rel(rabbitmq, correo, "Bank USAC -> Correo: activación de cuenta | AMQP | evento asíncrono | simulado")
+Rel(payment, proveedor, "Payment Service -> Proveedor de Pagos: payment.requested | API | solicitud externa | simulado")
 
-Rel_R(transaction, payment, "Solicita procesamiento de pago", "AMQP | cmd: payment.requested")
-Rel_L(payment, transaction, "Emite estado de pago", "AMQP | ev: payment.succeeded\nev: payment.failed")
+Rel(customer, customer_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
+Rel(account, account_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
+Rel(transaction, transaction_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
+Rel(payment, payment_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
+Rel(notification, notification_db, "Escribe únicamente su base | TCP/IP | acceso a datos")
 
-' Auditoría (Hacia Notificación, que es terminal)
-Rel_D(gateway, notification, "Emite auditoría", "AMQP | evento")
-Rel_D(customer, notification, "Emite auditoría", "AMQP | evento")
-Rel_D(account, notification, "Emite auditoría", "AMQP | evento")
-Rel_D(transaction, notification, "Emite auditoría", "AMQP | evento")
-Rel_D(payment, notification, "Emite auditoría", "AMQP | evento")
-
-' Microservicios -> Bases de Datos (Estrictamente hacia abajo)
-Rel_D(customer, customer_db, "Lee/Escribe", "TCP/IP")
-Rel_D(account, account_db, "Lee/Escribe", "TCP/IP")
-Rel_D(transaction, transaction_db, "Lee/Escribe", "TCP/IP")
-Rel_D(payment, payment_db, "Lee/Escribe", "TCP/IP")
-Rel_D(notification, notification_db, "Escribe", "TCP/IP")
-
-' Microservicios -> Sistemas Externos
-Rel_D(payment, proveedorPagos, "Procesa pagos externos", "API")
-Rel_D(notification, correo, "Solicita correo de activación", "SMTP")
-
-' Flujo Externo -> Actor (Trazabilidad del C1)
-Rel(correo, cliente, "Entrega enlace de activación", "Correo electrónico")
-
+SHOW_LEGEND()
 @enduml
