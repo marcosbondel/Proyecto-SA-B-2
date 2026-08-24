@@ -1,135 +1,161 @@
+%% UML 2 Deployment Diagram - Bank USAC
+%% Mermaid has no native UML 2 Deployment notation; this flowchart uses
+%% nested boundaries and UML/Kubernetes labels to keep the same model.
 flowchart TB
-    %% Definición de estilos para claridad visual
-    classDef host fill:#f0f4f8,stroke:#000,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef k8s fill:#e6f7ff,stroke:#0050b3,stroke-width:2px;
-    classDef k8sNode fill:#ffffff,stroke:#0050b3,stroke-width:2px;
-    classDef namespace fill:#f9f0ff,stroke:#722ed1,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef db fill:#ffccc7,stroke:#a8071a,stroke-width:1px;
-    classDef broker fill:#fffb8f,stroke:#ad8b00,stroke-width:1px;
-    classDef pod fill:#eaff8f,stroke:#5b8c00,stroke-width:1px;
-    classDef svc fill:#bae7ff,stroke:#0050b3,stroke-width:1px;
-    classDef config fill:#d9d9d9,stroke:#595959,stroke-width:1px;
-    classDef k8sCtrl fill:#d4b106,stroke:#876800,stroke-width:1px,color:#fff;
 
-    subgraph LocalHost ["🖥️ Host Machine (Entorno Local)"]
-        
-        subgraph DockerCompose ["🐳 Docker Engine (infra/docker)"]
+    subgraph host["Developer Host · «device»"]
+        direction TB
+
+        subgraph docker["Docker Engine · «executionEnvironment»"]
             direction TB
-            subgraph DBs ["Bases de Datos (PostgreSQL 18.4)"]
-                DB_Cust[("Customer DB\n(db: customer_db)")]:::db
-                DB_Acc[("Account DB\n(db: account_db)")]:::db
-                DB_Tx[("Transaction DB\n(db: tx_db)")]:::db
-                DB_Pay[("Payment DB\n(db: payment_db)")]:::db
-                DB_Notif[("Notification DB\n(db: notif_db)")]:::db
-            end
-            Broker{{"RabbitMQ 4.3.4-management\n(AMQP Broker)"}}:::broker
+            rabbitmq["RabbitMQ<br/>«node»<br/>RabbitMQ 4.3.4-management"]:::external
+            rabbit_image["rabbitmq:4.3.4-management<br/>«artifact»"]:::artifact
+
+            customer_db["Customer DB<br/>«node»<br/>PostgreSQL 18.4"]:::external
+            customer_db_image["postgres:18.4<br/>«artifact»"]:::artifact
+            account_db["Account DB<br/>«node»<br/>PostgreSQL 18.4"]:::external
+            account_db_image["postgres:18.4<br/>«artifact»"]:::artifact
+            transaction_db["Transaction DB<br/>«node»<br/>PostgreSQL 18.4"]:::external
+            transaction_db_image["postgres:18.4<br/>«artifact»"]:::artifact
+            payment_db["Payment DB<br/>«node»<br/>PostgreSQL 18.4"]:::external
+            payment_db_image["postgres:18.4<br/>«artifact»"]:::artifact
+            notification_db["Notification DB<br/>«node»<br/>PostgreSQL 18.4"]:::external
+            notification_db_image["postgres:18.4<br/>«artifact»"]:::artifact
+
+            deployment_properties["<b>Deployment properties · «note»</b><br/>RabbitMQ: container rabbitmq · AMQP 5672 · management 15672<br/>Customer DB: customer-db · bankusac_customer · customer_user · host mapping 5433<br/>Account DB: account-db · bankusac_account · account_user · host mapping 5434<br/>Transaction DB: transaction-db · bankusac_transaction · transaction_user · host mapping 5435<br/>Payment DB: payment-db · bankusac_payment · payment_user · host mapping 5436<br/>Notification DB: notification-db · bankusac_notification · notification_user · host mapping 5437"]:::note
+
+            rabbit_image -. "runs as" .-> rabbitmq
+            customer_db_image -. "runs as" .-> customer_db
+            account_db_image -. "runs as" .-> account_db
+            transaction_db_image -. "runs as" .-> transaction_db
+            payment_db_image -. "runs as" .-> payment_db
+            notification_db_image -. "runs as" .-> notification_db
         end
 
-        subgraph K8sCluster ["☸️ Kubernetes Cluster (kind) - ⚠️ Limitación: Single-Node"]
-            HelmRelease[["📦 Helm Release\n(infra/k8s/helm/bank-usac)"]]:::config
+        subgraph kind["kind cluster · «node» · single-node local limitation"]
+            direction TB
+            subgraph worker["kind-worker · «device»"]
+                direction TB
+                subgraph namespace["Namespace bank-usac · «executionEnvironment»"]
+                    direction TB
+                    namespace_resource["Namespace resource<br/>«executionEnvironment»"]:::runtime
 
-            subgraph K8sNode ["🖥️ Node: kind-control-plane"]
-                
-                Kubelet("⚙️ Kubelet\n(K8s Control Plane)"):::k8sCtrl
-
-                subgraph K8sNamespace ["🏷️ Namespace: bank-usac"]
-
-                    CM["📄 ConfigMap\n(Shared configs)"]:::config
-                    Secret["🔐 Secret\n(NO versionado)"]:::config
-
-                    Ingress{{"🌐 Ingress / port-forward\n(Exposición pública)"}}:::svc
-
-                    subgraph DepGw ["Deployment: gateway"]
-                        PodGw("Pod(s): gateway\nReplicaCount: 1"):::pod
+                    subgraph dep_frontend["Deployment/frontend · «deployment» · replicas=1"]
+                        direction TB
+                        pod_frontend["Pod/frontend · «executionEnvironment»"]:::pod
+                        image_frontend["«artifact»<br/>bank-usac/frontend:&lt;git-sha&gt;<br/>Nuxt 4"]:::artifact
+                        image_frontend -. "«deploy»" .-> pod_frontend
                     end
-                    SvcGw[["Service: gateway-svc\n(ClusterIP)"]]:::svc
-                    SvcGw -.-> PodGw
-
-                    subgraph DepFront ["Deployment: web (frontend)"]
-                        PodFront("Pod(s): web\nReplicaCount: 1"):::pod
+                    subgraph dep_gateway["Deployment/gateway · «deployment» · replicas=1"]
+                        direction TB
+                        pod_gateway["Pod/gateway · «executionEnvironment»"]:::pod
+                        image_gateway["«artifact»<br/>bank-usac/gateway:&lt;git-sha&gt;<br/>NestJS"]:::artifact
+                        image_gateway -. "«deploy»" .-> pod_gateway
                     end
-                    SvcFront[["Service: web-svc\n(ClusterIP)"]]:::svc
-                    SvcFront -.-> PodFront
-
-                    %% Microservicios backend (Solo reciben tráfico de Kubelet)
-                    subgraph DepCust ["Deployment: customer-service"]
-                        PodCust("Pod(s): customer-service\nReplicaCount: 1"):::pod
+                    subgraph dep_customer["Deployment/customer · «deployment» · replicas=1"]
+                        direction TB
+                        pod_customer["Pod/customer · «executionEnvironment»"]:::pod
+                        image_customer["«artifact»<br/>bank-usac/customer:&lt;git-sha&gt;<br/>NestJS"]:::artifact
+                        image_customer -. "«deploy»" .-> pod_customer
                     end
-                    SvcCust[["Service: customer-svc\n(ClusterIP)"]]:::svc
-                    SvcCust -.-> PodCust
-
-                    subgraph DepAcc ["Deployment: account-service"]
-                        PodAcc("Pod(s): account-service\nReplicaCount: 1"):::pod
+                    subgraph dep_account["Deployment/account · «deployment» · replicas=1"]
+                        direction TB
+                        pod_account["Pod/account · «executionEnvironment»"]:::pod
+                        image_account["«artifact»<br/>bank-usac/account:&lt;git-sha&gt;<br/>NestJS"]:::artifact
+                        image_account -. "«deploy»" .-> pod_account
                     end
-                    SvcAcc[["Service: account-svc\n(ClusterIP)"]]:::svc
-                    SvcAcc -.-> PodAcc
-
-                    subgraph DepTx ["Deployment: transaction-service"]
-                        PodTx("Pod(s): transaction-service\nReplicaCount: 1"):::pod
+                    subgraph dep_transaction["Deployment/transaction · «deployment» · replicas=1"]
+                        direction TB
+                        pod_transaction["Pod/transaction · «executionEnvironment»"]:::pod
+                        image_transaction["«artifact»<br/>bank-usac/transaction:&lt;git-sha&gt;<br/>NestJS"]:::artifact
+                        image_transaction -. "«deploy»" .-> pod_transaction
                     end
-                    SvcTx[["Service: transaction-svc\n(ClusterIP)"]]:::svc
-                    SvcTx -.-> PodTx
-
-                    subgraph DepPay ["Deployment: payment-service"]
-                        PodPay("Pod(s): payment-service\nReplicaCount: 1"):::pod
+                    subgraph dep_payment["Deployment/payment · «deployment» · replicas=1"]
+                        direction TB
+                        pod_payment["Pod/payment · «executionEnvironment»"]:::pod
+                        image_payment["«artifact»<br/>bank-usac/payment:&lt;git-sha&gt;<br/>NestJS"]:::artifact
+                        image_payment -. "«deploy»" .-> pod_payment
                     end
-                    SvcPay[["Service: payment-svc\n(ClusterIP)"]]:::svc
-                    SvcPay -.-> PodPay
-
-                    subgraph DepNotif ["Deployment: notification-audit-service"]
-                        PodNotif("Pod(s): notification-audit-service\nReplicaCount: 1"):::pod
+                    subgraph dep_notification["Deployment/notification-audit · «deployment» · replicas=1"]
+                        direction TB
+                        pod_notification["Pod/notification-audit · «executionEnvironment»"]:::pod
+                        image_notification["«artifact»<br/>bank-usac/notification:&lt;git-sha&gt;<br/>NestJS"]:::artifact
+                        image_notification -. "«deploy»" .-> pod_notification
                     end
-                    SvcNotif[["Service: notification-svc\n(ClusterIP)"]]:::svc
-                    SvcNotif -.-> PodNotif
+
+                    svc_frontend["Service/frontend<br/>«service»"]:::service
+                    svc_gateway["Service/gateway<br/>«service»"]:::service
+                    svc_customer["Service/customer<br/>«service»"]:::service
+                    svc_account["Service/account<br/>«service»"]:::service
+                    svc_transaction["Service/transaction<br/>«service»"]:::service
+                    svc_payment["Service/payment<br/>«service»"]:::service
+                    svc_notification["Service/notification-audit<br/>«service»"]:::service
+
+                    configmap["ConfigMap/bank-usac-config<br/>«artifact»"]:::config
+                    secret["Secret/bank-usac-secrets<br/>«artifact»"]:::secret
+                    kubernetes_properties["<b>Kubernetes properties · «note»</b><br/>Frontend/Gateway: exposed with kubectl port-forward<br/>Other Services: ClusterIP<br/>ConfigMap: non-sensitive runtime configuration<br/>Secret: JWT, database and RabbitMQ credentials<br/>Secret values are not versioned<br/>Dashed ConfigMap/Secret links reference the Pod specifications at runtime"]:::note
+
+                    svc_frontend -->|selects / forwards| pod_frontend
+                    svc_gateway -->|selects / forwards| pod_gateway
+                    svc_customer -->|selects / forwards| pod_customer
+                    svc_account -->|selects / forwards| pod_account
+                    svc_transaction -->|selects / forwards| pod_transaction
+                    svc_payment -->|selects / forwards| pod_payment
+                    svc_notification -->|selects / forwards| pod_notification
                 end
             end
         end
+
+        portforward["kubectl port-forward<br/>«executionEnvironment»"]:::runtime
+        helm_chart["Helm chart<br/>«artifact»<br/>infra/k8s/helm/bank-usac"]:::artifact
     end
 
-    %% Relaciones de K8s y Configuración
-    HelmRelease -. "Administra" .-> K8sNamespace
-    PodCust -. "Consume" .-> CM
-    PodCust -. "Consume" .-> Secret
-    PodAcc -. "Consume" .-> CM
-    PodAcc -. "Consume" .-> Secret
+    helm_chart -. "«deploy» helm upgrade --install" .-> namespace_resource
 
-    %% =========================================================
-    %% TRÁFICO HTTP (Síncrono) - Limitado por README
-    %% =========================================================
-    %% 1. Ingress SOLO al Gateway (Según README k8s)
-    Ingress == "HTTP/REST (Sync)" ==> SvcGw
+    configmap -.-> pod_frontend
+    configmap -.-> pod_gateway
+    configmap -.-> pod_customer
+    configmap -.-> pod_account
+    configmap -.-> pod_transaction
+    configmap -.-> pod_payment
+    configmap -.-> pod_notification
+    secret -.-> pod_gateway
+    secret -.-> pod_customer
+    secret -.-> pod_account
+    secret -.-> pod_transaction
+    secret -.-> pod_payment
+    secret -.-> pod_notification
 
-    %% 2. Gateway enruta UI al frontend
-    PodGw -- "HTTP/REST (Sync)\n[Proxy UI]" --> SvcFront
+    portforward -->|HTTP · localhost:3000| svc_frontend
+    portforward -->|HTTP · localhost:3001| svc_gateway
 
-    %% 3. Monitoreo Interno K8s (Resuelve los services vacíos)
-    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcCust
-    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcAcc
-    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcTx
-    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcPay
-    Kubelet -- "HTTP (Sync)\n[Liveness/Readiness]" --> SvcNotif
+    pod_gateway <-->|AMQP/TCP 5672<br/>host.docker.internal| rabbitmq
+    pod_customer <-->|AMQP/TCP 5672<br/>host.docker.internal| rabbitmq
+    pod_account <-->|AMQP/TCP 5672<br/>host.docker.internal| rabbitmq
+    pod_transaction <-->|AMQP/TCP 5672<br/>host.docker.internal| rabbitmq
+    pod_payment <-->|AMQP/TCP 5672<br/>host.docker.internal| rabbitmq
+    pod_notification <-->|AMQP/TCP 5672<br/>host.docker.internal| rabbitmq
 
-    %% =========================================================
-    %% CONECTIVIDAD HOST <-> CLUSTER (Bases de datos)
-    %% =========================================================
-    PodCust -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5432]" --> DB_Cust
-    PodAcc -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5433]" --> DB_Acc
-    PodTx -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5434]" --> DB_Tx
-    PodPay -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5435]" --> DB_Pay
-    PodNotif -- "TCP/IP JDBC (Sync)\n[host.docker.internal:5436]" --> DB_Notif
+    pod_customer -->|PostgreSQL/TCP<br/>host.docker.internal| customer_db
+    pod_account -->|PostgreSQL/TCP<br/>host.docker.internal| account_db
+    pod_transaction -->|PostgreSQL/TCP<br/>host.docker.internal| transaction_db
+    pod_payment -->|PostgreSQL/TCP<br/>host.docker.internal| payment_db
+    pod_notification -->|PostgreSQL/TCP<br/>host.docker.internal| notification_db
 
-    %% =========================================================
-    %% NEGOCIO ASÍNCRONO (AMQP Broker)
-    %% =========================================================
-    PodGw -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
-    PodCust -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
-    PodAcc -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
-    PodTx -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
-    PodPay -. "AMQP (Async)\n[host.docker.internal:5672]" .-> Broker
-    Broker -. "AMQP (Async)\n[Consume evento]" .-> PodNotif
+    subgraph legend["Notas de modelado"]
+        direction LR
+        uml_node["«device» / «node»<br/>recurso de cómputo"]:::external
+        uml_environment["«executionEnvironment»<br/>entorno de ejecución"]:::runtime
+        uml_artifact["«artifact»<br/>imagen o configuración"]:::artifact
+        uml_path["asociación sólida<br/>communication path"]:::service
+        uml_deploy["dependencia discontinua<br/>«deploy» / referencia de configuración"]:::artifact
+    end
 
-    %% Aplicar clases principales
-    class LocalHost host;
-    class K8sCluster k8s;
-    class K8sNode k8sNode;
-    class K8sNamespace namespace;
+    classDef external fill:#FFF0F0,stroke:#C11926,color:#C11926,stroke-width:1.5px;
+    classDef runtime fill:#EAF2FF,stroke:#1168BD,color:#1168BD,stroke-width:1.5px;
+    classDef pod fill:#FFF8EE,stroke:#EF9425,color:#EF9425,stroke-width:1.5px;
+    classDef service fill:#FFFFFF,stroke:#1168BD,color:#1168BD,stroke-width:1.5px;
+    classDef artifact fill:#FFFFFF,stroke:#398819,color:#398819,stroke-width:1.5px;
+    classDef config fill:#F2FAEF,stroke:#398819,color:#398819,stroke-width:1.5px;
+    classDef secret fill:#FFF0F0,stroke:#C11926,color:#C11926,stroke-width:1.5px;
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555,stroke-width:1.2px,stroke-dasharray: 4 3;
