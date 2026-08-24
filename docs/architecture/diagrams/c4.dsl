@@ -4,97 +4,127 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
 
     model {
         # --- ACTORES ---
-        cliente = person "Cliente [CLIENTE]" "Cuentahabiente. Opera sobre sus propias cuentas: consulta saldo, transfiere y gestiona datos." "Person"
-        cajero = person "Cajero Receptor [CAJERO_RECEPTOR]" "Personal en ventanilla. Registra clientes, abre cuentas y transfiere." "Person"
-        admin = person "Administrador [ADMINISTRADOR]" "Supervisa: gestiona roles, activa/desactiva cuentas y consulta auditoría." "Person"
+        cliente = person "Cliente" "Rol CLIENTE. Cuentahabiente que consulta saldo, transfiere y gestiona sus datos."
+        cajero = person "Cajero Receptor" "Rol CAJERO_RECEPTOR. Personal en ventanilla que atiende a los clientes."
+        admin = person "Administrador" "Rol ADMINISTRADOR. Supervisa clientes, cuentas y auditoría."
 
-        # --- SISTEMAS EXTERNOS ---
-        correo = softwareSystem "Servicio de Correo Electrónico" "Entrega al cliente el enlace de activación de cuenta." "Existing System"
-        proveedor = softwareSystem "Proveedor de Pagos" "Procesa pagos externos que el banco no resuelve internamente." "Existing System"
+        # --- SISTEMAS EXTERNOS SIMULADOS ---
+        correo = softwareSystem "Servicio de Correo Electrónico (Simulado)" "Entrega el enlace de activación de cuenta. Sistema externo simulado."
+        proveedor = softwareSystem "Proveedor de Pagos (Simulado)" "Procesa pagos externos que el banco no resuelve internamente. Sistema externo simulado."
 
-        # --- SISTEMA PRINCIPAL (Bank USAC) ---
+        # --- SISTEMA PRINCIPAL ---
         bankusac = softwareSystem "Bank USAC" "Sistema bancario distribuido. Gestiona clientes, cuentas, transferencias, pagos y auditoría." {
-            
-            group "Kubernetes Cluster" {
-                frontend = container "Frontend Web" "Único cliente externo del Gateway; custodia el JWT de sesión." "Nuxt 4 + Vue 3 + @nuxt/ui" "Web Browser"
-                gateway = container "API Gateway" "ÚNICO punto de entrada al sistema. Autentica y traduce HTTP síncrono a asíncrono. Sin BD." "NestJS" "Server-Side Application"
-                rabbitmq = container "Message Broker" "Columna vertebral de mensajería asíncrona." "RabbitMQ" "Server-Side Application"
 
-                customer = container "Customer Service" "Identidad del cliente." "NestJS" "Server-Side Application"
-                account = container "Account Service" "Cuentas y balances." "NestJS" "Server-Side Application"
-                transaction = container "Transaction Service" "Orquestación de transacciones." "NestJS" "Server-Side Application"
+            group "Kubernetes Cluster" {
+                frontend = container "Frontend" "Interfaz de los tres actores. No contiene lógica de negocio." "Nuxt 4 + @nuxt/ui" "Web Browser"
+                gateway = container "API Gateway" "Único entrypoint. Valida el JWT y traduce HTTP síncrono a mensajes AMQP; sin lógica de negocio ni base de datos." "NestJS" "Server-Side Application"
+
+                customer = container "Customer Service" "Identidad del cliente: registro, validación de identidad y actualización de datos." "NestJS" "Server-Side Application"
+                account = container "Account Service" "Cuentas, balances y desactivación de cuentas inactivas." "NestJS" "Server-Side Application"
+                transaction = container "Transaction Service" "Orquestación de transferencias, validación de fondos y Saga." "NestJS" "Server-Side Application"
                 payment = container "Payment Service" "Procesamiento de pagos y reintentos." "NestJS" "Server-Side Application"
-                notification = container "Notification & Audit" "Notificaciones y auditoría (terminal internamente)." "NestJS" "Server-Side Application"
+                notification = container "Notification & Audit Service" "Registro de eventos y notificaciones. Terminal: no publica eventos hacia otros servicios." "NestJS" "Server-Side Application"
             }
 
-            group "Bases de Datos (Externas al Cluster)" {
-                customer_db = container "Customer DB" "Base de datos exclusiva." "PostgreSQL" "Database"
-                account_db = container "Account DB" "Base de datos exclusiva." "PostgreSQL" "Database"
-                transaction_db = container "Transaction DB" "Base de datos exclusiva." "PostgreSQL" "Database"
-                payment_db = container "Payment DB" "Base de datos exclusiva." "PostgreSQL" "Database"
-                notification_db = container "Notification DB" "Base de datos exclusiva." "PostgreSQL" "Database"
+            group "Infraestructura externa al Cluster (Docker en el host)" {
+                rabbitmq = container "RabbitMQ" "Broker central de mensajería asíncrona, fuera de kind." "RabbitMQ 4.3.4-management / AMQP" "Message Broker"
+                customer_db = container "Customer DB" "Base exclusiva de Customer Service." "PostgreSQL" "Database"
+                account_db = container "Account DB" "Base exclusiva de Account Service." "PostgreSQL" "Database"
+                transaction_db = container "Transaction DB" "Base exclusiva de Transaction Service." "PostgreSQL" "Database"
+                payment_db = container "Payment DB" "Base exclusiva de Payment Service." "PostgreSQL" "Database"
+                notification_db = container "Notification DB" "Base exclusiva de Notification & Audit Service." "PostgreSQL" "Database"
             }
         }
 
-        # --- RELACIONES DEL NIVEL 1 (CONTEXTO) ---
-        cliente -> bankusac "Consulta y gestiona sus cuentas" "HTTPS"
-        cajero -> bankusac "Atiende clientes en ventanilla" "HTTPS"
-        admin -> bankusac "Supervisa cuentas y auditoría" "HTTPS"
-        
-        bankusac -> correo "Solicita correo de activación" "SMTP"
-        correo -> cliente "Entrega enlace de activación" "Correo electrónico"
-        bankusac -> proveedor "Procesa pagos externos" "API"
+        # --- RELACIONES RESUMIDAS DEL CONTEXTO ---
+        cliente -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
+        cajero -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
+        admin -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
+        bankusac -> correo "Solicita activación de cuenta" "AMQP | evento asíncrono | simulado"
+        bankusac -> proveedor "Procesa pagos externos" "API | solicitud externa | simulado"
 
-        # --- RELACIONES DEL NIVEL 2 (CONTENEDORES) ---
-        cliente -> bankusac.frontend "Consulta y gestiona sus cuentas" "HTTPS"
-        cajero -> bankusac.frontend "Atiende clientes en ventanilla" "HTTPS"
-        admin -> bankusac.frontend "Supervisa cuentas y auditoría" "HTTPS"
+        # --- ACTORES Y ENTRYPOINT DEL NIVEL DE CONTENEDORES ---
+        cliente -> bankusac.frontend "Interacción de usuario" "UI | interacción de usuario"
+        cajero -> bankusac.frontend "Interacción de usuario" "UI | interacción de usuario"
+        admin -> bankusac.frontend "Interacción de usuario" "UI | interacción de usuario"
+        bankusac.frontend -> bankusac.gateway "Invoca la API" "HTTPS / REST / JSON | request síncrono"
 
-        bankusac.frontend -> bankusac.gateway "Consume la API REST portando el JWT (Síncrono)" "HTTPS / REST / JSON"
+        # --- GATEWAY <-> RABBITMQ ---
+        # Detalle de mensajes por canal en message-catalog.md; aquí se agrupan por dirección
+        # para que el diagrama de contenedores no repita una flecha por cada tipo de mensaje.
+        bankusac.gateway -> bankusac.rabbitmq "Publica comandos (Customer, Account, Transaction) y eventos de auditoría" "AMQP | comando/evento | correlationId"
+        bankusac.rabbitmq -> bankusac.gateway "Entrega respuestas request/reply: customer.authenticate, account.balance.query" "AMQP | respuesta | correlationId"
 
-        # Gateway a Microservicios
-        bankusac.gateway -> bankusac.customer "Delega identidad" "AMQP | cmd: customer.register, verify-email, update, validate-identity | req/rep: authenticate"
-        bankusac.gateway -> bankusac.account "Delega cuentas" "AMQP | cmd: account.create, set-status | req/rep: balance.query"
-        bankusac.gateway -> bankusac.transaction "Delega transferencias" "AMQP | cmd: transfer.requested"
+        # --- RABBITMQ <-> CUSTOMER ---
+        bankusac.rabbitmq -> bankusac.customer "Entrega comandos: customer.register, customer.authenticate, customer.verify-email, customer.update, customer.validate-identity" "AMQP | comando/request-reply | correlationId"
+        bankusac.customer -> bankusac.rabbitmq "Publica respuesta de autenticación y eventos de auditoría" "AMQP | evento/respuesta | correlationId"
 
-        # Sagas y coreografía
-        bankusac.transaction -> bankusac.account "Solicita afectación de saldo" "AMQP | cmd: debit.requested, credit.requested, debit.compensation.requested"
-        bankusac.account -> bankusac.transaction "Emite resultado de afectación" "AMQP | ev: debited, debit.rejected, credited, credit.rejected, debit.compensated"
-        
-        bankusac.transaction -> bankusac.payment "Solicita procesamiento de pago" "AMQP | cmd: payment.requested"
-        bankusac.payment -> bankusac.transaction "Emite estado de pago" "AMQP | ev: payment.succeeded, payment.failed"
+        # --- RABBITMQ <-> ACCOUNT ---
+        bankusac.rabbitmq -> bankusac.account "Entrega comandos: account.create, account.balance.query, account.set-status, y comandos de Saga (debit/credit/compensation)" "AMQP | comando/request-reply | correlationId"
+        bankusac.account -> bankusac.rabbitmq "Publica respuesta de balance y eventos de Saga/auditoría: account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated" "AMQP | evento/respuesta | correlationId"
 
-        # Auditoría terminal
-        bankusac.gateway -> bankusac.notification "Emite auditoría" "AMQP | evento"
-        bankusac.customer -> bankusac.notification "Emite auditoría" "AMQP | evento"
-        bankusac.account -> bankusac.notification "Emite auditoría" "AMQP | evento"
-        bankusac.transaction -> bankusac.notification "Emite auditoría" "AMQP | evento"
-        bankusac.payment -> bankusac.notification "Emite auditoría" "AMQP | evento"
+        # --- RABBITMQ <-> TRANSACTION ---
+        bankusac.rabbitmq -> bankusac.transaction "Entrega transfer.requested y eventos de Saga de Account/Payment" "AMQP | comando/evento | correlationId"
+        bankusac.transaction -> bankusac.rabbitmq "Publica comandos de Saga (debit/credit/compensation), payment.requested y eventos de auditoría" "AMQP | comando/evento | correlationId"
 
-        # Microservicios a Bases de Datos
-        bankusac.customer -> bankusac.customer_db "Lee/Escribe" "TCP/IP"
-        bankusac.account -> bankusac.account_db "Lee/Escribe" "TCP/IP"
-        bankusac.transaction -> bankusac.transaction_db "Lee/Escribe" "TCP/IP"
-        bankusac.payment -> bankusac.payment_db "Lee/Escribe" "TCP/IP"
-        bankusac.notification -> bankusac.notification_db "Escribe" "TCP/IP"
+        # --- RABBITMQ <-> PAYMENT ---
+        bankusac.rabbitmq -> bankusac.payment "Entrega payment.requested" "AMQP | comando | correlationId"
+        bankusac.payment -> bankusac.rabbitmq "Publica payment.succeeded, payment.failed y eventos de auditoría" "AMQP | evento | correlationId"
 
-        # Microservicios a Sistemas Externos
-        bankusac.payment -> proveedor "Procesa pagos externos" "API"
-        bankusac.notification -> correo "Solicita correo de activación" "SMTP"
+        # --- AUDITORÍA: DESTINO FINAL ---
+        bankusac.rabbitmq -> bankusac.notification "Entrega audit.recorded de todos los servicios" "AMQP | evento | correlationId"
+
+        # --- ACTIVACIÓN DE CORREO ---
+        bankusac.rabbitmq -> correo "Bank USAC -> Correo: activación de cuenta" "AMQP | evento asíncrono | sistema simulado"
+
+        # --- INTEGRACIÓN EXTERNA DE PAGOS ---
+        bankusac.payment -> proveedor "Payment Service -> Proveedor de Pagos: payment.requested" "API | solicitud externa | sistema simulado"
+
+        # --- BASE DE DATOS POR SERVICIO ---
+        bankusac.customer -> bankusac.customer_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
+        bankusac.account -> bankusac.account_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
+        bankusac.transaction -> bankusac.transaction_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
+        bankusac.payment -> bankusac.payment_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
+        bankusac.notification -> bankusac.notification_db "Escribe únicamente su base" "TCP/IP | acceso a datos"
     }
 
     views {
         systemContext bankusac "Diagrama_Contexto" {
-            include *
-            autoLayout
+            include cliente cajero admin bankusac correo proveedor
+            autoLayout lr 450 250
         }
 
         container bankusac "Diagrama_Contenedores" {
-            include *
-            autoLayout
+            include cliente cajero admin
+            include bankusac.frontend bankusac.gateway
+            include bankusac.customer bankusac.account bankusac.transaction bankusac.payment bankusac.notification
+            include bankusac.rabbitmq
+            include bankusac.customer_db bankusac.account_db bankusac.transaction_db bankusac.payment_db bankusac.notification_db
+            include correo proveedor
+            autoLayout tb 650 400
         }
 
-        # Paleta del ejemplo oficial actual: fondo blanco y contornos/textos por categoría.
+        dynamic bankusac "Flujo_Saga_Transferencia" "Secuencia detallada de una transferencia entre cuentas (patrón Saga)." {
+            cliente -> bankusac.frontend "1. Solicita transferencia"
+            bankusac.frontend -> bankusac.gateway "2. POST /transfers"
+            bankusac.gateway -> bankusac.rabbitmq "3. Publica transfer.requested"
+            bankusac.rabbitmq -> bankusac.transaction "4. Entrega transfer.requested"
+            bankusac.transaction -> bankusac.rabbitmq "5. Publica account.debit.requested"
+            bankusac.rabbitmq -> bankusac.account "6. Entrega account.debit.requested"
+            bankusac.account -> bankusac.rabbitmq "7. Publica account.debited"
+            bankusac.rabbitmq -> bankusac.transaction "8. Entrega account.debited"
+            bankusac.transaction -> bankusac.rabbitmq "9. Publica account.credit.requested"
+            bankusac.rabbitmq -> bankusac.account "10. Entrega account.credit.requested"
+            bankusac.account -> bankusac.rabbitmq "11. Publica account.credited"
+            bankusac.rabbitmq -> bankusac.transaction "12. Entrega account.credited"
+            bankusac.transaction -> bankusac.rabbitmq "13. Publica payment.requested"
+            bankusac.rabbitmq -> bankusac.payment "14. Entrega payment.requested"
+            bankusac.payment -> proveedor "15. Procesa pago externo"
+            bankusac.payment -> bankusac.rabbitmq "16. Publica payment.succeeded"
+            bankusac.rabbitmq -> bankusac.transaction "17. Entrega payment.succeeded"
+            autoLayout lr 450 250
+        }
+
         theme default
         styles {
             element "Person" {
@@ -118,6 +148,19 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
                 color #1168BD
                 stroke #1168BD
             }
+            element "Group" {
+                background #ffffff
+                color #1168BD
+                stroke #1168BD
+            }
+            element "Group:Kubernetes Cluster" {
+                color #1168BD
+                stroke #1168BD
+            }
+            element "Group:Infraestructura externa al Cluster (Docker en el host)" {
+                color #707070
+                stroke #707070
+            }
             element "Web Browser" {
                 shape WebBrowser
                 background #ffffff
@@ -126,6 +169,12 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
             }
             element "Server-Side Application" {
                 shape Component
+                background #ffffff
+                color #1168BD
+                stroke #1168BD
+            }
+            element "Message Broker" {
+                shape Pipe
                 background #ffffff
                 color #1168BD
                 stroke #1168BD
