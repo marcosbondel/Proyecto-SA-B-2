@@ -1,0 +1,64 @@
+C4Container
+title Diagrama de Contenedores (Nivel 2) - Bank USAC
+
+%% Actores heredados del C1
+Person(cliente, "Cliente [CLIENTE]", "Cuentahabiente. Opera sobre sus propias cuentas.")
+Person(cajero, "Cajero Receptor [CAJERO_RECEPTOR]", "Personal en ventanilla.")
+Person(admin, "Administrador [ADMINISTRADOR]", "Supervisa: gestiona roles, activa/desactiva cuentas.")
+
+%% Zoom al Sistema Bank USAC
+System_Boundary(k8s, "Bank USAC (Kubernetes Cluster)") {
+    Container(frontend, "Frontend Web", "Nuxt 4 + Vue 3 + @nuxt/ui", "Único cliente externo del Gateway.")
+    Container(gateway, "API Gateway", "NestJS", "ÚNICO punto de entrada al sistema.")
+    Container(rabbitmq, "Message Broker", "RabbitMQ", "Columna vertebral de mensajería asíncrona.")
+
+    Container(customer, "Customer Service", "NestJS", "Identidad del cliente.")
+    Container(account, "Account Service", "NestJS", "Cuentas y balances.")
+    Container(transaction, "Transaction Service", "NestJS", "Orquestación de transacciones.")
+    Container(payment, "Payment Service", "NestJS", "Procesamiento de pagos y reintentos.")
+    Container(notification, "Notification & Audit", "NestJS", "Notificaciones y auditoría (terminal).")
+}
+
+%% Bases de Datos (Externas)
+ContainerDb(customer_db, "Customer DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+ContainerDb(account_db, "Account DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+ContainerDb(transaction_db, "Transaction DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+ContainerDb(payment_db, "Payment DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+ContainerDb(notification_db, "Notification DB", "PostgreSQL", "Base de datos exclusiva (Externa).")
+
+%% Sistemas Externos
+System_Ext(proveedorPagos, "Proveedor de Pagos", "Procesa pagos externos.")
+System_Ext(correo, "Servicio de Correo", "Entrega al cliente enlace de activación.")
+
+%% Relaciones
+Rel(cliente, frontend, "Consulta y gestiona sus cuentas", "HTTPS")
+Rel(cajero, frontend, "Atiende clientes en ventanilla", "HTTPS")
+Rel(admin, frontend, "Supervisa cuentas y auditoría", "HTTPS")
+
+Rel(frontend, gateway, "Consume la API REST", "HTTPS / REST / JSON")
+
+Rel(gateway, customer, "Delega identidad", "AMQP | cmd: customer.register, customer.verify-email, customer.update, customer.validate-identity | req/rep: customer.authenticate")
+Rel(gateway, account, "Delega cuentas", "AMQP | cmd: account.create, account.set-status | req/rep: account.balance.query")
+Rel(gateway, transaction, "Delega transferencias", "AMQP | cmd: transfer.requested")
+
+Rel(transaction, account, "Solicita afectación de saldo", "AMQP | cmd: account.debit.requested, account.credit.requested, account.debit.compensation.requested")
+Rel(account, transaction, "Emite resultado de afectación", "AMQP | evento: account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated")
+
+Rel(transaction, payment, "Solicita procesamiento de pago", "AMQP | cmd: payment.requested")
+Rel(payment, transaction, "Emite estado de pago", "AMQP | evento: payment.succeeded, payment.failed")
+
+Rel(gateway, notification, "Emite auditoría", "AMQP | evento")
+Rel(customer, notification, "Emite auditoría", "AMQP | evento")
+Rel(account, notification, "Emite auditoría", "AMQP | evento")
+Rel(transaction, notification, "Emite auditoría", "AMQP | evento")
+Rel(payment, notification, "Emite auditoría", "AMQP | evento")
+
+Rel(customer, customer_db, "Lee/Escribe", "TCP/IP")
+Rel(account, account_db, "Lee/Escribe", "TCP/IP")
+Rel(transaction, transaction_db, "Lee/Escribe", "TCP/IP")
+Rel(payment, payment_db, "Lee/Escribe", "TCP/IP")
+Rel(notification, notification_db, "Escribe", "TCP/IP")
+
+Rel(payment, proveedorPagos, "Procesa pagos externos", "API")
+Rel(notification, correo, "Solicita correo de activación", "SMTP")
+Rel(correo, cliente, "Entrega enlace de activación", "Correo electrónico")
