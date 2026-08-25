@@ -1,0 +1,55 @@
+@startuml 01-primera-descomposicion
+left to right direction
+
+title CDU-01 - Bank USAC: primera descomposición funcional
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Visitante / Cliente" as cliente
+actor "Cajero Receptor" as cajero
+actor "Administrador" as admin
+
+rectangle "Bank USAC\nPrimera descomposición del núcleo" as bank {
+    usecase "Gestionar clientes\ne identidad" as customer
+    usecase "Gestionar cuentas\ny saldos" as account
+    usecase "Gestionar\ntransferencias" as transaction
+    usecase "Gestionar\npagos" as payment
+    usecase "Gestionar notificaciones\ny auditoría" as audit
+}
+
+cliente -- customer
+cliente -- account
+cliente -- transaction
+cliente -- payment
+
+cajero -- customer
+cajero -- account
+cajero -- transaction
+
+admin -- customer
+admin -- account
+admin -- transaction
+admin -- payment
+admin -- audit
+
+note bottom of bank
+    La descomposición corresponde a los cinco microservicios del dominio.
+    Frontend, Gateway, RabbitMQ y las bases de datos son componentes de soporte,
+    no áreas funcionales adicionales.
+end note
+
+legend right
+    La contención representa una descomposición funcional.
+    No significa que toda operación ejecute los cinco módulos.
+endlegend
+@enduml

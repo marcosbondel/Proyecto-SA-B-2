@@ -1,0 +1,49 @@
+@startuml transaction-flujos
+title Flujo funcional - Transaction Service y Saga de transferencia
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+:Recibir transfer.requested;
+:Validar monto, cuentas distintas e idempotencia;
+if (¿Solicitud válida?) then (Sí)
+    :Crear Transaction PENDING;
+    :Pasar a DEBITING;
+    :Publicar account.debit.requested;
+    :Esperar account.debited o account.debit.rejected;
+    if (¿Débito aplicado?) then (Sí)
+        :Pasar a PAYMENT_PENDING;
+        :Publicar payment.requested;
+        :Esperar payment.succeeded o payment.failed;
+        if (¿Pago exitoso?) then (Sí)
+            :Publicar account.credit.requested;
+            :Esperar account.credited o account.credit.rejected;
+            if (¿Crédito aplicado?) then (Sí)
+                :Pasar a COMPLETED;
+                :Publicar transaction.completed;
+            else (No)
+                :Publicar account.debit.compensation.requested;
+                :Esperar account.debit.compensated;
+                :Pasar a COMPENSATED;
+                :Publicar transaction.compensated;
+            endif
+        else (No)
+            :Publicar account.debit.compensation.requested;
+            :Esperar account.debit.compensated;
+            :Pasar a COMPENSATED;
+            :Publicar transaction.compensated;
+        endif
+    else (No)
+        :Pasar a FAILED;
+        :Publicar transaction.failed;
+    endif
+else (No)
+    :Rechazar sin crear una transferencia;
+endif
+stop
+@enduml

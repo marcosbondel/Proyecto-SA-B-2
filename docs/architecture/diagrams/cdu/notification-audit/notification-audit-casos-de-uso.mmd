@@ -1,0 +1,34 @@
+flowchart LR
+    admin["👤 Administrador"]
+    customerService["⚙ Customer Service"]
+    accountService["⚙ Account Service"]
+    transactionService["⚙ Transaction Service"]
+    paymentService["⚙ Payment Service"]
+    email["✉ Servicio de correo"]
+
+    subgraph notification["Notification & Audit Service"]
+        audit(("Registrar evento de auditoría"))
+        persist(("Persistir evento inmutable"))
+        notify(("Enviar notificación"))
+        delivery(("Registrar estado de entrega"))
+        queryAudit(("Consultar auditoría"))
+        queryNotifications(("Consultar notificaciones"))
+        filterAudit(("Filtrar por correlationId"))
+    end
+
+    admin --- queryAudit
+    admin --- queryNotifications
+    customerService --- audit
+    accountService --- audit
+    transactionService --- audit
+    paymentService --- audit
+    email --- notify
+
+    audit -. "«include»" .-> persist
+    notify -. "«include»" .-> delivery
+queryAudit -. "«include»" .-> filterAudit
+
+    note["Notification & Audit es terminal; no publica eventos de decisión"]:::note
+    audit -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

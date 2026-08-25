@@ -28,6 +28,7 @@ System_Boundary(bankusac, "Bank USAC") {
         ContainerDb(transaction_db, "Transaction DB", "PostgreSQL", "Base exclusiva de Transaction Service.")
         ContainerDb(payment_db, "Payment DB", "PostgreSQL", "Base exclusiva de Payment Service.")
         ContainerDb(notification_db, "Notification DB", "PostgreSQL", "Base exclusiva de Notification & Audit Service.")
+        Container(minio, "MinIO", "MinIO / S3-compatible API", "Búfer externo para fotografías de identidad; la fuente de verdad permanece en Customer Service.")
     }
 }
 
@@ -58,15 +59,16 @@ Rel(rabbitmq, payment, "Transaction -> Payment: payment.requested | AMQP | coman
 Rel(payment, rabbitmq, "Publica payment.succeeded, payment.failed | AMQP | eventos | correlationId")
 Rel(rabbitmq, transaction, "Payment -> Transaction: payment.succeeded, payment.failed | AMQP | eventos | correlationId")
 
-Rel(gateway, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
-Rel(customer, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
-Rel(account, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
-Rel(transaction, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
-Rel(payment, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
-Rel(rabbitmq, notification, "Todos los servicios -> Notification & Audit Service: audit.recorded | AMQP | evento | correlationId")
+Rel(customer, rabbitmq, "Publica customer.registered, activation.requested, email.verified, identity.* y login.* | AMQP | eventos | correlationId")
+Rel(account, rabbitmq, "Publica account.* | AMQP | eventos | correlationId")
+Rel(transaction, rabbitmq, "Publica transaction.* | AMQP | eventos | correlationId")
+Rel(payment, rabbitmq, "Publica payment.* | AMQP | eventos | correlationId")
+Rel(rabbitmq, notification, "Entrega todos los eventos de bank.events para auditoría y notificaciones | AMQP | eventos | correlationId")
 
-Rel(rabbitmq, correo, "Bank USAC -> Correo: activación de cuenta | AMQP | evento asíncrono | simulado")
-Rel(payment, proveedor, "Payment Service -> Proveedor de Pagos: payment.requested | API | solicitud externa | simulado")
+Rel(notification, correo, "Entrega correo de activación | Email delivery | efecto externo | simulado")
+Rel(payment, proveedor, "Solicita procesamiento de pago externo | External payment API | solicitud externa | simulado")
+Rel(gateway, minio, "Escribe fotografía y publica referencia | S3-compatible API | infraestructura externa")
+Rel(customer, minio, "Lee y verifica fotografía por referencia | S3-compatible API | infraestructura externa")
 
 Rel(customer, customer_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
 Rel(account, account_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
@@ -92,3 +94,4 @@ UpdateElementStyle(account_db, $bgColor="white", $borderColor="#1168BD", $fontCo
 UpdateElementStyle(transaction_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
 UpdateElementStyle(payment_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
 UpdateElementStyle(notification_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(minio, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")

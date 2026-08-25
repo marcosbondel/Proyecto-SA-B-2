@@ -33,6 +33,7 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
                 transaction_db = container "Transaction DB" "Base exclusiva de Transaction Service." "PostgreSQL" "Database"
                 payment_db = container "Payment DB" "Base exclusiva de Payment Service." "PostgreSQL" "Database"
                 notification_db = container "Notification DB" "Base exclusiva de Notification & Audit Service." "PostgreSQL" "Database"
+                minio = container "MinIO" "Búfer S3-compatible para fotografías de identidad; fuera de kind." "MinIO / S3-compatible API" "Object Store"
             }
         }
 
@@ -40,7 +41,7 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
         cliente -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
         cajero -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
         admin -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
-        bankusac -> correo "Solicita activación de cuenta" "AMQP | evento asíncrono | simulado"
+        bankusac -> correo "Solicita entrega de correo de activación" "External email delivery | simulado"
         bankusac -> proveedor "Procesa pagos externos" "API | solicitud externa | simulado"
 
         # --- ACTORES Y ENTRYPOINT DEL NIVEL DE CONTENEDORES ---
@@ -52,12 +53,12 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
         # --- GATEWAY <-> RABBITMQ ---
         # Detalle de mensajes por canal en message-catalog.md; aquí se agrupan por dirección
         # para que el diagrama de contenedores no repita una flecha por cada tipo de mensaje.
-        bankusac.gateway -> bankusac.rabbitmq "Publica comandos (Customer, Account, Transaction) y eventos de auditoría" "AMQP | comando/evento | correlationId"
+        bankusac.gateway -> bankusac.rabbitmq "Publica comandos y requests (Customer, Account, Transaction, Audit)" "AMQP | comando/request | correlationId"
         bankusac.rabbitmq -> bankusac.gateway "Entrega respuestas request/reply: customer.authenticate, account.balance.query" "AMQP | respuesta | correlationId"
 
         # --- RABBITMQ <-> CUSTOMER ---
         bankusac.rabbitmq -> bankusac.customer "Entrega comandos: customer.register, customer.authenticate, customer.verify-email, customer.update, customer.validate-identity" "AMQP | comando/request-reply | correlationId"
-        bankusac.customer -> bankusac.rabbitmq "Publica respuesta de autenticación y eventos de auditoría" "AMQP | evento/respuesta | correlationId"
+        bankusac.customer -> bankusac.rabbitmq "Publica respuestas y eventos: registered, activation.requested, email.verified, identity.*, login.*" "AMQP | evento/respuesta | correlationId"
 
         # --- RABBITMQ <-> ACCOUNT ---
         bankusac.rabbitmq -> bankusac.account "Entrega comandos: account.create, account.balance.query, account.set-status, y comandos de Saga (debit/credit/compensation)" "AMQP | comando/request-reply | correlationId"
@@ -72,13 +73,15 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
         bankusac.payment -> bankusac.rabbitmq "Publica payment.succeeded, payment.failed y eventos de auditoría" "AMQP | evento | correlationId"
 
         # --- AUDITORÍA: DESTINO FINAL ---
-        bankusac.rabbitmq -> bankusac.notification "Entrega audit.recorded de todos los servicios" "AMQP | evento | correlationId"
+        bankusac.rabbitmq -> bankusac.notification "Entrega todos los eventos de bank.events para auditoría y notificaciones" "AMQP | evento | correlationId"
 
         # --- ACTIVACIÓN DE CORREO ---
-        bankusac.rabbitmq -> correo "Bank USAC -> Correo: activación de cuenta" "AMQP | evento asíncrono | sistema simulado"
+        bankusac.notification -> correo "Entrega correo de activación" "Email delivery | efecto externo | sistema simulado"
 
         # --- INTEGRACIÓN EXTERNA DE PAGOS ---
-        bankusac.payment -> proveedor "Payment Service -> Proveedor de Pagos: payment.requested" "API | solicitud externa | sistema simulado"
+        bankusac.gateway -> bankusac.minio "Escribe fotografía y publica su referencia" "S3-compatible API | síncrono hacia infraestructura"
+        bankusac.customer -> bankusac.minio "Lee y verifica fotografía por referencia" "S3-compatible API | síncrono hacia infraestructura"
+        bankusac.payment -> proveedor "Solicita procesamiento de pago externo" "External payment API | solicitud externa | simulado"
 
         # --- BASE DE DATOS POR SERVICIO ---
         bankusac.customer -> bankusac.customer_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
@@ -100,11 +103,12 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
             include bankusac.customer bankusac.account bankusac.transaction bankusac.payment bankusac.notification
             include bankusac.rabbitmq
             include bankusac.customer_db bankusac.account_db bankusac.transaction_db bankusac.payment_db bankusac.notification_db
+            include bankusac.minio
             include correo proveedor
             autoLayout tb 650 400
         }
 
-        dynamic bankusac "Flujo_Saga_Transferencia" "Secuencia detallada de una transferencia entre cuentas (patrón Saga)." {
+        dynamic bankusac "Flujo_Saga_Transferencia_Exitoso" "Camino feliz de una transferencia entre cuentas (patrón Saga)." {
             cliente -> bankusac.frontend "1. Solicita transferencia"
             bankusac.frontend -> bankusac.gateway "2. POST /transfers"
             bankusac.gateway -> bankusac.rabbitmq "3. Publica transfer.requested"
@@ -113,15 +117,17 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
             bankusac.rabbitmq -> bankusac.account "6. Entrega account.debit.requested"
             bankusac.account -> bankusac.rabbitmq "7. Publica account.debited"
             bankusac.rabbitmq -> bankusac.transaction "8. Entrega account.debited"
-            bankusac.transaction -> bankusac.rabbitmq "9. Publica account.credit.requested"
-            bankusac.rabbitmq -> bankusac.account "10. Entrega account.credit.requested"
-            bankusac.account -> bankusac.rabbitmq "11. Publica account.credited"
-            bankusac.rabbitmq -> bankusac.transaction "12. Entrega account.credited"
-            bankusac.transaction -> bankusac.rabbitmq "13. Publica payment.requested"
-            bankusac.rabbitmq -> bankusac.payment "14. Entrega payment.requested"
-            bankusac.payment -> proveedor "15. Procesa pago externo"
-            bankusac.payment -> bankusac.rabbitmq "16. Publica payment.succeeded"
-            bankusac.rabbitmq -> bankusac.transaction "17. Entrega payment.succeeded"
+            bankusac.transaction -> bankusac.rabbitmq "9. Publica payment.requested"
+            bankusac.rabbitmq -> bankusac.payment "10. Entrega payment.requested"
+            bankusac.payment -> proveedor "11. Procesa pago externo"
+            bankusac.payment -> bankusac.rabbitmq "12. Publica payment.succeeded"
+            bankusac.rabbitmq -> bankusac.transaction "13. Entrega payment.succeeded"
+            bankusac.transaction -> bankusac.rabbitmq "14. Publica account.credit.requested"
+            bankusac.rabbitmq -> bankusac.account "15. Entrega account.credit.requested"
+            bankusac.account -> bankusac.rabbitmq "16. Publica account.credited"
+            bankusac.rabbitmq -> bankusac.transaction "17. Entrega account.credited"
+            bankusac.transaction -> bankusac.rabbitmq "18. Publica transaction.completed"
+            bankusac.rabbitmq -> bankusac.notification "19. Consume eventos para auditoría"
             autoLayout lr 450 250
         }
 
@@ -180,6 +186,12 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
                 stroke #1168BD
             }
             element "Database" {
+                shape Cylinder
+                background #ffffff
+                color #1168BD
+                stroke #1168BD
+            }
+            element "Object Store" {
                 shape Cylinder
                 background #ffffff
                 color #1168BD
