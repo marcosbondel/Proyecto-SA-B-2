@@ -5,16 +5,16 @@ flowchart LR
     accountService["⚙ Account Service"]
     paymentService["⚙ Payment Service"]
 
-    subgraph transaction["Transaction Service"]
-        transfer(("Transferir fondos"))
-        validate(("Validar solicitud de transferencia"))
-        saga(("Coordinar Saga de transferencia"))
-        requestFunds(("Solicitar validación de fondos"))
-        requestPayment(("Solicitar pago"))
-        requestCredit(("Ordenar crédito"))
-        compensate(("Compensar débito"))
-        record(("Registrar estado de transacción"))
-        status(("Consultar estado de transferencia"))
+    subgraph transaction["CDU003 · Gestionar transferencias"]
+        transfer(("CDU003.1: Transferir fondos"))
+        status(("CDU003.2: Consultar estado de transferencia"))
+        validate(("CDU003.3: Validar solicitud de transferencia"))
+        saga(("CDU003.4: Coordinar Saga de transferencia"))
+        requestFunds(("CDU003.5: Solicitar validación de fondos"))
+        requestPayment(("CDU003.6: Solicitar pago"))
+        requestCredit(("CDU003.7: Ordenar crédito"))
+        compensate(("CDU003.8: Compensar débito"))
+        record(("CDU003.9: Registrar estado de transacción"))
     end
 
     client --- transfer

@@ -1,7 +1,7 @@
 @startuml notification-audit-casos-de-uso
 left to right direction
 
-title CDU-NOT - Notification & Audit Service: casos de uso
+title CDU005 - Gestionar notificaciones y auditoría
 
 skinparam shadowing false
 skinparam packageStyle rectangle
@@ -15,36 +15,36 @@ skinparam actor {
     FontColor #398819
 }
 
-actor "Administrador" as admin
-actor "Customer Service" as customer
-actor "Account Service" as account
-actor "Transaction Service" as transaction
-actor "Payment Service" as payment
-actor "Servicio de correo" as email
+actor "Administrador" as actor_notification_admin
+actor "Customer Service" as actor_notification_customer
+actor "Account Service" as actor_notification_account
+actor "Transaction Service" as actor_notification_transaction
+actor "Payment Service" as actor_notification_payment
+actor "Servicio de correo" as actor_notification_email
 
-rectangle "Notification & Audit Service" as notification {
-    usecase "Registrar evento\nde auditoría" as audit
-    usecase "Persistir evento\ninmutable" as persist
-    usecase "Enviar notificación" as notify
-    usecase "Registrar estado\nde entrega" as delivery
-    usecase "Consultar auditoría" as queryAudit
-    usecase "Consultar notificaciones" as queryNotifications
-    usecase "Filtrar por correlationId" as filterAudit
+rectangle "CDU005 - Gestionar notificaciones y auditoría" as system_notification {
+    usecase "CDU005.1:\nRegistrar evento de auditoría" as uc_notification_audit
+    usecase "CDU005.2:\nEnviar notificación" as uc_notification_notify
+    usecase "CDU005.3:\nConsultar auditoría" as uc_notification_query_audit
+    usecase "CDU005.4:\nConsultar notificaciones" as uc_notification_query_notifications
+    usecase "CDU005.5:\nPersistir evento inmutable" as uc_notification_persist
+    usecase "CDU005.6:\nRegistrar estado de entrega" as uc_notification_delivery
+    usecase "CDU005.7:\nFiltrar por correlationId" as uc_notification_filter
 }
 
-admin -- queryAudit
-admin -- queryNotifications
-customer -- audit
-account -- audit
-transaction -- audit
-payment -- audit
-email -- notify
+actor_notification_admin -- uc_notification_query_audit
+actor_notification_admin -- uc_notification_query_notifications
+actor_notification_customer -- uc_notification_audit
+actor_notification_account -- uc_notification_audit
+actor_notification_transaction -- uc_notification_audit
+actor_notification_payment -- uc_notification_audit
+actor_notification_email -- uc_notification_notify
 
-audit .> persist : <<include>>
-notify .> delivery : <<include>>
-queryAudit .> filterAudit : <<include>>
+uc_notification_audit .> uc_notification_persist : <<include>>
+uc_notification_notify .> uc_notification_delivery : <<include>>
+uc_notification_query_audit .> uc_notification_filter : <<include>>
 
-note right of notification
+note right of system_notification
     Es un servicio terminal: consume eventos,
     registra auditoría y produce efectos de notificación.
     No publica eventos que decidan lógica de negocio.

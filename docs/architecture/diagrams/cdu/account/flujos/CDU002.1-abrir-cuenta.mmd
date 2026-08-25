@@ -1,0 +1,7 @@
+flowchart TD
+    actor["Cliente, Cajero o Administrador: solicitar apertura"] --> validate["Account Service: validar tipo y elegibilidad"]
+    validate --> decision{"¿Tipo y rol permitidos?"}
+    decision -->|No| reject["Rechazar apertura"]
+    decision -->|Sí| create["Crear cuenta ACTIVE con balance 0.00"]
+    create --> publish["Publicar account.opened"]
+    publish --> audit["Notification & Audit: registrar apertura"]

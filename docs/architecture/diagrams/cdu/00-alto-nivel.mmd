@@ -4,14 +4,14 @@ flowchart LR
     admin["👤 Administrador"]
 
     subgraph bank["Bank USAC · Sistema bancario"]
-        core(("Gestionar operaciones bancarias"))
+        core(("CDU000: Gestionar operaciones bancarias"))
     end
 
     visitor --- core
     teller --- core
     admin --- core
 
-    note["El núcleo se descompone en cinco áreas funcionales en CDU-01"]:::note
+    note["CDU000 representa el objetivo general; CDU001-CDU005 son sus funciones principales"]:::note
     core -.-> note
 
     classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

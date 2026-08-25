@@ -3,17 +3,17 @@ flowchart LR
     teller["👤 Cajero Receptor"]
     admin["👤 Administrador"]
 
-    subgraph customer["Customer Service"]
-        register(("Registrar cliente"))
-        username(("Generar username único"))
-        activate(("Activar cuenta por correo"))
-        token(("Validar token de activación"))
-        login(("Iniciar sesión"))
-        credentials(("Validar credenciales"))
-        update(("Actualizar datos del cliente"))
-        upload(("Cargar foto de identidad"))
-        identity(("Validar identidad"))
-        review(("Revisar foto y datos"))
+    subgraph customer["CDU001 · Gestionar clientes e identidad"]
+        register(("CDU001.1: Registrar cliente"))
+        activate(("CDU001.2: Activar cliente por correo"))
+        login(("CDU001.3: Iniciar sesión"))
+        update(("CDU001.4: Actualizar datos del cliente"))
+        upload(("CDU001.5: Cargar fotografía de identidad"))
+        identity(("CDU001.6: Validar identidad"))
+        username(("CDU001.7: Generar username único"))
+        token(("CDU001.8: Validar token de activación"))
+        credentials(("CDU001.9: Validar credenciales"))
+        review(("CDU001.10: Revisar foto y datos"))
     end
 
     client --- register
