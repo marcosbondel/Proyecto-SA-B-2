@@ -1,0 +1,71 @@
+%% UML 2 Sequence Diagram - Crear cuenta (Bank USAC)
+%% Caso de uso 2 (docs/domain/use-cases.md). Flujo asincrono mas simple del sistema:
+%% el Gateway publica, responde 202, y el resultado real se consulta despues por correlationId.
+%% Las casillas de activacion muestran cuanto tiempo mantiene cada participante una tarea en curso.
+%% Los mensajes usan lenguaje de negocio (legible para stakeholders no tecnicos); las etiquetas
+%% entre corchetes conservan tecnologia, protocolo y tipo de comunicacion (regla transversal 4).
+sequenceDiagram
+    autonumber
+    actor Usr as "Actor<br/>(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)"
+    participant Frontend as "Frontend<br/>Nuxt · HTTP"
+    participant Gateway as "API Gateway<br/>NestJS · HTTP/AMQP"
+    participant Broker as "RabbitMQ<br/>AMQP · broker"
+    participant Account as "Account Service<br/>NestJS · AMQP"
+    participant AccountDB as "PostgreSQL (account_db)"
+    participant Notif as "Notification and Audit<br/>NestJS · AMQP"
+    participant AuditDB as "PostgreSQL (audit_db)"
+
+    Usr->>Frontend: Solicitar apertura de cuenta [UI]
+    activate Frontend
+    Frontend->>Gateway: Enviar la solicitud de apertura [HTTP, síncrono]
+    activate Gateway
+    Note over Gateway: Genera un identificador de seguimiento (correlationId)
+
+    Gateway->>Broker: Publicar comando "crear cuenta" — account.create (correlationId) [AMQP, comando, asíncrono]
+    Gateway-->>Frontend: Confirmar recepción — 202 Accepted (correlationId) [HTTP]
+    deactivate Gateway
+    Frontend-->>Usr: "Solicitud recibida" (NO "cuenta creada") — 202 no es éxito
+    deactivate Frontend
+
+    Broker->>Account: Entregar comando "crear cuenta" — account.create (correlationId) [AMQP, comando, asíncrono]
+    activate Account
+
+    alt tipo de cuenta válido (MONETARIA | AHORRO)
+        Note over Account: Validando los datos recibidos, aún sin guardar
+        Account->>AccountDB: Guardar la cuenta nueva — estado inicial: ACTIVA, saldo Q0.00 [SQL, síncrono]
+        activate AccountDB
+        AccountDB-->>Account: Confirmar guardado [SQL, síncrono]
+        deactivate AccountDB
+        Note over Account: Cuenta creada — activa, con saldo inicial de Q0.00
+        Account->>Broker: Publicar evento "cuenta abierta" — account.opened (correlationId) [AMQP, evento, asíncrono]
+        Account->>Broker: Confirmar al broker que el mensaje fue procesado — DESPUÉS de guardar [AMQP]
+    else tipo de cuenta ausente o no reconocido
+        Note over Account: Rechazar la solicitud, sin guardar — el tipo de cuenta es obligatorio
+        Account->>Broker: Confirmar al broker que el mensaje fue procesado — rechazo registrado [AMQP]
+    end
+    deactivate Account
+
+    Note over Account,AccountDB: Regla de diseño: el Servicio de Cuentas NUNCA consulta al Servicio de Clientes.<br/>"El cliente no existe" o "el cliente no es elegible" se detectan más adelante en el proceso, no en este paso.
+
+    Broker->>Notif: Entregar evento "cuenta abierta" — account.opened (correlationId) [AMQP, evento, asíncrono]
+    activate Notif
+    Notif->>AuditDB: Registrar el evento para auditoría (correlationId) [SQL, síncrono]
+    activate AuditDB
+    AuditDB-->>Notif: Confirmar registro guardado [SQL, síncrono]
+    deactivate AuditDB
+    Notif->>Broker: Confirmar al broker que el evento fue procesado — DESPUÉS de registrar [AMQP]
+    deactivate Notif
+
+    Note over Usr,AuditDB: El 202 solo confirma que la solicitud se recibió. El resultado real se consulta después por correlationId.
+    Usr->>Frontend: Consultar el estado de la solicitud
+    activate Frontend
+    Frontend->>Gateway: Solicitar el estado real de la cuenta (correlationId) [HTTP, síncrono]
+    activate Gateway
+    Gateway->>Account: Preguntar por el estado actual de la cuenta (correlationId) [AMQP, consulta asíncrona]
+    activate Account
+    Account-->>Gateway: Responder con el estado real de la cuenta
+    deactivate Account
+    Gateway-->>Frontend: Responder con el resultado real [HTTP]
+    deactivate Gateway
+    Frontend-->>Usr: Mostrar el resultado real de la creación de cuenta
+    deactivate Frontend
