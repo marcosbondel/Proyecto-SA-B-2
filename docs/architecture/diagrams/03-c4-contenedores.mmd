@@ -1,0 +1,94 @@
+C4Container
+
+title Diagrama de Contenedores - Bank USAC
+
+Person(cliente, "Cliente", "Rol CLIENTE: consulta saldo, transfiere y gestiona sus datos.")
+Person(cajero, "Cajero Receptor", "Rol CAJERO_RECEPTOR: atiende clientes en ventanilla.")
+Person(admin, "Administrador", "Rol ADMINISTRADOR: supervisa clientes, cuentas y auditoría.")
+
+System_Ext(correo, "Servicio de Correo Electrónico (Simulado)", "Entrega el enlace de activación de cuenta.")
+System_Ext(proveedor, "Proveedor de Pagos (Simulado)", "Procesa pagos externos.")
+
+System_Boundary(bankusac, "Bank USAC") {
+    Boundary(cluster, "Kubernetes Cluster") {
+        Container(frontend, "Frontend", "Nuxt 4 + @nuxt/ui", "Interfaz de los tres actores; sin lógica de negocio.")
+        Container(gateway, "API Gateway", "NestJS", "Único entrypoint; valida JWT, traduce HTTP a AMQP y no tiene BD.")
+
+        Container(customer, "Customer Service", "NestJS", "Identidad del cliente.")
+        Container(account, "Account Service", "NestJS", "Cuentas y balances.")
+        Container(transaction, "Transaction Service", "NestJS", "Orquestación de transferencias y Saga.")
+        Container(payment, "Payment Service", "NestJS", "Procesamiento de pagos y reintentos.")
+        Container(notification, "Notification & Audit Service", "NestJS", "Auditoría y notificaciones; terminal.")
+    }
+
+    Boundary(infrastructure, "Infraestructura externa al cluster: Docker en el host") {
+        Container(rabbitmq, "RabbitMQ", "RabbitMQ 4.3.4-management / AMQP", "Broker central de mensajería, fuera de kind.")
+        ContainerDb(customer_db, "Customer DB", "PostgreSQL", "Base exclusiva de Customer Service.")
+        ContainerDb(account_db, "Account DB", "PostgreSQL", "Base exclusiva de Account Service.")
+        ContainerDb(transaction_db, "Transaction DB", "PostgreSQL", "Base exclusiva de Transaction Service.")
+        ContainerDb(payment_db, "Payment DB", "PostgreSQL", "Base exclusiva de Payment Service.")
+        ContainerDb(notification_db, "Notification DB", "PostgreSQL", "Base exclusiva de Notification & Audit Service.")
+    }
+}
+
+Rel(cliente, frontend, "Interacción de usuario | UI")
+Rel(cajero, frontend, "Interacción de usuario | UI")
+Rel(admin, frontend, "Interacción de usuario | UI")
+Rel(frontend, gateway, "Frontend -> API Gateway | HTTPS/REST/JSON | request síncrono")
+
+Rel(gateway, rabbitmq, "Publica comandos de Customer y Account | AMQP | comando/request-reply | correlationId")
+Rel(rabbitmq, customer, "Gateway -> Customer: customer.register, customer.authenticate (request/reply), customer.verify-email, customer.update, customer.validate-identity | AMQP | comando/request-reply | correlationId")
+Rel(customer, rabbitmq, "Publica respuesta customer.authenticate | AMQP | request-reply | correlationId")
+Rel(rabbitmq, gateway, "Customer -> Gateway: customer.authenticate (request/reply) | AMQP | respuesta | correlationId")
+
+Rel(rabbitmq, account, "Gateway -> Account: account.create, account.balance.query (request/reply), account.set-status | AMQP | comando/request-reply | correlationId")
+Rel(account, rabbitmq, "Publica respuesta account.balance.query | AMQP | request-reply | correlationId")
+Rel(rabbitmq, gateway, "Account -> Gateway: account.balance.query (request/reply) | AMQP | respuesta | correlationId")
+
+Rel(gateway, rabbitmq, "Publica transfer.requested | AMQP | comando | correlationId")
+Rel(rabbitmq, transaction, "Gateway -> Transaction: transfer.requested | AMQP | comando | correlationId")
+
+Rel(transaction, rabbitmq, "Publica account.debit.requested, account.credit.requested, account.debit.compensation.requested | AMQP | comandos | correlationId")
+Rel(rabbitmq, account, "Transaction -> Account: account.debit.requested, account.credit.requested, account.debit.compensation.requested | AMQP | comandos | correlationId")
+Rel(account, rabbitmq, "Publica account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated | AMQP | eventos | correlationId")
+Rel(rabbitmq, transaction, "Account -> Transaction: account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated | AMQP | eventos | correlationId")
+
+Rel(transaction, rabbitmq, "Publica payment.requested | AMQP | comando | correlationId")
+Rel(rabbitmq, payment, "Transaction -> Payment: payment.requested | AMQP | comando | correlationId")
+Rel(payment, rabbitmq, "Publica payment.succeeded, payment.failed | AMQP | eventos | correlationId")
+Rel(rabbitmq, transaction, "Payment -> Transaction: payment.succeeded, payment.failed | AMQP | eventos | correlationId")
+
+Rel(gateway, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(customer, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(account, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(transaction, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(payment, rabbitmq, "Publica audit.recorded | AMQP | evento de auditoría | correlationId")
+Rel(rabbitmq, notification, "Todos los servicios -> Notification & Audit Service: audit.recorded | AMQP | evento | correlationId")
+
+Rel(rabbitmq, correo, "Bank USAC -> Correo: activación de cuenta | AMQP | evento asíncrono | simulado")
+Rel(payment, proveedor, "Payment Service -> Proveedor de Pagos: payment.requested | API | solicitud externa | simulado")
+
+Rel(customer, customer_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
+Rel(account, account_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
+Rel(transaction, transaction_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
+Rel(payment, payment_db, "Lee/escribe únicamente su base | TCP/IP | acceso a datos")
+Rel(notification, notification_db, "Escribe únicamente su base | TCP/IP | acceso a datos")
+
+UpdateElementStyle(cliente, $bgColor="white", $borderColor="#398819", $fontColor="#398819")
+UpdateElementStyle(cajero, $bgColor="white", $borderColor="#398819", $fontColor="#398819")
+UpdateElementStyle(admin, $bgColor="white", $borderColor="#398819", $fontColor="#398819")
+UpdateElementStyle(correo, $bgColor="white", $borderColor="#C11926", $fontColor="#C11926")
+UpdateElementStyle(proveedor, $bgColor="white", $borderColor="#C11926", $fontColor="#C11926")
+UpdateElementStyle(frontend, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(gateway, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(rabbitmq, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(customer, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(account, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(transaction, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(payment, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(notification, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(customer_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(account_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(transaction_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(payment_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(notification_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
