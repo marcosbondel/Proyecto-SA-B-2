@@ -1,0 +1,42 @@
+@startuml 00-alto-nivel
+left to right direction
+
+title CDU-00 - Bank USAC: alto nivel
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFF8EE
+    BorderColor #EF9425
+    FontColor #8A4B00
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Visitante / Cliente" as cliente
+actor "Cajero Receptor" as cajero
+actor "Administrador" as admin
+
+rectangle "Bank USAC\nSistema bancario" as bank {
+    usecase "Gestionar operaciones\nbancarias" as core
+}
+
+cliente -- core
+cajero -- core
+admin -- core
+
+note right of core
+    Núcleo funcional del sistema.
+    La primera descomposición se muestra
+    en CDU-01.
+end note
+
+legend right
+    |= Elemento |= Significado |
+    | Actor | Rol que persigue un objetivo del sistema |
+    | Caso de uso | Objetivo observable en el nivel de negocio |
+    | Rectángulo | Límite del sistema Bank USAC |
+endlegend
+@enduml

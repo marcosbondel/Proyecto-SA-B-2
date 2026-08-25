@@ -1,0 +1,27 @@
+flowchart TD
+    start(["Recibir transfer.requested"])
+    validate["Validar monto, cuentas distintas e idempotencia"]
+    valid{"¿Solicitud válida?"}
+    pending["Crear Transaction PENDING y pasar a DEBITING"]
+    debit["Publicar account.debit.requested"]
+    debitResult{"¿Débito aplicado?"}
+    paymentPending["Pasar a PAYMENT_PENDING y publicar payment.requested"]
+    paymentResult{"¿Pago exitoso?"}
+    credit["Publicar account.credit.requested"]
+    creditResult{"¿Crédito aplicado?"}
+    completed["COMPLETED · publicar transaction.completed"]
+    failed["FAILED · publicar transaction.failed"]
+    compensatePayment["Publicar compensación de débito"]
+    compensateCredit["Publicar compensación de débito"]
+    compensated["Esperar account.debit.compensated · COMPENSATED"]
+    rejected["Rechazar sin crear transferencia"]
+
+    start --> validate --> valid
+    valid -->|"Sí"| pending --> debit --> debitResult
+    valid -->|"No"| rejected
+    debitResult -->|"No"| failed
+    debitResult -->|"Sí"| paymentPending --> paymentResult
+    paymentResult -->|"No"| compensatePayment --> compensated
+    paymentResult -->|"Sí"| credit --> creditResult
+    creditResult -->|"Sí"| completed
+    creditResult -->|"No"| compensateCredit --> compensated

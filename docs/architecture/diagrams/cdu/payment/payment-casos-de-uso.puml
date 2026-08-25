@@ -1,0 +1,50 @@
+@startuml payment-casos-de-uso
+left to right direction
+
+title CDU-PAY - Payment Service: casos de uso
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Cliente" as cliente
+actor "Administrador" as admin
+actor "Transaction Service" as transaction
+actor "Proveedor de pagos" as provider
+
+rectangle "Payment Service" as payment {
+    usecase "Procesar pago" as process
+    usecase "Validar operación\nde pago" as validate
+    usecase "Procesar pago\ninterno" as internal
+    usecase "Solicitar pago\nexterno" as external
+    usecase "Reintentar procesamiento" as retry
+    usecase "Registrar estado\ndel pago" as record
+    usecase "Consultar historial\nde pagos" as history
+}
+
+cliente -- process
+cliente -- history
+admin -- history
+transaction -- process
+provider -- external
+
+process .> validate : <<include>>
+process .> record : <<include>>
+internal .> process : <<extend>>
+external .> process : <<extend>>
+retry .> process : <<extend>>
+
+note right of process
+    En la Saga de transferencias,
+    Transaction Service publica payment.requested.
+    Payment Service responde con succeeded o failed.
+end note
+@enduml

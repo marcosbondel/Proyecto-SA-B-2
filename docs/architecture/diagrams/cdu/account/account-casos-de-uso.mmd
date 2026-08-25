@@ -1,0 +1,36 @@
+flowchart LR
+    client["👤 Cliente"]
+    teller["👤 Cajero Receptor"]
+    admin["👤 Administrador"]
+    transactionService["⚙ Transaction Service"]
+    scheduler["⏱ Proceso automático"]
+
+    subgraph account["Account Service"]
+        open(("Abrir cuenta"))
+        eligibility(("Validar elegibilidad del cliente"))
+        balance(("Consultar saldo"))
+        access(("Verificar acceso a la cuenta"))
+        movement(("Aplicar movimiento de Saga"))
+        funds(("Validar fondos y estado"))
+        status(("Gestionar estado de cuenta"))
+        automatic(("Desactivar cuentas inactivas"))
+    end
+
+    client --- open
+    client --- balance
+    teller --- open
+    teller --- balance
+    admin --- open
+    admin --- balance
+    admin --- status
+    transactionService --- movement
+    scheduler --- automatic
+
+    open -. "«include»" .-> eligibility
+    balance -. "«include»" .-> access
+    movement -. "«include»" .-> funds
+
+    note["Transaction Service solicita el movimiento; Account Service valida fondos y modifica balances"]:::note
+    movement -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

@@ -1,0 +1,32 @@
+flowchart LR
+    client["👤 Cliente"]
+    admin["👤 Administrador"]
+    transactionService["⚙ Transaction Service"]
+    provider["🌐 Proveedor de pagos"]
+
+    subgraph payment["Payment Service"]
+        process(("Procesar pago"))
+        validate(("Validar operación de pago"))
+        internal(("Procesar pago interno"))
+        external(("Solicitar pago externo"))
+        retry(("Reintentar procesamiento"))
+        record(("Registrar estado del pago"))
+        history(("Consultar historial de pagos"))
+    end
+
+    client --- process
+    client --- history
+    admin --- history
+    transactionService --- process
+    provider --- external
+
+    process -. "«include»" .-> validate
+    process -. "«include»" .-> record
+    internal -. "«extend»" .-> process
+    external -. "«extend»" .-> process
+    retry -. "«extend»" .-> process
+
+    note["Los reintentos son internos a Payment Service y no sustituyen la Saga"]:::note
+    retry -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

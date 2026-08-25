@@ -1,0 +1,65 @@
+@startuml customer-casos-de-uso
+left to right direction
+
+title CDU-CUS - Customer Service: casos de uso
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Visitante / Cliente" as cliente
+actor "Cajero Receptor" as cajero
+actor "Administrador" as admin
+
+rectangle "Customer Service" as customer {
+    usecase "Registrar cliente" as register
+    usecase "Generar username único" as username
+    usecase "Activar cuenta por correo" as activate
+    usecase "Validar token de activación" as token
+    usecase "Iniciar sesión" as login
+    usecase "Validar credenciales" as credentials
+    usecase "Actualizar datos del cliente" as update
+    usecase "Cargar foto de identidad" as upload
+    usecase "Validar identidad" as identity
+    usecase "Revisar foto y datos" as review
+}
+
+cliente -- register
+cliente -- activate
+cliente -- login
+cliente -- update
+cliente -- upload
+
+cajero -- register
+cajero -- login
+cajero -- update
+cajero -- identity
+
+admin -- register
+admin -- login
+admin -- update
+admin -- identity
+
+register .> username : <<include>>
+activate .> token : <<include>>
+login .> credentials : <<include>>
+identity .> review : <<include>>
+
+note right of activate
+    Customer Service genera y valida el token.
+    Notification & Audit solo entrega el correo.
+end note
+
+legend right
+    La validación de identidad es distinta de la activación por correo.
+    La foto queda bajo responsabilidad de Customer Service.
+endlegend
+@enduml
