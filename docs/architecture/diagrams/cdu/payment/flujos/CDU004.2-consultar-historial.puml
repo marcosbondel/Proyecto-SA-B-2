@@ -1,0 +1,23 @@
+@startuml CDU004.2-consultar-historial
+title CDU004.2 - Consultar historial de pagos
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Cliente o Administrador|
+:Solicitar historial de pagos;
+|Payment Service|
+:Validar autorización y filtros;
+if (¿Solicitud autorizada?) then (No)
+    :Rechazar consulta;
+else (Sí)
+    :Leer pagos del solicitante;
+    :Responder el historial;
+endif
+stop
+@enduml

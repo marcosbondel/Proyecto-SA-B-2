@@ -1,0 +1,7 @@
+flowchart TD
+    actor["Actor: solicitar actualización"] --> gateway["Gateway: publicar customer.update"]
+    gateway --> validate["Customer Service: validar identidad y campos"]
+    validate --> decision{"¿Solicitud autorizada y válida?"}
+    decision -->|No| reject["Rechazar actualización"]
+    decision -->|Sí| persist["Persistir datos actualizados"]
+    persist --> publish["Publicar customer.updated"]

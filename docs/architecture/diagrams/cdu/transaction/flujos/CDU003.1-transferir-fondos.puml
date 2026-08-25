@@ -1,0 +1,41 @@
+@startuml CDU003.1-transferir-fondos
+title CDU003.1 - Transferir fondos
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Cliente, Cajero o Administrador|
+:Solicitar transferencia;
+|Transaction Service|
+:Validar monto, cuentas distintas e idempotencia;
+if (¿Solicitud válida?) then (No)
+    :Rechazar sin crear transacción;
+else (Sí)
+    :Crear Transaction PENDING y pasar a DEBITING;
+    :Solicitar débito a Account Service;
+    if (¿Débito aplicado?) then (No)
+        :Cerrar en FAILED;
+    else (Sí)
+        :Solicitar pago a Payment Service;
+        if (¿Pago exitoso?) then (No)
+            :Solicitar compensación del débito;
+            :Cerrar en COMPENSATED;
+        else (Sí)
+            :Solicitar crédito a Account Service;
+            if (¿Crédito aplicado?) then (No)
+                :Solicitar compensación del débito;
+                :Cerrar en COMPENSATED;
+            else (Sí)
+                :Cerrar en COMPLETED;
+            endif
+        endif
+    endif
+endif
+:Publicar el evento del cierre;
+stop
+@enduml

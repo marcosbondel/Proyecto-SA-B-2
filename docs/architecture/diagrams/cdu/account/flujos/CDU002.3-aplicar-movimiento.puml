@@ -1,0 +1,33 @@
+@startuml CDU002.3-aplicar-movimiento
+title CDU002.3 - Aplicar movimiento de Saga
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Transaction Service|
+:Solicitar débito, crédito o compensación;
+|Account Service|
+:Identificar el tipo de movimiento;
+:Validar estado de la cuenta;
+if (¿Es un débito?) then (Sí)
+    :Validar fondos suficientes;
+    if (¿Fondos disponibles?) then (No)
+        :Publicar account.debit.rejected;
+        stop
+    else (Sí)
+        :Aplicar débito;
+    endif
+elseif (¿Es un crédito?) then (Sí)
+    :Aplicar crédito;
+else (Compensación)
+    :Devolver el débito aplicado;
+endif
+:Actualizar lastActivityAt cuando corresponda;
+:Publicar el evento del movimiento;
+stop
+@enduml

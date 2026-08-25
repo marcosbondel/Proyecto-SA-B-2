@@ -1,0 +1,23 @@
+@startuml CDU002.2-consultar-saldo
+title CDU002.2 - Consultar saldo
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Cliente, Cajero o Administrador|
+:Solicitar saldo de una cuenta;
+|Account Service|
+:Validar existencia y autorización;
+if (¿Acceso permitido?) then (No)
+    :Responder FORBIDDEN_ACCOUNT_ACCESS o ACCOUNT_NOT_FOUND;
+else (Sí)
+    :Leer el saldo vigente;
+    :Responder el saldo al Gateway;
+endif
+stop
+@enduml
