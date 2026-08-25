@@ -1,0 +1,41 @@
+flowchart LR
+    client["👤 Visitante / Cliente"]
+    teller["👤 Cajero Receptor"]
+    admin["👤 Administrador"]
+
+    subgraph customer["Customer Service"]
+        register(("Registrar cliente"))
+        username(("Generar username único"))
+        activate(("Activar cuenta por correo"))
+        token(("Validar token de activación"))
+        login(("Iniciar sesión"))
+        credentials(("Validar credenciales"))
+        update(("Actualizar datos del cliente"))
+        upload(("Cargar foto de identidad"))
+        identity(("Validar identidad"))
+        review(("Revisar foto y datos"))
+    end
+
+    client --- register
+    client --- activate
+    client --- login
+    client --- update
+    client --- upload
+    teller --- register
+    teller --- login
+    teller --- update
+    teller --- identity
+    admin --- register
+    admin --- login
+    admin --- update
+    admin --- identity
+
+    register -. "«include»" .-> username
+    activate -. "«include»" .-> token
+    login -. "«include»" .-> credentials
+    identity -. "«include»" .-> review
+
+    note["La activación por correo y la validación de identidad son flujos independientes"]:::note
+    activate -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

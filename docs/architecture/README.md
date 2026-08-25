@@ -13,8 +13,9 @@ this directory holds the decisions behind it and the diagrams that show it.
 - [`decision-matrix.md`](decision-matrix.md) — the consolidated view: decision,
   rejected alternatives, accepted trade-off and consequence, with the assignment
   penalties each decision avoids.
-- `diagrams/` — the eight required diagrams. Not written yet; see the table
-  below.
+- `diagrams/` — the eight required diagrams. The versioned Mermaid and
+  PlantUML sources are present; see the table below. The use-case deliverable
+  is intentionally a hierarchy under `diagrams/cdu/`.
 
 ## What belongs here
 
@@ -33,7 +34,7 @@ this directory holds the decisions behind it and the diagrams that show it.
   | 5 | UML — Deployment | T-11 | `05-uml-despliegue` |
   | 6 | UML — Sequence, create account | T-12 | `06-uml-secuencia-crear-cuenta` |
   | 7 | UML — Sequence, transfer with Saga | T-13 | `07-uml-secuencia-transferencia` |
-  | 8 | UML — Use cases, three actors | T-14 | `08-uml-casos-de-uso` |
+  | 8 | UML — Use cases, hierarchical views | T-14 | `cdu/` (`00-alto-nivel`, `01-primera-descomposicion` and one folder per service) |
 
   The general architecture diagram is a deliverable in its own right: the
   assignment lists it separately from the C4 + UML block (§4.2 bullet
@@ -91,8 +92,10 @@ The eight principles in `.specify/memory/constitution.md` are already binding
 and do not wait for this directory. What is missing is the written reasoning,
 not the rules.
 
-> **Blocked**: The eight diagrams are not drawn. Owner: Marcos Bonifasi. Arrives
-> with: T-07 to T-14, one ticket per diagram.
+> **Current status**: The eight diagram source sets are present. The CDU source
+> set is organized by level and microservice under `diagrams/cdu/`. PNG/PDF
+> exports for the newly added source files still require a PlantUML/Mermaid
+> rendering pass before they can be committed as delivery artefacts.
 >
 > The ADRs are **no longer blocked**: the eleven decision records were written in
 > T-03 and live in [`adr/`](adr/README.md), with the consolidated view in
