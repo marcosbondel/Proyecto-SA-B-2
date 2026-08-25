@@ -1,0 +1,8 @@
+flowchart TD
+    actor["Actor: solicitar registro"] --> validate["Customer Service: validar datos"]
+    validate --> decision{"¿Datos válidos?"}
+    decision -->|No| reject["Rechazar registro"]
+    decision -->|Sí| username["Generar username único"]
+    username --> persist["Persistir Customer como PENDING_ACTIVATION"]
+    persist --> publish["Publicar customer.registered"]
+    publish --> audit["Notification & Audit: registrar auditoría"]

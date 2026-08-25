@@ -1,0 +1,34 @@
+@startuml CDU001.3-iniciar-sesion
+title CDU001.3 - Iniciar sesión
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Actor|
+:Enviar email y credencial;
+|Gateway|
+:Publicar customer.authenticate;
+|Customer Service|
+:Validar credenciales;
+if (¿Credenciales válidas?) then (No)
+    :Rechazar INVALID_CREDENTIALS;
+else (Sí)
+    if (¿Correo verificado?) then (No)
+        :Generar token de activación;
+        :Publicar customer.activation.requested;
+        |Notification & Audit|
+        :Enviar enlace de activación;
+        |Customer Service|
+        :Rechazar ACCOUNT_PENDING_ACTIVATION;
+    else (Sí)
+        :Publicar customer.login.succeeded;
+        :Responder claims al Gateway;
+    endif
+endif
+stop
+@enduml

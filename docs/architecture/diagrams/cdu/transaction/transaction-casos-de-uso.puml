@@ -1,7 +1,7 @@
 @startuml transaction-casos-de-uso
 left to right direction
 
-title CDU-TRA - Transaction Service: casos de uso
+title CDU003 - Gestionar transferencias
 
 skinparam shadowing false
 skinparam packageStyle rectangle
@@ -15,42 +15,42 @@ skinparam actor {
     FontColor #398819
 }
 
-actor "Cliente" as cliente
-actor "Cajero Receptor" as cajero
-actor "Administrador" as admin
-actor "Account Service" as account
-actor "Payment Service" as payment
+actor "Cliente" as actor_transaction_customer
+actor "Cajero Receptor" as actor_transaction_teller
+actor "Administrador" as actor_transaction_admin
+actor "Account Service" as actor_transaction_account
+actor "Payment Service" as actor_transaction_payment
 
-rectangle "Transaction Service" as transaction {
-    usecase "Transferir fondos" as transfer
-    usecase "Validar solicitud\nde transferencia" as validate
-    usecase "Coordinar Saga\nde transferencia" as saga
-    usecase "Solicitar validación\nde fondos" as requestFunds
-    usecase "Solicitar pago" as requestPayment
-    usecase "Ordenar crédito" as requestCredit
-    usecase "Compensar débito" as compensate
-    usecase "Registrar estado\nde transacción" as record
-    usecase "Consultar estado\nde transferencia" as status
+rectangle "CDU003 - Gestionar transferencias" as system_transaction {
+    usecase "CDU003.1:\nTransferir fondos" as uc_transaction_transfer
+    usecase "CDU003.2:\nConsultar estado de transferencia" as uc_transaction_status
+    usecase "CDU003.3:\nValidar solicitud de transferencia" as uc_transaction_validate
+    usecase "CDU003.4:\nCoordinar Saga de transferencia" as uc_transaction_saga
+    usecase "CDU003.5:\nSolicitar validación de fondos" as uc_transaction_request_funds
+    usecase "CDU003.6:\nSolicitar pago" as uc_transaction_request_payment
+    usecase "CDU003.7:\nOrdenar crédito" as uc_transaction_request_credit
+    usecase "CDU003.8:\nCompensar débito" as uc_transaction_compensate
+    usecase "CDU003.9:\nRegistrar estado de transacción" as uc_transaction_record
 }
 
-cliente -- transfer
-cliente -- status
-cajero -- transfer
-cajero -- status
-admin -- transfer
-admin -- status
-account -- saga
-payment -- saga
+actor_transaction_customer -- uc_transaction_transfer
+actor_transaction_customer -- uc_transaction_status
+actor_transaction_teller -- uc_transaction_transfer
+actor_transaction_teller -- uc_transaction_status
+actor_transaction_admin -- uc_transaction_transfer
+actor_transaction_admin -- uc_transaction_status
+actor_transaction_account -- uc_transaction_saga
+actor_transaction_payment -- uc_transaction_saga
 
-transfer .> validate : <<include>>
-transfer .> saga : <<include>>
-transfer .> record : <<include>>
-saga .> requestFunds : <<include>>
-saga .> requestPayment : <<include>>
-saga .> requestCredit : <<include>>
-compensate .> saga : <<extend>>
+uc_transaction_transfer .> uc_transaction_validate : <<include>>
+uc_transaction_transfer .> uc_transaction_saga : <<include>>
+uc_transaction_transfer .> uc_transaction_record : <<include>>
+uc_transaction_saga .> uc_transaction_request_funds : <<include>>
+uc_transaction_saga .> uc_transaction_request_payment : <<include>>
+uc_transaction_saga .> uc_transaction_request_credit : <<include>>
+uc_transaction_compensate .> uc_transaction_saga : <<extend>>
 
-note right of validate
+note right of uc_transaction_validate
     Valida monto, cuentas distintas e idempotencia.
     La disponibilidad real de fondos la valida Account Service.
 end note

@@ -1,0 +1,7 @@
+flowchart TD
+    client["Cliente: cargar fotografía"] --> gateway["Gateway: guardar objeto y publicar referencia"]
+    gateway --> read["Customer Service: leer objeto por referencia"]
+    read --> hash["Recalcular y comparar hash"]
+    hash --> decision{"¿Contenido íntegro?"}
+    decision -->|No| reject["Rechazar fotografía"]
+    decision -->|Sí| persist["Persistir bytes y dejar identidad PENDING"]

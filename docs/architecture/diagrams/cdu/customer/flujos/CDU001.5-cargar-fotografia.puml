@@ -1,0 +1,26 @@
+@startuml CDU001.5-cargar-fotografia
+title CDU001.5 - Cargar fotografía de identidad
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Cliente|
+:Cargar fotografía;
+|Gateway|
+:Guardar el objeto y publicar su referencia;
+|Customer Service|
+:Leer la referencia del objeto;
+:Recalcular y comparar el hash;
+if (¿Contenido íntegro?) then (No)
+    :Rechazar fotografía;
+else (Sí)
+    :Persistir los bytes en Customer;
+    :Dejar identidad en estado PENDING;
+endif
+stop
+@enduml

@@ -1,0 +1,26 @@
+@startuml CDU001.1-registrar-cliente
+title CDU001.1 - Registrar cliente
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Actor|
+:Solicitar registro con sus datos;
+|Customer Service|
+:Validar unicidad y coherencia;
+if (¿Datos válidos?) then (No)
+    :Rechazar con el motivo correspondiente;
+else (Sí)
+    :Generar username único;
+    :Persistir Customer como PENDING_ACTIVATION;
+    :Publicar customer.registered;
+    |Notification & Audit|
+    :Registrar el evento de auditoría;
+endif
+stop
+@enduml
