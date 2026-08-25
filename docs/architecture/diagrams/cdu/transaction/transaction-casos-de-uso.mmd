@@ -1,0 +1,40 @@
+flowchart LR
+    client["👤 Cliente"]
+    teller["👤 Cajero Receptor"]
+    admin["👤 Administrador"]
+    accountService["⚙ Account Service"]
+    paymentService["⚙ Payment Service"]
+
+    subgraph transaction["Transaction Service"]
+        transfer(("Transferir fondos"))
+        validate(("Validar solicitud de transferencia"))
+        saga(("Coordinar Saga de transferencia"))
+        requestFunds(("Solicitar validación de fondos"))
+        requestPayment(("Solicitar pago"))
+        requestCredit(("Ordenar crédito"))
+        compensate(("Compensar débito"))
+        record(("Registrar estado de transacción"))
+        status(("Consultar estado de transferencia"))
+    end
+
+    client --- transfer
+    client --- status
+    teller --- transfer
+    teller --- status
+    admin --- transfer
+    admin --- status
+    accountService --- saga
+    paymentService --- saga
+
+    transfer -. "«include»" .-> validate
+    transfer -. "«include»" .-> saga
+    transfer -. "«include»" .-> record
+    saga -. "«include»" .-> requestFunds
+    saga -. "«include»" .-> requestPayment
+    saga -. "«include»" .-> requestCredit
+    compensate -. "«extend»" .-> saga
+
+    note["Transaction valida la solicitud y conserva el estado; Account valida los fondos"]:::note
+    validate -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

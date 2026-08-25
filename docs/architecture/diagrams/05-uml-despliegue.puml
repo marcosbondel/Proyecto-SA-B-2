@@ -95,6 +95,9 @@ node "Developer Host" as host <<device>> #F7F7F7 {
         node "Notification DB\nPostgreSQL 18.4" as notification_db <<node>> #FFF0F0 {
             artifact "postgres:18.4" as notification_db_image
         }
+        node "MinIO\nS3-compatible object store" as minio <<node>> #FFF0F0 {
+            artifact "minio/minio:RELEASE.2024-11-07T00-52-20Z" as minio_image
+        }
     }
 
     node "kind cluster\nSingle-node local limitation" as kind <<node>> #EAF2FF {
@@ -144,6 +147,7 @@ node "Developer Host" as host <<device>> #F7F7F7 {
                 node "payment-service" as svc_payment <<kubernetesService>> #EAF2FF
                 node "notification-audit-service" as svc_notification <<kubernetesService>> #EAF2FF
 
+                node "Namespace resource" as namespace_resource <<executionEnvironment>> #EAF2FF
                 artifact "ConfigMap/bank-usac-config" as configmap
                 artifact "Secret/bank-usac-secrets" as secret <<secret>> #FFF0F0
             }
@@ -162,20 +166,27 @@ image_account ..> pod_account : <<deploy>>
 image_transaction ..> pod_transaction : <<deploy>>
 image_payment ..> pod_payment : <<deploy>>
 image_notification ..> pod_notification : <<deploy>>
-helm_chart ..> namespace : <<deploy>>\nhelm upgrade --install
-configmap ..> dep_frontend
-configmap ..> dep_gateway
-configmap ..> dep_customer
-configmap ..> dep_account
-configmap ..> dep_transaction
-configmap ..> dep_payment
-configmap ..> dep_notification
-secret ..> dep_gateway
-secret ..> dep_customer
-secret ..> dep_account
-secret ..> dep_transaction
-secret ..> dep_payment
-secret ..> dep_notification
+ rabbit_image ..> rabbitmq : runs as
+ customer_db_image ..> customer_db : runs as
+ account_db_image ..> account_db : runs as
+ transaction_db_image ..> transaction_db : runs as
+ payment_db_image ..> payment_db : runs as
+ notification_db_image ..> notification_db : runs as
+ minio_image ..> minio : runs as
+helm_chart ..> namespace_resource : <<deploy>>\nhelm upgrade --install
+configmap ..> pod_frontend
+configmap ..> pod_gateway
+configmap ..> pod_customer
+configmap ..> pod_account
+configmap ..> pod_transaction
+configmap ..> pod_payment
+configmap ..> pod_notification
+secret ..> pod_gateway
+secret ..> pod_customer
+secret ..> pod_account
+secret ..> pod_transaction
+secret ..> pod_payment
+secret ..> pod_notification
 
 ' Kubernetes Service selection and host exposure.
 svc_frontend --> pod_frontend : selects / forwards
@@ -203,9 +214,11 @@ pod_notification <--> rabbitmq : AMQP/TCP 5672\nhost.docker.internal
     pod_transaction --> transaction_db : PostgreSQL/TCP\nhost.docker.internal
     pod_payment --> payment_db : PostgreSQL/TCP\nhost.docker.internal
     pod_notification --> notification_db : PostgreSQL/TCP\nhost.docker.internal
+    pod_gateway --> minio : S3-compatible/TCP 9000\nhost.docker.internal
+    pod_customer --> minio : S3-compatible/TCP 9000\nhost.docker.internal
 
 note right of docker
-    RabbitMQ and all five PostgreSQL databases run as Docker containers
+    RabbitMQ, MinIO and all five PostgreSQL databases run as Docker containers
     on the developer host, outside the kind cluster.
 
     Deployment properties (not node identities):
@@ -220,10 +233,11 @@ note right of docker
         user: payment_user | host mapping: 5436
     Notification DB: notification-db | database: bankusac_notification
         user: notification_user | host mapping: 5437
+    MinIO: minio | S3 API: 9000 | console: 9001
 
-    From a pod, localhost means the pod itself. The chart/configuration
-    must provide host.docker.internal (or an equivalent host-gateway /
-    Docker network address) for the external connections.
+    The preferred route is a shared Docker network plus selectorless
+    Kubernetes Services with stable in-cluster DNS. The host.docker.internal
+    labels shown on the paths are the documented local fallback.
 end note
 
 note bottom of kind

@@ -1,0 +1,33 @@
+@startuml payment-flujos
+title Flujo funcional - Payment Service
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+:Recibir payment.requested;
+:Validar operación y registrar PENDING;
+if (¿Pago interno?) then (Sí)
+    :Procesar contra el flujo interno autorizado;
+else (No)
+    :Solicitar procesamiento al proveedor externo;
+endif
+
+if (¿Procesamiento exitoso?) then (Sí)
+    :Registrar SUCCEEDED;
+    :Publicar payment.succeeded;
+else (No)
+    :Reintentar dentro de Payment Service;
+    if (¿Quedan reintentos?) then (Sí)
+        :Volver a procesar;
+    else (No)
+        :Registrar FAILED con failureReason;
+        :Publicar payment.failed;
+    endif
+endif
+stop
+@enduml

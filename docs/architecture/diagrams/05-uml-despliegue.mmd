@@ -21,8 +21,10 @@ flowchart TB
             payment_db_image["postgres:18.4<br/>«artifact»"]:::artifact
             notification_db["Notification DB<br/>«node»<br/>PostgreSQL 18.4"]:::external
             notification_db_image["postgres:18.4<br/>«artifact»"]:::artifact
+            minio["MinIO<br/>«node»<br/>S3-compatible object store"]:::external
+            minio_image["minio/minio:RELEASE.2024-11-07T00-52-20Z<br/>«artifact»"]:::artifact
 
-            deployment_properties["<b>Deployment properties · «note»</b><br/>RabbitMQ: container rabbitmq · AMQP 5672 · management 15672<br/>Customer DB: customer-db · bankusac_customer · customer_user · host mapping 5433<br/>Account DB: account-db · bankusac_account · account_user · host mapping 5434<br/>Transaction DB: transaction-db · bankusac_transaction · transaction_user · host mapping 5435<br/>Payment DB: payment-db · bankusac_payment · payment_user · host mapping 5436<br/>Notification DB: notification-db · bankusac_notification · notification_user · host mapping 5437"]:::note
+            deployment_properties["<b>Deployment properties · «note»</b><br/>RabbitMQ: container rabbitmq · AMQP 5672 · management 15672<br/>Customer DB: customer-db · bankusac_customer · customer_user · host mapping 5433<br/>Account DB: account-db · bankusac_account · account_user · host mapping 5434<br/>Transaction DB: transaction-db · bankusac_transaction · transaction_user · host mapping 5435<br/>Payment DB: payment-db · bankusac_payment · payment_user · host mapping 5436<br/>Notification DB: notification-db · bankusac_notification · notification_user · host mapping 5437<br/>MinIO: container minio · S3 API 9000 · console 9001"]:::note
 
             rabbit_image -. "runs as" .-> rabbitmq
             customer_db_image -. "runs as" .-> customer_db
@@ -30,66 +32,67 @@ flowchart TB
             transaction_db_image -. "runs as" .-> transaction_db
             payment_db_image -. "runs as" .-> payment_db
             notification_db_image -. "runs as" .-> notification_db
+            minio_image -. "runs as" .-> minio
         end
 
         subgraph kind["kind cluster · «node» · single-node local limitation"]
             direction TB
             subgraph worker["kind-worker · «device»"]
                 direction TB
-                subgraph namespace["Namespace bank-usac · «executionEnvironment»"]
+        subgraph namespace["Namespace bank-usac · «kubernetesNamespace»"]
                     direction TB
                     namespace_resource["Namespace resource<br/>«executionEnvironment»"]:::runtime
 
-                    subgraph dep_frontend["Deployment/frontend · «deployment» · replicas=1"]
+                    subgraph dep_frontend["Deployment/frontend · «kubernetesDeployment» · replicas=1"]
                         direction TB
                         pod_frontend["Pod/frontend · «executionEnvironment»"]:::pod
                         image_frontend["«artifact»<br/>bank-usac/frontend:&lt;git-sha&gt;<br/>Nuxt 4"]:::artifact
                         image_frontend -. "«deploy»" .-> pod_frontend
                     end
-                    subgraph dep_gateway["Deployment/gateway · «deployment» · replicas=1"]
+                    subgraph dep_gateway["Deployment/gateway · «kubernetesDeployment» · replicas=1"]
                         direction TB
                         pod_gateway["Pod/gateway · «executionEnvironment»"]:::pod
                         image_gateway["«artifact»<br/>bank-usac/gateway:&lt;git-sha&gt;<br/>NestJS"]:::artifact
                         image_gateway -. "«deploy»" .-> pod_gateway
                     end
-                    subgraph dep_customer["Deployment/customer · «deployment» · replicas=1"]
+                    subgraph dep_customer["Deployment/customer · «kubernetesDeployment» · replicas=1"]
                         direction TB
                         pod_customer["Pod/customer · «executionEnvironment»"]:::pod
                         image_customer["«artifact»<br/>bank-usac/customer:&lt;git-sha&gt;<br/>NestJS"]:::artifact
                         image_customer -. "«deploy»" .-> pod_customer
                     end
-                    subgraph dep_account["Deployment/account · «deployment» · replicas=1"]
+                    subgraph dep_account["Deployment/account · «kubernetesDeployment» · replicas=1"]
                         direction TB
                         pod_account["Pod/account · «executionEnvironment»"]:::pod
                         image_account["«artifact»<br/>bank-usac/account:&lt;git-sha&gt;<br/>NestJS"]:::artifact
                         image_account -. "«deploy»" .-> pod_account
                     end
-                    subgraph dep_transaction["Deployment/transaction · «deployment» · replicas=1"]
+                    subgraph dep_transaction["Deployment/transaction · «kubernetesDeployment» · replicas=1"]
                         direction TB
                         pod_transaction["Pod/transaction · «executionEnvironment»"]:::pod
                         image_transaction["«artifact»<br/>bank-usac/transaction:&lt;git-sha&gt;<br/>NestJS"]:::artifact
                         image_transaction -. "«deploy»" .-> pod_transaction
                     end
-                    subgraph dep_payment["Deployment/payment · «deployment» · replicas=1"]
+                    subgraph dep_payment["Deployment/payment · «kubernetesDeployment» · replicas=1"]
                         direction TB
                         pod_payment["Pod/payment · «executionEnvironment»"]:::pod
                         image_payment["«artifact»<br/>bank-usac/payment:&lt;git-sha&gt;<br/>NestJS"]:::artifact
                         image_payment -. "«deploy»" .-> pod_payment
                     end
-                    subgraph dep_notification["Deployment/notification-audit · «deployment» · replicas=1"]
+                    subgraph dep_notification["Deployment/notification-audit · «kubernetesDeployment» · replicas=1"]
                         direction TB
                         pod_notification["Pod/notification-audit · «executionEnvironment»"]:::pod
                         image_notification["«artifact»<br/>bank-usac/notification:&lt;git-sha&gt;<br/>NestJS"]:::artifact
                         image_notification -. "«deploy»" .-> pod_notification
                     end
 
-                    svc_frontend["Service/frontend<br/>«service»"]:::service
-                    svc_gateway["Service/gateway<br/>«service»"]:::service
-                    svc_customer["Service/customer<br/>«service»"]:::service
-                    svc_account["Service/account<br/>«service»"]:::service
-                    svc_transaction["Service/transaction<br/>«service»"]:::service
-                    svc_payment["Service/payment<br/>«service»"]:::service
-                    svc_notification["Service/notification-audit<br/>«service»"]:::service
+                    svc_frontend["Service/frontend<br/>«kubernetesService»"]:::service
+                    svc_gateway["Service/gateway<br/>«kubernetesService»"]:::service
+                    svc_customer["Service/customer<br/>«kubernetesService»"]:::service
+                    svc_account["Service/account<br/>«kubernetesService»"]:::service
+                    svc_transaction["Service/transaction<br/>«kubernetesService»"]:::service
+                    svc_payment["Service/payment<br/>«kubernetesService»"]:::service
+                    svc_notification["Service/notification-audit<br/>«kubernetesService»"]:::service
 
                     configmap["ConfigMap/bank-usac-config<br/>«artifact»"]:::config
                     secret["Secret/bank-usac-secrets<br/>«artifact»"]:::secret
@@ -141,6 +144,8 @@ flowchart TB
     pod_transaction -->|PostgreSQL/TCP<br/>host.docker.internal| transaction_db
     pod_payment -->|PostgreSQL/TCP<br/>host.docker.internal| payment_db
     pod_notification -->|PostgreSQL/TCP<br/>host.docker.internal| notification_db
+    pod_gateway -->|S3-compatible/TCP 9000<br/>host.docker.internal| minio
+    pod_customer -->|S3-compatible/TCP 9000<br/>host.docker.internal| minio
 
     subgraph legend["Notas de modelado"]
         direction LR
