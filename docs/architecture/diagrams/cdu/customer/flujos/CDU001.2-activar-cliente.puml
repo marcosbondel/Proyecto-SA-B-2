@@ -1,0 +1,28 @@
+@startuml CDU001.2-activar-cliente
+title CDU001.2 - Activar cliente por correo
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Cliente|
+:Abrir el enlace recibido;
+|Gateway|
+:Publicar customer.verify-email;
+|Customer Service|
+:Validar token de activación;
+if (¿Token válido y vigente?) then (No)
+    :Rechazar ACTIVATION_TOKEN_INVALID;
+else (Sí)
+    :Marcar emailVerifiedAt;
+    :Cambiar estado a ACTIVE;
+    :Publicar customer.email.verified;
+    |Notification & Audit|
+    :Registrar la activación;
+endif
+stop
+@enduml

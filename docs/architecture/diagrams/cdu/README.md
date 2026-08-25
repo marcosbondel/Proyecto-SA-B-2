@@ -1,27 +1,57 @@
 # Casos de uso de Bank USAC
 
-Esta carpeta usa tres niveles de lectura:
+La carpeta sigue la forma solicitada por el auxiliar. No se modelan tres o más
+descomposiciones anidadas: el microservicio aparece como una función principal
+del sistema y, dentro de esa función, se enumeran sus funcionalidades como
+casos de uso relacionados.
 
-1. `00-alto-nivel`: el sistema se observa como un único núcleo de operaciones
-   bancarias y se relaciona con sus actores principales.
-2. `01-primera-descomposicion`: el núcleo se divide en las cinco áreas
-   funcionales que corresponden a los cinco microservicios del dominio.
-3. Cada subcarpeta contiene el diagrama de casos de uso de su microservicio y
-   una vista de actividad de sus flujos principales.
+## Lectura de los diagramas
 
-## Qué significa cada tipo de diagrama
+1. `00-alto-nivel` muestra `CDU000`, el objetivo general de Bank USAC.
+2. `01-primera-descomposicion` muestra `CDU001` a `CDU005`. Cada uno representa
+   la función principal de un microservicio.
+3. Cada carpeta de microservicio contiene un diagrama detallado. Sus casos
+   siguen la numeración del CDU principal: `CDU001.1`, `CDU001.2`, etc.
+4. `flujos/` contiene diagramas de actividad para los casos de uso principales.
+   Los comportamientos incluidos, como validar credenciales o persistir una
+   auditoría, se muestran dentro del caso principal que los reutiliza.
 
-- Un **diagrama de casos de uso** muestra objetivos observables para un actor.
-  `<<include>>` se usa únicamente para comportamiento obligatorio reutilizado y
-  `<<extend>>` para comportamiento opcional o alternativo.
-- La primera descomposición se expresa por contención funcional, no usando
-  `<<include>>` entre los cinco microservicios. Una operación bancaria no
-  ejecuta necesariamente todos los módulos.
-- Un **diagrama de actividad** muestra el flujo principal, decisiones y errores
-  de un conjunto de funcionalidades. No sustituye al diagrama de casos de uso.
+La numeración no debe interpretarse como `CDU001.1.1`: no existe una tercera
+descomposición. Los sufijos identifican funcionalidades del CDU del
+microservicio.
 
-PlantUML contiene la notación UML nativa. Mermaid es la representación
-versionable aproximada exigida por ADR-013.
+## Matriz de CDUs
+
+| CDU | Función principal | Microservicio |
+| --- | --- | --- |
+| CDU000 | Gestionar operaciones bancarias | Bank USAC |
+| CDU001 | Gestionar clientes e identidad | Customer Service |
+| CDU002 | Gestionar cuentas y saldos | Account Service |
+| CDU003 | Gestionar transferencias | Transaction Service |
+| CDU004 | Gestionar pagos | Payment Service |
+| CDU005 | Gestionar notificaciones y auditoría | Notification & Audit Service |
+
+## Funcionalidades principales
+
+- `CDU001`: registrar cliente, activar cliente por correo, iniciar sesión,
+  actualizar datos, cargar fotografía y validar identidad.
+- `CDU002`: abrir cuenta, consultar saldo, aplicar movimiento de Saga y
+  gestionar estado de cuenta.
+- `CDU003`: transferir fondos y consultar el estado de una transferencia.
+- `CDU004`: procesar pagos y consultar el historial de pagos.
+- `CDU005`: registrar auditoría, enviar notificaciones y consultar auditoría o
+  notificaciones.
+
+## Qué significa cada notación
+
+- Un **diagrama de casos de uso** muestra objetivos y funcionalidades asociadas
+  con actores. `<<include>>` representa comportamiento obligatorio reutilizado;
+  `<<extend>>` representa comportamiento opcional o alternativo.
+- Un **diagrama de actividad** muestra el flujo principal, decisiones, errores
+  y resultados de un caso de uso. Es el equivalente a los diagramas de flujo
+  mostrados en clase.
+- PlantUML contiene la notación UML nativa. Mermaid es la representación
+  versionable aproximada exigida por ADR-013.
 
 ## Fuente funcional
 
@@ -34,9 +64,9 @@ Los casos se derivan de:
 - `docs/design-docs/PROMPT_MOCKUP.MD` — superficies funcionales del frontend,
   solamente cuando no contradicen el modelo de dominio.
 
-No se modelan depósitos ni retiros de efectivo: el propio modelo los deja fuera
-de alcance. La validación de fondos pertenece a Account Service; Transaction
-Service solicita esa validación y conserva el estado de la Saga.
+No se modelan depósitos ni retiros de efectivo: el modelo del proyecto los deja
+fuera de alcance. La validación de fondos pertenece a Account Service;
+Transaction Service solicita el movimiento y conserva el estado de la Saga.
 
 ## Estructura
 
@@ -46,18 +76,15 @@ cdu/
 ├── 01-primera-descomposicion.{puml,mmd}
 ├── customer/
 │   ├── customer-casos-de-uso.{puml,mmd}
-│   └── flujos.{puml,mmd}
-├── account/
-│   ├── account-casos-de-uso.{puml,mmd}
-│   └── flujos.{puml,mmd}
-├── transaction/
-│   ├── transaction-casos-de-uso.{puml,mmd}
-│   └── flujos.{puml,mmd}
-├── payment/
-│   ├── payment-casos-de-uso.{puml,mmd}
-│   └── flujos.{puml,mmd}
-└── notification-audit/
-    ├── notification-audit-casos-de-uso.{puml,mmd}
-    └── flujos.{puml,mmd}
+│   └── flujos/
+│       ├── CDU001.1-registrar-cliente.{puml,mmd}
+│       ├── CDU001.2-activar-cliente.{puml,mmd}
+│       ├── CDU001.3-iniciar-sesion.{puml,mmd}
+│       ├── CDU001.4-actualizar-datos.{puml,mmd}
+│       ├── CDU001.5-cargar-fotografia.{puml,mmd}
+│       └── CDU001.6-validar-identidad.{puml,mmd}
+├── account/flujos/ (CDU002.1 a CDU002.4)
+├── transaction/flujos/ (CDU003.1 y CDU003.2)
+├── payment/flujos/ (CDU004.1 y CDU004.2)
+└── notification-audit/flujos/ (CDU005.1 a CDU005.4)
 ```
-

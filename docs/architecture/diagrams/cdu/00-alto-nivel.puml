@@ -1,7 +1,7 @@
 @startuml 00-alto-nivel
 left to right direction
 
-title CDU-00 - Bank USAC: alto nivel
+title CDU000 - Bank USAC: alto nivel
 
 skinparam shadowing false
 skinparam packageStyle rectangle
@@ -20,7 +20,7 @@ actor "Cajero Receptor" as cajero
 actor "Administrador" as admin
 
 rectangle "Bank USAC\nSistema bancario" as bank {
-    usecase "Gestionar operaciones\nbancarias" as core
+    usecase "CDU000:\nGestionar operaciones bancarias" as core
 }
 
 cliente -- core
@@ -29,8 +29,8 @@ admin -- core
 
 note right of core
     Núcleo funcional del sistema.
-    La primera descomposición se muestra
-    en CDU-01.
+    La primera vista funcional se muestra
+    en CDU001 a CDU005.
 end note
 
 legend right

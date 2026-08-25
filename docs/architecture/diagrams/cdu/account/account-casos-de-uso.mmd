@@ -5,15 +5,15 @@ flowchart LR
     transactionService["⚙ Transaction Service"]
     scheduler["⏱ Proceso automático"]
 
-    subgraph account["Account Service"]
-        open(("Abrir cuenta"))
-        eligibility(("Validar elegibilidad del cliente"))
-        balance(("Consultar saldo"))
-        access(("Verificar acceso a la cuenta"))
-        movement(("Aplicar movimiento de Saga"))
-        funds(("Validar fondos y estado"))
-        status(("Gestionar estado de cuenta"))
-        automatic(("Desactivar cuentas inactivas"))
+    subgraph account["CDU002 · Gestionar cuentas y saldos"]
+        open(("CDU002.1: Abrir cuenta"))
+        balance(("CDU002.2: Consultar saldo"))
+        movement(("CDU002.3: Aplicar movimiento de Saga"))
+        status(("CDU002.4: Gestionar estado de cuenta"))
+        eligibility(("CDU002.5: Validar elegibilidad del cliente"))
+        access(("CDU002.6: Verificar acceso a la cuenta"))
+        funds(("CDU002.7: Validar fondos y estado"))
+        automatic(("CDU002.8: Desactivar cuentas inactivas"))
     end
 
     client --- open

@@ -1,5 +1,5 @@
-@startuml payment-flujos
-title Flujo funcional - Payment Service
+@startuml CDU004.1-procesar-pago
+title CDU004.1 - Procesar pago
 
 skinparam shadowing false
 skinparam activity {
@@ -9,19 +9,20 @@ skinparam activity {
 }
 
 start
-:Recibir payment.requested;
+|Transaction Service|
+:Solicitar payment.requested;
+|Payment Service|
 :Validar operación y registrar PENDING;
 if (¿Pago interno?) then (Sí)
-    :Procesar contra el flujo interno autorizado;
+    :Procesar pago interno;
 else (No)
-    :Solicitar procesamiento al proveedor externo;
+    :Solicitar pago al proveedor externo;
 endif
-
 if (¿Procesamiento exitoso?) then (Sí)
     :Registrar SUCCEEDED;
     :Publicar payment.succeeded;
 else (No)
-    :Reintentar dentro de Payment Service;
+    :Reintentar el procesamiento;
     if (¿Quedan reintentos?) then (Sí)
         :Volver a procesar;
     else (No)

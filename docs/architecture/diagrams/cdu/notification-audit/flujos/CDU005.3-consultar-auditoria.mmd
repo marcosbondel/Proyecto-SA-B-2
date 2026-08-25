@@ -1,0 +1,5 @@
+flowchart TD
+    admin["Administrador: solicitar auditoría"] --> gateway["Gateway: publicar audit.query.requested"]
+    gateway --> validate["Notification & Audit: validar filtros y correlationId"]
+    validate --> read["Consultar AuditEvents inmutables"]
+    read --> reply["Responder audit.query.replied"]

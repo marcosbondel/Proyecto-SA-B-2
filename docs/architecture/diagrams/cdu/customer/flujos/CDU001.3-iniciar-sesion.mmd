@@ -1,0 +1,10 @@
+flowchart TD
+    actor["Actor: enviar credenciales"] --> gateway["Gateway: publicar customer.authenticate"]
+    gateway --> validate["Customer Service: validar credenciales"]
+    validate --> valid{"¿Credenciales válidas?"}
+    valid -->|No| invalid["Rechazar INVALID_CREDENTIALS"]
+    valid -->|Sí| verified{"¿Correo verificado?"}
+    verified -->|No| token["Generar token y publicar customer.activation.requested"]
+    token --> email["Notification & Audit: enviar enlace"]
+    email --> pending["Rechazar ACCOUNT_PENDING_ACTIVATION"]
+    verified -->|Sí| success["Publicar customer.login.succeeded y responder claims"]
