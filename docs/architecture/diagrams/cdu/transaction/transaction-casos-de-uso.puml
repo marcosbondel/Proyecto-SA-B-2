@@ -1,0 +1,62 @@
+@startuml transaction-casos-de-uso
+left to right direction
+
+title CDU-TRA - Transaction Service: casos de uso
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Cliente" as cliente
+actor "Cajero Receptor" as cajero
+actor "Administrador" as admin
+actor "Account Service" as account
+actor "Payment Service" as payment
+
+rectangle "Transaction Service" as transaction {
+    usecase "Transferir fondos" as transfer
+    usecase "Validar solicitud\nde transferencia" as validate
+    usecase "Coordinar Saga\nde transferencia" as saga
+    usecase "Solicitar validación\nde fondos" as requestFunds
+    usecase "Solicitar pago" as requestPayment
+    usecase "Ordenar crédito" as requestCredit
+    usecase "Compensar débito" as compensate
+    usecase "Registrar estado\nde transacción" as record
+    usecase "Consultar estado\nde transferencia" as status
+}
+
+cliente -- transfer
+cliente -- status
+cajero -- transfer
+cajero -- status
+admin -- transfer
+admin -- status
+account -- saga
+payment -- saga
+
+transfer .> validate : <<include>>
+transfer .> saga : <<include>>
+transfer .> record : <<include>>
+saga .> requestFunds : <<include>>
+saga .> requestPayment : <<include>>
+saga .> requestCredit : <<include>>
+compensate .> saga : <<extend>>
+
+note right of validate
+    Valida monto, cuentas distintas e idempotencia.
+    La disponibilidad real de fondos la valida Account Service.
+end note
+
+legend right
+    La Saga usa mensajes asíncronos y compensación explícita.
+    No existe llamada HTTP entre servicios.
+endlegend
+@enduml

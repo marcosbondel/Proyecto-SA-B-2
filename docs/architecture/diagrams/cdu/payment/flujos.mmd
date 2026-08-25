@@ -1,0 +1,19 @@
+flowchart TD
+    start(["Recibir payment.requested"])
+    validate["Validar operación y registrar PENDING"]
+    kind{"¿Pago interno?"}
+    internal["Procesar flujo interno autorizado"]
+    external["Solicitar procesamiento al proveedor externo"]
+    result{"¿Procesamiento exitoso?"}
+    success["Registrar SUCCEEDED y publicar payment.succeeded"]
+    retry["Reintentar dentro de Payment Service"]
+    attempts{"¿Quedan reintentos?"}
+    failure["Registrar FAILED con failureReason y publicar payment.failed"]
+
+    start --> validate --> kind
+    kind -->|"Sí"| internal --> result
+    kind -->|"No"| external --> result
+    result -->|"Sí"| success
+    result -->|"No"| retry --> attempts
+    attempts -->|"Sí"| kind
+    attempts -->|"No"| failure

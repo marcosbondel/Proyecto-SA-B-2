@@ -1,0 +1,59 @@
+@startuml account-casos-de-uso
+left to right direction
+
+title CDU-ACC - Account Service: casos de uso
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Cliente" as cliente
+actor "Cajero Receptor" as cajero
+actor "Administrador" as admin
+actor "Transaction Service" as transaction
+actor "Proceso automático" as scheduler
+
+rectangle "Account Service" as account {
+    usecase "Abrir cuenta" as open
+    usecase "Validar elegibilidad\ndel cliente" as eligibility
+    usecase "Consultar saldo" as balance
+    usecase "Verificar acceso\na la cuenta" as access
+    usecase "Aplicar movimiento\nde Saga" as movement
+    usecase "Validar fondos\ny estado" as funds
+    usecase "Gestionar estado\nde cuenta" as status
+    usecase "Desactivar cuentas\ninactivas" as automatic
+}
+
+cliente -- open
+cliente -- balance
+cajero -- open
+cajero -- balance
+admin -- open
+admin -- balance
+admin -- status
+transaction -- movement
+scheduler -- automatic
+
+open .> eligibility : <<include>>
+balance .> access : <<include>>
+movement .> funds : <<include>>
+
+note right of movement
+    Account Service es dueño de balance,
+    débito, crédito y compensación.
+    Transaction Service solo solicita el movimiento.
+end note
+
+legend right
+    La desactivación automática requiere cuenta inactiva
+    y balance menor que Q50.00 durante seis meses.
+endlegend
+@enduml

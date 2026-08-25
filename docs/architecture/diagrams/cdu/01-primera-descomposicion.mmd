@@ -1,0 +1,32 @@
+flowchart LR
+    visitor["👤 Visitante / Cliente"]
+    teller["👤 Cajero Receptor"]
+    admin["👤 Administrador"]
+
+    subgraph bank["Bank USAC · Primera descomposición funcional"]
+        customer(("Gestionar clientes e identidad"))
+        account(("Gestionar cuentas y saldos"))
+        transaction(("Gestionar transferencias"))
+        payment(("Gestionar pagos"))
+        audit(("Gestionar notificaciones y auditoría"))
+    end
+
+    visitor --- customer
+    visitor --- account
+    visitor --- transaction
+    visitor --- payment
+
+    teller --- customer
+    teller --- account
+    teller --- transaction
+
+    admin --- customer
+    admin --- account
+    admin --- transaction
+    admin --- payment
+    admin --- audit
+
+    note["La contención representa descomposición funcional; no implica que toda operación use todos los módulos"]:::note
+    bank -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

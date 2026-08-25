@@ -1,0 +1,17 @@
+flowchart LR
+    visitor["👤 Visitante / Cliente"]
+    teller["👤 Cajero Receptor"]
+    admin["👤 Administrador"]
+
+    subgraph bank["Bank USAC · Sistema bancario"]
+        core(("Gestionar operaciones bancarias"))
+    end
+
+    visitor --- core
+    teller --- core
+    admin --- core
+
+    note["El núcleo se descompone en cinco áreas funcionales en CDU-01"]:::note
+    core -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

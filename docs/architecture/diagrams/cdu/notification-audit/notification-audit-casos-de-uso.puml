@@ -1,0 +1,52 @@
+@startuml notification-audit-casos-de-uso
+left to right direction
+
+title CDU-NOT - Notification & Audit Service: casos de uso
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Administrador" as admin
+actor "Customer Service" as customer
+actor "Account Service" as account
+actor "Transaction Service" as transaction
+actor "Payment Service" as payment
+actor "Servicio de correo" as email
+
+rectangle "Notification & Audit Service" as notification {
+    usecase "Registrar evento\nde auditoría" as audit
+    usecase "Persistir evento\ninmutable" as persist
+    usecase "Enviar notificación" as notify
+    usecase "Registrar estado\nde entrega" as delivery
+    usecase "Consultar auditoría" as queryAudit
+    usecase "Consultar notificaciones" as queryNotifications
+    usecase "Filtrar por correlationId" as filterAudit
+}
+
+admin -- queryAudit
+admin -- queryNotifications
+customer -- audit
+account -- audit
+transaction -- audit
+payment -- audit
+email -- notify
+
+audit .> persist : <<include>>
+notify .> delivery : <<include>>
+queryAudit .> filterAudit : <<include>>
+
+note right of notification
+    Es un servicio terminal: consume eventos,
+    registra auditoría y produce efectos de notificación.
+    No publica eventos que decidan lógica de negocio.
+end note
+@enduml
