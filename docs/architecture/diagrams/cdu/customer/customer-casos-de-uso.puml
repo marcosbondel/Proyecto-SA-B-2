@@ -1,7 +1,7 @@
 @startuml customer-casos-de-uso
 left to right direction
 
-title CDU-CUS - Customer Service: casos de uso
+title CDU001 - Gestionar clientes e identidad
 
 skinparam shadowing false
 skinparam packageStyle rectangle
@@ -15,45 +15,45 @@ skinparam actor {
     FontColor #398819
 }
 
-actor "Visitante / Cliente" as cliente
-actor "Cajero Receptor" as cajero
-actor "Administrador" as admin
+actor "Visitante / Cliente" as actor_customer
+actor "Cajero Receptor" as actor_teller
+actor "Administrador" as actor_admin
 
-rectangle "Customer Service" as customer {
-    usecase "Registrar cliente" as register
-    usecase "Generar username único" as username
-    usecase "Activar cuenta por correo" as activate
-    usecase "Validar token de activación" as token
-    usecase "Iniciar sesión" as login
-    usecase "Validar credenciales" as credentials
-    usecase "Actualizar datos del cliente" as update
-    usecase "Cargar foto de identidad" as upload
-    usecase "Validar identidad" as identity
-    usecase "Revisar foto y datos" as review
+rectangle "CDU001 - Gestionar clientes e identidad" as system_customer {
+    usecase "CDU001.1:\nRegistrar cliente" as uc_customer_register
+    usecase "CDU001.2:\nActivar cliente por correo" as uc_customer_activate
+    usecase "CDU001.3:\nIniciar sesión" as uc_customer_login
+    usecase "CDU001.4:\nActualizar datos del cliente" as uc_customer_update
+    usecase "CDU001.5:\nCargar fotografía de identidad" as uc_customer_upload
+    usecase "CDU001.6:\nValidar identidad" as uc_customer_identity
+    usecase "CDU001.7:\nGenerar username único" as uc_customer_username
+    usecase "CDU001.8:\nValidar token de activación" as uc_customer_token
+    usecase "CDU001.9:\nValidar credenciales" as uc_customer_credentials
+    usecase "CDU001.10:\nRevisar foto y datos" as uc_customer_review
 }
 
-cliente -- register
-cliente -- activate
-cliente -- login
-cliente -- update
-cliente -- upload
+actor_customer -- uc_customer_register
+actor_customer -- uc_customer_activate
+actor_customer -- uc_customer_login
+actor_customer -- uc_customer_update
+actor_customer -- uc_customer_upload
 
-cajero -- register
-cajero -- login
-cajero -- update
-cajero -- identity
+actor_teller -- uc_customer_register
+actor_teller -- uc_customer_login
+actor_teller -- uc_customer_update
+actor_teller -- uc_customer_identity
 
-admin -- register
-admin -- login
-admin -- update
-admin -- identity
+actor_admin -- uc_customer_register
+actor_admin -- uc_customer_login
+actor_admin -- uc_customer_update
+actor_admin -- uc_customer_identity
 
-register .> username : <<include>>
-activate .> token : <<include>>
-login .> credentials : <<include>>
-identity .> review : <<include>>
+uc_customer_register .> uc_customer_username : <<include>>
+uc_customer_activate .> uc_customer_token : <<include>>
+uc_customer_login .> uc_customer_credentials : <<include>>
+uc_customer_identity .> uc_customer_review : <<include>>
 
-note right of activate
+note right of uc_customer_activate
     Customer Service genera y valida el token.
     Notification & Audit solo entrega el correo.
 end note

@@ -4,14 +4,14 @@ flowchart LR
     transactionService["⚙ Transaction Service"]
     provider["🌐 Proveedor de pagos"]
 
-    subgraph payment["Payment Service"]
-        process(("Procesar pago"))
-        validate(("Validar operación de pago"))
-        internal(("Procesar pago interno"))
-        external(("Solicitar pago externo"))
-        retry(("Reintentar procesamiento"))
-        record(("Registrar estado del pago"))
-        history(("Consultar historial de pagos"))
+    subgraph payment["CDU004 · Gestionar pagos"]
+        process(("CDU004.1: Procesar pago"))
+        history(("CDU004.2: Consultar historial de pagos"))
+        validate(("CDU004.3: Validar operación de pago"))
+        internal(("CDU004.4: Procesar pago interno"))
+        external(("CDU004.5: Solicitar pago externo"))
+        retry(("CDU004.6: Reintentar procesamiento"))
+        record(("CDU004.7: Registrar estado del pago"))
     end
 
     client --- process

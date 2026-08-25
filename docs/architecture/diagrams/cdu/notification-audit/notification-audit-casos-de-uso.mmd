@@ -6,14 +6,14 @@ flowchart LR
     paymentService["⚙ Payment Service"]
     email["✉ Servicio de correo"]
 
-    subgraph notification["Notification & Audit Service"]
-        audit(("Registrar evento de auditoría"))
-        persist(("Persistir evento inmutable"))
-        notify(("Enviar notificación"))
-        delivery(("Registrar estado de entrega"))
-        queryAudit(("Consultar auditoría"))
-        queryNotifications(("Consultar notificaciones"))
-        filterAudit(("Filtrar por correlationId"))
+    subgraph notification["CDU005 · Gestionar notificaciones y auditoría"]
+        audit(("CDU005.1: Registrar evento de auditoría"))
+        notify(("CDU005.2: Enviar notificación"))
+        queryAudit(("CDU005.3: Consultar auditoría"))
+        queryNotifications(("CDU005.4: Consultar notificaciones"))
+        persist(("CDU005.5: Persistir evento inmutable"))
+        delivery(("CDU005.6: Registrar estado de entrega"))
+        filterAudit(("CDU005.7: Filtrar por correlationId"))
     end
 
     admin --- queryAudit

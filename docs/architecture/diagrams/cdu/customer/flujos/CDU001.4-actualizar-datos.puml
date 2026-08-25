@@ -1,0 +1,25 @@
+@startuml CDU001.4-actualizar-datos
+title CDU001.4 - Actualizar datos del cliente
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Actor|
+:Solicitar actualización;
+|Gateway|
+:Publicar customer.update;
+|Customer Service|
+:Validar identidad y campos permitidos;
+if (¿Solicitud autorizada y válida?) then (No)
+    :Rechazar actualización;
+else (Sí)
+    :Persistir datos actualizados;
+    :Publicar customer.updated;
+endif
+stop
+@enduml

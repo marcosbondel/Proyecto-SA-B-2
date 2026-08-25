@@ -1,0 +1,21 @@
+@startuml CDU005.4-consultar-notificaciones
+title CDU005.4 - Consultar notificaciones
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+start
+|Administrador|
+:Solicitar consulta de notificaciones;
+|Gateway|
+:Publicar notifications.query.requested;
+|Notification & Audit|
+:Validar filtros y permisos;
+:Consultar estados y resultados de entrega;
+:Responder la consulta;
+stop
+@enduml
