@@ -8,6 +8,7 @@ skinparam activity {
     FontColor #1168BD
 }
 
+|Administrador o proceso automático|
 start
 if (¿Cambio solicitado por Administrador?) then (Sí)
     |Administrador|

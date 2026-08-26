@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Cliente, Cajero o Administrador|
+start
 :Solicitar estado de una transferencia;
 |Gateway|
 :Publicar transaction.status.requested;

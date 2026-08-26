@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Servicio emisor|
+start
 :Publicar evento de dominio;
 |Notification & Audit|
 :Validar correlationId;
