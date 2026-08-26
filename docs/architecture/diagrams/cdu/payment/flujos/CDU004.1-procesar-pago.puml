@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Transaction Service|
+start
 :Solicitar payment.requested;
 |Payment Service|
 :Validar operación y registrar PENDING;

@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Cliente, Cajero o Administrador|
+start
 :Solicitar saldo de una cuenta;
 |Account Service|
 :Validar existencia y autorización;

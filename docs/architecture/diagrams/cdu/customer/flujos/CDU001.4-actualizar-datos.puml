@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Actor|
+start
 :Solicitar actualización;
 |Gateway|
 :Publicar customer.update;

@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Administrador|
+start
 :Solicitar consulta de notificaciones;
 |Gateway|
 :Publicar notifications.query.requested;

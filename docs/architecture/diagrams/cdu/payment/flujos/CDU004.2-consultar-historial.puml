@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Cliente o Administrador|
+start
 :Solicitar historial de pagos;
 |Payment Service|
 :Validar autorización y filtros;

@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Cliente|
+start
 :Abrir el enlace recibido;
 |Gateway|
 :Publicar customer.verify-email;

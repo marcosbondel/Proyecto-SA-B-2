@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Administrador|
+start
 :Solicitar consulta de auditoría;
 |Gateway|
 :Publicar audit.query.requested;
