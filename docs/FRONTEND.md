@@ -21,6 +21,11 @@ feature surfaces have not been implemented yet.
 Use the tokens, responsive layout, typography, component mapping, and state
 conventions in [DESIGN.md](DESIGN.md). The shell uses Nuxt UI components and
 Tailwind utilities. No local style value should contradict the design system.
+For every frontend ticket, first import and inspect the Claude Design reference
+documented in [DESIGN.md](DESIGN.md), focusing on `bonking.dc.html` and its
+`support.js` import. Use it to reproduce the intended composition and
+interactions; use `DESIGN.md` as the final authority for repository tokens and
+domain rules. Record a screenshot or review note as ticket evidence.
 
 ## Accessibility
 

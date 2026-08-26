@@ -10,6 +10,12 @@
 
 [Extract from feature spec: primary requirement + technical approach from research]
 
+## Visual Design Check
+
+[For frontend work, record the Claude Design source inspected (`bonking.dc.html`
+and `support.js`), the screens and states it informs, and how visual evidence
+will be produced. For backend-only work, write `N/A`.]
+
 ## Technical Context
 
 <!--

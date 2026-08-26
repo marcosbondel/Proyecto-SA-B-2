@@ -127,7 +127,12 @@ else
     # --no-track matters: branching from a remote ref would otherwise set
     # origin/develop as this branch's upstream, so a later `git pull` on the
     # feature branch would quietly merge develop into it.
-    if git switch --create --no-track "$BRANCH_NAME" "$BASE_BRANCH"; then
+    #
+    # It has to be `git branch` and then `git switch`, not `git switch
+    # --create --no-track`: git rejects that combination with "only one
+    # reference expected" (seen on 2.50.1), because --no-track makes `switch`
+    # read the start point as a second branch name.
+    if git branch --no-track "$BRANCH_NAME" "$BASE_BRANCH" && git switch "$BRANCH_NAME"; then
         emit "$BRANCH_NAME" "$BASE_BRANCH" "created" ""
     else
         >&2 echo "[specify] Could not create '$BRANCH_NAME' from '$BASE_BRANCH'."

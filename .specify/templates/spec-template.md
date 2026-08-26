@@ -8,6 +8,14 @@
 
 **Input**: User description: "$ARGUMENTS"
 
+## Visual Design Reference *(mandatory for frontend features)*
+
+If this feature creates or changes frontend UI, the specification MUST state
+how it uses the Claude Design reference recorded in `docs/DESIGN.md`, focusing
+on `bonking.dc.html` and the imported `support.js`. It MUST identify the
+relevant screens, states, and any intentional deviations. Backend-only features
+may mark this section `N/A`.
+
 ## User Scenarios & Testing *(mandatory)*
 
 <!--
