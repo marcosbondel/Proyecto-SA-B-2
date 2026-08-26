@@ -1,0 +1,86 @@
+C4Component
+
+title Diagrama de Componentes - Transaction Service (C4 Nivel 3)
+%% Microservicio descompuesto: Transaction Service (orquesta la Saga de transferencia)
+
+Container_Ext(rabbitmq, "RabbitMQ", "RabbitMQ 4.3.4-management / AMQP", "Broker central de mensajería asíncrona.")
+ContainerDb_Ext(transaction_db, "Transaction DB", "PostgreSQL", "Base exclusiva de Transaction Service.")
+
+Container_Boundary(transactionService, "Transaction Service (NestJS)") {
+
+    Boundary(interfaces, "interfaces/") {
+        Component(h_transfer, "TransferRequestedHandler", "Consumer AMQP", "Consume transfer.requested | AMQP | comando")
+        Component(h_status, "TransactionStatusRequestedHandler", "Consumer AMQP", "Consume transaction.status.requested | AMQP | comando")
+        Component(h_debited, "AccountDebitedHandler", "Consumer AMQP", "Consume account.debited | AMQP | evento")
+        Component(h_debit_rejected, "AccountDebitRejectedHandler", "Consumer AMQP", "Consume account.debit.rejected | AMQP | evento")
+        Component(h_paid, "PaymentSucceededHandler", "Consumer AMQP", "Consume payment.succeeded | AMQP | evento")
+        Component(h_pay_failed, "PaymentFailedHandler", "Consumer AMQP", "Consume payment.failed | AMQP | evento")
+        Component(h_credited, "AccountCreditedHandler", "Consumer AMQP", "Consume account.credited | AMQP | evento")
+        Component(h_credit_rejected, "AccountCreditRejectedHandler", "Consumer AMQP", "Consume account.credit.rejected | AMQP | evento")
+        Component(h_compensated, "AccountDebitCompensatedHandler", "Consumer AMQP", "Consume account.debit.compensated | AMQP | evento")
+        Component(health, "HealthController", "HTTP Controller", "Health/readiness checks | HTTP | síncrono")
+    }
+
+    Boundary(application, "application/") {
+        Component(uc_request_transfer, "RequestTransferUseCase", "Caso de uso", "Abre la Saga: crea Transaction en PENDING")
+        Component(uc_get_status, "GetTransactionStatusUseCase", "Caso de uso", "Responde transaction.status.replied")
+        Component(saga, "SagaCoordinator", "Handlers de la Saga", "Reacciona a eventos de Account y Payment; decide siguiente paso o compensación")
+        Component(port_repo, "TransactionRepositoryPort", "Puerto (interfaz)", "Contrato de persistencia de Transaction")
+        Component(port_publisher, "EventPublisherPort", "Puerto (interfaz)", "Contrato de publicación de comandos/eventos")
+    }
+
+    Boundary(domain, "domain/") {
+        Component(transaction, "Transaction", "Entidad + Máquina de Estados", "PENDING/DEBITING/PAYMENT_PENDING/COMPLETED/FAILED/COMPENSATED; invariantes T-1 a T-7")
+    }
+
+    Boundary(infrastructure, "infrastructure/") {
+        Component(repo_impl, "TransactionPostgresRepository", "Adaptador de persistencia", "Implementa TransactionRepositoryPort sobre PostgreSQL")
+        Component(pub_adapter, "RabbitMqPublisherAdapter", "Adaptador de publicación", "Implementa EventPublisherPort")
+        Component(sub_adapter, "RabbitMqConsumerAdapter", "Adaptador de consumo", "Enruta deliveries a los handlers de interfaces/")
+        Component(amqp, "AmqpConnectionManager", "Integración con el broker", "Conexión AMQP, ack manual, DLQ")
+    }
+}
+
+Rel(h_transfer, uc_request_transfer, "invoca | llamada interna | síncrono")
+Rel(h_status, uc_get_status, "invoca | llamada interna | síncrono")
+Rel(h_debited, saga, "invoca | llamada interna | síncrono")
+Rel(h_debit_rejected, saga, "invoca | llamada interna | síncrono")
+Rel(h_paid, saga, "invoca | llamada interna | síncrono")
+Rel(h_pay_failed, saga, "invoca | llamada interna | síncrono")
+Rel(h_credited, saga, "invoca | llamada interna | síncrono")
+Rel(h_credit_rejected, saga, "invoca | llamada interna | síncrono")
+Rel(h_compensated, saga, "invoca | llamada interna | síncrono")
+
+Rel(uc_request_transfer, transaction, "crea/valida T-1, T-2 | llamada interna | síncrono")
+Rel(saga, transaction, "aplica transición válida T-5, T-6, T-7 | llamada interna | síncrono")
+
+Rel(uc_request_transfer, port_repo, "persiste transacción | llamada interna | síncrono")
+Rel(uc_request_transfer, port_publisher, "publica account.debit.requested | llamada interna | síncrono")
+Rel(uc_get_status, port_repo, "lee transacción | llamada interna | síncrono")
+Rel(uc_get_status, port_publisher, "publica transaction.status.replied | llamada interna | síncrono")
+Rel(saga, port_repo, "persiste transición | llamada interna | síncrono")
+Rel(saga, port_publisher, "publica payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.completed, transaction.failed, transaction.compensated | llamada interna | síncrono")
+
+Rel(repo_impl, port_repo, "implementa | interfaz")
+Rel(pub_adapter, port_publisher, "implementa | interfaz")
+
+Rel(repo_impl, transaction_db, "lee/escribe tabla transactions | TCP/IP | acceso a datos")
+Rel(pub_adapter, amqp, "usa conexión | llamada interna")
+Rel(sub_adapter, amqp, "usa conexión | llamada interna")
+Rel(amqp, rabbitmq, "conexión AMQP, ack manual, DLQ | AMQP | conexión")
+Rel(pub_adapter, rabbitmq, "publica account.debit.requested, payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.initiated, transaction.completed, transaction.failed, transaction.compensated, transaction.status.replied | AMQP | comandos/eventos | correlationId")
+Rel(rabbitmq, sub_adapter, "entrega transfer.requested, transaction.status.requested, account.debited, account.debit.rejected, payment.succeeded, payment.failed, account.credited, account.credit.rejected, account.debit.compensated | AMQP | comandos/eventos | correlationId")
+
+Rel(sub_adapter, h_transfer, "enruta por messageType | llamada interna | síncrono")
+Rel(sub_adapter, h_status, "enruta por messageType | llamada interna | síncrono")
+Rel(sub_adapter, h_debited, "enruta por messageType | llamada interna | síncrono")
+Rel(sub_adapter, h_debit_rejected, "enruta por messageType | llamada interna | síncrono")
+Rel(sub_adapter, h_paid, "enruta por messageType | llamada interna | síncrono")
+Rel(sub_adapter, h_pay_failed, "enruta por messageType | llamada interna | síncrono")
+Rel(sub_adapter, h_credited, "enruta por messageType | llamada interna | síncrono")
+Rel(sub_adapter, h_credit_rejected, "enruta por messageType | llamada interna | síncrono")
+Rel(sub_adapter, h_compensated, "enruta por messageType | llamada interna | síncrono")
+
+UpdateElementStyle(rabbitmq, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(transaction_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
+UpdateElementStyle(transaction, $bgColor="white", $borderColor="#398819", $fontColor="#398819")
