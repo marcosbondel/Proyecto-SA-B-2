@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Cliente, Cajero o Administrador|
+start
 :Solicitar apertura con customerId y accountType;
 |Account Service|
 :Validar accountType y elegibilidad del cliente;

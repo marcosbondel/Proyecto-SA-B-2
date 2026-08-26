@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Actor|
+start
 :Enviar email y credencial;
 |Gateway|
 :Publicar customer.authenticate;

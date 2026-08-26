@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Cliente|
+start
 :Cargar fotografía;
 |Gateway|
 :Guardar el objeto y publicar su referencia;
