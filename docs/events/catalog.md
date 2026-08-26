@@ -299,8 +299,11 @@ indistinguishable from a message still in flight.
 | `customerId` | UUID v4 | yes |
 | `email` | email | yes |
 | `expiresAt` | ISO-8601 UTC | yes |
+| `activationToken` | string | no — **added by T-16** |
 
-**Preconditions.** A customer signed in for the first time and is still `PENDING_ACTIVATION`.
+**Preconditions.** A customer registered, or signed in for the first time and is still `PENDING_ACTIVATION`.
+
+**Why `activationToken` was added.** The event asked for an email "containing the activation link" and carried nothing to put in the link. It is optional and additive, so the version does not change — the same amendment shape T-15 used for `paymentScenario`. Customer Service stores only the digest; this is the single message where the clear value travels.
 
 **Effects.** Notification & Audit sends the email containing the activation link. The email address is the single exception to the "does not cross" list (check M-5): a message cannot be delivered without an address.
 
