@@ -13,12 +13,15 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "catalog:",
     "@bank/contracts": "workspace:*",
+    "@bank/messaging": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
     "class-transformer": "catalog:",
     "class-validator": "catalog:",
+    "pg": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:"
   },
@@ -28,6 +31,7 @@
     "@nestjs/testing": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "eslint": "catalog:",
     "jest": "catalog:",
     "ts-jest": "catalog:",
