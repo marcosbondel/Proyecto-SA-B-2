@@ -1,0 +1,60 @@
+import {
+  accountBalanceQueryV1,
+  accountBalanceRepliedV1,
+  accountCreateV1,
+  auditQueryRepliedV1,
+  auditQueryRequestedV1,
+  customerAuthenticateRepliedV1,
+  customerAuthenticateV1,
+  customerEmailVerificationRejectedV1,
+  customerEmailVerifiedV1,
+  customerRegisterV1,
+  customerUpdateV1,
+  customerVerifyEmailV1,
+  transactionStatusRepliedV1,
+  transactionStatusRequestedV1,
+  transferRequestedV1,
+} from '@bank/contracts';
+
+export interface RouteMessages {
+  /** The catalogue message this route puts on the broker. */
+  readonly publishes: string;
+  /** What it waits for, when it waits. */
+  readonly awaits?: readonly string[];
+}
+
+/**
+ * Which catalogue message belongs to which route.
+ *
+ * The names are **imported from the contracts**, never typed as strings. That
+ * is the difference between a table that documents the catalogue and one that
+ * repeats it: a message renamed in T-05 fails to compile here instead of
+ * quietly making the published contract wrong.
+ */
+export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
+  'POST /api/auth/login': {
+    publishes: customerAuthenticateV1.name,
+    awaits: [customerAuthenticateRepliedV1.name],
+  },
+  'POST /api/customers': { publishes: customerRegisterV1.name },
+  'GET /api/customers/verify-email': {
+    publishes: customerVerifyEmailV1.name,
+    // Events, not replies — correlated rather than consumed (research R2).
+    awaits: [customerEmailVerifiedV1.name, customerEmailVerificationRejectedV1.name],
+  },
+  'PATCH /api/customers/{customerId}': { publishes: customerUpdateV1.name },
+  'POST /api/accounts': { publishes: accountCreateV1.name },
+  'GET /api/accounts/{accountId}/balance': {
+    publishes: accountBalanceQueryV1.name,
+    awaits: [accountBalanceRepliedV1.name],
+  },
+  'POST /api/transfers': { publishes: transferRequestedV1.name },
+  'GET /api/transfers/{transactionId}': {
+    publishes: transactionStatusRequestedV1.name,
+    awaits: [transactionStatusRepliedV1.name],
+  },
+  'GET /api/audit': {
+    publishes: auditQueryRequestedV1.name,
+    awaits: [auditQueryRepliedV1.name],
+  },
+};
