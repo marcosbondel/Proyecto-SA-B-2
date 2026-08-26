@@ -337,10 +337,9 @@ export type CommandOutcome = 'SUCCESS' | 'BUSINESS_REJECTION';
  * exist to keep apart. So the verdict is the presence of a message type, and
  * the reason has to come from elsewhere.
  *
- * There is no `customer.register.rejected` in the T-05 catalogue. A duplicated
- * document or email therefore has no event this can recognise, and the wait
- * ends in a timeout instead of a rejection. That gap belongs to the backend
- * half of T-16; pretending to resolve it here would be inventing a contract.
+ * `customer.register.rejected.v1` was added by T-16 for exactly this reason: a
+ * duplicated document or email used to produce silence, and silence is
+ * indistinguishable from a message still in flight.
  */
 export function outcomeFromAudit(events: readonly AuditEvent[]): CommandOutcome | null {
   const types = new Set(events.map((event) => event.messageType));
@@ -349,7 +348,10 @@ export function outcomeFromAudit(events: readonly AuditEvent[]): CommandOutcome 
     return 'SUCCESS';
   }
 
-  if (types.has('customer.identity.rejected.v1')) {
+  if (
+    types.has('customer.register.rejected.v1') ||
+    types.has('customer.identity.rejected.v1')
+  ) {
     return 'BUSINESS_REJECTION';
   }
 
