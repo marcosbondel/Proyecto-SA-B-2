@@ -27,7 +27,6 @@ const runIntegrationTests = !!RABBITMQ_URL;
 
   beforeAll(() => {
     if (!RABBITMQ_URL) {
-      // eslint-disable-next-line no-console
       console.warn('Skipping broker integration tests: RABBITMQ_URL is not set.');
     }
   });
@@ -143,7 +142,7 @@ const runIntegrationTests = !!RABBITMQ_URL;
     await broker.publish(TEST_EXCHANGE, TEST_ROUTING_KEY, envelope);
 
     // Wait for the message to traverse 1s, 5s, 30s retry queues and land in DLQ.
-    const deadLetters: amqp.GetMessage[] = [];
+    const deadLetters: amqp.ConsumeMessage[] = [];
     const closeErrorQueue = await bindErrorQueue('test.integration.errors', deadLetters);
 
     // Wait for the message to traverse 1s, 5s, 30s retry queues and be published to bank.errors.
@@ -152,7 +151,8 @@ const runIntegrationTests = !!RABBITMQ_URL;
     await closeErrorQueue();
 
     const dlqMessage = deadLetters[0];
-    expect(dlqMessage.properties.headers).toMatchObject({
+    expect(dlqMessage).toBeDefined();
+    expect(dlqMessage!.properties.headers).toMatchObject({
       'x-attempt': 4,
       'x-failure-reason': expect.stringContaining('Intentional handler failure'),
       'x-failed-at': expect.any(String),
@@ -164,7 +164,10 @@ const runIntegrationTests = !!RABBITMQ_URL;
     await broker.stop();
   });
 
-  async function bindErrorQueue(queueName: string, captured: amqp.GetMessage[]): Promise<() => Promise<void>> {
+  async function bindErrorQueue(
+    queueName: string,
+    captured: amqp.ConsumeMessage[],
+  ): Promise<() => Promise<void>> {
     const connection = await amqp.connect(RABBITMQ_URL!);
     const channel = await connection.createChannel();
     await channel.assertQueue(queueName, { durable: true });

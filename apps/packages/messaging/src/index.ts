@@ -1,6 +1,7 @@
 export type {
   Binding,
   BrokerOptions,
+  ExclusiveSubscriptionOptions,
   MessageHandler,
   MessageValidator,
   SubscriptionOptions,
