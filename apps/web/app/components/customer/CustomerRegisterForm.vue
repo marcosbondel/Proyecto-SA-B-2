@@ -214,6 +214,20 @@ function startOver(): void {
         </p>
       </div>
 
+      <!--
+        The two identifiers the registration produced, both copyable. The
+        customerId is the only handle that exists on this person until a route
+        can read them back, and a UUID transcribed by hand is the wrong one.
+      -->
+      <div class="flex flex-col gap-3 rounded-2xl border border-[#DCDCE0] bg-[#F0F0F2] p-4 text-left">
+        <SharedCorrelationIdBadge
+          v-if="acceptedCommand?.customerId"
+          :correlation-id="acceptedCommand.customerId"
+          label="customerId"
+        />
+        <SharedCorrelationIdBadge :correlation-id="username" label="usuario (previsualización)" />
+      </div>
+
       <SharedAsyncStateAlert
         :state="outcomeState === 'IDLE' ? 'PENDING' : outcomeState"
         :message="outcomeMessage"
