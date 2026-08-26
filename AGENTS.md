@@ -16,8 +16,10 @@ authentication, role authorization from decision D-06, request/reply with a
 five-second ceiling, a seven-code error contract, the identity-document photo
 deposited in MinIO, and a versioned OpenAPI contract in
 `apps/gateway/openapi/`. **`apps/web` is the shared frontend shell**: layout,
-role-filtered navigation, session, `useGatewayApi` and four shared components,
-with the four modules as titled skeletons.
+role-filtered navigation, session, `useGatewayApi` and four shared components.
+Its first feature module is **Clientes** (T-16, frontend half): public
+registration at `/registro`, the staff form, the update screen and the teller's
+validation queue. The other three modules are titled skeletons.
 
 The Gateway has no `domain/` layer and never will — it holds no business logic
 (constitution V), and a test asserts it has no database and no HTTP client
@@ -25,7 +27,8 @@ towards any internal service.
 
 The **five domain services are still scaffolding**: health checks, boot-time
 environment validation, and empty `domain` and `application` layers. Their
-screens are T-16 to T-20. `ARCHITECTURE.md` records the target architecture;
+screens are T-16 to T-20, and the Clientes screens run against a Gateway whose
+missing routes are recorded as TD-020 to TD-023. `ARCHITECTURE.md` records the target architecture;
 Kubernetes deployment is not built yet.
 
 ## Project Documentation
