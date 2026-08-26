@@ -40,14 +40,17 @@ this directory holds the decisions behind it and the diagrams that show it.
   assignment lists it separately from the C4 + UML block (§4.2 bullet
   "Diagramas de arquitectura"; §4.4 "Diagramas arquitectónicos").
 
-## Delivery format — two required sources, one optional export
+## Delivery format — two required sources and generated exports
 
-Every diagram ships **two required, versioned text sources that must agree**,
-plus one optional visual artefact:
+Every diagram ships **two required, versioned text sources that must agree**.
+Generated visual exports are kept alongside their source when the diagram is
+rendered for delivery:
 
 1. **Mermaid** — a versioned `.mmd` source in `diagrams/`, so the architecture
    is reviewable in Git and in pull requests. **Generating it with AI is
-   allowed**; shipping it unreviewed is not.
+   allowed**; shipping it unreviewed is not. Mermaid-rendered PNGs, such as
+   the activity-flow exports under `diagrams/cdu/*/flujos/`, are generated
+   artefacts derived from this source.
 2. **PlantUML** — a versioned `.puml` source in `diagrams/`, plus its export
    (PNG, SVG or PDF) committed alongside it. **Generating it with AI is
    allowed**; shipping it unreviewed is not.
@@ -93,9 +96,10 @@ and do not wait for this directory. What is missing is the written reasoning,
 not the rules.
 
 > **Current status**: The eight diagram source sets are present. The CDU source
-> set is organized by level and microservice under `diagrams/cdu/`. PNG/PDF
-> exports for the newly added source files still require a PlantUML/Mermaid
-> rendering pass before they can be committed as delivery artefacts.
+> set is organized by level and microservice under `diagrams/cdu/`. PNG exports
+> have been generated from the Mermaid sources for the 18 activity flows under
+> `diagrams/cdu/*/flujos/`. PlantUML exports remain subject to the delivery
+> rule above wherever a rendered PlantUML artefact is required.
 >
 > The ADRs are **no longer blocked**: the eleven decision records were written in
 > T-03 and live in [`adr/`](adr/README.md), with the consolidated view in
