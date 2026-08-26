@@ -11,7 +11,7 @@ the machine-readable form with `pnpm --filter @bank/contracts schema:emit`.
 
 ## Rules that hold for every message
 
-Stated once here instead of forty-two times below.
+Stated once here instead of forty-three times below.
 
 **Envelope.** Every payload travels inside the envelope described in
 [`envelope.md`](envelope.md). Field tables below describe the `payload` only.
@@ -41,6 +41,7 @@ messages, nothing that reveals whether an account or an email exists.
 | --- | --- | --- | --- |
 | `customer.register.v1` | command | gateway | customer-service |
 | `customer.registered.v1` | event | customer-service | notification-audit-service |
+| `customer.register.rejected.v1` | event | customer-service | notification-audit-service |
 | `customer.authenticate.v1` | command | gateway | customer-service |
 | `customer.authenticate.replied.v1` | reply | customer-service | gateway |
 | `customer.login.succeeded.v1` | event | customer-service | notification-audit-service |
@@ -143,6 +144,36 @@ messages, nothing that reveals whether an account or an email exists.
 
 **On error.** The consumer retries, then dead-letters. The customer still exists: the audit record is what is missing, and it is recoverable from the dead-letter queue.
 
+
+---
+
+### `customer.register.rejected.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | customer-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `customer.register.rejected.v1` |
+| **Contract** | [`customer.register.rejected.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.register.rejected.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `reason` | `DOCUMENT_ALREADY_REGISTERED` \| `EMAIL_ALREADY_REGISTERED` \| `INVALID_BIRTH_DATE` | yes |
+| `rejectedAt` | ISO-8601 UTC | yes |
+
+**Preconditions.** A `customer.register.v1` was refused by an invariant. No `Customer` exists,
+and no identity document was stored.
+
+**Effects.** Notification & Audit records the refusal, which is how the caller finds out: the
+command was accepted with a `202` long before the invariant was evaluated.
+
+**On error.** The consumer retries, then dead-letters. Nothing was created, so there is nothing
+to compensate.
+
+**Added by T-16.** Before it, a duplicated document produced no message at all, and silence is
+indistinguishable from a message still in flight.
 
 ---
 
