@@ -1,53 +1,50 @@
 ---
-name: Bank USAC Core
+name: bonking. Core
 colors:
-  surface: '#fbf8ff'
-  surface-dim: '#dad9e6'
-  surface-bright: '#fbf8ff'
+  surface: '#f6f6f7'
+  surface-dim: '#dcdce0'
+  surface-bright: '#ffffff'
   surface-container-lowest: '#ffffff'
-  surface-container-low: '#f4f2ff'
-  surface-container: '#eeecfa'
-  surface-container-high: '#e8e7f5'
-  surface-container-highest: '#e2e1ef'
-  on-surface: '#1a1b24'
-  on-surface-variant: '#444656'
-  inverse-surface: '#2f303a'
-  inverse-on-surface: '#f1effd'
-  outline: '#747688'
-  outline-variant: '#c4c5d9'
-  surface-tint: '#1947f3'
-  primary: '#002db5'
+  surface-container-low: '#f0f0f2'
+  surface-container: '#e9e9ec'
+  surface-container-high: '#e2e2e6'
+  surface-container-highest: '#dcdce0'
+  on-surface: '#23242a'
+  on-surface-variant: '#5a5b63'
+  inverse-surface: '#17191f'
+  inverse-on-surface: '#f2f2f4'
+  outline: '#75767f'
+  outline-variant: '#c6c6cc'
+  surface-tint: '#2e313c'
+  primary: '#0b0c10'
   on-primary: '#ffffff'
-  primary-container: '#053fed'
-  on-primary-container: '#c4ccff'
-  inverse-primary: '#bac3ff'
-  secondary: '#4a59a5'
+  primary-container: '#17191f'
+  on-primary-container: '#c3c4cc'
+  primary-sheen: '#2e313c'
+  inverse-primary: '#b9bac4'
+  secondary: '#5a5b63'
   on-secondary: '#ffffff'
-  secondary-container: '#9dacfe'
-  on-secondary-container: '#2d3d88'
-  tertiary: '#811500'
+  secondary-container: '#a8a9b2'
+  on-secondary-container: '#23242a'
+  tertiary: '#7c2a10'
   on-tertiary: '#ffffff'
-  tertiary-container: '#ab2102'
-  on-tertiary-container: '#ffc0b2'
-  error: '#ba1a1a'
+  tertiary-container: '#8e2a0e'
+  on-tertiary-container: '#e9a98c'
+  error: '#b01b1b'
   on-error: '#ffffff'
-  error-container: '#ffdad6'
-  on-error-container: '#93000a'
-  primary-fixed: '#dee1ff'
-  primary-fixed-dim: '#bac3ff'
-  on-primary-fixed: '#001159'
-  on-primary-fixed-variant: '#0031c4'
-  secondary-fixed: '#dee1ff'
-  secondary-fixed-dim: '#b9c3ff'
-  on-secondary-fixed: '#001158'
-  on-secondary-fixed-variant: '#31408b'
-  tertiary-fixed: '#ffdad3'
-  tertiary-fixed-dim: '#ffb4a4'
-  on-tertiary-fixed: '#3d0500'
-  on-tertiary-fixed-variant: '#8c1800'
-  background: '#fbf8ff'
-  on-background: '#1a1b24'
-  surface-variant: '#e2e1ef'
+  error-container: '#f7dcd7'
+  on-error-container: '#8a1010'
+  success: '#1e7a3c'
+  on-success-container: '#186a32'
+  warning: '#b4740a'
+  on-warning-container: '#7a4f06'
+  primary-fixed: '#e4e4e8'
+  primary-fixed-dim: '#b9bac4'
+  on-primary-fixed: '#05060a'
+  on-primary-fixed-variant: '#23252e'
+  background: '#f6f6f7'
+  on-background: '#23242a'
+  surface-variant: '#dcdce0'
 typography:
   hero-number:
     fontFamily: Inter
@@ -103,6 +100,62 @@ spacing:
   margin-desktop: 24px
 ---
 
+> **Revisión `bonking. Core`, adoptada el 2026-08-24 (T-15).** Este documento
+> era una revisión anterior, `Bank USAC Core`, con una paleta azul
+> (`primary: #002db5`, prosa que hablaba de "authoritative blues" y de un
+> primario `#2A53FD`). El proyecto de Claude Design que este mismo archivo
+> declara como referencia obligatoria contiene su propia copia de DESIGN.md, ya
+> en la revisión monocroma, y el prototipo `bonking.dc.html` la implementa:
+> `#2A53FD` no aparece ni una vez en sus 215 KB.
+>
+> Con las dos revisiones en el repositorio, ninguna captura de T-15 a T-20 podía
+> coincidir con la referencia. El responsable decidió implementar únicamente la
+> de Claude Design y traer este documento a esa revisión. **Solo cambiaron las
+> secciones de color** —frontmatter, Colors, Buttons, Form Fields, Cards,
+> Badges—; tipografía, rejilla de 8 px, radios, cifras tabulares y formato
+> `es-GT` eran ya idénticos palabra por palabra.
+
+## Claude Design Reference
+
+The product owner's visual source is the Claude Design project below. It is the
+required reference for implementing and reviewing the frontend across all
+tickets, not only the shell ticket:
+
+- Project: <https://claude.ai/design/p/4a48d652-297f-4351-9170-d8049427e897?file=bonking.dc.html>
+- Primary file: `bonking.dc.html`
+- Also read the imported supporting file: `support.js`
+- MCP endpoint: `https://api.anthropic.com/v1/design/mcp`
+- Authentication: `/design-login` (never commit credentials or session data)
+
+Before implementing or reviewing a frontend ticket, import the project and
+inspect the whole project, with special focus on `bonking.dc.html` and
+`support.js`. If the Claude Design MCP is unavailable, report a blocker rather
+than silently substituting another visual reference. The implementation prompt
+is:
+
+> Use the claude_design MCP (https://api.anthropic.com/v1/design/mcp, auth via
+> /design-login) to import this project:
+> https://claude.ai/design/p/4a48d652-297f-4351-9170-d8049427e897?file=bonking.dc.html
+>
+> Focus on these files (the whole project is readable):
+> - `bonking.dc.html`
+>
+> Also read these files the selection imports:
+> - `support.js`
+>
+> Implement: `bonking.dc.html`
+
+The repository tokens and product/domain rules in this file remain the
+implementation contract. Claude Design supplies visual composition, interaction
+details, responsive treatment, and component intent. If the imported design
+conflicts with a repository token or an architectural rule, keep the repository
+rule and record the discrepancy in the ticket or spec instead of silently
+inventing a third variant.
+
+Every frontend ticket must include evidence that the implemented screen was
+compared with this reference: a screenshot or review note naming the imported
+file, the relevant states, and any intentional deviation.
+
 ## Brand & Style
 
 This design system embodies "Calm Confidence" for modern banking. It prioritizes clarity, operational truth, and financial legibility above all else. The aesthetic is a refined blend of **Minimalism** and **Corporate Modern**, utilizing generous whitespace and a purposeful color palette to ensure that complex financial data remains scannable and unintimidating.
@@ -115,13 +168,19 @@ The experience is designed to be:
 
 ## Colors
 
-The palette has transitioned to a deep, trustworthy execution using authoritative blues and professional grays. This shift emphasizes stability, security, and digital-first banking precision.
+The palette is monochrome: obsidian black on a cool paper ground, with color reserved almost entirely for operational state. Nothing decorative competes with money and status.
+
+### Lacquered black, not flat black
+The primary is not a single flat hex. Solid primary surfaces (buttons, the brand mark, the hero balance card) carry a top-lit vertical gradient from **#2E313C** down to **#17191F** (or to **#0B0C10** for brand surfaces), plus a 1px inner highlight of `rgba(255,255,255,.14)` along the top edge. The effect is anodized or lacquered: the object reads as a physical surface catching light, not as a black rectangle. Every other surface stays matte — flat fills, hairline borders, no gloss. That contrast between one lit object and a matte field is the brand's signature.
 
 ### Usage Rules:
-- **Primary (#2A53FD):** A vibrant digital blue used for primary actions and brand highlights. It represents reliability and the core technological engine of the bank.
-- **Secondary (#6372C0):** A muted, periwinkle-leaning blue used for supportive elements, secondary actions, and subtle UI accents.
-- **Neutral (#767682):** A cool-toned slate neutral used for borders, secondary text, and structural definition.
-- **Tertiary (#AB2102):** A deep, burnt orange/red reserved for specialized alerts, specific high-visibility data points, or "hot" financial states that require a clear departure from the blue-dominant theme.
+- **Primary (#0B0C10 · Obsidiana):** brand mark, hero balance surfaces. The deepest tone in the system.
+- **Action (#17191F):** primary buttons and interactive accents, always with the sheen gradient.
+- **Graphite (#5A5B63):** secondary text, supporting labels and metadata.
+- **Silver (#A8A9B2):** disabled and in-flight controls; never for text on white.
+- **Semantics:** success #1E7A3C, warning #B4740A, error #B01B1B, tertiary #8E2A0E. Deepened one step from the usual bright values so they sit correctly against a cool near-white ground and never outshout the black.
+
+Because the brand color is black, interactive text cannot rely on hue alone: inline actions use weight 600 plus an arrow or underline, and every focus state is a 2px obsidian ring.
 
 ## Typography
 
@@ -166,18 +225,18 @@ The shape language balances approachability with professional structure.
 ## Components
 
 ### Buttons
-- **Primary:** Solid `#2A53FD` (Blue) with high-contrast white text.
-- **Secondary:** Solid `#6372C0` (Slate Blue) or outlined with a neutral border for secondary utility.
-- **High-Contrast:** Solid dark neutral with white text.
+- **Primary:** Lacquered obsidian — `linear-gradient(180deg, #2E313C 0%, #17191F 58%)` with a `rgba(255,255,255,.14)` inner top highlight and white text.
+- **Secondary:** White with a `#C6C6CC` border and `#23242A` text.
+- **Disabled / in-flight:** Solid `#A8A9B2` with white text, no sheen.
 
 ### Form Fields
-Inputs use a white background with a neutral border. On focus, the border transitions to the primary blue. Labels must be visible and placed above the field with 8px spacing.
+Inputs use a white background with a `#C6C6CC` border. On focus, the border transitions to obsidian with a 2px ring. Labels must be visible and placed above the field with 8px spacing.
 
 ### Cards
-Cards are the primary container for financial data. They must use 20-24px padding. Financial "Hero" cards (e.g., balance displays) can utilize the secondary-container colors or primary blue to stand out from standard neutral data cards.
+Cards are the primary container for financial data. They must use 20-24px padding. Financial "Hero" cards (e.g. balance displays) use the lacquered obsidian surface to stand out from standard neutral data cards.
 
 ### Badges & Statuses
-Use semantic colors with 10% opacity backgrounds. "Alert" or "Warm" states should utilize the tertiary red (#AB2102) to provide a clear visual departure from the blue-dominant brand colors.
+Use semantic colors with 10% opacity backgrounds. "Alert" or "Warm" states use the tertiary burnt red (#8E2A0E) — the only warm note in an otherwise monochrome interface.
 
 ### Tables
 Tables are borderless between columns, using only horizontal dividers in neutral tones. All currency columns must be right-aligned and use tabular numbers.

@@ -1,0 +1,107 @@
+import { normaliseError, isSessionFailure } from '../lib/gateway-error';
+import type { GatewayError } from '../lib/gateway-error';
+
+export interface GatewayRequestOptions {
+  readonly method?: 'GET' | 'POST' | 'PATCH';
+  readonly body?: unknown;
+  /** Kept stable across retries so the receiving service can recognise them. */
+  readonly idempotencyKey?: string;
+  readonly correlationId?: string;
+  readonly query?: Record<string, string | undefined>;
+}
+
+/** Either an answer or a failure, never a thrown surprise. */
+export type GatewayResult<T> =
+  | { readonly ok: true; readonly data: T; readonly correlationId: string | null }
+  | { readonly ok: false; readonly error: GatewayError };
+
+/**
+ * The only way this application talks to the Gateway.
+ *
+ * Every module gets four things for free, and none of them is optional
+ * behaviour that a screen could reasonably reimplement differently:
+ *
+ * - the base URL from runtime configuration, never compiled in;
+ * - the session token attached to every protected call;
+ * - the seven error types normalised, so no screen parses a failure body;
+ * - an expired session ended and redirected **before** the screen sees it.
+ *
+ * It returns a result rather than throwing. A screen that must render five
+ * asynchronous states has to handle failure as data anyway; making it also
+ * remember a `try`/`catch` is how one of the five silently stops working.
+ */
+export function useGatewayApi() {
+  const config = useRuntimeConfig();
+  const { session, end } = useSession();
+
+  async function call<T>(
+    path: string,
+    options: GatewayRequestOptions = {},
+  ): Promise<GatewayResult<T>> {
+    const headers: Record<string, string> = {};
+
+    if (session.value !== null) {
+      headers.Authorization = `Bearer ${session.value.token}`;
+    }
+
+    if (options.idempotencyKey !== undefined) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+
+    if (options.correlationId !== undefined) {
+      headers['X-Correlation-Id'] = options.correlationId;
+    }
+
+    try {
+      const response = await $fetch.raw<T>(path, {
+        baseURL: config.public.apiBaseUrl,
+        method: options.method ?? 'GET',
+        headers,
+        ...(options.body === undefined ? {} : { body: options.body as Record<string, unknown> }),
+        ...(options.query === undefined ? {} : { query: options.query }),
+      });
+
+      return {
+        ok: true,
+        data: response._data as T,
+        correlationId: response.headers.get('x-correlation-id'),
+      };
+    } catch (cause) {
+      const error = normaliseError(cause);
+
+      /**
+       * The session is over. Ending it here, once, is what keeps every module
+       * from having to notice — and keeps "your session ended" from being
+       * rendered as though the bank had refused the operation.
+       */
+      if (isSessionFailure(error)) {
+        end();
+        await navigateTo('/login');
+      }
+
+      return { ok: false, error };
+    }
+  }
+
+  return {
+    call,
+
+    /** Signs in and starts the session. The one call that is not protected. */
+    async signIn(email: string, credential: string) {
+      return await call<{ token: string; expiresIn: number; correlationId: string }>(
+        '/api/auth/login',
+        { method: 'POST', body: { email, credential } },
+      );
+    },
+
+    /**
+     * How a screen finds out what became of a command it was told `202` for.
+     * Restricted to `ADMINISTRADOR` by the Gateway, which will say so.
+     */
+    async auditFor(correlationId: string) {
+      return await call<{ events: unknown[]; notifications: unknown[] }>('/api/audit', {
+        query: { correlationId },
+      });
+    },
+  };
+}

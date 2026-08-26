@@ -1,75 +1,95 @@
-# Nuxt Minimal Starter
+# `apps/web` — the shared frontend shell
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+The single browser application of Bank USAC. It talks to **one** thing, the API
+Gateway, because constitution V makes that the only external entry point.
 
-## Setup
+T-15 delivers the shell. T-16 to T-20 deliver the modules that live inside it.
 
-Make sure to install dependencies:
+## Running it
+
+From the **repository root**, never from this directory:
 
 ```bash
-# npm
-npm install
-
-# pnpm
 pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
+pnpm build                  # shared packages first
+pnpm --filter web dev
+pnpm --filter web test      # the pure logic; see "Testing" below
 ```
 
-## Development Server
+Copy `.env.example` to `.env`. `NUXT_PUBLIC_API_BASE_URL` is required from T-15
+onward — the shell signs in and calls protected routes, so it needs to know
+where the Gateway is. It is read through runtime config, never compiled in, so
+one build serves every environment.
 
-Start the development server on `http://localhost:3000`:
+## What the shell already does, so no module repeats it
 
-```bash
-# npm
-npm run dev
+| Concern | Where it lives |
+| --- | --- |
+| Layout, navigation, theme | `app/layouts/`, `app/app.config.ts` |
+| Session: sign in, token, expiry | `app/composables/useSession.ts` |
+| Every call to the Gateway | `app/composables/useGatewayApi.ts` |
+| The seven error types, normalised | `app/lib/gateway-error.ts` |
+| Money in `es-GT`, and `amountMinor` | `app/lib/money.ts` |
+| Who sees which module (D-06) | `app/lib/navigation.ts` |
+| The four shared components | `app/components/shared/` |
 
-# pnpm
-pnpm dev
+**No module implements session.** No sign-in screen, no token handling, no
+expiry logic. That is FR-041g, and it is what stops five tickets solving the
+same problem five ways.
 
-# yarn
-yarn dev
+## Where a module puts its files
 
-# bun
-bun run dev
+```
+app/pages/<modulo>/          the screens
+app/components/<servicio>/   its own components
 ```
 
-## Production
+| Module | Pages | Components | Ticket |
+| --- | --- | --- | --- |
+| Clientes | `pages/clientes/` | `components/customer/` | T-16 |
+| Cuentas | `pages/cuentas/` | `components/account/` | T-17 |
+| Transferencias | `pages/transferencias/` | `components/transaction/` | T-19 |
+| Auditoría | `pages/auditoria/` | `components/audit/` | T-20 |
 
-Build the application for production:
+Anything shared belongs in `components/shared/`, which **T-15 owns**. A module
+that needs a new shared component asks for one rather than adding it — that is
+the only way the interface stays one interface.
 
-```bash
-# npm
-npm run build
+Adding a module means adding an entry to `app/lib/navigation.ts`, not to a
+`.vue` file. The navigation is derived from that data.
 
-# pnpm
-pnpm build
+## The rules that are easy to break
 
-# yarn
-yarn build
+**A `202` is not a success.** It means the system accepted the request, not that
+the operation happened. Show `PENDING` and confirm it with a status query or an
+audit lookup (FR-043). Breaking this makes the interface feel faster and makes
+the demonstration a lie.
 
-# bun
-bun run build
-```
+**Hiding a module is a courtesy, not a control.** `app/lib/navigation.ts` stops
+the interface offering a button that would fail. The Gateway refuses regardless,
+and its refusal is the one that counts.
 
-Locally preview production build:
+**Money is an integer of minor units on the wire.** `SharedMoneyInput` converts
+for you. A module that sends decimals gets a validation error; a module that
+multiplies by a hundred itself will eventually forget to.
 
-```bash
-# npm
-npm run preview
+## Testing
 
-# pnpm
-pnpm preview
+`pnpm --filter web test` runs the Node test runner over `app/lib/`. There is no
+component-test framework here — Jest cannot compile single-file components and a
+Nuxt-native runner is deferred (TD-010 in `docs/TECH_DEBT.md`).
 
-# yarn
-yarn preview
+That is why anything that **decides** something lives in `app/lib/` as a pure
+function: the permission matrix, the money rules, the error normalisation. A
+decision inside a template would be untestable by an accident of tooling. A
+decision in a plain module is testable today.
 
-# bun
-bun run preview
-```
+Rendering is verified by eye against `/demo`, which exercises the four shared
+components and all five asynchronous states without needing a broker.
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+## Design
+
+`docs/DESIGN.md` is the contract, currently at the **`bonking. Core`** revision:
+monochrome obsidian on a cool paper ground, Inter, an 8px grid, tabular figures
+for every amount. The Claude Design project it names is the required visual
+reference for every frontend ticket, not just this one.
