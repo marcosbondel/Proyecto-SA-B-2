@@ -51,7 +51,9 @@ microservicio.
   y resultados de un caso de uso. Es el equivalente a los diagramas de flujo
   mostrados en clase.
 - PlantUML contiene la notación UML nativa. Mermaid es la representación
-  versionable aproximada exigida por ADR-013.
+  versionable aproximada exigida por ADR-013; en `flujos/`, los PNG se generan
+  desde los archivos `.mmd` de Mermaid y los `.puml` se conservan como fuente
+  UML alternativa.
 
 ## Fuente funcional
 
@@ -72,19 +74,23 @@ Transaction Service solicita el movimiento y conserva el estado de la Saga.
 
 ```text
 cdu/
-├── 00-alto-nivel.{puml,mmd}
-├── 01-primera-descomposicion.{puml,mmd}
+├── 00-alto-nivel.{puml,mmd,png}
+├── 01-primera-descomposicion.{puml,mmd,png}
 ├── customer/
-│   ├── customer-casos-de-uso.{puml,mmd}
+│   ├── customer-casos-de-uso.{puml,mmd,png}
 │   └── flujos/
-│       ├── CDU001.1-registrar-cliente.{puml,mmd}
-│       ├── CDU001.2-activar-cliente.{puml,mmd}
-│       ├── CDU001.3-iniciar-sesion.{puml,mmd}
-│       ├── CDU001.4-actualizar-datos.{puml,mmd}
-│       ├── CDU001.5-cargar-fotografia.{puml,mmd}
-│       └── CDU001.6-validar-identidad.{puml,mmd}
+│       ├── CDU001.1-registrar-cliente.{puml,mmd,png}
+│       ├── CDU001.2-activar-cliente.{puml,mmd,png}
+│       ├── CDU001.3-iniciar-sesion.{puml,mmd,png}
+│       ├── CDU001.4-actualizar-datos.{puml,mmd,png}
+│       ├── CDU001.5-cargar-fotografia.{puml,mmd,png}
+│       └── CDU001.6-validar-identidad.{puml,mmd,png}
 ├── account/flujos/ (CDU002.1 a CDU002.4)
 ├── transaction/flujos/ (CDU003.1 y CDU003.2)
 ├── payment/flujos/ (CDU004.1 y CDU004.2)
 └── notification-audit/flujos/ (CDU005.1 a CDU005.4)
 ```
+
+Las carpetas `account/flujos/`, `transaction/flujos/`, `payment/flujos/` y
+`notification-audit/flujos/` siguen la misma convención: cada flujo dispone de
+su fuente `.mmd`, su fuente `.puml` y el PNG generado desde Mermaid.
