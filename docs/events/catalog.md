@@ -679,6 +679,19 @@ messages, nothing that reveals whether an account or an email exists.
 | `sourceAccount` | UUID v4 | yes |
 | `targetAccount` | UUID v4 | yes |
 | `amount` | object | yes |
+| `paymentScenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` | no |
+
+**Amended by T-15 (2026-08-24), additively.** `paymentScenario` was added as an
+**optional** field, which is why the version stayed at `v1`: a message that
+omits it validates exactly as it did before, so no consumer had to change and
+no binding had to move. Its absence is the normal path.
+
+It exists because the Saga is only interesting when it can be shown failing and
+compensating on demand, and a real external provider cannot be asked to decline
+to order. **The Gateway validates the value against the three names and never
+acts on it** — obeying it is Transaction Service's business, and deciding
+anything from it in the Gateway would be the domain logic constitution V keeps
+out of the entry point.
 
 **Preconditions.** Both accounts exist, the source is `ACTIVE` and has funds. Only the first two are checkable here; the rest belongs to Account Service.
 
