@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(42);
+    expect(catalog).toHaveLength(43);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the seven messages recorded as an extension, and no others', () => {
+  it('adds exactly the eight messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -87,6 +87,9 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'audit.query.requested.v1',
       'customer.authenticate.replied.v1',
       'customer.email.verification.rejected.v1',
+      // Added by T-16: the refusal that had no message, so a duplicated
+      // document produced silence rather than a rejection.
+      'customer.register.rejected.v1',
       'transaction.status.replied.v1',
       'transaction.status.requested.v1',
     ]);
