@@ -21,7 +21,7 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
 
                 customer = container "Customer Service" "Identidad del cliente: registro, validación de identidad y actualización de datos." "NestJS" "Server-Side Application"
                 account = container "Account Service" "Cuentas, balances y desactivación de cuentas inactivas." "NestJS" "Server-Side Application"
-                transaction = container "Transaction Service" "Orquestación de transferencias, validación de fondos y Saga." "NestJS" "Server-Side Application"
+                transaction = container "Transaction Service" "Gestiona el estado de transferencias mediante una Saga por coreografía." "NestJS" "Server-Side Application"
                 payment = container "Payment Service" "Procesamiento de pagos y reintentos." "NestJS" "Server-Side Application"
                 notification = container "Notification & Audit Service" "Registro de eventos y notificaciones. Terminal: no publica eventos hacia otros servicios." "NestJS" "Server-Side Application"
             }
@@ -53,8 +53,8 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
         # --- GATEWAY <-> RABBITMQ ---
         # Detalle de mensajes por canal en message-catalog.md; aquí se agrupan por dirección
         # para que el diagrama de contenedores no repita una flecha por cada tipo de mensaje.
-        bankusac.gateway -> bankusac.rabbitmq "Publica comandos y requests (Customer, Account, Transaction, Audit)" "AMQP | comando/request | correlationId"
-        bankusac.rabbitmq -> bankusac.gateway "Entrega respuestas request/reply: customer.authenticate, account.balance.query" "AMQP | respuesta | correlationId"
+        bankusac.gateway -> bankusac.rabbitmq "Publica comandos y requests: Customer, Account, Transaction y Audit (incluye audit.query.requested)" "AMQP | comando/request | correlationId"
+        bankusac.rabbitmq -> bankusac.gateway "Entrega respuestas request/reply: customer.authenticate, account.balance.query y audit.query.replied" "AMQP | respuesta | correlationId"
 
         # --- RABBITMQ <-> CUSTOMER ---
         bankusac.rabbitmq -> bankusac.customer "Entrega comandos: customer.register, customer.authenticate, customer.verify-email, customer.update, customer.validate-identity" "AMQP | comando/request-reply | correlationId"
@@ -73,7 +73,8 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
         bankusac.payment -> bankusac.rabbitmq "Publica payment.succeeded, payment.failed y eventos de auditoría" "AMQP | evento | correlationId"
 
         # --- AUDITORÍA: DESTINO FINAL ---
-        bankusac.rabbitmq -> bankusac.notification "Entrega todos los eventos de bank.events para auditoría y notificaciones" "AMQP | evento | correlationId"
+        bankusac.rabbitmq -> bankusac.notification "Entrega eventos de bank.events y audit.query.requested para auditoría y consultas" "AMQP | evento/comando | correlationId"
+        bankusac.notification -> bankusac.rabbitmq "Publica audit.query.replied" "AMQP | respuesta | correlationId"
 
         # --- ACTIVACIÓN DE CORREO ---
         bankusac.notification -> correo "Entrega correo de activación" "Email delivery | efecto externo | sistema simulado"
