@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Cliente, Cajero o Administrador|
+start
 :Solicitar transferencia;
 |Transaction Service|
 :Validar monto, cuentas distintas e idempotencia;

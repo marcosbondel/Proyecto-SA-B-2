@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Transaction Service|
+start
 :Solicitar débito, crédito o compensación;
 |Account Service|
 :Identificar el tipo de movimiento;
