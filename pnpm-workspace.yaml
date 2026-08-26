@@ -90,6 +90,14 @@ catalog:
   # — see specs/005-event-contracts-saga/research.md (R1).
   zod: 4.4.3
 
+  # PostgreSQL driver (services that own a database). The pool and the SQL are
+  # written by hand: an ORM would put schema decisions in a mapping layer, and
+  # the per-service database is a boundary this project defends explicitly
+  # (constitution II). Checked against OSV (npm ecosystem) on 2026-08-26 with
+  # zero known vulnerabilities.
+  pg: 8.23.0
+  '@types/pg': 8.23.1
+
   # Messaging transport (technical adapter only)
   amqp-connection-manager: 5.0.0
   amqplib: 2.0.1
