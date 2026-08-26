@@ -80,6 +80,39 @@ export const QUEUES: readonly QueueDescriptor[] = [
   },
 ];
 
+/**
+ * What the Gateway's reply queue listens to.
+ *
+ * Deliberately **not** a member of `QUEUES`. That list drives
+ * `allQueueDeclarations()`, which creates durable queues shared by every
+ * replica of their owner — exactly right for work, and exactly wrong for
+ * replies. A durable shared reply queue would have the broker deliver answers
+ * round-robin, so the reply to one instance's question could land on an
+ * instance with nobody waiting for it. Each Gateway replica therefore declares
+ * its own exclusive, auto-deleting queue at boot and binds it to these.
+ *
+ * The two event bindings are not a second consumer of those events. The
+ * Gateway observes them to correlate an answer for the caller who is still
+ * holding an HTTP connection open; `notification-audit-service` remains their
+ * declared consumer and `audit.all` keeps receiving them unchanged. Adding a
+ * binding on a topic exchange takes nothing away from anyone.
+ */
+export const GATEWAY_REPLY_BINDINGS: readonly {
+  readonly exchange: string;
+  readonly pattern: string;
+}[] = [
+  // Every reply in the catalogue is addressed to the gateway.
+  { exchange: EXCHANGES.replies, pattern: '#' },
+  // The verdict of an email activation, which T-15 answers synchronously.
+  { exchange: EXCHANGES.events, pattern: 'customer.email.verified.v1' },
+  { exchange: EXCHANGES.events, pattern: 'customer.email.verification.rejected.v1' },
+];
+
+/** The name of one replica's private reply queue. Never shared. */
+export function gatewayReplyQueueName(instanceId: string): string {
+  return `gateway.replies.${instanceId}`;
+}
+
 /** The retry queue a message goes to on its Nth failure, and the terminal queue. */
 export function retryQueueName(queue: string, attempt: number): string {
   const delay = RETRY_DELAYS_MS[attempt - 1];
