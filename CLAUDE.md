@@ -23,11 +23,14 @@ the API Gateway (T-15) and the frontend shell it feeds. The Gateway carries
 eleven routes, JWT authentication, D-06 role authorization, request/reply with a
 five-second ceiling, seven error codes and a versioned OpenAPI contract; it has
 no `domain/` layer and never will. `apps/web` carries the layout, the
-role-filtered navigation, the session and four shared components.
+role-filtered navigation, the session, four shared components and the **Clientes
+module** (T-16, frontend half) in `app/components/customer/` and
+`app/pages/clientes/`, plus public registration at `/registro`.
 
 The **five domain services remain scaffolding** — health checks, environment
 validation, empty `domain` and `application` layers. Their modules are T-16 to
-T-20. Kubernetes deployment is not built yet.
+T-20; the Clientes screens exist ahead of their service, and what the Gateway
+cannot serve them is recorded as TD-020 to TD-023. Kubernetes deployment is not built yet.
 
 ## Project Documentation
 
