@@ -1,0 +1,433 @@
+import { createHash } from 'node:crypto';
+
+import type { CustomerRegisterV1 } from '@bank/contracts';
+
+import { AuthenticateCustomerUseCase } from '../src/application/authenticate-customer.use-case';
+import { RegisterCustomerUseCase } from '../src/application/register-customer.use-case';
+import { UpdateCustomerUseCase } from '../src/application/update-customer.use-case';
+import { ValidateIdentityUseCase } from '../src/application/validate-identity.use-case';
+import { VerifyEmailActivationUseCase } from '../src/application/verify-email-activation.use-case';
+import {
+  FakeHasher,
+  FixedClock,
+  InMemoryCustomerRepository,
+  PredictableTokens,
+  RecordingPublisher,
+  StubDocumentReader,
+} from './support/in-memory';
+
+/**
+ * The use cases, against doubles that behave rather than count calls.
+ *
+ * What is asserted here is what the ticket's acceptance criteria actually say:
+ * one row and one event per registration, a repeated command that changes
+ * nothing, a duplicate that is refused with a safe reason, and a login that
+ * cannot tell an unknown address from a wrong password.
+ */
+
+const NOW = new Date('2026-08-26T12:00:00.000Z');
+const PHOTO_BYTES = Buffer.from('a pretend jpeg');
+const PHOTO_DIGEST = createHash('sha256').update(PHOTO_BYTES).digest('hex');
+
+const REGISTER: CustomerRegisterV1 = {
+  customerId: '7f1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93',
+  fullName: 'María Fernanda López García',
+  identityDocument: '2547896320101',
+  email: 'maria.lopez@correo.com',
+  dateOfBirth: '1996-04-18',
+  address: '12 calle 3-45 zona 1, Guatemala',
+  role: 'CLIENTE',
+  credential: 'una-clave-larga',
+  photo: {
+    objectKey: 'photo.jpg',
+    contentType: 'image/jpeg',
+    sizeBytes: PHOTO_BYTES.byteLength,
+    sha256: PHOTO_DIGEST,
+  },
+};
+
+function build(bytes: Buffer | null = PHOTO_BYTES) {
+  const repository = new InMemoryCustomerRepository();
+  const publisher = new RecordingPublisher();
+  const documents = new StubDocumentReader(bytes);
+  const clock = new FixedClock(NOW);
+  const tokens = new PredictableTokens();
+  const hasher = new FakeHasher();
+
+  return {
+    repository,
+    publisher,
+    documents,
+    clock,
+    tokens,
+    hasher,
+    register: new RegisterCustomerUseCase({
+      repository,
+      publisher,
+      hasher,
+      tokens,
+      documents,
+      clock,
+    }),
+    update: new UpdateCustomerUseCase({ repository, publisher, clock }),
+    authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
+    verifyEmail: new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
+    validateIdentity: new ValidateIdentityUseCase({ repository, publisher, documents, clock }),
+  };
+}
+
+describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
+  it('persists one customer with its document, and says so', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-1');
+
+    expect(context.repository.customers.size).toBe(1);
+    expect(context.repository.documents).toHaveLength(1);
+    expect(context.publisher.typesPublished()).toEqual([
+      'customer.registered.v1',
+      'customer.activation.requested.v1',
+      'customer.identity.validated.v1',
+    ]);
+  });
+
+  it('generates the username from the name and publishes it', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-1');
+
+    expect(context.publisher.payloadOf('customer.registered.v1')).toMatchObject({
+      username: 'marialopez',
+    });
+  });
+
+  it('sends the activation email with a live token, and no account can sign in yet', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-1');
+
+    const activation = context.publisher.payloadOf('customer.activation.requested.v1');
+
+    expect(activation).toMatchObject({ email: REGISTER.email, activationToken: 'token-1' });
+    expect(context.repository.customers.get(REGISTER.customerId)!.status).toBe(
+      'PENDING_ACTIVATION',
+    );
+  });
+
+  it('does nothing at all the second time the same command arrives (criterion 2)', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-1');
+    await context.register.execute(REGISTER, 'key-1');
+
+    expect(context.repository.customers.size).toBe(1);
+    expect(context.publisher.published).toHaveLength(3);
+  });
+
+  it('refuses a duplicated document with a safe reason and no success event', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-1');
+    await context.register.execute(
+      { ...REGISTER, customerId: '9a1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93', email: 'otra@correo.com' },
+      'key-2',
+    );
+
+    expect(context.repository.customers.size).toBe(1);
+    expect(context.publisher.published.filter((m) => m.messageType === 'customer.registered.v1')).toHaveLength(1);
+    expect(context.publisher.payloadOf('customer.register.rejected.v1')).toMatchObject({
+      reason: 'DOCUMENT_ALREADY_REGISTERED',
+    });
+  });
+
+  it('refuses a duplicated email the same way', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-1');
+    await context.register.execute(
+      {
+        ...REGISTER,
+        customerId: '9a1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93',
+        identityDocument: '9999999999999',
+      },
+      'key-2',
+    );
+
+    expect(context.publisher.payloadOf('customer.register.rejected.v1')).toMatchObject({
+      reason: 'EMAIL_ALREADY_REGISTERED',
+    });
+  });
+
+  it('never reaches the repository with an incoherent date (criterion 4)', async () => {
+    const context = build();
+
+    await context.register.execute({ ...REGISTER, dateOfBirth: '2027-01-01' }, 'key-1');
+
+    expect(context.repository.customers.size).toBe(0);
+    expect(context.publisher.payloadOf('customer.register.rejected.v1')).toMatchObject({
+      reason: 'INVALID_BIRTH_DATE',
+    });
+  });
+
+  it('registers the customer but rejects the identity when the object is missing (criterion 5)', async () => {
+    const context = build(null);
+
+    await context.register.execute(REGISTER, 'key-1');
+
+    // The two axes are independent: losing the whole registration over an
+    // unreadable photo would make somebody re-type everything.
+    expect(context.repository.customers.get(REGISTER.customerId)!.identityStatus).toBe('REJECTED');
+    expect(context.publisher.payloadOf('customer.identity.rejected.v1')).toMatchObject({
+      reason: 'IDENTITY_OBJECT_NOT_FOUND',
+    });
+  });
+
+  it('rejects the identity when the bytes do not match the digest claimed', async () => {
+    const context = build(Buffer.from('different bytes entirely'));
+
+    await context.register.execute(REGISTER, 'key-1');
+
+    expect(context.publisher.payloadOf('customer.identity.rejected.v1')).toMatchObject({
+      reason: 'IDENTITY_DIGEST_MISMATCH',
+    });
+  });
+
+  it('leaves the identity PENDING when no photo was attached', async () => {
+    const context = build();
+
+    await context.register.execute({ ...REGISTER, photo: null }, 'key-1');
+
+    expect(context.repository.customers.get(REGISTER.customerId)!.identityStatus).toBe('PENDING');
+    expect(context.publisher.typesPublished()).not.toContain('customer.identity.rejected.v1');
+  });
+
+  it('resolves a username collision with the next candidate, not a failure', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-1');
+    await context.register.execute(
+      {
+        ...REGISTER,
+        customerId: '9a1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93',
+        identityDocument: '9999999999999',
+        email: 'otra@correo.com',
+        photo: null,
+      },
+      'key-2',
+    );
+
+    const usernames = [...context.repository.customers.values()].map((c) => c.username);
+
+    expect(usernames).toEqual(['marialopez', 'marialopez2']);
+  });
+});
+
+describe('updating a customer', () => {
+  it('publishes the names of the fields that changed, never their values', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.update.execute(
+      { customerId: REGISTER.customerId, address: 'Nueva dirección 1-23' },
+      'key-update',
+    );
+
+    const payload = context.publisher.payloadOf('customer.updated.v1');
+
+    expect(payload).toMatchObject({ changedFields: ['address'] });
+    expect(JSON.stringify(payload)).not.toContain('Nueva dirección');
+  });
+
+  it('publishes nothing when the update changes nothing', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    const before = context.publisher.published.length;
+
+    await context.update.execute(
+      { customerId: REGISTER.customerId, address: REGISTER.address },
+      'key-update',
+    );
+
+    expect(context.publisher.published).toHaveLength(before);
+  });
+
+  it('ignores a command for a customer that does not exist, instead of retrying forever', async () => {
+    const context = build();
+
+    await context.update.execute(
+      { customerId: '00000000-0000-4000-8000-000000000000', address: 'x' },
+      'key-update',
+    );
+
+    expect(context.publisher.published).toHaveLength(0);
+    expect(await context.repository.findProcessed('key-update', 'customer.update.v1')).not.toBeNull();
+  });
+});
+
+describe('email activation (criteria 10, 12)', () => {
+  it('activates the account and says when', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
+
+    const customer = context.repository.customers.get(REGISTER.customerId)!;
+
+    expect(customer.status).toBe('ACTIVE');
+    expect(context.publisher.payloadOf('customer.email.verified.v1')).toMatchObject({
+      status: 'ACTIVE',
+    });
+  });
+
+  it('refuses a token that was already used, without touching the account', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
+    const verifiedAt = context.repository.customers.get(REGISTER.customerId)!.emailVerifiedAt;
+
+    await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify-2');
+
+    expect(context.repository.customers.get(REGISTER.customerId)!.emailVerifiedAt).toBe(verifiedAt);
+    expect(context.publisher.payloadOf('customer.email.verification.rejected.v1')).toMatchObject({
+      reason: 'ACTIVATION_TOKEN_INVALID',
+    });
+  });
+
+  it('refuses an expired token as expired, so the audit record can tell', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    context.clock.advanceTo(new Date('2026-08-28T12:00:00.000Z'));
+
+    await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
+
+    expect(context.publisher.payloadOf('customer.email.verification.rejected.v1')).toMatchObject({
+      reason: 'ACTIVATION_TOKEN_EXPIRED',
+    });
+    expect(context.repository.customers.get(REGISTER.customerId)!.emailVerifiedAt).toBeNull();
+  });
+
+  it('refuses an invented token', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.verifyEmail.execute({ activationToken: 'invented-token-value' }, 'key-verify');
+
+    expect(context.publisher.payloadOf('customer.email.verification.rejected.v1')).toMatchObject({
+      reason: 'ACTIVATION_TOKEN_INVALID',
+    });
+  });
+
+  it('answers a redelivered verification with the same verdict, not with a rejection', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
+
+    await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
+
+    const verifications = context.publisher.published.filter(
+      (message) => message.messageType === 'customer.email.verified.v1',
+    );
+
+    // Somebody is holding an HTTP connection open on the other side of this.
+    expect(verifications).toHaveLength(2);
+  });
+});
+
+describe('signing in (criterion 11)', () => {
+  it('approves an activated account and records the sign-in', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
+
+    await context.authenticate.execute({
+      email: REGISTER.email,
+      credential: REGISTER.credential,
+    });
+
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({
+      outcome: 'APPROVED',
+      activationPending: false,
+      claims: { username: 'marialopez', role: 'CLIENTE' },
+    });
+    expect(context.publisher.typesPublished()).toContain('customer.login.succeeded.v1');
+  });
+
+  it('answers a wrong password and an unknown address identically', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
+
+    await context.authenticate.execute({ email: REGISTER.email, credential: 'wrong-password' });
+    const wrongPassword = context.publisher.replies.at(-1)?.payload;
+
+    await context.authenticate.execute({ email: 'nobody@correo.com', credential: 'whatever' });
+    const unknownAddress = context.publisher.replies.at(-1)?.payload;
+
+    // Distinguishing them would turn the login route into an enumeration oracle.
+    expect(wrongPassword).toEqual(unknownAddress);
+    expect(wrongPassword).toEqual({ outcome: 'REJECTED', reason: 'INVALID_CREDENTIALS' });
+  });
+
+  it('will not let an unactivated account in, and re-sends the activation email', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.authenticate.execute({
+      email: REGISTER.email,
+      credential: REGISTER.credential,
+    });
+
+    // The claims are correct and `activationPending` is what refuses the
+    // session — the Gateway turns it into the same 401 as a wrong password.
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ activationPending: true });
+    expect(
+      context.publisher.published.filter(
+        (message) => message.messageType === 'customer.activation.requested.v1',
+      ),
+    ).toHaveLength(2);
+  });
+});
+
+describe('validating an identity again', () => {
+  it('accepts a new photo after a rejection and publishes the verdict', async () => {
+    const context = build(null);
+    await context.register.execute(REGISTER, 'key-1');
+
+    const bytes = Buffer.from('a better photograph');
+    context.documents.setBytes(bytes);
+
+    await context.validateIdentity.execute(
+      {
+        customerId: REGISTER.customerId,
+        photo: {
+          objectKey: 'better.jpg',
+          contentType: 'image/jpeg',
+          sizeBytes: bytes.byteLength,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+        },
+      },
+      'key-identity',
+    );
+
+    expect(context.repository.customers.get(REGISTER.customerId)!.identityStatus).toBe('VALIDATED');
+    expect(context.publisher.typesPublished()).toContain('customer.identity.validated.v1');
+  });
+
+  it('does nothing when the same validation command arrives twice', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    const before = context.publisher.published.length;
+
+    const command = {
+      customerId: REGISTER.customerId,
+      photo: REGISTER.photo!,
+    };
+
+    await context.validateIdentity.execute(command, 'key-identity');
+    await context.validateIdentity.execute(command, 'key-identity');
+
+    // The first one is refused anyway — the identity was validated at
+    // registration — so what this proves is that the second changed nothing.
+    expect(context.publisher.published.length).toBe(before);
+  });
+});
