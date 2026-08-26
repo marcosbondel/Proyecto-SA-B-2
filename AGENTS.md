@@ -25,10 +25,13 @@ The Gateway has no `domain/` layer and never will — it holds no business logic
 (constitution V), and a test asserts it has no database and no HTTP client
 towards any internal service.
 
-The **five domain services are still scaffolding**: health checks, boot-time
-environment validation, and empty `domain` and `application` layers. Their
-screens are T-16 to T-20, and the Clientes screens run against a Gateway whose
-missing routes are recorded as TD-020 to TD-023. `ARCHITECTURE.md` records the target architecture;
+**Customer Service is implemented** (T-16): four tables of its own, five message
+handlers, idempotency by unique constraint, scrypt credentials, email activation
+by hashed token, and the simulated identity validation that recomputes the photo
+digest against the object the Gateway uploaded. The **other four services are
+still scaffolding**: health checks, boot-time environment validation, and empty
+`domain` and `application` layers. Their screens are T-17 to T-20, and what the
+Clientes screens still cannot show is recorded as TD-020, TD-021 and TD-023. `ARCHITECTURE.md` records the target architecture;
 Kubernetes deployment is not built yet.
 
 ## Project Documentation

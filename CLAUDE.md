@@ -27,10 +27,12 @@ role-filtered navigation, the session, four shared components and the **Clientes
 module** (T-16, frontend half) in `app/components/customer/` and
 `app/pages/clientes/`, plus public registration at `/registro`.
 
-The **five domain services remain scaffolding** — health checks, environment
-validation, empty `domain` and `application` layers. Their modules are T-16 to
-T-20; the Clientes screens exist ahead of their service, and what the Gateway
-cannot serve them is recorded as TD-020 to TD-023. Kubernetes deployment is not built yet.
+**Customer Service is implemented** (T-16) — its own PostgreSQL schema, the five
+message handlers, idempotency enforced by a unique constraint, scrypt
+credentials, activation by hashed token, and the simulated identity validation.
+The **other four services remain scaffolding** — health checks, environment
+validation, empty `domain` and `application` layers. Their modules are T-17 to
+T-20; what the Clientes screens still cannot show is TD-020, TD-021 and TD-023. Kubernetes deployment is not built yet.
 
 ## Project Documentation
 
