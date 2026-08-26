@@ -92,6 +92,17 @@ export class RegisterCustomerUseCase {
         // Registration is self-service: nobody is authenticated yet.
         null,
         request.correlationId,
+        /**
+         * The caller's key, carried untouched.
+         *
+         * It was accepted by the controller and then dropped here, which made
+         * this the one write route whose retries were not idempotent: every
+         * attempt minted a fresh key, so Customer Service saw two different
+         * intentions and refused the second on the document's unique index.
+         * A caller retrying after a timeout got a rejection for a registration
+         * that had in fact succeeded.
+         */
+        { idempotencyKey: request.idempotencyKey },
       ),
     );
 

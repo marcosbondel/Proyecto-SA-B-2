@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { catalog } from '../../src/events';
 
 /**
- * SC-009. Two messages carry a bearer secret because they have to: the
- * credential on the way in, and the activation token from the link. Both are
- * documented, and both are the *only* place that value appears.
+ * SC-009. Three messages carry a bearer secret because they have to: the
+ * credential on the way in, and the activation token on the way out and back.
+ * All three are documented, and each is the *only* place that value appears.
  *
  * The allowlist is the point of this test. A third message that starts carrying
  * a secret fails it, which is the moment somebody should be asked why.
@@ -14,6 +14,10 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   'customer.register.v1': ['credential'],
   'customer.authenticate.v1': ['credential'],
   'customer.verify-email.v1': ['activationToken'],
+  // Added by T-16. The event asks for an email containing an activation link;
+  // without the token there is nothing to put in the link, and Customer Service
+  // keeps only the digest.
+  'customer.activation.requested.v1': ['activationToken'],
 };
 
 const FORBIDDEN = /password|passwd|secret|jwt|bearer|signature|privatekey|apikey/i;

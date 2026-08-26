@@ -22,6 +22,20 @@ export const customerActivationRequestedV1 = defineContract({
     email: z.email(),
     /** The link stops working here. Twenty-four hours by default. */
     expiresAt: isoTimestamp,
+
+    /**
+     * The clear activation token, for the link inside the email.
+     *
+     * **Added by T-16, optional and backward-compatible** — the same shape of
+     * amendment T-15 made to `transfer.requested.v1`, so the version does not
+     * change and no existing consumer breaks.
+     *
+     * Without it the event asked Notification & Audit to send "the email
+     * containing the activation link" while giving it nothing to put in the
+     * link. Customer Service stores only the digest; this is the one message
+     * where the clear value travels, and it must never be logged or echoed.
+     */
+    activationToken: z.string().min(16).max(512).optional(),
   }),
 });
 

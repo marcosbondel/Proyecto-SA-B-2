@@ -106,6 +106,30 @@ describe('correlation and idempotency', () => {
     });
 
     /**
+     * Registration is the route where dropping the key hurt most: it is
+     * public, it is retried by people whose first attempt timed out, and
+     * Customer Service refuses a second registration on the document's unique
+     * index. A fresh key per attempt turned "your registration went through"
+     * into "that document is already registered".
+     */
+    it('travels on a registration too, which is where a retry actually happens', async () => {
+      const key = 'retry-of-ana-registration-001';
+
+      await request(app.getHttpServer())
+        .post('/api/customers')
+        .set('Idempotency-Key', key)
+        .field('fullName', 'Ana Sofía Ramírez')
+        .field('identityDocument', '1122334455667')
+        .field('email', 'ana.ramirez@correo.test')
+        .field('dateOfBirth', '1995-03-12')
+        .field('address', '5a avenida 10-20 zona 4')
+        .field('role', 'CLIENTE')
+        .field('credential', 'una-clave-larga');
+
+      expect(harness.publisher.published[0]!.idempotencyKey).toBe(key);
+    });
+
+    /**
      * Bounded so a header cannot become a payload of its own. Over the bound
      * the request still succeeds with a generated key — the alternative would
      * be failing a legitimate banking request over a malformed hint.
