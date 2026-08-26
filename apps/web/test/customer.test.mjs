@@ -6,11 +6,11 @@ import {
   MAX_PHOTO_BYTES,
   ageOn,
   birthDateRejection,
-  changedFields,
   formatDocument,
   outcomeFromAudit,
   photoRejection,
   usernameFrom,
+  updatePayload,
   validateRegistration,
   validateUpdate,
 } from '../app/lib/customer.ts';
@@ -150,30 +150,30 @@ describe('the registration form, checked without a request', () => {
   });
 });
 
-describe('the update form', () => {
-  const BEFORE = {
-    fullName: 'María Fernanda López García',
-    address: '12 calle 3-45 zona 1, Guatemala',
-    dateOfBirth: '1996-04-18',
-  };
-
-  test('it accepts the three fields PATCH accepts', () => {
-    assert.deepEqual(validateUpdate(BEFORE, TODAY), {});
+describe('the update form, with nothing to prefill it', () => {
+  // There is no GET /api/customers/:id in the Gateway, so an empty box means
+  // "leave this alone" rather than "erase it".
+  test('an empty form is refused before it is sent, as the contract refuses it', () => {
+    assert.match(validateUpdate({}, TODAY).form, /al menos un dato/);
   });
 
-  test('an emptied address is refused', () => {
-    assert.match(validateUpdate({ ...BEFORE, address: '   ' }, TODAY).address, /vacía/);
+  test('one filled field is enough', () => {
+    assert.deepEqual(validateUpdate({ address: 'Otra dirección' }, TODAY), {});
   });
 
-  test('only what changed is sent, because an empty update is refused by the contract', () => {
-    assert.deepEqual(changedFields(BEFORE, BEFORE), {});
-    assert.deepEqual(changedFields(BEFORE, { ...BEFORE, address: 'Otra dirección' }), {
-      address: 'Otra dirección',
-    });
+  test('a field that was filled is still checked', () => {
+    assert.match(validateUpdate({ dateOfBirth: '2027-01-01' }, TODAY).dateOfBirth, /futuro/);
   });
 
-  test('surrounding whitespace is not a change', () => {
-    assert.deepEqual(changedFields(BEFORE, { ...BEFORE, fullName: ` ${BEFORE.fullName} ` }), {});
+  test('only the filled fields travel, trimmed', () => {
+    assert.deepEqual(
+      updatePayload({ fullName: '  Ana Ramírez  ', address: '', dateOfBirth: '' }),
+      { fullName: 'Ana Ramírez' },
+    );
+  });
+
+  test('whitespace alone is not a change', () => {
+    assert.deepEqual(updatePayload({ address: '   ' }), {});
   });
 });
 
