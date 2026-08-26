@@ -116,7 +116,7 @@ by this model.
 ## Extension recorded by T-05
 
 The thirty-five messages above are unchanged. T-05 contracted them and, in doing so, needed
-**seven more** that this catalogue does not list. They are recorded here so the counts above
+**seven more** that this catalogue does not list, and T-16 an eighth. They are recorded here so the counts above
 stay verifiable rather than quietly wrong.
 
 **`reply` is a third category.** This catalogue knows commands and events. A reply answers one
@@ -134,6 +134,7 @@ answers are two of the seven.
 | command | `audit.query.requested` | The assignment requires the audit trail to be consultable by `correlationId` |
 | reply | `audit.query.replied` | The answer to the above |
 | event | `customer.email.verification.rejected` | FR-020 of T-05 requires distinguishing an expired activation link from an invalid one, and no message here could carry that distinction |
+| event | `customer.register.rejected` | **Added by T-16.** `customer.registered` announced the success and nothing announced the refusal, so a duplicated document or email produced silence — indistinguishable, from the caller's side, from a message still in flight |
 
 **Why this does not break check M-2.** A reply has exactly one recipient, which looks like an
 orphan by the letter of "every event has at least one consumer". It is not: its single
@@ -145,7 +146,7 @@ the shape this catalogue already uses for `customer.login.rejected` — a refusa
 audit rather than answered to the caller. Modelling it any other way would have introduced a
 second pattern for the same situation.
 
-The payload of all forty-two lives in [`../events/catalog.md`](../events/catalog.md).
+The payload of all forty-three lives in [`../events/catalog.md`](../events/catalog.md).
 
 ---
 

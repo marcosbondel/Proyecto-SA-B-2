@@ -195,10 +195,16 @@ describe('reading the audit trail', () => {
     );
   });
 
+  test('a refused registration is a business rejection', () => {
+    // A duplicated document or email. Before T-16 added this event the trail
+    // stayed silent and the screen could only time out.
+    assert.equal(
+      outcomeFromAudit([{ messageType: 'customer.register.rejected.v1' }]),
+      'BUSINESS_REJECTION',
+    );
+  });
+
   test('the command alone is not an outcome — the wait continues', () => {
-    // This is what a duplicated document produces today: the catalogue has no
-    // registration-rejected event, so the trail stays silent and the screen
-    // must time out rather than invent a verdict.
     assert.equal(outcomeFromAudit([{ messageType: 'customer.register.v1' }]), null);
   });
 
