@@ -239,49 +239,53 @@ export interface UpdateFields {
  *
  * The email is absent on purpose: `UpdateCustomerDto` does not accept it, so
  * offering the field would be offering a change that silently never happens.
+ *
+ * Every field is optional here, and that is a consequence of the Gateway having
+ * no route to read a customer: with nothing to prefill, an empty box means
+ * "leave this alone" rather than "erase it". An update with every box empty is
+ * refused before it is sent, because the contract refuses the empty update.
  */
-export function validateUpdate(fields: UpdateFields, today: Date): FieldErrors {
+export function validateUpdate(fields: Partial<UpdateFields>, today: Date): FieldErrors {
   const errors: Record<string, string> = {};
+  const payload = updatePayload(fields);
 
-  const fullName = fields.fullName.trim();
-  if (fullName.length === 0) {
-    errors.fullName = 'El nombre no puede quedar vacío.';
-  } else if (fullName.length > 200) {
+  if (Object.keys(payload).length === 0) {
+    errors.form = 'Cambia al menos un dato antes de guardar.';
+    return errors;
+  }
+
+  if (payload.fullName !== undefined && payload.fullName.length > 200) {
     errors.fullName = 'El nombre no puede pasar de 200 caracteres.';
   }
 
-  const address = fields.address.trim();
-  if (address.length === 0) {
-    errors.address = 'La dirección no puede quedar vacía.';
-  } else if (address.length > 300) {
+  if (payload.address !== undefined && payload.address.length > 300) {
     errors.address = 'La dirección no puede pasar de 300 caracteres.';
   }
 
-  const birthProblem = birthDateRejection(fields.dateOfBirth, today);
-  if (birthProblem !== null) {
-    errors.dateOfBirth = birthProblem;
+  if (payload.dateOfBirth !== undefined) {
+    const birthProblem = birthDateRejection(payload.dateOfBirth, today);
+
+    if (birthProblem !== null) {
+      errors.dateOfBirth = birthProblem;
+    }
   }
 
   return errors;
 }
 
-/** Only what actually changed, because the contract refuses an empty update. */
-export function changedFields(before: UpdateFields, after: UpdateFields): Partial<UpdateFields> {
-  const changes: Record<string, string> = {};
+/** Only the fields that were actually filled in, trimmed. */
+export function updatePayload(fields: Partial<UpdateFields>): Partial<UpdateFields> {
+  const payload: Record<string, string> = {};
 
-  if (after.fullName.trim() !== before.fullName.trim()) {
-    changes.fullName = after.fullName.trim();
+  for (const field of ['fullName', 'address', 'dateOfBirth'] as const) {
+    const value = (fields[field] ?? '').trim();
+
+    if (value.length > 0) {
+      payload[field] = value;
+    }
   }
 
-  if (after.address.trim() !== before.address.trim()) {
-    changes.address = after.address.trim();
-  }
-
-  if (after.dateOfBirth !== before.dateOfBirth) {
-    changes.dateOfBirth = after.dateOfBirth;
-  }
-
-  return changes;
+  return payload;
 }
 
 export type IdentityStatus = 'PENDING' | 'VALIDATED' | 'REJECTED';
