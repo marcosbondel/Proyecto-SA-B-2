@@ -9,6 +9,7 @@ import { customerIdentityRejectedV1 } from './customer/customer.identity.rejecte
 import { customerIdentityValidatedV1 } from './customer/customer.identity.validated.v1';
 import { customerLoginRejectedV1 } from './customer/customer.login.rejected.v1';
 import { customerLoginSucceededV1 } from './customer/customer.login.succeeded.v1';
+import { customerRegisterRejectedV1 } from './customer/customer.register.rejected.v1';
 import { customerRegisterV1 } from './customer/customer.register.v1';
 import { customerRegisteredV1 } from './customer/customer.registered.v1';
 import { customerUpdateV1 } from './customer/customer.update.v1';
@@ -55,6 +56,7 @@ export * from './customer/customer.identity.rejected.v1';
 export * from './customer/customer.identity.validated.v1';
 export * from './customer/customer.login.rejected.v1';
 export * from './customer/customer.login.succeeded.v1';
+export * from './customer/customer.register.rejected.v1';
 export * from './customer/customer.register.v1';
 export * from './customer/customer.registered.v1';
 export * from './customer/customer.update.v1';
@@ -106,6 +108,7 @@ export const catalog: readonly MessageContract[] = [
   customerIdentityValidatedV1,
   customerLoginRejectedV1,
   customerLoginSucceededV1,
+  customerRegisterRejectedV1,
   customerRegisterV1,
   customerRegisteredV1,
   customerUpdateV1,
