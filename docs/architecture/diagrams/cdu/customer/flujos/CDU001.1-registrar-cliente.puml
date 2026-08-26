@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Actor|
+start
 :Solicitar registro con sus datos;
 |Customer Service|
 :Validar unicidad y coherencia;

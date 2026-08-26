@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Notification & Audit|
+start
 :Consumir evento que requiere notificación;
 :Crear Notification PENDING;
 :Enviar el mensaje al servicio de correo;

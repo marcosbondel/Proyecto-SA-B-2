@@ -8,8 +8,8 @@ skinparam activity {
     FontColor #1168BD
 }
 
-start
 |Cajero o Administrador|
+start
 :Revisar fotografía y datos del cliente;
 |Customer Service|
 :Evaluar la identidad;
