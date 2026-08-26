@@ -11,11 +11,22 @@ frontend at the top level, the five domain services under `apps/services/`, and
 `apps/packages/`. All seven applications install, build, lint and test from a
 clean checkout.
 
-What exists is scaffolding: health checks, boot-time environment validation,
-the shared message envelope and the RabbitMQ adapter, and the local Docker
-Compose stack for development (T-06). The `domain` and `application` layers are
-deliberately empty — no banking rule is implemented. `ARCHITECTURE.md` records
-the target architecture; deployment (T-16) is not built yet.
+**The API Gateway is implemented** (T-15): eleven HTTP routes, JWT
+authentication, role authorization from decision D-06, request/reply with a
+five-second ceiling, a seven-code error contract, the identity-document photo
+deposited in MinIO, and a versioned OpenAPI contract in
+`apps/gateway/openapi/`. **`apps/web` is the shared frontend shell**: layout,
+role-filtered navigation, session, `useGatewayApi` and four shared components,
+with the four modules as titled skeletons.
+
+The Gateway has no `domain/` layer and never will — it holds no business logic
+(constitution V), and a test asserts it has no database and no HTTP client
+towards any internal service.
+
+The **five domain services are still scaffolding**: health checks, boot-time
+environment validation, and empty `domain` and `application` layers. Their
+screens are T-16 to T-20. `ARCHITECTURE.md` records the target architecture;
+Kubernetes deployment is not built yet.
 
 ## Project Documentation
 
@@ -23,7 +34,7 @@ Consult these documents before making decisions or describing the repository:
 
 - [README.md](README.md): project identity, team, layout, and development entry points.
 - [ARCHITECTURE.md](ARCHITECTURE.md): system boundaries, stack, constraints, and dependency rules.
-- [docs/DESIGN.md](docs/DESIGN.md): **must be read before creating or modifying any interface, page, component, style, or interface text**. This link is permanent and must not be removed by a documentation change without an explicit team decision.
+- [docs/DESIGN.md](docs/DESIGN.md): **must be read before creating or modifying any interface, page, component, style, or interface text**. It also records the mandatory Claude Design reference and import prompt for frontend work. This link is permanent and must not be removed by a documentation change without an explicit team decision.
 - [docs/domain/](docs/domain/README.md): **the domain model as a functional contract** — which service owns which data, which invariants it protects, and which commands and events it handles. Read it before implementing any service, designing an event, or adding a business rule.
 - [docs/architecture/adr/](docs/architecture/adr/README.md): **the technology and architecture decisions**, each with the alternatives that were rejected and why. Read it before introducing or changing a technology, or before writing a spec that depends on the stack. These decisions are design constraints — changing one requires a new ADR that supersedes the old, not an edit.
 - [docs/OWNERSHIP.md](docs/OWNERSHIP.md): primary owner before changing a component.
@@ -67,11 +78,15 @@ Per application: `pnpm --filter <name> <command>`, where `<name>` is `gateway`,
 shared packages are consumed from `dist/`. `pnpm --filter <app>... build` (three
 dots) builds an application together with its dependencies.
 
-`apps/web` now has `lint` (`eslint .`, via the already-installed `@nuxt/eslint`)
-and `test` (`node --test`, one smoke test) — added by T-04 so `pnpm lint` and
-`pnpm test` cover all seven applications. It has **no component-level test
-framework**; that needs a Nuxt-native runner and is recorded as TD-010. Do not
-claim component coverage.
+`apps/web` has **no component-level test framework**; that needs a Nuxt-native
+runner and is recorded as TD-010. Do not claim component coverage.
+
+What it does have is a real suite over `app/lib/` on the Node test runner: the
+D-06 permission matrix, the money rules and the error normalisation. That is
+deliberate — anything in this application that **decides** something lives in
+`app/lib/` as a pure function precisely so TD-010 cannot make it unverifiable.
+A decision written into a template would be untestable by an accident of
+tooling.
 
 **Lint enforces architecture, not just style.** A service importing another
 service, a `domain` file importing a framework, or an `application` file

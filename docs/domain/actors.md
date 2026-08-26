@@ -94,4 +94,10 @@ use cases against Account Service and a model change requiring a new approval.
 
 **Endpoint-level authorization.** This document fixes the minimum the domain needs: who may
 trigger which use case. How that is enforced — token scopes, guards, per-route rules — is
-**T-13**, which consumes this matrix as its input.
+**T-15**, which consumes this matrix as its input.
+
+> Corrected on 2026-08-24 (T-15). This line used to point at T-13, the sequence-diagram
+> ticket. [ADR-010](../architecture/adr/ADR-010-authentication.md) was decided afterwards and
+> assigns enforcement to the Gateway, which is T-15. The guards that implement this matrix
+> live in `apps/gateway/src/interfaces/guards/`, and a test in `apps/web` fails if the
+> frontend's copy of the matrix and the Gateway's ever disagree.

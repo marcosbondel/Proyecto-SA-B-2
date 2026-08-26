@@ -31,9 +31,23 @@ The system models the core flows of a banking platform:
 - Notifications, audit events, and distributed observability foundations.
 
 The monorepo and its development base exist: seven applications and three
-shared packages that install, build, lint and test from a clean checkout. What
-they contain is scaffolding — health checks, environment validation and the
-shared message envelope. No banking rule is implemented yet.
+shared packages that install, build, lint and test from a clean checkout.
+
+**The API Gateway is implemented** (T-15): eleven HTTP routes, JWT
+authentication, role authorization, asynchronous request/reply with a
+five-second ceiling, a seven-code error contract, and a versioned OpenAPI
+contract in `apps/gateway/openapi/`. It holds no business logic, no database
+and no HTTP client towards any internal service — and a test suite asserts all
+three rather than asking to be believed.
+
+**`apps/web` is the shared frontend shell**: layout, role-filtered navigation,
+session, a single API client and four shared components, with the four modules
+as titled skeletons for T-16 to T-20 to fill in.
+
+The **five domain services are still scaffolding** — health checks, environment
+validation, and empty `domain` and `application` layers. No banking rule is
+implemented yet, which is why signing in does not work: see
+[Running It Locally](#running-it-locally).
 
 ## Repository Layout
 
@@ -137,31 +151,6 @@ are consumed from `dist/`, so a fresh clone needs a `pnpm build` first — or us
 `pnpm --filter gateway... build` (three dots) to build an application together
 with its dependencies.
 
-### Local startup order
-
-1. `pnpm install`
-2. Copy each `.env.example` to `.env` in the same directory and fill in local
-   values. Never commit a `.env`.
-3. Start the local infrastructure — PostgreSQL and RabbitMQ.
-   **Blocked until T-06.** Until then the applications boot in health-check
-   mode with no broker connection, which is enough to develop against.
-4. `pnpm dev`, or `pnpm --filter <app> dev` for a single application.
-
-Every application answers `GET /health` on its own port once running:
-
-```bash
-curl http://localhost:3001/health
-# {"status":"ok","application":"customer-service"}
-```
-
-A missing required variable fails the boot immediately and names it, rather
-than surfacing later as a runtime error:
-
-```text
-Invalid environment for "customer-service". Offending variables: DATABASE_URL
-  - DATABASE_URL: DATABASE_URL should not be empty; DATABASE_URL must be a string
-```
-
 ### Isolation rules
 
 Three architectural rules are executable, not advisory. Breaking one fails
@@ -195,3 +184,172 @@ Spec-driven work uses [Spec Kit](https://github.com/github/spec-kit) under
 `.specify/`. The available workflows are documented in [AGENTS.md](AGENTS.md).
 
 <!-- test: verifying PR authorship attribution via feature branch, safe to remove -->
+
+## Running It Locally
+
+What runs today is the **API Gateway** and the **frontend shell**. The five
+domain services are still scaffolding — they boot and answer `/health`, and
+nothing else. That shapes everything below, so it is worth knowing before you
+start rather than discovering it at a login screen.
+
+### 1. Toolchain and dependencies
+
+```bash
+nvm use            # Node 24.19.0, from .nvmrc
+corepack enable    # pnpm 11.21.0
+pnpm install
+pnpm build         # shared packages first, then the seven applications
+```
+
+`pnpm build` is not optional on a fresh clone. `@bank/contracts` and
+`@bank/messaging` are consumed from `dist/`, so anything that imports them
+fails until they have been built at least once.
+
+### 2. Local infrastructure
+
+RabbitMQ, MinIO and five PostgreSQL instances, from `infra/docker/`:
+
+```bash
+cd infra/docker
+cp .env.example .env      # then fill in the credentials
+docker compose up -d
+docker compose ps         # wait for every service to read "healthy"
+```
+
+The ports are deliberately **not** the defaults, so the stack coexists with any
+other RabbitMQ or PostgreSQL already on your machine:
+
+| Service | Port | Where |
+| --- | --- | --- |
+| RabbitMQ (AMQP) | `5673` | — |
+| RabbitMQ (management UI) | `15673` | <http://localhost:15673> |
+| MinIO (S3 API) | `9002` | — |
+| MinIO (console) | `9003` | <http://localhost:9003> |
+| PostgreSQL, one per service | `5433`–`5437` | Unused until T-16 |
+
+Credentials live in `infra/docker/.env`, which is git-ignored. The Gateway
+never touches PostgreSQL — those five instances are there for the services that
+do not exist yet.
+
+### 3. Environment files
+
+Copy each `.env.example` to `.env` **in the same directory** and fill in local
+values. Never commit a `.env`.
+
+For the Gateway, `RABBITMQ_URL` and the `OBJECT_STORAGE_*` values must match
+what you put in `infra/docker/.env` — including the non-default ports:
+
+```bash
+# apps/gateway/.env
+PORT=3000
+RABBITMQ_URL=amqp://<app-user>:<app-password>@localhost:5673
+JWT_SECRET=<at least 32 characters>
+OBJECT_STORAGE_ENDPOINT=http://localhost:9002
+OBJECT_STORAGE_BUCKET=customer-identity-documents
+# ...and the rest, see apps/gateway/.env.example
+```
+
+A missing or malformed variable fails the boot immediately and **names the
+variable**, rather than surfacing later as a runtime error:
+
+```text
+Invalid environment for "gateway". Offending variables: JWT_SECRET
+  - JWT_SECRET: JWT_SECRET must be longer than or equal to 32 characters
+```
+
+### 4. Start the applications
+
+```bash
+pnpm --filter gateway dev     # http://localhost:3000
+pnpm --filter web dev         # http://localhost:3010
+```
+
+Start the Gateway **first**. It owns port 3000, and Nuxt defaults to 3000 too —
+start them the other way round and the frontend takes the port the Gateway
+needs, which shows up as a browser that loads but cannot reach any API.
+
+Ports are one per application, and none of them overlap:
+
+| Application | Port |
+| --- | --- |
+| `gateway` | `3000` |
+| `customer-service` | `3001` |
+| `account-service` | `3002` |
+| `transaction-service` | `3003` |
+| `payment-service` | `3004` |
+| `notification-audit-service` | `3005` |
+| `web` | `3010` |
+
+`web` sits at 3010 rather than 3001 on purpose: 3001 belongs to
+`customer-service`, and the collision would only appear once T-16 lands.
+
+> **Running the production build instead of `dev`?** `node .output/server/index.mjs`
+> does **not** read `apps/web/.env`, so the port has to be passed in:
+> `PORT=3010 node .output/server/index.mjs`. Without it Nuxt binds 3000 and
+> takes the Gateway's port.
+
+### 5. Check it came up
+
+```bash
+curl http://localhost:3000/health   # {"status":"ok","application":"gateway"}
+curl http://localhost:3000/ready    # {"status":"ready",...,"broker":"connected"}
+```
+
+The two answer different questions. `/health` says the process is alive and
+keeps answering even with RabbitMQ down — a restart would not fix a broker
+outage, so reporting itself dead would only cause a restart loop. `/ready`
+answers `503` while the broker is unreachable, which is what takes the instance
+out of rotation.
+
+If `/ready` returns `503`, the broker is the thing to look at, not the Gateway.
+
+### What you can actually see right now
+
+| Page | Needs a session | What it shows |
+| --- | --- | --- |
+| <http://localhost:3010/demo> | no | The four shared components and all five asynchronous states, with no broker |
+| <http://localhost:3010/login> | no | Sign-in |
+| <http://localhost:3010/activar> | no | The verdict of an emailed activation link |
+| Everything else | **yes** | Redirects to `/login` |
+
+**There are no demo credentials, and signing in cannot work yet.** The Gateway
+publishes `customer.authenticate.v1` and waits for a reply; Customer Service is
+T-16 and does not exist, so nobody answers and the request ends in a `504`
+after five seconds. That is the system behaving correctly — it is not a bug,
+and it is why `/demo` is the page worth opening first.
+
+The same applies to every query route: balances, transaction status and the
+audit trail all time out, because the services that would answer them are not
+built.
+
+### Exercising the Gateway without a frontend
+
+The routes that only publish are fully working today — you just observe the
+result in RabbitMQ rather than in a screen:
+
+```bash
+curl -i -X POST localhost:3000/api/customers \
+  -F 'fullName=Ana López' -F 'identityDocument=1234567890101' \
+  -F 'email=ana@example.com' -F 'dateOfBirth=1995-04-12' \
+  -F 'address=Zona 1, Guatemala' -F 'role=CLIENTE' \
+  -F 'credential=una-contrasena-larga'
+# 202 {"customerId":"...","correlationId":"..."}
+```
+
+Then open <http://localhost:15673>, look at `customer.commands`, and you will
+find `customer.register.v1` carrying that same `correlationId`.
+
+Routes that need a token are reachable by minting one against the same
+`JWT_SECRET` — the Gateway is the only signer and the only validator, so
+nothing else has to agree with it.
+
+`specs/007-api-gateway-web-shell/evidence/` records a full pass of this against
+real infrastructure, including what the messages looked like on the wire.
+
+### Stopping
+
+```bash
+pkill -f 'dist/main.js'                    # gateway
+pkill -f 'output/server/index.mjs'         # web, if running the built output
+docker compose -f infra/docker/docker-compose.yml stop
+```
