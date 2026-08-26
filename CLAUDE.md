@@ -19,9 +19,15 @@ A pnpm workspace with all code under `apps/`: Gateway and the Nuxt frontend at
 the top level, the five domain services under `apps/services/`, and
 `@bank/contracts`, `@bank/messaging`, `@bank/tooling` under `apps/packages/`.
 Seven applications, all of them building, linting and testing. The contents are
-scaffolding — health checks, environment validation, the shared message
-envelope; the `domain` and `application` layers are empty on purpose. Local
-infrastructure (T-06) and deployment (T-16) are not built yet.
+the API Gateway (T-15) and the frontend shell it feeds. The Gateway carries
+eleven routes, JWT authentication, D-06 role authorization, request/reply with a
+five-second ceiling, seven error codes and a versioned OpenAPI contract; it has
+no `domain/` layer and never will. `apps/web` carries the layout, the
+role-filtered navigation, the session and four shared components.
+
+The **five domain services remain scaffolding** — health checks, environment
+validation, empty `domain` and `application` layers. Their modules are T-16 to
+T-20. Kubernetes deployment is not built yet.
 
 ## Project Documentation
 
@@ -59,8 +65,10 @@ Two things worth knowing before you claim anything passed:
   The rules live in `apps/packages/tooling/eslint.base.mjs`. If one blocks you,
   the design is wrong — do not add an exception to make it pass.
 - **`apps/web` has no component test framework.** Its `test` script is one
-  `node --test` smoke test, not a Vue suite (TD-010). Do not claim component
-  coverage. The six NestJS applications use Jest and do have real tests.
+  `node --test` suite over `app/lib/`, not a Vue suite (TD-010). Do not claim
+  component coverage — but note that everything in the shell that *decides*
+  something lives in `app/lib/` as a pure function precisely so it stays
+  testable despite TD-010. The six NestJS applications use Jest and do have real tests.
 
 ## Spec Workflow
 

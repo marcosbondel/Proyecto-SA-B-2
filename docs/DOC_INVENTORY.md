@@ -21,14 +21,14 @@ not require a new row for every generated link or vendor file.
 | --- | --- | --- | --- | --- |
 | `README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `ARCHITECTURE.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `AGENTS.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `AGENTS.md` | project | Marcos Bonifasi | current | 2026-08-24 |
 | `CLAUDE.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/AI_PROJECT_AGENTS.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/AI_PROJECT_SKILLS.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/DESIGN.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `docs/DESIGN.md` | project | Marcos Bonifasi | current | 2026-08-24 |
 | `docs/DOC_INVENTORY.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/FRONTEND.md` | project | Marcos Bonifasi | blocked | 2026-08-11 |
-| `docs/METHODOLOGY.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `docs/FRONTEND.md` | project | Marcos Bonifasi | blocked | 2026-08-24 |
+| `docs/METHODOLOGY.md` | project | Marcos Bonifasi | current | 2026-08-24 |
 | `docs/OWNERSHIP.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/PRODUCT_SENSE.md` | project | Marcos Bonifasi | blocked | 2026-08-11 |
 | `docs/QUALITY_SCORE.md` | project | Marcos Bonifasi | current | 2026-08-11 |

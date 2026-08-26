@@ -18,7 +18,7 @@ Those belong elsewhere and are deliberately excluded:
 | Message payload shape, versioning, topic naming | T-05 |
 | Databases, cluster, deployment | T-06 |
 | C4 and UML diagrams | T-07 |
-| Endpoint-level authorization | T-13 |
+| Endpoint-level authorization | T-15 |
 
 ## Index
 
