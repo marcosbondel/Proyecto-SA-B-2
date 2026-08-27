@@ -46,6 +46,7 @@ not require a new row for every generated link or vendor file.
 | `docs/events/catalog.md` | generated | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/events/topology.md` | project | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/events/saga-transfer.md` | project | Marcos Bonifasi | current | 2026-08-19 |
+| `docs/operations/CONTAINERS.md` | project | Marcos Bonifasi | current | 2026-08-27 |
 | `docs/architecture/adr/ADR-012-object-storage.md` | project | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/design-docs/PROMPT_MOCKUP.MD` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/architecture/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |

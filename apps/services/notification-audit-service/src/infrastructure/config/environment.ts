@@ -2,7 +2,16 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { plainToInstance } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsString, Max, Min, validateSync } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
 
 /**
  * Raised when a required environment variable is missing or malformed.
@@ -41,6 +50,28 @@ export class NotificationAuditServiceEnvironment {
   @IsString()
   @IsNotEmpty()
   public RABBITMQ_URL!: string;
+
+  /**
+   * Whether the simulated channel may write the activation link into its log.
+   *
+   * Before T-19's backend this was derived from `NODE_ENV` alone, and that had
+   * a consequence nobody chose: on the production images — which is what a kind
+   * deployment runs — **no activation link exists anywhere**. It is absent from
+   * the log, redacted in the audit trail and stored only as a hash. Sign-up
+   * could not be completed at all, which made the whole demonstration depend on
+   * an `UPDATE customers SET status = 'ACTIVE'` (TD-044).
+   *
+   * A flag of its own instead, so the choice is made once and out loud. It
+   * still defaults to *closed* in production: an environment that wants the
+   * link has to ask for it by name, rather than get it by lying about
+   * `NODE_ENV` — which would also flip Nest, the logger and the error handler
+   * into development behaviour, none of which anybody meant to ask for.
+   *
+   * Turning it on writes working account-activation URLs into a log. It is for
+   * a demonstration and a developer's machine, and for nothing else.
+   */
+  @IsBoolean()
+  public REVEAL_ACTIVATION_LINKS!: boolean;
 }
 
 /**
@@ -63,6 +94,10 @@ export function loadEnvironment(
     PORT: toInteger(source.PORT),
     DATABASE_URL: source.DATABASE_URL,
     RABBITMQ_URL: source.RABBITMQ_URL,
+    REVEAL_ACTIVATION_LINKS: toBoolean(
+      source.REVEAL_ACTIVATION_LINKS,
+      source.NODE_ENV !== 'production',
+    ),
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
@@ -75,6 +110,31 @@ export function loadEnvironment(
   }
 
   return candidate;
+}
+
+/**
+ * `"true"`/`"false"`, or the default when the variable is absent.
+ *
+ * Anything else is `undefined` rather than coerced, so a typo fails the boot by
+ * name instead of silently meaning `false` — which for this flag would be a
+ * demonstration that cannot sign anybody up and no message saying why.
+ */
+function toBoolean(raw: string | undefined, fallback: boolean): boolean | undefined {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+
+  const normalised = raw.trim().toLowerCase();
+
+  if (normalised === 'true') {
+    return true;
+  }
+
+  if (normalised === 'false') {
+    return false;
+  }
+
+  return undefined;
 }
 
 /** `undefined` when absent, `NaN` when present but not an integer. */

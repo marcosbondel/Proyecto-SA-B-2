@@ -1,0 +1,304 @@
+# The seven applications as **built images**, on the infrastructure of T-06.
+#
+# This is the third of three Compose files, and the three answer three different
+# questions:
+#
+#   docker-compose.yml         the databases, the broker and MinIO. Nothing else,
+#                              which is what T-06 specified.
+#   docker-compose.dev.yml     the same, plus every application in watch mode
+#                              from a bind mount. Nothing here is built.
+#   docker-compose.images.yml  the same, plus every application from the image
+#                              that will be deployed. No source is mounted, no
+#                              watcher runs, nothing is compiled at start-up.
+#
+# The last one exists because the ticket's verification is a flow — create an
+# account, make a transfer — executed against the *artefacts*, not against a
+# development server that happens to run the same code. A bind mount can hide a
+# missing file in an image; this cannot.
+#
+#   ./infra/docker/scripts/build-images.sh
+#   docker compose -f infra/docker/docker-compose.images.yml up -d
+#   docker compose -f infra/docker/docker-compose.images.yml ps
+#
+# The project name is repeated from the included file. Compose takes the name
+# from the *including* file, and a different one would start a second copy of
+# every database beside the ones already running.
+name: bonking
+
+include:
+  - docker-compose.yml
+
+# ---------------------------------------------------------------- anchors
+
+# Which tag to run. `dev` is the moving tag `build-images.sh` writes on every
+# build; set BANK_IMAGE_TAG to a commit to run exactly what a colleague ran, or
+# what T-22 deployed.
+#
+# `build:` is declared beside `image:` so `docker compose build` produces the
+# very same names — but it is not how these are normally built. The build script
+# is, because it is the thing that knows the commit and writes the immutable tag.
+
+x-app: &app
+  restart: unless-stopped
+  networks:
+    - bank-usac-local
+
+# Nothing is baked into an image, so everything a service needs arrives here.
+# The broker credentials are the application's, not the administrator's — the
+# same pair `rabbitmq_definitions.json` declares as `bank_app`.
+x-rabbitmq-url: &rabbitmq-url
+  RABBITMQ_URL: amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@rabbitmq:5672
+
+x-object-storage: &object-storage
+  OBJECT_STORAGE_ENDPOINT: http://minio:9000
+  OBJECT_STORAGE_ACCESS_KEY: ${MINIO_APP_USER}
+  OBJECT_STORAGE_SECRET_KEY: ${MINIO_APP_PASSWORD}
+  OBJECT_STORAGE_BUCKET: ${MINIO_BUCKET}
+  OBJECT_STORAGE_REGION: ${MINIO_REGION:-us-east-1}
+
+# Compose's own probe, on top of the image's `HEALTHCHECK`.
+#
+# Deliberately `/ready` and not `/health`, which is the opposite of what the
+# images declare — and the difference is the point. The image's HEALTHCHECK is
+# liveness, because Docker restarts on it. This one decides what
+# `depends_on: service_healthy` waits for, and waiting for a service that is
+# alive but not yet consuming its queue is how a smoke test races its own stack.
+#
+# `start_period` is short because these are built artefacts: there is nothing to
+# compile, so a container that is not answering in twenty seconds is not slow,
+# it is broken.
+x-ready-probe: &ready-probe
+  interval: 10s
+  timeout: 3s
+  retries: 5
+  start_period: 20s
+
+# Only the Gateway and the frontend publish a port.
+#
+# The five services do not, and that is the topology rather than an omission:
+# the API Gateway is the system's only entry point (§4.1 of the assignment,
+# constitution V), so a published 3001-3005 would be five ways around the one
+# door the design has. Their health is read where it is defined —
+# `docker compose ps`, or `docker exec <service> wget -qO- .../ready`.
+#
+# The two that do publish take their host port from the environment, because a
+# developer running `pnpm dev:host` already holds 3000 and 3010 and should be
+# able to run the images beside it rather than instead of it:
+#
+#   BANK_GATEWAY_PORT=3100 BANK_WEB_PORT=3110 \
+#     docker compose -f infra/docker/docker-compose.images.yml up -d
+
+services:
+  # ---------------------------------------------------------------- services
+
+  # Each service reaches its own database and no other (constitution II). The
+  # host is the container name and the port is 5432, not the published one —
+  # inside the Compose network there is nothing to remap.
+
+  customer-service:
+    <<: *app
+    image: bank-usac/customer-service:${BANK_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/services/customer-service/Dockerfile
+    container_name: customer-service
+    environment:
+      <<: [*rabbitmq-url, *object-storage]
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${CUSTOMER_POSTGRES_USER}:${CUSTOMER_POSTGRES_PASSWORD}@postgres-customer:5432/${CUSTOMER_POSTGRES_DB}
+    depends_on:
+      postgres-customer:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready-probe
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3001/ready']
+
+  account-service:
+    <<: *app
+    image: bank-usac/account-service:${BANK_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/services/account-service/Dockerfile
+    container_name: account-service
+    environment:
+      <<: *rabbitmq-url
+      NODE_ENV: production
+      PORT: 3002
+      DATABASE_URL: postgresql://${ACCOUNT_POSTGRES_USER}:${ACCOUNT_POSTGRES_PASSWORD}@postgres-account:5432/${ACCOUNT_POSTGRES_DB}
+      # The assignment's own numbers are the defaults in code. They are exposed
+      # here because a demonstration cannot wait six months to watch the
+      # deactivation job do something.
+      DEACTIVATION_ENABLED: ${DEACTIVATION_ENABLED:-true}
+      DEACTIVATION_INTERVAL_MS: ${DEACTIVATION_INTERVAL_MS:-86400000}
+      INACTIVITY_MONTHS: ${INACTIVITY_MONTHS:-6}
+      INACTIVITY_MIN_BALANCE_MINOR: ${INACTIVITY_MIN_BALANCE_MINOR:-5000}
+    depends_on:
+      postgres-account:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready-probe
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3002/ready']
+
+  transaction-service:
+    <<: *app
+    image: bank-usac/transaction-service:${BANK_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/services/transaction-service/Dockerfile
+    container_name: transaction-service
+    environment:
+      <<: *rabbitmq-url
+      NODE_ENV: production
+      PORT: 3003
+      DATABASE_URL: postgresql://${TRANSACTION_POSTGRES_USER}:${TRANSACTION_POSTGRES_PASSWORD}@postgres-transaction:5432/${TRANSACTION_POSTGRES_DB}
+    depends_on:
+      postgres-transaction:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready-probe
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3003/ready']
+
+  # Step 4 of the Saga: it consumes `payment.requested.v1`, climbs a retry
+  # ladder that survives a restart because the due time is a column rather than
+  # a timer, and publishes the event that either completes the transfer or
+  # starts the compensation.
+  payment-service:
+    <<: *app
+    image: bank-usac/payment-service:${BANK_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/services/payment-service/Dockerfile
+    container_name: payment-service
+    environment:
+      <<: *rabbitmq-url
+      NODE_ENV: production
+      PORT: 3004
+      DATABASE_URL: postgresql://${PAYMENT_POSTGRES_USER}:${PAYMENT_POSTGRES_PASSWORD}@postgres-payment:5432/${PAYMENT_POSTGRES_DB}
+      # The ladder the code defaults to is the one topology.md fixed — 1 s, 5 s,
+      # 30 s — and it is right for a deployment and wrong for a demonstration:
+      # nobody watches a compensation for thirty-six seconds to learn something
+      # they understood at the second rung. Shortened here and nowhere else.
+      PAYMENT_RETRY_DELAYS_MS: ${PAYMENT_RETRY_DELAYS_MS:-1000,2000,3000}
+      PAYMENT_RETRY_SWEEP_MS: ${PAYMENT_RETRY_SWEEP_MS:-500}
+    depends_on:
+      postgres-payment:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready-probe
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3004/ready']
+
+  notification-audit-service:
+    <<: *app
+    image: bank-usac/notification-audit-service:${BANK_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/services/notification-audit-service/Dockerfile
+    container_name: notification-audit-service
+    environment:
+      <<: *rabbitmq-url
+      NODE_ENV: production
+      PORT: 3005
+      DATABASE_URL: postgresql://${NOTIFICATION_AUDIT_POSTGRES_USER}:${NOTIFICATION_AUDIT_POSTGRES_PASSWORD}@postgres-notification-audit:5432/${NOTIFICATION_AUDIT_POSTGRES_DB}
+      # Writes working account-activation URLs into this container's log.
+      #
+      # On by default *here* and nowhere else, because these are the production
+      # images and with it off there is no activation link anywhere in the
+      # system — it is redacted in the audit trail and hashed in the customer's
+      # own table — so nobody can complete a sign-up (TD-043, TD-044). It is a
+      # flag of its own precisely so this stack can say yes to it without lying
+      # about NODE_ENV. Set it to false for anything a stranger can reach.
+      REVEAL_ACTIVATION_LINKS: ${REVEAL_ACTIVATION_LINKS:-true}
+    depends_on:
+      postgres-notification-audit:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready-probe
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3005/ready']
+
+  # ----------------------------------------------------------------- gateway
+
+  # Waits for the five services to be *ready*, not merely started. Under
+  # `pnpm dev` that would be needless — a watcher takes a minute to compile and
+  # nobody is testing yet. Here the next command after `up` is a smoke test, and
+  # a Gateway that accepts a request before anything consumes the queue produces
+  # a five-second timeout that looks like a bug in the Gateway.
+  gateway:
+    <<: *app
+    image: bank-usac/gateway:${BANK_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/gateway/Dockerfile
+    container_name: gateway
+    environment:
+      <<: [*rabbitmq-url, *object-storage]
+      NODE_ENV: production
+      PORT: 3000
+      # A development-only default, long enough to satisfy the 32-character
+      # minimum the gateway validates. Override it in infra/docker/.env; never
+      # let this value reach anything but a laptop.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-not-for-any-deployed-environment}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
+      # Fixed rather than random, so the reply queue survives a restart instead
+      # of leaving an orphan behind on every reload.
+      GATEWAY_INSTANCE_ID: gateway-images
+      REPLY_TIMEOUT_MS: ${REPLY_TIMEOUT_MS:-5000}
+    ports:
+      - '${BANK_GATEWAY_PORT:-3000}:3000'
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      customer-service:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+      transaction-service:
+        condition: service_healthy
+      notification-audit-service:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready-probe
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/ready']
+
+  # --------------------------------------------------------------------- web
+
+  web:
+    <<: *app
+    image: bank-usac/web:${BANK_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    container_name: web
+    environment:
+      NODE_ENV: production
+      # The *browser* resolves this, and the browser is on the host — so it is
+      # localhost:3000 and not gateway:3000, even though the container could
+      # reach the latter. Nothing secret may ever go under this key: it is
+      # public runtime config and ships to the client.
+      NUXT_PUBLIC_API_BASE_URL: ${NUXT_PUBLIC_API_BASE_URL:-http://localhost:${BANK_GATEWAY_PORT:-3000}}
+    ports:
+      - '${BANK_WEB_PORT:-3010}:3010'
+    # Not `service_healthy` on the gateway, deliberately. This application is
+    # useful while the API is down — it is what tells a person the bank is not
+    # answering — and a dependency that refused to start it would remove the one
+    # screen that can say so.
+    depends_on:
+      gateway:
+        condition: service_started
+    healthcheck:
+      <<: *ready-probe
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3010/ready']

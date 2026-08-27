@@ -65,22 +65,56 @@ and nothing else, and `test/isolation.spec.ts` fails the build if that changes.
 Its concurrency and constraint tests need a real PostgreSQL and skip without
 `DATABASE_URL`.
 
-**Payment Service remains scaffolding** — health checks, environment
-validation, empty `domain` and `application` layers. Its module is T-19, already
-built against it. Until the service exists a transfer stops at
-`PAYMENT_PENDING` with the money already debited: the state machine is right and
-nobody answers `payment.requested.v1`. What the Clientes screens still cannot
-show is TD-020 and TD-023; the Cuentas screens TD-026 and TD-027; the
-Transferencias screens TD-032 to TD-035; the Pagos screens TD-037 and TD-038;
-the Auditoría screens TD-039 to TD-043. Kubernetes deployment is not built
-yet.
+**Payment Service is implemented** (the backend half of T-19, built in T-21):
+two tables of its own, three message handlers over `payment.commands`, the
+provider as a single pure function that decides an attempt with no clock and no
+database in sight, attempts serialised by `SELECT … FOR UPDATE` plus a check
+that the attempt number follows the row — so a redelivered command and the retry
+sweeper cannot both charge — and a retry ladder whose due time is a **column
+rather than a timer**, so a rescheduled pod does not forget a transfer
+mid-payment. It publishes `payment.attempt.failed.v1` for every failed attempt
+including the last, which is what makes the ladder observable while it is being
+climbed, and only the terminal event closes the Saga. It orders nothing from
+anybody: there is no `send` on its publisher and `test/isolation.spec.ts` fails
+the build if one appears.
+
+**The Saga now runs end to end, in all three of its shapes.**
+`pnpm images:flow` executes them against the built images and checks the
+balances before and after each: a transfer that COMPLETES, a refused payment
+that COMPENSATES on the first attempt, and one that climbs the ladder to its end
+and then COMPENSATES. The compensation is asserted as a fact about the money,
+not as a status somebody wrote down.
+
+What the Clientes screens still cannot show is TD-020 and TD-023; the Cuentas
+screens TD-026 and TD-027; the Transferencias screens TD-032 to TD-035; the
+Pagos screens TD-037 and TD-038; the Auditoría screens TD-039 to TD-043.
+Kubernetes deployment is not built yet.
+
+**Every component is containerised** (T-21): seven multi-stage images, one
+Dockerfile each and no generic one, all running as `node` (uid 1000), with
+nothing but `NODE_ENV` baked in and every credential arriving at run time.
+`/health` and `/ready` answer different questions in all seven — the port now
+opens *before* the migrations and the broker, so a database that is briefly away
+no longer turns a liveness probe into a restart loop. `pnpm images:build` tags
+each image with the commit inside it, which is the value T-22 puts in
+`values.yaml`; `pnpm images:smoke` asserts the labels, the port, the user, the
+absence of secrets in any layer, and the degraded cases; `pnpm images:flow` runs
+the assignment's own flow — register, open accounts, transfer — through the
+images end to end. The inventory, the required variables per component and the
+base-image bump procedure are in
+[docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
 ## Project Documentation
 
 Read [docs/DESIGN.md](docs/DESIGN.md) before creating or modifying any
 interface, page, component, style, or interface text. This link is permanent
 and must not be removed by a documentation change without an explicit team
-decision. The complete project-documentation index is maintained in
+decision. Read [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md) before
+changing a Dockerfile, adding a variable a container needs at run time, or
+touching a health check: it is the image inventory and the contract T-22 builds
+the Helm chart against.
+
+The complete project-documentation index is maintained in
 [AGENTS.md](AGENTS.md), including [docs/DOC_INVENTORY.md](docs/DOC_INVENTORY.md)
 for Markdown classification and [docs/OWNERSHIP.md](docs/OWNERSHIP.md) for
 component ownership.
@@ -102,6 +136,11 @@ pnpm format
 pnpm dev            # whole stack in Docker (infra/docker/docker-compose.dev.yml)
 pnpm dev:infra      # only the databases, the broker and MinIO, detached
 pnpm dev:host       # turbo run dev — the applications on the host, watch mode
+
+pnpm images:build   # the seven Docker images, tagged with the commit inside them
+pnpm images:up      # the stack from those images (also stops the infra on :down)
+pnpm images:smoke   # labels, port, user, secrets, liveness, readiness, degraded cases
+pnpm images:flow    # register, open accounts, transfer — through the images
 ```
 
 Per application: `turbo run <task> --filter=<name>`, which brings the
