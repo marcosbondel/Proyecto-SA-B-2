@@ -2,6 +2,7 @@ import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
 import {
   accountCreateV1,
+  accountSetStatusV1,
   customerRegisterV1,
   customerUpdateV1,
   transferRequestedV1,
@@ -28,15 +29,17 @@ const VALID_REGISTRATION = {
   credential: 'una-contrasena-larga',
 };
 
-describe('the four asynchronous commands', () => {
+describe('the five asynchronous commands', () => {
   let harness: Harness;
   let app: INestApplication;
   let auth: string;
+  let admin: string;
 
   beforeEach(async () => {
     harness = await buildHarness([CustomersController, AccountsController, TransfersController]);
     app = harness.app;
     auth = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'CLIENTE' })}`;
+    admin = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'ADMINISTRADOR' })}`;
   });
 
   afterEach(async () => {
@@ -128,6 +131,66 @@ describe('the four asynchronous commands', () => {
     // A `201 Created` with a location would be a lie with a URL attached.
     expect(response.status).toBe(202);
     expect(response.headers.location).toBeUndefined();
+  });
+
+  /**
+   * The one account route decision D-06 restricts by role rather than by scope.
+   * The guard is asserted here as well as in `roles-guard.spec.ts` because the
+   * fixture there proves the mechanism; this proves it is actually wired to
+   * this route.
+   */
+  describe('activating or deactivating an account by hand', () => {
+    const STATUS_CHANGE = { status: 'INACTIVE', reason: 'Solicitud del titular' };
+
+    it('publishes account.set-status.v1 for an administrator, and answers 202', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/accounts/${SOURCE}/status`)
+        .set('Authorization', admin)
+        .send(STATUS_CHANGE);
+
+      expect(response.status).toBe(202);
+      expect(harness.publisher.lastType).toBe(accountSetStatusV1.name);
+      expect(harness.publisher.published.at(-1)?.payload).toEqual({
+        accountId: SOURCE,
+        ...STATUS_CHANGE,
+      });
+    });
+
+    it.each(['CLIENTE', 'CAJERO_RECEPTOR'] as const)('refuses %s with 403 and publishes nothing', async (role) => {
+      const token = harness.tokens.sign({ customerId: ACTOR, username: 'ana', role });
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/accounts/${SOURCE}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(STATUS_CHANGE);
+
+      expect(response.status).toBe(403);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    /**
+     * The reason is the only record of *why* a manual deactivation happened —
+     * there is no automatic trigger behind it to infer it from.
+     */
+    it('refuses a change with no reason, before publishing anything', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/accounts/${SOURCE}/status`)
+        .set('Authorization', admin)
+        .send({ status: 'INACTIVE' });
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('refuses a status outside the closed set', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/accounts/${SOURCE}/status`)
+        .set('Authorization', admin)
+        .send({ status: 'CERRADA', reason: 'lo que sea' });
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
   });
 
   it('returns no business outcome, only an identifier to ask with', async () => {
