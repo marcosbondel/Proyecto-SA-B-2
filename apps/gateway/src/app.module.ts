@@ -18,6 +18,7 @@ import { AuditController } from './interfaces/audit.controller';
 import { AccountsController } from './interfaces/accounts.controller';
 import { AuthController } from './interfaces/auth.controller';
 import { CustomersController } from './interfaces/customers.controller';
+import { PaymentsController } from './interfaces/payments.controller';
 import { TransfersController } from './interfaces/transfers.controller';
 import { SessionTokenService } from './infrastructure/auth/jwt.service';
 import type { GatewayEnvironment } from './infrastructure/config/environment';
@@ -78,6 +79,7 @@ export class AppModule implements NestModule {
         CustomersController,
         AccountsController,
         TransfersController,
+        PaymentsController,
         AuditController,
       ],
       providers: [
