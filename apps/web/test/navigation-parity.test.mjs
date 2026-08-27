@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { test, describe } from 'node:test';
 
 import { mayManageAccounts } from '../app/lib/account.ts';
+import { mayMonitorPayments } from '../app/lib/payment.ts';
 import { MODULES } from '../app/lib/navigation.ts';
 
 /**
@@ -65,8 +66,44 @@ describe('the frontend matrix agrees with the Gateway', () => {
     assert.equal(mayManageAccounts(null), false);
   });
 
+  /**
+   * The third role-restricted route, added by T-19, and the only one restricted
+   * because its owning service **cannot** narrow the answer itself.
+   *
+   * Account Service intersects a listing with what the asker owns. Payment
+   * Service holds a `transactionId` and no customer reference at all, so an
+   * unrestricted `GET /api/payments` would hand every authenticated client
+   * every payment in the bank. That is why this one is a navigation entry and
+   * `mayManageAccounts` is not: the whole module is staff work, not one screen
+   * inside a module everybody shares.
+   */
+  test('the Gateway restricts the payment listing to staff', async () => {
+    const source = await readFile(
+      new URL('../../gateway/src/interfaces/payments.controller.ts', import.meta.url),
+      'utf8',
+    );
+
+    assert.match(
+      source,
+      /@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)\s*\n\s*@Get\(\)/,
+      'the payment listing no longer restricts itself to staff',
+    );
+
+    // The single-payment route stays open, like the transfer status it mirrors.
+    assert.equal((source.match(/@Roles\(/g) ?? []).length, 1);
+
+    const pagos = MODULES.find((module) => module.to === '/pagos');
+
+    assert.deepEqual(pagos.roles, ['CAJERO_RECEPTOR', 'ADMINISTRADOR']);
+
+    assert.equal(mayMonitorPayments('CAJERO_RECEPTOR'), true);
+    assert.equal(mayMonitorPayments('ADMINISTRADOR'), true);
+    assert.equal(mayMonitorPayments('CLIENTE'), false);
+    assert.equal(mayMonitorPayments(null), false);
+  });
+
   test('no other Gateway controller restricts by role', async () => {
-    // If a third route grows a @Roles decorator, the frontend matrix has to
+    // If a fourth route grows a @Roles decorator, the frontend matrix has to
     // grow with it — and this failing is how anyone finds out.
     const controllers = ['auth.controller.ts', 'customers.controller.ts', 'transfers.controller.ts'];
 
@@ -91,9 +128,14 @@ describe('the frontend matrix agrees with the Gateway', () => {
 
     assert.equal((accounts.match(/@Roles\(/g) ?? []).length, 1);
 
+    // Two modules are restricted: Auditoría by D-06 outright, and Pagos because
+    // its owning service cannot scope its own listing (TD-037).
     const restricted = MODULES.filter((module) => module.roles.length < 3);
 
-    assert.equal(restricted.length, 1);
+    assert.deepEqual(
+      restricted.map((module) => module.to).sort(),
+      ['/auditoria', '/pagos'],
+    );
   });
 });
 

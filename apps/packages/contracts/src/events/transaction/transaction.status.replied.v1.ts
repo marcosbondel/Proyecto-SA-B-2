@@ -4,6 +4,7 @@ import {
   failureCode,
   isoTimestamp,
   money,
+  paymentErrorType,
   paymentStatus,
   transactionStatus,
   uuidV4,
@@ -30,6 +31,20 @@ const paymentOutcome = z.object({
   /** Payment Service's own attempt counter, not the broker's redeliveries. */
   attempt: z.int().positive().nullable(),
   reason: failureCode.extract(['PAYMENT_DECLINED', 'PAYMENT_RETRIES_EXHAUSTED']).nullable(),
+  /**
+   * The kind of the last failure, added by T-19 and **optional**, by the same
+   * additive rule as `payment` itself: a reply that omits it validates exactly
+   * as before, so the version does not move and no consumer had to change.
+   *
+   * It is not derivable from `reason`, which is why it is a field. The two look
+   * related — `PAYMENT_DECLINED` is normally permanent, `PAYMENT_RETRIES_EXHAUSTED`
+   * normally transient — but that mapping is Payment Service's policy, not a law,
+   * and a consumer that inferred it would be reimplementing a decision it does
+   * not own. It also says nothing at all while the payment is still `PENDING`,
+   * where `reason` is `null` and the kind of the last failed attempt is the only
+   * thing that tells a screen a retry is under way.
+   */
+  errorType: paymentErrorType.nullable().optional(),
   decidedAt: isoTimestamp.nullable(),
 });
 
