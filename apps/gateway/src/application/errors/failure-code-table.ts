@@ -3,7 +3,7 @@ import type { FailureCode } from '@bank/contracts';
 import type { GatewayErrorType } from './gateway-error';
 
 /**
- * Which HTTP status stands for each of the catalogue's twenty failure codes.
+ * Which HTTP status stands for each of the catalogue's twenty-one failure codes.
  *
  * **A table, not a chain of conditionals**, and the difference is not
  * stylistic. Translating a verdict someone else reached is routing; deciding
@@ -45,6 +45,19 @@ export const FAILURE_CODE_STATUS: Readonly<Record<FailureCode, number>> = {
   IDENTITY_DIGEST_MISMATCH: 422,
   PAYMENT_DECLINED: 422,
   PAYMENT_RETRIES_EXHAUSTED: 422,
+
+  /*
+   * Forbidden — the request is well-formed and the actor is authenticated, but
+   * the account is not theirs. `403` rather than `422`: nothing about the
+   * request needs fixing, and the difference between "this cannot be done" and
+   * "you cannot do this" is the difference between retrying and not.
+   *
+   * It reaches this table only where the owning service already decided to say
+   * so. Both read paths — a balance, a statement — answer `ACCOUNT_NOT_FOUND`
+   * instead, because a distinguishable refusal on a read is a way to discover
+   * which accounts exist.
+   */
+  FORBIDDEN_ACCOUNT_ACCESS: 403,
 
   // The one credential-shaped code. It is answered with the same generic
   // rejection as every other sign-in failure, so it never distinguishes an

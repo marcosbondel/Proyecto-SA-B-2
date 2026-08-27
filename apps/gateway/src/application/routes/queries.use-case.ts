@@ -2,6 +2,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
+  accountListQueryV1,
+  accountListRepliedV1,
+  accountOperationsQueryV1,
+  accountOperationsRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
   transactionStatusRepliedV1,
@@ -24,8 +28,15 @@ export interface QueryContext {
   readonly correlationId: string;
 }
 
+/** What a listing may be narrowed by. Every field optional, none of them a permission. */
+export interface AccountListFilter {
+  readonly customerId?: string;
+  readonly status?: 'ACTIVE' | 'INACTIVE';
+  readonly accountType?: 'MONETARIA' | 'AHORRO';
+}
+
 /**
- * The three questions whose answers the caller waits for.
+ * The five questions whose answers the caller waits for.
  *
  * Each one publishes a command, waits at most five seconds, and hands back
  * whatever the owning service said — including its refusal. The gateway does
@@ -52,6 +63,48 @@ export class QueriesUseCase {
   ): Promise<Record<string, unknown>> {
     const raw = await this.#ask(accountBalanceQueryV1.name, { accountId }, context);
     const parsed = accountBalanceRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    if (parsed.data.outcome === 'NOT_FOUND') {
+      // The owning service's own code, carried untouched (FR-030).
+      throw GatewayError.businessRejection(parsed.data.reason, 'La cuenta consultada no existe.');
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * The accounts this caller may see.
+   *
+   * **No `NOT_FOUND` branch, on purpose.** An empty list is the whole answer,
+   * and it means the same thing whether nothing exists or nothing is visible.
+   * A gateway that distinguished them would hand back a way to discover which
+   * accounts belong to somebody else.
+   */
+  public async accounts(
+    filter: AccountListFilter,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(accountListQueryV1.name, filter, context);
+    const parsed = accountListRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /** The movements of one account, or the owning service's refusal, untouched. */
+  public async operationsOf(
+    accountId: string,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(accountOperationsQueryV1.name, { accountId }, context);
+    const parsed = accountOperationsRepliedV1.schema.safeParse(raw);
 
     if (!parsed.success) {
       throw GatewayError.internal();
