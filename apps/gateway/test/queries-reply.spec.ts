@@ -9,6 +9,8 @@ import {
   accountOperationsRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
+  notificationListQueryV1,
+  notificationListRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
 } from '@bank/contracts';
@@ -282,6 +284,90 @@ describe('the five queries that wait for an answer', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.field).toBe('correlationId');
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    /**
+     * Carries the redacted payload T-20 added to the reply, and does not
+     * inspect it. The Gateway parses against the contract and passes what
+     * survives; deciding what a payload may show is the owning service's job,
+     * and a second opinion here would be a second place to get it wrong.
+     */
+    it('passes through the processing status and the redacted payload', async () => {
+      harness.replier.answerWith(auditQueryRepliedV1.name, {
+        correlationId: TRACE,
+        events: [
+          {
+            messageId: TRANSACTION,
+            messageType: 'transaction.completed.v1',
+            producer: 'transaction-service',
+            causationId: null,
+            occurredAt: '2026-08-19T14:32:08.100Z',
+            processingStatus: 'PROCESSED',
+            payload: { transactionId: TRANSACTION, amount: '[redactado]' },
+          },
+        ],
+        notifications: [
+          { channel: 'EMAIL', subject: 'Tu transferencia se completó', sentAt: null },
+        ],
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/audit?correlationId=${TRACE}`)
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(200);
+      expect(response.body.events[0].processingStatus).toBe('PROCESSED');
+      expect(response.body.events[0].payload.amount).toBe('[redactado]');
+    });
+  });
+
+  describe('the notifications console', () => {
+    it('returns the page and how much it left out', async () => {
+      harness.replier.answerWith(notificationListRepliedV1.name, {
+        notifications: [
+          {
+            notificationId: TRANSACTION,
+            type: 'transfer.completed',
+            channel: 'EMAIL',
+            recipient: 'cliente-3f2a1c04@simulado.bonking.gt',
+            referenceId: TRANSACTION,
+            subject: 'Tu transferencia se completó',
+            status: 'SENT',
+            correlationId: TRACE,
+            createdAt: '2026-08-19T14:32:08.100Z',
+            processedAt: '2026-08-19T14:32:08.140Z',
+          },
+        ],
+        omitted: 17,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/api/audit/notifications?status=SENT')
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(200);
+      expect(harness.publisher.lastType).toBe(notificationListQueryV1.name);
+      expect(response.body.notifications).toHaveLength(1);
+      expect(response.body.omitted).toBe(17);
+    });
+
+    /** D-06 grants the trail and the notifications together, or neither. */
+    it('is refused for a role D-06 does not admit, without asking anyone', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/audit/notifications')
+        .set('Authorization', client);
+
+      expect(response.status).toBe(403);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('refuses a limit above what the contract admits', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/audit/notifications?limit=500')
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(400);
       expect(harness.publisher.published).toHaveLength(0);
     });
   });
