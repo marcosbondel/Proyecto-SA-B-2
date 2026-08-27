@@ -2,7 +2,7 @@
   "name": "account-service",
   "version": "0.0.0",
   "private": true,
-  "description": "Bank USAC account-service — Bank accounts, balances and account state.",
+  "description": "Bank USAC account-service \u2014 Bank accounts, balances and account state.",
   "license": "MIT",
   "scripts": {
     "build": "nest build",
@@ -14,11 +14,13 @@
   },
   "dependencies": {
     "@bank/contracts": "workspace:*",
+    "@bank/messaging": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
     "class-transformer": "catalog:",
     "class-validator": "catalog:",
+    "pg": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:"
   },
@@ -28,6 +30,7 @@
     "@nestjs/testing": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "eslint": "catalog:",
     "jest": "catalog:",
     "ts-jest": "catalog:",
