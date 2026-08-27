@@ -1,51 +1,112 @@
-flowchart LR
-    users["👥 Cliente · Cajero · Administrador"]
-    email["✉ Servicio de correo"]
-    provider["🌐 Proveedor de pagos"]
+---
+title: Bank USAC · Arquitectura general (T-07)
+---
+flowchart TB
 
-    subgraph solution["Entorno de la solución"]
-        subgraph applications["Entorno de aplicaciones"]
-            frontend["Frontend"]
-            gateway["API Gateway"]
-            customer["Customer Service"]
-            account["Account Service"]
-            transaction["Transaction Service"]
-            payment["Payment Service"]
-            notification["Notification & Audit"]
-        end
+    %% Diagrama 1 de 8 · Ticket T-07 · Vista panorámica de todo Bank USAC.
 
-        subgraph support["Infraestructura de soporte"]
-            broker["Broker de mensajería"]
-            customerDb[("Base de datos de Customer")]
-            accountDb[("Base de datos de Account")]
-            transactionDb[("Base de datos de Transaction")]
-            paymentDb[("Base de datos de Payment")]
-            notificationDb[("Base de datos de Notification & Audit")]
-            objectStore["Almacenamiento de objetos"]
+    %% Esta fuente y 01-arquitectura-general.puml describen el MISMO sistema:
+    %% los mismos componentes, los mismos nombres y las mismas flechas.
+    %% Si una de las dos cambia, la otra cambia en el mismo commit (ADR-013).
+
+    %% Qué muestra: los 8 componentes desplegables, las 5 bases PostgreSQL,
+    %% la frontera del cluster kind y el tipo de comunicación de cada flecha.
+    %% Qué NO muestra, a propósito: actores y sistemas externos (diagrama 02,
+    %% C4 L1), el detalle de colas y mensajes (diagrama 03, C4 L2) y el búfer
+    %% de objetos MinIO (diagramas 03 y 05) — ver la nota de alcance al pie.
+
+    %% =====================================================================
+    %% DENTRO DEL CLUSTER kind · se instala con `helm upgrade --install`
+    %% =====================================================================
+    subgraph KIND["DENTRO del cluster kind · Kubernetes local · release por Helm chart (infra/k8s/helm/bank-usac) · imágenes Docker"]
+        direction LR
+
+        WEB["<b>Frontend</b><br/>apps/web<br/><i>Nuxt 4 + @nuxt/ui 4.10 + Tailwind 4</i>"]
+        GW["<b>API Gateway</b><br/>apps/gateway<br/><i>NestJS / TypeScript</i><br/>único punto de entrada · sin base de datos"]
+
+        subgraph SVCS["Los 5 microservicios · NestJS / TypeScript · Clean Architecture · sin comunicación directa entre ellos"]
+            direction LR
+            CUS["<b>Customer Service</b><br/>apps/services/customer-service<br/><i>NestJS / TypeScript</i>"]
+            ACC["<b>Account Service</b><br/>apps/services/account-service<br/><i>NestJS / TypeScript</i>"]
+            TRX["<b>Transaction Service</b><br/>apps/services/transaction-service<br/><i>NestJS / TypeScript</i>"]
+            PAY["<b>Payment Service</b><br/>apps/services/payment-service<br/><i>NestJS / TypeScript</i>"]
+            NOT["<b>Notification &amp; Audit Service</b><br/>apps/services/notification-audit-service<br/><i>NestJS / TypeScript</i>"]
         end
     end
 
-    users --> frontend
-    frontend --> gateway
-    gateway <--> broker
-    broker <--> customer
-    broker <--> account
-    broker <--> transaction
-    broker <--> payment
-    broker --> notification
+    %% =====================================================================
+    %% FUERA DEL CLUSTER · contenedores Docker en el host (infra/docker/)
+    %% El enunciado penaliza con -100% desplegar las bases dentro del cluster.
+    %% =====================================================================
+    subgraph EXT["FUERA del cluster kind · contenedores Docker en el host (infra/docker/) · alcanzados por host.docker.internal"]
+        direction LR
 
-    customer --> customerDb
-    account --> accountDb
-    transaction --> transactionDb
-    payment --> paymentDb
-    notification --> notificationDb
+        MQ["<b>RabbitMQ</b><br/><i>RabbitMQ 4.3.4-management</i><br/>exchanges: bank.commands · bank.events<br/>bank.replies · bank.errors"]
 
-    gateway --> objectStore
-    customer --> objectStore
-    notification --> email
-    payment --> provider
+        subgraph DBS["Una base PostgreSQL por servicio · ninguna recibe conexiones de dos servicios"]
+            direction LR
+            DBC[("<b>Customer DB</b><br/><i>PostgreSQL 18.4</i><br/>bankusac_customer")]
+            DBA[("<b>Account DB</b><br/><i>PostgreSQL 18.4</i><br/>bankusac_account")]
+            DBT[("<b>Transaction DB</b><br/><i>PostgreSQL 18.4</i><br/>bankusac_transaction")]
+            DBP[("<b>Payment DB</b><br/><i>PostgreSQL 18.4</i><br/>bankusac_payment")]
+            DBN[("<b>Notification &amp; Audit DB</b><br/><i>PostgreSQL 18.4</i><br/>bankusac_notification")]
+        end
+    end
 
-    note["Las bases, el broker y el almacenamiento de objetos están fuera del entorno de aplicaciones. El almacenamiento de objetos es un búfer; Customer Service conserva la fuente de verdad."]:::note
-    support -.-> note
+    %% =====================================================================
+    %% ARISTAS · la única síncrona del diagrama es Frontend -> API Gateway
+    %% =====================================================================
+    WEB ==>|"<b>HTTP SÍNCRONO</b><br/>REST / JSON · única flecha síncrona"| GW
 
-    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;
+    GW <-->|"AMQP · ASÍNCRONO<br/>comando + request/reply"| MQ
+    CUS <-->|"AMQP · ASÍNCRONO<br/>comando + evento"| MQ
+    ACC <-->|"AMQP · ASÍNCRONO<br/>comando + evento"| MQ
+    TRX <-->|"AMQP · ASÍNCRONO<br/>comando + evento (Saga)"| MQ
+    PAY <-->|"AMQP · ASÍNCRONO<br/>comando + evento"| MQ
+    NOT <-->|"AMQP · ASÍNCRONO<br/>evento (solo consume) + respuesta"| MQ
+
+    CUS -->|"PostgreSQL · TCP 5432<br/>privado"| DBC
+    ACC -->|"PostgreSQL · TCP 5432<br/>privado"| DBA
+    TRX -->|"PostgreSQL · TCP 5432<br/>privado"| DBT
+    PAY -->|"PostgreSQL · TCP 5432<br/>privado"| DBP
+    NOT -->|"PostgreSQL · TCP 5432<br/>privado"| DBN
+
+    %% =====================================================================
+    %% LEYENDA Y NOTA DE ALCANCE
+    %% =====================================================================
+    subgraph LEG["Leyenda · las tres clases de comunicación del sistema"]
+        direction LR
+        L1["<b>1 · Entrada síncrona</b> — HTTP REST/JSON.<br/>Solo Frontend → API Gateway. Ninguna otra flecha es síncrona."]
+        L2["<b>2 · Entre componentes</b> — 100% asíncrona por AMQP sobre RabbitMQ.<br/>Todo pasa por el broker: no existe ninguna flecha directa<br/>entre dos microservicios."]
+        L3["<b>3 · Persistencia</b> — PostgreSQL privado por servicio.<br/>Un servicio, una base. Ningún servicio lee la base de otro.<br/>El API Gateway no tiene base de datos."]
+    end
+
+    ALCANCE["<b>Nota de alcance de este diagrama</b><br/>Los actores (Cliente · Cajero Receptor · Administrador) están en el diagrama 02 (C4 L1).<br/>El catálogo de colas, comandos y eventos está en el diagrama 03 (C4 L2).<br/>El búfer de objetos MinIO — fotografía de identidad, infraestructura externa de soporte,<br/>ni microservicio ni base de dominio — está en los diagramas 03 y 05.<br/>El canal de correo y el proveedor de pagos están <i>simulados en proceso</i>: no son componentes desplegados."]
+
+    %% =====================================================================
+    %% ESTILOS
+    %% =====================================================================
+    classDef frontend fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d1b2a;
+    classDef gateway fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#0d1b2a;
+    classDef service fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#0d1b2a;
+    classDef broker fill:#fff3e0,stroke:#ef6c00,stroke-width:3px,color:#0d1b2a;
+    classDef db fill:#fce4ec,stroke:#ad1457,stroke-width:2px,color:#0d1b2a;
+    classDef legend fill:#fafafa,stroke:#9e9e9e,stroke-width:1px,color:#212121;
+    classDef note fill:#fff8dc,stroke:#d6b656,stroke-width:1px,color:#555555;
+
+    class WEB frontend;
+    class GW gateway;
+    class CUS,ACC,TRX,PAY,NOT service;
+    class MQ broker;
+    class DBC,DBA,DBT,DBP,DBN db;
+    class L1,L2,L3 legend;
+    class ALCANCE note;
+
+    style KIND fill:#f1f8ff,stroke:#1565c0,stroke-width:5px,color:#0d1b2a;
+    style EXT fill:#fff8f1,stroke:#ad1457,stroke-width:5px,color:#0d1b2a;
+    style SVCS fill:#f6fff7,stroke:#2e7d32,stroke-width:2px,color:#0d1b2a;
+    style DBS fill:#fff5f8,stroke:#ad1457,stroke-width:2px,color:#0d1b2a;
+    style LEG fill:#fafafa,stroke:#9e9e9e,stroke-width:1px,color:#212121;
+
+    %% La arista 0 es Frontend -> API Gateway: la única síncrona, resaltada.
+    linkStyle 0 stroke:#1565c0,stroke-width:4px;
