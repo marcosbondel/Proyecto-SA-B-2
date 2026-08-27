@@ -77,7 +77,14 @@ export const QUEUES: readonly QueueDescriptor[] = [
   {
     name: 'payment.commands',
     owner: 'payment-service',
-    bindings: [{ exchange: EXCHANGES.commands, pattern: 'payment.requested.v1' }],
+    /*
+     * Widened from `payment.requested.v1` to `payment.#` by T-19, when the two
+     * read queries arrived. The same shape `account.commands` already had, and
+     * for the same reason: enumerating command names here means every new
+     * question needs a broker change as well as a contract, and the one that
+     * gets forgotten is the binding.
+     */
+    bindings: [{ exchange: EXCHANGES.commands, pattern: 'payment.#' }],
   },
   {
     // Audit is terminal by design: it hears everything and nobody waits on it.
