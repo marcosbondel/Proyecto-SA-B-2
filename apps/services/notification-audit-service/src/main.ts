@@ -34,6 +34,14 @@ const OWNED: readonly QueueDescriptor[] = QUEUES.filter(
 const QUERY_QUEUE = 'audit.query';
 
 /**
+ * How long to wait before trying the database again when it is unreachable.
+ *
+ * Matched to the broker's own reconnect interval, so a stack coming up together
+ * does not produce two unrelated retry rhythms in one log.
+ */
+const ATTACH_RETRY_DELAY_MS = 5_000;
+
+/**
  * Composition: the one place allowed to see every layer at once.
  *
  * Two decisions here are worth reading before changing anything.
@@ -50,7 +58,8 @@ const QUERY_QUEUE = 'audit.query';
  * **Migrations run before any queue is consumed.** A replica that starts taking
  * events against a schema that does not exist yet fails every one of them into
  * the retry ladder, which looks like an outage and is really a race with its
- * own boot.
+ * own boot. Since T-21 both happen *after* the port is open — see `attach`
+ * below for why.
  */
 async function bootstrap(): Promise<void> {
   loadDotEnvFile();
@@ -58,24 +67,21 @@ async function bootstrap(): Promise<void> {
   const logger = new StructuredLogger();
 
   const pool = new Pool({ connectionString: environment.DATABASE_URL });
-  const applied = await migrate(pool);
-
-  if (applied.length > 0) {
-    logger.info('schema migrations applied', { outcome: applied.join(', ') });
-  }
 
   const repository = new PostgresAuditRepository(pool);
   /**
-   * Outside production the simulated channel prints the activation link it was
-   * given, which is what a local mail catcher does and what makes signing up on
-   * your own machine possible at all — this service now drains the queue the
-   * token used to be readable from. In production the link is never written
-   * anywhere. See the adapter, and TD-043.
+   * The simulated channel prints the activation link when — and only when —
+   * `REVEAL_ACTIVATION_LINKS` says so. It defaults to on outside production and
+   * off inside it, which is what a local mail catcher does and what makes
+   * signing up on your own machine possible at all: this service drains the
+   * queue the token used to be readable from.
+   *
+   * It is a flag of its own rather than a reading of `NODE_ENV` because the
+   * production images are what a kind deployment runs, and with the link closed
+   * there is no way to complete a sign-up anywhere in the system. See the
+   * adapter, TD-043 and TD-044.
    */
-  const sender = new SimulatedNotificationAdapter(
-    logger,
-    environment.NODE_ENV !== 'production',
-  );
+  const sender = new SimulatedNotificationAdapter(logger, environment.REVEAL_ACTIVATION_LINKS);
   const broker = new MessageBroker({
     url: environment.RABBITMQ_URL,
     exchanges: [EXCHANGES.commands, EXCHANGES.events, EXCHANGES.replies],
@@ -108,60 +114,120 @@ async function bootstrap(): Promise<void> {
     ]);
   };
 
-  await broker.start();
+  /** Every queue this service owns, attached in one go. */
+  const subscribeAll = async (): Promise<void> => {
+    for (const queue of OWNED) {
+      const recorder = queue.name === QUERY_QUEUE ? null : recorderFor(queue.name);
 
-  for (const queue of OWNED) {
-    const recorder = queue.name === QUERY_QUEUE ? null : recorderFor(queue.name);
+      await broker.subscribe({ queue: queue.name, bindings: queue.bindings }, async (envelope) => {
+        const startedAt = Date.now();
 
-    await broker.subscribe({ queue: queue.name, bindings: queue.bindings }, async (envelope) => {
-      const startedAt = Date.now();
+        try {
+          if (recorder === null) {
+            const taken = await routerFor(envelope).route(envelope);
 
-      try {
-        if (recorder === null) {
-          const taken = await routerFor(envelope).route(envelope);
+            if (!taken) {
+              logger.info('question not claimed', {
+                messageType: envelope.messageType,
+                correlationId: envelope.correlationId,
+                consumer: queue.name,
+                durationMs: Date.now() - startedAt,
+              });
+            }
 
-          if (!taken) {
-            logger.info('question not claimed', {
-              messageType: envelope.messageType,
-              correlationId: envelope.correlationId,
-              consumer: queue.name,
-              durationMs: Date.now() - startedAt,
-            });
+            return;
           }
 
-          return;
+          await recorder.handle(envelope);
+        } catch (error) {
+          /**
+           * Logged and rethrown. The throw is what sends the message down the
+           * retry ladder, and the log is what explains, three retries later, why
+           * it ended up in the dead-letter queue.
+           *
+           * Only a failure of *this* service reaches here. A malformed payload
+           * does not: it is recorded as `INVALID` and acknowledged, because
+           * retrying a message that cannot be parsed produces the same answer
+           * three more times and criterion 3 says the producer must not be
+           * affected either way.
+           */
+          logger.error('message failed', {
+            messageType: envelope.messageType,
+            correlationId: envelope.correlationId,
+            consumer: queue.name,
+            durationMs: Date.now() - startedAt,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          throw error;
+        }
+      });
+    }
+  };
+
+  /**
+   * Flipped once the queues are actually being consumed, and reported by
+   * readiness.
+   *
+   * A replica that has reached its database and its broker but has not yet
+   * attached to its queues can take no work. Without this field readiness would
+   * say "ready" during that window — a lie introduced by the very reordering
+   * below that keeps liveness honest.
+   */
+  let consuming = false;
+
+  /**
+   * Everything that needs a database or a broker, behind an already-open port.
+   *
+   * Until T-21 this ran *before* `listen`, which meant that while PostgreSQL or
+   * RabbitMQ was briefly unavailable the process never answered `/health`, the
+   * Docker `HEALTHCHECK` reported it unhealthy, and Kubernetes restarted it — a
+   * crash loop caused by a recoverable dependency, which is the one thing a
+   * liveness probe must never cause. Now the port opens first and readiness
+   * stays degraded until this finishes.
+   *
+   * Retried rather than fatal: `migrate` throws while PostgreSQL is
+   * unreachable, and dying there would be the same crash loop by another route.
+   * A pod that is `Running` and never `Ready` names the problem; one in
+   * `CrashLoopBackOff` hides it. `broker.start()` needs no retry of its own — it
+   * does not reject while the broker is down, it waits, and the connection
+   * manager reconnects underneath it.
+   *
+   * A *configuration* error is still fatal, and still happens before any of
+   * this: `loadEnvironment()` exits non-zero naming the offending variables,
+   * because no amount of retrying repairs a malformed `DATABASE_URL`.
+   */
+  const attach = async (): Promise<void> => {
+    for (;;) {
+      try {
+        const applied = await migrate(pool);
+
+        if (applied.length > 0) {
+          logger.info('schema migrations applied', { outcome: applied.join(', ') });
         }
 
-        await recorder.handle(envelope);
+        await broker.start();
+        await subscribeAll();
+        consuming = true;
+
+        logger.info('consuming', { outcome: OWNED.map((queue) => queue.name).join(', ') });
+
+        return;
       } catch (error) {
-        /**
-         * Logged and rethrown. The throw is what sends the message down the
-         * retry ladder, and the log is what explains, three retries later, why
-         * it ended up in the dead-letter queue.
-         *
-         * Only a failure of *this* service reaches here. A malformed payload
-         * does not: it is recorded as `INVALID` and acknowledged, because
-         * retrying a message that cannot be parsed produces the same answer
-         * three more times and criterion 3 says the producer must not be
-         * affected either way.
-         */
-        logger.error('message failed', {
-          messageType: envelope.messageType,
-          correlationId: envelope.correlationId,
-          consumer: queue.name,
-          durationMs: Date.now() - startedAt,
+        logger.error('dependencies unavailable; staying alive and unready', {
           error: error instanceof Error ? error.message : String(error),
         });
 
-        throw error;
+        await new Promise((resolve) => setTimeout(resolve, ATTACH_RETRY_DELAY_MS));
       }
-    });
-  }
+    }
+  };
 
   const application = await NestFactory.create(
     AppModule.withDependencies({
       isBrokerConnected: () => broker.isConnected(),
       isDatabaseReachable: async () => await repository.isReachable(),
+      isConsuming: () => consuming,
     }),
   );
 
@@ -170,6 +236,9 @@ async function bootstrap(): Promise<void> {
   logger.info('notification-audit-service listening', {
     outcome: `port ${String(environment.PORT)}, queues ${OWNED.map((q) => q.name).join(', ')}`,
   });
+
+  /** Not awaited: the port is already open and this is what fills it in. */
+  void attach();
 
   const shutdown = async (): Promise<void> => {
     await application.close();

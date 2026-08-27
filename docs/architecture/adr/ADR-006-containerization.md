@@ -73,6 +73,10 @@ a hot reload — the price of parity with the deployed shape.
 **Obligations created.**
 
 - **T-21** writes the Dockerfiles for the six application workloads and validates the images.
+  **Discharged on 2026-08-27, as seven images rather than six**: the Nuxt frontend needs one too,
+  because §4.4 makes the interface a deliverable and a demonstration that renders it from a
+  development server has not exercised the artefact. The inventory is
+  [`docs/operations/CONTAINERS.md`](../../operations/CONTAINERS.md).
 - **T-06** writes the Compose stack for the infrastructure containers.
 - The images must not bake secrets; the signing secret of
   [ADR-010](ADR-010-authentication.md) and database credentials arrive as environment

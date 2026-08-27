@@ -73,9 +73,7 @@ function redactValue(value: unknown, depth: number): unknown {
   if (Array.isArray(value)) {
     const kept = value.slice(0, MAX_ITEMS).map((item) => redactValue(item, depth + 1));
 
-    return value.length > MAX_ITEMS
-      ? [...kept, `[${String(value.length - MAX_ITEMS)} más]`]
-      : kept;
+    return value.length > MAX_ITEMS ? [...kept, `[${String(value.length - MAX_ITEMS)} más]`] : kept;
   }
 
   if (isPlainObject(value)) {
@@ -92,9 +90,7 @@ function redactValue(value: unknown, depth: number): unknown {
    * free-text field nobody anticipated cannot turn one audit row into a
    * document; everything else is written as it is.
    */
-  return typeof value === 'string' && value.length > 200
-    ? `${value.slice(0, 200)}…`
-    : value;
+  return typeof value === 'string' && value.length > 200 ? `${value.slice(0, 200)}…` : value;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

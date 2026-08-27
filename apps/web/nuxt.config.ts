@@ -43,6 +43,21 @@ export default defineNuxtConfig({
   },
 
   /**
+   * `@artmizu/nuxt-prometheus` registers its own `GET /health` by default, and
+   * its handler wins over `server/routes/health.get.ts` — so until T-21 this
+   * application answered `ok` as two bytes of `text/html` while the six NestJS
+   * images answered `{"status":"ok","application":"..."}` as JSON.
+   *
+   * One question should not have two answers in one system. The module's route
+   * is turned off and this application's own handler serves it, in the shape
+   * every other component uses, beside the `/ready` the module has no notion of.
+   * `/metrics` is untouched: that is what this module is here for.
+   */
+  prometheus: {
+    healthCheck: false
+  },
+
+  /**
    * The Gateway's address is read at runtime, never compiled in, so one build
    * serves development and the cluster alike. It is `public` because the
    * browser is what calls it — which is also why nothing secret may ever be
