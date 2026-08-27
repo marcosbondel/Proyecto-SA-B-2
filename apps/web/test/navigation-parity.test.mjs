@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { test, describe } from 'node:test';
 
+import { mayManageAccounts } from '../app/lib/account.ts';
 import { MODULES } from '../app/lib/navigation.ts';
 
 /**
@@ -39,15 +40,35 @@ describe('the frontend matrix agrees with the Gateway', () => {
     assert.deepEqual(auditoria.roles, ['ADMINISTRADOR']);
   });
 
+  /**
+   * T-17 added a second role-restricted route: deactivating an account by hand.
+   * D-06 gives it to `ADMINISTRADOR` alone, and the frontend reflects it with
+   * `mayManageAccounts` rather than with a fifth navigation entry — the four
+   * modules are fixed, and a module that needs a role-restricted screen filters
+   * in the page (`docs/FRONTEND.md`).
+   */
+  test('the Gateway restricts the manual status change to ADMINISTRADOR', async () => {
+    const source = await readFile(
+      new URL('../../gateway/src/interfaces/accounts.controller.ts', import.meta.url),
+      'utf8',
+    );
+
+    assert.match(
+      source,
+      /@Roles\('ADMINISTRADOR'\)\s*\n\s*@Post\(':accountId\/status'\)/,
+      'the manual status change no longer restricts itself to ADMINISTRADOR',
+    );
+
+    assert.equal(mayManageAccounts('ADMINISTRADOR'), true);
+    assert.equal(mayManageAccounts('CAJERO_RECEPTOR'), false);
+    assert.equal(mayManageAccounts('CLIENTE'), false);
+    assert.equal(mayManageAccounts(null), false);
+  });
+
   test('no other Gateway controller restricts by role', async () => {
-    // If a second route grows a @Roles decorator, the frontend matrix has to
+    // If a third route grows a @Roles decorator, the frontend matrix has to
     // grow with it — and this failing is how anyone finds out.
-    const controllers = [
-      'auth.controller.ts',
-      'customers.controller.ts',
-      'accounts.controller.ts',
-      'transfers.controller.ts',
-    ];
+    const controllers = ['auth.controller.ts', 'customers.controller.ts', 'transfers.controller.ts'];
 
     for (const name of controllers) {
       const source = await readFile(
@@ -58,9 +79,17 @@ describe('the frontend matrix agrees with the Gateway', () => {
       assert.equal(
         /@Roles\(/.test(source),
         false,
-        `${name} now restricts by role; app/lib/navigation.ts must say so too`,
+        `${name} now restricts by role; app/lib/ must say so too`,
       );
     }
+
+    // The accounts controller restricts exactly one of its five routes.
+    const accounts = await readFile(
+      new URL('../../gateway/src/interfaces/accounts.controller.ts', import.meta.url),
+      'utf8',
+    );
+
+    assert.equal((accounts.match(/@Roles\(/g) ?? []).length, 1);
 
     const restricted = MODULES.filter((module) => module.roles.length < 3);
 
