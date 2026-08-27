@@ -15,9 +15,21 @@ conventions in [DESIGN.md](DESIGN.md), rather than redefining them per service.
 
 The shell arrived with T-15 (layout, role-filtered navigation, session,
 `useGatewayApi`, and the four `Shared*` components); the first feature module
-with T-16 (`app/components/customer/` plus its pages) and the second with T-17
-(`app/components/account/` plus `app/pages/cuentas/`). The remaining two modules
-are still titled skeletons.
+with T-16 (`app/components/customer/` plus its pages), the second with T-17
+(`app/components/account/` plus `app/pages/cuentas/`) and the third with T-18
+(`app/components/transaction/` plus `app/pages/transferencias/`). T-18 also
+built `app/components/payment/`, which T-19 owns on arrival (TD-034). Auditoría
+is still a titled skeleton.
+
+**Nuxt derives a component's name from its path, and it drops a directory
+prefix the filename already repeats.** `account/AccountCreateForm.vue` is
+`<AccountCreateForm>`, but `transaction/TransferForm.vue` would be
+`<TransactionTransferForm>` — a tag that does not match its own filename, which
+is the one thing that makes a component hard to find. Every component in this
+application is therefore named with its owning service's prefix, so the file
+name and the tag are the same string. T-18's two are
+`TransactionTransferForm.vue` and `TransactionStatusTimeline.vue`; the ticket
+calls them `TransferForm` and `TransferStatusTimeline`.
 
 ## Styling
 
