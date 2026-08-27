@@ -1,109 +1,130 @@
 @startuml 01-arquitectura-general
+' =====================================================================
+' Diagrama 1 de 8 · Ticket T-07 · Vista panorámica de todo Bank USAC.
+'
+' Esta fuente y 01-arquitectura-general.mmd describen el MISMO sistema:
+' los mismos componentes, los mismos nombres y las mismas flechas.
+' Si una de las dos cambia, la otra cambia en el mismo commit (ADR-013).
+'
+' Qué muestra: los 8 componentes desplegables, las 5 bases PostgreSQL,
+' la frontera del cluster kind y el tipo de comunicación de cada flecha.
+' Qué NO muestra, a propósito: actores y sistemas externos (diagrama 02,
+' C4 L1), el detalle de colas y mensajes (diagrama 03, C4 L2) y el búfer
+' de objetos MinIO (diagramas 03 y 05) — ver la nota de alcance al pie.
+' =====================================================================
 
-title Bank USAC - Arquitectura general
+title Bank USAC · Arquitectura general
 
-left to right direction
 skinparam shadowing false
+' Enrutado ortogonal: hace que cada servicio baje en línea recta a su
+' propia base, de modo que se vea de un vistazo que ninguna base recibe
+' conexiones de dos servicios.
 skinparam linetype ortho
-skinparam nodesep 45
-skinparam ranksep 65
+skinparam nodesep 30
+skinparam ranksep 160
 skinparam defaultTextAlignment center
 skinparam packageStyle rectangle
-skinparam ArrowColor #555555
-skinparam ArrowThickness 1.2
+skinparam ArrowThickness 1.4
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 20
 
-skinparam actor {
+skinparam rectangle {
     BackgroundColor #FFFFFF
-    BorderColor #398819
-    FontColor #398819
-}
-skinparam cloud {
-    BackgroundColor #FFF0F0
-    BorderColor #C11926
-    FontColor #C11926
-}
-skinparam node {
-    BackgroundColor #FFFFFF
-    BorderColor #1168BD
-    FontColor #1168BD
+    BorderColor #777777
+    FontColor #0D1B2A
 }
 skinparam database {
-    BackgroundColor #FFFFFF
-    BorderColor #1168BD
-    FontColor #1168BD
+    BackgroundColor #FCE4EC
+    BorderColor #AD1457
+    FontColor #0D1B2A
 }
-skinparam rectangle {
-    BackgroundColor #F7F9FC
-    BorderColor #777777
-    FontColor #333333
+skinparam queue {
+    BackgroundColor #FFF3E0
+    BorderColor #EF6C00
+    FontColor #0D1B2A
+}
+skinparam note {
+    BackgroundColor #FFF8DC
+    BorderColor #D6B656
+    FontColor #555555
 }
 
-actor "Cliente / Cajero /\nAdministrador" as users
-cloud "Servicio de correo" as email
-cloud "Proveedor de pagos" as provider
+' =====================================================================
+' DENTRO DEL CLUSTER kind · se instala con `helm upgrade --install`
+' =====================================================================
+package "DENTRO del cluster kind\nKubernetes local · release por Helm chart (infra/k8s/helm/bank-usac) · imágenes Docker" as KIND #F1F8FF {
 
-rectangle "Bank USAC" as system {
-    rectangle "Entorno de aplicaciones" as applications {
-        node "Frontend" as frontend
-        node "API Gateway" as gateway
+    rectangle "**Frontend**\napps/web\n//Nuxt 4 + @nuxt/ui 4.10 + Tailwind 4//" as WEB #E3F2FD
 
-        together {
-            node "Customer Service" as customer
-            node "Account Service" as account
-            node "Transaction Service" as transaction
-        }
+    rectangle "**API Gateway**\napps/gateway\n//NestJS / TypeScript//\núnico punto de entrada · sin base de datos" as GW #EDE7F6
 
-        together {
-            node "Payment Service" as payment
-            node "Notification & Audit" as notification
-        }
-    }
-
-    rectangle "Infraestructura de soporte" as support {
-        node "Bus de mensajería\n(colas y eventos)" as broker
-
-        together {
-            database "Customer" as customerDb
-            database "Account" as accountDb
-            database "Transaction" as transactionDb
-            database "Payment" as paymentDb
-            database "Notification & Audit" as notificationDb
-        }
-
-        node "Almacenamiento\nde objetos" as objectStore
+    package "Los 5 microservicios · NestJS / TypeScript · Clean Architecture\nsin comunicación directa entre ellos" as SVCS #F6FFF7 {
+        rectangle "**Customer Service**\napps/services/customer-service\n//NestJS / TypeScript//" as CUS #E8F5E9
+        rectangle "**Account Service**\napps/services/account-service\n//NestJS / TypeScript//" as ACC #E8F5E9
+        rectangle "**Transaction Service**\napps/services/transaction-service\n//NestJS / TypeScript//" as TRX #E8F5E9
+        rectangle "**Payment Service**\napps/services/payment-service\n//NestJS / TypeScript//" as PAY #E8F5E9
+        rectangle "**Notification & Audit Service**\napps/services/notification-audit-service\n//NestJS / TypeScript//" as NOT #E8F5E9
     }
 }
 
-users --> frontend : interactúa
-frontend --> gateway : solicita
-gateway <--> broker : publica / recibe mensajes
-broker <--> customer : distribuye mensajes
-broker <--> account : distribuye mensajes
-broker <--> transaction : distribuye mensajes
-broker <--> payment : distribuye mensajes
-broker --> notification : distribuye eventos
+' =====================================================================
+' FUERA DEL CLUSTER · contenedores Docker en el host (infra/docker/)
+' El enunciado penaliza con -100% desplegar las bases dentro del cluster.
+' =====================================================================
+package "FUERA del cluster kind\ncontenedores Docker en el host (infra/docker/) · alcanzados por host.docker.internal" as EXT #FFF8F1 {
 
-customer --> customerDb : persiste datos
-account --> accountDb : persiste datos
-transaction --> transactionDb : persiste datos
-payment --> paymentDb : persiste datos
-notification --> notificationDb : persiste datos
+    queue "**RabbitMQ**\n//RabbitMQ 4.3.4-management//\nexchanges: bank.commands · bank.events\nbank.replies · bank.errors" as MQ
 
-gateway --> objectStore : transfiere archivos
-customer --> objectStore : consulta archivos
-notification --> email : envía notificaciones
-payment --> provider : solicita pagos
+    package "Una base PostgreSQL por servicio\nninguna recibe conexiones de dos servicios" as DBS #FFF5F8 {
+        database "**Customer DB**\n//PostgreSQL 18.4//\nbankusac_customer" as DBC
+        database "**Account DB**\n//PostgreSQL 18.4//\nbankusac_account" as DBA
+        database "**Transaction DB**\n//PostgreSQL 18.4//\nbankusac_transaction" as DBT
+        database "**Payment DB**\n//PostgreSQL 18.4//\nbankusac_payment" as DBP
+        database "**Notification & Audit DB**\n//PostgreSQL 18.4//\nbankusac_notification" as DBN
+    }
+}
 
-note right of broker
-    Canal lógico compartido para la comunicación
-    entre el Gateway y los servicios.
-    Las colas y los eventos se detallan en
-    los diagramas de contenedores y mensajería.
-end note
+' =====================================================================
+' ARISTAS · la única síncrona del diagrama es Frontend -> API Gateway
+' =====================================================================
+WEB -[#1565C0,thickness=4]-> GW : **HTTP SÍNCRONO**\nREST / JSON · única flecha síncrona
 
-note bottom of support
-    La infraestructura de soporte permanece separada
-    del entorno donde se ejecutan las aplicaciones.
+GW <-[#EF6C00]-> MQ : AMQP · ASÍNCRONO\ncomando + request/reply
+CUS <-[#EF6C00]-> MQ : AMQP · ASÍNCRONO\ncomando + evento
+ACC <-[#EF6C00]-> MQ : AMQP · ASÍNCRONO\ncomando + evento
+TRX <-[#EF6C00]-> MQ : AMQP · ASÍNCRONO\ncomando + evento (Saga)
+PAY <-[#EF6C00]-> MQ : AMQP · ASÍNCRONO\ncomando + evento
+NOT <-[#EF6C00]-> MQ : AMQP · ASÍNCRONO\nevento (solo consume) + respuesta
+
+CUS -[#AD1457]-> DBC : PostgreSQL · TCP 5432\nprivado
+ACC -[#AD1457]-> DBA : PostgreSQL · TCP 5432\nprivado
+TRX -[#AD1457]-> DBT : PostgreSQL · TCP 5432\nprivado
+PAY -[#AD1457]-> DBP : PostgreSQL · TCP 5432\nprivado
+NOT -[#AD1457]-> DBN : PostgreSQL · TCP 5432\nprivado
+
+' =====================================================================
+' LEYENDA Y NOTA DE ALCANCE
+' =====================================================================
+legend bottom
+  == Leyenda · las tres clases de comunicación del sistema
+  **1 · Entrada síncrona** — HTTP REST/JSON.
+  Solo Frontend → API Gateway. Ninguna otra flecha es síncrona.
+
+  **2 · Entre componentes** — 100% asíncrona por AMQP sobre RabbitMQ.
+  Todo pasa por el broker: no existe ninguna flecha directa entre dos microservicios.
+
+  **3 · Persistencia** — PostgreSQL privado por servicio.
+  Un servicio, una base. Ningún servicio lee la base de otro.
+  El API Gateway no tiene base de datos.
+endlegend
+
+note as ALCANCE
+  **Nota de alcance de este diagrama**
+  Los actores (Cliente · Cajero Receptor · Administrador) están en el diagrama 02 (C4 L1).
+  El catálogo de colas, comandos y eventos está en el diagrama 03 (C4 L2).
+  El búfer de objetos MinIO — fotografía de identidad, infraestructura externa de soporte,
+  ni microservicio ni base de dominio — está en los diagramas 03 y 05.
+  El canal de correo y el proveedor de pagos están //simulados en proceso//: no son componentes desplegados.
 end note
 
 @enduml

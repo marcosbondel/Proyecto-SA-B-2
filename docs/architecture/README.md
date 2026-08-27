@@ -40,6 +40,18 @@ this directory holds the decisions behind it and the diagrams that show it.
   assignment lists it separately from the C4 + UML block (§4.2 bullet
   "Diagramas de arquitectura"; §4.4 "Diagramas arquitectónicos").
 
+  **Diagram 1 and diagram 3 are deliberately two artefacts, not one.** The team
+  considered collapsing them and decided against it, so the decision is recorded
+  here rather than left implicit. Diagram 3 is formal C4 notation and answers
+  *which containers exist and what messages flow between them* — it carries the
+  queue and event catalogue. Diagram 1 is the panorama that opens the document
+  and answers two questions C4 L2 does not make its subject: **what technology
+  each component is built on**, and **where the infrastructure boundary falls** —
+  what runs inside the kind cluster and what runs outside it. They must agree on
+  every component name and every relationship; they differ only in what they
+  make explicit. Merging them would drop one of the two §4.2 bullets the
+  assignment lists separately.
+
 ## Delivery format — two required sources and generated exports
 
 Every diagram ships **two required, versioned text sources that must agree**.
@@ -100,6 +112,15 @@ not the rules.
 > have been generated from the Mermaid sources for the 18 activity flows under
 > `diagrams/cdu/*/flujos/`. PlantUML exports remain subject to the delivery
 > rule above wherever a rendered PlantUML artefact is required.
+>
+> **Diagram 1 (T-07) is complete**: `01-arquitectura-general.mmd`,
+> `01-arquitectura-general.puml` and the PlantUML export
+> `01-arquitectura-general.png` are versioned, both sources render without
+> errors, and they were checked to agree node by node and edge by edge. No
+> Lucid document was produced for it, which ADR-013 permits. Its topology —
+> the kind cluster boundary, RabbitMQ and the five PostgreSQL databases
+> outside it — is the reference T-15 and T-22 build against, and it matches
+> diagrams 3 and 5.
 >
 > The ADRs are **no longer blocked**: the eleven decision records were written in
 > T-03 and live in [`adr/`](adr/README.md), with the consolidated view in
