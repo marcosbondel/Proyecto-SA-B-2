@@ -146,6 +146,24 @@ export const transactionStatus = z.enum([
 export const paymentStatus = z.enum(['PENDING', 'SUCCEEDED', 'FAILED']);
 
 /**
+ * Why a payment attempt did not succeed, in the only two kinds that change
+ * what happens next.
+ *
+ * Added by T-19. The distinction is not descriptive, it is operational: a
+ * `PERMANENT` failure is retried zero times because retrying it would produce
+ * the same refusal, and a `TRANSIENT` one is retried up to `MAX_RETRIES` on the
+ * ladder in `routing/topology.ts`. Payment Service's resilience policy is
+ * exactly this enum plus that ladder, which is why the enum lives here and not
+ * inside the service: the consumer that has to explain a compensated Saga needs
+ * to be able to say *which kind* of failure caused it.
+ *
+ * It deliberately says nothing about the provider. `PERMANENT` does not mean
+ * "the bank refused"; it means "asking again is pointless". A real provider
+ * integration would map its own codes onto these two and change nothing else.
+ */
+export const paymentErrorType = z.enum(['TRANSIENT', 'PERMANENT']);
+
+/**
  * The failure codes `docs/domain/entities.md` names as expected failures.
  *
  * Closed on purpose: a consumer that receives an unlisted code cannot know
@@ -198,3 +216,5 @@ export type FailureCode = z.infer<typeof failureCode>;
 export type AccountStatus = z.infer<typeof accountStatus>;
 export type AccountOperationType = z.infer<typeof accountOperationType>;
 export type AccountOperationStatus = z.infer<typeof accountOperationStatus>;
+export type PaymentStatus = z.infer<typeof paymentStatus>;
+export type PaymentErrorType = z.infer<typeof paymentErrorType>;

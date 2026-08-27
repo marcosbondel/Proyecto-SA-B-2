@@ -8,6 +8,10 @@ import {
   accountOperationsRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
+  paymentListQueryV1,
+  paymentListRepliedV1,
+  paymentStatusQueryV1,
+  paymentStatusRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
 } from '@bank/contracts';
@@ -35,8 +39,15 @@ export interface AccountListFilter {
   readonly accountType?: 'MONETARIA' | 'AHORRO';
 }
 
+/** What a payment listing may be narrowed by. None of these is a permission. */
+export interface PaymentListFilter {
+  readonly transactionId?: string;
+  readonly status?: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  readonly errorType?: 'TRANSIENT' | 'PERMANENT';
+}
+
 /**
- * The five questions whose answers the caller waits for.
+ * The seven questions whose answers the caller waits for.
  *
  * Each one publishes a command, waits at most five seconds, and hands back
  * whatever the owning service said — including its refusal. The gateway does
@@ -135,6 +146,60 @@ export class QueriesUseCase {
       throw GatewayError.businessRejection(
         'ILLEGAL_TRANSITION',
         'No existe una transacción con ese identificador.',
+      );
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * The payments, as the monitoring screen reads them.
+   *
+   * No `NOT_FOUND` branch and no scope logic here, for the two different
+   * reasons the two other listings give: an empty list is the whole answer,
+   * and whatever narrowing is possible is Payment Service's to apply. What is
+   * unusual about this one is that the owning service can narrow by almost
+   * nothing — it holds a `transactionId` and no customer reference at all — so
+   * the restriction that makes the route safe is the `@Roles` on the
+   * controller, not an intersection here. Recorded as TD-037.
+   */
+  public async payments(
+    filter: PaymentListFilter,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentListQueryV1.name, filter, context);
+    const parsed = paymentListRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * One payment, with the rungs of its retry ladder.
+   *
+   * The reply carries no code for absence, so the gateway supplies the nearest
+   * one from the catalogue rather than inventing a vocabulary — the same choice
+   * `transactionStatus` makes two methods below, and made the same way so the
+   * two cannot drift into answering differently for the same situation.
+   */
+  public async paymentStatus(
+    paymentId: string,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentStatusQueryV1.name, { paymentId }, context);
+    const parsed = paymentStatusRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    if (parsed.data.outcome === 'NOT_FOUND') {
+      throw GatewayError.businessRejection(
+        'ILLEGAL_TRANSITION',
+        'No existe un pago con ese identificador.',
       );
     }
 

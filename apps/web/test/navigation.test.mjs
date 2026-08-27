@@ -8,10 +8,10 @@ import { MODULES, canOpen, labelForRole, modulesFor } from '../app/lib/navigatio
 // hiding in a template where TD-010 would make it unverifiable.
 
 describe('what each role sees in the navigation', () => {
-  test('the four modules are the four the spec fixed', () => {
+  test('the five modules are the five the spec fixed', () => {
     assert.deepEqual(
       MODULES.map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias', 'Auditoría'],
+      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
     );
   });
 
@@ -22,17 +22,29 @@ describe('what each role sees in the navigation', () => {
     );
   });
 
-  test('a receiving teller sees the same three', () => {
+  /**
+   * A teller sees one more than a client: payment monitoring. Not because D-06
+   * gives it to them, but because Payment Service cannot scope its own listing
+   * and staff is the narrowest audience that still makes the screen useful
+   * (TD-037).
+   */
+  test('a receiving teller also sees the payment monitoring', () => {
     assert.deepEqual(
       modulesFor('CAJERO_RECEPTOR').map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias'],
+      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos'],
     );
   });
 
   test('an administrator is the only one who sees the audit record', () => {
     assert.deepEqual(
       modulesFor('ADMINISTRADOR').map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias', 'Auditoría'],
+      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
+    );
+
+    assert.equal(modulesFor('CLIENTE').some((module) => module.to === '/auditoria'), false);
+    assert.equal(
+      modulesFor('CAJERO_RECEPTOR').some((module) => module.to === '/auditoria'),
+      false,
     );
   });
 
@@ -46,6 +58,17 @@ describe('opening a route directly', () => {
     assert.equal(canOpen('CLIENTE', '/auditoria'), false);
     assert.equal(canOpen('CAJERO_RECEPTOR', '/auditoria'), false);
     assert.equal(canOpen('ADMINISTRADOR', '/auditoria'), true);
+  });
+
+  /** Including one payment's own detail, which lives under the same module. */
+  test('a client cannot render the payment module either', () => {
+    assert.equal(canOpen('CLIENTE', '/pagos'), false);
+    assert.equal(
+      canOpen('CLIENTE', '/pagos/6f1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93'),
+      false,
+    );
+    assert.equal(canOpen('CAJERO_RECEPTOR', '/pagos'), true);
+    assert.equal(canOpen('ADMINISTRADOR', '/pagos'), true);
   });
 
   test('a nested path under a forbidden module is forbidden too', () => {
@@ -67,14 +90,29 @@ describe('opening a route directly', () => {
 });
 
 describe('the matrix agrees with decision D-06', () => {
-  // D-06 restricts only the audit record by role. Everything else it restricts
-  // by scope, which neither this file nor the Gateway can evaluate: neither
-  // knows who owns what. Those refusals come from the owning service.
-  test('exactly one module is role-restricted', () => {
+  /*
+   * D-06 restricts only the audit record by role. Everything else it restricts
+   * by scope, which neither this file nor the Gateway can evaluate: neither
+   * knows who owns what. Those refusals come from the owning service.
+   *
+   * Pagos is the exception that proves the rule rather than a second reading of
+   * D-06. It is restricted because the owning service cannot apply a scope at
+   * all — Payment Service holds no customer reference — so the choice was
+   * between a role restriction and handing every client every payment in the
+   * bank. Recorded as TD-037, and it is the row D-06 will eventually grow.
+   */
+  test('two modules are role-restricted, and for different reasons', () => {
     const restricted = MODULES.filter((module) => module.roles.length < 3);
 
-    assert.equal(restricted.length, 1);
-    assert.equal(restricted[0].label, 'Auditoría');
+    assert.deepEqual(
+      restricted.map((module) => module.label),
+      ['Pagos', 'Auditoría'],
+    );
+
+    assert.deepEqual(
+      MODULES.find((module) => module.label === 'Auditoría').roles,
+      ['ADMINISTRADOR'],
+    );
   });
 });
 

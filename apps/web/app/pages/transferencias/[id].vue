@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isUuidV4 } from '../../lib/account';
+import { mayMonitorPayments } from '../../lib/payment';
 import {
   POLL_CEILING_MS,
   POLL_INTERVAL_MS,
@@ -41,6 +42,7 @@ import { formatDate, formatQuetzales } from '../../lib/money';
  */
 const route = useRoute();
 const api = useGatewayApi();
+const { role } = useSession();
 
 const transactionId = computed(() => String(route.params.id ?? ''));
 const malformed = computed(() => !isUuidV4(transactionId.value));
@@ -62,6 +64,20 @@ const reason = computed(() => explainReason(transfer.value?.reason ?? null));
 
 const finished = computed(
   () => transfer.value !== null && isTerminal(transfer.value.status),
+);
+
+/**
+ * Where to send somebody who wants the payment's own record, or `null`.
+ *
+ * `GET /api/payments/:paymentId` admits every role, but the screen it opens is
+ * part of the staff-only Pagos module, and offering a `CLIENTE` a link into a
+ * module their navigation does not show would be offering a dead end. The panel
+ * shows the verdict either way; only the deeper evidence is staff work.
+ */
+const paymentDetailTo = computed(() =>
+  mayMonitorPayments(role.value) && transfer.value?.payment
+    ? `/pagos/${transfer.value.payment.paymentId}`
+    : null,
 );
 
 async function load(): Promise<void> {
@@ -228,7 +244,10 @@ useHead({ title: 'Transferencia · bonking' });
           </template>
         </UAlert>
 
-        <PaymentResultPanel :payment="transfer.payment ?? null" />
+        <PaymentResultPanel
+          :payment="transfer.payment ?? null"
+          :detail-to="paymentDetailTo"
+        />
       </template>
 
       <!-- Two minutes with no ending. Honest about not knowing. -->
