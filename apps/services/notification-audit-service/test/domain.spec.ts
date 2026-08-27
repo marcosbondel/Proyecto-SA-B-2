@@ -4,6 +4,7 @@ import {
   notificationFor,
   notifyingMessageTypes,
   simulatedRecipientFor,
+  subjectCustomerIdFrom,
 } from '../src/domain/notification';
 import { REDACTION_MARKER, isSensitiveField, redactPayload } from '../src/domain/redaction';
 
@@ -223,5 +224,59 @@ describe('deduplication', () => {
     expect(statusForRejection('invalid-payload')).toBe('INVALID');
     expect(statusForRejection('unknown-type')).toBe('INVALID');
     expect(statusForRejection('error')).toBe('ERROR');
+  });
+});
+
+describe('whom a notification is about when nobody is signed in', () => {
+  /**
+   * The bug this exists to keep fixed, and it was invisible for a whole ticket.
+   *
+   * The recipient was derived from the envelope's identity alone, and the
+   * envelope's identity is `null` for exactly one flow: **public registration**,
+   * which has no session by design. So the activation notification — the only
+   * one that ever carries a link, for the only actor that ever needs it — had
+   * no recipient, the channel reported `FAILED`, and no activation link was
+   * written anywhere in any environment. Nobody could complete a sign-up
+   * (TD-044).
+   */
+  it('reads the subject from the payload for the customer family', () => {
+    expect(
+      subjectCustomerIdFrom('customer.activation.requested.v1', {
+        customerId: '964b1516-0e35-4ad4-89dd-17997424d291',
+        email: 'someone@example.gt',
+      }),
+    ).toBe('964b1516-0e35-4ad4-89dd-17997424d291');
+  });
+
+  /**
+   * And only for that family. An `account.*` or `transaction.*` payload carries
+   * account and transaction references, not people, and reading a `customerId`
+   * out of one would be inventing a subject.
+   */
+  it.each([
+    'account.debited.v1',
+    'transaction.completed.v1',
+    'payment.failed.v1',
+    'notification.sent.v1',
+  ])('reads nothing from %s', (messageType) => {
+    expect(subjectCustomerIdFrom(messageType, { customerId: 'anything' })).toBeNull();
+  });
+
+  it('reads nothing from a payload that has no subject', () => {
+    expect(subjectCustomerIdFrom('customer.registered.v1', { email: 'a@b.gt' })).toBeNull();
+    expect(subjectCustomerIdFrom('customer.registered.v1', null)).toBeNull();
+  });
+
+  /**
+   * The address is *derived* from the identifier and never copied from the
+   * payload's `email`. That is what stops the one database that hears every
+   * event in the bank from becoming a mailing list — the same rule
+   * `redaction.ts` keeps for everything else.
+   */
+  it('derives an address rather than copying one', () => {
+    const recipient = simulatedRecipientFor('964b1516-0e35-4ad4-89dd-17997424d291');
+
+    expect(recipient).toBe('cliente-964b1516@simulado.bonking.gt');
+    expect(recipient).not.toContain('@example');
   });
 });
