@@ -248,6 +248,46 @@ paths:
       x-bank-publishes: transaction.status.requested.v1
       x-bank-awaits:
         - transaction.status.replied.v1
+  /api/payments:
+    get:
+      description: "Solo CAJERO_RECEPTOR y ADMINISTRADOR. Payment Service no guarda referencia al cliente,
+        así que no puede acotar la lista por dueño: la restricción por rol es lo que hace segura la
+        ruta (TD-037). Un CLIENTE ve su pago dentro de la transferencia."
+      operationId: PaymentsController_list
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista pagos para monitoreo
+      tags:
+        - payments
+      x-bank-publishes: payment.list.query.v1
+      x-bank-awaits:
+        - payment.list.replied.v1
+  /api/payments/{paymentId}:
+    get:
+      description: Un 504 aquí no significa que el pago falló. Los intentos vienen de la tabla de
+        evidencia del propio servicio, nunca del broker.
+      operationId: PaymentsController_status
+      parameters:
+        - name: paymentId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta el estado de un pago y sus intentos
+      tags:
+        - payments
+      x-bank-publishes: payment.status.query.v1
+      x-bank-awaits:
+        - payment.status.replied.v1
   /api/audit:
     get:
       description: "La única ruta que D-06 restringe por rol: solo ADMINISTRADOR. Es la vía por la que el
