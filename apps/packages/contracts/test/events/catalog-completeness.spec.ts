@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(48);
+    expect(catalog).toHaveLength(53);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the thirteen messages recorded as an extension, and no others', () => {
+  it('adds exactly the eighteen messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -99,6 +99,20 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       // Added by T-16: the refusal that had no message, so a duplicated
       // document produced silence rather than a rejection.
       'customer.register.rejected.v1',
+      /*
+       * The five added by T-19. `payment.attempt.failed.v1` exists because the
+       * catalogue described a payment as a thing that succeeds or fails once,
+       * at the end, so the retry ladder that is the whole point of the
+       * resilience policy was observable only in Payment Service's own logs.
+       * The four query messages exist because no route could ask this service
+       * anything at all: a payment could be ordered and could answer the Saga,
+       * but nobody outside could look one up.
+       */
+      'payment.attempt.failed.v1',
+      'payment.list.query.v1',
+      'payment.list.replied.v1',
+      'payment.status.query.v1',
+      'payment.status.replied.v1',
       'transaction.status.replied.v1',
       'transaction.status.requested.v1',
     ]);

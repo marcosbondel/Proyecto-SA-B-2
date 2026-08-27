@@ -34,6 +34,14 @@ export interface PaymentOutcome {
   readonly status: PaymentStatus;
   readonly attempt: number | null;
   readonly reason: string | null;
+  /**
+   * The kind of the last failed attempt, added by T-19 and optional on the wire.
+   *
+   * It is what lets this screen tell "the payment was refused" from "the system
+   * ran out of attempts", and — while the payment is still `PENDING` — that a
+   * retry is under way at all. `app/lib/payment.ts` owns what it means.
+   */
+  readonly errorType?: 'TRANSIENT' | 'PERMANENT' | null;
   readonly decidedAt: string | null;
 }
 
