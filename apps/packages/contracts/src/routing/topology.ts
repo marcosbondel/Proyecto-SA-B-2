@@ -62,6 +62,16 @@ export const QUEUES: readonly QueueDescriptor[] = [
       { exchange: EXCHANGES.events, pattern: 'account.debit.compensated.v1' },
       { exchange: EXCHANGES.events, pattern: 'payment.succeeded.v1' },
       { exchange: EXCHANGES.events, pattern: 'payment.failed.v1' },
+      /*
+       * Added by T-19. Not a second way for the payment to end — it is how the
+       * Saga learns that a rung of the retry ladder was climbed while the
+       * payment is still running. Transaction Service records the attempt and
+       * the error kind onto the transaction it already owns, and changes no
+       * state: `PAYMENT_PENDING` stays `PAYMENT_PENDING` until
+       * `payment.succeeded.v1` or `payment.failed.v1` says otherwise. Treating
+       * this as terminal would compensate a payment about to succeed.
+       */
+      { exchange: EXCHANGES.events, pattern: 'payment.attempt.failed.v1' },
     ],
   },
   {

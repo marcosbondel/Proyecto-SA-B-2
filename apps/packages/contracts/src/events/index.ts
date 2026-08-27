@@ -43,6 +43,7 @@ import { transactionInitiatedV1 } from './transaction/transaction.initiated.v1';
 import { transactionStatusRepliedV1 } from './transaction/transaction.status.replied.v1';
 import { transactionStatusRequestedV1 } from './transaction/transaction.status.requested.v1';
 import { transferRequestedV1 } from './transaction/transfer.requested.v1';
+import { paymentAttemptFailedV1 } from './payment/payment.attempt.failed.v1';
 import { paymentFailedV1 } from './payment/payment.failed.v1';
 import { paymentRequestedV1 } from './payment/payment.requested.v1';
 import { paymentSucceededV1 } from './payment/payment.succeeded.v1';
@@ -95,6 +96,7 @@ export * from './transaction/transaction.initiated.v1';
 export * from './transaction/transaction.status.replied.v1';
 export * from './transaction/transaction.status.requested.v1';
 export * from './transaction/transfer.requested.v1';
+export * from './payment/payment.attempt.failed.v1';
 export * from './payment/payment.failed.v1';
 export * from './payment/payment.requested.v1';
 export * from './payment/payment.succeeded.v1';
@@ -152,6 +154,7 @@ export const catalog: readonly MessageContract[] = [
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
   transferRequestedV1,
+  paymentAttemptFailedV1,
   paymentFailedV1,
   paymentRequestedV1,
   paymentSucceededV1,
