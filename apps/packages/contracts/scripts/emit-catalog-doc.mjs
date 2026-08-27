@@ -35,7 +35,10 @@ const FOLDER = {
 };
 
 const FLOWS = [
-  ['Register a customer', ['customer.register.v1', 'customer.registered.v1']],
+  [
+    'Register a customer',
+    ['customer.register.v1', 'customer.registered.v1', 'customer.register.rejected.v1'],
+  ],
   [
     'Sign in',
     [
@@ -63,8 +66,13 @@ const FLOWS = [
       'customer.identity.rejected.v1',
     ],
   ],
-  ['Open an account', ['account.create.v1', 'account.opened.v1']],
+  ['Open an account', ['account.create.v1', 'account.opened.v1', 'account.open.rejected.v1']],
   ['Query a balance', ['account.balance.query.v1', 'account.balance.replied.v1']],
+  ['List accounts', ['account.list.query.v1', 'account.list.replied.v1']],
+  [
+    'Read the movements of an account',
+    ['account.operations.query.v1', 'account.operations.replied.v1'],
+  ],
   ['Account status', ['account.set-status.v1', 'account.deactivated.v1', 'account.reactivated.v1']],
   [
     'Transfer — the Saga',
