@@ -137,28 +137,87 @@ Run all of them from the **repository root**.
 | `pnpm lint` | Lints everything, including the isolation rules below |
 | `pnpm test` | Unit tests for every application and package |
 | `pnpm test:contract` | The contract tests over `@bank/contracts` |
+| `pnpm typecheck` | `tsc --noEmit` across the workspace |
 | `pnpm format` | Prettier over the repository |
 | `pnpm dev` | The whole stack in Docker: infrastructure and all seven applications, in watch mode |
 | `pnpm dev:down` | Stops it |
 | `pnpm dev:logs` | Follows its logs |
-| `pnpm dev:host` | Every application in watch mode on the host, in parallel — infrastructure still has to be up |
+| `pnpm dev:infra` | Only the infrastructure in Docker — five databases, the broker, MinIO — detached |
+| `pnpm dev:infra:down` | Stops the infrastructure |
+| `pnpm dev:host` | The seven applications in watch mode on your machine — infrastructure still has to be up |
 
-Every command has a per-application form:
+### The task runner — Turborepo
+
+Everything in that table except `dev`, `dev:down`, `dev:logs`, `dev:infra` and
+`format` is [Turborepo](https://turborepo.com) running a task across the
+workspace. pnpm still resolves and links the nine packages from one lockfile;
+turbo only decides **what order** the tasks run in, **what runs in parallel**,
+and **what can be skipped** because none of its inputs moved.
+
+It reads the order from the `workspace:*` dependencies already declared in each
+package.json, so nothing restates it: `^build` in
+[`turbo.json`](turbo.json) means *every internal dependency builds first*, and
+that one rule is why `@bank/contracts/dist` exists before the Gateway imports
+it.
 
 ```bash
-pnpm --filter customer-service test
-pnpm --filter gateway lint
-pnpm --filter web build
+pnpm build          # 9 tasks, in dependency order, the independent ones at once
+pnpm build          # again, unchanged: FULL TURBO — a cache hit, in milliseconds
+turbo run build --force   # bypass the cache when you want to watch it compile
+```
+
+The cache is in `.turbo/`, git-ignored, and **local only** — no remote cache is
+configured, and none should be added without deciding first what a shared cache
+would be allowed to see.
+
+#### The task view
+
+`turbo.json` sets `"ui": "tui"`, so a run in an interactive terminal opens
+Turbo's terminal interface instead of a single interleaved column: a sidebar
+listing every task, and one scrollable log pane for whichever is selected.
+
+```text
+Tasks (/ - Search)              │ gateway#dev > cache bypass, force executing …
+ » @bank/contracts#dev          │ [Nest] LOG [NestApplication] Nest application …
+ » @bank/messaging#dev          │ …
+ » gateway#dev                  │
+ » customer-service#dev         │
+ » account-service#dev          │
+ » transaction-service#dev      │
+ » payment-service#dev          │
+ » notification-audit-service#dev
+ » web#dev                      │ u/d - Scroll logs   U/D - Page logs   m - More binds
+```
+
+`↑`/`↓` select a task, `/` searches, `u`/`d` scroll the selected log, `U`/`D`
+page it, `t`/`b` jump to top or bottom, `m` lists the remaining bindings, and
+`Ctrl-C` stops every task.
+
+Turbo 2.10 still defaults to `stream` — the prefixed, interleaved output — which
+is why the key is set explicitly. It is a preference and not a requirement:
+outside an interactive terminal (a pipe, a container, CI) Turbo falls back to
+`stream` on its own, so `pnpm dev:host | tee dev.log` and the Compose stack
+behave exactly as before. `turbo run <task> --ui=stream` forces it for one run.
+
+Filters take a task to one application and bring its dependencies with it,
+which is the difference that matters in a fresh clone:
+
+```bash
+turbo run test --filter=customer-service   # builds the shared packages first
+turbo run dev  --filter=gateway            # the Gateway alone, watchers included
+turbo run build --filter=web
+
+pnpm --filter customer-service test        # still works — but builds nothing
 ```
 
 Application names are `gateway`, `web`, `customer-service`, `account-service`,
 `transaction-service`, `payment-service`, `notification-audit-service`. The
 shared packages are `@bank/contracts`, `@bank/messaging` and `@bank/tooling`.
 
-**Build the shared packages before running one application on its own.** They
-are consumed from `dist/`, so a fresh clone needs a `pnpm build` first — or use
-`pnpm --filter gateway... build` (three dots) to build an application together
-with its dependencies.
+**`pnpm --filter <app> <task>` builds nothing.** The shared packages are
+consumed from `dist/`, so on a fresh clone that form needs a `pnpm build` first.
+`turbo run <task> --filter=<app>` does not — the build is a declared dependency
+of the task.
 
 ### Isolation rules
 
@@ -202,6 +261,7 @@ have installed and by what you are about to do.
 | Infrastructure | Docker | Docker |
 | The seven applications | Docker, watch mode | your machine, watch mode |
 | You need installed | Docker | Docker, Node 24.19.0, pnpm 11.21.0 |
+| The task runner | Compose, one container per application | Turborepo, one process per application |
 | Per-application `.env` | none | one for each |
 | First start | minutes — it installs inside the containers | as fast as your last `pnpm install` |
 | Attaching a debugger, running one application alone | awkward | natural |
@@ -284,23 +344,27 @@ seconds.
 nvm use            # Node 24.19.0, from .nvmrc
 corepack enable    # pnpm 11.21.0
 pnpm install
-pnpm build         # shared packages first, then the seven applications
 ```
 
-`pnpm build` is not optional on a fresh clone. `@bank/contracts` and
-`@bank/messaging` are consumed from `dist/`, so anything that imports them
-fails until they have been built at least once.
+No build step here. `@bank/contracts` and `@bank/messaging` are consumed from
+`dist/`, so they do have to exist before anything imports them — but `dev`
+declares them as a dependency (`^build` in `turbo.json`), so `pnpm dev:host`
+compiles them itself on the way up. Run `pnpm build` when you want the seven
+applications built too, not to make `dev` work.
 
 #### 2. Local infrastructure
 
 RabbitMQ, MinIO and five PostgreSQL instances, from `infra/docker/`:
 
 ```bash
-cd infra/docker
-cp .env.example .env      # then fill in the credentials
-docker compose up -d
-docker compose ps         # wait for every service to read "healthy"
+cp infra/docker/.env.example infra/docker/.env   # then fill in the credentials
+pnpm dev:infra                                   # detached
+docker compose -f infra/docker/docker-compose.yml ps   # wait for "healthy"
 ```
+
+`pnpm dev:infra` is `docker compose -f infra/docker/docker-compose.yml up -d` —
+the infrastructure file only, without the seven application containers that
+`pnpm dev` adds on top. `pnpm dev:infra:down` stops it.
 
 Credentials live in `infra/docker/.env`, which is git-ignored. The Gateway is
 the one application with no `DATABASE_URL` and no way to add one: it owns no
@@ -336,20 +400,33 @@ Invalid environment for "gateway". Offending variables: JWT_SECRET
 #### 4. Start the applications
 
 ```bash
-pnpm dev:host                 # all seven, in parallel
+pnpm dev:host                 # the seven applications + the two package watchers
 ```
 
-Or one at a time, the Gateway **first**:
+That is `turbo run dev`. It compiles `@bank/contracts` and `@bank/messaging`
+once, then starts nine watchers at once — the six NestJS applications, Nuxt, and
+a `tsc --watch` over each shared package so a change to a contract reaches
+everything that imports it without a restart.
+
+In an interactive terminal this opens the [task view](#the-task-view): a sidebar
+of the nine tasks, one scrollable log pane for the selected one. `Ctrl-C` stops
+all of them.
+
+It does **not** start the databases or the broker. Without `pnpm dev:infra`
+running first, every pane fills with `ECONNREFUSED`.
+
+Or a subset, which is what `--filter` is for:
 
 ```bash
-pnpm --filter gateway dev     # http://localhost:3000
-pnpm --filter web dev         # http://localhost:3010
+turbo run dev --filter=gateway              # http://localhost:3000
+turbo run dev --filter=web                  # http://localhost:3010
+turbo run dev --filter=gateway --filter=customer-service --filter=account-service
 ```
 
-The order matters when starting them by hand. The Gateway owns port 3000 and
-Nuxt defaults to 3000 too — start them the other way round and the frontend
-takes the port the Gateway needs, which shows up as a browser that loads but
-cannot reach any API.
+Start them in any order. `apps/web`'s `dev` script pins `--port 3010`, so Nuxt
+cannot default to 3000 and take the port the Gateway needs — a collision that
+shows up as a browser which loads but reaches no API, and which starting
+everything at once would otherwise turn into a race.
 
 > **Running the production build instead of `dev`?** `node .output/server/index.mjs`
 > does **not** read `apps/web/.env`, so the port has to be passed in:
