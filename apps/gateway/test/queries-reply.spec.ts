@@ -3,6 +3,10 @@ import type { INestApplication } from '@nestjs/common';
 import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
+  accountListQueryV1,
+  accountListRepliedV1,
+  accountOperationsQueryV1,
+  accountOperationsRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
   transactionStatusRepliedV1,
@@ -20,7 +24,7 @@ const ACCOUNT = '8b7e5d21-9c2e-4a71-b8f5-2d6e7c0a1b93';
 const TRANSACTION = '1d4c9f60-9c2e-4a71-b8f5-2d6e7c0a1b93';
 const TRACE = '6f1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93';
 
-describe('the three queries that wait for an answer', () => {
+describe('the five queries that wait for an answer', () => {
   let harness: Harness;
   let app: INestApplication;
   let client: string;
@@ -80,6 +84,123 @@ describe('the three queries that wait for an answer', () => {
     it('refuses an account id that is not a UUID, without asking anyone', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/accounts/not-a-uuid/balance')
+        .set('Authorization', client);
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+  });
+
+  describe('a list of accounts', () => {
+    const row = {
+      accountId: ACCOUNT,
+      customerId: ACTOR,
+      accountType: 'MONETARIA' as const,
+      balance: { amountMinor: 125_000, currency: 'GTQ' },
+      status: 'ACTIVE' as const,
+      lastActivityAt: '2026-08-19T14:32:08.100Z',
+      openedAt: '2026-02-01T09:00:00.000Z',
+    };
+
+    it('publishes the query and returns the rows Account Service sent', async () => {
+      harness.replier.answerWith(accountListRepliedV1.name, { accounts: [row] });
+
+      const response = await request(app.getHttpServer())
+        .get('/api/accounts')
+        .set('Authorization', client);
+
+      expect(response.status).toBe(200);
+      expect(harness.publisher.lastType).toBe(accountListQueryV1.name);
+      expect(response.body.accounts).toEqual([row]);
+      expect(response.body.correlationId).toBeDefined();
+    });
+
+    it('carries the filters through untouched, because they are a request and not a permission', async () => {
+      harness.replier.answerWith(accountListRepliedV1.name, { accounts: [] });
+
+      await request(app.getHttpServer())
+        .get('/api/accounts')
+        .query({ customerId: ACTOR, status: 'INACTIVE', accountType: 'AHORRO' })
+        .set('Authorization', client);
+
+      expect(harness.publisher.published.at(-1)?.payload).toEqual({
+        customerId: ACTOR,
+        status: 'INACTIVE',
+        accountType: 'AHORRO',
+      });
+    });
+
+    it('refuses a filter outside the closed set, without asking anyone', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/accounts')
+        .query({ status: 'CERRADA' })
+        .set('Authorization', client);
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    /**
+     * An empty list is a complete answer, not a failure. Turning it into a
+     * `404` would tell the caller that nothing exists, which is a different
+     * claim from "nothing you may see" and one the gateway cannot make.
+     */
+    it('returns an empty list as a 200', async () => {
+      harness.replier.answerWith(accountListRepliedV1.name, { accounts: [] });
+
+      const response = await request(app.getHttpServer())
+        .get('/api/accounts')
+        .set('Authorization', client);
+
+      expect(response.status).toBe(200);
+      expect(response.body.accounts).toEqual([]);
+    });
+  });
+
+  describe('the movements of an account', () => {
+    it('returns the statement Account Service sent', async () => {
+      harness.replier.answerWith(accountOperationsRepliedV1.name, {
+        outcome: 'FOUND',
+        accountId: ACCOUNT,
+        operations: [
+          {
+            operationId: TRACE,
+            type: 'DEBIT',
+            amount: { amountMinor: 25_000, currency: 'GTQ' },
+            balanceAfter: { amountMinor: 100_000, currency: 'GTQ' },
+            transactionId: TRANSACTION,
+            status: 'APPLIED',
+            occurredAt: '2026-08-19T14:32:08.100Z',
+          },
+        ],
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/accounts/${ACCOUNT}/operations`)
+        .set('Authorization', client);
+
+      expect(response.status).toBe(200);
+      expect(harness.publisher.lastType).toBe(accountOperationsQueryV1.name);
+      expect(response.body.operations).toHaveLength(1);
+    });
+
+    it('reports NOT_FOUND as 404, keeping the failure code', async () => {
+      harness.replier.answerWith(accountOperationsRepliedV1.name, {
+        outcome: 'NOT_FOUND',
+        reason: 'ACCOUNT_NOT_FOUND',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/accounts/${ACCOUNT}/operations`)
+        .set('Authorization', client);
+
+      expect(response.status).toBe(404);
+      expect(response.body.failureCode).toBe('ACCOUNT_NOT_FOUND');
+    });
+
+    it('refuses an account id that is not a UUID, without asking anyone', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/accounts/not-a-uuid/operations')
         .set('Authorization', client);
 
       expect(response.status).toBe(400);

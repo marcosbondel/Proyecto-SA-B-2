@@ -2,6 +2,11 @@ import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
   accountCreateV1,
+  accountListQueryV1,
+  accountListRepliedV1,
+  accountOperationsQueryV1,
+  accountOperationsRepliedV1,
+  accountSetStatusV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
   customerAuthenticateRepliedV1,
@@ -48,6 +53,15 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     publishes: accountBalanceQueryV1.name,
     awaits: [accountBalanceRepliedV1.name],
   },
+  'GET /api/accounts': {
+    publishes: accountListQueryV1.name,
+    awaits: [accountListRepliedV1.name],
+  },
+  'GET /api/accounts/{accountId}/operations': {
+    publishes: accountOperationsQueryV1.name,
+    awaits: [accountOperationsRepliedV1.name],
+  },
+  'POST /api/accounts/{accountId}/status': { publishes: accountSetStatusV1.name },
   'POST /api/transfers': { publishes: transferRequestedV1.name },
   'GET /api/transfers/{transactionId}': {
     publishes: transactionStatusRequestedV1.name,

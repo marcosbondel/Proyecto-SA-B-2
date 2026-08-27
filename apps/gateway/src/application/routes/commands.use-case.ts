@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
-import { accountCreateV1, customerUpdateV1, transferRequestedV1 } from '@bank/contracts';
+import {
+  accountCreateV1,
+  accountSetStatusV1,
+  customerUpdateV1,
+  transferRequestedV1,
+} from '@bank/contracts';
 import type { AccountType, Identity, Money } from '@bank/contracts';
 import type { PaymentScenario } from '@bank/contracts';
 
@@ -34,6 +39,12 @@ export interface OpenAccountRequest extends CommandContext {
   readonly customerId?: string;
 }
 
+export interface SetAccountStatusRequest extends CommandContext {
+  readonly accountId: string;
+  readonly status: 'ACTIVE' | 'INACTIVE';
+  readonly reason: string;
+}
+
 export interface TransferRequest extends CommandContext {
   readonly sourceAccount: string;
   readonly targetAccount: string;
@@ -42,7 +53,7 @@ export interface TransferRequest extends CommandContext {
 }
 
 /**
- * The three commands whose answer arrives later, if at all.
+ * The four commands whose answer arrives later, if at all.
  *
  * They share one shape, and it is the shape constitution V describes: validate
  * the request against its contract, wrap it with the verified identity, publish
@@ -90,6 +101,30 @@ export class CommandsUseCase {
     );
 
     return { accountId, correlationId: request.correlationId };
+  }
+
+  /**
+   * Deactivating or reactivating an account by hand.
+   *
+   * The gateway checks the **role** — D-06 gives this to `ADMINISTRADOR`
+   * alone — and stops there. Whether this particular account should change
+   * state is a decision about data the gateway does not hold, so Account
+   * Service makes it and this one carries the verified identity along so it
+   * can. Both checks exist: this one keeps the route honest, and the service's
+   * keeps the message honest whatever publishes it.
+   */
+  public async setAccountStatus(request: SetAccountStatusRequest): Promise<AcceptedCommand> {
+    await this.#publish(
+      accountSetStatusV1,
+      {
+        accountId: request.accountId,
+        status: request.status,
+        reason: request.reason,
+      },
+      request,
+    );
+
+    return { correlationId: request.correlationId };
   }
 
   public async requestTransfer(
