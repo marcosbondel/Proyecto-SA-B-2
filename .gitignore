@@ -77,6 +77,9 @@ coverage/
 .data/
 *.tsbuildinfo
 
+# Turborepo's per-package task cache and run logs.
+.turbo/
+
 ### Local environment ###
 # Real values stay out of the repo; the committed templates do not.
 .env
