@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { PAYMENT_STATUS_PRESENTATION, explainReason } from '../../lib/transaction';
+import { VERDICT_PRESENTATION, verdictOf } from '../../lib/payment';
+import type { PaymentSignals } from '../../lib/payment';
+import { explainReason } from '../../lib/transaction';
 import type { PaymentOutcome } from '../../lib/transaction';
 import { formatDate } from '../../lib/money';
 
@@ -8,58 +10,87 @@ import { formatDate } from '../../lib/money';
  *
  * Everything here comes from `transaction.status.replied.v1` — that is, from
  * the events Transaction Service received and wrote down. It is **not** a read
- * of Payment Service, which owns no route this application can call and whose
- * database is off limits (§8.2, 2.3). The panel repeats a verdict; it does not
- * obtain one.
+ * of Payment Service: that service now has two routes of its own
+ * (`GET /api/payments`, `GET /api/payments/:paymentId`), but this panel sits
+ * inside a transfer that already carries the answer, and asking twice would
+ * make a screen able to contradict itself.
  *
- * The three states are three different sentences, and the first is the one
- * people get wrong: `PENDING` means the payment was **ordered and has not
- * answered**, which is not the same as "there is no payment". A transfer
- * sitting in `PAYMENT_PENDING` with the money already out of the source account
- * is precisely when somebody needs to be told that clearly.
+ * The four verdicts are four different sentences, and two of them are the ones
+ * people get wrong:
  *
- * `attempt` is Payment Service's own retry counter, not the broker's
- * redeliveries. Shown only when it is greater than one, because "intento 1" is
- * noise and "intento 3" is the story.
+ * - **`PROCESSING` means the payment was ordered and has not answered**, which
+ *   is not the same as "there is no payment". A transfer sitting in
+ *   `PAYMENT_PENDING` with the money already out of the source account is
+ *   precisely when somebody needs to be told that clearly.
+ * - **`REJECTED` and `FAILED` are not the same ending.** One was refused and
+ *   retrying is pointless; the other exhausted the ladder and is worth doing
+ *   again. `app/lib/payment.ts` decides which, and does it where it is tested.
  *
- * Owned by T-19 (Payment Service). Built here by T-18 because the transfer
- * detail screen has nowhere else to show a rejected payment; recorded as TD-034.
+ * Reshaped by T-19 from the version T-18 built under TD-034. What changed: the
+ * verdict is now four-valued rather than three, the retry ladder is shown while
+ * it is being climbed rather than only after it stops, and the kind of the last
+ * failure is named. All three became possible when `payment.attempt.failed.v1`
+ * and the optional `errorType` were added to the catalogue — before that the
+ * ticket's criteria described data nothing published.
+ *
+ * The composition follows the prototype's "Estado de pago" screen (G-02a–d):
+ * pill, headline, sentence, then the details as a definition list.
  */
-const props = defineProps<{ payment: PaymentOutcome | null }>();
+const props = defineProps<{
+  payment: PaymentOutcome | null;
+  /** Where to read the full evidence. Omitted where nobody may follow it. */
+  detailTo?: string | null;
+}>();
 
-const presentation = computed(() =>
-  props.payment === null ? null : PAYMENT_STATUS_PRESENTATION[props.payment.status],
+/**
+ * The transfer's reply calls the failure code `reason`; Payment Service's own
+ * reply calls it `failureReason`. Converting here rather than teaching the
+ * shared module both names keeps one field from having two spellings.
+ */
+const signals = computed<PaymentSignals | null>(() =>
+  props.payment === null
+    ? null
+    : {
+        status: props.payment.status,
+        errorType: props.payment.errorType ?? null,
+        failureReason: props.payment.reason,
+        attempt: props.payment.attempt,
+      },
 );
 
+const presentation = computed(() =>
+  signals.value === null ? null : VERDICT_PRESENTATION[verdictOf(signals.value)],
+);
+
+/**
+ * The catalogue code in the words of the person it happened to, when there is
+ * one. It is more specific than the verdict's own sentence, so it wins the
+ * position under the headline; the verdict's sentence stays as the fallback.
+ */
 const reason = computed(() => explainReason(props.payment?.reason ?? null));
 </script>
 
 <template>
   <section
-    v-if="payment && presentation"
-    class="rounded-2xl border border-[#DCDCE0] bg-white p-5"
+    v-if="payment && signals && presentation"
+    class="rounded-2xl border border-[#DCDCE0] bg-white p-6"
     data-testid="payment-result"
   >
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <h3 class="text-[16px] font-semibold leading-6">Resultado del pago</h3>
-      <UBadge
-        :color="presentation.color"
-        variant="subtle"
-        class="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.04em]"
-        :data-status="payment.status"
-      >{{ presentation.label }}</UBadge>
+    <header class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-[11px] uppercase tracking-[0.06em] text-[#75767F]">Resultado del pago</p>
+        <h3 class="mt-1 text-[20px] font-semibold leading-7">{{ presentation.headline }}</h3>
+      </div>
+      <PaymentStatusBadge :signals="signals" />
     </header>
 
-    <p v-if="payment.status === 'PENDING'" class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-      El pago se solicitó y todavía no ha respondido. El dinero ya salió de la cuenta de origen;
-      si el pago se rechaza, se devuelve automáticamente.
+    <p class="mt-2 text-[14px] leading-[22px] text-[#5A5B63]">
+      {{ reason ?? presentation.explanation }}
     </p>
 
-    <p v-else-if="reason" class="mt-2 text-[13px] leading-5 text-[#5A5B63]">{{ reason }}</p>
-
-    <p v-else class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-      El pago se aprobó y se ordenó el crédito a la cuenta de destino.
-    </p>
+    <div class="mt-4">
+      <PaymentAttemptTrail :signals="signals" />
+    </div>
 
     <dl class="mt-4 flex flex-col">
       <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-2.5">
@@ -68,16 +99,6 @@ const reason = computed(() => explainReason(props.payment?.reason ?? null));
           class="break-all text-right font-mono text-[12px] text-[#5A5B63]"
           style="font-variant-numeric: tabular-nums lining-nums"
         >{{ payment.paymentId }}</dd>
-      </div>
-      <div
-        v-if="payment.attempt !== null && payment.attempt > 1"
-        class="flex justify-between gap-4 border-t border-[#E9E9EC] py-2.5"
-      >
-        <dt class="text-[13px] text-[#75767F]">Intentos del proveedor</dt>
-        <dd
-          class="text-[13px] font-medium"
-          style="font-variant-numeric: tabular-nums lining-nums"
-        >{{ payment.attempt }}</dd>
       </div>
       <div
         v-if="payment.decidedAt"
@@ -90,5 +111,19 @@ const reason = computed(() => explainReason(props.payment?.reason ?? null));
         >{{ formatDate(payment.decidedAt) }}</dd>
       </div>
     </dl>
+
+    <!--
+      Offered only where somebody may actually follow it. `GET /api/payments/:id`
+      admits every role, but the screen it opens is reached from the staff-only
+      Pagos module, so the page decides whether to pass this.
+    -->
+    <UButton
+      v-if="detailTo"
+      :to="detailTo"
+      variant="outline"
+      color="neutral"
+      size="sm"
+      class="mt-4"
+    >Ver el detalle del pago</UButton>
   </section>
 </template>
