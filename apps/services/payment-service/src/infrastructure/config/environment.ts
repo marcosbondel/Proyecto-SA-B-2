@@ -41,6 +41,60 @@ export class PaymentServiceEnvironment {
   @IsString()
   @IsNotEmpty()
   public RABBITMQ_URL!: string;
+
+  /**
+   * The delays between payment attempts, in milliseconds, comma-separated.
+   *
+   * Defaults to the ladder `docs/events/topology.md` fixed for the broker's own
+   * retries — 1 s, 5 s, 30 s, so four attempts at most. It is a variable and
+   * not a constant because a demonstration cannot spend thirty-six seconds
+   * watching a compensation everybody in the room already understands.
+   *
+   * An empty list is legal and means one attempt with no ladder: a payment
+   * either works or fails permanently. It is the shape a real provider with its
+   * own internal retries would want.
+   */
+  @IsString()
+  public PAYMENT_RETRY_DELAYS_MS!: string;
+
+  /**
+   * How often the sweeper looks for attempts the ladder owes.
+   *
+   * It bounds how late a retry can be, so it has to be well under the smallest
+   * rung or the ladder's timing becomes the sweep interval's timing.
+   */
+  @IsInt()
+  @Min(100)
+  @Max(600_000)
+  public PAYMENT_RETRY_SWEEP_MS!: number;
+}
+
+/**
+ * `"1000,5000,30000"` as the numbers the domain wants.
+ *
+ * Rejects anything that is not a list of non-negative integers, because a
+ * malformed ladder that silently became `[NaN]` would be a payment that retries
+ * immediately, forever.
+ */
+export function parseRetryDelays(raw: string): readonly number[] {
+  const trimmed = raw.trim();
+
+  if (trimmed === '') {
+    return [];
+  }
+
+  return trimmed.split(',').map((piece) => {
+    const value = Number(piece.trim());
+
+    if (!Number.isInteger(value) || value < 0) {
+      throw new EnvironmentValidationError(
+        ['PAYMENT_RETRY_DELAYS_MS'],
+        `  - PAYMENT_RETRY_DELAYS_MS: "${piece.trim()}" is not a non-negative integer of milliseconds`,
+      );
+    }
+
+    return value;
+  });
 }
 
 /**
@@ -63,9 +117,12 @@ export function loadEnvironment(
     PORT: toInteger(source.PORT),
     DATABASE_URL: source.DATABASE_URL,
     RABBITMQ_URL: source.RABBITMQ_URL,
+    PAYMENT_RETRY_DELAYS_MS: source.PAYMENT_RETRY_DELAYS_MS ?? '1000,5000,30000',
+    PAYMENT_RETRY_SWEEP_MS: toInteger(source.PAYMENT_RETRY_SWEEP_MS) ?? 500,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
+
   if (errors.length > 0) {
     const variables = errors.map((error) => error.property);
     const details = errors
@@ -73,6 +130,8 @@ export function loadEnvironment(
       .join('\n');
     throw new EnvironmentValidationError(variables, details);
   }
+
+  parseRetryDelays(candidate.PAYMENT_RETRY_DELAYS_MS);
 
   return candidate;
 }
