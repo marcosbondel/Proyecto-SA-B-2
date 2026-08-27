@@ -79,6 +79,21 @@ describe('queues', () => {
 
     expect([...queuesFor(debited)].sort()).toEqual(['audit.all', 'transaction.saga']);
   });
+
+  /**
+   * The `account.#` binding is what lets T-17 add two queries without touching
+   * the topology, and narrowing it to `account.*.v1` would silently strand
+   * every dotted name — `account.list.query.v1` has four words, not three.
+   * Asserting the outcome rather than the pattern is what makes that a failing
+   * test instead of a message nobody consumes.
+   */
+  it('delivers the queries T-17 added to the account queue, dotted names and all', () => {
+    for (const name of ['account.list.query.v1', 'account.operations.query.v1']) {
+      const contract = catalog.find((c) => c.name === name)!;
+
+      expect([...queuesFor(contract)]).toEqual(['account.commands']);
+    }
+  });
 });
 
 describe('the retry ladder', () => {

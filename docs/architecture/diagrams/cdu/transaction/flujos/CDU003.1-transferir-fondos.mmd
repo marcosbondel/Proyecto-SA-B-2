@@ -1,0 +1,19 @@
+flowchart TD
+    actor["Cliente, Cajero o Administrador: solicitar transferencia"] --> validate["Transaction Service: validar monto, cuentas e idempotencia"]
+    validate --> valid{"¿Solicitud válida?"}
+    valid -->|No| reject["Rechazar sin crear transacción"]
+    valid -->|Sí| pending["Crear PENDING y pasar a DEBITING"]
+    pending --> debit["Solicitar débito a Account Service"]
+    debit --> debited{"¿Débito aplicado?"}
+    debited -->|No| failed["Cerrar en FAILED"]
+    debited -->|Sí| payment["Solicitar pago a Payment Service"]
+    payment --> paid{"¿Pago exitoso?"}
+    paid -->|No| compensate1["Solicitar compensación y cerrar COMPENSATED"]
+    paid -->|Sí| credit["Solicitar crédito a Account Service"]
+    credit --> credited{"¿Crédito aplicado?"}
+    credited -->|No| compensate2["Solicitar compensación y cerrar COMPENSATED"]
+    credited -->|Sí| completed["Cerrar en COMPLETED"]
+    failed --> close["Publicar evento de cierre"]
+    compensate1 --> close
+    compensate2 --> close
+    completed --> close

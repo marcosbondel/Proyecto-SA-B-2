@@ -1,0 +1,301 @@
+openapi: 3.0.0
+paths:
+  /health:
+    get:
+      operationId: HealthController_check
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      summary: "Liveness: responde mientras el proceso viva"
+      tags:
+        - health
+  /ready:
+    get:
+      operationId: HealthController_ready
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      summary: "Readiness: 503 mientras el broker sea inalcanzable"
+      tags:
+        - health
+  /api/auth/login:
+    post:
+      description: Publica customer.authenticate.v1 y espera su respuesta. Credenciales inválidas, correo
+        no registrado y cuenta sin activar producen el MISMO rechazo 401.
+      operationId: AuthController_login
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginDto"
+      responses:
+        "200":
+          description: ""
+      summary: Inicia sesión y devuelve un JWT
+      tags:
+        - auth
+      x-bank-publishes: customer.authenticate.v1
+      x-bank-awaits:
+        - customer.authenticate.replied.v1
+  /api/customers/verify-email:
+    get:
+      description: Devuelve un veredicto en la misma respuesta, esperando el evento correlacionado hasta
+        cinco segundos. El silencio produce 504, nunca un rechazo.
+      operationId: CustomersController_verifyEmail
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      summary: Activa la cuenta desde el enlace del correo
+      tags:
+        - customers
+      x-bank-publishes: customer.verify-email.v1
+      x-bank-awaits:
+        - customer.email.verified.v1
+        - customer.email.verification.rejected.v1
+  /api/customers:
+    post:
+      description: "La imagen se deposita en el almacenamiento de objetos y solo su referencia viaja por
+        el broker. Devuelve 202: el registro aún no ocurrió."
+      operationId: CustomersController_register
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/RegisterCustomerDto"
+      responses:
+        "202":
+          description: ""
+      summary: Registra un cliente, con la foto del documento
+      tags:
+        - customers
+      x-bank-publishes: customer.register.v1
+  /api/customers/{customerId}:
+    patch:
+      description: El parámetro es el SUJETO; el actor sale del token. Si el actor puede operar sobre ese
+        sujeto lo decide Customer Service, no el Gateway.
+      operationId: CustomersController_update
+      parameters:
+        - name: customerId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCustomerDto"
+      responses:
+        "202":
+          description: ""
+      security:
+        - session: []
+      summary: Actualiza los datos de un cliente
+      tags:
+        - customers
+      x-bank-publishes: customer.update.v1
+  /api/accounts:
+    post:
+      description: Devuelve 202 y un accountId. La cuenta todavía no existe.
+      operationId: AccountsController_open
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenAccountDto"
+      responses:
+        "202":
+          description: ""
+      security:
+        - session: []
+      summary: Abre una cuenta
+      tags:
+        - accounts
+      x-bank-publishes: account.create.v1
+    get:
+      description: 'Los filtros son una petición, no un permiso: Account Service los cruza con D-06. Una
+        lista vacía significa lo mismo que "no hay nada que puedas ver".'
+      operationId: AccountsController_list
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista cuentas
+      tags:
+        - accounts
+      x-bank-publishes: account.list.query.v1
+      x-bank-awaits:
+        - account.list.replied.v1
+  /api/accounts/{accountId}/balance:
+    get:
+      description: Espera la respuesta hasta cinco segundos; el silencio produce 504.
+      operationId: AccountsController_balance
+      parameters:
+        - name: accountId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta el saldo de una cuenta
+      tags:
+        - accounts
+      x-bank-publishes: account.balance.query.v1
+      x-bank-awaits:
+        - account.balance.replied.v1
+  /api/accounts/{accountId}/operations:
+    get:
+      description: Espera la respuesta hasta cinco segundos; el silencio produce 504.
+      operationId: AccountsController_operations
+      parameters:
+        - name: accountId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta los movimientos de una cuenta
+      tags:
+        - accounts
+      x-bank-publishes: account.operations.query.v1
+      x-bank-awaits:
+        - account.operations.replied.v1
+  /api/accounts/{accountId}/status:
+    post:
+      description: "Solo ADMINISTRADOR (D-06). Devuelve 202: el cambio todavía no ocurrió. El motivo es
+        obligatorio porque es el único registro de por qué se hizo."
+      operationId: AccountsController_setStatus
+      parameters:
+        - name: accountId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAccountStatusDto"
+      responses:
+        "202":
+          description: ""
+      security:
+        - session: []
+      summary: Activa o desactiva una cuenta
+      tags:
+        - accounts
+      x-bank-publishes: account.set-status.v1
+  /api/transfers:
+    post:
+      description: "paymentScenario es opcional y solo de demostración: el Gateway lo valida y lo
+        traslada, y nunca actúa sobre él."
+      operationId: TransfersController_request
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferDto"
+      responses:
+        "202":
+          description: ""
+      security:
+        - session: []
+      summary: Solicita una transferencia e inicia la Saga
+      tags:
+        - transfers
+      x-bank-publishes: transfer.requested.v1
+  /api/transfers/{transactionId}:
+    get:
+      description: Un 504 aquí no significa que la transferencia falló.
+      operationId: TransfersController_status
+      parameters:
+        - name: transactionId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta el estado de una transacción
+      tags:
+        - transfers
+      x-bank-publishes: transaction.status.requested.v1
+      x-bank-awaits:
+        - transaction.status.replied.v1
+  /api/audit:
+    get:
+      description: "La única ruta que D-06 restringe por rol: solo ADMINISTRADOR. Es la vía por la que el
+        frontend averigua cómo terminó cualquier comando asíncrono."
+      operationId: AuditController_query
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta el rastro de auditoría de una correlación
+      tags:
+        - audit
+      x-bank-publishes: audit.query.requested.v1
+      x-bank-awaits:
+        - audit.query.replied.v1
+info:
+  title: Bank USAC — API Gateway
+  description: The only external entry point of the system (constitution V). It validates shape,
+    authenticates, authorises by role and publishes onto the broker. It holds no business logic, no
+    database and no HTTP client towards any internal service.
+  version: 1.0.0
+  contact: {}
+tags: []
+servers: []
+components:
+  securitySchemes:
+    session:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
+  schemas:
+    LoginDto:
+      type: object
+      properties: {}
+    RegisterCustomerDto:
+      type: object
+      properties: {}
+    UpdateCustomerDto:
+      type: object
+      properties: {}
+    OpenAccountDto:
+      type: object
+      properties: {}
+    SetAccountStatusDto:
+      type: object
+      properties: {}
+    TransferDto:
+      type: object
+      properties: {}

@@ -1,0 +1,5 @@
+flowchart TD
+    reviewer["Cajero o Administrador: revisar fotografía"] --> evaluate["Customer Service: evaluar identidad"]
+    evaluate --> decision{"¿Identidad válida?"}
+    decision -->|No| rejected["Persistir REJECTED y publicar customer.identity.rejected"]
+    decision -->|Sí| validated["Persistir VALIDATED y publicar customer.identity.validated"]

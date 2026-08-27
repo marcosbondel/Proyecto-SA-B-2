@@ -1,0 +1,24 @@
+@startuml CDU003.2-consultar-estado
+title CDU003.2 - Consultar estado de transferencia
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Cliente, Cajero o Administrador|
+start
+:Solicitar estado de una transferencia;
+|Gateway|
+:Publicar transaction.status.requested;
+|Transaction Service|
+:Buscar la transacción por su identificador;
+if (¿Transacción encontrada?) then (No)
+    :Responder NOT_FOUND;
+else (Sí)
+    :Responder estado y resultado actual;
+endif
+stop
+@enduml

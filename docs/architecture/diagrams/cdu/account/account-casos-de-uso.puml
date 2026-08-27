@@ -1,0 +1,59 @@
+@startuml account-casos-de-uso
+left to right direction
+
+title CDU002 - Gestionar cuentas y saldos
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Cliente" as actor_account_customer
+actor "Cajero Receptor" as actor_account_teller
+actor "Administrador" as actor_account_admin
+actor "Transaction Service" as actor_account_transaction
+actor "Proceso automático" as actor_account_scheduler
+
+rectangle "CDU002 - Gestionar cuentas y saldos" as system_account {
+    usecase "CDU002.1:\nAbrir cuenta" as uc_account_open
+    usecase "CDU002.2:\nConsultar saldo" as uc_account_balance
+    usecase "CDU002.3:\nAplicar movimiento de Saga" as uc_account_movement
+    usecase "CDU002.4:\nGestionar estado de cuenta" as uc_account_status
+    usecase "CDU002.5:\nValidar elegibilidad del cliente" as uc_account_eligibility
+    usecase "CDU002.6:\nVerificar acceso a la cuenta" as uc_account_access
+    usecase "CDU002.7:\nValidar fondos y estado" as uc_account_funds
+    usecase "CDU002.8:\nDesactivar cuentas inactivas" as uc_account_automatic
+}
+
+actor_account_customer -- uc_account_open
+actor_account_customer -- uc_account_balance
+actor_account_teller -- uc_account_open
+actor_account_teller -- uc_account_balance
+actor_account_admin -- uc_account_open
+actor_account_admin -- uc_account_balance
+actor_account_admin -- uc_account_status
+actor_account_transaction -- uc_account_movement
+actor_account_scheduler -- uc_account_automatic
+
+uc_account_open .> uc_account_eligibility : <<include>>
+uc_account_balance .> uc_account_access : <<include>>
+uc_account_movement .> uc_account_funds : <<include>>
+
+note right of uc_account_movement
+    Account Service es dueño de balance,
+    débito, crédito y compensación.
+    Transaction Service solo solicita el movimiento.
+end note
+
+legend right
+    La desactivación automática requiere cuenta inactiva
+    y balance menor que Q50.00 durante seis meses.
+endlegend
+@enduml

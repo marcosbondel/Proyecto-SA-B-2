@@ -97,8 +97,8 @@ alternatives and the accepted trade-off.
   [ADR-008](docs/architecture/adr/ADR-008-service-internal-architecture.md).
 - **Distributed workflows:** Saga by choreography —
   [ADR-009](docs/architecture/adr/ADR-009-distributed-transactions.md).
-- **Diagrams:** Lucid plus a versioned Mermaid source, two artefacts per diagram —
-  [ADR-011](docs/architecture/adr/ADR-011-diagramming-toolchain.md).
+- **Diagrams:** versioned Mermaid and PlantUML sources, with Lucid optional —
+  [ADR-013](docs/architecture/adr/ADR-013-diagramming-toolchain-revision.md).
 
 These choices are constrained by the technologies allowed in assignment section
 4.3 (page 14) and section 4.2 (page 13). The complete record, with alternatives
@@ -163,11 +163,12 @@ fails on a cross-service import, a framework import in `domain`, or an
 `infrastructure` import in `application`.
 
 **What does not exist yet.** No business logic, no domain entity and no use case
-in any service. `apps/web` has no Bank USAC screens or routes. Nothing connects
-to a broker or a database at runtime: `infra/docker/` pins the images but has no
-Compose file (T-06), and `infra/k8s/` describes the Helm chart layout without a
-chart (T-22). The Docker images (T-21), the Saga implementation (T-16 to T-20,
-T-23) and the eight diagrams (T-07 to T-14) are future work.
+in any service. `apps/web` has no Bank USAC screens or routes. The runtime
+integration is still future work: `infra/docker/` contains the local Compose
+stack for development, while `infra/k8s/` documents the intended Helm layout
+without the final chart. The Docker images (T-21), the Saga implementation
+(T-16 to T-20, T-23) and rendered exports for the newly added diagram sources
+remain future work; the versioned diagram sources are now present.
 
 The web dependency manifest carries `@artmizu/nuxt-prometheus`, retained as
 pending debt for the observability ticket T-24 (TD-006).

@@ -48,6 +48,11 @@ evidence is linked in that ticket. A passing command without linked evidence is
 not sufficient. The evidence may be command output, a repository path, a
 review response, or a linked design decision, depending on the criterion.
 
+For any ticket that creates or changes frontend UI, the evidence MUST also show
+that the implementation was compared with the Claude Design reference in
+`docs/DESIGN.md`. The evidence names the inspected source file, covers the
+relevant responsive and interaction states, and records intentional deviations.
+
 ## Evidence Of Distribution
 
 Each member commits work in the service or module they own. The commit history,

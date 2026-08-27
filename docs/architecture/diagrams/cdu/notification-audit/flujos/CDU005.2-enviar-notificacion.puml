@@ -1,0 +1,23 @@
+@startuml CDU005.2-enviar-notificacion
+title CDU005.2 - Enviar notificación
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Notification & Audit|
+start
+:Consumir evento que requiere notificación;
+:Crear Notification PENDING;
+:Enviar el mensaje al servicio de correo;
+if (¿Entrega exitosa?) then (Sí)
+    :Registrar estado SENT;
+else (No)
+    :Registrar estado FAILED;
+    :Programar reintento;
+endif
+stop
+@enduml

@@ -1,0 +1,51 @@
+flowchart LR
+    users["👥 Cliente · Cajero · Administrador"]
+    email["✉ Servicio de correo"]
+    provider["🌐 Proveedor de pagos"]
+
+    subgraph solution["Entorno de la solución"]
+        subgraph applications["Entorno de aplicaciones"]
+            frontend["Frontend"]
+            gateway["API Gateway"]
+            customer["Customer Service"]
+            account["Account Service"]
+            transaction["Transaction Service"]
+            payment["Payment Service"]
+            notification["Notification & Audit"]
+        end
+
+        subgraph support["Infraestructura de soporte"]
+            broker["Broker de mensajería"]
+            customerDb[("Base de datos de Customer")]
+            accountDb[("Base de datos de Account")]
+            transactionDb[("Base de datos de Transaction")]
+            paymentDb[("Base de datos de Payment")]
+            notificationDb[("Base de datos de Notification & Audit")]
+            objectStore["Almacenamiento de objetos"]
+        end
+    end
+
+    users --> frontend
+    frontend --> gateway
+    gateway <--> broker
+    broker <--> customer
+    broker <--> account
+    broker <--> transaction
+    broker <--> payment
+    broker --> notification
+
+    customer --> customerDb
+    account --> accountDb
+    transaction --> transactionDb
+    payment --> paymentDb
+    notification --> notificationDb
+
+    gateway --> objectStore
+    customer --> objectStore
+    notification --> email
+    payment --> provider
+
+    note["Las bases, el broker y el almacenamiento de objetos están fuera del entorno de aplicaciones. El almacenamiento de objetos es un búfer; Customer Service conserva la fuente de verdad."]:::note
+    support -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

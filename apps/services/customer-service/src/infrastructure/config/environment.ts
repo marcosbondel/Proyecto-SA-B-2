@@ -41,6 +41,33 @@ export class CustomerServiceEnvironment {
   @IsString()
   @IsNotEmpty()
   public RABBITMQ_URL!: string;
+
+  /**
+   * Where the identity-document photo is read back from.
+   *
+   * The bytes never travel on the broker (ADR-012): the Gateway uploads them
+   * and publishes a reference, and this service fetches them to recompute the
+   * digest. Same names as the Gateway's, because it is the same bucket.
+   */
+  @IsString()
+  @IsNotEmpty()
+  public OBJECT_STORAGE_ENDPOINT!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  public OBJECT_STORAGE_ACCESS_KEY!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  public OBJECT_STORAGE_SECRET_KEY!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  public OBJECT_STORAGE_BUCKET!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  public OBJECT_STORAGE_REGION!: string;
 }
 
 /**
@@ -63,6 +90,11 @@ export function loadEnvironment(
     PORT: toInteger(source.PORT),
     DATABASE_URL: source.DATABASE_URL,
     RABBITMQ_URL: source.RABBITMQ_URL,
+    OBJECT_STORAGE_ENDPOINT: source.OBJECT_STORAGE_ENDPOINT,
+    OBJECT_STORAGE_ACCESS_KEY: source.OBJECT_STORAGE_ACCESS_KEY,
+    OBJECT_STORAGE_SECRET_KEY: source.OBJECT_STORAGE_SECRET_KEY,
+    OBJECT_STORAGE_BUCKET: source.OBJECT_STORAGE_BUCKET,
+    OBJECT_STORAGE_REGION: source.OBJECT_STORAGE_REGION,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

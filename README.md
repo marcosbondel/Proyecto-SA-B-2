@@ -31,9 +31,28 @@ The system models the core flows of a banking platform:
 - Notifications, audit events, and distributed observability foundations.
 
 The monorepo and its development base exist: seven applications and three
-shared packages that install, build, lint and test from a clean checkout. What
-they contain is scaffolding — health checks, environment validation and the
-shared message envelope. No banking rule is implemented yet.
+shared packages that install, build, lint and test from a clean checkout.
+
+**The API Gateway is implemented** (T-15): eleven HTTP routes, JWT
+authentication, role authorization, asynchronous request/reply with a
+five-second ceiling, a seven-code error contract, and a versioned OpenAPI
+contract in `apps/gateway/openapi/`. It holds no business logic, no database
+and no HTTP client towards any internal service — and a test suite asserts all
+three rather than asking to be believed.
+
+**`apps/web` is the frontend**: layout, role-filtered navigation, session, a
+single API client and four shared components, carrying two working modules —
+**Clientes** (T-16, with public registration at `/registro`) and **Cuentas**
+(T-17). The remaining modules are titled skeletons for T-18 to T-20.
+
+**Customer Service and Account Service are implemented** (T-16, T-17): their own
+schemas, message handlers, idempotency enforced in the database, and — in
+Account Service — money as `NUMERIC(14,2)` that no float ever touches.
+
+The **other three domain services are still scaffolding** — health checks,
+environment validation, and empty `domain` and `application` layers. Transfers,
+payments and the audit trail therefore time out rather than answering: see
+[Running It Locally](#running-it-locally).
 
 ## Repository Layout
 
@@ -54,8 +73,9 @@ apps/
     ├── contracts/                   # @bank/contracts — message envelope and transport DTOs
     ├── messaging/                   # @bank/messaging — RabbitMQ adapter
     └── tooling/                     # @bank/tooling — shared TS/ESLint/Prettier/Jest config
-infra/docker/                        # local PostgreSQL and RabbitMQ stack (T-06)
-infra/k8s/                           # kind manifests (T-16)
+infra/docker/                        # local stack: PostgreSQL, RabbitMQ, MinIO (T-06)
+                                     #   + docker-compose.dev.yml, the whole app in watch mode
+infra/k8s/                           # kind manifests
 docs/                                # durable project documentation
 specs/                               # Spec Kit artifacts for feature work
 ```
@@ -118,7 +138,10 @@ Run all of them from the **repository root**.
 | `pnpm test` | Unit tests for every application and package |
 | `pnpm test:contract` | The contract tests over `@bank/contracts` |
 | `pnpm format` | Prettier over the repository |
-| `pnpm dev` | Every application in watch mode, in parallel |
+| `pnpm dev` | The whole stack in Docker: infrastructure and all seven applications, in watch mode |
+| `pnpm dev:down` | Stops it |
+| `pnpm dev:logs` | Follows its logs |
+| `pnpm dev:host` | Every application in watch mode on the host, in parallel — infrastructure still has to be up |
 
 Every command has a per-application form:
 
@@ -136,31 +159,6 @@ shared packages are `@bank/contracts`, `@bank/messaging` and `@bank/tooling`.
 are consumed from `dist/`, so a fresh clone needs a `pnpm build` first — or use
 `pnpm --filter gateway... build` (three dots) to build an application together
 with its dependencies.
-
-### Local startup order
-
-1. `pnpm install`
-2. Copy each `.env.example` to `.env` in the same directory and fill in local
-   values. Never commit a `.env`.
-3. Start the local infrastructure — PostgreSQL and RabbitMQ.
-   **Blocked until T-06.** Until then the applications boot in health-check
-   mode with no broker connection, which is enough to develop against.
-4. `pnpm dev`, or `pnpm --filter <app> dev` for a single application.
-
-Every application answers `GET /health` on its own port once running:
-
-```bash
-curl http://localhost:3001/health
-# {"status":"ok","application":"customer-service"}
-```
-
-A missing required variable fails the boot immediately and names it, rather
-than surfacing later as a runtime error:
-
-```text
-Invalid environment for "customer-service". Offending variables: DATABASE_URL
-  - DATABASE_URL: DATABASE_URL should not be empty; DATABASE_URL must be a string
-```
 
 ### Isolation rules
 
@@ -194,4 +192,287 @@ with an open vulnerability does not enter the catalog.
 Spec-driven work uses [Spec Kit](https://github.com/github/spec-kit) under
 `.specify/`. The available workflows are documented in [AGENTS.md](AGENTS.md).
 
-<!-- test: verifying PR authorship attribution via feature branch, safe to remove -->
+## Running It Locally
+
+There are two ways to run this, and they are not equivalent. Pick by what you
+have installed and by what you are about to do.
+
+| | `pnpm dev` | `pnpm dev:host` |
+| --- | --- | --- |
+| Infrastructure | Docker | Docker |
+| The seven applications | Docker, watch mode | your machine, watch mode |
+| You need installed | Docker | Docker, Node 24.19.0, pnpm 11.21.0 |
+| Per-application `.env` | none | one for each |
+| First start | minutes — it installs inside the containers | as fast as your last `pnpm install` |
+| Attaching a debugger, running one application alone | awkward | natural |
+
+Both arrive at the same place. The [ports](#ports), the probes, and what a
+`504` means are identical either way.
+
+### What runs today
+
+The **API Gateway**, the **frontend**, **Customer Service**, **Account Service**
+and **Transaction Service** are implemented. **Payment** and **Notification &
+Audit** are still scaffolding — they boot, validate their environment, answer
+`/health`, and consume nothing.
+
+That asymmetry is visible from the first screen, so it is worth knowing before
+you meet it. Registering a customer, signing in, and everything under
+**Clientes** and **Cuentas** works end to end. A transfer starts its Saga, is
+debited from the source account, and **stops at `PAYMENT_PENDING`** — Payment
+Service is the next link and there is nothing there to answer, so the money has
+left the source account and will not arrive until T-19 exists. The
+**Transferencias** screen shows exactly that rather than a spinner or a
+success. The audit trail still ends in a `504` after five seconds, because the
+Gateway publishes the query and no service answers. All of that is the system
+behaving as designed, not a fault to debug.
+
+### Everything in Docker — `pnpm dev`
+
+```bash
+cp infra/docker/.env.example infra/docker/.env   # then fill in the credentials
+pnpm dev
+```
+
+That is the whole setup. [`infra/docker/docker-compose.dev.yml`](infra/docker/docker-compose.dev.yml)
+brings up the five PostgreSQL instances, RabbitMQ, MinIO and the seven
+applications in watch mode. It `include`s the infrastructure file rather than
+restating it, under the same project name — so it adopts containers that are
+already running instead of starting a second copy of every database.
+
+| Command | |
+| --- | --- |
+| `pnpm dev` | Starts everything and stays attached to the logs |
+| `pnpm dev:down` | Stops it |
+| `pnpm dev:logs` | Follows the logs without holding the terminal that started it |
+
+**No per-application `.env` is needed.** The Compose file supplies every
+variable, and inside its network the hosts are `postgres-account`, `rabbitmq`
+and `minio` on their **native** ports — the remapping in the table below exists
+only for the host. `JWT_SECRET` has a development-only default so that a fresh
+clone boots; override it in `infra/docker/.env`, and never let that value near
+anything deployed.
+
+Saving a file rebuilds the container that owns it: the workspace is
+bind-mounted, not copied, and the watchers poll it because a bind mount does
+not deliver filesystem events reliably. Measured end to end, an edit to a
+service reaches a restarted process in about six seconds.
+
+The containers carry no dependencies of their own. A one-shot `deps` service
+installs the workspace into named volumes and builds `@bank/contracts` and
+`@bank/messaging`; every application waits for it to exit cleanly, which is
+what guarantees the shared packages exist before anything imports them. One
+rule follows from that:
+
+> A change to `pnpm-lock.yaml` needs `pnpm dev:down && pnpm dev`, because
+> `deps` runs once per start. Nothing else does — a change to a shared package
+> is picked up by the `packages` watcher, and a change to application code by
+> that application's own.
+
+Your host `node_modules` are never read or written. They were resolved for your
+operating system and the containers are Linux, so each one is shadowed by a
+volume; `pnpm install` on the host and `pnpm dev` can share a single clone
+without fighting. The first start installs the whole workspace inside the
+containers and takes a few minutes. Later ones reuse the volumes and take
+seconds.
+
+### Applications on the host — `pnpm dev:host`
+
+#### 1. Toolchain and dependencies
+
+```bash
+nvm use            # Node 24.19.0, from .nvmrc
+corepack enable    # pnpm 11.21.0
+pnpm install
+pnpm build         # shared packages first, then the seven applications
+```
+
+`pnpm build` is not optional on a fresh clone. `@bank/contracts` and
+`@bank/messaging` are consumed from `dist/`, so anything that imports them
+fails until they have been built at least once.
+
+#### 2. Local infrastructure
+
+RabbitMQ, MinIO and five PostgreSQL instances, from `infra/docker/`:
+
+```bash
+cd infra/docker
+cp .env.example .env      # then fill in the credentials
+docker compose up -d
+docker compose ps         # wait for every service to read "healthy"
+```
+
+Credentials live in `infra/docker/.env`, which is git-ignored. The Gateway is
+the one application with no `DATABASE_URL` and no way to add one: it owns no
+data (constitution II and V).
+
+#### 3. Environment files
+
+Copy each `.env.example` to `.env` **in the same directory** and fill in local
+values. Never commit a `.env`.
+
+`RABBITMQ_URL`, `DATABASE_URL` and the `OBJECT_STORAGE_*` values must agree with
+`infra/docker/.env` — including the non-default ports, since from the host the
+broker is on 5673 and each database on its own port between 5433 and 5437:
+
+```bash
+# apps/gateway/.env
+PORT=3000
+RABBITMQ_URL=amqp://<app-user>:<app-password>@localhost:5673
+JWT_SECRET=<at least 32 characters>
+OBJECT_STORAGE_ENDPOINT=http://localhost:9002
+OBJECT_STORAGE_BUCKET=customer-identity-documents
+# ...and the rest, see apps/gateway/.env.example
+```
+
+A missing or malformed variable fails the boot immediately and **names the
+variable**, rather than surfacing later as a runtime error:
+
+```text
+Invalid environment for "gateway". Offending variables: JWT_SECRET
+  - JWT_SECRET: JWT_SECRET must be longer than or equal to 32 characters
+```
+
+#### 4. Start the applications
+
+```bash
+pnpm dev:host                 # all seven, in parallel
+```
+
+Or one at a time, the Gateway **first**:
+
+```bash
+pnpm --filter gateway dev     # http://localhost:3000
+pnpm --filter web dev         # http://localhost:3010
+```
+
+The order matters when starting them by hand. The Gateway owns port 3000 and
+Nuxt defaults to 3000 too — start them the other way round and the frontend
+takes the port the Gateway needs, which shows up as a browser that loads but
+cannot reach any API.
+
+> **Running the production build instead of `dev`?** `node .output/server/index.mjs`
+> does **not** read `apps/web/.env`, so the port has to be passed in:
+> `PORT=3010 node .output/server/index.mjs`. Without it Nuxt binds 3000 and
+> takes the Gateway's port.
+
+### Ports
+
+One per application, none of them overlapping. The infrastructure ports are
+deliberately **not** the defaults, so the stack coexists with any other
+RabbitMQ or PostgreSQL already on your machine.
+
+| | Port on the host | Where |
+| --- | --- | --- |
+| `gateway` | `3000` | <http://localhost:3000> |
+| `customer-service` | `3001` | — |
+| `account-service` | `3002` | — |
+| `transaction-service` | `3003` | — |
+| `payment-service` | `3004` | — |
+| `notification-audit-service` | `3005` | — |
+| `web` | `3010` | <http://localhost:3010> |
+| RabbitMQ (AMQP) | `5673` | — |
+| RabbitMQ (management UI) | `15673` | <http://localhost:15673> |
+| PostgreSQL — customer, account, transaction, payment, notification-audit | `5433`–`5437` | one instance each, never shared |
+| MinIO (S3 API) | `9002` | — |
+| MinIO (console) | `9003` | <http://localhost:9003> |
+
+`web` sits at 3010 rather than 3001 on purpose: 3001 belongs to
+`customer-service`.
+
+Under `pnpm dev` these are host-side mappings only. Between containers the
+applications reach each other by service name on the native port —
+`postgres-account:5432`, `rabbitmq:5672`, `minio:9000`.
+
+### Check it came up
+
+```bash
+curl http://localhost:3000/health   # {"status":"ok","application":"gateway"}
+curl http://localhost:3000/ready    # {"status":"ready",...,"broker":"connected"}
+```
+
+Every application answers both on its own port, so `3001` through `3005` are
+worth the same two calls.
+
+The two questions are different. `/health` says the process is alive, and keeps
+answering even with RabbitMQ down — a restart would not fix a broker outage, so
+reporting itself dead would only cause a restart loop. `/ready` answers `503`
+while the broker is unreachable, which is what takes an instance out of
+rotation.
+
+If `/ready` returns `503`, the broker is the thing to look at, not the
+application.
+
+Under `pnpm dev` the same answer is in `docker compose ps`: every application
+carries a `HEALTHCHECK`, so the status column reads `healthy` once it is
+serving. Give it up to three minutes on a cold start — the first compilation
+inside a fresh container is slow.
+
+### What you can actually see
+
+| Page | Needs a session | What it shows |
+| --- | --- | --- |
+| <http://localhost:3010/demo> | no | The four shared components and all five asynchronous states, with no broker |
+| <http://localhost:3010/registro> | no | Public customer registration |
+| <http://localhost:3010/login> | no | Sign-in |
+| <http://localhost:3010/activar> | no | The verdict of an emailed activation link |
+| <http://localhost:3010/clientes> | **yes** | The Clientes module (T-16) |
+| <http://localhost:3010/cuentas> | **yes** | The Cuentas module (T-17) |
+| Everything else | **yes** | Redirects to `/login` |
+
+### Getting a session
+
+There are no seeded credentials — the way in is to register one:
+
+1. Open <http://localhost:3010/registro> and fill the form.
+2. The account is created **inactive**. Activation is triggered by
+   `customer.activation.requested.v1`, which carries the clear token exactly
+   once and is delivered by Notification & Audit — which is not built. So read
+   the token off the wire instead: open <http://localhost:15673>, go to the
+   `audit.all` queue, *Get messages*, and find the event for your email.
+3. Open `http://localhost:3010/activar?token=<the token>`.
+4. Sign in at <http://localhost:3010/login>.
+
+Step 2 disappears when T-20 lands and the mail is actually sent.
+
+### Exercising the Gateway without a frontend
+
+Routes that only publish are observable in RabbitMQ rather than in a screen:
+
+```bash
+curl -i -X POST localhost:3000/api/customers \
+  -F 'fullName=Ana López' -F 'identityDocument=1234567890101' \
+  -F 'email=ana@example.com' -F 'dateOfBirth=1995-04-12' \
+  -F 'address=Zona 1, Guatemala' -F 'role=CLIENTE' \
+  -F 'credential=una-contrasena-larga'
+# 202 {"customerId":"...","correlationId":"..."}
+```
+
+Then open <http://localhost:15673> and look at `customer.commands`: the
+`customer.register.v1` message is there, carrying that same `correlationId`.
+
+Routes that need a token are reachable by minting one against the same
+`JWT_SECRET` — the Gateway is the only signer and the only validator, so
+nothing else has to agree with it.
+
+`specs/007-api-gateway-web-shell/evidence/` records a full pass of this against
+real infrastructure, including what the messages looked like on the wire.
+
+### Stopping
+
+```bash
+pnpm dev:down                              # everything, if you started it with pnpm dev
+```
+
+If the applications were running on the host instead:
+
+```bash
+pkill -f 'dist/main.js'                    # the NestJS applications
+pkill -f 'output/server/index.mjs'         # web, if running the built output
+docker compose -f infra/docker/docker-compose.yml stop
+```
+
+`pnpm dev:down` removes the application containers but keeps the named volumes,
+so the next start does not reinstall the workspace. Databases keep their data
+either way — that lives in the volumes declared by the infrastructure file, and
+only `docker compose down -v` discards it.

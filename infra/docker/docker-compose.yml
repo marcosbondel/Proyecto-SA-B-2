@@ -15,7 +15,7 @@ services:
     networks:
       - bank-usac-local
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${CUSTOMER_POSTGRES_USER} -d $${CUSTOMER_POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -35,7 +35,7 @@ services:
     networks:
       - bank-usac-local
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${ACCOUNT_POSTGRES_USER} -d $${ACCOUNT_POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -55,7 +55,7 @@ services:
     networks:
       - bank-usac-local
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${TRANSACTION_POSTGRES_USER} -d $${TRANSACTION_POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -75,7 +75,7 @@ services:
     networks:
       - bank-usac-local
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${PAYMENT_POSTGRES_USER} -d $${PAYMENT_POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -95,7 +95,7 @@ services:
     networks:
       - bank-usac-local
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${NOTIFICATION_AUDIT_POSTGRES_USER} -d $${NOTIFICATION_AUDIT_POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10

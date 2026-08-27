@@ -1,0 +1,34 @@
+@startuml CDU004.1-procesar-pago
+title CDU004.1 - Procesar pago
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Transaction Service|
+start
+:Solicitar payment.requested;
+|Payment Service|
+:Validar operación y registrar PENDING;
+if (¿Pago interno?) then (Sí)
+    :Procesar pago interno;
+else (No)
+    :Solicitar pago al proveedor externo;
+endif
+if (¿Procesamiento exitoso?) then (Sí)
+    :Registrar SUCCEEDED;
+    :Publicar payment.succeeded;
+else (No)
+    :Reintentar el procesamiento;
+    if (¿Quedan reintentos?) then (Sí)
+        :Volver a procesar;
+    else (No)
+        :Registrar FAILED con failureReason;
+        :Publicar payment.failed;
+    endif
+endif
+stop
+@enduml
