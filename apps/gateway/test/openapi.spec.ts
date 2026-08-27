@@ -10,6 +10,7 @@ import { AuditController } from '../src/interfaces/audit.controller';
 import { AuthController } from '../src/interfaces/auth.controller';
 import { CustomersController } from '../src/interfaces/customers.controller';
 import { HealthController } from '../src/interfaces/health.controller';
+import { PaymentsController } from '../src/interfaces/payments.controller';
 import { TransfersController } from '../src/interfaces/transfers.controller';
 import { buildOpenApiDocument } from '../src/openapi/document';
 import { ROUTE_MESSAGES } from '../src/openapi/route-messages';
@@ -31,6 +32,7 @@ const CONTROLLERS = [
   CustomersController,
   AccountsController,
   TransfersController,
+  PaymentsController,
   AuditController,
 ];
 
@@ -70,11 +72,13 @@ describe('the versioned API contract', () => {
   });
 
   /**
-   * Eleven paths for fourteen routes: `/api/accounts` carries both the listing
+   * Thirteen paths for sixteen routes: `/api/accounts` carries both the listing
    * and the opening. T-15 fixed nine of them; T-17 added the three the account
-   * screens needed and that nothing was publishing.
+   * screens needed and that nothing was publishing; T-19 added the two that let
+   * anything ask Payment Service a question at all — before them a payment could
+   * be ordered and could answer the Saga, but nobody outside could look one up.
    */
-  it('declares the eleven paths the two tickets fixed', () => {
+  it('declares the thirteen paths the three tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -87,6 +91,10 @@ describe('the versioned API contract', () => {
         '/api/customers',
         '/api/customers/verify-email',
         '/api/customers/{customerId}',
+        // Added by T-19. Read-only: a payment is born from a transfer, never
+        // from a route.
+        '/api/payments',
+        '/api/payments/{paymentId}',
         '/api/transfers',
         '/api/transfers/{transactionId}',
         '/health',
@@ -121,7 +129,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(11);
+      expect(functional).toHaveLength(13);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
