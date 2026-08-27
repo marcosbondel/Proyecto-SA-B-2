@@ -1,0 +1,143 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+
+  // Turborepo is the task runner over the pnpm workspace, not a replacement for
+  // it. pnpm still resolves and links the nine packages from one lockfile;
+  // Turbo only decides the *order* tasks run in, what may run in parallel, and
+  // what can be skipped because nothing it depends on changed.
+  //
+  // The graph comes from the `workspace:*` dependencies already declared in
+  // each package.json — `@bank/contracts` before `@bank/messaging` before the
+  // six NestJS applications — so nothing about the ordering is restated here.
+  // `^build` means "every internal dependency's build first", and that single
+  // rule is what makes `dist/` exist before anything imports it.
+
+  // The interactive terminal: a sidebar listing every task, one scrollable log
+  // pane for the selected one. Turbo 2.10 still defaults to `stream`, which
+  // interleaves nine watchers into a single column and prefixes each line with
+  // its application — readable for a two-second build, useless for the nine
+  // long-lived processes `dev` starts. Nothing is lost by asking for it here:
+  // outside an interactive terminal — a pipe, a container, CI — Turbo falls
+  // back to `stream` on its own, so this is a preference, not a requirement.
+  //
+  // In the TUI: `↑`/`↓` select a task, `/` searches, `u`/`d` scroll the log,
+  // `U`/`D` page it, `t`/`b` jump to top or bottom, `m` lists the rest.
+  "ui": "tui",
+
+  // Files outside any package that invalidate every cached task when they
+  // change. The lockfile changes what is installed; the shared tooling changes
+  // how everything compiles, lints and tests.
+  "globalDependencies": [
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "prettier.config.mjs",
+    "apps/packages/tooling/tsconfig.base.json",
+    "apps/packages/tooling/eslint.base.mjs",
+    "apps/packages/tooling/jest.base.mjs"
+  ],
+
+  // Turbo runs tasks in `strict` environment mode by default: a task only sees
+  // the variables declared for it, so a build cannot silently depend on
+  // something a teammate happens to have exported. Every application still
+  // reads its own `apps/<name>/.env` through `process.loadEnvFile`, which Turbo
+  // never touches — these declarations are for the values passed *through* the
+  // shell, and for the cache key that has to change when one of them does.
+  "globalEnv": ["NODE_ENV", "CI"],
+
+  "globalPassThroughEnv": ["PNPM_CONFIG_STORE_DIR", "npm_config_user_agent"],
+
+  "tasks": {
+    // Compiles a package after everything it imports is compiled. The shared
+    // packages are consumed from `dist/`, so this dependency is the reason a
+    // fresh clone can go straight to `pnpm build` without ordering anything by
+    // hand.
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".output/**", ".nuxt/**"]
+    },
+
+    // ESLint carries the executable isolation rules and runs with type
+    // information, so it needs its dependencies' `dist/` the same way the
+    // compiler does.
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+
+    // The concurrency and idempotency suites in `account-service` and
+    // `transaction-service` skip themselves without a real PostgreSQL, and that
+    // decision is made from `DATABASE_URL` — which means the same code produces
+    // two different results depending on it. Declaring it here puts it in the
+    // cache key, so a run with a database never restores a cached run without
+    // one.
+    "test": {
+      "dependsOn": ["^build"],
+      "env": ["DATABASE_URL"],
+      // Nothing to restore: no `test` script asks Jest for coverage, so the
+      // cached entry is the exit status and the log. `coverage/**` here would
+      // only produce a "no output files found" warning on every run.
+      "outputs": []
+    },
+
+    // Watch mode: one long-lived process per application, all of them at once.
+    //
+    // `persistent` tells Turbo the process never exits, so it neither waits for
+    // it nor lets another task depend on it. `cache: false` because there is no
+    // output to restore. `^build` still applies: the shared packages are
+    // compiled once before the watchers start, otherwise the first application
+    // to boot fails to resolve `@bank/contracts`.
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true,
+      "env": [
+        "PORT",
+        "DATABASE_URL",
+        "RABBITMQ_URL",
+        "JWT_SECRET",
+        "JWT_EXPIRES_IN",
+        "GATEWAY_INSTANCE_ID",
+        "REPLY_TIMEOUT_MS",
+        "OBJECT_STORAGE_*",
+        "DEACTIVATION_*",
+        "INACTIVITY_*",
+        "NUXT_*",
+        "CHOKIDAR_*",
+        "TSC_WATCH*"
+      ]
+    },
+
+    // The two shared packages compile themselves twice otherwise: once as the
+    // `^build` every application's watcher waits for, and once as their own
+    // `tsc --watch`. Both write the same `dist/` and the same `.tsbuildinfo`,
+    // and a reader that catches the overlap sees a half-written declaration
+    // file. Making the watcher wait for the one-shot build of *its own*
+    // package leaves a single writer per directory.
+    "@bank/contracts#dev": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "persistent": true
+    },
+    "@bank/messaging#dev": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "persistent": true
+    },
+
+    // Generators. Their outputs are committed or git-ignored on purpose, so
+    // they are declared but never cached — regenerating is the point.
+    "schema:emit": {
+      "dependsOn": ["build"],
+      "cache": false
+    },
+    "openapi:emit": {
+      "dependsOn": ["build"],
+      "cache": false
+    }
+  }
+}
