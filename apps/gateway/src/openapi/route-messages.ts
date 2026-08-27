@@ -19,6 +19,8 @@ import {
   paymentListQueryV1,
   paymentListRepliedV1,
   paymentStatusQueryV1,
+  notificationListQueryV1,
+  notificationListRepliedV1,
   paymentStatusRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
@@ -82,5 +84,9 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'GET /api/audit': {
     publishes: auditQueryRequestedV1.name,
     awaits: [auditQueryRepliedV1.name],
+  },
+  'GET /api/audit/notifications': {
+    publishes: notificationListQueryV1.name,
+    awaits: [notificationListRepliedV1.name],
   },
 };
