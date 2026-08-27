@@ -11,19 +11,21 @@ frontend at the top level, the five domain services under `apps/services/`, and
 `apps/packages/`. All seven applications install, build, lint and test from a
 clean checkout.
 
-**The API Gateway is implemented** (T-15, extended by T-17): fourteen HTTP
-routes over eleven paths, JWT authentication, role authorization from decision
+**The API Gateway is implemented** (T-15, extended by T-17, T-19 and T-20):
+seventeen HTTP routes over fourteen paths, JWT authentication, role authorization from decision
 D-06, request/reply with a five-second ceiling, a seven-code error contract, the
 identity-document photo deposited in MinIO, and a versioned OpenAPI contract in
 `apps/gateway/openapi/`. **`apps/web` is the shared frontend shell**: layout,
 role-filtered navigation, session, `useGatewayApi` and four shared components.
-Three feature modules are built: **Clientes** (T-16) — public registration at
+Five feature modules are built: **Clientes** (T-16) — public registration at
 `/registro`, the staff form, the update screen and the teller's validation
 queue — **Cuentas** (T-17) — the account list, the opening flow, the
-balance-and-statement detail and the administrator's management screen — and
-**Transferencias** (T-18) — the request form and the live status timeline, plus
-the two `app/components/payment/` components T-19 owns on arrival (TD-034). The
-Auditoría module is still a titled skeleton.
+balance-and-statement detail and the administrator's management screen —
+**Transferencias** (T-18) — the request form and the live status timeline —
+**Pagos** (T-19) — the monitoring list and the single-payment state screen —
+and **Auditoría** (T-20) — the lookup by `correlationId`, the ordered event
+table with its redacted-payload panel, the notifications of the flow, and the
+staff notifications console at `/auditoria/notificaciones`.
 
 The Gateway has no `domain/` layer and never will — it holds no business logic
 (constitution V), and a test asserts it has no database and no HTTP client
@@ -53,13 +55,28 @@ arrives as an event, which is what criterion 8 asks for and what
 `test/isolation.spec.ts` enforces. Its concurrency and constraint tests need a
 real PostgreSQL and skip without `DATABASE_URL`.
 
-The **other two services are still scaffolding**: health checks, boot-time
-environment validation, and empty `domain` and `application` layers. Their
-screens are T-19 and T-20. Until Payment Service exists a transfer stops at
-`PAYMENT_PENDING` with the money already debited — the state machine is correct
-and nobody answers `payment.requested.v1`. What the Clientes screens still
-cannot show is recorded as TD-020, TD-021 and TD-023; the Cuentas screens,
-TD-026 and TD-027; the Transferencias screens, TD-032 to TD-035.
+**Notification & Audit Service is implemented** (T-20): three tables of its own,
+five queues rather than one — `audit.customer`, `audit.account`,
+`audit.transaction`, `audit.payment` for the event families and `audit.query`
+for the two questions it answers — deduplication as the primary key
+`(event_id, consumer)` so a redelivery produces neither a second record nor a
+second notification, the payload **redacted before the insert** so the one
+database that hears every event never stores a document, an address or an
+amount, and a simulated delivery channel that never throws. It is the only
+service that takes **no** validator from the broker: a message it cannot parse
+is recorded `INVALID` rather than parked, because the service whose job is to
+record what arrived cannot be the one that never sees it. It publishes replies
+and nothing else — `ReplyPublisher` has one method, and
+`test/isolation.spec.ts` fails the build if a command or an event is ever put
+on an exchange from here.
+
+**Payment Service is still scaffolding**: health checks, boot-time environment
+validation, and empty `domain` and `application` layers. Until it exists a
+transfer stops at `PAYMENT_PENDING` with the money already debited — the state
+machine is correct and nobody answers `payment.requested.v1`. What the Clientes
+screens still cannot show is recorded as TD-020 and TD-023; the Cuentas screens,
+TD-026 and TD-027; the Transferencias screens, TD-032 to TD-035; the Pagos
+screens, TD-037 and TD-038; the Auditoría screens, TD-039 to TD-043.
 `ARCHITECTURE.md` records the target architecture; Kubernetes deployment is not
 built yet.
 
