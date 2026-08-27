@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(43);
+    expect(catalog).toHaveLength(48);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,12 +77,21 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the eight messages recorded as an extension, and no others', () => {
+  it('adds exactly the thirteen messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
     expect(added.sort()).toEqual([
       'account.balance.replied.v1',
+      // The five added by T-17. Three of them exist because the assignment's
+      // screens need data the catalogue could not carry: a list of accounts,
+      // the movements of one, and the refusal of an opening that until now
+      // produced silence.
+      'account.list.query.v1',
+      'account.list.replied.v1',
+      'account.open.rejected.v1',
+      'account.operations.query.v1',
+      'account.operations.replied.v1',
       'audit.query.replied.v1',
       'audit.query.requested.v1',
       'customer.authenticate.replied.v1',

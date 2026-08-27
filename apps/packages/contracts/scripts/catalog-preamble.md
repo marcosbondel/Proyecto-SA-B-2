@@ -1,8 +1,8 @@
 # Message catalogue
 
-The payload of every message the system can put on the broker. Forty-two contracts: the
+The payload of every message the system can put on the broker. Forty-eight contracts: the
 thirty-five [`../domain/message-catalog.md`](../domain/message-catalog.md) fixed, plus the
-seven recorded there as an extension.
+thirteen recorded there as an extension.
 
 **The executable definition is the code.** Each entry links to its contract in
 [`../../apps/packages/contracts/src/events/`](../../apps/packages/contracts/src/events/), and
@@ -11,7 +11,7 @@ the machine-readable form with `pnpm --filter @bank/contracts schema:emit`.
 
 ## Rules that hold for every message
 
-Stated once here instead of forty-two times below.
+Stated once here instead of forty-eight times below.
 
 **Envelope.** Every payload travels inside the envelope described in
 [`envelope.md`](envelope.md). Field tables below describe the `payload` only.
