@@ -11,10 +11,13 @@ From the **repository root**, never from this directory:
 
 ```bash
 pnpm install
-pnpm build                  # shared packages first
-pnpm --filter web dev
-pnpm --filter web test      # the pure logic; see "Testing" below
+turbo run dev  --filter=web   # http://localhost:3010 — builds what it needs first
+turbo run test --filter=web   # the pure logic; see "Testing" below
 ```
+
+The dev server is pinned to **port 3010** in the `dev` script. It is not Nuxt's
+default: 3000 belongs to the Gateway, and under `pnpm dev:host` both start at
+once.
 
 Copy `.env.example` to `.env`. `NUXT_PUBLIC_API_BASE_URL` is required from T-15
 onward — the shell signs in and calls protected routes, so it needs to know
