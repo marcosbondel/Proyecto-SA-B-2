@@ -11,15 +11,17 @@ frontend at the top level, the five domain services under `apps/services/`, and
 `apps/packages/`. All seven applications install, build, lint and test from a
 clean checkout.
 
-**The API Gateway is implemented** (T-15): eleven HTTP routes, JWT
-authentication, role authorization from decision D-06, request/reply with a
-five-second ceiling, a seven-code error contract, the identity-document photo
-deposited in MinIO, and a versioned OpenAPI contract in
+**The API Gateway is implemented** (T-15, extended by T-17): fourteen HTTP
+routes over eleven paths, JWT authentication, role authorization from decision
+D-06, request/reply with a five-second ceiling, a seven-code error contract, the
+identity-document photo deposited in MinIO, and a versioned OpenAPI contract in
 `apps/gateway/openapi/`. **`apps/web` is the shared frontend shell**: layout,
 role-filtered navigation, session, `useGatewayApi` and four shared components.
-Its first feature module is **Clientes** (T-16, frontend half): public
-registration at `/registro`, the staff form, the update screen and the teller's
-validation queue. The other three modules are titled skeletons.
+Two feature modules are built: **Clientes** (T-16) — public registration at
+`/registro`, the staff form, the update screen and the teller's validation
+queue — and **Cuentas** (T-17) — the account list, the opening flow, the
+balance-and-statement detail and the administrator's management screen. The
+other two modules are titled skeletons.
 
 The Gateway has no `domain/` layer and never will — it holds no business logic
 (constitution V), and a test asserts it has no database and no HTTP client
@@ -28,10 +30,21 @@ towards any internal service.
 **Customer Service is implemented** (T-16): four tables of its own, five message
 handlers, idempotency by unique constraint, scrypt credentials, email activation
 by hashed token, and the simulated identity validation that recomputes the photo
-digest against the object the Gateway uploaded. The **other four services are
-still scaffolding**: health checks, boot-time environment validation, and empty
-`domain` and `application` layers. Their screens are T-17 to T-20, and what the
-Clientes screens still cannot show is recorded as TD-020, TD-021 and TD-023. `ARCHITECTURE.md` records the target architecture;
+digest against the object the Gateway uploaded.
+
+**Account Service is implemented** (T-17): four tables of its own, eight message
+handlers, money as `NUMERIC(14,2)` read back through exact string arithmetic,
+balances protected by `SELECT … FOR UPDATE` plus an optimistic `version` plus a
+`CHECK (balance >= 0)`, idempotency evaluated **before** any balance moves, the
+Saga's debit / credit / compensation, and the automatic deactivation job with an
+injected clock. Its integration suite runs against a real PostgreSQL and is
+skipped without `DATABASE_URL`.
+
+The **other three services are still scaffolding**: health checks, boot-time
+environment validation, and empty `domain` and `application` layers. Their
+screens are T-18 to T-20. What the Clientes screens still cannot show is
+recorded as TD-020, TD-021 and TD-023; what the Cuentas screens cannot, as
+TD-026 and TD-027. `ARCHITECTURE.md` records the target architecture;
 Kubernetes deployment is not built yet.
 
 ## Project Documentation

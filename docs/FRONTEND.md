@@ -14,8 +14,9 @@ Notification & Audit. Shared components consume the tokens and component
 conventions in [DESIGN.md](DESIGN.md), rather than redefining them per service.
 
 The shell arrived with T-15 (layout, role-filtered navigation, session,
-`useGatewayApi`, and the four `Shared*` components) and the first feature module
-with T-16: `app/components/customer/` plus its pages. The remaining four modules
+`useGatewayApi`, and the four `Shared*` components); the first feature module
+with T-16 (`app/components/customer/` plus its pages) and the second with T-17
+(`app/components/account/` plus `app/pages/cuentas/`). The remaining two modules
 are still titled skeletons.
 
 ## Styling
@@ -53,11 +54,22 @@ State follows two rules that exist because of TD-010:
   centrally. No module calls `$fetch` directly, and none touches RabbitMQ or a
   database.
 
-Asynchronous commands answer `202`. `useCustomerOutcome` is the pattern for
+Asynchronous commands answer `202`. **`useCommandOutcome` is the pattern** for
 turning that into an outcome: it starts at `PENDING`, never at `SUCCESS`, and
 polls `GET /api/audit` only when the session may read it (see TD-021). Retries
 reuse the same idempotency key, which is why `SharedIdempotencyKeyField` stays
 mounted for the life of a form.
+
+The only thing a module supplies is *which message names end its command*, as a
+pure function in `app/lib/`. `useCustomerOutcome` and `useAccountOutcome` are
+three-line wrappers over it; T-16 wrote the engine and T-17 extracted it rather
+than copying it a second time.
+
+**A screen a role should not see is filtered in the page**, never by adding a
+fifth entry to `MODULES` — the four are fixed and asserted by a test. The
+decision itself still lives in `app/lib/` so it is testable and so
+`test/navigation-parity.test.mjs` can hold it against the Gateway's own `@Roles`
+decorator; `mayManageAccounts` in `app/lib/account.ts` is the worked example.
 
 ## Verification
 

@@ -1,8 +1,8 @@
 # Message catalogue
 
-The payload of every message the system can put on the broker. Forty-two contracts: the
+The payload of every message the system can put on the broker. Forty-eight contracts: the
 thirty-five [`../domain/message-catalog.md`](../domain/message-catalog.md) fixed, plus the
-seven recorded there as an extension.
+thirteen recorded there as an extension.
 
 **The executable definition is the code.** Each entry links to its contract in
 [`../../apps/packages/contracts/src/events/`](../../apps/packages/contracts/src/events/), and
@@ -11,7 +11,7 @@ the machine-readable form with `pnpm --filter @bank/contracts schema:emit`.
 
 ## Rules that hold for every message
 
-Stated once here instead of forty-three times below.
+Stated once here instead of forty-eight times below.
 
 **Envelope.** Every payload travels inside the envelope described in
 [`envelope.md`](envelope.md). Field tables below describe the `payload` only.
@@ -57,8 +57,13 @@ messages, nothing that reveals whether an account or an email exists.
 | `customer.identity.rejected.v1` | event | customer-service | notification-audit-service |
 | `account.create.v1` | command | gateway | account-service |
 | `account.opened.v1` | event | account-service | notification-audit-service |
+| `account.open.rejected.v1` | event | account-service | notification-audit-service |
 | `account.balance.query.v1` | command | gateway | account-service |
 | `account.balance.replied.v1` | reply | account-service | gateway |
+| `account.list.query.v1` | command | gateway | account-service |
+| `account.list.replied.v1` | reply | account-service | gateway |
+| `account.operations.query.v1` | command | gateway | account-service |
+| `account.operations.replied.v1` | reply | account-service | gateway |
 | `account.set-status.v1` | command | gateway | account-service |
 | `account.deactivated.v1` | event | account-service | notification-audit-service |
 | `account.reactivated.v1` | event | account-service | notification-audit-service |
@@ -144,9 +149,6 @@ messages, nothing that reveals whether an account or an email exists.
 
 **On error.** The consumer retries, then dead-letters. The customer still exists: the audit record is what is missing, and it is recoverable from the dead-letter queue.
 
-
----
-
 ### `customer.register.rejected.v1`
 
 | | |
@@ -163,17 +165,12 @@ messages, nothing that reveals whether an account or an email exists.
 | `reason` | `DOCUMENT_ALREADY_REGISTERED` \| `EMAIL_ALREADY_REGISTERED` \| `INVALID_BIRTH_DATE` | yes |
 | `rejectedAt` | ISO-8601 UTC | yes |
 
-**Preconditions.** A `customer.register.v1` was refused by an invariant. No `Customer` exists,
-and no identity document was stored.
+**Preconditions.** A `customer.register.v1` was refused by an invariant. No `Customer` exists, and no identity document was stored.
 
-**Effects.** Notification & Audit records the refusal, which is how the caller finds out: the
-command was accepted with a `202` long before the invariant was evaluated.
+**Effects.** Notification & Audit records the refusal, which is how the caller finds out: the command was accepted with a `202` long before the invariant was evaluated.
 
-**On error.** The consumer retries, then dead-letters. Nothing was created, so there is nothing
-to compensate.
+**On error.** The consumer retries, then dead-letters. Nothing was created, so there is nothing to compensate.
 
-**Added by T-16.** Before it, a duplicated document produced no message at all, and silence is
-indistinguishable from a message still in flight.
 
 ---
 
@@ -299,11 +296,9 @@ indistinguishable from a message still in flight.
 | `customerId` | UUID v4 | yes |
 | `email` | email | yes |
 | `expiresAt` | ISO-8601 UTC | yes |
-| `activationToken` | string | no — **added by T-16** |
+| `activationToken` | string | no |
 
-**Preconditions.** A customer registered, or signed in for the first time and is still `PENDING_ACTIVATION`.
-
-**Why `activationToken` was added.** The event asked for an email "containing the activation link" and carried nothing to put in the link. It is optional and additive, so the version does not change — the same amendment shape T-15 used for `paymentScenario`. Customer Service stores only the digest; this is the single message where the clear value travels.
+**Preconditions.** A customer signed in for the first time and is still `PENDING_ACTIVATION`.
 
 **Effects.** Notification & Audit sends the email containing the activation link. The email address is the single exception to the "does not cross" list (check M-5): a message cannot be delivered without an address.
 
@@ -555,6 +550,30 @@ indistinguishable from a message still in flight.
 
 **On error.** Retry, then dead-letter.
 
+### `account.open.rejected.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | account-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `account.open.rejected.v1` |
+| **Contract** | [`account.open.rejected.v1.ts`](../../apps/packages/contracts/src/events/account/account.open.rejected.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `accountId` | UUID v4 | yes |
+| `customerId` | UUID v4 | yes |
+| `reason` | `ROLE_NOT_ELIGIBLE` \| `FORBIDDEN_ACCOUNT_ACCESS` | yes |
+| `rejectedAt` | ISO-8601 UTC | yes |
+
+**Preconditions.** An `account.create.v1` was refused before any row was written.
+
+**Effects.** No account exists. Audited, and the caller learns the reason through the audit trail.
+
+**On error.** Retry, then dead-letter. The rejection is a fact; failing to record it does not un-reject the request.
+
 
 ---
 
@@ -612,6 +631,113 @@ indistinguishable from a message still in flight.
 **Preconditions.** An `account.balance.query.v1` was handled.
 
 **Effects.** The Gateway answers the client.
+
+**On error.** On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile.
+
+
+---
+
+## List accounts
+
+### `account.list.query.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | account-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `account.list.query.v1` |
+| **Contract** | [`account.list.query.v1.ts`](../../apps/packages/contracts/src/events/account/account.list.query.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customerId` | UUID v4 | no |
+| `status` | `ACTIVE` \| `INACTIVE` | no |
+| `accountType` | `MONETARIA` \| `AHORRO` | no |
+
+**Preconditions.** Somebody with a session asked which accounts they may see.
+
+**Effects.** Nothing changes. Account Service intersects the filters with what D-06 allows the envelope's identity.
+
+**On error.** On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile.
+
+### `account.list.replied.v1`
+
+| | |
+| --- | --- |
+| **Category** | reply |
+| **Producer** | account-service |
+| **Consumers** | gateway |
+| **Exchange** | `bank.replies` |
+| **Routing key** | `account.list.replied.v1` |
+| **Contract** | [`account.list.replied.v1.ts`](../../apps/packages/contracts/src/events/account/account.list.replied.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `accounts` | array of object | yes |
+
+**Preconditions.** An `account.list.query.v1` was handled.
+
+**Effects.** The Gateway answers the caller. An empty array means "nothing you may see", which is deliberately indistinguishable from "nothing exists".
+
+**On error.** On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile.
+
+
+---
+
+## Read the movements of an account
+
+### `account.operations.query.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | account-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `account.operations.query.v1` |
+| **Contract** | [`account.operations.query.v1.ts`](../../apps/packages/contracts/src/events/account/account.operations.query.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `accountId` | UUID v4 | yes |
+
+**Preconditions.** Somebody asked for the movements of one account.
+
+**Effects.** Nothing changes. Whether this identity may read this account is Account Service's decision.
+
+**On error.** On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile.
+
+### `account.operations.replied.v1`
+
+| | |
+| --- | --- |
+| **Category** | reply |
+| **Producer** | account-service |
+| **Consumers** | gateway |
+| **Exchange** | `bank.replies` |
+| **Routing key** | `account.operations.replied.v1` |
+| **Contract** | [`account.operations.replied.v1.ts`](../../apps/packages/contracts/src/events/account/account.operations.replied.v1.ts) |
+
+**When outcome = `FOUND`**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `outcome` | `FOUND` | yes |
+| `accountId` | UUID v4 | yes |
+| `operations` | array of object | yes |
+
+**When outcome = `NOT_FOUND`**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `outcome` | `NOT_FOUND` | yes |
+| `reason` | `ACCOUNT_NOT_FOUND` | yes |
+
+**Preconditions.** An `account.operations.query.v1` was handled.
+
+**Effects.** The Gateway answers the caller. `balanceAfter` is what the ledger recorded at the time, never recomputed by the reader.
 
 **On error.** On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile.
 
@@ -714,18 +840,6 @@ indistinguishable from a message still in flight.
 | `targetAccount` | UUID v4 | yes |
 | `amount` | object | yes |
 | `paymentScenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` | no |
-
-**Amended by T-15 (2026-08-24), additively.** `paymentScenario` was added as an
-**optional** field, which is why the version stayed at `v1`: a message that
-omits it validates exactly as it did before, so no consumer had to change and
-no binding had to move. Its absence is the normal path.
-
-It exists because the Saga is only interesting when it can be shown failing and
-compensating on demand, and a real external provider cannot be asked to decline
-to order. **The Gateway validates the value against the three names and never
-acts on it** — obeying it is Transaction Service's business, and deciding
-anything from it in the Gateway would be the domain logic constitution V keeps
-out of the entry point.
 
 **Preconditions.** Both accounts exist, the source is `ACTIVE` and has funds. Only the first two are checkable here; the rest belongs to Account Service.
 
@@ -1145,7 +1259,7 @@ out of the entry point.
 | `transactionId` | UUID v4 | yes |
 | `status` | `PENDING` \| `DEBITING` \| `PAYMENT_PENDING` \| `COMPLETED` \| `FAILED` \| `COMPENSATED` | yes |
 | `amount` | object | yes |
-| `reason` | `DOCUMENT_ALREADY_REGISTERED` \| `EMAIL_ALREADY_REGISTERED` \| `INVALID_BIRTH_DATE` \| `ROLE_NOT_ELIGIBLE` \| `ACTIVATION_TOKEN_INVALID` \| `ACTIVATION_TOKEN_EXPIRED` \| `INVALID_CREDENTIALS` \| `IDENTITY_DOCUMENT_UNREADABLE` \| `IDENTITY_OBJECT_NOT_FOUND` \| `IDENTITY_DIGEST_MISMATCH` \| `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT_PRECISION` \| `INVALID_AMOUNT` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `ILLEGAL_TRANSITION` \| `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
+| `reason` | `DOCUMENT_ALREADY_REGISTERED` \| `EMAIL_ALREADY_REGISTERED` \| `INVALID_BIRTH_DATE` \| `ROLE_NOT_ELIGIBLE` \| `ACTIVATION_TOKEN_INVALID` \| `ACTIVATION_TOKEN_EXPIRED` \| `INVALID_CREDENTIALS` \| `IDENTITY_DOCUMENT_UNREADABLE` \| `IDENTITY_OBJECT_NOT_FOUND` \| `IDENTITY_DIGEST_MISMATCH` \| `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT_PRECISION` \| `FORBIDDEN_ACCOUNT_ACCESS` \| `INVALID_AMOUNT` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `ILLEGAL_TRANSITION` \| `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
 | `createdAt` | ISO-8601 UTC | yes |
 | `updatedAt` | ISO-8601 UTC | yes |
 
