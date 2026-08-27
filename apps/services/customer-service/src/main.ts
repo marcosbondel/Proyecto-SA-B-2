@@ -35,6 +35,14 @@ import {
 const QUEUE = QUEUES.find((queue) => queue.owner === 'customer-service')!;
 
 /**
+ * How long to wait before trying the database again when it is unreachable.
+ *
+ * Matched to the broker's own reconnect interval, so a stack coming up together
+ * does not produce two unrelated retry rhythms in one log.
+ */
+const ATTACH_RETRY_DELAY_MS = 5_000;
+
+/**
  * Composition: the one place allowed to see every layer at once.
  *
  * Everything above this file is wired through ports, which is what lets the use
@@ -53,12 +61,6 @@ async function bootstrap(): Promise<void> {
   const logger = new StructuredLogger();
 
   const pool = new Pool({ connectionString: environment.DATABASE_URL });
-  const applied = await migrate(pool);
-
-  if (applied.length > 0) {
-    logger.info('schema migrations applied', { outcome: applied.join(', ') });
-  }
-
   const repository = new PostgresCustomerRepository(pool);
   const broker = new MessageBroker({
     url: environment.RABBITMQ_URL,
@@ -105,8 +107,7 @@ async function bootstrap(): Promise<void> {
     ]);
   };
 
-  await broker.start();
-  await broker.subscribe({ queue: QUEUE.name, bindings: QUEUE.bindings }, async (envelope) => {
+  const onDelivery = async (envelope: MessageEnvelope<unknown>): Promise<void> => {
     const startedAt = Date.now();
 
     try {
@@ -132,18 +133,86 @@ async function bootstrap(): Promise<void> {
 
       throw error;
     }
-  });
+  };
+
+  /**
+   * Flipped once the queue is actually being consumed, and reported by
+   * readiness.
+   *
+   * A replica that has reached its database and its broker but has not yet
+   * attached to its queue can take no work. Without this field readiness would
+   * say "ready" during that window — a lie introduced by the very reordering
+   * below that keeps liveness honest.
+   */
+  let consuming = false;
+
+  /**
+   * Migrations, then the queue — in that order, and behind an open port.
+   *
+   * The order between the two is the old one and still matters: a replica that
+   * starts taking commands against a schema that does not exist yet fails every
+   * one of them into the retry ladder, which looks like an outage and is really
+   * a race with its own boot.
+   *
+   * What T-21 changed is that neither happens *before* `listen`. Waiting on a
+   * database or a broker in front of the port means that while either is
+   * briefly unavailable the process never answers `/health`, the Docker
+   * `HEALTHCHECK` reports it unhealthy, and Kubernetes restarts it — a crash
+   * loop caused by a recoverable dependency, which is the one thing a liveness
+   * probe must never cause. Now the port opens first, liveness answers from the
+   * start, and readiness stays degraded until this function finishes.
+   *
+   * Retried rather than fatal: `migrate` throws while PostgreSQL is
+   * unreachable, and dying there would be the same crash loop by another route.
+   * A pod that is `Running` and never `Ready` names the problem; one in
+   * `CrashLoopBackOff` hides it. `broker.start()` needs no retry of its own — it
+   * does not reject while the broker is down, it waits, and the connection
+   * manager reconnects underneath it.
+   *
+   * A *configuration* error is still fatal, and still happens before any of
+   * this: `loadEnvironment()` exits non-zero naming the offending variables,
+   * because no amount of retrying repairs a malformed `DATABASE_URL`.
+   */
+  const attach = async (): Promise<void> => {
+    for (;;) {
+      try {
+        const applied = await migrate(pool);
+
+        if (applied.length > 0) {
+          logger.info('schema migrations applied', { outcome: applied.join(', ') });
+        }
+
+        await broker.start();
+        await broker.subscribe({ queue: QUEUE.name, bindings: QUEUE.bindings }, onDelivery);
+        consuming = true;
+
+        logger.info('consuming', { outcome: QUEUE.name });
+
+        return;
+      } catch (error) {
+        logger.error('dependencies unavailable; staying alive and unready', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, ATTACH_RETRY_DELAY_MS));
+      }
+    }
+  };
 
   const application = await NestFactory.create(
     AppModule.withDependencies({
       isBrokerConnected: () => broker.isConnected(),
       isDatabaseReachable: async () => await repository.isReachable(),
+      isConsuming: () => consuming,
     }),
   );
 
   await application.listen(environment.PORT);
 
   logger.info('customer-service listening', { outcome: `port ${String(environment.PORT)}` });
+
+  /** Not awaited: the port is already open and this is what fills it in. */
+  void attach();
 
   const shutdown = async (): Promise<void> => {
     await application.close();

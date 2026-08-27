@@ -18,6 +18,7 @@ const controllerWith = async (dependencies: DependencyHealthPort): Promise<Healt
 const healthy: DependencyHealthPort = {
   isBrokerConnected: () => true,
   isDatabaseReachable: async () => true,
+  isConsuming: () => true,
 };
 
 describe('notification-audit-service liveness', () => {
@@ -31,6 +32,7 @@ describe('notification-audit-service liveness', () => {
     const controller = await controllerWith({
       isBrokerConnected: () => false,
       isDatabaseReachable: async () => false,
+      isConsuming: () => false,
     });
 
     expect(controller.check()).toEqual({
@@ -49,6 +51,7 @@ describe('notification-audit-service readiness', () => {
       application: 'notification-audit-service',
       broker: 'connected',
       database: 'reachable',
+      queues: 'consuming',
     });
   });
 
@@ -60,6 +63,13 @@ describe('notification-audit-service readiness', () => {
   it.each([
     ['the broker is gone', { ...healthy, isBrokerConnected: () => false }],
     ['the database is gone', { ...healthy, isDatabaseReachable: async () => false }],
+    /**
+     * The window `main.ts` opens by listening before it subscribes: every
+     * dependency answers and the queues are not attached yet, so the replica can
+     * take no work. Reporting "ready" here would be a lie introduced by the very
+     * ordering that keeps liveness honest.
+     */
+    ['the queues are not attached yet', { ...healthy, isConsuming: () => false }],
   ])('refuses traffic when %s', async (_label, dependencies) => {
     const controller = await controllerWith(dependencies);
 
@@ -70,7 +80,12 @@ describe('notification-audit-service readiness', () => {
     const controller = await controllerWith({ ...healthy, isDatabaseReachable: async () => false });
 
     await expect(controller.ready()).rejects.toMatchObject({
-      response: { status: 'degraded', broker: 'connected', database: 'unreachable' },
+      response: {
+        status: 'degraded',
+        broker: 'connected',
+        database: 'unreachable',
+        queues: 'consuming',
+      },
     });
   });
 });
