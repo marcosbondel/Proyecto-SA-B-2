@@ -1,3 +1,4 @@
+import { paymentRequestedV1 } from '../../src/events/payment/payment.requested.v1';
 import { transferRequestedV1 } from '../../src/events/transaction/transfer.requested.v1';
 import { versionOf } from '../../src/schemas/primitives';
 
@@ -80,5 +81,59 @@ describe('transfer.requested.v1 after the paymentScenario amendment', () => {
     expect(transferRequestedV1.producer).toBe('gateway');
     expect(transferRequestedV1.category).toBe('command');
     expect(transferRequestedV1.consumers).toEqual(['transaction-service']);
+  });
+});
+
+/**
+ * T-18 carried the same field its last leg.
+ *
+ * The scenario was reaching Transaction Service and stopping there, one message
+ * short of the only service able to obey it. These assertions are the same ones
+ * the T-15 amendment earned: additive, optional, version unmoved.
+ */
+describe('payment.requested.v1 after the scenario amendment', () => {
+  /** A payment order as it was written before this feature existed. */
+  const asWrittenBefore = {
+    paymentId: '44444444-4444-4444-8444-444444444444',
+    transactionId: '3f2a1c04-9c2e-4a71-b8f5-2d6e7c0a1b93',
+    amount: { amountMinor: 125_000, currency: 'GTQ' },
+  };
+
+  it('still accepts a message written before the field existed', () => {
+    expect(paymentRequestedV1.schema.safeParse(asWrittenBefore).success).toBe(true);
+  });
+
+  it('leaves the field absent rather than inventing a default', () => {
+    expect(paymentRequestedV1.schema.parse(asWrittenBefore)).not.toHaveProperty('scenario');
+  });
+
+  it('does not move the version, so no binding and no consumer had to change', () => {
+    expect(paymentRequestedV1.name).toBe('payment.requested.v1');
+    expect(versionOf(paymentRequestedV1.name)).toBe(1);
+  });
+
+  it.each(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE'])('carries %s through', (scenario) => {
+    const message = { ...asWrittenBefore, scenario };
+
+    expect(paymentRequestedV1.schema.parse(message).scenario).toBe(scenario);
+  });
+
+  /**
+   * The same three values on both messages, or the field would mean one thing
+   * at the door and another at the till.
+   */
+  it('admits exactly the vocabulary transfer.requested.v1 admits', () => {
+    expect(
+      paymentRequestedV1.schema.safeParse({ ...asWrittenBefore, scenario: 'MAYBE' }).success,
+    ).toBe(false);
+    expect(
+      paymentRequestedV1.schema.safeParse({ ...asWrittenBefore, scenario: null }).success,
+    ).toBe(false);
+  });
+
+  it('is still ordered by transaction-service and handled by payment-service', () => {
+    expect(paymentRequestedV1.producer).toBe('transaction-service');
+    expect(paymentRequestedV1.category).toBe('command');
+    expect(paymentRequestedV1.consumers).toEqual(['payment-service']);
   });
 });
