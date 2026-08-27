@@ -72,7 +72,8 @@ component ownership.
 ## Commands
 
 Run from the **repository root**, never from an application directory. Node
-24.19.0 (`.nvmrc`) and pnpm 11.21.0 (`packageManager`) are enforced.
+24.19.0 (`.nvmrc`) and pnpm 11.21.0 (`packageManager`) are enforced. The task
+runner is **Turborepo** (`turbo.json`); pnpm still owns resolution and linking.
 
 ```bash
 pnpm install        # whole workspace, one lockfile
@@ -80,17 +81,23 @@ pnpm build          # shared packages, then the seven applications
 pnpm lint           # style *and* the executable isolation rules
 pnpm test           # unit tests everywhere
 pnpm test:contract  # contract tests over @bank/contracts
+pnpm typecheck
 pnpm format
 pnpm dev            # whole stack in Docker (infra/docker/docker-compose.dev.yml)
-pnpm dev:host       # applications on the host, infrastructure still in Docker
+pnpm dev:infra      # only the databases, the broker and MinIO, detached
+pnpm dev:host       # turbo run dev — the applications on the host, watch mode
 ```
 
-Per application: `pnpm --filter <name> <command>`. `pnpm build` must precede
-testing a single application in a fresh clone — the shared packages are
-consumed from `dist/`.
+Per application: `turbo run <task> --filter=<name>`, which brings the
+dependencies' builds with it. `pnpm --filter <name> <command>` still works but
+builds nothing, so it needs a `pnpm build` first in a fresh clone — the shared
+packages are consumed from `dist/`.
 
-Two things worth knowing before you claim anything passed:
+Three things worth knowing before you claim anything passed:
 
+- **A green run may not have run.** Turbo reports `FULL TURBO` when every task
+  hit the cache. That is a real pass — the inputs are identical — but if you
+  need to see the command actually execute, use `turbo run <task> --force`.
 - **Lint enforces architecture.** A cross-service import, a framework import in
   `domain`, or an `infrastructure` import in `application` fails `pnpm lint`.
   The rules live in `apps/packages/tooling/eslint.base.mjs`. If one blocks you,

@@ -92,28 +92,46 @@ Consult these documents before making decisions or describing the repository:
 ## Commands
 
 Run from the **repository root**, not from an application directory. The
-repository is a pnpm workspace: Node 24.19.0 (`.nvmrc`) and pnpm 11.21.0
-(`packageManager`) are enforced, and `engines.node` refuses anything older.
+repository is a pnpm workspace driven by **Turborepo**: Node 24.19.0 (`.nvmrc`)
+and pnpm 11.21.0 (`packageManager`) are enforced, and `engines.node` refuses
+anything older.
 
 ```bash
 pnpm install        # whole workspace, one lockfile
-pnpm build          # shared packages, then the seven applications
+pnpm build          # turbo: shared packages, then the seven applications
 pnpm lint           # includes the executable isolation rules
 pnpm test           # unit tests for every application and package
 pnpm test:contract  # contract tests over @bank/contracts
+pnpm typecheck      # tsc --noEmit everywhere
 pnpm format         # prettier
 pnpm dev            # the whole stack in Docker, applications included
 pnpm dev:down       # stops it
-pnpm dev:host       # applications on the host instead, infrastructure still in Docker
+pnpm dev:infra      # only the databases, the broker and MinIO, detached
+pnpm dev:host       # turbo: the seven applications on the host, in watch mode
 ```
 
-Per application: `pnpm --filter <name> <command>`, where `<name>` is `gateway`,
-`web`, `customer-service`, `account-service`, `transaction-service`,
-`payment-service` or `notification-audit-service`.
+pnpm resolves and links the packages; **turbo decides the order**. The graph is
+read from the `workspace:*` dependencies already declared in each package.json,
+so `@bank/contracts` compiles before `@bank/messaging` compiles before anything
+that imports them — no script restates that order.
 
-`pnpm build` must run before testing a single application in a fresh clone: the
-shared packages are consumed from `dist/`. `pnpm --filter <app>... build` (three
-dots) builds an application together with its dependencies.
+Per application: `pnpm --filter <name> <command>` still works, and
+`turbo run <task> --filter=<name>` is the same thing with the dependency
+builds included. `<name>` is `gateway`, `web`, `customer-service`,
+`account-service`, `transaction-service`, `payment-service` or
+`notification-audit-service`.
+
+Two consequences worth knowing:
+
+- **`^build` replaced the ordering discipline.** `pnpm --filter <app> test` in a
+  fresh clone still fails — pnpm alone does not build `dist/` first — but
+  `turbo run test --filter=<app>` does not, because the shared packages are a
+  declared dependency of the task.
+- **Cached tasks do not re-run.** A second `pnpm build` with nothing changed
+  reports `FULL TURBO` and finishes in milliseconds. That is a cache hit, not a
+  skipped build. `turbo run build --force` bypasses it when you need to see the
+  compiler actually work. The cache lives in `.turbo/`, is git-ignored, and is
+  local only — no remote cache is configured.
 
 `apps/web` has **no component-level test framework**; that needs a Nuxt-native
 runner and is recorded as TD-010. Do not claim component coverage.
