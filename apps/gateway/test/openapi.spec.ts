@@ -69,11 +69,19 @@ describe('the versioned API contract', () => {
     );
   });
 
-  it('declares the eleven routes the ticket fixed', () => {
+  /**
+   * Eleven paths for fourteen routes: `/api/accounts` carries both the listing
+   * and the opening. T-15 fixed nine of them; T-17 added the three the account
+   * screens needed and that nothing was publishing.
+   */
+  it('declares the eleven paths the two tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
         '/api/accounts/{accountId}/balance',
+        // Added by T-17.
+        '/api/accounts/{accountId}/operations',
+        '/api/accounts/{accountId}/status',
         '/api/audit',
         '/api/auth/login',
         '/api/customers',
@@ -113,7 +121,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(9);
+      expect(functional).toHaveLength(11);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

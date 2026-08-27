@@ -1,11 +1,12 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from '@nestjs/common';
 
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CommandsUseCase } from '../application/routes/commands.use-case';
 import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { GatewayError } from '../application/errors/gateway-error';
-import { OpenAccountDto } from './dto/account.dto';
+import { ListAccountsQueryDto, OpenAccountDto, SetAccountStatusDto } from './dto/account.dto';
+import { Roles } from './guards/route-access.decorator';
 import type { GatewayRequest } from './http-request';
 import { actorOf } from './actor';
 import { validated } from './validation';
@@ -72,6 +73,89 @@ export class AccountsController {
     return await this.#queries.balanceOf(accountId, {
       actor: actorOf(request),
       correlationId: request.correlationId,
+    });
+  }
+
+  /**
+   * The accounts this caller may see.
+   *
+   * The filters are passed through untouched. Narrowing them by role here
+   * would be the gateway deciding who owns what, and it has no table with
+   * which to decide it — Account Service intersects them with D-06 and
+   * answers with what survives.
+   */
+  @ApiOperation({
+    summary: 'Lista cuentas',
+    description:
+      'Los filtros son una petición, no un permiso: Account Service los cruza con D-06. ' +
+      'Una lista vacía significa lo mismo que "no hay nada que puedas ver".',
+  })
+  @Get()
+  public async list(
+    @Query(validated(ListAccountsQueryDto)) query: ListAccountsQueryDto,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    return await this.#queries.accounts(
+      {
+        ...(query.customerId === undefined ? {} : { customerId: query.customerId }),
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.accountType === undefined ? {} : { accountType: query.accountType }),
+      },
+      { actor: actorOf(request), correlationId: request.correlationId },
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Consulta los movimientos de una cuenta',
+    description: 'Espera la respuesta hasta cinco segundos; el silencio produce 504.',
+  })
+  @Get(':accountId/operations')
+  public async operations(
+    @Param('accountId') accountId: string,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    if (!UUID_V4.test(accountId)) {
+      throw GatewayError.validation('accountId debe ser un UUID v4', 'accountId');
+    }
+
+    return await this.#queries.operationsOf(accountId, {
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+  }
+
+  /**
+   * `202`, like every other command: the account has not changed yet when this
+   * returns, and saying `200 OK` would claim otherwise.
+   *
+   * The one account route decision D-06 restricts by **role** rather than by
+   * scope — "Deactivate or reactivate an account manually: ✘ ✘ ✔".
+   */
+  @ApiOperation({
+    summary: 'Activa o desactiva una cuenta',
+    description:
+      'Solo ADMINISTRADOR (D-06). Devuelve 202: el cambio todavía no ocurrió. ' +
+      'El motivo es obligatorio porque es el único registro de por qué se hizo.',
+  })
+  @Roles('ADMINISTRADOR')
+  @Post(':accountId/status')
+  @HttpCode(202)
+  public async setStatus(
+    @Param('accountId') accountId: string,
+    @Body(validated(SetAccountStatusDto)) body: SetAccountStatusDto,
+    @Req() request: GatewayRequest,
+  ): Promise<{ readonly correlationId: string }> {
+    if (!UUID_V4.test(accountId)) {
+      throw GatewayError.validation('accountId debe ser un UUID v4', 'accountId');
+    }
+
+    return await this.#commands.setAccountStatus({
+      accountId,
+      status: body.status,
+      reason: body.reason,
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+      idempotencyKey: request.idempotencyKey,
     });
   }
 }
