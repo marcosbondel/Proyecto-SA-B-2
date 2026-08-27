@@ -1,16 +1,50 @@
-node_modules/
-.git/
+# What never reaches a build context — and therefore never reaches an image
+# layer, which is the part that matters: a file deleted in a later instruction
+# is still in the layer that added it.
+#
+# Every pattern that must match a nested directory carries `**/`. Without it
+# `node_modules/` matches the repository root and nothing else, which is how the
+# host's macOS-compiled `node_modules` were reaching `COPY apps ./apps` — into a
+# Linux image, on top of an install that had just resolved the right ones.
+
+# Dependencies. Resolved inside the image, for the image's own platform.
+**/node_modules
+
+# Build output. Every Dockerfile compiles from source in its build stage; a
+# `dist/` from the host is at best redundant and at worst a stale artefact
+# nobody rebuilt.
+**/dist
+**/.output
+**/.nuxt
+**/.nitro
+**/.data
+**/build
+
+# Caches and reports. None of them is an input to anything.
+**/.turbo
+**/coverage
+**/*.log
+**/.pnpm-store
+**/tmp
+
+# History. `GIT_COMMIT` arrives as a build argument instead, so no image needs
+# the repository to know which commit it came from.
+.git
+.github
+
+# Credentials. `.env` files hold real values on a developer's machine, and the
+# acceptance criterion is that no image layer contains a secret.
+**/.env
+**/.env.*
+
+# Docker's own files: an image does not need the instructions that built it.
 Dockerfile*
+**/Dockerfile*
 .dockerignore
-*.log*
-.env*
-coverage/
-.nuxt/
-.output/
-.data/
-.nitro/
-dist/
-build/
-.turbo/
+infra/docker/
+
+# Editor and OS noise.
 .DS_Store
 Thumbs.db
+.vscode
+.idea

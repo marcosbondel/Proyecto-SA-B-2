@@ -79,6 +79,8 @@ apps/
     └── tooling/                     # @bank/tooling — shared TS/ESLint/Prettier/Jest config
 infra/docker/                        # local stack: PostgreSQL, RabbitMQ, MinIO (T-06)
                                      #   + docker-compose.dev.yml, the whole app in watch mode
+                                     #   + docker-compose.images.yml, the whole app from
+                                     #     its built images (T-21)
 infra/k8s/                           # placeholder — the chart and the kind
                                      #   cluster belong to T-22, not built yet
 docs/                                # durable project documentation
@@ -150,11 +152,17 @@ Run all of them from the **repository root**.
 | `pnpm dev:infra` | Only the infrastructure in Docker — five databases, the broker, MinIO — detached |
 | `pnpm dev:infra:down` | Stops the infrastructure |
 | `pnpm dev:host` | The seven applications in watch mode on your machine — infrastructure still has to be up |
+| `pnpm images:build` | Builds the seven Docker images, tagged with the commit inside them |
+| `pnpm images:up` | The stack from those images — no source mounted, nothing compiled at start-up |
+| `pnpm images:down` | Stops it, **and the infrastructure it includes** |
+| `pnpm images:logs` | Follows its logs |
+| `pnpm images:smoke` | Every check T-21 asks of an image and of a running container |
+| `pnpm images:flow` | Register a customer, open two accounts, transfer — through the images |
 
 ### The task runner — Turborepo
 
-Everything in that table except `dev`, `dev:down`, `dev:logs`, `dev:infra` and
-`format` is [Turborepo](https://turborepo.com) running a task across the
+Everything in that table except `format` and the `dev:*` and `images:*` entries
+is [Turborepo](https://turborepo.com) running a task across the
 workspace. pnpm still resolves and links the nine packages from one lockfile;
 turbo only decides **what order** the tasks run in, **what runs in parallel**,
 and **what can be skipped** because none of its inputs moved.

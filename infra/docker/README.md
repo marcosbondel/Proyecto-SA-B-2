@@ -42,14 +42,17 @@ RabbitMQ **must not** be 4.2.x: community support for that series ended on
   infrastructure alone, and stays that way: the deployment ticket builds on it,
   and running only the databases and the broker is still a case worth having.
   The applications live in [`docker-compose.dev.yml`](docker-compose.dev.yml),
-  which `include`s this file and adds the seven of them in watch mode.
+  which `include`s this file and adds the seven of them in watch mode, and in
+  [`docker-compose.images.yml`](docker-compose.images.yml), which `include`s it
+  and adds the same seven **from their built images** (T-21).
 
-## Two ways to run it
+## Three ways to run it
 
 | Command | What runs where |
 | --- | --- |
-| `pnpm dev` | Everything in Docker: infrastructure **and** the seven applications |
+| `pnpm dev` | Everything in Docker: infrastructure **and** the seven applications, in watch mode from a bind mount |
 | `pnpm dev:host` | Infrastructure in Docker, applications on the host |
+| `pnpm images:up` | Infrastructure in Docker, applications **from their built images** — no source mounted, nothing compiled at start-up |
 
 `pnpm dev` is `docker-compose.dev.yml`. Its containers hold no application code
 and no dependencies: the workspace arrives as a bind mount, `node_modules` live
@@ -68,6 +71,38 @@ again. And `JWT_SECRET` has a development-only default in the dev file, so the
 gateway boots on a clone that has not set one; override it in `.env` and never
 let that default near a deployment.
 
+## Running the built images
+
+`docker-compose.images.yml` is what makes the deployment artefacts testable
+before there is a cluster to test them in. A bind mount can hide a file missing
+from an image; this cannot.
+
+```bash
+pnpm images:build       # seven images, tagged with the commit
+pnpm images:up          # the stack, from those images
+pnpm images:smoke       # every check T-21 asks for, per image and per container
+pnpm images:flow        # register a customer, open accounts, transfer
+pnpm images:down
+```
+
+Only the Gateway and the frontend publish a port — the Gateway is the system's
+only entry point, so a published 3001-3005 would be five ways around it. Both
+published ports are overridable, because a developer running `pnpm dev:host`
+already holds 3000 and 3010:
+
+```bash
+BANK_GATEWAY_PORT=3100 BANK_WEB_PORT=3110 pnpm images:up
+```
+
+The image inventory, the required variables per component, the tagging scheme
+T-22 references and the base-image bump procedure are in
+[`docs/operations/CONTAINERS.md`](../../docs/operations/CONTAINERS.md).
+
+> **`down` takes the infrastructure with it.** `docker-compose.images.yml`
+> `include`s `docker-compose.yml`, so `pnpm images:down` stops the databases and
+> the broker too. Named volumes survive — no data is lost — but anything running
+> on the host against them stops working until `pnpm dev:infra` brings them back.
+
 ## Quick start
 
 See [`specs/006-local-dev-infra/quickstart.md`](../../specs/006-local-dev-infra/quickstart.md)
@@ -84,7 +119,22 @@ That is the infrastructure alone. To add the applications, run `pnpm dev` from
 the repository root instead — same project name, so it reuses whatever is
 already up rather than starting a second copy of every database.
 
+## The scripts
+
+| Script | What it does |
+| --- | --- |
+| `validate-env.sh` | Refuses to start with a variable `docker-compose.yml` needs missing (T-06) |
+| `init-minio.sh` | Provisions the bucket, the application user and the retention policy (T-06) |
+| `test-broker.sh`, `test-isolation.sh`, `test-persistence.sh`, `test-failures.sh` | The four T-06 infrastructure checks |
+| `images.sh` | The seven components and their Dockerfiles, sourced by the two below so they cannot disagree (T-21) |
+| `build-images.sh` | Builds and tags every image, and optionally loads them into kind (T-21) |
+| `smoke-images.sh` | Labels, ports, user, secrets, size, liveness, readiness, and the degraded cases (T-21) |
+| `flow-images.sh` | The assignment's flow, end to end, through the images (T-21) |
+
 ## Evidence
 
 Executable evidence for T-06 is saved under
 [`specs/006-local-dev-infra/evidence/`](../../specs/006-local-dev-infra/evidence/).
+T-21's evidence is the two scripts themselves: `smoke-images.sh` is the ticket's
+"smoke test por contenedor" and `flow-images.sh` its "registro del flujo completo
+ejecutado en contenedores", both re-runnable rather than pasted.

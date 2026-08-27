@@ -129,10 +129,7 @@ const POLICY: Readonly<
  * taking the raw one keeps this policy independent of what the redaction rule
  * happens to hide this week.
  */
-export function notificationFor(
-  messageType: string,
-  payload: unknown,
-): NotificationIntent | null {
+export function notificationFor(messageType: string, payload: unknown): NotificationIntent | null {
   const rule = POLICY[messageType];
 
   if (rule === undefined) {
@@ -196,6 +193,31 @@ export function simulatedRecipientFor(customerId: string | null): string | null 
   }
 
   return `cliente-${customerId.slice(0, 8)}@simulado.bonking.gt`;
+}
+
+/**
+ * Whom a notification is *about*, when the envelope cannot say.
+ *
+ * The envelope's identity is the right source for anything a signed-in person
+ * caused, and it is `null` for exactly one flow — **public registration**,
+ * which has no session by design. That made the activation notification
+ * undeliverable for the only actor that ever needs it: no recipient, so the
+ * channel reported `FAILED` and the link was never written anywhere. Sign-up
+ * could not be completed by anybody, in any environment (TD-044).
+ *
+ * So for the customer family the subject is read from the payload, where
+ * `customerId` is a declared field of every one of these contracts. It is not a
+ * weakening of anything: the address is still *derived* from the identifier and
+ * never copied from the payload's `email`, so nothing here turns the audit
+ * database into a mailing list — which is the rule `redaction.ts` exists to
+ * keep.
+ */
+export function subjectCustomerIdFrom(messageType: string, payload: unknown): string | null {
+  if (!messageType.startsWith('customer.')) {
+    return null;
+  }
+
+  return readString(payload, 'customerId');
 }
 
 function readString(payload: unknown, field: string): string | null {

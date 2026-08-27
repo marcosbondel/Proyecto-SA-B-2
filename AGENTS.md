@@ -70,15 +70,45 @@ and nothing else — `ReplyPublisher` has one method, and
 `test/isolation.spec.ts` fails the build if a command or an event is ever put
 on an exchange from here.
 
-**Payment Service is still scaffolding**: health checks, boot-time environment
-validation, and empty `domain` and `application` layers. Until it exists a
-transfer stops at `PAYMENT_PENDING` with the money already debited — the state
-machine is correct and nobody answers `payment.requested.v1`. What the Clientes
-screens still cannot show is recorded as TD-020 and TD-023; the Cuentas screens,
+**Payment Service is implemented** (the backend half of T-19, built in T-21):
+two tables of its own, three message handlers over `payment.commands`, the
+provider as a single pure function that decides an attempt with no clock and no
+database in sight, attempts serialised by `SELECT … FOR UPDATE` plus a check
+that the attempt number follows the row — so a redelivered command and the retry
+sweeper cannot both charge — and a retry ladder whose due time is a **column
+rather than a timer**, so a rescheduled pod does not forget a transfer
+mid-payment. It publishes `payment.attempt.failed.v1` for every failed attempt
+including the last, which is what makes the ladder observable while it is being
+climbed, and only the terminal event closes the Saga. It orders nothing from
+anybody: there is no `send` on its publisher and `test/isolation.spec.ts` fails
+the build if one appears.
+
+**The Saga now runs end to end, in all three of its shapes.**
+`pnpm images:flow` executes them against the built images and checks the
+balances before and after each: a transfer that COMPLETES, a refused payment
+that COMPENSATES on the first attempt, and one that climbs the ladder to its end
+and then COMPENSATES. The compensation is asserted as a fact about the money,
+not as a status somebody wrote down.
+
+What the Clientes screens still cannot show is recorded as TD-020 and TD-023; the Cuentas screens,
 TD-026 and TD-027; the Transferencias screens, TD-032 to TD-035; the Pagos
 screens, TD-037 and TD-038; the Auditoría screens, TD-039 to TD-043.
 `ARCHITECTURE.md` records the target architecture; Kubernetes deployment is not
 built yet.
+
+**Every component is containerised** (T-21): seven multi-stage images, one
+Dockerfile each and no generic one, all running as `node` (uid 1000), with
+nothing but `NODE_ENV` baked in and every credential arriving at run time.
+`/health` and `/ready` answer different questions in all seven — the port now
+opens *before* the migrations and the broker, so a database that is briefly away
+no longer turns a liveness probe into a restart loop. `pnpm images:build` tags
+each image with the commit inside it, which is the value T-22 puts in
+`values.yaml`; `pnpm images:smoke` asserts the labels, the port, the user, the
+absence of secrets in any layer, and the degraded cases; `pnpm images:flow` runs
+the assignment's own flow — register, open accounts, transfer — through the
+images end to end. The inventory, the required variables per component and the
+base-image bump procedure are in
+[docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
 ## Project Documentation
 
@@ -102,6 +132,7 @@ Consult these documents before making decisions or describing the repository:
 - [docs/AI_PROJECT_SKILLS.md](docs/AI_PROJECT_SKILLS.md): installed skills and stack-specific skill policy.
 - [docs/design-docs/index.md](docs/design-docs/index.md): durable design records before recording a new decision.
 - [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md): repository operating beliefs before changing agent practice.
+- [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md): **the image inventory** — one row per component with its Dockerfile, port, start command, health checks and required variables, plus the tagging scheme T-22 references. Read it before changing a Dockerfile, adding a variable a container needs, or writing the Helm chart.
 - [docs/references/README.md](docs/references/README.md): how to add or consult external references.
 - [apps/web/README.md](apps/web/README.md): Nuxt starter-level application commands when working inside the web app.
 - [.specify/memory/constitution.md](.specify/memory/constitution.md): mandatory architecture principles before writing a spec or plan.
