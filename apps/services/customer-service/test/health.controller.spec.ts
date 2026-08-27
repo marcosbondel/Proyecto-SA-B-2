@@ -4,8 +4,12 @@ import { Test } from '@nestjs/testing';
 
 import { DEPENDENCY_HEALTH, HealthController } from '../src/interfaces/health.controller';
 
-/** Readiness reports on two dependencies; liveness reports on neither. */
-async function controllerWith(broker: boolean, database: boolean): Promise<HealthController> {
+/** Readiness reports on three signals; liveness reports on none of them. */
+async function controllerWith(
+  broker: boolean,
+  database: boolean,
+  consuming = true,
+): Promise<HealthController> {
   const moduleRef = await Test.createTestingModule({
     controllers: [HealthController],
     providers: [
@@ -14,6 +18,7 @@ async function controllerWith(broker: boolean, database: boolean): Promise<Healt
         useValue: {
           isBrokerConnected: () => broker,
           isDatabaseReachable: () => Promise.resolve(database),
+          isConsuming: () => consuming,
         },
       },
     ],
@@ -39,6 +44,7 @@ describe('customer-service HealthController', () => {
       application: 'customer-service',
       broker: 'connected',
       database: 'reachable',
+      queues: 'consuming',
     });
   });
 
@@ -57,6 +63,20 @@ describe('customer-service HealthController', () => {
 
     await expect(controller.ready()).rejects.toMatchObject({
       response: { status: 'degraded', broker: 'disconnected' },
+    });
+  });
+
+  /**
+   * The window `main.ts` opens by listening before it subscribes: both
+   * dependencies answer and the queue is not attached yet, so the replica can
+   * take no work. Reporting "ready" here would be a lie introduced by the very
+   * ordering that keeps liveness honest.
+   */
+  it('refuses traffic while its queue is not attached yet', async () => {
+    const controller = await controllerWith(true, true, false);
+
+    await expect(controller.ready()).rejects.toMatchObject({
+      response: { status: 'degraded', broker: 'connected', queues: 'starting' },
     });
   });
 });
