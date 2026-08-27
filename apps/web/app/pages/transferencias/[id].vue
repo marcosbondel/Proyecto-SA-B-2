@@ -10,6 +10,7 @@ import {
   shouldKeepPolling,
 } from '../../lib/transaction';
 import type { TransferStatus } from '../../lib/transaction';
+import { mayQueryAudit } from '../../lib/audit';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
 import { formatDate, formatQuetzales } from '../../lib/money';
@@ -61,6 +62,18 @@ const shownCorrelation = computed(
 );
 
 const reason = computed(() => explainReason(transfer.value?.reason ?? null));
+
+/**
+ * Whether to offer the audit trail of this transfer.
+ *
+ * Offered rather than always shown, because `GET /api/audit` is the one route
+ * D-06 restricts by role outright: a `CLIENTE` who followed the button would
+ * get a `403` that reads like the bank refusing to explain their own transfer.
+ * The identifier is on screen for everybody either way (`SharedCorrelationIdBadge`),
+ * which is what makes the restriction a difference in convenience rather than
+ * in what somebody is told. Added by T-20.
+ */
+const mayAudit = computed(() => mayQueryAudit(role.value));
 
 const finished = computed(
   () => transfer.value !== null && isTerminal(transfer.value.status),
@@ -281,6 +294,13 @@ useHead({ title: 'Transferencia · bonking' });
           color="neutral"
           @click="refresh"
         >Actualizar ahora</UButton>
+        <UButton
+          v-if="mayAudit && shownCorrelation"
+          :to="`/auditoria?correlationId=${shownCorrelation}`"
+          variant="outline"
+          color="neutral"
+          data-testid="transfer-audit-link"
+        >Ver auditoría</UButton>
         <UButton to="/cuentas" variant="ghost" color="neutral">Ver mis cuentas</UButton>
       </div>
 
