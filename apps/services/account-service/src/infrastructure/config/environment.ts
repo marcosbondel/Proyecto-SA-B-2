@@ -2,7 +2,16 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { plainToInstance } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsString, Max, Min, validateSync } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
 
 /**
  * Raised when a required environment variable is missing or malformed.
@@ -41,7 +50,38 @@ export class AccountServiceEnvironment {
   @IsString()
   @IsNotEmpty()
   public RABBITMQ_URL!: string;
+
+  /**
+   * The automatic deactivation the assignment requires (§4.1, p. 4), and the
+   * three numbers that define it.
+   *
+   * They are configuration and not constants because the ticket says
+   * "configurable", and because a demonstration cannot wait six months to show
+   * the job working. Every one of them has the assignment's value as its
+   * default, so an unconfigured deployment behaves exactly as specified.
+   */
+  @IsBoolean()
+  public DEACTIVATION_ENABLED!: boolean;
+
+  /** How often the job runs. One day, by default. */
+  @IsInt()
+  @Min(1_000)
+  public DEACTIVATION_INTERVAL_MS!: number;
+
+  /** "Tras 6 meses" — six calendar months, not 180 days. */
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  public INACTIVITY_MONTHS!: number;
+
+  /** "Balance menor a Q50.00" — 5000 centavos, strictly below. */
+  @IsInt()
+  @Min(0)
+  public INACTIVITY_MIN_BALANCE_MINOR!: number;
 }
+
+/** One day. The assignment says the job is executable daily. */
+const ONE_DAY_MS = 24 * 60 * 60 * 1_000;
 
 /**
  * Loads `.env` into `process.env` when the file exists. Uses the Node built-in
@@ -63,6 +103,10 @@ export function loadEnvironment(
     PORT: toInteger(source.PORT),
     DATABASE_URL: source.DATABASE_URL,
     RABBITMQ_URL: source.RABBITMQ_URL,
+    DEACTIVATION_ENABLED: toBoolean(source.DEACTIVATION_ENABLED, true),
+    DEACTIVATION_INTERVAL_MS: toInteger(source.DEACTIVATION_INTERVAL_MS) ?? ONE_DAY_MS,
+    INACTIVITY_MONTHS: toInteger(source.INACTIVITY_MONTHS) ?? 6,
+    INACTIVITY_MIN_BALANCE_MINOR: toInteger(source.INACTIVITY_MIN_BALANCE_MINOR) ?? 5_000,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
@@ -75,6 +119,27 @@ export function loadEnvironment(
   }
 
   return candidate;
+}
+
+/**
+ * Absent is `true`, because the job is part of what the assignment asks for and
+ * a deployment that forgot the variable should still run it. Only an explicit
+ * `false` turns it off, and anything else is a typo the validator will name.
+ */
+function toBoolean(raw: string | undefined, fallback: boolean): boolean | string {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+
+  const normalised = raw.trim().toLowerCase();
+
+  if (normalised === 'true' || normalised === 'false') {
+    return normalised === 'true';
+  }
+
+  // Handed to the validator as-is, so the error names the variable instead of
+  // silently reading a typo as `false`.
+  return raw;
 }
 
 /** `undefined` when absent, `NaN` when present but not an integer. */
