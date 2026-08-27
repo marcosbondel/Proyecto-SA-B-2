@@ -202,10 +202,10 @@ describe('GET /api/customers/verify-email', () => {
 describe('the two activation events, seen from the gateway', () => {
   const names = [customerEmailVerifiedV1.name, customerEmailVerificationRejectedV1.name];
 
-  it.each(names)('is still routed to audit.all: %s', (name) => {
+  it.each(names)('is still routed to audit.customer: %s', (name) => {
     const contract = catalog.find((entry) => entry.name === name)!;
 
-    expect(queuesFor(contract)).toContain('audit.all');
+    expect(queuesFor(contract)).toContain('audit.customer');
   });
 
   it.each(names)('still names notification-audit-service as its consumer: %s', (name) => {
