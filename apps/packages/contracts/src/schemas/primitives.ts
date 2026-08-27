@@ -110,6 +110,26 @@ export const identityStatus = z.enum(['PENDING', 'VALIDATED', 'REJECTED']);
 export const accountStatus = z.enum(['ACTIVE', 'INACTIVE']);
 
 /**
+ * `AccountOperation.type` — the three ways a balance moves.
+ *
+ * COMPENSATION is not a CREDIT with a different label. A credit is money
+ * arriving; a compensation is money that never should have left coming back,
+ * and a statement that showed them alike would make a failed transfer read as
+ * an incoming payment.
+ */
+export const accountOperationType = z.enum(['DEBIT', 'CREDIT', 'COMPENSATION']);
+
+/**
+ * `AccountOperation.status`.
+ *
+ * APPLIED is terminal for a credit and provisional for a debit: a debit stays
+ * APPLIED until the Saga either completes or asks for it back, at which point
+ * the original debit becomes COMPENSATED and a COMPENSATION row records the
+ * return. Nothing is ever deleted — a ledger that forgets is not a ledger.
+ */
+export const accountOperationStatus = z.enum(['APPLIED', 'COMPENSATED']);
+
+/**
  * `Transaction.status`. FAILED and COMPENSATED are not interchangeable:
  * FAILED means the money never left, COMPENSATED means it left and came back.
  */
@@ -148,6 +168,17 @@ export const failureCode = z.enum([
   'ACCOUNT_INACTIVE',
   'ACCOUNT_NOT_FOUND',
   'INVALID_AMOUNT_PRECISION',
+  /*
+   * Added by T-17. `../domain/actors.md` names this refusal — "may not operate
+   * on an account that is not theirs ... the expected result is
+   * FORBIDDEN_ACCOUNT_ACCESS, a named rejection, never a silent no-op" — but
+   * T-05 closed the enum without it, so nothing could say it.
+   *
+   * The addition is safe in the way TD-024's was not: no existing contract
+   * narrows to this code with `extract()`, so no message T-05 closed changes
+   * shape. Only the new `account.open.rejected.v1` admits it.
+   */
+  'FORBIDDEN_ACCOUNT_ACCESS',
   // Transaction
   'INVALID_AMOUNT',
   'SAME_ACCOUNT_TRANSFER',
@@ -164,3 +195,6 @@ export type AccountType = z.infer<typeof accountType>;
 export type Producer = z.infer<typeof producer>;
 export type TransactionStatus = z.infer<typeof transactionStatus>;
 export type FailureCode = z.infer<typeof failureCode>;
+export type AccountStatus = z.infer<typeof accountStatus>;
+export type AccountOperationType = z.infer<typeof accountOperationType>;
+export type AccountOperationStatus = z.infer<typeof accountOperationStatus>;
