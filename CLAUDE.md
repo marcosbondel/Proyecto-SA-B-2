@@ -18,21 +18,32 @@ conflicts with either, the repository wins.
 A pnpm workspace with all code under `apps/`: Gateway and the Nuxt frontend at
 the top level, the five domain services under `apps/services/`, and
 `@bank/contracts`, `@bank/messaging`, `@bank/tooling` under `apps/packages/`.
-Seven applications, all of them building, linting and testing. The contents are
-the API Gateway (T-15) and the frontend shell it feeds. The Gateway carries
-eleven routes, JWT authentication, D-06 role authorization, request/reply with a
-five-second ceiling, seven error codes and a versioned OpenAPI contract; it has
-no `domain/` layer and never will. `apps/web` carries the layout, the
-role-filtered navigation, the session, four shared components and the **Clientes
-module** (T-16, frontend half) in `app/components/customer/` and
-`app/pages/clientes/`, plus public registration at `/registro`.
+Seven applications, all of them building, linting and testing. The Gateway
+carries fourteen routes over eleven paths, JWT authentication, D-06 role
+authorization, request/reply with a five-second ceiling, seven error codes and a
+versioned OpenAPI contract; it has no `domain/` layer and never will. `apps/web`
+carries the layout, the role-filtered navigation, the session, four shared
+components and two feature modules: **Clientes** (T-16) in
+`app/components/customer/` + `app/pages/clientes/` with public registration at
+`/registro`, and **Cuentas** (T-17) in `app/components/account/` +
+`app/pages/cuentas/`.
 
 **Customer Service is implemented** (T-16) — its own PostgreSQL schema, the five
 message handlers, idempotency enforced by a unique constraint, scrypt
 credentials, activation by hashed token, and the simulated identity validation.
-The **other four services remain scaffolding** — health checks, environment
-validation, empty `domain` and `application` layers. Their modules are T-17 to
-T-20; what the Clientes screens still cannot show is TD-020, TD-021 and TD-023. Kubernetes deployment is not built yet.
+
+**Account Service is implemented** (T-17) — its own schema, eight message
+handlers, money as `NUMERIC(14,2)` never touched by a float, balances protected
+by a row lock plus an optimistic version plus a column `CHECK`, idempotency
+evaluated before any balance moves, the Saga's three movements, and the
+automatic deactivation job with an injected clock. Its concurrency and
+idempotency tests need a real PostgreSQL and skip without `DATABASE_URL`.
+
+The **other three services remain scaffolding** — health checks, environment
+validation, empty `domain` and `application` layers. Their modules are T-18 to
+T-20; what the Clientes screens still cannot show is TD-020, TD-021 and TD-023,
+and the Cuentas screens TD-026 and TD-027. Kubernetes deployment is not built
+yet.
 
 ## Project Documentation
 

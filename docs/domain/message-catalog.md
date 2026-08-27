@@ -116,8 +116,8 @@ by this model.
 ## Extension recorded by T-05
 
 The thirty-five messages above are unchanged. T-05 contracted them and, in doing so, needed
-**seven more** that this catalogue does not list, and T-16 an eighth. They are recorded here so the counts above
-stay verifiable rather than quietly wrong.
+**seven more** that this catalogue does not list, T-16 an eighth, and T-17 five more. They are
+recorded here so the counts above stay verifiable rather than quietly wrong.
 
 **`reply` is a third category.** This catalogue knows commands and events. A reply answers one
 asker and nobody else, which is why it is neither: it is not a command, because it expresses no
@@ -135,18 +135,29 @@ answers are two of the seven.
 | reply | `audit.query.replied` | The answer to the above |
 | event | `customer.email.verification.rejected` | FR-020 of T-05 requires distinguishing an expired activation link from an invalid one, and no message here could carry that distinction |
 | event | `customer.register.rejected` | **Added by T-16.** `customer.registered` announced the success and nothing announced the refusal, so a duplicated document or email produced silence — indistinguishable, from the caller's side, from a message still in flight |
+| command | `account.list.query` | **Added by T-17.** The assignment's account screens list a customer's accounts and, for an administrator, all of them. Nothing here could ask for more than one balance at a time |
+| reply | `account.list.replied` | The answer to the above |
+| command | `account.operations.query` | **Added by T-17.** `AccountOperation` is an entity this model already owns, and nothing could read it back |
+| reply | `account.operations.replied` | The answer to the above |
+| event | `account.open.rejected` | **Added by T-17.** The same gap `customer.register.rejected` closed, one aggregate over: `account.opened` announced the success and nothing announced the refusal |
 
 **Why this does not break check M-2.** A reply has exactly one recipient, which looks like an
 orphan by the letter of "every event has at least one consumer". It is not: its single
 recipient is whoever asked, and a reply nobody asked for is never produced. M-2 is a rule about
-**events**, and the four replies are not events.
+**events**, and the six replies are not events.
+
+**One failure code was added with them.** `FORBIDDEN_ACCOUNT_ACCESS` is named in
+[`actors.md`](actors.md) as the expected refusal when somebody operates on an account that is
+not theirs, but T-05 closed the enum without it, so no message could say it.
+`account.open.rejected` is the only contract that admits it; no message T-05 closed changed
+shape.
 
 **Why the seventh is an event and not a reply.** `customer.email.verification.rejected` follows
 the shape this catalogue already uses for `customer.login.rejected` — a refusal recorded for
 audit rather than answered to the caller. Modelling it any other way would have introduced a
 second pattern for the same situation.
 
-The payload of all forty-three lives in [`../events/catalog.md`](../events/catalog.md).
+The payload of all forty-eight lives in [`../events/catalog.md`](../events/catalog.md).
 
 ---
 
