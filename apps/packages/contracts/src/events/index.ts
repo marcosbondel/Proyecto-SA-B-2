@@ -28,7 +28,12 @@ import { accountDebitCompensationRequestedV1 } from './account/account.debit.com
 import { accountDebitRejectedV1 } from './account/account.debit.rejected.v1';
 import { accountDebitRequestedV1 } from './account/account.debit.requested.v1';
 import { accountDebitedV1 } from './account/account.debited.v1';
+import { accountListQueryV1 } from './account/account.list.query.v1';
+import { accountListRepliedV1 } from './account/account.list.replied.v1';
+import { accountOpenRejectedV1 } from './account/account.open.rejected.v1';
 import { accountOpenedV1 } from './account/account.opened.v1';
+import { accountOperationsQueryV1 } from './account/account.operations.query.v1';
+import { accountOperationsRepliedV1 } from './account/account.operations.replied.v1';
 import { accountReactivatedV1 } from './account/account.reactivated.v1';
 import { accountSetStatusV1 } from './account/account.set-status.v1';
 import { transactionCompensatedV1 } from './transaction/transaction.compensated.v1';
@@ -75,7 +80,12 @@ export * from './account/account.debit.compensation.requested.v1';
 export * from './account/account.debit.rejected.v1';
 export * from './account/account.debit.requested.v1';
 export * from './account/account.debited.v1';
+export * from './account/account.list.query.v1';
+export * from './account/account.list.replied.v1';
+export * from './account/account.open.rejected.v1';
 export * from './account/account.opened.v1';
+export * from './account/account.operations.query.v1';
+export * from './account/account.operations.replied.v1';
 export * from './account/account.reactivated.v1';
 export * from './account/account.set-status.v1';
 export * from './transaction/transaction.compensated.v1';
@@ -127,7 +137,12 @@ export const catalog: readonly MessageContract[] = [
   accountDebitRejectedV1,
   accountDebitRequestedV1,
   accountDebitedV1,
+  accountListQueryV1,
+  accountListRepliedV1,
+  accountOpenRejectedV1,
   accountOpenedV1,
+  accountOperationsQueryV1,
+  accountOperationsRepliedV1,
   accountReactivatedV1,
   accountSetStatusV1,
   transactionCompensatedV1,
