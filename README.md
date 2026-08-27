@@ -372,25 +372,88 @@ data (constitution II and V).
 
 #### 3. Environment files
 
-Copy each `.env.example` to `.env` **in the same directory** and fill in local
-values. Never commit a `.env`.
-
-`RABBITMQ_URL`, `DATABASE_URL` and the `OBJECT_STORAGE_*` values must agree with
-`infra/docker/.env` — including the non-default ports, since from the host the
-broker is on 5673 and each database on its own port between 5433 and 5437:
+Every application reads its own `apps/<name>/.env` at boot. The values are not
+new information — they are the credentials already in `infra/docker/.env`,
+addressed from outside the Compose network: `localhost` instead of a container
+name, and the **published** port instead of the native one. So derive them
+rather than typing them. From the repository root:
 
 ```bash
-# apps/gateway/.env
+#!/usr/bin/env bash
+# Writes one .env per application from infra/docker/.env.
+# A file that already exists is never touched.
+set -euo pipefail
+[ -f infra/docker/.env ] || { echo "infra/docker/.env is missing — copy .env.example and fill it first"; exit 1; }
+set -a; . ./infra/docker/.env; set +a
+
+AMQP="amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@localhost:5673"
+S3="OBJECT_STORAGE_ENDPOINT=http://localhost:9002
+OBJECT_STORAGE_ACCESS_KEY=$MINIO_APP_USER
+OBJECT_STORAGE_SECRET_KEY=$MINIO_APP_PASSWORD
+OBJECT_STORAGE_BUCKET=$MINIO_BUCKET
+OBJECT_STORAGE_REGION=${MINIO_REGION:-us-east-1}"
+
+write() { # write <path> — body on stdin
+  if [ -e "$1" ]; then echo "·  $1 — already there, left alone"; cat >/dev/null
+  else cat >"$1"; echo "+  $1"; fi
+}
+
+write apps/gateway/.env <<EOF
+NODE_ENV=development
 PORT=3000
-RABBITMQ_URL=amqp://<app-user>:<app-password>@localhost:5673
-JWT_SECRET=<at least 32 characters>
-OBJECT_STORAGE_ENDPOINT=http://localhost:9002
-OBJECT_STORAGE_BUCKET=customer-identity-documents
-# ...and the rest, see apps/gateway/.env.example
+RABBITMQ_URL=$AMQP
+JWT_SECRET=${JWT_SECRET:-dev-only-secret-not-for-any-deployed-environment}
+JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-3600}
+GATEWAY_INSTANCE_ID=gateway-dev
+REPLY_TIMEOUT_MS=${REPLY_TIMEOUT_MS:-5000}
+$S3
+EOF
+
+# service | port | published PostgreSQL port | prefix in infra/docker/.env
+while read -r svc port pgport prefix; do
+  u="${prefix}_POSTGRES_USER"; p="${prefix}_POSTGRES_PASSWORD"; d="${prefix}_POSTGRES_DB"
+  write "apps/services/$svc/.env" <<EOF
+NODE_ENV=development
+PORT=$port
+DATABASE_URL=postgresql://${!u}:${!p}@localhost:$pgport/${!d}
+RABBITMQ_URL=$AMQP
+$S3
+EOF
+done <<'SERVICES'
+customer-service            3001 5433 CUSTOMER
+account-service             3002 5434 ACCOUNT
+transaction-service         3003 5435 TRANSACTION
+payment-service             3004 5436 PAYMENT
+notification-audit-service  3005 5437 NOTIFICATION_AUDIT
+SERVICES
+
+write apps/web/.env <<EOF
+NUXT_PUBLIC_API_BASE_URL=http://localhost:3000
+EOF
 ```
 
-A missing or malformed variable fails the boot immediately and **names the
-variable**, rather than surfacing later as a runtime error:
+It is safe to re-run: a `.env` that already exists is reported and left alone,
+so it fills gaps without overwriting anything you tuned by hand. It needs
+`bash` — the `${!var}` indirection is not POSIX `sh`.
+
+What it deliberately does not decide for you: `JWT_SECRET` falls back to the
+same development-only value the Compose file uses, which satisfies the
+32-character minimum and must never reach anything deployed. Account Service's
+`DEACTIVATION_*` and `INACTIVITY_*` knobs are left out entirely — they default
+in code to the assignment's own numbers, and are only worth setting when you
+want to watch the deactivation job do something without waiting six months.
+
+The five `OBJECT_STORAGE_*` lines go to every service, not only the two that
+read them today. An unused variable in a `.env` costs nothing; a missing one
+fails the boot.
+
+By hand instead: copy each `.env.example` to `.env` **in the same directory**
+and fill it in against `infra/docker/.env`, remembering the non-default ports —
+from the host the broker is on 5673 and each database on its own port between
+5433 and 5437. Never commit a `.env`.
+
+Either way, a missing or malformed variable fails the boot immediately and
+**names the variable**, rather than surfacing later as a runtime error:
 
 ```text
 Invalid environment for "gateway". Offending variables: JWT_SECRET
