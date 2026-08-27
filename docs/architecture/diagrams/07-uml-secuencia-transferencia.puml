@@ -1,0 +1,260 @@
+@startuml
+' Bank USAC - UML 2 Sequence Diagram - Transferencia bancaria
+' Caso de uso 6 (docs/domain/use-cases.md). Saga por coreografia con compensacion
+' explicita, cuatro servicios, comunicados solo por RabbitMQ. Un solo diagrama:
+' camino feliz, los tres finales (COMPLETED / FAILED / COMPENSATED) y la
+' compensacion con sus dos disparadores. Lenguaje de negocio, sin nombres de
+' tecnologia, protocolo ni framework, solo la accion realizada — misma convencion
+' que 06-uml-secuencia-crear-cuenta.puml. Debe coincidir con el .mmd equivalente.
+
+title UML 2 - Diagrama de Secuencia\nTransferencia bancaria - Saga por coreografia (Bank USAC)
+
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam ArrowColor #555555
+skinparam ArrowThickness 1.2
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 220
+skinparam wrapWidth 220
+skinparam noteBackgroundColor #FFF8DC
+skinparam noteBorderColor #D6B656
+skinparam ParticipantBorderColor #1168BD
+skinparam ParticipantBackgroundColor #EAF2FF
+skinparam ParticipantFontColor #1168BD
+skinparam ActorBorderColor #1168BD
+skinparam ActorBackgroundColor #EAF2FF
+skinparam QueueBorderColor #C11926
+skinparam QueueBackgroundColor #FFF0F0
+skinparam LifeLineBorderColor #1168BD
+skinparam ActivationBorderColor #1168BD
+skinparam ActivationBackgroundColor #C6DBF7
+
+legend right
+    |= Elemento | Notación |
+    | <color:#1168BD>Azul</color> | Actor, Frontend, Gateway, Transaction/Account/Payment Service, Notification & Audit |
+    | <color:#C11926>Rojo</color> | RabbitMQ (broker) |
+    | `->>` | Mensaje asíncrono (comando / evento) |
+    | `-->>` | Respuesta asíncrona / reply |
+    | `->` | Llamada síncrona |
+    | `alt` / `else` | Flujo alternativo (fallo esperado / final distinto) |
+    | `opt` | Compensación — se ejecuta solo si un disparador la activó |
+    | `loop` | Reintentos del pago (cuenta `attempt`) |
+    | Barra sólida sobre la línea de vida | Casilla de activación |
+endlegend
+
+actor "Actor\n(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)" as Actor
+participant "Frontend" as Frontend
+participant "API Gateway" as Gateway
+queue "Message Broker\n(RabbitMQ)" as Broker
+participant "Transaction Service" as Txn
+participant "Account Service" as Account
+participant "Payment Service" as Payment
+participant "Notification & Audit" as Notif
+
+autonumber
+
+Actor -> Frontend : Solicitar transferencia
+activate Frontend
+Frontend -> Gateway : Enviar sourceAccount, targetAccount, amount, idempotencyKey
+activate Gateway
+note over Gateway
+  Genera un identificador
+  de seguimiento (correlationId)
+end note
+Gateway ->> Broker : Publicar comando "transferir" — transfer.requested (correlationId)
+Gateway -->> Frontend : Confirmar recepción — 202 Accepted
+deactivate Gateway
+Frontend -->> Actor : "Solicitud recibida" (NO "transferencia completada")
+deactivate Frontend
+
+' ---- Paso 1 ----
+Broker ->> Txn : Entregar transfer.requested (correlationId)
+activate Txn
+
+alt datos inválidos o idempotencyKey en conflicto (T-1, T-2, T-4)
+    note over Txn
+      Rechazado — no se crea la Transaction
+    end note
+    Txn ->> Broker : Confirmar (ack) — rechazo registrado
+    deactivate Txn
+
+else idempotencyKey repetida, mismo contenido (T-3)
+    note over Txn
+      Devuelve la transacción original
+      Los balances no se mueven
+    end note
+    Txn ->> Broker : Confirmar (ack)
+    deactivate Txn
+
+else datos válidos, idempotencyKey nueva
+    note over Txn
+      Crea la Transaction
+      PENDING -> DEBITING
+    end note
+    Txn ->> Broker : Publicar comando "debitar" — account.debit.requested (correlationId)
+    Txn ->> Broker : Confirmar (ack) — DESPUÉS de guardar
+    deactivate Txn
+
+    ' ---- Paso 2 ----
+    Broker ->> Account : Entregar account.debit.requested (correlationId)
+    activate Account
+
+    alt fondos insuficientes o cuenta origen inactiva (A-1 / A-2) — cierra en FAILED
+        note over Account
+          Rechazado — el débito no se aplica
+        end note
+        Account ->> Broker : Publicar evento "débito rechazado" — account.debit.rejected (ack)
+        deactivate Account
+
+        Broker ->> Txn : Entregar account.debit.rejected (correlationId)
+        activate Txn
+        note over Txn
+          DEBITING -> FAILED
+          Nada que deshacer (invariante T-7)
+        end note
+        Txn ->> Broker : Publicar evento "transacción fallida" — transaction.failed (ack)
+        deactivate Txn
+
+        Broker ->> Notif : Entregar transaction.failed (correlationId)
+        activate Notif
+        note over Notif
+          Registra el cierre y notifica
+          al cliente — FAILED
+        end note
+        deactivate Notif
+
+    else débito aplicado
+        Account ->> Broker : Publicar evento "cuenta debitada" — account.debited (ack)
+        deactivate Account
+
+        ' ---- Paso 3 ----
+        Broker ->> Txn : Entregar account.debited (correlationId)
+        activate Txn
+        note over Txn
+          DEBITING -> PAYMENT_PENDING
+        end note
+        Txn ->> Broker : Publicar comando "procesar pago" — payment.requested (ack)
+        deactivate Txn
+
+        ' ---- Paso 4 ----
+        Broker ->> Payment : Entregar payment.requested (correlationId)
+        activate Payment
+        loop reintentos — cuenta el número de intento (attempt)
+            note over Payment
+              Procesando el pago
+            end note
+        end
+
+        alt reintentos agotados — dispara compensación
+            Payment ->> Broker : Publicar evento "pago fallido" — payment.failed (failureReason, ack)
+            deactivate Payment
+
+            Broker ->> Txn : Entregar payment.failed (correlationId)
+            activate Txn
+            note over Txn
+              Débito ya aplicado -> requiere
+              compensación (invariante T-7)
+            end note
+            deactivate Txn
+
+        else pago exitoso
+            Payment ->> Broker : Publicar evento "pago exitoso" — payment.succeeded (ack)
+            deactivate Payment
+
+            ' ---- Paso 5 ----
+            Broker ->> Txn : Entregar payment.succeeded (correlationId)
+            activate Txn
+            note over Txn
+              Ordena el crédito
+            end note
+            Txn ->> Broker : Publicar comando "acreditar" — account.credit.requested (ack)
+            deactivate Txn
+
+            ' ---- Paso 6 ----
+            Broker ->> Account : Entregar account.credit.requested (correlationId)
+            activate Account
+
+            alt cuenta destino no encontrada — dispara compensación
+                Account ->> Broker : Publicar evento "crédito rechazado" — account.credit.rejected (ack)
+                deactivate Account
+
+                Broker ->> Txn : Entregar account.credit.rejected (correlationId)
+                activate Txn
+                note over Txn
+                  Débito ya aplicado -> requiere
+                  compensación (invariante T-7)
+                end note
+                deactivate Txn
+
+            else destino encontrado
+                note over Account
+                  Acredita el destino,
+                  lo reactiva si estaba INACTIVE (A-3)
+                end note
+                Account ->> Broker : Publicar evento "cuenta acreditada" — account.credited (ack)
+                deactivate Account
+
+                ' ---- Paso 7 ----
+                Broker ->> Txn : Entregar account.credited (correlationId)
+                activate Txn
+                note over Txn
+                  PAYMENT_PENDING -> COMPLETED
+                end note
+                Txn ->> Broker : Publicar evento "transacción completada" — transaction.completed (ack)
+                deactivate Txn
+
+                Broker ->> Notif : Entregar transaction.completed (correlationId)
+                activate Notif
+                note over Notif
+                  Registra el cierre y notifica
+                  al cliente — COMPLETED
+                end note
+                deactivate Notif
+            end
+        end
+
+        opt requiere compensación — disparada por payment.failed o account.credit.rejected
+            activate Txn
+            Txn ->> Broker : Publicar comando "compensar débito" — account.debit.compensation.requested (correlationId)
+            deactivate Txn
+
+            Broker ->> Account : Entregar account.debit.compensation.requested (correlationId)
+            activate Account
+            note over Account
+              Devuelve el monto a
+              la cuenta origen
+            end note
+            Account ->> Broker : Publicar evento "débito compensado" — account.debit.compensated (ack)
+            deactivate Account
+
+            Broker ->> Txn : Entregar account.debit.compensated (correlationId)
+            activate Txn
+            note over Txn
+              PAYMENT_PENDING -> COMPENSATED
+              El dinero salió y volvió
+            end note
+            Txn ->> Broker : Publicar evento "transacción compensada" — transaction.compensated (ack)
+            deactivate Txn
+
+            Broker ->> Notif : Entregar transaction.compensated (correlationId)
+            activate Notif
+            note over Notif
+              Registra el cierre y notifica
+              al cliente — COMPENSATED
+            end note
+            deactivate Notif
+        end
+    end
+end
+
+note over Txn, Account
+  Regla de diseño: Transaction Service NUNCA lee el balance.
+  Ordena el débito/crédito y espera el evento (bounded-contexts.md)
+end note
+
+note over Txn
+  Evento repetido se descarta por eventId (T-5)
+  Transición fuera de orden se descarta como ILLEGAL_TRANSITION (T-6)
+end note
+
+@enduml
