@@ -75,12 +75,12 @@ describe('the gateway reply queue', () => {
    */
   describe('what it does not take away', () => {
     it.each(['customer.email.verified.v1', 'customer.email.verification.rejected.v1'])(
-      'leaves %s still routed to audit.all',
+      'leaves %s still routed to audit.customer',
       (name) => {
         const contract = catalog.find((entry) => entry.name === name);
 
         expect(contract).toBeDefined();
-        expect(queuesFor(contract!)).toContain('audit.all');
+        expect(queuesFor(contract!)).toContain('audit.customer');
       },
     );
 

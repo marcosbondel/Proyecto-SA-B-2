@@ -86,13 +86,59 @@ export const QUEUES: readonly QueueDescriptor[] = [
      */
     bindings: [{ exchange: EXCHANGES.commands, pattern: 'payment.#' }],
   },
+  /**
+   * Audit listens on one queue per family, not on one queue for everything.
+   *
+   * T-06 gave this service a single `audit.all` bound to `#`, and T-20 split
+   * it, because a single queue makes every family share one head of line and
+   * one retry ladder. A malformed `payment.*` event that fails four times holds
+   * up the `customer.*` events queued behind it, and draining or replaying one
+   * family means draining all of them. Four queues cost four bindings and buy
+   * independent failure: the ticket asks for exactly this ("colas propias por
+   * familia, no una cola global compartida").
+   *
+   * Audit is terminal by design — it hears these and nobody waits on it, which
+   * is what lets criterion 4 hold: with this service down the Saga continues,
+   * the durable queues accumulate, and the backlog is processed on return.
+   *
+   * **There is no `audit.gateway`.** The ticket names the Gateway as a
+   * producer, and the catalogue gives it none: every message the Gateway
+   * publishes is a command aimed at one service, and a command is an intention
+   * rather than something that happened. What the audit trail records of a
+   * Gateway request is the event the receiving service published in response.
+   */
   {
-    // Audit is terminal by design: it hears everything and nobody waits on it.
-    name: 'audit.all',
+    name: 'audit.customer',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.events, pattern: 'customer.#' }],
+  },
+  {
+    name: 'audit.account',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.events, pattern: 'account.#' }],
+  },
+  {
+    name: 'audit.transaction',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.events, pattern: 'transaction.#' }],
+  },
+  {
+    name: 'audit.payment',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.events, pattern: 'payment.#' }],
+  },
+  {
+    /*
+     * The questions, kept off the event queues on purpose. A `correlationId`
+     * lookup is a person waiting in front of a screen; putting it behind a
+     * backlog of recorded events would make the one synchronous thing this
+     * service does the slowest.
+     */
+    name: 'audit.query',
     owner: 'notification-audit-service',
     bindings: [
-      { exchange: EXCHANGES.events, pattern: '#' },
       { exchange: EXCHANGES.commands, pattern: 'audit.query.requested.v1' },
+      { exchange: EXCHANGES.commands, pattern: 'notification.list.query.v1' },
     ],
   },
 ];
