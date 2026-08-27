@@ -21,8 +21,40 @@ with T-16 (`app/components/customer/` plus its pages), the second with T-17
 built two components in `app/components/payment/`; T-19 took ownership of them
 on 2026-08-27, reshaped both, and added the rest of the module —
 `PaymentStatusBadge`, `PaymentAttemptTrail`, `PaymentIdentifiersCard`,
-`PaymentMonitorTable`, and `app/pages/pagos/`. TD-034 is closed. Auditoría is
-still a titled skeleton.
+`PaymentMonitorTable`, and `app/pages/pagos/`. TD-034 is closed. The fifth and
+last module arrived with T-20: `app/components/audit/` — `AuditQueryForm`,
+`AuditEventTable`, `AuditEventDetail`, `AuditNotificationList`,
+`AuditNotificationCard` — plus `app/pages/auditoria/index.vue` and
+`app/pages/auditoria/notificaciones.vue`. Every module the shell was built for
+now exists.
+
+### The Auditoría module shows a payload it is not allowed to compute
+
+`AuditEventDetail` is the prototype's `N-03` panel, and the payload it prints is
+**already redacted when it arrives**. That is the load-bearing property of the
+whole module. `audit.query.replied.v1` was defined by T-05 with metadata and no
+payload at all, because Notification & Audit hears every event in the bank and a
+trail of verbatim payloads would reassemble in one screen the data five separate
+databases exist to keep apart. T-20 added the payload back as an optional field
+that the owning service redacts *before the insert* — so the raw value is never
+stored, never travels, and this component has nothing to hide. A drawer that
+received the real payload and hid fields in CSS would be a leak with a
+stylesheet over it. Recorded as TD-039.
+
+### What T-20 did not build from the Claude Design prototype
+
+Módulo 5 draws four screens. `N-02` is a **global** event list with a free-text
+search over every event the bank ever published; `GET /api/audit` takes a
+`correlationId` and answers that flow, and no route lists the trail across
+correlations — `audit_events` is the one table where every service's activity
+sits together, and an unfiltered listing of it is a different security question
+from a lookup by an identifier somebody already holds. So the search became the
+query and the filters moved to narrowing what came back (TD-042). `N-01` is a
+**customer's** inbox with read/unread state; no service holds a per-customer
+notification list, nothing records that anybody read anything, and D-06 grants
+the notifications to `ADMINISTRADOR` alone — so what got built is the staff
+console those three facts allow, in the prototype's card idiom, with the dot
+kept and given the one meaning the data supports (TD-041).
 
 ### The Pagos module is the one restricted module that is not restricted by D-06
 
@@ -77,10 +109,10 @@ access, and meaningful mobile layouts.
 ## Routing And State
 
 Routes follow the Nuxt file convention under `app/pages/`, one directory per
-module. `app/lib/navigation.ts` holds the four modules and the public routes;
+module. `app/lib/navigation.ts` holds the five modules and the public routes;
 `middleware/auth.global.ts` applies them. A module that needs a screen a role
 should not see filters it **in the page**, not by adding an entry to `MODULES` —
-the four are fixed and asserted by a test.
+the five are fixed and asserted by a test.
 
 State follows two rules that exist because of TD-010:
 
@@ -104,7 +136,7 @@ three-line wrappers over it; T-16 wrote the engine and T-17 extracted it rather
 than copying it a second time.
 
 **A screen a role should not see is filtered in the page**, never by adding a
-fifth entry to `MODULES` — the four are fixed and asserted by a test. The
+sixth entry to `MODULES` — the five are fixed and asserted by a test. The
 decision itself still lives in `app/lib/` so it is testable and so
 `test/navigation-parity.test.mjs` can hold it against the Gateway's own `@Roles`
 decorator; `mayManageAccounts` in `app/lib/account.ts` is the worked example.

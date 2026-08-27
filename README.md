@@ -595,13 +595,23 @@ There are no seeded credentials — the way in is to register one:
 1. Open <http://localhost:3010/registro> and fill the form.
 2. The account is created **inactive**. Activation is triggered by
    `customer.activation.requested.v1`, which carries the clear token exactly
-   once and is delivered by Notification & Audit — which is not built. So read
-   the token off the wire instead: open <http://localhost:15673>, go to the
-   `audit.all` queue, *Get messages*, and find the event for your email.
-3. Open `http://localhost:3010/activar?token=<the token>`.
+   once. Notification & Audit consumes it and its delivery channel is
+   *simulated* — no mail is sent — so the link is printed instead:
+
+   ```sh
+   docker compose -f infra/docker/docker-compose.dev.yml \
+     logs notification-audit-service | grep activationLink
+   ```
+
+3. Open `http://localhost:3010<the activationLink>`.
 4. Sign in at <http://localhost:3010/login>.
 
-Step 2 disappears when T-20 lands and the mail is actually sent.
+**The link is printed only outside production** (`NODE_ENV !== 'production'`),
+which is the behaviour of every local mail catcher and is recorded as TD-043.
+The token is never stored: the audit trail redacts it, and `customers` holds
+only its digest. Before T-20 the token was readable in RabbitMQ's management UI
+because nothing consumed the audit queue; now `audit.customer` is drained, so
+this log line is the way in.
 
 ### Exercising the Gateway without a frontend
 
