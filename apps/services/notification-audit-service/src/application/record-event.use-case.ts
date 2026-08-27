@@ -1,4 +1,8 @@
-import { notificationFor, simulatedRecipientFor } from '../domain/notification';
+import {
+  notificationFor,
+  simulatedRecipientFor,
+  subjectCustomerIdFrom,
+} from '../domain/notification';
 import type { RecordOutcome } from '../domain/deduplication';
 import type {
   AuditRepository,
@@ -78,7 +82,16 @@ export class RecordEventUseCase {
         : {
             notificationId: this.#ids.next(),
             intent,
-            recipient: simulatedRecipientFor(input.customerId),
+            /**
+             * The envelope's identity first, and the payload's subject when it
+             * is absent. Public registration is the one flow with no session,
+             * and it is the one that most needs to be told anything — see
+             * `subjectCustomerIdFrom`.
+             */
+            recipient: simulatedRecipientFor(
+              input.customerId ??
+                subjectCustomerIdFrom(input.event.messageType, input.event.payload),
+            ),
           };
 
     const outcome = await this.#repository.record({
