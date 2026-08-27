@@ -8,6 +8,8 @@ import {
   accountOperationsRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
+  notificationListQueryV1,
+  notificationListRepliedV1,
   paymentListQueryV1,
   paymentListRepliedV1,
   paymentStatusQueryV1,
@@ -37,6 +39,14 @@ export interface AccountListFilter {
   readonly customerId?: string;
   readonly status?: 'ACTIVE' | 'INACTIVE';
   readonly accountType?: 'MONETARIA' | 'AHORRO';
+}
+
+/** What a notifications listing may be narrowed by. None of these is a permission. */
+export interface NotificationListFilter {
+  readonly correlationId?: string;
+  readonly status?: 'PENDING' | 'SENT' | 'FAILED';
+  readonly type?: string;
+  readonly limit?: number;
 }
 
 /** What a payment listing may be narrowed by. None of these is a permission. */
@@ -216,6 +226,29 @@ export class QueriesUseCase {
   ): Promise<Record<string, unknown>> {
     const raw = await this.#ask(auditQueryRequestedV1.name, { correlationId }, context);
     const parsed = auditQueryRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * The notifications console: what the bank has told people, newest first.
+   *
+   * Added by T-20 and shaped exactly like `payments` above, for the same reason
+   * and with the same gap: the owning service cannot narrow this by customer,
+   * so the `@Roles('ADMINISTRADOR')` on the controller is what makes the route
+   * safe rather than an intersection computed here. No `NOT_FOUND` branch — an
+   * empty list is the whole answer.
+   */
+  public async notifications(
+    filter: NotificationListFilter,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(notificationListQueryV1.name, filter, context);
+    const parsed = notificationListRepliedV1.schema.safeParse(raw);
 
     if (!parsed.success) {
       throw GatewayError.internal();

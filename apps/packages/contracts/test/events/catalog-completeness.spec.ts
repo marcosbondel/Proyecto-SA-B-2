@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(53);
+    expect(catalog).toHaveLength(55);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the eighteen messages recorded as an extension, and no others', () => {
+  it('adds exactly the twenty messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -99,6 +99,15 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       // Added by T-16: the refusal that had no message, so a duplicated
       // document produced silence rather than a rejection.
       'customer.register.rejected.v1',
+      /*
+       * The two added by T-20. Nothing could ask this service for the
+       * notifications it had sent: `audit.query.requested.v1` answers one
+       * correlation, and the notifications console is the operational list
+       * across all of them. Restricted to `ADMINISTRADOR` at the Gateway
+       * because a notification row carries a simulated recipient.
+       */
+      'notification.list.query.v1',
+      'notification.list.replied.v1',
       /*
        * The five added by T-19. `payment.attempt.failed.v1` exists because the
        * catalogue described a payment as a thing that succeeds or fails once,

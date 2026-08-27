@@ -51,6 +51,8 @@ import { paymentRequestedV1 } from './payment/payment.requested.v1';
 import { paymentStatusQueryV1 } from './payment/payment.status.query.v1';
 import { paymentStatusRepliedV1 } from './payment/payment.status.replied.v1';
 import { paymentSucceededV1 } from './payment/payment.succeeded.v1';
+import { notificationListQueryV1 } from './notification/notification.list.query.v1';
+import { notificationListRepliedV1 } from './notification/notification.list.replied.v1';
 import { auditQueryRepliedV1 } from './audit/audit.query.replied.v1';
 import { auditQueryRequestedV1 } from './audit/audit.query.requested.v1';
 
@@ -109,6 +111,9 @@ export * from './payment/payment.status.query.v1';
 export * from './payment/payment.status.replied.v1';
 export * from './payment/payment.requested.v1';
 export * from './payment/payment.succeeded.v1';
+export * from './notification/notification-view';
+export * from './notification/notification.list.query.v1';
+export * from './notification/notification.list.replied.v1';
 export * from './audit/audit.query.replied.v1';
 export * from './audit/audit.query.requested.v1';
 
@@ -171,6 +176,8 @@ export const catalog: readonly MessageContract[] = [
   paymentStatusQueryV1,
   paymentStatusRepliedV1,
   paymentSucceededV1,
+  notificationListQueryV1,
+  notificationListRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
 ];
