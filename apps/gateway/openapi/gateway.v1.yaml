@@ -305,6 +305,24 @@ paths:
       x-bank-publishes: audit.query.requested.v1
       x-bank-awaits:
         - audit.query.replied.v1
+  /api/audit/notifications:
+    get:
+      description: "Solo ADMINISTRADOR, por D-06. Devuelve el registro operativo de lo que se envió, con
+        destinatario simulado y estado real (PENDING/SENT/FAILED), acotado y con la cuenta de lo
+        omitido. No es la bandeja del cliente: no existe (TD-041)."
+      operationId: AuditController_notifications
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista las notificaciones que el sistema generó
+      tags:
+        - audit
+      x-bank-publishes: notification.list.query.v1
+      x-bank-awaits:
+        - notification.list.replied.v1
 info:
   title: Bank USAC — API Gateway
   description: The only external entry point of the system (constitution V). It validates shape,
