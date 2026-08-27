@@ -960,6 +960,7 @@ messages, nothing that reveals whether an account or an email exists.
 | `paymentId` | UUID v4 | yes |
 | `transactionId` | UUID v4 | yes |
 | `amount` | object | yes |
+| `scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` | no |
 
 **Preconditions.** The debit succeeded and the transaction is in `PAYMENT_PENDING`.
 
@@ -1262,6 +1263,8 @@ messages, nothing that reveals whether an account or an email exists.
 | `reason` | `DOCUMENT_ALREADY_REGISTERED` \| `EMAIL_ALREADY_REGISTERED` \| `INVALID_BIRTH_DATE` \| `ROLE_NOT_ELIGIBLE` \| `ACTIVATION_TOKEN_INVALID` \| `ACTIVATION_TOKEN_EXPIRED` \| `INVALID_CREDENTIALS` \| `IDENTITY_DOCUMENT_UNREADABLE` \| `IDENTITY_OBJECT_NOT_FOUND` \| `IDENTITY_DIGEST_MISMATCH` \| `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT_PRECISION` \| `FORBIDDEN_ACCOUNT_ACCESS` \| `INVALID_AMOUNT` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `ILLEGAL_TRANSITION` \| `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
 | `createdAt` | ISO-8601 UTC | yes |
 | `updatedAt` | ISO-8601 UTC | yes |
+| `originCorrelationId` | UUID v4 | no |
+| `payment` | object | no |
 
 **When outcome = `NOT_FOUND`**
 

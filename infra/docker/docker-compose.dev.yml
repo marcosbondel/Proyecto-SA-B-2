@@ -1,0 +1,358 @@
+# The development stack: the infrastructure, plus every application in watch
+# mode, from one command.
+#
+# `docker-compose.yml` stays infrastructure-only on purpose — that is what T-06
+# specified, and the deployment ticket builds on it unchanged. This file
+# *includes* it and adds the seven applications on top, so the two concerns stay
+# separable: `docker compose -f docker-compose.yml up -d` is still the way to
+# run only the databases and the broker while the applications run on the host.
+#
+#   pnpm dev            # this file, everything
+#   pnpm dev:host       # infrastructure here, applications on the host
+#
+# The project name is repeated from the included file. Compose takes the name
+# from the *including* file, and a different one would start a second copy of
+# every database beside the ones already running.
+name: bonking
+
+include:
+  - docker-compose.yml
+
+# ---------------------------------------------------------------- anchors
+
+# Mounted identically by every application container.
+x-workspace-volumes:
+  &workspace-volumes # The workspace itself, so an edit in the editor reaches the watcher.
+  - ../..:/repo
+
+  # Every `node_modules` is shadowed by a named volume. The host's were
+  # installed for macOS; a Linux container that inherited them would fail on the
+  # first native binary. Shadowing keeps the two installations apart instead of
+  # letting either overwrite the other — `pnpm install` on the host and
+  # `pnpm dev` here can run on the same clone without fighting.
+  - node-modules-root:/repo/node_modules
+  - node-modules-gateway:/repo/apps/gateway/node_modules
+  - node-modules-web:/repo/apps/web/node_modules
+  - node-modules-customer:/repo/apps/services/customer-service/node_modules
+  - node-modules-account:/repo/apps/services/account-service/node_modules
+  - node-modules-transaction:/repo/apps/services/transaction-service/node_modules
+  - node-modules-payment:/repo/apps/services/payment-service/node_modules
+  - node-modules-notification-audit:/repo/apps/services/notification-audit-service/node_modules
+  - node-modules-contracts:/repo/apps/packages/contracts/node_modules
+  - node-modules-messaging:/repo/apps/packages/messaging/node_modules
+  - node-modules-tooling:/repo/apps/packages/tooling/node_modules
+
+  # Nuxt writes absolute paths into `.nuxt`. Shared with the host, whichever ran
+  # last would leave a generated tsconfig pointing into the other one's
+  # filesystem — which surfaces as type errors nobody introduced.
+  - nuxt-build:/repo/apps/web/.nuxt
+
+  # pnpm's content-addressable store, so the second `up` does not re-download
+  # what the first already fetched.
+  #
+  # Mounted outside /repo deliberately, and named explicitly on the install
+  # command. Left to itself pnpm puts the store on the same filesystem as the
+  # workspace it is installing into — which here is the bind mount, so the
+  # container would write into the repository and show up as a dirty tree.
+  - pnpm-store:/pnpm-store
+
+x-node-app: &node-app
+  build:
+    context: ./dev
+  # Named, so the eight services share one build instead of eight identical ones.
+  image: bonking-dev:1
+  working_dir: /repo
+  volumes: *workspace-volumes
+  networks:
+    - bank-usac-local
+  restart: unless-stopped
+
+# Every container, whatever it runs.
+x-pnpm-env: &pnpm-env
+  # pnpm 11 reads its settings from PNPM_CONFIG_*; the npm_config_* spelling is
+  # no longer honoured.
+  #
+  # Without this, pnpm puts its store on the same filesystem as the workspace it
+  # is installing into — which here is the bind mount, so the container writes
+  # into the repository and leaves a dirty tree behind. And it has to hold for
+  # *every* pnpm invocation, not just the install: a `pnpm exec` that computes a
+  # different store path concludes node_modules are stale and reinstalls them
+  # underneath a running watcher.
+  PNPM_CONFIG_STORE_DIR: /pnpm-store
+  # Nobody is at a terminal here. Without this, the one pnpm operation that wants
+  # to purge node_modules stops and waits for a confirmation that can never
+  # arrive.
+  CI: 'true'
+
+# Shared by the six NestJS applications.
+x-node-env: &node-env
+  NODE_ENV: development
+  # `nest start --watch` is `tsc --watch`, and tsc's default watcher does not
+  # see host edits through a bind mount reliably. Polling is what makes an edit
+  # in the editor trigger a rebuild in the container. Comment both out if the
+  # CPU cost matters more than the reload.
+  TSC_WATCHFILE: DynamicPriorityPolling
+  TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
+
+# The broker credentials are the application's, not the administrator's — the
+# same pair `rabbitmq_definitions.json` declares as `bank_app`. Defaults match
+# that file so the stack comes up on a clone that has not set them.
+x-rabbitmq-url: &rabbitmq-url
+  RABBITMQ_URL: amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@rabbitmq:5672
+
+# MinIO, reached over the Compose network rather than the published port.
+x-object-storage: &object-storage
+  OBJECT_STORAGE_ENDPOINT: http://minio:9000
+  OBJECT_STORAGE_ACCESS_KEY: ${MINIO_APP_USER}
+  OBJECT_STORAGE_SECRET_KEY: ${MINIO_APP_PASSWORD}
+  OBJECT_STORAGE_BUCKET: ${MINIO_BUCKET}
+  OBJECT_STORAGE_REGION: ${MINIO_REGION:-us-east-1}
+
+# Liveness for a process that is still compiling on first boot. `start_period`
+# is generous because the first `nest build` in a cold container is slow, and a
+# container marked unhealthy while it compiles teaches everyone to ignore the
+# column.
+x-node-healthcheck: &node-healthcheck
+  interval: 15s
+  timeout: 3s
+  retries: 5
+  start_period: 180s
+
+services:
+  # ------------------------------------------------------------- dependencies
+
+  # Runs once per `up`, and everything else waits for it to exit cleanly.
+  #
+  # Two jobs: fill the `node_modules` volumes, and build the two shared packages.
+  # The second is not optional — `@bank/contracts` and `@bank/messaging` are
+  # consumed from `dist/`, so an application that started first would fail to
+  # resolve them.
+  deps:
+    <<: *node-app
+    container_name: bonking-deps
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        pnpm install --frozen-lockfile
+        pnpm --filter @bank/contracts --filter @bank/messaging build
+    environment:
+      <<: *pnpm-env
+    restart: 'no'
+
+  # Keeps the two shared packages compiled while you edit them. Without it, a
+  # change to a contract would need a full restart to reach the applications
+  # that import it.
+  packages:
+    <<: *node-app
+    container_name: bonking-packages
+    command:
+      ['pnpm', '--filter', '@bank/contracts', '--filter', '@bank/messaging', '--parallel', 'dev']
+    environment:
+      <<: [*pnpm-env, *node-env]
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+
+  # ----------------------------------------------------------------- gateway
+
+  # Started before `web` for the same reason the README gives: both want 3000 if
+  # left to their defaults. Here the ports are explicit, so this is ordering for
+  # the logs rather than a collision — `web` calls the gateway, and seeing the
+  # callee come up first is what makes a failed call readable.
+  gateway:
+    <<: *node-app
+    container_name: gateway
+    command: ['pnpm', '--filter', 'gateway', 'dev']
+    environment:
+      <<: [*pnpm-env, *node-env, *rabbitmq-url, *object-storage]
+      PORT: 3000
+      # A development-only default, long enough to satisfy the 32-character
+      # minimum the gateway validates. Override it in infra/docker/.env; never
+      # let this value reach anything but a laptop.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-not-for-any-deployed-environment}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
+      # Fixed rather than random, so the reply queue survives a restart instead
+      # of leaving an orphan behind on every reload.
+      GATEWAY_INSTANCE_ID: gateway-dev
+      REPLY_TIMEOUT_MS: ${REPLY_TIMEOUT_MS:-5000}
+    ports:
+      - '3000:3000'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-healthcheck
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
+
+  # ---------------------------------------------------------------- services
+
+  # Each service reaches its own database and no other (constitution II). The
+  # host is the container name and the port is 5432, not the published one —
+  # inside the Compose network there is nothing to remap.
+
+  customer-service:
+    <<: *node-app
+    container_name: customer-service
+    command: ['pnpm', '--filter', 'customer-service', 'dev']
+    environment:
+      <<: [*pnpm-env, *node-env, *rabbitmq-url, *object-storage]
+      PORT: 3001
+      DATABASE_URL: postgresql://${CUSTOMER_POSTGRES_USER}:${CUSTOMER_POSTGRES_PASSWORD}@postgres-customer:5432/${CUSTOMER_POSTGRES_DB}
+    ports:
+      - '3001:3001'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres-customer:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-healthcheck
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/health']
+
+  account-service:
+    <<: *node-app
+    container_name: account-service
+    command: ['pnpm', '--filter', 'account-service', 'dev']
+    environment:
+      <<: [*pnpm-env, *node-env, *rabbitmq-url]
+      PORT: 3002
+      DATABASE_URL: postgresql://${ACCOUNT_POSTGRES_USER}:${ACCOUNT_POSTGRES_PASSWORD}@postgres-account:5432/${ACCOUNT_POSTGRES_DB}
+      # The assignment's own numbers are the defaults in code. They are exposed
+      # here because a demonstration cannot wait six months to watch the
+      # deactivation job do something.
+      DEACTIVATION_ENABLED: ${DEACTIVATION_ENABLED:-true}
+      DEACTIVATION_INTERVAL_MS: ${DEACTIVATION_INTERVAL_MS:-86400000}
+      INACTIVITY_MONTHS: ${INACTIVITY_MONTHS:-6}
+      INACTIVITY_MIN_BALANCE_MINOR: ${INACTIVITY_MIN_BALANCE_MINOR:-5000}
+    ports:
+      - '3002:3002'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres-account:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-healthcheck
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/health']
+
+  # The three below are still scaffolding: they boot, validate their
+  # environment, answer /health, and consume nothing. They are here so the
+  # stack matches the deployed topology and so T-18 to T-20 have somewhere to
+  # land — not because they do anything yet.
+
+  transaction-service:
+    <<: *node-app
+    container_name: transaction-service
+    command: ['pnpm', '--filter', 'transaction-service', 'dev']
+    environment:
+      <<: [*pnpm-env, *node-env, *rabbitmq-url]
+      PORT: 3003
+      DATABASE_URL: postgresql://${TRANSACTION_POSTGRES_USER}:${TRANSACTION_POSTGRES_PASSWORD}@postgres-transaction:5432/${TRANSACTION_POSTGRES_DB}
+    ports:
+      - '3003:3003'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres-transaction:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-healthcheck
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3003/health']
+
+  payment-service:
+    <<: *node-app
+    container_name: payment-service
+    command: ['pnpm', '--filter', 'payment-service', 'dev']
+    environment:
+      <<: [*pnpm-env, *node-env, *rabbitmq-url]
+      PORT: 3004
+      DATABASE_URL: postgresql://${PAYMENT_POSTGRES_USER}:${PAYMENT_POSTGRES_PASSWORD}@postgres-payment:5432/${PAYMENT_POSTGRES_DB}
+    ports:
+      - '3004:3004'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres-payment:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-healthcheck
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3004/health']
+
+  notification-audit-service:
+    <<: *node-app
+    container_name: notification-audit-service
+    command: ['pnpm', '--filter', 'notification-audit-service', 'dev']
+    environment:
+      <<: [*pnpm-env, *node-env, *rabbitmq-url]
+      PORT: 3005
+      DATABASE_URL: postgresql://${NOTIFICATION_AUDIT_POSTGRES_USER}:${NOTIFICATION_AUDIT_POSTGRES_PASSWORD}@postgres-notification-audit:5432/${NOTIFICATION_AUDIT_POSTGRES_DB}
+    ports:
+      - '3005:3005'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres-notification-audit:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-healthcheck
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3005/health']
+
+  # --------------------------------------------------------------------- web
+
+  web:
+    <<: *node-app
+    container_name: web
+    # `nuxt` is invoked directly rather than through the `dev` script, because
+    # the host and port have to be given here: Nuxt binds localhost by default,
+    # which inside a container means nothing outside it can connect.
+    command:
+      ['pnpm', '--filter', 'web', 'exec', 'nuxt', 'dev', '--host', '0.0.0.0', '--port', '3010']
+    environment:
+      <<: *pnpm-env
+      NODE_ENV: development
+      # The *browser* resolves this, and the browser is on the host — so it is
+      # localhost:3000 and not gateway:3000, even though the container could
+      # reach the latter. Nothing secret may ever go under this key: it is
+      # public runtime config and ships to the client.
+      NUXT_PUBLIC_API_BASE_URL: ${NUXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
+      # Vite's watcher, same bind-mount problem as tsc's.
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '1000'
+    ports:
+      - '3010:3010'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+
+volumes:
+  node-modules-root:
+  node-modules-gateway:
+  node-modules-web:
+  node-modules-customer:
+  node-modules-account:
+  node-modules-transaction:
+  node-modules-payment:
+  node-modules-notification-audit:
+  node-modules-contracts:
+  node-modules-messaging:
+  node-modules-tooling:
+  nuxt-build:
+  pnpm-store:
