@@ -33,25 +33,29 @@ The system models the core flows of a banking platform:
 The monorepo and its development base exist: seven applications and three
 shared packages that install, build, lint and test from a clean checkout.
 
-**The API Gateway is implemented** (T-15): eleven HTTP routes, JWT
-authentication, role authorization, asynchronous request/reply with a
-five-second ceiling, a seven-code error contract, and a versioned OpenAPI
-contract in `apps/gateway/openapi/`. It holds no business logic, no database
-and no HTTP client towards any internal service — and a test suite asserts all
-three rather than asking to be believed.
+**The API Gateway is implemented** (T-15): twelve HTTP routes over eleven
+paths, plus the `/health` and `/ready` probes; JWT authentication, role
+authorization, asynchronous request/reply with a five-second ceiling, a
+seven-code error contract, and a versioned OpenAPI contract in
+`apps/gateway/openapi/`. It holds no business logic, no database and no HTTP
+client towards any internal service — and a test suite asserts all three rather
+than asking to be believed.
 
 **`apps/web` is the frontend**: layout, role-filtered navigation, session, a
-single API client and four shared components, carrying two working modules —
-**Clientes** (T-16, with public registration at `/registro`) and **Cuentas**
-(T-17). The remaining modules are titled skeletons for T-18 to T-20.
+single API client and four shared components, carrying three working modules —
+**Clientes** (T-16, with public registration at `/registro`), **Cuentas** (T-17)
+and **Transferencias** (T-18). **Auditoría** is a page whose query nothing
+answers yet.
 
-**Customer Service and Account Service are implemented** (T-16, T-17): their own
-schemas, message handlers, idempotency enforced in the database, and — in
-Account Service — money as `NUMERIC(14,2)` that no float ever touches.
+**Customer, Account and Transaction Services are implemented** (T-16, T-17,
+T-18): a schema each, message handlers, idempotency enforced in the database,
+money as `NUMERIC(14,2)` that no float ever touches, and the transfer's
+six-state machine as one pure function that refuses every transition outside
+the diagram.
 
-The **other three domain services are still scaffolding** — health checks,
-environment validation, and empty `domain` and `application` layers. Transfers,
-payments and the audit trail therefore time out rather than answering: see
+The **other two domain services are still scaffolding** — health checks,
+environment validation, and empty `domain` and `application` layers. Payments
+and the audit trail therefore stall or time out rather than answering: see
 [Running It Locally](#running-it-locally).
 
 ## Repository Layout
@@ -75,7 +79,8 @@ apps/
     └── tooling/                     # @bank/tooling — shared TS/ESLint/Prettier/Jest config
 infra/docker/                        # local stack: PostgreSQL, RabbitMQ, MinIO (T-06)
                                      #   + docker-compose.dev.yml, the whole app in watch mode
-infra/k8s/                           # kind manifests
+infra/k8s/                           # placeholder — the chart and the kind
+                                     #   cluster belong to T-22, not built yet
 docs/                                # durable project documentation
 specs/                               # Spec Kit artifacts for feature work
 ```
@@ -253,8 +258,29 @@ Spec-driven work uses [Spec Kit](https://github.com/github/spec-kit) under
 
 ## Running It Locally
 
-There are two ways to run this, and they are not equivalent. Pick by what you
-have installed and by what you are about to do.
+### Quick start
+
+Everything in Docker — nothing to configure per application, one command:
+
+```bash
+cp infra/docker/.env.example infra/docker/.env   # then fill in the credentials
+pnpm dev
+```
+
+Open <http://localhost:3010>. `pnpm dev:down` stops it.
+
+The applications on your machine instead — which is what you want for a
+debugger, for running one service alone, or for the Turborepo task view:
+
+```bash
+pnpm install
+pnpm dev:infra     # databases, broker and MinIO in Docker; the rest is yours
+                   # then the .env script in step 3 below, once
+pnpm dev:host      # the seven applications in watch mode
+```
+
+The two are detailed below. They are not equivalent — pick by what you have
+installed and by what you are about to do.
 
 | | `pnpm dev` | `pnpm dev:host` |
 | --- | --- | --- |
@@ -558,6 +584,8 @@ inside a fresh container is slow.
 | <http://localhost:3010/activar> | no | The verdict of an emailed activation link |
 | <http://localhost:3010/clientes> | **yes** | The Clientes module (T-16) |
 | <http://localhost:3010/cuentas> | **yes** | The Cuentas module (T-17) |
+| <http://localhost:3010/transferencias> | **yes** | The Transferencias module (T-18) — a transfer stops at `PAYMENT_PENDING`, and the screen says so |
+| <http://localhost:3010/auditoria> | **yes** | The query nothing answers: a `504` after five seconds |
 | Everything else | **yes** | Redirects to `/login` |
 
 ### Getting a session
@@ -604,12 +632,19 @@ real infrastructure, including what the messages looked like on the wire.
 pnpm dev:down                              # everything, if you started it with pnpm dev
 ```
 
-If the applications were running on the host instead:
+If the applications were running on the host instead, `Ctrl-C` in the terminal
+holding `pnpm dev:host` stops all nine tasks at once. Then:
+
+```bash
+pnpm dev:infra:down                        # the databases, the broker, MinIO
+```
+
+Only if something survived the `Ctrl-C` — a task started outside turbo, or a
+terminal that was killed rather than interrupted:
 
 ```bash
 pkill -f 'dist/main.js'                    # the NestJS applications
 pkill -f 'output/server/index.mjs'         # web, if running the built output
-docker compose -f infra/docker/docker-compose.yml stop
 ```
 
 `pnpm dev:down` removes the application containers but keeps the named volumes,
