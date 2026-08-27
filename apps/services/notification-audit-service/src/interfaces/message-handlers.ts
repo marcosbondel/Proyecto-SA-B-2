@@ -1,8 +1,4 @@
-import {
-  auditQueryRequestedV1,
-  contractFor,
-  notificationListQueryV1,
-} from '@bank/contracts';
+import { auditQueryRequestedV1, contractFor, notificationListQueryV1 } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 
 import type { ListNotificationsUseCase } from '../application/list-notifications.use-case';
