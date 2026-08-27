@@ -72,13 +72,16 @@ describe('the versioned API contract', () => {
   });
 
   /**
-   * Thirteen paths for sixteen routes: `/api/accounts` carries both the listing
-   * and the opening. T-15 fixed nine of them; T-17 added the three the account
-   * screens needed and that nothing was publishing; T-19 added the two that let
-   * anything ask Payment Service a question at all — before them a payment could
-   * be ordered and could answer the Saga, but nobody outside could look one up.
+   * Fourteen paths for seventeen routes: `/api/accounts` carries both the
+   * listing and the opening. T-15 fixed nine of them; T-17 added the three the
+   * account screens needed and that nothing was publishing; T-19 added the two
+   * that let anything ask Payment Service a question at all — before them a
+   * payment could be ordered and could answer the Saga, but nobody outside
+   * could look one up; T-20 added the notifications console, nested under
+   * `/api/audit` because D-06 grants the trail and the notifications together
+   * and they are the same record read two ways.
    */
-  it('declares the thirteen paths the three tickets fixed', () => {
+  it('declares the fourteen paths the four tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -87,6 +90,8 @@ describe('the versioned API contract', () => {
         '/api/accounts/{accountId}/operations',
         '/api/accounts/{accountId}/status',
         '/api/audit',
+        // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
+        '/api/audit/notifications',
         '/api/auth/login',
         '/api/customers',
         '/api/customers/verify-email',
@@ -129,7 +134,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(13);
+      expect(functional).toHaveLength(14);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

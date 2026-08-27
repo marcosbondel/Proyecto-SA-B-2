@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { test, describe } from 'node:test';
 
+import { mayQueryAudit } from '../app/lib/audit.ts';
 import { mayManageAccounts } from '../app/lib/account.ts';
 import { mayMonitorPayments } from '../app/lib/payment.ts';
 import { MODULES } from '../app/lib/navigation.ts';
@@ -39,6 +40,26 @@ describe('the frontend matrix agrees with the Gateway', () => {
     const auditoria = MODULES.find((module) => module.to === '/auditoria');
 
     assert.deepEqual(auditoria.roles, ['ADMINISTRADOR']);
+    assert.equal(mayQueryAudit('ADMINISTRADOR'), true);
+    assert.equal(mayQueryAudit('CAJERO_RECEPTOR'), false);
+    assert.equal(mayQueryAudit('CLIENTE'), false);
+  });
+
+  /**
+   * The notifications console, added by T-20. D-06 grants "read the audit
+   * record **and notifications**" as one permission, so it is nested under the
+   * same controller and guarded by the same role rather than given a fifth
+   * navigation entry — the module already exists, and `/auditoria/notificaciones`
+   * is inside it, which `canOpen` matches by prefix.
+   */
+  test('the Gateway restricts the notifications console to the same role', async () => {
+    const source = await readFile(AUDIT_CONTROLLER, 'utf8');
+
+    assert.match(
+      source,
+      /@Roles\('ADMINISTRADOR'\)\s*\n\s*@Get\('notifications'\)/,
+      'the notifications console no longer restricts itself to ADMINISTRADOR',
+    );
   });
 
   /**

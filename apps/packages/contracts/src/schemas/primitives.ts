@@ -164,6 +164,39 @@ export const paymentStatus = z.enum(['PENDING', 'SUCCEEDED', 'FAILED']);
 export const paymentErrorType = z.enum(['TRANSIENT', 'PERMANENT']);
 
 /**
+ * How a simulated notification ended up.
+ *
+ * Added by T-20. Three values and not two, because "not sent yet" and "we
+ * tried and it did not go" are different facts about the same row: the first
+ * is a job still to do, the second is an incident. A boolean `sent` would
+ * collapse them, and the collapse always resolves in the reassuring direction.
+ *
+ * Nothing in this system retries a `FAILED` notification. That is a property of
+ * the simulated adapter rather than a policy: there is no mail server to be
+ * temporarily unreachable.
+ */
+export const notificationStatus = z.enum(['PENDING', 'SENT', 'FAILED']);
+
+/**
+ * The one channel that exists. An enum rather than a string so that adding SMS
+ * is a contract change somebody reviews, not a free-text value that appears in
+ * production one day.
+ */
+export const notificationChannel = z.enum(['EMAIL']);
+
+/**
+ * What the audit service made of a message it consumed.
+ *
+ * `PROCESSED` is the ordinary case. `INVALID` means the envelope arrived but
+ * its payload did not match the contract it claimed; `ERROR` means this service
+ * failed while recording it. Both are written down rather than thrown away,
+ * because criterion 3 of T-20 is precisely that a malformed message is visible
+ * *and* costs the producer nothing — and a rejection nobody can see is
+ * indistinguishable from a message that never arrived.
+ */
+export const auditProcessingStatus = z.enum(['PROCESSED', 'INVALID', 'ERROR']);
+
+/**
  * The failure codes `docs/domain/entities.md` names as expected failures.
  *
  * Closed on purpose: a consumer that receives an unlisted code cannot know
@@ -218,3 +251,6 @@ export type AccountOperationType = z.infer<typeof accountOperationType>;
 export type AccountOperationStatus = z.infer<typeof accountOperationStatus>;
 export type PaymentStatus = z.infer<typeof paymentStatus>;
 export type PaymentErrorType = z.infer<typeof paymentErrorType>;
+export type NotificationStatus = z.infer<typeof notificationStatus>;
+export type NotificationChannel = z.infer<typeof notificationChannel>;
+export type AuditProcessingStatus = z.infer<typeof auditProcessingStatus>;

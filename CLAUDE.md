@@ -19,16 +19,17 @@ A pnpm workspace with all code under `apps/`: Gateway and the Nuxt frontend at
 the top level, the five domain services under `apps/services/`, and
 `@bank/contracts`, `@bank/messaging`, `@bank/tooling` under `apps/packages/`.
 Seven applications, all of them building, linting and testing. The Gateway
-carries fourteen routes over eleven paths, JWT authentication, D-06 role
+carries seventeen routes over fourteen paths, JWT authentication, D-06 role
 authorization, request/reply with a five-second ceiling, seven error codes and a
 versioned OpenAPI contract; it has no `domain/` layer and never will. `apps/web`
 carries the layout, the role-filtered navigation, the session, four shared
-components and three feature modules: **Clientes** (T-16) in
+components and five feature modules: **Clientes** (T-16) in
 `app/components/customer/` + `app/pages/clientes/` with public registration at
 `/registro`, **Cuentas** (T-17) in `app/components/account/` +
-`app/pages/cuentas/`, and **Transferencias** (T-18) in
-`app/components/transaction/` + `app/pages/transferencias/`, which also carries
-the two `app/components/payment/` components T-19 owns on arrival (TD-034).
+`app/pages/cuentas/`, **Transferencias** (T-18) in
+`app/components/transaction/` + `app/pages/transferencias/`, **Pagos** (T-19) in
+`app/components/payment/` + `app/pages/pagos/`, and **Auditoría** (T-20) in
+`app/components/audit/` + `app/pages/auditoria/`.
 
 **Customer Service is implemented** (T-16) — its own PostgreSQL schema, the five
 message handlers, idempotency enforced by a unique constraint, scrypt
@@ -51,13 +52,28 @@ an event, and `test/isolation.spec.ts` fails the build if this service ever
 queries another's table or makes an HTTP call. Its concurrency and constraint
 tests need a real PostgreSQL and skip without `DATABASE_URL`.
 
-The **other two services remain scaffolding** — health checks, environment
-validation, empty `domain` and `application` layers. Their modules are T-19 and
-T-20. Until Payment Service exists a transfer stops at `PAYMENT_PENDING` with
-the money already debited: the state machine is right and nobody answers
-`payment.requested.v1`. What the Clientes screens still cannot show is TD-020,
-TD-021 and TD-023; the Cuentas screens TD-026 and TD-027; the Transferencias
-screens TD-032 to TD-035. Kubernetes deployment is not built yet.
+**Notification & Audit Service is implemented** (T-20) — its own schema, five
+queues instead of one (`audit.customer`, `audit.account`, `audit.transaction`,
+`audit.payment`, and `audit.query` for the two questions), deduplication as the
+primary key `(event_id, consumer)`, the payload redacted **before** the insert
+so the one database that hears every event stores no document, address or
+amount, and a simulated delivery channel that never throws. It is the only
+service that takes no validator from the broker — a message it cannot parse is
+recorded `INVALID` rather than parked, because the service whose job is to
+record what arrived must not be the one that never sees it. It publishes replies
+and nothing else, and `test/isolation.spec.ts` fails the build if that changes.
+Its concurrency and constraint tests need a real PostgreSQL and skip without
+`DATABASE_URL`.
+
+**Payment Service remains scaffolding** — health checks, environment
+validation, empty `domain` and `application` layers. Its module is T-19, already
+built against it. Until the service exists a transfer stops at
+`PAYMENT_PENDING` with the money already debited: the state machine is right and
+nobody answers `payment.requested.v1`. What the Clientes screens still cannot
+show is TD-020 and TD-023; the Cuentas screens TD-026 and TD-027; the
+Transferencias screens TD-032 to TD-035; the Pagos screens TD-037 and TD-038;
+the Auditoría screens TD-039 to TD-043. Kubernetes deployment is not built
+yet.
 
 ## Project Documentation
 

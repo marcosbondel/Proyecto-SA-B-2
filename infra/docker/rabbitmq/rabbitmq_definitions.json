@@ -282,47 +282,235 @@
       "arguments": {}
     },
     {
-      "name": "audit.all",
+      "name": "audit.customer",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
       "arguments": {}
     },
     {
-      "name": "audit.all.retry.1s",
+      "name": "audit.customer.retry.1s",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
       "arguments": {
         "x-message-ttl": 1000,
         "x-dead-letter-exchange": "",
-        "x-dead-letter-routing-key": "audit.all"
+        "x-dead-letter-routing-key": "audit.customer"
       }
     },
     {
-      "name": "audit.all.retry.5s",
+      "name": "audit.customer.retry.5s",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
       "arguments": {
         "x-message-ttl": 5000,
         "x-dead-letter-exchange": "",
-        "x-dead-letter-routing-key": "audit.all"
+        "x-dead-letter-routing-key": "audit.customer"
       }
     },
     {
-      "name": "audit.all.retry.30s",
+      "name": "audit.customer.retry.30s",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
       "arguments": {
         "x-message-ttl": 30000,
         "x-dead-letter-exchange": "",
-        "x-dead-letter-routing-key": "audit.all"
+        "x-dead-letter-routing-key": "audit.customer"
       }
     },
     {
-      "name": "audit.all.dlq",
+      "name": "audit.customer.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.account",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.account.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.account"
+      }
+    },
+    {
+      "name": "audit.account.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.account"
+      }
+    },
+    {
+      "name": "audit.account.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.account"
+      }
+    },
+    {
+      "name": "audit.account.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.transaction",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.transaction.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.transaction"
+      }
+    },
+    {
+      "name": "audit.transaction.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.transaction"
+      }
+    },
+    {
+      "name": "audit.transaction.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.transaction"
+      }
+    },
+    {
+      "name": "audit.transaction.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.payment",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.payment.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.payment"
+      }
+    },
+    {
+      "name": "audit.payment.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.payment"
+      }
+    },
+    {
+      "name": "audit.payment.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.payment"
+      }
+    },
+    {
+      "name": "audit.payment.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.query",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "audit.query.retry.1s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 1000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.query"
+      }
+    },
+    {
+      "name": "audit.query.retry.5s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 5000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.query"
+      }
+    },
+    {
+      "name": "audit.query.retry.30s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 30000,
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "audit.query"
+      }
+    },
+    {
+      "name": "audit.query.dlq",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
@@ -457,27 +645,67 @@
       "arguments": {}
     },
     {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "transaction.saga",
+      "destination_type": "queue",
+      "routing_key": "payment.attempt.failed.v1",
+      "arguments": {}
+    },
+    {
       "source": "bank.commands",
       "vhost": "/",
       "destination": "payment.commands",
       "destination_type": "queue",
-      "routing_key": "payment.requested.v1",
+      "routing_key": "payment.#",
       "arguments": {}
     },
     {
       "source": "bank.events",
       "vhost": "/",
-      "destination": "audit.all",
+      "destination": "audit.customer",
       "destination_type": "queue",
-      "routing_key": "#",
+      "routing_key": "customer.#",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "audit.account",
+      "destination_type": "queue",
+      "routing_key": "account.#",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "audit.transaction",
+      "destination_type": "queue",
+      "routing_key": "transaction.#",
+      "arguments": {}
+    },
+    {
+      "source": "bank.events",
+      "vhost": "/",
+      "destination": "audit.payment",
+      "destination_type": "queue",
+      "routing_key": "payment.#",
       "arguments": {}
     },
     {
       "source": "bank.commands",
       "vhost": "/",
-      "destination": "audit.all",
+      "destination": "audit.query",
       "destination_type": "queue",
       "routing_key": "audit.query.requested.v1",
+      "arguments": {}
+    },
+    {
+      "source": "bank.commands",
+      "vhost": "/",
+      "destination": "audit.query",
+      "destination_type": "queue",
+      "routing_key": "notification.list.query.v1",
       "arguments": {}
     }
   ]
