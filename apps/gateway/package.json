@@ -10,27 +10,40 @@
     "start": "node dist/main.js",
     "lint": "eslint .",
     "test": "jest",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "openapi:emit": "node dist/openapi/emit.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "catalog:",
     "@bank/contracts": "workspace:*",
     "@bank/messaging": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
+    "@nestjs/jwt": "catalog:",
+    "@nestjs/passport": "catalog:",
     "@nestjs/platform-express": "catalog:",
+    "@nestjs/swagger": "catalog:",
     "class-transformer": "catalog:",
     "class-validator": "catalog:",
+    "passport": "catalog:",
+    "passport-jwt": "catalog:",
     "reflect-metadata": "catalog:",
-    "rxjs": "catalog:"
+    "rxjs": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@bank/tooling": "workspace:*",
     "@nestjs/cli": "catalog:",
     "@nestjs/testing": "catalog:",
+    "@types/express": "catalog:",
     "@types/jest": "catalog:",
+    "@types/multer": "catalog:",
     "@types/node": "catalog:",
+    "@types/passport-jwt": "catalog:",
+    "@types/supertest": "catalog:",
     "eslint": "catalog:",
     "jest": "catalog:",
+    "supertest": "catalog:",
     "ts-jest": "catalog:",
     "typescript": "catalog:"
   }

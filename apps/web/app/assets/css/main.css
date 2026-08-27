@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+/**
+ * The `bonking. Core` design tokens, from `docs/DESIGN.md`.
+ *
+ * Nuxt UI resolves its semantic aliases — `primary`, `neutral`, `success` — to
+ * a palette that has to exist in the theme first. Naming them here is what lets
+ * `app.config.ts` say `primary: 'obsidian'` and mean something.
+ *
+ * The palettes are anchored on the values the design system fixes rather than
+ * generated: shade 500 is the tone the document names for that role, so the
+ * default mapping lands on the right colour without anything having to override
+ * it afterwards.
+ */
+@theme static {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /**
+   * Obsidian — the brand, and the only lit object in the interface.
+   *
+   * A black palette is not a grey ramp: the light end is the paper the
+   * interface sits on, the dark end is the lacquered surface of a button. 500
+   * is `#17191F`, the "Action" tone the document assigns to primary buttons.
+   */
+  --color-obsidian-50: #f2f2f4;
+  --color-obsidian-100: #e4e4e8;
+  --color-obsidian-200: #c3c4cc;
+  --color-obsidian-300: #b9bac4;
+  --color-obsidian-400: #2e313c;
+  --color-obsidian-500: #17191f;
+  --color-obsidian-600: #14161b;
+  --color-obsidian-700: #101218;
+  --color-obsidian-800: #0d0e13;
+  --color-obsidian-900: #0b0c10;
+  --color-obsidian-950: #05060a;
+
+  /** Graphite — every neutral surface, border and secondary text. */
+  --color-graphite-50: #f6f6f7;
+  --color-graphite-100: #f0f0f2;
+  --color-graphite-200: #e9e9ec;
+  --color-graphite-300: #e2e2e6;
+  --color-graphite-400: #dcdce0;
+  --color-graphite-500: #c6c6cc;
+  --color-graphite-600: #a8a9b2;
+  --color-graphite-700: #75767f;
+  --color-graphite-800: #5a5b63;
+  --color-graphite-900: #23242a;
+  --color-graphite-950: #17191f;
+
+  /**
+   * The three semantic colours, each deepened one step from its usual bright
+   * value so it sits correctly against a cool near-white ground and never
+   * outshouts the black.
+   */
+  --color-moss-50: #eff8f1;
+  --color-moss-100: #d7edde;
+  --color-moss-200: #a9d9b8;
+  --color-moss-300: #74c290;
+  --color-moss-400: #3f9d63;
+  --color-moss-500: #1e7a3c;
+  --color-moss-600: #186a32;
+  --color-moss-700: #145729;
+  --color-moss-800: #104520;
+  --color-moss-900: #0c3418;
+  --color-moss-950: #06210f;
+
+  --color-amber-50: #fdf6e9;
+  --color-amber-100: #f8e6c4;
+  --color-amber-200: #efcb8a;
+  --color-amber-300: #e0aa4d;
+  --color-amber-400: #cb8e1f;
+  --color-amber-500: #b4740a;
+  --color-amber-600: #9a6208;
+  --color-amber-700: #7a4f06;
+  --color-amber-800: #5e3d05;
+  --color-amber-900: #452d04;
+  --color-amber-950: #2a1b02;
+
+  --color-crimson-50: #fdf1ef;
+  --color-crimson-100: #f7dcd7;
+  --color-crimson-200: #eeb5ab;
+  --color-crimson-300: #e08b7c;
+  --color-crimson-400: #cb5344;
+  --color-crimson-500: #b01b1b;
+  --color-crimson-600: #9a1414;
+  --color-crimson-700: #8a1010;
+  --color-crimson-800: #6c0c0c;
+  --color-crimson-900: #500909;
+  --color-crimson-950: #310505;
+}
+
+/**
+ * The interface is light, and only light.
+ *
+ * `docs/DESIGN.md` defines one palette — obsidian on "a cool paper ground" —
+ * and no dark counterpart. Shipping an automatic dark mode would mean inventing
+ * a design nobody approved, and inventing it in the one place where getting a
+ * contrast ratio wrong makes a balance unreadable.
+ */
+:root {
+  --ui-bg: var(--color-graphite-50);
+  --ui-bg-muted: var(--color-graphite-100);
+  --ui-bg-elevated: var(--color-graphite-200);
+  --ui-bg-accented: var(--color-graphite-300);
+  --ui-bg-inverted: var(--color-obsidian-900);
+
+  --ui-text-dimmed: var(--color-graphite-600);
+  --ui-text-muted: var(--color-graphite-700);
+  --ui-text-toned: var(--color-graphite-800);
+  --ui-text: var(--color-graphite-900);
+  --ui-text-highlighted: var(--color-obsidian-900);
+  --ui-text-inverted: #ffffff;
+
+  --ui-border: var(--color-graphite-400);
+  --ui-border-muted: var(--color-graphite-300);
+  --ui-border-accented: var(--color-graphite-500);
+
+  /** 8px on controls, per the shape language. */
+  --ui-radius: 0.5rem;
+
+  /**
+   * The semantic colours point at the palettes directly.
+   *
+   * The obvious spelling — `var(--ui-color-primary-500)` — reads better and
+   * does nothing: the module never emits those declarations, so the variable
+   * dangles and every `color="primary"` resolves to nothing. That failure is
+   * invisible in a build log, which is precisely why it is not used here.
+   *
+   * Naming the palette costs one indirection and cannot silently break.
+   */
+  /**
+   * The module references a neutral *ramp* — `--ui-color-neutral-50` through
+   * `-900` — for muted surfaces and borders, and never declares it. Left alone
+   * those utilities render transparent, which is how a card loses its border
+   * and a disabled control loses its fill without anything reporting an error.
+   */
+  --ui-color-neutral-50: var(--color-graphite-50);
+  --ui-color-neutral-100: var(--color-graphite-100);
+  --ui-color-neutral-200: var(--color-graphite-200);
+  --ui-color-neutral-300: var(--color-graphite-300);
+  --ui-color-neutral-400: var(--color-graphite-500);
+  --ui-color-neutral-500: var(--color-graphite-600);
+  --ui-color-neutral-600: var(--color-graphite-700);
+  --ui-color-neutral-700: var(--color-graphite-800);
+  --ui-color-neutral-800: var(--color-graphite-900);
+  --ui-color-neutral-900: var(--color-obsidian-900);
+
+  --ui-primary: var(--color-obsidian-500);
+  --ui-secondary: var(--color-graphite-800);
+  --ui-neutral: var(--color-graphite-800);
+  --ui-success: var(--color-moss-500);
+  --ui-info: var(--color-graphite-700);
+  --ui-warning: var(--color-amber-500);
+  --ui-error: var(--color-crimson-500);
+}
+
+body {
+  background: var(--color-graphite-50);
+  color: var(--color-graphite-900);
+  -webkit-font-smoothing: antialiased;
+}
+
+/**
+ * Mandatory on every financial value.
+ *
+ * Proportional digits make a column of amounts impossible to scan, and scanning
+ * is the only thing anyone does with a list of balances.
+ */
+.tabular,
+[style*="tabular-nums"],
+code {
+  font-variant-numeric: tabular-nums lining-nums;
+}

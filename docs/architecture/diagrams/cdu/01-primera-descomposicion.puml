@@ -1,0 +1,55 @@
+@startuml 01-primera-descomposicion
+left to right direction
+
+title CDU001-CDU005 - Bank USAC: primera vista funcional
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Visitante / Cliente" as cliente
+actor "Cajero Receptor" as cajero
+actor "Administrador" as admin
+
+rectangle "Bank USAC\nPrimera descomposición del núcleo" as bank {
+    usecase "CDU001:\nGestionar clientes e identidad" as customer
+    usecase "CDU002:\nGestionar cuentas y saldos" as account
+    usecase "CDU003:\nGestionar transferencias" as transaction
+    usecase "CDU004:\nGestionar pagos" as payment
+    usecase "CDU005:\nGestionar notificaciones y auditoría" as audit
+}
+
+cliente -- customer
+cliente -- account
+cliente -- transaction
+cliente -- payment
+
+cajero -- customer
+cajero -- account
+cajero -- transaction
+
+admin -- customer
+admin -- account
+admin -- transaction
+admin -- payment
+admin -- audit
+
+note bottom of bank
+    Cada CDU representa la función principal de un microservicio.
+    Las funcionalidades internas de cada CDU están numeradas dentro
+    de su diagrama detallado correspondiente.
+end note
+
+legend right
+    La contención representa funciones principales del sistema.
+    No significa que toda operación ejecute los cinco CDU.
+endlegend
+@enduml

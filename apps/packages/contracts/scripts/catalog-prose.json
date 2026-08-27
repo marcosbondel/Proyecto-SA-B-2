@@ -11,8 +11,8 @@
   ],
   "customer.authenticate.v1": [
     "None. An unknown email is a normal outcome, not an error.",
-    "Credentials are checked. On the first successful sign-in, `customer.activation.requested.v1` follows (\u00a74.1, page 5).",
-    "Never dead-lettered for wrong credentials \u2014 that is an answer, not a failure. The reply carries the refusal."
+    "Credentials are checked. On the first successful sign-in, `customer.activation.requested.v1` follows (§4.1, page 5).",
+    "Never dead-lettered for wrong credentials — that is an answer, not a failure. The reply carries the refusal."
   ],
   "customer.authenticate.replied.v1": [
     "A `customer.authenticate.v1` was handled.",
@@ -50,7 +50,7 @@
     "Retry, then dead-letter."
   ],
   "customer.update.v1": [
-    "The customer exists. At least one field must change \u2014 an update that changes nothing is refused rather than emitting an event that says nothing happened.",
+    "The customer exists. At least one field must change — an update that changes nothing is refused rather than emitting an event that says nothing happened.",
     "The named fields are updated. Email, document, role and credential are not updatable here; each has its own invariant and its own use case.",
     "Refused if the customer does not exist, or if no field was supplied."
   ],
@@ -112,7 +112,7 @@
   "transfer.requested.v1": [
     "Both accounts exist, the source is `ACTIVE` and has funds. Only the first two are checkable here; the rest belongs to Account Service.",
     "Step 1 of the Saga. A `Transaction` is created `PENDING` and moves to `DEBITING`; `account.debit.requested.v1` follows.",
-    "`INVALID_AMOUNT` (T-1), `SAME_ACCOUNT_TRANSFER` (T-2) or `INVALID_AMOUNT_PRECISION` (A-6) \u2014 refused before a transaction exists. A reused `idempotencyKey` with identical content returns the original transaction without moving balances (T-3); with different content it is `IDEMPOTENCY_KEY_CONFLICT` (T-4), because answering with the original result would be a lie."
+    "`INVALID_AMOUNT` (T-1), `SAME_ACCOUNT_TRANSFER` (T-2) or `INVALID_AMOUNT_PRECISION` (A-6) — refused before a transaction exists. A reused `idempotencyKey` with identical content returns the original transaction without moving balances (T-3); with different content it is `IDEMPOTENCY_KEY_CONFLICT` (T-4), because answering with the original result would be a lie."
   ],
   "transaction.initiated.v1": [
     "The Saga opened.",
@@ -127,7 +127,7 @@
   "account.debited.v1": [
     "The money left the source account.",
     "Step 2 succeeded. Transaction Service moves to `PAYMENT_PENDING`. **From here the Saga can no longer end in `FAILED`** (T-7): there is an effect to undo, so every later failure compensates instead.",
-    "Retry, then dead-letter. The money has moved and the Saga is stalled \u2014 this is the case T-23's stalled-Saga procedure exists for."
+    "Retry, then dead-letter. The money has moved and the Saga is stalled — this is the case T-23's stalled-Saga procedure exists for."
   ],
   "account.debit.rejected.v1": [
     "The debit did not happen.",
@@ -136,7 +136,7 @@
   ],
   "payment.requested.v1": [
     "The debit succeeded and the transaction is in `PAYMENT_PENDING`.",
-    "Step 4. Payment Service processes the payment, retrying internally and counting `attempt`. It reacts to this command and **not** to `account.debited.v1` directly \u2014 that is what `../domain/use-cases.md` \u00a76 fixed.",
+    "Step 4. Payment Service processes the payment, retrying internally and counting `attempt`. It reacts to this command and **not** to `account.debited.v1` directly — that is what `../domain/use-cases.md` §6 fixed.",
     "`payment.failed.v1` once its own retries are spent."
   ],
   "payment.succeeded.v1": [
@@ -186,7 +186,7 @@
   ],
   "transaction.compensated.v1": [
     "The compensation completed.",
-    "Audited, and the customer is notified. Terminal. This means the money left and came back \u2014 two movements, not none.",
+    "Audited, and the customer is notified. Terminal. This means the money left and came back — two movements, not none.",
     "Retry, then dead-letter."
   ],
   "transaction.status.requested.v1": [
@@ -196,7 +196,7 @@
   ],
   "transaction.status.replied.v1": [
     "A `transaction.status.requested.v1` was handled.",
-    "The Gateway answers the client. `reason` is present exactly when the transfer did not complete, and always from the closed failure set \u2014 this is the most likely thing a customer sees after a timeout, so it is the last place that should leak an internal detail.",
+    "The Gateway answers the client. `reason` is present exactly when the transfer did not complete, and always from the closed failure set — this is the most likely thing a customer sees after a timeout, so it is the last place that should leak an internal detail.",
     "On timeout the Gateway stops waiting; the caller may ask again."
   ],
   "audit.query.requested.v1": [
@@ -208,5 +208,35 @@
     "An `audit.query.requested.v1` was handled.",
     "The Gateway answers with the ordered events and the notifications of that flow. Returns **metadata, not payloads**: echoing every payload back would recreate, in one reply, the data the per-service databases exist to keep apart.",
     "On timeout the Gateway stops waiting."
+  ],
+  "account.open.rejected.v1": [
+    "An `account.create.v1` was refused before any row was written.",
+    "No account exists. Audited, and the caller learns the reason through the audit trail.",
+    "Retry, then dead-letter. The rejection is a fact; failing to record it does not un-reject the request."
+  ],
+  "account.list.query.v1": [
+    "Somebody with a session asked which accounts they may see.",
+    "Nothing changes. Account Service intersects the filters with what D-06 allows the envelope's identity.",
+    "On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile."
+  ],
+  "account.list.replied.v1": [
+    "An `account.list.query.v1` was handled.",
+    "The Gateway answers the caller. An empty array means \"nothing you may see\", which is deliberately indistinguishable from \"nothing exists\".",
+    "On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile."
+  ],
+  "account.operations.query.v1": [
+    "Somebody asked for the movements of one account.",
+    "Nothing changes. Whether this identity may read this account is Account Service's decision.",
+    "On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile."
+  ],
+  "account.operations.replied.v1": [
+    "An `account.operations.query.v1` was handled.",
+    "The Gateway answers the caller. `balanceAfter` is what the ledger recorded at the time, never recomputed by the reader.",
+    "On timeout the Gateway stops waiting. Nothing was changed, so there is nothing to reconcile."
+  ],
+  "customer.register.rejected.v1": [
+    "A `customer.register.v1` was refused by an invariant. No `Customer` exists, and no identity document was stored.",
+    "Notification & Audit records the refusal, which is how the caller finds out: the command was accepted with a `202` long before the invariant was evaluated.",
+    "The consumer retries, then dead-letters. Nothing was created, so there is nothing to compensate."
   ]
 }

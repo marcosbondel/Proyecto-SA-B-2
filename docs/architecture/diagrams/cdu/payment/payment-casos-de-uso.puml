@@ -1,0 +1,50 @@
+@startuml payment-casos-de-uso
+left to right direction
+
+title CDU004 - Gestionar pagos
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Cliente" as actor_payment_customer
+actor "Administrador" as actor_payment_admin
+actor "Transaction Service" as actor_payment_transaction
+actor "Proveedor de pagos" as actor_payment_provider
+
+rectangle "CDU004 - Gestionar pagos" as system_payment {
+    usecase "CDU004.1:\nProcesar pago" as uc_payment_process
+    usecase "CDU004.2:\nConsultar historial de pagos" as uc_payment_history
+    usecase "CDU004.3:\nValidar operación de pago" as uc_payment_validate
+    usecase "CDU004.4:\nProcesar pago interno" as uc_payment_internal
+    usecase "CDU004.5:\nSolicitar pago externo" as uc_payment_external
+    usecase "CDU004.6:\nReintentar procesamiento" as uc_payment_retry
+    usecase "CDU004.7:\nRegistrar estado del pago" as uc_payment_record
+}
+
+actor_payment_customer -- uc_payment_process
+actor_payment_customer -- uc_payment_history
+actor_payment_admin -- uc_payment_history
+actor_payment_transaction -- uc_payment_process
+actor_payment_provider -- uc_payment_external
+
+uc_payment_process .> uc_payment_validate : <<include>>
+uc_payment_process .> uc_payment_record : <<include>>
+uc_payment_internal .> uc_payment_process : <<extend>>
+uc_payment_external .> uc_payment_process : <<extend>>
+uc_payment_retry .> uc_payment_process : <<extend>>
+
+note right of uc_payment_process
+    En la Saga de transferencias,
+    Transaction Service publica payment.requested.
+    Payment Service responde con succeeded o failed.
+end note
+@enduml

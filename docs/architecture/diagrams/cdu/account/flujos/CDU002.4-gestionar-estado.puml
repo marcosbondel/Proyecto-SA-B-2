@@ -1,0 +1,30 @@
+@startuml CDU002.4-gestionar-estado
+title CDU002.4 - Gestionar estado de cuenta
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Administrador o proceso automático|
+start
+if (¿Cambio solicitado por Administrador?) then (Sí)
+    |Administrador|
+    :Solicitar cambio de estado;
+    |Account Service|
+    :Validar transición permitida;
+else (No)
+    |Proceso automático|
+    :Evaluar seis meses de inactividad y balance menor que Q50.00;
+    |Account Service|
+endif
+if (¿Transición válida?) then (No)
+    :Rechazar cambio;
+else (Sí)
+    :Persistir nuevo estado;
+    :Publicar account.deactivated o account.reactivated;
+endif
+stop
+@enduml

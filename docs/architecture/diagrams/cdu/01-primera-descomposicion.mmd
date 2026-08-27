@@ -1,0 +1,32 @@
+flowchart LR
+    visitor["👤 Visitante / Cliente"]
+    teller["👤 Cajero Receptor"]
+    admin["👤 Administrador"]
+
+    subgraph bank["Bank USAC · funciones principales"]
+        customer(("CDU001: Gestionar clientes e identidad"))
+        account(("CDU002: Gestionar cuentas y saldos"))
+        transaction(("CDU003: Gestionar transferencias"))
+        payment(("CDU004: Gestionar pagos"))
+        audit(("CDU005: Gestionar notificaciones y auditoría"))
+    end
+
+    visitor --- customer
+    visitor --- account
+    visitor --- transaction
+    visitor --- payment
+
+    teller --- customer
+    teller --- account
+    teller --- transaction
+
+    admin --- customer
+    admin --- account
+    admin --- transaction
+    admin --- payment
+    admin --- audit
+
+    note["Cada CDU representa la función principal de un microservicio; el detalle está en su carpeta"]:::note
+    bank -.-> note
+
+    classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

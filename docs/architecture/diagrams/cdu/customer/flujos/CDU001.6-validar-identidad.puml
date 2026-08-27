@@ -1,0 +1,24 @@
+@startuml CDU001.6-validar-identidad
+title CDU001.6 - Validar identidad
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Cajero o Administrador|
+start
+:Revisar fotografía y datos del cliente;
+|Customer Service|
+:Evaluar la identidad;
+if (¿Identidad válida?) then (No)
+    :Persistir estado REJECTED;
+    :Publicar customer.identity.rejected;
+else (Sí)
+    :Persistir estado VALIDATED;
+    :Publicar customer.identity.validated;
+endif
+stop
+@enduml

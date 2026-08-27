@@ -1,0 +1,65 @@
+@startuml customer-casos-de-uso
+left to right direction
+
+title CDU001 - Gestionar clientes e identidad
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam actor {
+    BorderColor #398819
+    FontColor #398819
+}
+
+actor "Visitante / Cliente" as actor_customer
+actor "Cajero Receptor" as actor_teller
+actor "Administrador" as actor_admin
+
+rectangle "CDU001 - Gestionar clientes e identidad" as system_customer {
+    usecase "CDU001.1:\nRegistrar cliente" as uc_customer_register
+    usecase "CDU001.2:\nActivar cliente por correo" as uc_customer_activate
+    usecase "CDU001.3:\nIniciar sesión" as uc_customer_login
+    usecase "CDU001.4:\nActualizar datos del cliente" as uc_customer_update
+    usecase "CDU001.5:\nCargar fotografía de identidad" as uc_customer_upload
+    usecase "CDU001.6:\nValidar identidad" as uc_customer_identity
+    usecase "CDU001.7:\nGenerar username único" as uc_customer_username
+    usecase "CDU001.8:\nValidar token de activación" as uc_customer_token
+    usecase "CDU001.9:\nValidar credenciales" as uc_customer_credentials
+    usecase "CDU001.10:\nRevisar foto y datos" as uc_customer_review
+}
+
+actor_customer -- uc_customer_register
+actor_customer -- uc_customer_activate
+actor_customer -- uc_customer_login
+actor_customer -- uc_customer_update
+actor_customer -- uc_customer_upload
+
+actor_teller -- uc_customer_register
+actor_teller -- uc_customer_login
+actor_teller -- uc_customer_update
+actor_teller -- uc_customer_identity
+
+actor_admin -- uc_customer_register
+actor_admin -- uc_customer_login
+actor_admin -- uc_customer_update
+actor_admin -- uc_customer_identity
+
+uc_customer_register .> uc_customer_username : <<include>>
+uc_customer_activate .> uc_customer_token : <<include>>
+uc_customer_login .> uc_customer_credentials : <<include>>
+uc_customer_identity .> uc_customer_review : <<include>>
+
+note right of uc_customer_activate
+    Customer Service genera y valida el token.
+    Notification & Audit solo entrega el correo.
+end note
+
+legend right
+    La validación de identidad es distinta de la activación por correo.
+    La foto queda bajo responsabilidad de Customer Service.
+endlegend
+@enduml

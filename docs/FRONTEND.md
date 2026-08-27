@@ -13,14 +13,34 @@ microservice ownership: Customer, Account, Transaction, Payment, and
 Notification & Audit. Shared components consume the tokens and component
 conventions in [DESIGN.md](DESIGN.md), rather than redefining them per service.
 
-The repository currently contains only the starter `app/app.vue`; the Bank USAC
-feature surfaces have not been implemented yet.
+The shell arrived with T-15 (layout, role-filtered navigation, session,
+`useGatewayApi`, and the four `Shared*` components); the first feature module
+with T-16 (`app/components/customer/` plus its pages), the second with T-17
+(`app/components/account/` plus `app/pages/cuentas/`) and the third with T-18
+(`app/components/transaction/` plus `app/pages/transferencias/`). T-18 also
+built `app/components/payment/`, which T-19 owns on arrival (TD-034). Auditoría
+is still a titled skeleton.
+
+**Nuxt derives a component's name from its path, and it drops a directory
+prefix the filename already repeats.** `account/AccountCreateForm.vue` is
+`<AccountCreateForm>`, but `transaction/TransferForm.vue` would be
+`<TransactionTransferForm>` — a tag that does not match its own filename, which
+is the one thing that makes a component hard to find. Every component in this
+application is therefore named with its owning service's prefix, so the file
+name and the tag are the same string. T-18's two are
+`TransactionTransferForm.vue` and `TransactionStatusTimeline.vue`; the ticket
+calls them `TransferForm` and `TransferStatusTimeline`.
 
 ## Styling
 
 Use the tokens, responsive layout, typography, component mapping, and state
 conventions in [DESIGN.md](DESIGN.md). The shell uses Nuxt UI components and
 Tailwind utilities. No local style value should contradict the design system.
+For every frontend ticket, first import and inspect the Claude Design reference
+documented in [DESIGN.md](DESIGN.md), focusing on `bonking.dc.html` and its
+`support.js` import. Use it to reproduce the intended composition and
+interactions; use `DESIGN.md` as the final authority for repository tokens and
+domain rules. Record a screenshot or review note as ticket evidence.
 
 ## Accessibility
 
@@ -30,19 +50,50 @@ access, and meaningful mobile layouts.
 
 ## Routing And State
 
-> **Blocked**: Route names, navigation structure, and the shared state
-> conventions depend on the Gateway contract and frontend shell. Owner: Marcos
-> Bonifasi. Arrives with: T-15.
+Routes follow the Nuxt file convention under `app/pages/`, one directory per
+module. `app/lib/navigation.ts` holds the four modules and the public routes;
+`middleware/auth.global.ts` applies them. A module that needs a screen a role
+should not see filters it **in the page**, not by adding an entry to `MODULES` —
+the four are fixed and asserted by a test.
+
+State follows two rules that exist because of TD-010:
+
+- **Anything that decides something lives in `app/lib/` as a pure function**, so
+  it can be asserted by `node --test`. `customer.ts` is the worked example: the
+  username preview, the age policy, the photo limits, the audit verdict.
+- **Every call to the Gateway goes through `useGatewayApi`.** It attaches the
+  session, normalises the seven error types and ends an expired session once,
+  centrally. No module calls `$fetch` directly, and none touches RabbitMQ or a
+  database.
+
+Asynchronous commands answer `202`. **`useCommandOutcome` is the pattern** for
+turning that into an outcome: it starts at `PENDING`, never at `SUCCESS`, and
+polls `GET /api/audit` only when the session may read it (see TD-021). Retries
+reuse the same idempotency key, which is why `SharedIdempotencyKeyField` stays
+mounted for the life of a form.
+
+The only thing a module supplies is *which message names end its command*, as a
+pure function in `app/lib/`. `useCustomerOutcome` and `useAccountOutcome` are
+three-line wrappers over it; T-16 wrote the engine and T-17 extracted it rather
+than copying it a second time.
+
+**A screen a role should not see is filtered in the page**, never by adding a
+fifth entry to `MODULES` — the four are fixed and asserted by a test. The
+decision itself still lives in `app/lib/` so it is testable and so
+`test/navigation-parity.test.mjs` can hold it against the Gateway's own `@Roles`
+decorator; `mayManageAccounts` in `app/lib/account.ts` is the worked example.
 
 ## Verification
 
-The commands currently available from `apps/web/` are:
+From the repository root:
 
 ```sh
-pnpm install
-pnpm build
-pnpm generate
+pnpm --filter web lint     # eslint, through @nuxt/eslint
+pnpm --filter web test     # node --test over app/lib/
+pnpm --filter web build
+pnpm --filter web dev
 ```
 
-There is no test or lint script yet; that gap is tracked as TD-004 in
+`test` covers `app/lib/` only. There is still no component-level runner, so no
+change may claim component coverage; that gap is TD-010 in
 [TECH_DEBT.md](TECH_DEBT.md).
