@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PAYMENT_SCENARIOS } from '../../lib/transaction';
 import type { PaymentScenario } from '../../lib/transaction';
+import { MAX_ATTEMPTS, RETRY_LADDER_MS, formatDelay } from '../../lib/payment';
 
 /**
  * How the payment step should be made to end — **for a demonstration only**.
@@ -18,8 +19,13 @@ import type { PaymentScenario } from '../../lib/transaction';
  * and without being asked, that it is a rehearsal. Leaving it empty is the
  * normal path and is what a real transfer does.
  *
- * Owned by T-19 (Payment Service). Built here by T-18 because the Transferencias
- * screens cannot demonstrate a compensated Saga without it; recorded as TD-034.
+ * Reshaped by T-19 from the version T-18 built under TD-034. What changed is
+ * one sentence: `TRANSIENT_FAILURE` now names the actual ladder — four attempts
+ * at 1s, 5s and 30s — read from `app/lib/payment.ts` rather than described in
+ * round numbers. Somebody running the demonstration needs to know how long to
+ * wait before deciding it hung, and "falla y se reintenta" does not tell them.
+ *
+ * Owned by T-19.
  */
 const model = defineModel<PaymentScenario | null>({ default: null });
 
@@ -31,10 +37,13 @@ const items = computed(() => [
 const chosen = computed(() =>
   PAYMENT_SCENARIOS.find((scenario) => scenario.value === model.value) ?? null,
 );
+
+/** The ladder, spelled out, so nobody reads a 30-second wait as a hang. */
+const ladder = computed(() => RETRY_LADDER_MS.map((delay) => formatDelay(delay)).join(', '));
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 rounded-xl border border-dashed border-[#C6C6CC] bg-[#F0F0F2] p-4">
+  <div class="flex flex-col gap-3 rounded-xl border border-dashed border-[#C6C6CC] bg-[#F0F0F2] p-4">
     <div class="flex flex-wrap items-center gap-2">
       <UBadge
         color="warning"
@@ -58,6 +67,11 @@ const chosen = computed(() =>
 
     <p v-if="chosen" class="text-[13px] leading-5 text-[#5A5B63]">
       {{ chosen.description }}
+      <template v-if="chosen.value === 'TRANSIENT_FAILURE'">
+        Son hasta {{ MAX_ATTEMPTS }} intentos, con esperas de {{ ladder }} entre uno y otro,
+        así que la transferencia puede tardar en cerrar. El panel de resultado muestra en qué
+        intento va.
+      </template>
     </p>
     <p v-else class="text-[13px] leading-5 text-[#5A5B63]">
       Sin escenario, el pago se procesa como lo haría normalmente.
