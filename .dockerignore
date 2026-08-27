@@ -11,5 +11,6 @@ coverage/
 .nitro/
 dist/
 build/
+.turbo/
 .DS_Store
 Thumbs.db
