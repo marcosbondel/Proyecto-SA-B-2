@@ -18,8 +18,34 @@ The shell arrived with T-15 (layout, role-filtered navigation, session,
 with T-16 (`app/components/customer/` plus its pages), the second with T-17
 (`app/components/account/` plus `app/pages/cuentas/`) and the third with T-18
 (`app/components/transaction/` plus `app/pages/transferencias/`). T-18 also
-built `app/components/payment/`, which T-19 owns on arrival (TD-034). Auditoría
-is still a titled skeleton.
+built two components in `app/components/payment/`; T-19 took ownership of them
+on 2026-08-27, reshaped both, and added the rest of the module —
+`PaymentStatusBadge`, `PaymentAttemptTrail`, `PaymentIdentifiersCard`,
+`PaymentMonitorTable`, and `app/pages/pagos/`. TD-034 is closed. Auditoría is
+still a titled skeleton.
+
+### The Pagos module is the one restricted module that is not restricted by D-06
+
+Every other module is visible to every role, because D-06 restricts almost
+everything by **scope** and the owning service applies it. Pagos is visible only
+to `CAJERO_RECEPTOR` and `ADMINISTRADOR`, and the reason is a property of the
+service rather than a policy: Payment Service holds a `transactionId` and no
+customer reference, so it cannot narrow a listing to "yours" without reading
+another service's tables (§8.2, 2.3). A `CLIENTE` therefore sees their payment
+where it is already scoped — inside the transfer that created it, through
+`PaymentResultPanel`. Recorded as TD-037; `test/navigation-parity.test.mjs`
+holds the frontend matrix against the Gateway's `@Roles`.
+
+### What T-19 did not build from the Claude Design prototype
+
+The prototype's Módulo 4 draws nine payment screens. Four of them — "Nuevo
+pago", its validation state, and the customer's own payment history with its
+empty state — describe a bill-payment product this system does not have: no
+service holds a biller, a reference or an external provider, and no route mints
+a payment, because a payment is step 4 of the transfer Saga. `DESIGN.md` says to
+keep the repository rule and record the discrepancy rather than invent a third
+variant. Implemented: `/pagos` (from G-04 merged with G-03's table) and
+`/pagos/[id]` (from G-02a–G-02d as one polling screen). Recorded as TD-038.
 
 **Nuxt derives a component's name from its path, and it drops a directory
 prefix the filename already repeats.** `account/AccountCreateForm.vue` is
