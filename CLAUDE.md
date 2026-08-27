@@ -23,10 +23,12 @@ carries fourteen routes over eleven paths, JWT authentication, D-06 role
 authorization, request/reply with a five-second ceiling, seven error codes and a
 versioned OpenAPI contract; it has no `domain/` layer and never will. `apps/web`
 carries the layout, the role-filtered navigation, the session, four shared
-components and two feature modules: **Clientes** (T-16) in
+components and three feature modules: **Clientes** (T-16) in
 `app/components/customer/` + `app/pages/clientes/` with public registration at
-`/registro`, and **Cuentas** (T-17) in `app/components/account/` +
-`app/pages/cuentas/`.
+`/registro`, **Cuentas** (T-17) in `app/components/account/` +
+`app/pages/cuentas/`, and **Transferencias** (T-18) in
+`app/components/transaction/` + `app/pages/transferencias/`, which also carries
+the two `app/components/payment/` components T-19 owns on arrival (TD-034).
 
 **Customer Service is implemented** (T-16) — its own PostgreSQL schema, the five
 message handlers, idempotency enforced by a unique constraint, scrypt
@@ -39,11 +41,23 @@ evaluated before any balance moves, the Saga's three movements, and the
 automatic deactivation job with an injected clock. Its concurrency and
 idempotency tests need a real PostgreSQL and skip without `DATABASE_URL`.
 
-The **other three services remain scaffolding** — health checks, environment
-validation, empty `domain` and `application` layers. Their modules are T-18 to
-T-20; what the Clientes screens still cannot show is TD-020, TD-021 and TD-023,
-and the Cuentas screens TD-026 and TD-027. Kubernetes deployment is not built
-yet.
+**Transaction Service is implemented** (T-18) — its own schema, nine message
+handlers over the two queues it owns, the six-state machine as one pure function
+that refuses every transition outside the diagram, transitions decided under a
+row lock, consumption deduplicated by the envelope's `messageId` before any
+state is touched, and an alias table so a retried `transactionId` resolves to
+the transfer that exists. **It decides no funds**: the debit verdict arrives as
+an event, and `test/isolation.spec.ts` fails the build if this service ever
+queries another's table or makes an HTTP call. Its concurrency and constraint
+tests need a real PostgreSQL and skip without `DATABASE_URL`.
+
+The **other two services remain scaffolding** — health checks, environment
+validation, empty `domain` and `application` layers. Their modules are T-19 and
+T-20. Until Payment Service exists a transfer stops at `PAYMENT_PENDING` with
+the money already debited: the state machine is right and nobody answers
+`payment.requested.v1`. What the Clientes screens still cannot show is TD-020,
+TD-021 and TD-023; the Cuentas screens TD-026 and TD-027; the Transferencias
+screens TD-032 to TD-035. Kubernetes deployment is not built yet.
 
 ## Project Documentation
 
@@ -67,7 +81,8 @@ pnpm lint           # style *and* the executable isolation rules
 pnpm test           # unit tests everywhere
 pnpm test:contract  # contract tests over @bank/contracts
 pnpm format
-pnpm dev
+pnpm dev            # whole stack in Docker (infra/docker/docker-compose.dev.yml)
+pnpm dev:host       # applications on the host, infrastructure still in Docker
 ```
 
 Per application: `pnpm --filter <name> <command>`. `pnpm build` must precede

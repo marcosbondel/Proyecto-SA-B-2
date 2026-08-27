@@ -16,7 +16,10 @@
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev": "pnpm -r --parallel dev"
+    "dev": "docker compose -f infra/docker/docker-compose.dev.yml up --build",
+    "dev:down": "docker compose -f infra/docker/docker-compose.dev.yml down",
+    "dev:logs": "docker compose -f infra/docker/docker-compose.dev.yml logs -f",
+    "dev:host": "pnpm -r --parallel dev"
   },
   "devDependencies": {
     "@bank/tooling": "workspace:*",
