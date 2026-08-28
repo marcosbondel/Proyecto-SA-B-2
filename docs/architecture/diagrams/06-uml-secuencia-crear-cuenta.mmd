@@ -2,70 +2,74 @@
 %% Caso de uso 2 (docs/domain/use-cases.md). Flujo asincrono mas simple del sistema:
 %% el Gateway publica, responde 202, y el resultado real se consulta despues por correlationId.
 %% Las casillas de activacion muestran cuanto tiempo mantiene cada participante una tarea en curso.
-%% Los mensajes usan lenguaje de negocio (legible para stakeholders no tecnicos); no
-%% se incluyen nombres de tecnologia, protocolo ni framework, solo la accion realizada.
+%% Cada mensaje declara la accion de negocio y, entre corchetes, su tecnologia,
+%% protocolo y tipo de interaccion (sincrona o asincrona; comando, evento o
+%% request/reply), como exige el enunciado (§4.2, "Tipo de comunicacion").
+%% Debe coincidir con 06-uml-secuencia-crear-cuenta.puml en TODAS las etiquetas.
 sequenceDiagram
     autonumber
     actor Usr as "Actor<br/>(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)"
     participant Frontend as "Frontend"
     participant Gateway as "API Gateway"
-    participant Broker as "Message Broker"
+    participant Broker as "Message Broker<br/>(RabbitMQ)"
     participant Account as "Account Service"
     participant AccountDB as "Account Database"
     participant Notif as "Notification and Audit"
     participant AuditDB as "Audit Database"
 
-    Usr->>Frontend: Solicitar apertura de cuenta
+    Usr->>Frontend: Solicitar apertura de cuenta<br/>[interacción de usuario · navegador · síncrono]
     activate Frontend
-    Frontend->>Gateway: Enviar la solicitud de apertura
+    Frontend->>Gateway: Enviar la solicitud de apertura<br/>[HTTPS/REST · POST /api/accounts · síncrono]
     activate Gateway
     Note over Gateway: Genera un identificador de seguimiento (correlationId)
 
-    Gateway->>Broker: Publicar comando "crear cuenta" — account.create (correlationId)
-    Gateway-->>Frontend: Confirmar recepción — 202 Accepted (correlationId)
+    Gateway->>Broker: Publicar comando "crear cuenta" — account.create (correlationId)<br/>[AMQP 0-9-1 · comando · asíncrono]
+    Gateway-->>Frontend: Confirmar recepción — 202 Accepted (correlationId)<br/>[HTTPS/REST · respuesta síncrona]
     deactivate Gateway
-    Frontend-->>Usr: "Solicitud recibida" (NO "cuenta creada") — 202 no es éxito
+    Frontend-->>Usr: "Solicitud recibida" (NO "cuenta creada")<br/>202 no es éxito
     deactivate Frontend
 
-    Broker->>Account: Entregar comando "crear cuenta" — account.create (correlationId)
+    Broker->>Account: Entregar comando "crear cuenta" — account.create (correlationId)<br/>[AMQP 0-9-1 · entrega de comando · asíncrono]
     activate Account
 
     alt tipo de cuenta válido (MONETARIA | AHORRO)
         Note over Account: Validando los datos recibidos, aún sin guardar
-        Account->>AccountDB: Guardar la cuenta nueva — estado inicial: ACTIVA, saldo Q0.00
+        Account->>AccountDB: Guardar la cuenta nueva<br/>estado inicial: ACTIVA, saldo Q0.00<br/>[SQL sobre PostgreSQL · síncrono]
         activate AccountDB
-        AccountDB-->>Account: Confirmar guardado
+        AccountDB-->>Account: Confirmar guardado<br/>[SQL sobre PostgreSQL · síncrono]
         deactivate AccountDB
         Note over Account: Cuenta creada — activa, con saldo inicial de Q0.00
-        Account->>Broker: Publicar evento "cuenta abierta" — account.opened (correlationId)
-        Account->>Broker: Confirmar al broker que el mensaje fue procesado — DESPUÉS de guardar
+        Account->>Broker: Publicar evento "cuenta abierta" — account.opened (correlationId)<br/>[AMQP 0-9-1 · evento · asíncrono]
+        Account->>Broker: Confirmar al broker que el mensaje fue procesado<br/>DESPUÉS de guardar [AMQP basic.ack]
     else tipo de cuenta ausente o no reconocido
         Note over Account: Rechazar la solicitud, sin guardar — el tipo de cuenta es obligatorio
-        Account->>Broker: Confirmar al broker que el mensaje fue procesado — rechazo registrado
+        Account->>Broker: Confirmar al broker que el mensaje fue procesado<br/>rechazo registrado [AMQP basic.ack]
     end
     deactivate Account
 
     Note over Account,AccountDB: Regla de diseño: el Servicio de Cuentas NUNCA consulta al Servicio de Clientes.<br/>"El cliente no existe" o "el cliente no es elegible" se detectan más adelante en el proceso, no en este paso.
 
-    Broker->>Notif: Entregar evento "cuenta abierta" — account.opened (correlationId)
+    Broker->>Notif: Entregar evento "cuenta abierta" — account.opened (correlationId)<br/>[AMQP 0-9-1 · entrega de evento · asíncrono]
     activate Notif
-    Notif->>AuditDB: Registrar el evento para auditoría (correlationId)
+    Notif->>AuditDB: Registrar el evento para auditoría (correlationId)<br/>[SQL sobre PostgreSQL · síncrono]
     activate AuditDB
-    AuditDB-->>Notif: Confirmar registro guardado
+    AuditDB-->>Notif: Confirmar registro guardado<br/>[SQL sobre PostgreSQL · síncrono]
     deactivate AuditDB
-    Notif->>Broker: Confirmar al broker que el evento fue procesado — DESPUÉS de registrar
+    Notif->>Broker: Confirmar al broker que el evento fue procesado<br/>DESPUÉS de registrar [AMQP basic.ack]
     deactivate Notif
 
     Note over Usr,AuditDB: El 202 solo confirma que la solicitud se recibió. El resultado real se consulta después por correlationId.
-    Usr->>Frontend: Consultar el estado de la solicitud
+    Usr->>Frontend: Consultar el estado de la solicitud<br/>[interacción de usuario · navegador · síncrono]
     activate Frontend
-    Frontend->>Gateway: Solicitar el estado real de la cuenta (correlationId)
+    Frontend->>Gateway: Solicitar el estado real de la cuenta (correlationId)<br/>[HTTPS/REST · GET /api/accounts/:id · síncrono]
     activate Gateway
-    Gateway->>Account: Preguntar por el estado actual de la cuenta (correlationId)
+    Gateway->>Broker: Preguntar por el estado actual de la cuenta (correlationId)<br/>[AMQP 0-9-1 · request/reply · asíncrono · ceiling 5 s]
+    Broker->>Account: Entregar la consulta (correlationId)<br/>[AMQP 0-9-1 · entrega de consulta · asíncrono]
     activate Account
-    Account-->>Gateway: Responder con el estado real de la cuenta
+    Account-->>Broker: Responder con el estado real de la cuenta<br/>[AMQP 0-9-1 · reply a replyTo · asíncrono]
     deactivate Account
-    Gateway-->>Frontend: Responder con el resultado real
+    Broker-->>Gateway: Entregar la respuesta (correlationId)<br/>[AMQP 0-9-1 · reply · asíncrono]
+    Gateway-->>Frontend: Responder con el resultado real<br/>[HTTPS/REST · 200 OK · síncrono]
     deactivate Gateway
     Frontend-->>Usr: Mostrar el resultado real de la creación de cuenta
     deactivate Frontend

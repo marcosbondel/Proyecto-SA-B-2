@@ -21,8 +21,10 @@ export const customerUpdateV1 = defineContract({
   schema: z
     .object({
       customerId: uuidV4,
-      fullName: z.string().min(1).max(200).optional(),
-      address: z.string().min(1).max(300).optional(),
+      // Trimmed before the length check so a whitespace-only value is refused
+      // rather than blanking a stored field (FR-014).
+      fullName: z.string().trim().min(1).max(200).optional(),
+      address: z.string().trim().min(1).max(300).optional(),
       dateOfBirth: z.iso.date().optional(),
     })
     .refine(

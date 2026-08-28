@@ -7,13 +7,11 @@ set -uo pipefail
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(CDPATH="" cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-# shellcheck source=/dev/null
+# `source`, never a read/eval loop: eval runs whatever the file contains, so a
+# password holding a backtick would be executed rather than read.
 set -a
-while IFS= read -r line || [[ -n "$line" ]]; do
-  [[ -z "$line" ]] && continue
-  [[ "$line" =~ ^[[:space:]]*# ]] && continue
-  eval "$line"
-done < "${SCRIPT_DIR}/../.env"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/../.env"
 set +a
 
 EXPECTED_EXCHANGES=4

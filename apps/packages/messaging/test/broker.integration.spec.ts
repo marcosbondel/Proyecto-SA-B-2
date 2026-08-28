@@ -5,6 +5,7 @@ import type { MessageEnvelope } from '@bank/contracts';
 import amqp from 'amqplib';
 
 import { MessageBroker } from '../src/broker';
+import type { ParkedMessage } from '../src/broker';
 
 /**
  * Integration test against a live RabbitMQ broker. This test closes TD-014 by
@@ -53,6 +54,7 @@ const runIntegrationTests = !!RABBITMQ_URL;
     await deleteQueueIfExists(`${TEST_QUEUE}.dlq`);
     await deleteQueueIfExists(TEST_QUEUE);
     await deleteQueueIfExists('test.integration.errors');
+    await deleteQueueIfExists('bank.errors.drain');
 
     try {
       await channel.deleteExchange(TEST_EXCHANGE, { ifUnused: false });
@@ -160,6 +162,44 @@ const runIntegrationTests = !!RABBITMQ_URL;
     });
 
     expect(attempts).toBe(4);
+
+    await broker.stop();
+  });
+
+  it('drains a message that reached the error exchange, raw', async () => {
+    const broker = new MessageBroker({
+      url: RABBITMQ_URL!,
+      exchanges: [TEST_EXCHANGE],
+      errorExchange: EXCHANGES.errors,
+    });
+
+    await broker.start();
+
+    const drained: ParkedMessage[] = [];
+    await broker.drainErrors(async (parked) => {
+      drained.push(parked);
+    });
+
+    // A poison body — not even JSON — published straight to the error exchange,
+    // the way `#park` publishes anything it could not process. The drain must
+    // hand it over untouched rather than let it vanish.
+    const connection = await amqp.connect(RABBITMQ_URL!);
+    const channel = await connection.createChannel();
+    await channel.assertExchange(EXCHANGES.errors, 'topic', { durable: true });
+    channel.publish(EXCHANGES.errors, 'poison.routing.key.v1', Buffer.from('not an envelope'), {
+      headers: {
+        'x-failure-reason': 'invalid: body is not a well-formed message envelope.',
+        'x-original-routing-key': 'poison.routing.key.v1',
+      },
+    });
+    await channel.close();
+    await connection.close();
+
+    await waitFor(() => drained.length === 1, 10_000);
+
+    expect(drained[0]!.content.toString('utf8')).toBe('not an envelope');
+    expect(drained[0]!.routingKey).toBe('poison.routing.key.v1');
+    expect(drained[0]!.headers['x-failure-reason']).toContain('not a well-formed');
 
     await broker.stop();
   });

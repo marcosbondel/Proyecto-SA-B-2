@@ -1,3 +1,5 @@
+import type { MessageEnvelope } from '@bank/contracts';
+
 import type {
   PaymentRejection,
   Transaction,
@@ -143,8 +145,30 @@ export interface TransactionRepository {
     readonly messageType: string;
     readonly payload: unknown;
     readonly decide: (transaction: Transaction) => Transition;
+    /**
+     * What the transition implies, built by the caller and written **in the
+     * same transaction** as the state change — the whole of the transactional
+     * outbox (TD-031). Called once, only for a transition that actually applied,
+     * with the updated transaction. A duplicate or an illegal transition never
+     * reaches it, so a redelivery re-emits nothing.
+     */
+    readonly outbound?: (transaction: Transaction, transition: Transition) => AppliedEffects;
     readonly now: Date;
   }): Promise<EventOutcome>;
+
+  /**
+   * Publishes the outbox rows that are still `PENDING` and marks them dispatched
+   * — the relay half of the outbox. `deliver` is the broker publish; each batch
+   * runs in one transaction that selects `FOR UPDATE SKIP LOCKED` (so two
+   * replicas never send the same row), publishes, and marks. A crash after the
+   * publish and before the mark leaves the row `PENDING`, so the next sweep
+   * resends it and the consumer deduplicates by the unchanged `messageId`.
+   * Returns how many rows it dispatched.
+   */
+  dispatchPendingOutbox(
+    deliver: (message: OutboxMessage) => Promise<void>,
+    limit: number,
+  ): Promise<number>;
 
   /**
    * Records something this service published, in the same trail as what it
@@ -174,6 +198,33 @@ export interface OutboundMessage {
 }
 
 /**
+ * The durable form of an outbound message: its complete envelope, and the
+ * exchange and routing key it belongs on. Stored verbatim in the outbox and
+ * republished byte-for-byte by the relay, so the `messageId` a consumer
+ * deduplicates by never changes between the write and the send.
+ */
+export interface OutboxMessage {
+  readonly exchange: string;
+  readonly routingKey: string;
+  readonly envelope: MessageEnvelope<unknown>;
+}
+
+/**
+ * What a transition implies, computed by the use case and persisted by
+ * `applyEvent` in the transition's own transaction.
+ */
+export interface AppliedEffects {
+  /** Commands and events to publish durably — written to the outbox. */
+  readonly dispatch: readonly OutboxMessage[];
+  /**
+   * Extra local-trail rows the transition writes beyond the event that caused
+   * it — today only `payment.requested.v1`, so the status query can name the
+   * payment it ordered. Written to `transaction_events` in the same transaction.
+   */
+  readonly trail: readonly OutboundMessage[];
+}
+
+/**
  * How this service speaks to the rest of the system: commands, events and
  * replies, and nothing else.
  *
@@ -187,6 +238,16 @@ export interface EventPublisher {
   send(message: OutboundMessage): Promise<void>;
   publish(message: OutboundMessage): Promise<void>;
   reply(message: OutboundMessage): Promise<void>;
+
+  /**
+   * Builds the durable form of a message — its validated envelope on its
+   * exchange — **without** publishing it. This is how the Saga's commands and
+   * events reach the outbox: the use case asks for the envelope, `applyEvent`
+   * writes it in the transition's transaction, and the relay publishes it later.
+   * Synchronous on purpose — building an envelope touches no broker, so it can
+   * happen inside the decision the repository is about to persist.
+   */
+  envelopeFor(message: OutboundMessage, kind: 'command' | 'event'): OutboxMessage;
 }
 
 /** Injected so a test can decide what "now" is. */

@@ -255,6 +255,62 @@ describeIntegration('PostgresAccountRepository', () => {
       expect(operations.find((o) => o.type === 'COMPENSATION')?.status).toBe('APPLIED');
     });
 
+    it('refuses to compensate a transfer that was never debited, crediting nothing', async () => {
+      const accountId = await seed(10_000);
+      const transactionId = randomUUID();
+
+      // No debit for this transaction exists. Crediting the compensation back
+      // would create money that never left, so the movement must abort.
+      await expect(
+        repository.applyMovement({
+          accountId,
+          type: 'COMPENSATION',
+          transactionId,
+          idempotencyKey: randomUUID(),
+          messageType: 'account.debit.compensation.requested.v1',
+          decide: (account) => compensate(account, quetzales(2_500), NOW),
+          compensates: { transactionId },
+          now: NOW,
+        }),
+      ).rejects.toThrow(/no applied debit/i);
+
+      // The balance is untouched: nothing was credited.
+      expect((await repository.findById(accountId))?.balanceMinor).toBe(10_000);
+    });
+
+    it('blocks a second movement of the same type for one transfer (business-identity dedup)', async () => {
+      const accountId = await seed(10_000);
+      const transactionId = randomUUID();
+
+      await repository.applyMovement({
+        accountId,
+        type: 'CREDIT',
+        transactionId,
+        idempotencyKey: randomUUID(),
+        messageType: 'account.credit.requested.v1',
+        decide: (account) => credit(account, quetzales(2_500), NOW),
+        now: NOW,
+      });
+
+      // A second CREDIT for the same transfer, under a *fresh* idempotency key
+      // (the re-published-event bug). The transport dedup does not catch it; the
+      // (transaction_id, type) unique index does, and its transaction rolls back
+      // — the balance cannot move twice for one transfer.
+      await expect(
+        repository.applyMovement({
+          accountId,
+          type: 'CREDIT',
+          transactionId,
+          idempotencyKey: randomUUID(),
+          messageType: 'account.credit.requested.v1',
+          decide: (account) => credit(account, quetzales(2_500), NOW),
+          now: NOW,
+        }),
+      ).rejects.toThrow();
+
+      expect((await repository.findById(accountId))?.balanceMinor).toBe(12_500);
+    });
+
     it('records a processed message once, letting the second insert lose quietly', async () => {
       const record = {
         idempotencyKey: randomUUID(),

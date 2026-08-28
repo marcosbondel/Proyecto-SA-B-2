@@ -11,10 +11,13 @@ import {
 import { applyEvent } from '../domain/transaction';
 import type { SagaEvent, Transaction, Transition } from '../domain/transaction';
 import type {
+  AppliedEffects,
   Clock,
   EventOutcome,
   EventPublisher,
   IdGenerator,
+  OutboundMessage,
+  OutboxMessage,
   TransactionRepository,
 } from './ports';
 
@@ -79,42 +82,79 @@ export class AdvanceSagaUseCase {
       messageType: input.messageType,
       payload: input.payload,
       decide: (transaction) => applyEvent(transaction, input.event),
+      /**
+       * The command and event this transition implies, handed to the repository
+       * so they are written to the outbox **in the same transaction** as the
+       * state change (TD-031). Nothing is published here any more: the relay
+       * sweeps the outbox and does that, which is what closes the crash window
+       * between committing a transition and ordering the money movement it
+       * demands. Called only for a transition that applied, so a duplicate or an
+       * out-of-order event re-emits nothing.
+       */
+      outbound: (transaction, transition) => this.#effectsOf(transaction, transition),
       now,
     });
-
-    if (outcome.kind !== 'APPLIED') {
-      return outcome;
-    }
-
-    await this.#order(outcome.transaction, outcome.transition);
-    await this.#announce(outcome.transaction, outcome.transition, now);
 
     return outcome;
   }
 
+  /**
+   * Everything a transition implies, as data — the command it orders and the
+   * ending it announces — built into durable outbox messages without sending
+   * any of them. This ran, before the outbox, as two `await publisher.*` calls
+   * after the commit; now it is a pure function of the transition, and the
+   * repository persists what it returns alongside the state it decided.
+   */
+  #effectsOf(transaction: Transaction, transition: Transition): AppliedEffects {
+    const dispatch: OutboxMessage[] = [];
+    const trail: OutboundMessage[] = [];
+
+    const ordered = this.#commandFor(transaction, transition);
+
+    if (ordered !== null) {
+      dispatch.push(this.#publisher.envelopeFor(ordered.message, 'command'));
+
+      if (ordered.trail !== undefined) {
+        trail.push(ordered.trail);
+      }
+    }
+
+    const announced = this.#eventFor(transaction, transition);
+
+    if (announced !== null) {
+      dispatch.push(this.#publisher.envelopeFor(announced, 'event'));
+    }
+
+    return { dispatch, trail };
+  }
+
   /** The next command of the choreography, if this transition ordered one. */
-  async #order(transaction: Transaction, transition: Transition): Promise<void> {
+  #commandFor(
+    transaction: Transaction,
+    transition: Transition,
+  ): { readonly message: OutboundMessage; readonly trail?: OutboundMessage } | null {
     switch (transition.command) {
       case null:
-        return;
+        return null;
 
       case 'DEBIT':
-        await this.#publisher.send({
-          messageType: accountDebitRequestedV1.name,
-          payload: {
-            transactionId: transaction.transactionId,
-            accountId: transaction.sourceAccount,
-            amount: transaction.amount,
+        return {
+          message: {
+            messageType: accountDebitRequestedV1.name,
+            payload: {
+              transactionId: transaction.transactionId,
+              accountId: transaction.sourceAccount,
+              amount: transaction.amount,
+            },
           },
-        });
-
-        return;
+        };
 
       case 'PAYMENT': {
         /**
          * The one identifier this service mints. It is recorded in the local
-         * trail before it is published, because a `paymentId` that exists only
-         * inside a message in flight is a payment nobody can ask about.
+         * trail in the same transaction it is enqueued in, because a `paymentId`
+         * that exists only inside a message in flight is a payment nobody can
+         * ask about — and now the trail row and the outbox row commit together.
          */
         const paymentId = this.#ids.next();
         const payload = {
@@ -125,49 +165,42 @@ export class AdvanceSagaUseCase {
             ? {}
             : { scenario: transaction.paymentScenario }),
         };
+        const message = { messageType: paymentRequestedV1.name, payload };
 
-        await this.#repository.recordCommand({
-          transactionId: transaction.transactionId,
-          messageType: paymentRequestedV1.name,
-          payload,
-        });
-
-        await this.#publisher.send({ messageType: paymentRequestedV1.name, payload });
-
-        return;
+        return { message, trail: message };
       }
 
       case 'CREDIT':
-        await this.#publisher.send({
-          messageType: accountCreditRequestedV1.name,
-          payload: {
-            transactionId: transaction.transactionId,
-            accountId: transaction.targetAccount,
-            amount: transaction.amount,
+        return {
+          message: {
+            messageType: accountCreditRequestedV1.name,
+            payload: {
+              transactionId: transaction.transactionId,
+              accountId: transaction.targetAccount,
+              amount: transaction.amount,
+            },
           },
-        });
-
-        return;
+        };
 
       case 'COMPENSATION':
-        await this.#publisher.send({
-          messageType: accountDebitCompensationRequestedV1.name,
-          payload: {
-            transactionId: transaction.transactionId,
-            /** Back to where it came from. A compensation is not a transfer. */
-            accountId: transaction.sourceAccount,
-            amount: transaction.amount,
-            /**
-             * Never `null`. The domain sets `failureReason` on the same
-             * transition that orders the compensation, and the contract makes
-             * the cause mandatory — a refund with no recorded reason is an
-             * audit record that explains nothing.
-             */
-            triggeredBy: transition.failureReason,
+        return {
+          message: {
+            messageType: accountDebitCompensationRequestedV1.name,
+            payload: {
+              transactionId: transaction.transactionId,
+              /** Back to where it came from. A compensation is not a transfer. */
+              accountId: transaction.sourceAccount,
+              amount: transaction.amount,
+              /**
+               * Never `null`. The domain sets `failureReason` on the same
+               * transition that orders the compensation, and the contract makes
+               * the cause mandatory — a refund with no recorded reason is an
+               * audit record that explains nothing.
+               */
+              triggeredBy: transition.failureReason,
+            },
           },
-        });
-
-        return;
+        };
     }
   }
 
@@ -177,13 +210,17 @@ export class AdvanceSagaUseCase {
    * `FAILED` and `COMPENSATED` are two events and not one with a flag. Both
    * mean the customer's money is where it started, but only the second means it
    * moved twice, and the audit record has to be able to say which happened.
+   *
+   * The timestamp comes from the transaction the repository just updated: for a
+   * terminal transition `completedAt` was stamped in that same write, so it is
+   * the moment the ending actually happened rather than a clock read here.
    */
-  async #announce(transaction: Transaction, transition: Transition, now: Date): Promise<void> {
-    const at = (transaction.completedAt ?? now).toISOString();
+  #eventFor(transaction: Transaction, transition: Transition): OutboundMessage | null {
+    const at = (transaction.completedAt ?? transaction.updatedAt).toISOString();
 
     switch (transition.status) {
       case 'COMPLETED':
-        await this.#publisher.publish({
+        return {
           messageType: transactionCompletedV1.name,
           payload: {
             transactionId: transaction.transactionId,
@@ -193,12 +230,10 @@ export class AdvanceSagaUseCase {
             status: 'COMPLETED',
             completedAt: at,
           },
-        });
-
-        return;
+        };
 
       case 'FAILED':
-        await this.#publisher.publish({
+        return {
           messageType: transactionFailedV1.name,
           payload: {
             transactionId: transaction.transactionId,
@@ -206,12 +241,10 @@ export class AdvanceSagaUseCase {
             reason: transition.failureReason,
             failedAt: at,
           },
-        });
-
-        return;
+        };
 
       case 'COMPENSATED':
-        await this.#publisher.publish({
+        return {
           messageType: transactionCompensatedV1.name,
           payload: {
             transactionId: transaction.transactionId,
@@ -219,12 +252,10 @@ export class AdvanceSagaUseCase {
             reason: transition.failureReason,
             compensatedAt: at,
           },
-        });
-
-        return;
+        };
 
       default:
-        return;
+        return null;
     }
   }
 }

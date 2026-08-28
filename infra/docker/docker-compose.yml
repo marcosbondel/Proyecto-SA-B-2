@@ -113,7 +113,6 @@ services:
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./rabbitmq/rabbitmq_definitions.json:/etc/rabbitmq/definitions.json:ro
     networks:
       - bank-usac-local
     healthcheck:
@@ -122,6 +121,30 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  # Creates the unprivileged account the applications connect with. The `admin`
+  # account it authenticates as is seeded by the image from the environment —
+  # which only works because no definitions file is loaded (see
+  # rabbitmq/rabbitmq.conf for why RabbitMQ 4.x otherwise skips that seeding).
+  # The topology is asserted by the services themselves on startup, not imported.
+  rabbitmq-init:
+    image: rabbitmq:4.3.4-management
+    container_name: rabbitmq-init
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_APP_USER: ${RABBITMQ_APP_USER}
+      RABBITMQ_APP_PASSWORD: ${RABBITMQ_APP_PASSWORD}
+    volumes:
+      - ./scripts/init-rabbitmq.sh:/init-rabbitmq.sh:ro
+    networks:
+      - bank-usac-local
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: ["/init-rabbitmq.sh"]
+    restart: "no"
 
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z

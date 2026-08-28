@@ -37,6 +37,14 @@ export interface Customer {
   readonly emailVerifiedAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /**
+   * Optimistic-concurrency counter. Carried unchanged by the domain — an
+   * `applyChanges` result keeps the version it was read at, and the repository
+   * bumps it under a `WHERE version = <read>` guard, so two concurrent updates
+   * cannot silently overwrite each other (the "protección contra condiciones de
+   * carrera" the assignment asks of this service). Mirrors Account.
+   */
+  readonly version: number;
 }
 
 /** The fields `customer.update.v1` may change, and no others (C-1, C-3, C-6). */
@@ -123,6 +131,7 @@ export function registerCustomer(
     emailVerifiedAt: null,
     createdAt: timestamp,
     updatedAt: timestamp,
+    version: 0,
   };
 }
 
@@ -219,6 +228,76 @@ export function recordIdentityVerdict(
 /** Only `CLIENTE` holds accounts and therefore needs a validated identity (C-6). */
 export function requiresIdentityValidation(customer: Pick<Customer, 'role'>): boolean {
   return customer.role === 'CLIENTE';
+}
+
+/** The verified actor a command carries, reduced to what a domain rule needs. */
+export interface Actor {
+  readonly role: Role;
+  readonly customerId: string;
+}
+
+/**
+ * Who may change a customer's data (D-06).
+ *
+ * A `CLIENTE` may update only their own record — "own only" in the decision;
+ * staff (`CAJERO_RECEPTOR`, `ADMINISTRADOR`) may update anyone. A command that
+ * reached the broker with **no** verified actor may update nobody.
+ *
+ * The check lives here, not only at the Gateway, because a permission enforced
+ * only at the edge holds until a second producer appears — the same reason
+ * Account re-checks its own status change. The Gateway has no customer table and
+ * cannot answer "is this the owner", so the owning service must.
+ */
+export function mayUpdateCustomer(actor: Actor | null, subjectCustomerId: string): boolean {
+  if (actor === null) {
+    return false;
+  }
+
+  if (actor.role === 'CLIENTE') {
+    return actor.customerId === subjectCustomerId;
+  }
+
+  return true;
+}
+
+/**
+ * Who may read a customer's record (D-06, same scope as updating it).
+ *
+ * A `CLIENTE` may read only their own record; staff may read anyone. Reused by
+ * the query path so the update form and the validation detail can show real
+ * data without letting a client read a stranger's. An unauthorised read is
+ * answered `NOT_FOUND`, not "forbidden", so it cannot enumerate ids.
+ */
+export function mayReadCustomer(actor: Actor | null, subjectCustomerId: string): boolean {
+  return mayUpdateCustomer(actor, subjectCustomerId);
+}
+
+/**
+ * Who may give a manual verdict on an identity document, and who may see the
+ * queue of documents awaiting one: staff only (`CAJERO_RECEPTOR` or
+ * `ADMINISTRADOR`). A `CLIENTE` reviews nobody's identity, their own included —
+ * the automatic photo check at submission is the only thing a client triggers.
+ */
+export function mayValidateIdentity(actor: Actor | null): boolean {
+  return actor !== null && actor.role !== 'CLIENTE';
+}
+
+/**
+ * Which role a registration may ask for, given who is asking (D-06).
+ *
+ * Anyone — including the anonymous public form — may create a `CLIENTE`. Only an
+ * `ADMINISTRADOR` may create staff (`CAJERO_RECEPTOR`, `ADMINISTRADOR`). The
+ * Gateway already refuses an elevated role from a public request, but this
+ * service repeats the check because the command could arrive from a second
+ * producer on the broker with no actor at all; trusting the edge would let one
+ * mint an administrator.
+ */
+export function mayRegisterWithRole(actor: Actor | null, requestedRole: Role): boolean {
+  if (requestedRole === 'CLIENTE') {
+    return true;
+  }
+
+  return actor?.role === 'ADMINISTRADOR';
 }
 
 /** The oldest person on record was 122. A century and a quarter is generous. */

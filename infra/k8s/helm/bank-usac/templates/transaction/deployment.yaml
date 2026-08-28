@@ -1,0 +1,62 @@
+# Transaction Service (T-18). Env matches docs/operations/CONTAINERS.md's
+# transaction-service row: NODE_ENV, PORT, DATABASE_URL, RABBITMQ_URL — no
+# optional variables. It decides no funds and calls no other service
+# (test/isolation.spec.ts enforces this in the image, not here).
+{{- $component := .Values.services.transaction.component }}
+{{- $ctx := dict "root" $ "component" $component }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bank-usac.componentFullname" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.services.transaction.image.repository }}:{{ .Values.services.transaction.image.tag }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.services.transaction.port }}
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: NODE_ENV
+            - name: PORT
+              value: {{ .Values.services.transaction.port | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: TRANSACTION_DATABASE_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: RABBITMQ_URL
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

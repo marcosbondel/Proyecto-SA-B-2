@@ -3,9 +3,12 @@
 ' Caso de uso 6 (docs/domain/use-cases.md). Saga por coreografia con compensacion
 ' explicita, cuatro servicios, comunicados solo por RabbitMQ. Un solo diagrama:
 ' camino feliz, los tres finales (COMPLETED / FAILED / COMPENSATED) y la
-' compensacion con sus dos disparadores. Lenguaje de negocio, sin nombres de
-' tecnologia, protocolo ni framework, solo la accion realizada — misma convencion
-' que 06-uml-secuencia-crear-cuenta.puml. Debe coincidir con el .mmd equivalente.
+' compensacion con sus dos disparadores.
+' Cada mensaje declara la accion de negocio y, entre corchetes, su tecnologia,
+' protocolo y tipo de interaccion (sincrona o asincrona; comando, evento o
+' request/reply), como exige el enunciado (§4.2, "Tipo de comunicacion") — misma
+' convencion que 06-uml-secuencia-crear-cuenta.puml.
+' Debe coincidir con el .mmd equivalente en TODAS las etiquetas.
 
 title UML 2 - Diagrama de Secuencia\nTransferencia bancaria - Saga por coreografia (Bank USAC)
 
@@ -14,8 +17,8 @@ skinparam defaultFontName "Segoe UI"
 skinparam ArrowColor #555555
 skinparam ArrowThickness 1.2
 skinparam sequenceMessageAlign center
-skinparam maxMessageSize 220
-skinparam wrapWidth 220
+skinparam maxMessageSize 260
+skinparam wrapWidth 260
 skinparam noteBackgroundColor #FFF8DC
 skinparam noteBorderColor #D6B656
 skinparam ParticipantBorderColor #1168BD
@@ -33,9 +36,10 @@ legend right
     |= Elemento | Notación |
     | <color:#1168BD>Azul</color> | Actor, Frontend, Gateway, Transaction/Account/Payment Service, Notification & Audit |
     | <color:#C11926>Rojo</color> | RabbitMQ (broker) |
-    | `->>` | Mensaje asíncrono (comando / evento) |
-    | `-->>` | Respuesta asíncrona / reply |
-    | `->` | Llamada síncrona |
+    | `->>` | Mensaje asíncrono sobre AMQP 0-9-1 (comando o evento) |
+    | `-->>` | Respuesta asíncrona: reply de AMQP o respuesta HTTP a una petición en curso |
+    | `->` | Llamada síncrona (HTTPS/REST del navegador) |
+    | `[ … ]` | Tecnología · protocolo · tipo de interacción del mensaje |
     | `alt` / `else` | Flujo alternativo (fallo esperado / final distinto) |
     | `opt` | Compensación — se ejecuta solo si un disparador la activó |
     | `loop` | Reintentos del pago (cuenta `attempt`) |
@@ -53,29 +57,29 @@ participant "Notification & Audit" as Notif
 
 autonumber
 
-Actor -> Frontend : Solicitar transferencia
+Actor -> Frontend : Solicitar transferencia\n[interacción de usuario · navegador · síncrono]
 activate Frontend
-Frontend -> Gateway : Enviar sourceAccount, targetAccount, amount, idempotencyKey
+Frontend -> Gateway : Enviar sourceAccount, targetAccount, amount, idempotencyKey\n[HTTPS/REST · POST /api/transfers · síncrono]
 activate Gateway
 note over Gateway
   Genera un identificador
   de seguimiento (correlationId)
 end note
-Gateway ->> Broker : Publicar comando "transferir" — transfer.requested (correlationId)
-Gateway -->> Frontend : Confirmar recepción — 202 Accepted
+Gateway ->> Broker : Publicar comando "transferir" — transfer.requested (correlationId)\n[AMQP 0-9-1 · comando · asíncrono]
+Gateway -->> Frontend : Confirmar recepción — 202 Accepted\n[HTTPS/REST · respuesta síncrona]
 deactivate Gateway
 Frontend -->> Actor : "Solicitud recibida" (NO "transferencia completada")
 deactivate Frontend
 
 ' ---- Paso 1 ----
-Broker ->> Txn : Entregar transfer.requested (correlationId)
+Broker ->> Txn : Entregar transfer.requested (correlationId)\n[AMQP 0-9-1 · entrega de comando · asíncrono]
 activate Txn
 
 alt datos inválidos o idempotencyKey en conflicto (T-1, T-2, T-4)
     note over Txn
       Rechazado — no se crea la Transaction
     end note
-    Txn ->> Broker : Confirmar (ack) — rechazo registrado
+    Txn ->> Broker : Confirmar (ack) — rechazo registrado\n[AMQP basic.ack]
     deactivate Txn
 
 else idempotencyKey repetida, mismo contenido (T-3)
@@ -83,7 +87,7 @@ else idempotencyKey repetida, mismo contenido (T-3)
       Devuelve la transacción original
       Los balances no se mueven
     end note
-    Txn ->> Broker : Confirmar (ack)
+    Txn ->> Broker : Confirmar (ack)\n[AMQP basic.ack]
     deactivate Txn
 
 else datos válidos, idempotencyKey nueva
@@ -91,31 +95,31 @@ else datos válidos, idempotencyKey nueva
       Crea la Transaction
       PENDING -> DEBITING
     end note
-    Txn ->> Broker : Publicar comando "debitar" — account.debit.requested (correlationId)
-    Txn ->> Broker : Confirmar (ack) — DESPUÉS de guardar
+    Txn ->> Broker : Publicar comando "debitar" — account.debit.requested (correlationId)\n[AMQP 0-9-1 · comando · asíncrono]
+    Txn ->> Broker : Confirmar (ack) — DESPUÉS de guardar\n[AMQP basic.ack]
     deactivate Txn
 
     ' ---- Paso 2 ----
-    Broker ->> Account : Entregar account.debit.requested (correlationId)
+    Broker ->> Account : Entregar account.debit.requested (correlationId)\n[AMQP 0-9-1 · entrega de comando · asíncrono]
     activate Account
 
     alt fondos insuficientes o cuenta origen inactiva (A-1 / A-2) — cierra en FAILED
         note over Account
           Rechazado — el débito no se aplica
         end note
-        Account ->> Broker : Publicar evento "débito rechazado" — account.debit.rejected (ack)
+        Account ->> Broker : Publicar evento "débito rechazado" — account.debit.rejected (ack)\n[AMQP 0-9-1 · evento · asíncrono]
         deactivate Account
 
-        Broker ->> Txn : Entregar account.debit.rejected (correlationId)
+        Broker ->> Txn : Entregar account.debit.rejected (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
         activate Txn
         note over Txn
           DEBITING -> FAILED
           Nada que deshacer (invariante T-7)
         end note
-        Txn ->> Broker : Publicar evento "transacción fallida" — transaction.failed (ack)
+        Txn ->> Broker : Publicar evento "transacción fallida" — transaction.failed (ack)\n[AMQP 0-9-1 · evento · asíncrono]
         deactivate Txn
 
-        Broker ->> Notif : Entregar transaction.failed (correlationId)
+        Broker ->> Notif : Entregar transaction.failed (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
         activate Notif
         note over Notif
           Registra el cierre y notifica
@@ -124,20 +128,20 @@ else datos válidos, idempotencyKey nueva
         deactivate Notif
 
     else débito aplicado
-        Account ->> Broker : Publicar evento "cuenta debitada" — account.debited (ack)
+        Account ->> Broker : Publicar evento "cuenta debitada" — account.debited (ack)\n[AMQP 0-9-1 · evento · asíncrono]
         deactivate Account
 
         ' ---- Paso 3 ----
-        Broker ->> Txn : Entregar account.debited (correlationId)
+        Broker ->> Txn : Entregar account.debited (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
         activate Txn
         note over Txn
           DEBITING -> PAYMENT_PENDING
         end note
-        Txn ->> Broker : Publicar comando "procesar pago" — payment.requested (ack)
+        Txn ->> Broker : Publicar comando "procesar pago" — payment.requested (ack)\n[AMQP 0-9-1 · comando · asíncrono]
         deactivate Txn
 
         ' ---- Paso 4 ----
-        Broker ->> Payment : Entregar payment.requested (correlationId)
+        Broker ->> Payment : Entregar payment.requested (correlationId)\n[AMQP 0-9-1 · entrega de comando · asíncrono]
         activate Payment
         loop reintentos — cuenta el número de intento (attempt)
             note over Payment
@@ -146,10 +150,10 @@ else datos válidos, idempotencyKey nueva
         end
 
         alt reintentos agotados — dispara compensación
-            Payment ->> Broker : Publicar evento "pago fallido" — payment.failed (failureReason, ack)
+            Payment ->> Broker : Publicar evento "pago fallido" — payment.failed (failureReason, ack)\n[AMQP 0-9-1 · evento · asíncrono]
             deactivate Payment
 
-            Broker ->> Txn : Entregar payment.failed (correlationId)
+            Broker ->> Txn : Entregar payment.failed (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
             activate Txn
             note over Txn
               Débito ya aplicado -> requiere
@@ -158,27 +162,27 @@ else datos válidos, idempotencyKey nueva
             deactivate Txn
 
         else pago exitoso
-            Payment ->> Broker : Publicar evento "pago exitoso" — payment.succeeded (ack)
+            Payment ->> Broker : Publicar evento "pago exitoso" — payment.succeeded (ack)\n[AMQP 0-9-1 · evento · asíncrono]
             deactivate Payment
 
             ' ---- Paso 5 ----
-            Broker ->> Txn : Entregar payment.succeeded (correlationId)
+            Broker ->> Txn : Entregar payment.succeeded (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
             activate Txn
             note over Txn
               Ordena el crédito
             end note
-            Txn ->> Broker : Publicar comando "acreditar" — account.credit.requested (ack)
+            Txn ->> Broker : Publicar comando "acreditar" — account.credit.requested (ack)\n[AMQP 0-9-1 · comando · asíncrono]
             deactivate Txn
 
             ' ---- Paso 6 ----
-            Broker ->> Account : Entregar account.credit.requested (correlationId)
+            Broker ->> Account : Entregar account.credit.requested (correlationId)\n[AMQP 0-9-1 · entrega de comando · asíncrono]
             activate Account
 
             alt cuenta destino no encontrada — dispara compensación
-                Account ->> Broker : Publicar evento "crédito rechazado" — account.credit.rejected (ack)
+                Account ->> Broker : Publicar evento "crédito rechazado" — account.credit.rejected (ack)\n[AMQP 0-9-1 · evento · asíncrono]
                 deactivate Account
 
-                Broker ->> Txn : Entregar account.credit.rejected (correlationId)
+                Broker ->> Txn : Entregar account.credit.rejected (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
                 activate Txn
                 note over Txn
                   Débito ya aplicado -> requiere
@@ -191,19 +195,19 @@ else datos válidos, idempotencyKey nueva
                   Acredita el destino,
                   lo reactiva si estaba INACTIVE (A-3)
                 end note
-                Account ->> Broker : Publicar evento "cuenta acreditada" — account.credited (ack)
+                Account ->> Broker : Publicar evento "cuenta acreditada" — account.credited (ack)\n[AMQP 0-9-1 · evento · asíncrono]
                 deactivate Account
 
                 ' ---- Paso 7 ----
-                Broker ->> Txn : Entregar account.credited (correlationId)
+                Broker ->> Txn : Entregar account.credited (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
                 activate Txn
                 note over Txn
                   PAYMENT_PENDING -> COMPLETED
                 end note
-                Txn ->> Broker : Publicar evento "transacción completada" — transaction.completed (ack)
+                Txn ->> Broker : Publicar evento "transacción completada" — transaction.completed (ack)\n[AMQP 0-9-1 · evento · asíncrono]
                 deactivate Txn
 
-                Broker ->> Notif : Entregar transaction.completed (correlationId)
+                Broker ->> Notif : Entregar transaction.completed (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
                 activate Notif
                 note over Notif
                   Registra el cierre y notifica
@@ -215,28 +219,28 @@ else datos válidos, idempotencyKey nueva
 
         opt requiere compensación — disparada por payment.failed o account.credit.rejected
             activate Txn
-            Txn ->> Broker : Publicar comando "compensar débito" — account.debit.compensation.requested (correlationId)
+            Txn ->> Broker : Publicar comando "compensar débito" — account.debit.compensation.requested (correlationId)\n[AMQP 0-9-1 · comando de compensación · asíncrono]
             deactivate Txn
 
-            Broker ->> Account : Entregar account.debit.compensation.requested (correlationId)
+            Broker ->> Account : Entregar account.debit.compensation.requested (correlationId)\n[AMQP 0-9-1 · entrega de comando · asíncrono]
             activate Account
             note over Account
               Devuelve el monto a
               la cuenta origen
             end note
-            Account ->> Broker : Publicar evento "débito compensado" — account.debit.compensated (ack)
+            Account ->> Broker : Publicar evento "débito compensado" — account.debit.compensated (ack)\n[AMQP 0-9-1 · evento · asíncrono]
             deactivate Account
 
-            Broker ->> Txn : Entregar account.debit.compensated (correlationId)
+            Broker ->> Txn : Entregar account.debit.compensated (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
             activate Txn
             note over Txn
               PAYMENT_PENDING -> COMPENSATED
               El dinero salió y volvió
             end note
-            Txn ->> Broker : Publicar evento "transacción compensada" — transaction.compensated (ack)
+            Txn ->> Broker : Publicar evento "transacción compensada" — transaction.compensated (ack)\n[AMQP 0-9-1 · evento · asíncrono]
             deactivate Txn
 
-            Broker ->> Notif : Entregar transaction.compensated (correlationId)
+            Broker ->> Notif : Entregar transaction.compensated (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
             activate Notif
             note over Notif
               Registra el cierre y notifica
@@ -246,6 +250,12 @@ else datos válidos, idempotencyKey nueva
         end
     end
 end
+
+note over Actor, Gateway
+  El estado real se consulta después por transactionId:
+  GET /api/transfers/:id llega al Transaction Service
+  como request/reply sobre AMQP, con un techo de 5 s.
+end note
 
 note over Txn, Account
   Regla de diseño: Transaction Service NUNCA lee el balance.
