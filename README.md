@@ -69,13 +69,18 @@ see [Getting a session](#getting-a-session).
 > visible in the **Transferencias** screen and the **Auditoría** trail. `pnpm
 > images:flow` proves the three shapes against the built images.
 
-**Want the Turborepo terminal UI**, one process per application, and a debugger
-you can attach? Run it on the host instead. The **`/run` skill** does the prep —
-`pnpm install`, infrastructure up and healthy, the per-application `.env` files,
-the demo seed — and hands you the final `pnpm dev:host` to launch in your own
-terminal (the TUI needs an interactive terminal). It is `pnpm dev:infra` +
+**Working from Claude Code?** The **`/run` skill** brings the whole stack up
+in one go, with no manual steps: it checks Docker and the toolchain, starts the
+infrastructure and waits for it to be healthy, writes the per-application
+`.env` files, launches the seven applications on the host, and verifies they
+actually answer. If something is missing — Docker off, wrong Node version, a
+failed install — it reports exactly what and how to fix it. It also leaves a
+log watcher running: any error the stack throws while you work is caught,
+checked, and reported in the chat. Under the hood it is `pnpm dev:infra` +
 `pnpm dev:host` with the setup those two assume; see
-[Applications on the host](#applications-on-the-host--pnpm-devhost).
+[Applications on the host](#applications-on-the-host--pnpm-devhost). (Launched
+this way there is no Turborepo terminal UI — for that, run `pnpm dev:host` in
+your own terminal.)
 
 ### Configuration
 
