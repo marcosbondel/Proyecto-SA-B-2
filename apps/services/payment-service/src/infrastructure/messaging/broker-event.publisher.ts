@@ -8,7 +8,7 @@ import {
 import type { MessageEnvelope } from '@bank/contracts';
 import type { MessageBroker } from '@bank/messaging';
 
-import type { EventPublisher, OutboundMessage } from '../../application/ports';
+import type { EventPublisher, OutboundMessage, OutboxMessage } from '../../application/ports';
 
 /**
  * Everything this service says, on the exchange the catalogue assigns it.
@@ -72,7 +72,24 @@ export class BrokerEventPublisher implements EventPublisher {
     await this.#dispatch(message, 'reply');
   }
 
+  /**
+   * The durable form of an event, built but not sent — the seam the outbox hangs
+   * on. Everything `#dispatch` does up to the publish, and then it stops: the
+   * caller writes this to the outbox in the attempt's transaction, and the relay
+   * is what finally hands it to the broker.
+   */
+  public envelopeFor(message: OutboundMessage): OutboxMessage {
+    return this.#build(message, 'event');
+  }
+
   async #dispatch(message: OutboundMessage, expected: 'event' | 'reply'): Promise<void> {
+    const { exchange, routingKey, envelope } = this.#build(message, expected);
+
+    await this.#broker.publish(exchange, routingKey, envelope);
+  }
+
+  /** Validates the message against its contract and wraps it in an envelope. */
+  #build(message: OutboundMessage, expected: 'event' | 'reply'): OutboxMessage {
     const contract = catalogByName.get(message.messageType);
 
     if (contract === undefined) {
@@ -99,11 +116,11 @@ export class BrokerEventPublisher implements EventPublisher {
       );
     }
 
-    await this.#broker.publish(
-      expected === 'reply' ? EXCHANGES.replies : EXCHANGES.events,
-      routingKeyFor(message.messageType),
-      this.#envelopeFor(message.messageType, parsed.data),
-    );
+    return {
+      exchange: expected === 'reply' ? EXCHANGES.replies : EXCHANGES.events,
+      routingKey: routingKeyFor(message.messageType),
+      envelope: this.#envelopeFor(message.messageType, parsed.data),
+    };
   }
 
   #envelopeFor(messageType: string, payload: unknown): MessageEnvelope<unknown> {

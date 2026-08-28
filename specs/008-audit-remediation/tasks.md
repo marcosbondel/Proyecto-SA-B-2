@@ -155,10 +155,10 @@ transfer → zero credit.
 
 ### Payment Service — outbox + terminal-event durability
 
-- [ ] T028 [US3] Migration in `apps/services/payment-service/src/infrastructure/persistence/migrations.ts`: add dispatch columns (`dispatch_status`, `published_at`, stored `envelope`) for the terminal event and each `attempt.failed`.
-- [ ] T029 [US3] In `postgres-payment.repository.ts` + `process-payment.use-case.ts`, write the terminal/attempt event to the outbox inside the state transaction; fix the `open()` → `EXISTS` → `return` path so a redelivery ensures the terminal event is (or will be) dispatched rather than ACKed away; remove the incorrect `messageId`-dedup comment.
-- [ ] T030 [US3] Add the Payment outbox relay scheduler (or extend `retry.scheduler.ts`) to publish `PENDING` outbox rows and mark them dispatched.
-- [ ] T031 [US3] Handle the second unique index gracefully: in `open()`, treat a `(transaction_id)` conflict as already-open for that transfer instead of crashing into the DLQ.
+- [X] T028 [US3] A dedicated `outbox_messages` table in payment (migration `003_outbox_messages`, FK to `payments`), same shape as transaction's: the whole envelope as JSONB, partial index on `PENDING`. Holds the terminal event and each `attempt.failed`.
+- [X] T029 [US3] `postgres-payment.repository.ts` `attempt` now takes an `outbound` callback and writes the events to the outbox **inside the attempt's transaction**; `process-payment.use-case.ts` `#announce` became the pure `#effectsOf` that feeds it. The `open()` → `EXISTS` → `return` comment was corrected: the outbox delivers whatever the original attempt produced, and the sweeper makes the attempt if none was made, so the redelivery correctly does nothing (and the stale `messageId`-dedup reasoning is gone).
+- [X] T030 [US3] `OutboxRelay` at `apps/services/payment-service/src/infrastructure/scheduler/outbox.scheduler.ts` (sibling to `retry.scheduler.ts`); `dispatchPendingOutbox` publishes `PENDING` rows `FOR UPDATE SKIP LOCKED` and marks them, one transaction per batch. Started from `main.ts` after the broker, stopped on shutdown; interval `OUTBOX_RELAY_MS` (default 200 ms).
+- [X] T031 [US3] `open()` now catches a `payments_transaction_key` unique violation (a fresh `paymentId` for a transfer already being paid) and reads it back as `EXISTS` instead of letting it crash into the DLQ. Verified by an integration test.
 
 ### Account Service — business-identity dedup + compensation guard
 
@@ -168,7 +168,7 @@ transfer → zero credit.
 ### Tests (required by NFR-002)
 
 - [X] T034 [P] [US3] Transaction integration tests (real PostgreSQL) in `apps/services/transaction-service/test/repository.integration.spec.ts`: outbox row written in the state tx; a deduplicated redelivery writes none; relay publishes each pending row exactly once and marks it dispatched; the envelope is republished byte-for-byte (`messageId`/`idempotencyKey` intact); a broker-down sweep leaves the row `PENDING` and a recovery sweep delivers it. Verified live against the local transaction database; a full COMPLETED transfer over the running stack reached its terminal state through the relay.
-- [ ] T035 [P] [US3] **New** Payment integration tests in `apps/services/payment-service/test/repository.integration.spec.ts` (the service has none today): `FOR UPDATE` serialization, the four coherence CHECKs, both unique indexes, `due()`, and terminal-event durability under a dropped publish.
+- [X] T035 [P] [US3] **New** Payment integration tests in `apps/services/payment-service/test/repository.integration.spec.ts` (the service had none): the `(transaction_id)` conflict read as already-open (T031); the redelivered `paymentId` read as already-open; the outbox row written in the attempt transaction; a superseded attempt enqueuing nothing; the relay publishing each pending row exactly once and marking it dispatched; the envelope republished byte-for-byte; a broker-down sweep leaving the row `PENDING` and a recovery sweep delivering it. Verified live against the local payment database.
 - [ ] T036 [P] [US3] Account integration tests in `apps/services/account-service/test/`: the `UNIQUE (transaction_id, type)` blocks a double credit under a fresh envelope; compensation for a never-debited transfer credits zero and records the anomaly.
 
 **Checkpoint**: Money integrity holds under failure. Constitution VI restored.
