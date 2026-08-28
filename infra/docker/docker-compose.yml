@@ -123,6 +123,29 @@ services:
       retries: 10
       start_period: 15s
 
+  # Creates the unprivileged account the applications connect with. It exists
+  # because rabbitmq_definitions.json declares no users: a definitions file is
+  # imported after the environment has been applied, so a password written there
+  # would silently outrank the one in .env. See rabbitmq/rabbitmq.conf.
+  rabbitmq-init:
+    image: rabbitmq:4.3.4-management
+    container_name: rabbitmq-init
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_APP_USER: ${RABBITMQ_APP_USER}
+      RABBITMQ_APP_PASSWORD: ${RABBITMQ_APP_PASSWORD}
+    volumes:
+      - ./scripts/init-rabbitmq.sh:/init-rabbitmq.sh:ro
+    networks:
+      - bank-usac-local
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: ["/init-rabbitmq.sh"]
+    restart: "no"
+
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     container_name: minio

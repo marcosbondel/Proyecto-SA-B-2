@@ -269,8 +269,8 @@ password.
 
 - [ ] T069 [P] [US8] Correct the ports in `infra/docker/.env.example` to the ports the stack actually publishes (5673/15673/9002/9003), matching the README and recorded compose evidence.
 - [ ] T070 [P] [US8] Derive ports in `infra/docker/scripts/write-host-env.sh` from the single source of truth instead of hardcoding `5673`/`9002`/`5433-5437` (honor the script's own promise).
-- [ ] T071 [P] [US8] Fix the RabbitMQ credential import: stop `infra/docker/rabbitmq/rabbitmq_definitions.json` (with `load_definitions`) from importing a plaintext `changeme` that overrides `RABBITMQ_DEFAULT_USER/PASS`, so a developer's `.env` password actually takes effect.
-- [ ] T072 [P] [US8] Replace `eval "$line"` with the safe `set -a; source` form (already used in `smoke-images.sh`) in `validate-env.sh`, `test-isolation.sh`, `test-failures.sh`, and `init-minio.sh`.
+- [X] T071 [P] [US8] Fix the RabbitMQ credential import: stop `infra/docker/rabbitmq/rabbitmq_definitions.json` (with `load_definitions`) from importing a plaintext `changeme` that overrides `RABBITMQ_DEFAULT_USER/PASS`, so a developer's `.env` password actually takes effect.
+- [X] T072 [P] [US8] Replace `eval "$line"` with the safe `set -a; source` form (already used in `smoke-images.sh`) in `validate-env.sh`, `test-isolation.sh`, `test-failures.sh`, and `init-minio.sh`.
 
 **Checkpoint**: Clean checkout reproducible.
 

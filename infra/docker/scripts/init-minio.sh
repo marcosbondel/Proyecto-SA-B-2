@@ -13,13 +13,12 @@ SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/../.env"
 
 if [[ -f "${ENV_FILE}" ]]; then
-  # shellcheck source=/dev/null
+  # `source` rather than a read/eval loop: eval would execute any command the
+  # file happens to contain, and a credential holding a backtick or a `$(` is
+  # enough to turn reading configuration into running it.
   set -a
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" ]] && continue
-    [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    eval "$line"
-  done < "${ENV_FILE}"
+  # shellcheck source=/dev/null
+  source "${ENV_FILE}"
   set +a
 fi
 

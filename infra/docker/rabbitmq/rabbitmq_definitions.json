@@ -3,39 +3,13 @@
   "rabbitmq_version": "4.3.4",
   "product_name": "RabbitMQ",
   "product_version": "4.3.4",
-  "users": [
-    {
-      "name": "admin",
-      "password": "changeme",
-      "tags": "administrator"
-    },
-    {
-      "name": "bank_app",
-      "password": "changeme",
-      "tags": ""
-    }
-  ],
+  "users": [],
   "vhosts": [
     {
       "name": "/"
     }
   ],
-  "permissions": [
-    {
-      "user": "admin",
-      "vhost": "/",
-      "configure": ".*",
-      "write": ".*",
-      "read": ".*"
-    },
-    {
-      "user": "bank_app",
-      "vhost": "/",
-      "configure": ".*",
-      "write": ".*",
-      "read": ".*"
-    }
-  ],
+  "permissions": [],
   "topic_permissions": [],
   "parameters": [],
   "global_parameters": [
