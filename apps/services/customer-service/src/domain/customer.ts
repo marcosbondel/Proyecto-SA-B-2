@@ -273,6 +273,16 @@ export function mayReadCustomer(actor: Actor | null, subjectCustomerId: string):
 }
 
 /**
+ * Who may give a manual verdict on an identity document, and who may see the
+ * queue of documents awaiting one: staff only (`CAJERO_RECEPTOR` or
+ * `ADMINISTRADOR`). A `CLIENTE` reviews nobody's identity, their own included —
+ * the automatic photo check at submission is the only thing a client triggers.
+ */
+export function mayValidateIdentity(actor: Actor | null): boolean {
+  return actor !== null && actor.role !== 'CLIENTE';
+}
+
+/**
  * Which role a registration may ask for, given who is asking (D-06).
  *
  * Anyone — including the anonymous public form — may create a `CLIENTE`. Only an

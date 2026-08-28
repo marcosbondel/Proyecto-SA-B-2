@@ -121,6 +121,45 @@ paths:
       x-bank-publishes: customer.get.query.v1
       x-bank-awaits:
         - customer.get.replied.v1
+  /api/customers/pending-validation:
+    get:
+      operationId: CustomersController_pendingValidation
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Clientes pendientes de validación de identidad
+      tags:
+        - customers
+      x-bank-publishes: customer.pending-validation.query.v1
+      x-bank-awaits:
+        - customer.pending-validation.replied.v1
+  /api/customers/{customerId}/identity-verdict:
+    post:
+      operationId: CustomersController_setIdentityVerdict
+      parameters:
+        - name: customerId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetIdentityVerdictDto"
+      responses:
+        "202":
+          description: ""
+      security:
+        - session: []
+      summary: Veredicto de identidad del cajero
+      tags:
+        - customers
+      x-bank-publishes: customer.set-identity-verdict.v1
   /api/accounts:
     post:
       description: Devuelve 202 y un accountId. La cuenta todavía no existe.
@@ -365,6 +404,9 @@ components:
       type: object
       properties: {}
     UpdateCustomerDto:
+      type: object
+      properties: {}
+    SetIdentityVerdictDto:
       type: object
       properties: {}
     OpenAccountDto:

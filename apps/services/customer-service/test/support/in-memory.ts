@@ -104,6 +104,15 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     return await Promise.resolve(this.customers.get(customerId) ?? null);
   }
 
+  public async listPendingIdentityValidation(limit: number): Promise<{
+    readonly customers: readonly Customer[];
+    readonly total: number;
+  }> {
+    const pending = [...this.customers.values()].filter((c) => c.identityStatus === 'PENDING');
+
+    return await Promise.resolve({ customers: pending.slice(0, limit), total: pending.length });
+  }
+
   public async findByEmail(
     email: string,
   ): Promise<{ readonly customer: Customer; readonly credentialHash: string } | null> {

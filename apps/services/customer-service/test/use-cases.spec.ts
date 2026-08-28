@@ -4,7 +4,9 @@ import type { CustomerRegisterV1 } from '@bank/contracts';
 
 import { AuthenticateCustomerUseCase } from '../src/application/authenticate-customer.use-case';
 import { GetCustomerUseCase } from '../src/application/get-customer.use-case';
+import { GetPendingValidationUseCase } from '../src/application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from '../src/application/register-customer.use-case';
+import { SetIdentityVerdictUseCase } from '../src/application/set-identity-verdict.use-case';
 import { UpdateCustomerUseCase } from '../src/application/update-customer.use-case';
 import { ValidateIdentityUseCase } from '../src/application/validate-identity.use-case';
 import { VerifyEmailActivationUseCase } from '../src/application/verify-email-activation.use-case';
@@ -72,6 +74,8 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
     }),
     update: new UpdateCustomerUseCase({ repository, publisher, clock }),
     getCustomer: new GetCustomerUseCase({ repository, publisher }),
+    setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock }),
+    pending: new GetPendingValidationUseCase({ repository, publisher }),
     authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
     verifyEmail: new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
     validateIdentity: new ValidateIdentityUseCase({ repository, publisher, documents, clock }),
@@ -254,6 +258,76 @@ describe('role on registration (D-06)', () => {
     await context.register.execute(REGISTER, 'key-client', null);
 
     expect(context.repository.customers.size).toBe(1);
+  });
+});
+
+describe('the teller validates an identity (US6)', () => {
+  // A customer registered without a photo is PENDING: no automatic verdict ran.
+  const PENDING = { ...REGISTER, photo: null };
+
+  it('lets a teller approve a pending identity, publishing the validated event', async () => {
+    const context = build();
+    await context.register.execute(PENDING, 'key-1');
+
+    await context.setVerdict.execute(
+      { customerId: PENDING.customerId, verdict: 'VALIDATED' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-verdict',
+    );
+
+    expect(context.repository.customers.get(PENDING.customerId)!.identityStatus).toBe('VALIDATED');
+    expect(context.publisher.payloadOf('customer.identity.validated.v1')).toMatchObject({
+      customerId: PENDING.customerId,
+      identityStatus: 'VALIDATED',
+    });
+  });
+
+  it('lets a teller reject it, publishing the rejected event', async () => {
+    const context = build();
+    await context.register.execute(PENDING, 'key-1');
+
+    await context.setVerdict.execute(
+      { customerId: PENDING.customerId, verdict: 'REJECTED' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-verdict',
+    );
+
+    expect(context.repository.customers.get(PENDING.customerId)!.identityStatus).toBe('REJECTED');
+    expect(context.publisher.payloadOf('customer.identity.rejected.v1')).toMatchObject({
+      identityStatus: 'REJECTED',
+    });
+  });
+
+  it('refuses a client trying to validate an identity, publishing nothing', async () => {
+    const context = build();
+    await context.register.execute(PENDING, 'key-1');
+    const before = context.publisher.published.length;
+
+    await context.setVerdict.execute(
+      { customerId: PENDING.customerId, verdict: 'VALIDATED' },
+      { role: 'CLIENTE', customerId: PENDING.customerId },
+      'key-verdict',
+    );
+
+    expect(context.publisher.published).toHaveLength(before);
+    expect(context.repository.customers.get(PENDING.customerId)!.identityStatus).toBe('PENDING');
+  });
+
+  it('shows the pending queue to staff and an empty list to a client', async () => {
+    const context = build();
+    await context.register.execute(PENDING, 'key-1');
+
+    await context.pending.execute(
+      {},
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+    );
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({
+      customers: [{ customerId: PENDING.customerId }],
+      omitted: 0,
+    });
+
+    await context.pending.execute({}, { role: 'CLIENTE', customerId: PENDING.customerId });
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ customers: [], omitted: 0 });
   });
 });
 
