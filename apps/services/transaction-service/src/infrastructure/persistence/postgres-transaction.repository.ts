@@ -1,3 +1,4 @@
+import type { MessageEnvelope } from '@bank/contracts';
 import type { Pool, PoolClient } from 'pg';
 
 import { IllegalTransition } from '../../domain/transaction';
@@ -10,7 +11,9 @@ import type {
 } from '../../domain/transaction';
 import { minorUnitsFromNumeric, numericFromMinorUnits, quetzales } from '../../domain/money';
 import type {
+  AppliedEffects,
   EventOutcome,
+  OutboxMessage,
   PaymentOutcome,
   StartOutcome,
   TransactionRepository,
@@ -147,6 +150,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
     readonly messageType: string;
     readonly payload: unknown;
     readonly decide: (transaction: Transaction) => Transition;
+    readonly outbound?: (transaction: Transaction, transition: Transition) => AppliedEffects;
     readonly now: Date;
   }): Promise<EventOutcome> {
     const client = await this.#pool.connect();
@@ -253,11 +257,43 @@ export class PostgresTransactionRepository implements TransactionRepository {
       }
 
       await recordEvent(client, input.transactionId, input.messageType, input.payload);
+
+      const applied = transactionFrom(updated.rows[0]);
+
+      /**
+       * The outbox, written here and nowhere else. Whatever this transition
+       * implies — the command it orders, the ending it announces, the extra
+       * trail row a payment leaves — commits in this transaction with the state
+       * change that decided it, or not at all. This is the atomicity TD-031 was
+       * missing: there is no moment where the status advanced but the message it
+       * demands was lost to a crash.
+       */
+      if (input.outbound !== undefined) {
+        const effects = input.outbound(applied, transition);
+
+        for (const entry of effects.trail) {
+          await recordEvent(client, input.transactionId, entry.messageType, entry.payload);
+        }
+
+        for (const message of effects.dispatch) {
+          await client.query(
+            `INSERT INTO outbox_messages (transaction_id, exchange, routing_key, envelope)
+             VALUES ($1, $2, $3, $4::JSONB)`,
+            [
+              input.transactionId,
+              message.exchange,
+              message.routingKey,
+              JSON.stringify(message.envelope),
+            ],
+          );
+        }
+      }
+
       await client.query('COMMIT');
 
       return {
         kind: 'APPLIED',
-        transaction: transactionFrom(updated.rows[0]),
+        transaction: applied,
         transition,
       };
     } catch (error) {
@@ -275,6 +311,68 @@ export class PostgresTransactionRepository implements TransactionRepository {
     readonly payload: unknown;
   }): Promise<void> {
     await recordEvent(this.#pool, input.transactionId, input.messageType, input.payload);
+  }
+
+  public async dispatchPendingOutbox(
+    deliver: (message: OutboxMessage) => Promise<void>,
+    limit: number,
+  ): Promise<number> {
+    const client = await this.#pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      /**
+       * `FOR UPDATE SKIP LOCKED` is what lets two replicas sweep the same table
+       * without sending anything twice: each claims a disjoint set of rows and
+       * neither waits on the other. `ORDER BY id` keeps a transfer's messages in
+       * the order they were written, which for the Saga is the order they must
+       * arrive in.
+       */
+      const pending = await client.query<OutboxRow>(
+        `SELECT id, exchange, routing_key, envelope
+           FROM outbox_messages
+          WHERE dispatch_status = 'PENDING'
+          ORDER BY id
+          FOR UPDATE SKIP LOCKED
+          LIMIT $1`,
+        [limit],
+      );
+
+      for (const row of pending.rows) {
+        /**
+         * The publish is inside the transaction on purpose. If it throws — the
+         * broker is away — the whole batch rolls back, the rows stay `PENDING`,
+         * and the next sweep tries again; the failure surfaces to the relay
+         * rather than being swallowed. If it succeeds but this process dies
+         * before the mark commits, the row is still `PENDING` and is sent again,
+         * which is harmless because the envelope's `messageId` is unchanged and
+         * every consumer deduplicates on it.
+         */
+        await deliver({
+          exchange: row.exchange,
+          routingKey: row.routing_key,
+          envelope: row.envelope,
+        });
+
+        await client.query(
+          `UPDATE outbox_messages
+              SET dispatch_status = 'DISPATCHED', published_at = now()
+            WHERE id = $1`,
+          [row.id],
+        );
+      }
+
+      await client.query('COMMIT');
+
+      return pending.rowCount ?? 0;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**
@@ -379,6 +477,14 @@ interface TransactionRow {
   created_at: Date;
   updated_at: Date;
   completed_at: Date | null;
+}
+
+interface OutboxRow {
+  id: string;
+  exchange: string;
+  routing_key: string;
+  /** JSONB, parsed by the driver back into the envelope it was stored as. */
+  envelope: MessageEnvelope<unknown>;
 }
 
 interface PaymentEventPayload {
