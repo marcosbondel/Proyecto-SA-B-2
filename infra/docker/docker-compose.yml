@@ -113,7 +113,6 @@ services:
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./rabbitmq/rabbitmq_definitions.json:/etc/rabbitmq/definitions.json:ro
     networks:
       - bank-usac-local
     healthcheck:
@@ -123,10 +122,11 @@ services:
       retries: 10
       start_period: 15s
 
-  # Creates the unprivileged account the applications connect with. It exists
-  # because rabbitmq_definitions.json declares no users: a definitions file is
-  # imported after the environment has been applied, so a password written there
-  # would silently outrank the one in .env. See rabbitmq/rabbitmq.conf.
+  # Creates the unprivileged account the applications connect with. The `admin`
+  # account it authenticates as is seeded by the image from the environment —
+  # which only works because no definitions file is loaded (see
+  # rabbitmq/rabbitmq.conf for why RabbitMQ 4.x otherwise skips that seeding).
+  # The topology is asserted by the services themselves on startup, not imported.
   rabbitmq-init:
     image: rabbitmq:4.3.4-management
     container_name: rabbitmq-init

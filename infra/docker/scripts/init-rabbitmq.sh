@@ -3,11 +3,13 @@ set -euo pipefail
 
 # Create the application's broker account from the environment.
 #
-# rabbitmq_definitions.json declares the topology and no users at all — see the
-# comment in rabbitmq.conf for why. The administrator is created by the image
-# from RABBITMQ_DEFAULT_USER / RABBITMQ_DEFAULT_PASS; this script creates the
-# unprivileged account the seven applications actually connect with, so that
-# RABBITMQ_APP_PASSWORD in infra/docker/.env is the only place it is decided.
+# No definitions file is loaded (see rabbitmq/rabbitmq.conf), so the image seeds
+# the administrator from RABBITMQ_DEFAULT_USER / RABBITMQ_DEFAULT_PASS as it is
+# meant to, and this script authenticates as that admin to create the
+# unprivileged account the seven applications actually connect with — so that
+# RABBITMQ_APP_PASSWORD in infra/docker/.env is the only place it is decided. The
+# topology (exchanges, queues, bindings) is asserted by the applications
+# themselves on startup, from the `@bank/contracts` catalogue.
 #
 # `declare user` is an upsert (PUT /api/users/{name}), so re-running this after
 # changing the password in .env re-sets it rather than failing. That is what

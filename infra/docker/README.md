@@ -31,20 +31,21 @@ RabbitMQ **must not** be 4.2.x: community support for that series ended on
   `bank.errors`. Commands and events are separate exchanges because they are
   different kinds of statement with different rules — one handler versus many.
   The names, the queues, the bindings and the retry arguments are fixed by
-  [`docs/events/topology.md`](../../docs/events/topology.md) (T-05); this ticket
-  declares them, it does not decide them.
+  [`docs/events/topology.md`](../../docs/events/topology.md) (T-05) and asserted
+  by the services themselves on startup, from the `@bank/contracts` catalogue —
+  the broker declares them, it does not decide them.
 - MinIO as the S3-compatible transfer buffer for identity-document photos,
   provisioned outside the cluster per [ADR-012](../../docs/architecture/adr/ADR-012-object-storage.md).
-- **No broker accounts in `rabbitmq_definitions.json`.** That file declares the
-  topology and nothing else; its `users` and `permissions` arrays are empty on
-  purpose. Definitions are imported *after* the node has applied its
-  environment, so a user named there outranks `RABBITMQ_DEFAULT_PASS` — and a
-  developer who changes the password in `.env` would get a new connection URL
-  against a broker still expecting the old one, with nothing on either side
-  saying so. The administrator comes from the environment, and the
-  unprivileged `bank_app` account the applications connect with is created by
-  the one-shot `rabbitmq-init` service from `RABBITMQ_APP_USER` and
-  `RABBITMQ_APP_PASSWORD`. One password, one place.
+- **No definitions file, and no broker accounts declared anywhere but `.env`.**
+  RabbitMQ 4.x skips seeding `RABBITMQ_DEFAULT_USER` whenever a definitions file
+  is loaded — even a users-less one — so loading a topology-only definitions file
+  left the `admin` account uncreated and the stack unable to start on a fresh
+  volume. The topology is asserted by the services on startup instead (they must
+  do so anyway, so a fresh broker works), which lets the image seed `admin` from
+  the environment as intended. The unprivileged `bank_app` account the
+  applications connect with is then created by the one-shot `rabbitmq-init`
+  service from `RABBITMQ_APP_USER` / `RABBITMQ_APP_PASSWORD`. One password, one
+  place. See [`rabbitmq/rabbitmq.conf`](rabbitmq/rabbitmq.conf).
 
   The administrator is the one account this cannot re-set: the image creates it
   only on a **fresh** volume. Changing `RABBITMQ_DEFAULT_PASS` against an
