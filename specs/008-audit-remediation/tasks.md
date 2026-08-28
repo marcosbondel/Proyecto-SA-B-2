@@ -208,7 +208,7 @@ a definitive outcome; open a customer and see real stored data.
 ### New read contracts (Customer Service's first queries)
 
 - [X] T050 [P] [US6] Add contracts `customer.get.query.v1` / `customer.get.replied.v1` in `apps/packages/contracts/src/events/customer/` (redacted customer view, scoped by identity) and register them in the catalog.
-- [ ] T051 [P] [US6] Add contracts `customer.pending-validation.query.v1` / `.replied.v1` (teller's queue of customers awaiting identity validation, bounded, reports `omitted`) and register them.
+- [X] T051 [P] [US6] Add contracts `customer.pending-validation.query.v1` / `.replied.v1` (teller's queue of customers awaiting identity validation, bounded, reports `omitted`) and register them.
 - [ ] T052 [P] [US6] Add the scoped command-outcome query contracts `command.outcome.query.v1` / `.replied.v1` (returns only outcomes for the caller's own correlation) and register them.
 - [ ] T053 [P] [US6] Contract tests for the four new query/reply pairs, including no-secrets allowlist coverage (the customer read reply must stay redacted).
 
@@ -219,13 +219,13 @@ a definitive outcome; open a customer and see real stored data.
 
 ### Gateway routes
 
-- [ ] T056 [US6] Add `POST /api/customers/{customerId}/identity-validation` (multipart) in `apps/gateway/src/interfaces/customers.controller.ts`: upload the photo to MinIO like registration and publish the existing `customer.validate-identity.v1` with the teller's identity; add the `ROUTE_MESSAGES` row and OpenAPI entry.
+- [X] T056 [US6] Add `POST /api/customers/{customerId}/identity-validation` (multipart) in `apps/gateway/src/interfaces/customers.controller.ts`: upload the photo to MinIO like registration and publish the existing `customer.validate-identity.v1` with the teller's identity; add the `ROUTE_MESSAGES` row and OpenAPI entry.
 - [X] T057 [P] [US6] Add `GET /api/customers/{customerId}`, `GET /api/customers/pending-validation`, and the scoped outcome route in the Gateway, wired to the new query contracts, with `route-messages.ts` rows and OpenAPI entries.
 
 ### Frontend (design gate applies)
 
-- [ ] T058 [US6] Inspect the Claude Design reference (`docs/DESIGN.md` → `bonking.dc.html`, `support.js`) and confirm the pending→submitting→confirmed/failed states for the identity-validation and command-outcome surfaces before editing (frontend design gate).
-- [ ] T059 [US6] Enable the identity-validation UI: wire the approve/reject actions and the submit-with-photo in `apps/web/app/pages/clientes/validaciones/index.vue` and `[id].vue` (remove the `disabled` buttons), populate the queue from `customer.pending-validation` and the detail from `customer.get`.
+- [X] T058 [US6] Inspect the Claude Design reference (`docs/DESIGN.md` → `bonking.dc.html`, `support.js`) and confirm the pending→submitting→confirmed/failed states for the identity-validation and command-outcome surfaces before editing (frontend design gate).
+- [X] T059 [US6] Enable the identity-validation UI: wire the approve/reject actions and the submit-with-photo in `apps/web/app/pages/clientes/validaciones/index.vue` and `[id].vue` (remove the `disabled` buttons), populate the queue from `customer.pending-validation` and the detail from `customer.get`.
 - [ ] T060 [US6] Make a non-administrator see their own command outcome: in `apps/web/app/composables/useCommandOutcome.ts`, watch the scoped outcome endpoint instead of gating on `role === 'ADMINISTRADOR'`, so registration/account-opening resolve to a definitive state for every role.
 - [X] T061 [US6] Populate the customer update form (`apps/web/app/components/customer/CustomerUpdateForm.vue`) from the new read path so it is no longer edited blind.
 - [ ] T062 [P] [US6] Capture UI evidence (screenshots/notes via the `/run` skill) of the enabled validation flow and a non-admin outcome resolving; link it from the feature design notes (frontend verification gate).
