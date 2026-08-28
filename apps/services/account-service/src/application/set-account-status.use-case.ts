@@ -85,6 +85,9 @@ export class SetAccountStatusUseCase {
               balanceAtDeactivation: quetzales(account.balanceMinor),
               lastActivityAt: account.lastActivityAt?.toISOString() ?? null,
               deactivatedAt: now,
+              // The administrator's reason, required on the command and kept in
+              // the audit trail instead of discarded.
+              reason: payload.reason,
             },
           }
         : {
