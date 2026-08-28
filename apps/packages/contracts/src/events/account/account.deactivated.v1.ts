@@ -22,6 +22,12 @@ export const accountDeactivatedV1 = defineContract({
     balanceAtDeactivation: money,
     lastActivityAt: isoTimestamp.nullable(),
     deactivatedAt: isoTimestamp,
+    /**
+     * Why an administrator deactivated the account. Required on the command and
+     * carried here so the audit trail keeps it; `null` for the automatic sweep,
+     * which has no human reason (its cause is the inactivity rule itself).
+     */
+    reason: z.string().max(300).nullable(),
   }),
 });
 
