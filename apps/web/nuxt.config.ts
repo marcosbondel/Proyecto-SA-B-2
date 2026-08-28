@@ -58,6 +58,20 @@ export default defineNuxtConfig({
   },
 
   /**
+   * The tab icon is the "bk" tile from the application header. The SVG keeps
+   * it crisp at any size; the multi-size `.ico` beside it covers browsers
+   * that do not take an SVG favicon.
+   */
+  app: {
+    head: {
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' }
+      ]
+    }
+  },
+
+  /**
    * The Gateway's address is read at runtime, never compiled in, so one build
    * serves development and the cluster alike. It is `public` because the
    * browser is what calls it — which is also why nothing secret may ever be

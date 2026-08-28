@@ -19,6 +19,7 @@ import { AppModule } from './app.module';
 import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environment';
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { migrate } from './infrastructure/persistence/migrations';
+import { seedDemoAccounts } from './infrastructure/persistence/seed-demo-data';
 import { PostgresAccountRepository } from './infrastructure/persistence/postgres-account.repository';
 import { DeactivationScheduler } from './infrastructure/scheduler/deactivation.scheduler';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
@@ -188,6 +189,12 @@ async function bootstrap(): Promise<void> {
 
         if (applied.length > 0) {
           logger.info('schema migrations applied', { outcome: applied.join(', ') });
+        }
+
+        /** The demo client's accounts, gated and idempotent — see `seedDemoAccounts`. */
+        if (environment.SEED_DEMO_DATA) {
+          const seeded = await seedDemoAccounts(pool);
+          logger.info('demo accounts seeded', { outcome: seeded.join(', ') });
         }
 
         await broker.start();
