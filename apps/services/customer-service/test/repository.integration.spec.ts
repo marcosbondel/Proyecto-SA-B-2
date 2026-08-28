@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { Pool } from 'pg';
 
-import { DomainRejection } from '../src/domain/customer';
+import { DomainRejection, applyChanges } from '../src/domain/customer';
 import { usernameCandidates } from '../src/domain/username';
 import { migrate } from '../src/infrastructure/persistence/migrations';
 import { PostgresCustomerRepository } from '../src/infrastructure/persistence/postgres-customer.repository';
@@ -136,6 +136,46 @@ describeIntegration('PostgresCustomerRepository', () => {
     expect([first.username, second.username].sort()).toEqual(
       [...take(usernameCandidates(name), 2)].sort(),
     );
+  });
+
+  it('refuses a concurrent update instead of losing one silently (optimistic version)', async () => {
+    const stored = await repository.registerCustomer(inputFor(registration()));
+    const base = await repository.findById(stored.customerId);
+    expect(base?.version).toBe(0);
+
+    // Two updates computed from the *same* read (both at version 0): one changes
+    // the address, the other the name. A read-then-write without a version guard
+    // would let the second silently revert the first. With the guard, exactly
+    // one lands and the other matches no row and throws.
+    const resultA = applyChanges(base!, { address: 'Dirección A 1-11' }, NOW);
+    const resultB = applyChanges(base!, { fullName: 'Nombre B Distinto' }, NOW);
+
+    const settled = await Promise.allSettled([
+      repository.saveUpdate({
+        customer: resultA.customer,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'customer.update.v1',
+          resultSummary: { outcome: 'UPDATED' },
+        },
+      }),
+      repository.saveUpdate({
+        customer: resultB.customer,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'customer.update.v1',
+          resultSummary: { outcome: 'UPDATED' },
+        },
+      }),
+    ]);
+
+    const fulfilled = settled.filter((s) => s.status === 'fulfilled');
+    const rejected = settled.filter((s) => s.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const after = await repository.findById(stored.customerId);
+    expect(after?.version).toBe(1);
   });
 
   it('records a processed message once, and reports it thereafter', async () => {

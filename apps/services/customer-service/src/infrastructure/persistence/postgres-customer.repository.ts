@@ -27,6 +27,7 @@ interface CustomerRow {
   readonly email_verified_at: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
+  readonly version: number;
 }
 
 /**
@@ -174,18 +175,36 @@ export class PostgresCustomerRepository implements CustomerRepository {
     readonly idempotency: ProcessedMessage;
   }): Promise<void> {
     await this.#inTransaction(async (client) => {
-      await client.query(
+      /**
+       * Optimistic guard: the write only lands if the row is still at the
+       * version the use case read (`input.customer.version`), and it bumps that
+       * version. Two concurrent updates read the same version; the first to
+       * commit wins, the second matches no row. A zero `rowCount` is a lost
+       * race, not a missing customer — the whole transaction rolls back (the
+       * idempotency record with it) and the broker redelivers, which re-reads
+       * fresh and succeeds. This is what closes the lost-update the assignment's
+       * "protección contra condiciones de carrera" asks this service to prevent.
+       */
+      const written = await client.query(
         `UPDATE customers
-            SET full_name = $2, address = $3, birth_date = $4, updated_at = $5
-          WHERE customer_id = $1`,
+            SET full_name = $2, address = $3, birth_date = $4, updated_at = $5,
+                version = version + 1
+          WHERE customer_id = $1 AND version = $6`,
         [
           input.customer.customerId,
           input.customer.fullName,
           input.customer.address,
           input.customer.dateOfBirth,
           input.customer.updatedAt,
+          input.customer.version,
         ],
       );
+
+      if (written.rowCount === 0) {
+        throw new Error(
+          `concurrent update of customer ${input.customer.customerId} at version ${input.customer.version}`,
+        );
+      }
 
       await this.#recordProcessed(client, input.idempotency);
     });
@@ -432,6 +451,7 @@ function toCustomer(row: CustomerRow): Customer {
     emailVerifiedAt: row.email_verified_at === null ? null : row.email_verified_at.toISOString(),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    version: row.version,
   };
 }
 
