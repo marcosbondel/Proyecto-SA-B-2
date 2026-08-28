@@ -219,6 +219,15 @@ services:
       # flag of its own precisely so this stack can say yes to it without lying
       # about NODE_ENV. Set it to false for anything a stranger can reach.
       REVEAL_ACTIVATION_LINKS: ${REVEAL_ACTIVATION_LINKS:-true}
+      # Delivery channel. `simulated` (default) keeps the log-based activation
+      # that `pnpm images:flow` reads. Set NOTIFICATION_CHANNEL=resend in
+      # infra/docker/.env — with RESEND_API_KEY, EMAIL_FROM and APP_BASE_URL —
+      # to send the real activation email through Resend. With resend on, turn
+      # REVEAL_ACTIVATION_LINKS off: the link goes to the inbox, not the log.
+      NOTIFICATION_CHANNEL: ${NOTIFICATION_CHANNEL:-simulated}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:${BANK_WEB_PORT:-3010}}
     depends_on:
       postgres-notification-audit:
         condition: service_healthy
