@@ -15,7 +15,10 @@ import {
   customerEmailVerifiedV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerPendingValidationQueryV1,
+  customerPendingValidationRepliedV1,
   customerRegisterV1,
+  customerSetIdentityVerdictV1,
   customerUpdateV1,
   customerVerifyEmailV1,
   paymentListQueryV1,
@@ -56,6 +59,13 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     awaits: [customerEmailVerifiedV1.name, customerEmailVerificationRejectedV1.name],
   },
   'PATCH /api/customers/{customerId}': { publishes: customerUpdateV1.name },
+  'GET /api/customers/pending-validation': {
+    publishes: customerPendingValidationQueryV1.name,
+    awaits: [customerPendingValidationRepliedV1.name],
+  },
+  'POST /api/customers/{customerId}/identity-verdict': {
+    publishes: customerSetIdentityVerdictV1.name,
+  },
   'GET /api/customers/{customerId}': {
     publishes: customerGetQueryV1.name,
     awaits: [customerGetRepliedV1.name],

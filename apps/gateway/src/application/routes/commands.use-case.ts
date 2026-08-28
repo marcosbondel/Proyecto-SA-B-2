@@ -4,6 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   accountCreateV1,
   accountSetStatusV1,
+  customerSetIdentityVerdictV1,
   customerUpdateV1,
   transferRequestedV1,
 } from '@bank/contracts';
@@ -31,6 +32,11 @@ export interface UpdateCustomerRequest extends CommandContext {
   readonly fullName?: string;
   readonly address?: string;
   readonly dateOfBirth?: string;
+}
+
+export interface SetIdentityVerdictRequest extends CommandContext {
+  readonly customerId: string;
+  readonly verdict: 'VALIDATED' | 'REJECTED';
 }
 
 export interface OpenAccountRequest extends CommandContext {
@@ -77,6 +83,19 @@ export class CommandsUseCase {
         ...(request.address === undefined ? {} : { address: request.address }),
         ...(request.dateOfBirth === undefined ? {} : { dateOfBirth: request.dateOfBirth }),
       },
+      request,
+    );
+
+    return { correlationId: request.correlationId };
+  }
+
+  /** A teller's manual identity verdict. Authorisation is the owning service's. */
+  public async setIdentityVerdict(
+    request: SetIdentityVerdictRequest,
+  ): Promise<AcceptedCommand> {
+    await this.#publish(
+      customerSetIdentityVerdictV1,
+      { customerId: request.customerId, verdict: request.verdict },
       request,
     );
 

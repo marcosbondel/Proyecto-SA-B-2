@@ -10,6 +10,8 @@ import {
   auditQueryRequestedV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerPendingValidationQueryV1,
+  customerPendingValidationRepliedV1,
   notificationListQueryV1,
   notificationListRepliedV1,
   paymentListQueryV1,
@@ -113,6 +115,21 @@ export class QueriesUseCase {
 
     if (parsed.data.outcome === 'NOT_FOUND') {
       throw GatewayError.businessRejection(parsed.data.reason, 'El cliente consultado no existe.');
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * The customers awaiting an identity verdict. Staff work; a non-staff caller
+   * gets an empty list from the owning service, not a distinguishable refusal.
+   */
+  public async pendingValidation(context: QueryContext): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(customerPendingValidationQueryV1.name, {}, context);
+    const parsed = customerPendingValidationRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
     }
 
     return { ...parsed.data, correlationId: context.correlationId };

@@ -8,7 +8,9 @@ import { Pool } from 'pg';
 
 import { AuthenticateCustomerUseCase } from './application/authenticate-customer.use-case';
 import { GetCustomerUseCase } from './application/get-customer.use-case';
+import { GetPendingValidationUseCase } from './application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from './application/register-customer.use-case';
+import { SetIdentityVerdictUseCase } from './application/set-identity-verdict.use-case';
 import { UpdateCustomerUseCase } from './application/update-customer.use-case';
 import { ValidateIdentityUseCase } from './application/validate-identity.use-case';
 import { VerifyEmailActivationUseCase } from './application/verify-email-activation.use-case';
@@ -28,6 +30,8 @@ import {
   AuthenticateCustomerHandler,
   RegisterCustomerHandler,
   GetCustomerHandler,
+  GetPendingValidationHandler,
+  SetIdentityVerdictHandler,
   UpdateCustomerHandler,
   ValidateIdentityHandler,
   VerifyEmailHandler,
@@ -98,6 +102,12 @@ async function bootstrap(): Promise<void> {
       ),
       new UpdateCustomerHandler(new UpdateCustomerUseCase({ repository, publisher, clock })),
       new GetCustomerHandler(new GetCustomerUseCase({ repository, publisher })),
+      new GetPendingValidationHandler(
+        new GetPendingValidationUseCase({ repository, publisher }),
+      ),
+      new SetIdentityVerdictHandler(
+        new SetIdentityVerdictUseCase({ repository, publisher, clock }),
+      ),
       new AuthenticateCustomerHandler(
         new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
       ),
