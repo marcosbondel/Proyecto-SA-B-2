@@ -1,54 +1,79 @@
-import type { Role } from '../lib/navigation';
+import { decodeSession, isSessionExpired } from '../lib/session';
+import type { Session } from '../lib/session';
 
-export interface Session {
-  readonly token: string;
-  readonly customerId: string;
-  readonly username: string;
-  readonly role: Role;
-  /** Epoch seconds. Read to show the session ending, never trusted for auth. */
-  readonly expiresAt: number;
-}
-
-interface TokenClaims {
-  readonly sub?: unknown;
-  readonly username?: unknown;
-  readonly role?: unknown;
-  readonly exp?: unknown;
-}
-
-const ROLES = new Set<Role>(['CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR']);
+export type { Session } from '../lib/session';
 
 /**
- * The signed-in session, held in memory only.
+ * Where the token is kept in the browser, and why it is `sessionStorage`.
  *
- * **Not `localStorage`, deliberately.** There is no revocation in this phase
- * (ADR-010), so a token is valid until it expires and nothing can call it back.
- * Writing it to disk would only lengthen the window during which a copy taken
- * from a shared machine still works. The cost is real and worth stating: a full
- * page reload signs you out. Given a one-hour lifetime and no refresh, the
- * session was going to end soon anyway.
+ * Not memory only: that signed you out on every full reload, which for a
+ * banking interface reads as a bug, not a feature. Not `localStorage` either:
+ * that survives closing the tab and the browser, lengthening the window a copy
+ * taken from a shared machine stays usable — the exact risk ADR-010 named when
+ * it chose not to persist, since this phase has no token revocation.
  *
- * The claims are decoded **for display only** — to greet someone by name and to
- * pick which modules to show. Nothing here is a security decision: the Gateway
- * verifies the signature on every request and refuses regardless of what this
- * file believes.
+ * `sessionStorage` is the middle ground that keeps ADR-010's guarantee: it
+ * survives a reload but is cleared the moment the tab or window closes, so the
+ * token lives exactly as long as the in-memory session already did — the tab's
+ * lifetime — and no longer. A restored token is also refused once past its
+ * `exp`, so a reload never revives a session the Gateway would reject anyway.
+ */
+const STORAGE_KEY = 'bank-session-token';
+
+/**
+ * The signed-in session.
+ *
+ * The claims are decoded **for display and routing only** — to greet someone by
+ * name and pick which modules to show. Nothing here is a security decision: the
+ * Gateway verifies the signature on every request and refuses regardless of what
+ * this file believes.
  */
 export function useSession() {
   const session = useState<Session | null>('bank-session', () => null);
 
   function start(token: string): Session | null {
-    const claims = decode(token);
+    const claims = decodeSession(token);
 
     if (claims === null) {
       return null;
     }
 
     session.value = claims;
+    persist(token);
     return claims;
   }
 
   function end(): void {
     session.value = null;
+    forget();
+  }
+
+  /**
+   * Rehydrates the session from `sessionStorage` on a fresh page load.
+   *
+   * Client-only, and it drops a token that is malformed or past its `exp`
+   * rather than restore a session the next request would be refused for. Called
+   * once, before routing, by `plugins/session.client.ts`.
+   */
+  function restore(): void {
+    if (!import.meta.client || session.value !== null) {
+      return;
+    }
+
+    const token = sessionStorage.getItem(STORAGE_KEY);
+
+    if (token === null) {
+      return;
+    }
+
+    const claims = decodeSession(token);
+
+    if (claims === null || isSessionExpired(claims.expiresAt, Date.now())) {
+      forget();
+      return;
+    }
+
+    session.value = claims;
   }
 
   return {
@@ -57,45 +82,18 @@ export function useSession() {
     isSignedIn: computed(() => session.value !== null),
     start,
     end,
+    restore,
   };
 }
 
-/**
- * Reads the claims out of a JWT without verifying anything.
- *
- * Verification happens in the Gateway, which is the only holder of the secret.
- * Attempting it here would be theatre: a browser cannot keep a signing key, so
- * any check it performed could be bypassed by editing the same code.
- */
-function decode(token: string): Session | null {
-  const payload = token.split('.')[1];
-
-  if (payload === undefined) {
-    return null;
+function persist(token: string): void {
+  if (import.meta.client) {
+    sessionStorage.setItem(STORAGE_KEY, token);
   }
+}
 
-  try {
-    const json = JSON.parse(
-      atob(payload.replace(/-/g, '+').replace(/_/g, '/')),
-    ) as TokenClaims;
-
-    if (
-      typeof json.sub !== 'string' ||
-      typeof json.username !== 'string' ||
-      typeof json.role !== 'string' ||
-      !ROLES.has(json.role as Role)
-    ) {
-      return null;
-    }
-
-    return {
-      token,
-      customerId: json.sub,
-      username: json.username,
-      role: json.role as Role,
-      expiresAt: typeof json.exp === 'number' ? json.exp : 0,
-    };
-  } catch {
-    return null;
+function forget(): void {
+  if (import.meta.client) {
+    sessionStorage.removeItem(STORAGE_KEY);
   }
 }

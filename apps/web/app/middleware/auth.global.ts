@@ -1,4 +1,4 @@
-import { canOpen } from '../lib/navigation';
+import { canOpen, isGuestOnly } from '../lib/navigation';
 
 /**
  * Decides what a visitor may open, before anything renders.
@@ -15,7 +15,29 @@ import { canOpen } from '../lib/navigation';
  * have already completed would be a loop with no exit.
  */
 export default defineNuxtRouteMiddleware((to) => {
+  /**
+   * The session lives in the browser (`sessionStorage`, rehydrated by
+   * `plugins/session.client.ts`), so on the server it is always empty and a
+   * check here would bounce every signed-in visitor to `/login` on a reload.
+   * Deciding on the client is safe precisely because this is convenience, not
+   * the boundary — the Gateway refuses regardless of what ran here.
+   */
+  if (import.meta.server) {
+    return;
+  }
+
   const { session, role } = useSession();
+
+  /**
+   * The guard's other direction: a signed-in visitor has no business on the
+   * sign-in or registration form. They are not refused anything — they are
+   * already past those doors — so they land on the signed-in landing page,
+   * for the same reason the role redirect below goes there and not to a login
+   * form they have already completed.
+   */
+  if (session.value !== null && isGuestOnly(to.path)) {
+    return navigateTo('/');
+  }
 
   if (canOpen(role.value, to.path)) {
     return;
