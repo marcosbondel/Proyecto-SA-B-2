@@ -222,6 +222,39 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
   });
 });
 
+describe('role on registration (D-06)', () => {
+  it('refuses a non-CLIENTE role from an anonymous registration', async () => {
+    const context = build();
+
+    await context.register.execute({ ...REGISTER, role: 'ADMINISTRADOR' }, 'key-admin', null);
+
+    expect(context.repository.customers.size).toBe(0);
+    expect(context.publisher.payloadOf('customer.register.rejected.v1')).toMatchObject({
+      reason: 'ROLE_NOT_ELIGIBLE',
+    });
+  });
+
+  it('lets an administrator create staff', async () => {
+    const context = build();
+
+    await context.register.execute({ ...REGISTER, role: 'CAJERO_RECEPTOR' }, 'key-staff', {
+      role: 'ADMINISTRADOR',
+      customerId: '44444444-4444-4444-8444-444444444444',
+    });
+
+    expect(context.repository.customers.size).toBe(1);
+    expect([...context.repository.customers.values()][0]!.role).toBe('CAJERO_RECEPTOR');
+  });
+
+  it('lets the anonymous public form create a CLIENTE', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-client', null);
+
+    expect(context.repository.customers.size).toBe(1);
+  });
+});
+
 describe('updating a customer', () => {
   it('publishes the names of the fields that changed, never their values', async () => {
     const context = build();

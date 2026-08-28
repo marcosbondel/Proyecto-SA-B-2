@@ -251,6 +251,24 @@ export function mayUpdateCustomer(actor: Actor | null, subjectCustomerId: string
   return true;
 }
 
+/**
+ * Which role a registration may ask for, given who is asking (D-06).
+ *
+ * Anyone — including the anonymous public form — may create a `CLIENTE`. Only an
+ * `ADMINISTRADOR` may create staff (`CAJERO_RECEPTOR`, `ADMINISTRADOR`). The
+ * Gateway already refuses an elevated role from a public request, but this
+ * service repeats the check because the command could arrive from a second
+ * producer on the broker with no actor at all; trusting the edge would let one
+ * mint an administrator.
+ */
+export function mayRegisterWithRole(actor: Actor | null, requestedRole: Role): boolean {
+  if (requestedRole === 'CLIENTE') {
+    return true;
+  }
+
+  return actor?.role === 'ADMINISTRADOR';
+}
+
 /** The oldest person on record was 122. A century and a quarter is generous. */
 export const MAX_AGE_YEARS = 125;
 export const MIN_AGE_YEARS = 18;

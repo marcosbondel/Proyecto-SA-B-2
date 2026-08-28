@@ -62,7 +62,7 @@ export class RegisterCustomerHandler extends ContractHandler<
     payload: ReturnType<typeof customerRegisterV1.schema.parse>,
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
-    await this.#useCase.execute(payload, envelope.idempotencyKey);
+    await this.#useCase.execute(payload, envelope.idempotencyKey, envelope.identity);
   }
 }
 
