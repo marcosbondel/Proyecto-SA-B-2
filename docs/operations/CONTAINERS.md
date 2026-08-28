@@ -46,8 +46,8 @@ serve Compose, kind and a demonstration alike.
 
 | Component | Required | Optional |
 | --- | --- | --- |
-| `customer-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` `OBJECT_STORAGE_ENDPOINT` `OBJECT_STORAGE_ACCESS_KEY` `OBJECT_STORAGE_SECRET_KEY` `OBJECT_STORAGE_BUCKET` `OBJECT_STORAGE_REGION` | — |
-| `account-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `DEACTIVATION_ENABLED` `DEACTIVATION_INTERVAL_MS` `INACTIVITY_MONTHS` `INACTIVITY_MIN_BALANCE_MINOR` |
+| `customer-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` `OBJECT_STORAGE_ENDPOINT` `OBJECT_STORAGE_ACCESS_KEY` `OBJECT_STORAGE_SECRET_KEY` `OBJECT_STORAGE_BUCKET` `OBJECT_STORAGE_REGION` | `SEED_DEMO_DATA` `SEED_PASSWORD` |
+| `account-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `DEACTIVATION_ENABLED` `DEACTIVATION_INTERVAL_MS` `INACTIVITY_MONTHS` `INACTIVITY_MIN_BALANCE_MINOR` `SEED_DEMO_DATA` |
 | `transaction-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | — |
 | `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` |
 | `notification-audit-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `REVEAL_ACTIVATION_LINKS` `NOTIFICATION_CHANNEL` `RESEND_API_KEY`¹ `EMAIL_FROM`¹ `APP_BASE_URL`¹ `RESEND_API_URL` |
@@ -72,6 +72,17 @@ the production images: with it closed the activation link exists nowhere — it 
 redacted in the audit trail and hashed in the customer's own table — so nobody
 can complete a sign-up. `docker-compose.images.yml` turns it on for the
 demonstration; anything a stranger can reach must not.
+
+`SEED_DEMO_DATA` inserts, at boot and right after the migrations, three
+ready-to-use users — one per role, `admin@bankusac.gt`, `cajero@bankusac.gt` and
+`cliente@bankusac.gt`, all sharing `SEED_PASSWORD` (default `BankUsac#2026`) —
+and, in `account-service`, two accounts for the client with one funded. It is
+**off by default in code**, on in `docker-compose.dev.yml`, and off in the
+images stack so `pnpm images:flow` runs clean. It is the standard way to
+bootstrap a first administrator, which anonymous registration can no longer
+create. Idempotent: fixed ids and an UPSERT, so a restart refreshes the same
+rows. Each service seeds only its own database against the shared demo client
+id — neither reads the other's table (constitution II).
 
 `NOTIFICATION_CHANNEL` selects how notifications are delivered. It defaults to
 `simulated` — a log line and no mail, which is what the assignment asks for
