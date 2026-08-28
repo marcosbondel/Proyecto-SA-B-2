@@ -37,7 +37,7 @@ Stop and validate at any story checkpoint.
 
 - [ ] T001 Capture a green baseline: run `pnpm lint`, `pnpm test`, `pnpm test:contract`, `pnpm typecheck` and record the passing state, so any regression introduced by this feature is attributable.
 - [ ] T002 [P] Document `kind` and `helm` as local prerequisites and verify both are installed (add to `docs/operations/CONTAINERS.md` prerequisites; no version pin beyond "kind + helm present").
-- [ ] T003 [P] Verify the image build+load path end to end: `pnpm images:build -- --kind bank-usac` builds the seven images and loads them into a throwaway kind node (confirms US1's assumptions before writing the chart).
+- [X] T003 [P] Verify the image build+load path end to end: `pnpm images:build -- --kind bank-usac` builds the seven images and loads them into a throwaway kind node (confirms US1's assumptions before writing the chart).
 
 **Checkpoint**: Baseline green, deployment tooling confirmed.
 
@@ -76,8 +76,8 @@ database leaves its pod Running-not-Ready (never CrashLoopBackOff).
 - [X] T011 [US1] Add `templates/configmap.yaml` (non-sensitive runtime config: PORT, NODE_ENV, in-cluster DNS names for dependencies, CORS origin) referenced by all seven pods.
 - [X] T012 [US1] Add `templates/secret.yaml` as a **template only** (JWT secret, per-service `DATABASE_URL`, `RABBITMQ_URL`, `OBJECT_STORAGE_*` keys), values supplied via `--set-file`/chart values and never committed; wire env from ConfigMap + Secret into every workload per the CONTAINERS.md variable matrix (Gateway gets no `DATABASE_URL`).
 - [X] T013 [US1] Add `templates/NOTES.txt` with the `kubectl port-forward` commands for Gateway (3000) and web (3010) and the readiness-check hints.
-- [ ] T014 [US1] Validate `helm upgrade --install bank-usac infra/k8s/helm/bank-usac --namespace bank-usac --create-namespace`: all seven pods reach Ready, `docker ps` shows the five DBs/broker/MinIO outside the cluster, and a register→open-accounts→transfer flow completes through the forwarded Gateway (record evidence in quickstart.md).
-- [ ] T015 [US1] Verify the degraded case: stop one PostgreSQL container and confirm its pod stays Running but not Ready (readiness 503), never CrashLoopBackOff (exploits the T-21 port-before-migrations behavior).
+- [X] T014 [US1] Validate `helm upgrade --install bank-usac infra/k8s/helm/bank-usac --namespace bank-usac --create-namespace`: all seven pods reach Ready, `docker ps` shows the five DBs/broker/MinIO outside the cluster, and a register→open-accounts→transfer flow completes through the forwarded Gateway (record evidence in quickstart.md).
+- [X] T015 [US1] Verify the degraded case: stop one PostgreSQL container and confirm its pod stays Running but not Ready (readiness 503), never CrashLoopBackOff (exploits the T-21 port-before-migrations behavior).
 
 **Checkpoint**: US1 deployable and demonstrable on kind. Constitution VII conforming.
 
