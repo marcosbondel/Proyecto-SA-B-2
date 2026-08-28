@@ -1,0 +1,49 @@
+# kind cluster configuration for the local Bank USAC deployment (ADR-007).
+#
+# kind has no field in this file that attaches nodes to an existing Docker
+# network at creation time, so the "share a Docker network with the Compose
+# stack" leg of ADR-007's mechanism is not expressed here — it is expressed by
+# an environment variable on the `kind create cluster` command itself:
+#
+#   # idempotent: docker-compose.yml already declares this network, so this
+#   # only matters the very first time, before anything has created it.
+#   docker network create bank-usac-local 2>/dev/null || true
+#
+#   KIND_EXPERIMENTAL_DOCKER_NETWORK=bank-usac-local \
+#     kind create cluster --config infra/k8s/kind/cluster.yaml
+#
+# That variable is kind's own escape hatch for "use this Docker network
+# instead of creating your own `kind` network," documented at
+# https://kind.sigs.k8s.io/docs/user/known-issues/#docker-network-address.
+# It has to be set *before* `kind create cluster` runs — kind decides the
+# node containers' network at creation time and does not support moving an
+# existing cluster onto a different network afterwards. If it was forgotten,
+# delete and recreate the cluster (`kind delete cluster --name bank-usac`)
+# rather than trying to `docker network connect` the running nodes: kind's
+# own iptables/kindnet setup is derived from the network it saw at creation.
+#
+# Once the nodes are on `bank-usac-local`, they are routable to and from the
+# postgres-*/rabbitmq/minio containers docker-compose.yml starts on that same
+# network — which is what lets the selectorless Services under
+# templates/external/ target those containers' real IP addresses (discovered
+# with kind/scripts/discover-external-ips.sh) instead of anything on the
+# Docker host.
+#
+# The documented fallback, when the shared-network route is unavailable, is
+# `host.docker.internal` reaching the published Compose ports (5433-5437 for
+# the five PostgreSQL instances, 5673 for RabbitMQ, 9002 for MinIO's API —
+# see infra/docker/.env and docs/architecture/diagrams/05-uml-despliegue.puml).
+# On Docker Desktop (macOS/Windows, what this team runs) every container,
+# kind's nodes included, already resolves `host.docker.internal` with no
+# extra configuration here. A Linux host needs
+# `--add-host=host.docker.internal:host-gateway` per
+# https://kind.sigs.k8s.io/docs/user/known-issues/#host-resolution — noted
+# for portability, not required on this team's machines today. The chart
+# switches between the two routes with `external.mode`
+# (`dockerNetwork` | `hostFallback`) in values.yaml; this file does not
+# change between them.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: bank-usac
+nodes:
+  - role: control-plane

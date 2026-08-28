@@ -1,0 +1,4 @@
+{{/*
+Account Service's own PostgreSQL — outside the cluster per ADR-005.
+*/}}
+{{ include "bank-usac.externalDependency" (dict "root" $ "key" "postgresAccount" "dnsName" "postgres-account" "portName" "postgresql") }}
