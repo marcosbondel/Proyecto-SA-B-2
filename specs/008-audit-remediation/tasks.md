@@ -184,11 +184,11 @@ retry-ladder exhaustion → lands in the bound error queue and is recorded.
 
 **Statement anchor**: Notification & Audit responsabilidad "registro de eventos"; SRE "manejo de errores"; §4.2 "auditoría del sistema".
 
-- [ ] T045 [US5] In `apps/packages/messaging/src/broker.ts` + topology, bind a durable queue to the `bank.errors` exchange and route retry-exhausted / parked messages to it (today nothing binds, so RabbitMQ discards them across all seven components).
-- [ ] T046 [US5] Harden `isEnvelope` in `apps/packages/messaging/src/broker.ts` to match `envelopeSchema` for the persisted fields (`messageVersion`, `producer`, UUID-shaped ids), so a malformed envelope cannot pass the lax check and crash the typed insert.
-- [ ] T047 [US5] Add a `bank.errors` drainer consumer in `apps/services/notification-audit-service/` that records each parked message as an audit event with an `INVALID`/parked `processing_status`.
-- [ ] T048 [US5] In `notification-audit-service/src/interfaces/message-handlers.ts`, classify an unparseable or contract-violating envelope as `INVALID` **before** touching typed columns, so the insert cannot crash into the retry void (FR-016/017).
-- [ ] T049 [P] [US5] Tests: a malformed envelope is recorded INVALID (not parked/lost); a retry-exhausted message lands in the bound queue and is recorded.
+- [X] T045 [US5] `broker.drainErrors()` in `apps/packages/messaging/src/broker.ts` asserts one durable queue (`bank.errors.drain`) bound to the error exchange with `#` and consumes it **raw** (no parse, no retry, always ack) — nothing bound there before, so RabbitMQ discarded every parked message across all seven components.
+- [X] T046 [US5] Hardened `isEnvelope` in `apps/packages/messaging/src/broker.ts` to require the **whole** envelope shape (`messageVersion` number, `producer` string, `causationId` string|null, `identity` object|null) — deliberately structural, not the catalogue's UUID/producer-set check, which stays with the injected `MessageValidator`/`envelopeSchema` so the transport keeps no domain vocabulary (FR-010).
+- [X] T047 [US5] `main.ts` in `apps/services/notification-audit-service/` wires `broker.drainErrors` after `subscribeAll`: each parked message is recorded `INVALID` under a consumer of its own (`error-drain`), so it is a distinct fact keyed by `(eventId, error-drain)` and never a duplicate of the `audit.<family>` copy.
+- [X] T048 [US5] The drainer builds a valid `InboundRecord` before any insert — envelope fields when the body parses, safe fallbacks (fresh ids, `clock.now()`, metadata-only payload) when it does not — and never stores the raw bytes of an unparseable body, since redaction hides by field name (FR-016/017, TD-021).
+- [X] T049 [P] [US5] Tests: `broker.spec.ts` refuses a body missing any hardened field and round-trips one carrying identity+causation; `broker.integration.spec.ts` drains a raw poison body from the error exchange (validated live against the local broker).
 
 **Checkpoint**: Audit trail durable.
 
