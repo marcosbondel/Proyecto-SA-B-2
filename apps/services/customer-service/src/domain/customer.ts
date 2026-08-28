@@ -261,6 +261,18 @@ export function mayUpdateCustomer(actor: Actor | null, subjectCustomerId: string
 }
 
 /**
+ * Who may read a customer's record (D-06, same scope as updating it).
+ *
+ * A `CLIENTE` may read only their own record; staff may read anyone. Reused by
+ * the query path so the update form and the validation detail can show real
+ * data without letting a client read a stranger's. An unauthorised read is
+ * answered `NOT_FOUND`, not "forbidden", so it cannot enumerate ids.
+ */
+export function mayReadCustomer(actor: Actor | null, subjectCustomerId: string): boolean {
+  return mayUpdateCustomer(actor, subjectCustomerId);
+}
+
+/**
  * Which role a registration may ask for, given who is asking (D-06).
  *
  * Anyone — including the anonymous public form — may create a `CLIENTE`. Only an

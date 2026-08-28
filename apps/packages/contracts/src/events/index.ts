@@ -5,6 +5,8 @@ import { customerAuthenticateRepliedV1 } from './customer/customer.authenticate.
 import { customerAuthenticateV1 } from './customer/customer.authenticate.v1';
 import { customerEmailVerificationRejectedV1 } from './customer/customer.email.verification.rejected.v1';
 import { customerEmailVerifiedV1 } from './customer/customer.email.verified.v1';
+import { customerGetQueryV1 } from './customer/customer.get.query.v1';
+import { customerGetRepliedV1 } from './customer/customer.get.replied.v1';
 import { customerIdentityRejectedV1 } from './customer/customer.identity.rejected.v1';
 import { customerIdentityValidatedV1 } from './customer/customer.identity.validated.v1';
 import { customerLoginRejectedV1 } from './customer/customer.login.rejected.v1';
@@ -64,6 +66,8 @@ export * from './customer/customer.authenticate.replied.v1';
 export * from './customer/customer.authenticate.v1';
 export * from './customer/customer.email.verification.rejected.v1';
 export * from './customer/customer.email.verified.v1';
+export * from './customer/customer.get.query.v1';
+export * from './customer/customer.get.replied.v1';
 export * from './customer/customer.identity.rejected.v1';
 export * from './customer/customer.identity.validated.v1';
 export * from './customer/customer.login.rejected.v1';
@@ -140,6 +144,8 @@ export const catalog: readonly MessageContract[] = [
   customerUpdateV1,
   customerUpdatedV1,
   customerValidateIdentityV1,
+  customerGetQueryV1,
+  customerGetRepliedV1,
   customerVerifyEmailV1,
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
