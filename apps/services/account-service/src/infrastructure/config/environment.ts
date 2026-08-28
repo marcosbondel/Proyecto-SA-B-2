@@ -78,6 +78,16 @@ export class AccountServiceEnvironment {
   @IsInt()
   @Min(0)
   public INACTIVITY_MIN_BALANCE_MINOR!: number;
+
+  /**
+   * Whether to insert the demo client's two accounts at boot.
+   *
+   * Off by default; on in the dev and demo stacks, alongside the same flag in
+   * `customer-service`. Idempotent, and it never reads another service's table:
+   * it seeds against the shared demo client id (constitution II).
+   */
+  @IsBoolean()
+  public SEED_DEMO_DATA!: boolean;
 }
 
 /** One day. The assignment says the job is executable daily. */
@@ -107,6 +117,7 @@ export function loadEnvironment(
     DEACTIVATION_INTERVAL_MS: toInteger(source.DEACTIVATION_INTERVAL_MS) ?? ONE_DAY_MS,
     INACTIVITY_MONTHS: toInteger(source.INACTIVITY_MONTHS) ?? 6,
     INACTIVITY_MIN_BALANCE_MINOR: toInteger(source.INACTIVITY_MIN_BALANCE_MINOR) ?? 5_000,
+    SEED_DEMO_DATA: toBoolean(source.SEED_DEMO_DATA, false),
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
