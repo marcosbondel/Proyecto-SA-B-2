@@ -295,10 +295,10 @@ los tres roles comprueba qué módulos ve cada uno.
 
 ## Phase 10: User Story 8 — Las cuatro piezas compartidas de interfaz asíncrona (P2)
 
-**Goal**: las cuatro piezas existen, y una página de demostración las ejercita
-con los cinco estados sin necesitar broker.
+**Goal**: las cuatro piezas existen, y su lógica queda ejercitada por prueba
+automatizada con los cinco estados sin necesitar broker.
 
-**Independent Test**: `/demo` contra respuestas simuladas.
+**Independent Test**: prueba automatizada sobre `app/lib/` contra respuestas simuladas.
 
 ### Tests for User Story 8
 
@@ -312,7 +312,6 @@ con los cinco estados sin necesitar broker.
 - [X] T092 [US8] Componer el quinto estado —**broker no disponible**, que el prototipo no dibuja— en la familia ámbar `#B4740A`/`#7A4F06`, en `apps/web/app/components/shared/SharedAsyncStateAlert.vue`, con copia propia que diga que no se hizo nada y que reintentar es seguro; registrarlo como adición intencional en `specs/007-api-gateway-web-shell/evidence/design-review.md`
 - [X] T093 [P] [US8] Crear `apps/web/app/components/shared/SharedMoneyInput.vue` sobre `UInputNumber`, mínimo `0.01` y dos decimales (depende de T080)
 - [X] T094 [P] [US8] Crear `apps/web/app/components/shared/SharedIdempotencyKeyField.vue`, con UUID estable entre reintentos
-- [X] T095 [US8] Crear `apps/web/app/pages/demo.vue` que ejercite visiblemente las cuatro piezas y los cinco estados **sin broker** (FR-044, SC-009)
 - [X] T096 [US8] Asegurar en `apps/web/app/composables/useGatewayApi.ts` y `apps/web/app/components/shared/SharedAsyncStateAlert.vue` que un `202` nunca se presenta como éxito: estado pendiente hasta confirmarlo por consulta o auditoría (FR-043)
 
 **Checkpoint**: T-16 a T-20 tienen todo lo que necesitan para empezar.
@@ -350,7 +349,7 @@ compara ruta por ruta con el catálogo; una búsqueda estática recorre el Gatew
 - [X] T105 [P] Actualizar `apps/web/.env.example` retirando la nota de TD-011: el frontend ya sí llama al Gateway y `NUXT_PUBLIC_API_BASE_URL` pasa a ser obligatoria
 - [X] T106 Corregir el destino de la autorización por endpoint en `docs/domain/actors.md` y `docs/domain/README.md`, que la apuntan a **T-13** cuando ADR-010 la asigna a **T-15** (trabajo que la spec identificó fuera de su alcance)
 - [X] T107 [P] Actualizar `AGENTS.md` y `CLAUDE.md`: el Gateway y el frontend dejan de ser andamiaje
-- [X] T108 Recoger la evidencia visual: capturas del shell con la navegación de los tres roles, inicio de sesión con rechazo genérico, las dos resoluciones de activación, y `/demo`; cada una comparada con su entrada de `bonking.dc.html` y con una nota en `specs/007-api-gateway-web-shell/evidence/design-review.md` que nombre **las tres discrepancias** del plan
+- [X] T108 Recoger la evidencia visual: capturas del shell con la navegación de los tres roles, inicio de sesión con rechazo genérico, y las dos resoluciones de activación; cada una comparada con su entrada de `bonking.dc.html` y con una nota en `specs/007-api-gateway-web-shell/evidence/design-review.md` que nombre **las tres discrepancias** del plan
 - [X] T109 Recoger en `specs/007-api-gateway-web-shell/evidence/` las capturas de la administración de RabbitMQ con los mensajes de las nueve rutas y sus `correlationId`
 - [X] T110 Ejecutar `pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:contract` desde la raíz y archivar la salida real en `specs/007-api-gateway-web-shell/evidence/`
 - [X] T111 Recorrer [`quickstart.md`](quickstart.md) de principio a fin y archivar la salida de cada comprobación en `specs/007-api-gateway-web-shell/evidence/`

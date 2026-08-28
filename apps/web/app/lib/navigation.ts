@@ -42,7 +42,7 @@ export const MODULES: readonly ModuleEntry[] = [
 ];
 
 /** Routes reachable with no session at all. */
-export const PUBLIC_ROUTES: readonly string[] = ['/login', '/registro', '/activar', '/demo'];
+export const PUBLIC_ROUTES: readonly string[] = ['/login', '/registro', '/activar'];
 
 /** What this role should see in the navigation. */
 export function modulesFor(role: Role | null): readonly ModuleEntry[] {

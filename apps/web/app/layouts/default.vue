@@ -62,10 +62,6 @@ async function signOut(): Promise<void> {
         </nav>
 
         <div class="mt-auto flex flex-col gap-0.5">
-          <NuxtLink
-            to="/demo"
-            class="rounded-lg px-3 py-2.5 text-[13px] text-[#75767F] hover:bg-[#F0F0F2]"
-          >Componentes compartidos</NuxtLink>
           <button
             type="button"
             class="rounded-lg px-3 py-2.5 text-left text-[13px] text-[#75767F] hover:bg-[#F0F0F2]"
