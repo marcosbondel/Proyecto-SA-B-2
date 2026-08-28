@@ -160,13 +160,39 @@ describe('this service starts nothing', () => {
   });
 });
 
-describe('this service speaks to the system only through the broker', () => {
-  it('makes no HTTP call to anybody', () => {
+describe('this service speaks to other services only through the broker', () => {
+  /**
+   * The email delivery adapter is the one component allowed to reach the
+   * network, and it reaches a **third-party email provider**, never a sibling
+   * service. The asynchronous-only rule is about the five microservices talking
+   * to each other; delivering an email to a SaaS is what a notification service
+   * is for. So the boundary is not "no HTTP" — it is "HTTP originates here and
+   * nowhere else, and it goes to the provider."
+   */
+  const EMAIL_ADAPTER = 'src/infrastructure/notification/resend-notification.adapter.ts';
+
+  it('names no HTTP client library anywhere', () => {
     for (const source of SOURCES) {
-      // `(?<![.#\w])` so a private method of this service — or any `.fetch(` on
-      // an SDK object — is not mistaken for the global.
-      expect(source.text).not.toMatch(/(?<![.#\w])fetch\(|axios|node-fetch|HttpService/);
+      expect(source.text).not.toMatch(/axios|node-fetch|HttpService/);
     }
+  });
+
+  it('makes an outbound fetch from the email adapter and nowhere else', () => {
+    const callers = SOURCES.filter((source) =>
+      /(?<![.#\w])fetch\(|globalThis\.fetch/.test(source.text),
+    ).map((source) => source.path);
+
+    expect(callers).toEqual([EMAIL_ADAPTER]);
+  });
+
+  it('has the email adapter reach the provider, not a sibling service', () => {
+    const adapter = SOURCES.find((source) => source.path === EMAIL_ADAPTER);
+
+    expect(adapter).toBeDefined();
+    // It sends through a configured endpoint (the Resend API), never a URL it
+    // built towards another bank service.
+    expect(adapter?.text).toMatch(/globalThis\.fetch|fetch\(/);
+    expect(adapter?.text).not.toMatch(/(customer|account|payment|transaction)-service/);
   });
 
   it('exposes HTTP for health and readiness only', () => {
