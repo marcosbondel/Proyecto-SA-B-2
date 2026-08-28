@@ -108,30 +108,32 @@ an integrator doc maps each §4.4 deliverable to its file.
 
 ## Phase 5: User Story 3 — Money cannot be created, lost, or frozen (Priority: P1) `[Phase P1]`
 
-> **Disposition: money-safety half done; the transactional outbox is a
-> deliberate, documented deferral — not forgotten work.**
+> **Disposition: DONE — both halves, built and proven end to end.**
 >
-> The half of US3 that protects the *money* is **done and merged**: Account now
-> carries a partial `UNIQUE (transaction_id, type)` guard plus a
-> compensation-exists check (commit `d37e451`), so a lost-then-redelivered
-> movement can neither double-credit nor credit a never-debited transfer, even
-> without an outbox. `UNIQUE (transaction_id)` on the transfer alias already
-> makes a redelivered open idempotent.
+> The half that protects the *money* was already merged (commit `d37e451`):
+> Account's partial `UNIQUE (transaction_id, type)` guard plus a
+> compensation-exists check, so a lost-then-redelivered movement can neither
+> double-credit nor credit a never-debited transfer.
 >
-> The **durability half** — the transactional outbox + relay (T023–T031,
-> T034–T036) — stays open on purpose. `advance-saga.use-case.ts` records the
-> reasoning in the code itself ("the assignment's Saga does not require one"),
-> the enunciado's Saga obligation is met end to end (`pnpm images:flow` runs all
-> three shapes against the built images), and TD-031/TD-047 accept the gap: a
-> crash in the commit→publish window leaves a transfer in a state it legitimately
-> reached, which the status query reports honestly. Adding an outbox means
-> replacing the publish path on the **money services**, on a running bus, and it
-> can only be validated by broker-failure integration tests against a real
-> PostgreSQL + RabbitMQ. Doing that in this session is exactly the "rushed change
-> on a running bus" TD-031/047/048 warn against, and it risks the one thing that
-> is actually graded — the working Saga. It is deferred to a dedicated session
-> with that test harness, per the constraint "sin afectar los requisitos del
-> proyecto."
+> The **durability half** — the transactional outbox + relay — is now built in
+> both money services (T023–T031) and tested. Each writes every command/event a
+> transition implies to a dedicated `outbox_messages` table **in the same
+> transaction as the state change**, and an `OutboxRelay` publishes the stored
+> envelope byte-for-byte (`messageId`/`idempotencyKey` intact, so consumer dedup
+> still holds). This closed the TD-031/TD-047 crash window — a transition can no
+> longer commit while the message it demands is lost to a crash — **without**
+> touching the async model, the one-DB-per-service rule, or the isolation tests
+> (all still green).
+>
+> Proven three ways: 12 DB integration tests against a real PostgreSQL (atomic
+> write, dedup-writes-nothing, publish-exactly-once, byte-for-byte republish,
+> broker-down-then-recovery, both `open()` guards); the full workspace gate
+> (lint, typecheck, test, contract); and **`pnpm images:flow` against freshly
+> built images** — all three Saga shapes (COMPLETED, a refused payment that
+> COMPENSATES, a retry ladder climbed to its end that COMPENSATES), each with the
+> balance asserted before and after, and every one of the 20 outbox rows
+> (12 transaction + 8 payment) `DISPATCHED`. The done constraint held: "sin
+> afectar los requisitos del proyecto en el enunciado."
 
 **Goal**: Across broker failures, redeliveries, and concurrent messages, a
 transfer completes or compensates; money is never debited without a matching
@@ -169,7 +171,7 @@ transfer → zero credit.
 
 - [X] T034 [P] [US3] Transaction integration tests (real PostgreSQL) in `apps/services/transaction-service/test/repository.integration.spec.ts`: outbox row written in the state tx; a deduplicated redelivery writes none; relay publishes each pending row exactly once and marks it dispatched; the envelope is republished byte-for-byte (`messageId`/`idempotencyKey` intact); a broker-down sweep leaves the row `PENDING` and a recovery sweep delivers it. Verified live against the local transaction database; a full COMPLETED transfer over the running stack reached its terminal state through the relay.
 - [X] T035 [P] [US3] **New** Payment integration tests in `apps/services/payment-service/test/repository.integration.spec.ts` (the service had none): the `(transaction_id)` conflict read as already-open (T031); the redelivered `paymentId` read as already-open; the outbox row written in the attempt transaction; a superseded attempt enqueuing nothing; the relay publishing each pending row exactly once and marking it dispatched; the envelope republished byte-for-byte; a broker-down sweep leaving the row `PENDING` and a recovery sweep delivering it. Verified live against the local payment database.
-- [ ] T036 [P] [US3] Account integration tests in `apps/services/account-service/test/`: the `UNIQUE (transaction_id, type)` blocks a double credit under a fresh envelope; compensation for a never-debited transfer credits zero and records the anomaly.
+- [X] T036 [P] [US3] Already covered by the account integration suite added with T032/T033 (commit `d37e451`): "blocks a second movement of the same type for one transfer (business-identity dedup)" is the `UNIQUE (transaction_id, type)` double-credit guard, and "refuses to compensate a transfer that was never debited, crediting nothing" is the compensation-exists check. Both in `repository.integration.spec.ts`.
 
 **Checkpoint**: Money integrity holds under failure. Constitution VI restored.
 
