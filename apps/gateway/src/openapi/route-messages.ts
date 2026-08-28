@@ -13,6 +13,8 @@ import {
   customerAuthenticateV1,
   customerEmailVerificationRejectedV1,
   customerEmailVerifiedV1,
+  customerGetQueryV1,
+  customerGetRepliedV1,
   customerRegisterV1,
   customerUpdateV1,
   customerVerifyEmailV1,
@@ -54,6 +56,10 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     awaits: [customerEmailVerifiedV1.name, customerEmailVerificationRejectedV1.name],
   },
   'PATCH /api/customers/{customerId}': { publishes: customerUpdateV1.name },
+  'GET /api/customers/{customerId}': {
+    publishes: customerGetQueryV1.name,
+    awaits: [customerGetRepliedV1.name],
+  },
   'POST /api/accounts': { publishes: accountCreateV1.name },
   'GET /api/accounts/{accountId}/balance': {
     publishes: accountBalanceQueryV1.name,

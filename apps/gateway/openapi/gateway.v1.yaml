@@ -102,6 +102,25 @@ paths:
       tags:
         - customers
       x-bank-publishes: customer.update.v1
+    get:
+      operationId: CustomersController_get
+      parameters:
+        - name: customerId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta un cliente por id
+      tags:
+        - customers
+      x-bank-publishes: customer.get.query.v1
+      x-bank-awaits:
+        - customer.get.replied.v1
   /api/accounts:
     post:
       description: Devuelve 202 y un accountId. La cuenta todavía no existe.
