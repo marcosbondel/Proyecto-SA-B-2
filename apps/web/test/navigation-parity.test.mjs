@@ -126,7 +126,7 @@ describe('the frontend matrix agrees with the Gateway', () => {
   test('no other Gateway controller restricts by role', async () => {
     // If a fourth route grows a @Roles decorator, the frontend matrix has to
     // grow with it — and this failing is how anyone finds out.
-    const controllers = ['auth.controller.ts', 'customers.controller.ts', 'transfers.controller.ts'];
+    const controllers = ['auth.controller.ts', 'transfers.controller.ts'];
 
     for (const name of controllers) {
       const source = await readFile(
@@ -148,6 +148,17 @@ describe('the frontend matrix agrees with the Gateway', () => {
     );
 
     assert.equal((accounts.match(/@Roles\(/g) ?? []).length, 1);
+
+    // The customers controller restricts exactly two routes to staff, both added
+    // by the audit remediation (US6): the teller's pending-validation queue and
+    // the teller's manual identity verdict. These are screens inside the Clientes
+    // module, not new navigation entries, so the module matrix below is unchanged.
+    const customers = await readFile(
+      new URL('../../gateway/src/interfaces/customers.controller.ts', import.meta.url),
+      'utf8',
+    );
+
+    assert.equal((customers.match(/@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)/g) ?? []).length, 2);
 
     // Two modules are restricted: Auditoría by D-06 outright, and Pagos because
     // its owning service cannot scope its own listing (TD-037).
