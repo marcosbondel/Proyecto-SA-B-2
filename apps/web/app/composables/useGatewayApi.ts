@@ -32,6 +32,7 @@ export type GatewayResult<T> =
  */
 export function useGatewayApi() {
   const config = useRuntimeConfig();
+  const route = useRoute();
   const { session, end } = useSession();
 
   async function call<T>(
@@ -73,10 +74,16 @@ export function useGatewayApi() {
        * The session is over. Ending it here, once, is what keeps every module
        * from having to notice — and keeps "your session ended" from being
        * rendered as though the bank had refused the operation.
+       *
+       * Only when there *was* a session: `signIn` travels through this same
+       * path, and a mistyped password is `UNAUTHENTICATED` too — that one is
+       * the form's failure to render, not a session to end, and the redirect
+       * would wipe the `?next=` the visitor arrived with. The visitor's
+       * whereabouts ride along so that signing back in returns them there.
        */
-      if (isSessionFailure(error)) {
+      if (isSessionFailure(error) && session.value !== null) {
         end();
-        await navigateTo('/login');
+        await navigateTo({ path: '/login', query: { next: route.fullPath } });
       }
 
       return { ok: false, error };

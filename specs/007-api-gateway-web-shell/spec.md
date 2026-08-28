@@ -210,7 +210,7 @@ Quien construye un módulo encuentra ya resueltas las cuatro cosas que toda pant
 
 **Why this priority**: sin ellas los cinco módulos reimplementarían lo mismo de cinco formas. Depende de la historia 7, que aporta el armazón donde viven.
 
-**Independent Test**: se entrega solo. Una página de demostración local ejercita las cuatro piezas y los cinco estados de error contra respuestas simuladas del Gateway, sin necesitar el broker.
+**Independent Test**: se entrega solo. Las cuatro piezas y los cinco estados de error se ejercitan por prueba automatizada sobre `app/lib/` contra respuestas simuladas del Gateway, sin necesitar el broker.
 
 **Acceptance Scenarios**:
 
@@ -220,7 +220,6 @@ Quien construye un módulo encuentra ya resueltas las cuatro cosas que toda pant
 4. **Given** el campo de importe, **When** se intenta escribir un valor menor que un centavo o con más de dos decimales, **Then** el campo lo impide.
 5. **Given** una persona que reintenta una operación fallida, **When** reenvía sin recargar la página, **Then** la clave de idempotencia es la misma que la del primer intento.
 6. **Given** una respuesta de aceptación del Gateway, **When** el frontend la recibe, **Then** **no** declara éxito: muestra estado pendiente hasta que una consulta de estado o de auditoría lo confirme.
-7. **Given** el repositorio, **When** se busca la página de demostración, **Then** existe y ejercita visiblemente las cuatro piezas.
 
 ---
 
@@ -352,7 +351,7 @@ Quien va a construir un módulo lee un contrato versionado en el repositorio en 
 - **FR-041g**: El shell MUST resolver la sesión una sola vez y MUST NOT requerir que T-16 a T-20 la reimplementen. Quedan **fuera** de esta feature la renovación del token, la persistencia entre cierres del navegador y cualquier recordatorio de credenciales.
 - **FR-042**: El frontend MUST ofrecer cuatro piezas compartidas: identificador de correlación visible y copiable, estado asíncrono con los cinco resultados, campo de importe en quetzales con mínimo de un centavo y dos decimales, y clave de idempotencia estable entre reintentos.
 - **FR-043**: El frontend MUST NOT declarar éxito ante una respuesta de aceptación; MUST mostrar estado pendiente hasta confirmarlo por consulta de estado o de auditoría.
-- **FR-044**: El repositorio MUST contener una página de demostración que ejercite visiblemente las cuatro piezas compartidas y los cinco estados de error.
+- **FR-044**: El repositorio MUST cubrir con prueba automatizada sobre `app/lib/` la lógica de las cuatro piezas compartidas y los cinco estados de error, sin necesitar el broker.
 - **FR-045**: El repositorio MUST documentar la convención de dónde coloca cada módulo sus páginas y sus componentes.
 
 **Contrato y evidencia**
@@ -384,7 +383,7 @@ Quien va a construir un módulo lee un contrato versionado en el repositorio en 
 - **SC-006**: Los cinco tipos de error son distinguibles por la respuesta y ninguno revela credenciales, rutas internas ni rastros de pila: cinco de cinco provocados y verificados.
 - **SC-007**: Una búsqueda estática sobre el código y la configuración del Gateway encuentra cero credenciales de base de datos y cero clientes HTTP hacia servicios internos.
 - **SC-008**: Un integrante con un clone limpio levanta el frontend con un comando y alcanza los cuatro módulos desde la navegación, sin editar código.
-- **SC-009**: Las cuatro piezas compartidas y los cinco estados de error se ejercitan en la página de demostración sin necesidad de broker.
+- **SC-009**: Las cuatro piezas compartidas y los cinco estados de error se ejercitan por prueba automatizada sobre `app/lib/` sin necesidad de broker.
 - **SC-010**: Cada ruta del contrato versionado corresponde a un mensaje existente del catálogo de T-05: cero rutas huérfanas.
 - **SC-011**: Un desarrollador de T-16 a T-20 puede construir su módulo leyendo únicamente el contrato del API y la convención de módulos, sin leer el código del Gateway.
 - **SC-012**: La ruta de verificación de correo devuelve un veredicto en cinco segundos o menos: token válido activa y lo dice, token usado, caducado e inventado producen un rechazo idéntico entre los tres, y el silencio del servicio produce vencimiento del plazo y no un rechazo — cuatro de cuatro desenlaces provocados y verificados.
@@ -401,7 +400,7 @@ Quien va a construir un módulo lee un contrato versionado en el repositorio en 
 - **`activationPending` en la respuesta aprobada de autenticación se traduce en rechazo de sesión.** Decidir si se emite un token es autenticación, no negocio: el Gateway no evalúa la credencial, solo se niega a emitir sesión para una cuenta que el servicio dueño marcó como pendiente.
 - **El estado de una transferencia se consulta, no se espera.** El vencimiento del plazo no cancela nada; el catálogo de T-05 no tiene mensaje de cancelación.
 - **Los servicios que consumen estos mensajes aún no existen.** Las pruebas de esta feature usan respondedores simulados sobre el broker real de T-06.
-- **El frontend no tiene marco de pruebas de componentes** (TD-010). La evidencia de las historias 7 y 8 es la página de demostración y la captura, no una suite de componentes.
+- **El frontend no tiene marco de pruebas de componentes** (TD-010). La evidencia de las historias 7 y 8 es la prueba automatizada sobre `app/lib/` y la captura, no una suite de componentes.
 - **El plazo de cinco segundos es el mismo para las cuatro consultas**, tal como lo fijó T-05; esta feature no lo ajusta por ruta, y la verificación de correo lo reutiliza tal cual en lugar de inventar uno propio.
 - **La verificación de correo no añade un mensaje al catálogo.** El Gateway consume los dos eventos que T-05 ya definió, emparejados por identificador de correlación. Que un evento se consuma para responder no lo convierte en respuesta: se sigue publicando y auditando igual, y cualquier otro consumidor lo sigue recibiendo.
 - **`paymentScenario` es la única enmienda al catálogo de T-05 en esta feature.** Es aditiva, opcional y retrocompatible, de modo que no cambia la versión del mensaje ni obliga a T-16 a T-20 a nada. Existe para la demostración de la Saga y su ausencia es el camino normal.

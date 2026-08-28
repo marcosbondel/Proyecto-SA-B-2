@@ -281,7 +281,7 @@ herramientas; sacarla a una función pura la vuelve verificable hoy, sin añadir
 dependencias ni contradecir la suposición de la spec.
 
 **Lo que sigue sin probarse automáticamente**: que el componente se vea bien.
-Eso es la página de demostración y las capturas, tal como la spec asume.
+Eso son las capturas del shell contra `bonking.dc.html`, tal como la spec asume.
 
 ---
 

@@ -105,9 +105,8 @@ Queda registrado como adición intencional.
 
 **Cómo se produce la evidencia visual.** Capturas del shell levantado con
 `pnpm --filter web dev`: la navegación con una sesión de cada uno de los tres
-roles, la pantalla de inicio de sesión con su rechazo genérico, las dos
-resoluciones de la verificación de correo, y la página de demostración con las
-cuatro piezas compartidas y los cinco estados. Cada captura se compara con la
+roles, la pantalla de inicio de sesión con su rechazo genérico, y las dos
+resoluciones de la verificación de correo. Cada captura se compara con la
 entrada correspondiente de `bonking.dc.html` y la nota de revisión la nombra.
 
 ## Technical Context
@@ -260,7 +259,6 @@ apps/web/
 │   └── pages/
 │       ├── login.vue
 │       ├── activar.vue              # Veredicto de verificación de correo
-│       ├── demo.vue                 # La página de demostración (FR-044)
 │       ├── clientes/index.vue
 │       ├── cuentas/index.vue
 │       ├── transferencias/index.vue
