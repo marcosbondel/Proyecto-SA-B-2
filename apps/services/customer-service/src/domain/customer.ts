@@ -221,6 +221,36 @@ export function requiresIdentityValidation(customer: Pick<Customer, 'role'>): bo
   return customer.role === 'CLIENTE';
 }
 
+/** The verified actor a command carries, reduced to what a domain rule needs. */
+export interface Actor {
+  readonly role: Role;
+  readonly customerId: string;
+}
+
+/**
+ * Who may change a customer's data (D-06).
+ *
+ * A `CLIENTE` may update only their own record — "own only" in the decision;
+ * staff (`CAJERO_RECEPTOR`, `ADMINISTRADOR`) may update anyone. A command that
+ * reached the broker with **no** verified actor may update nobody.
+ *
+ * The check lives here, not only at the Gateway, because a permission enforced
+ * only at the edge holds until a second producer appears — the same reason
+ * Account re-checks its own status change. The Gateway has no customer table and
+ * cannot answer "is this the owner", so the owning service must.
+ */
+export function mayUpdateCustomer(actor: Actor | null, subjectCustomerId: string): boolean {
+  if (actor === null) {
+    return false;
+  }
+
+  if (actor.role === 'CLIENTE') {
+    return actor.customerId === subjectCustomerId;
+  }
+
+  return true;
+}
+
 /** The oldest person on record was 122. A century and a quarter is generous. */
 export const MAX_AGE_YEARS = 125;
 export const MIN_AGE_YEARS = 18;
