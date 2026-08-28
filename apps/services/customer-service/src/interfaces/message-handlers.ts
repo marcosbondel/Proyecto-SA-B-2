@@ -1,7 +1,9 @@
 import {
   customerAuthenticateV1,
   customerGetQueryV1,
+  customerPendingValidationQueryV1,
   customerRegisterV1,
+  customerSetIdentityVerdictV1,
   customerUpdateV1,
   customerValidateIdentityV1,
   customerVerifyEmailV1,
@@ -10,7 +12,9 @@ import type { MessageEnvelope } from '@bank/contracts';
 
 import type { AuthenticateCustomerUseCase } from '../application/authenticate-customer.use-case';
 import type { GetCustomerUseCase } from '../application/get-customer.use-case';
+import type { GetPendingValidationUseCase } from '../application/get-pending-validation.use-case';
 import type { RegisterCustomerUseCase } from '../application/register-customer.use-case';
+import type { SetIdentityVerdictUseCase } from '../application/set-identity-verdict.use-case';
 import type { UpdateCustomerUseCase } from '../application/update-customer.use-case';
 import type { ValidateIdentityUseCase } from '../application/validate-identity.use-case';
 import type { VerifyEmailActivationUseCase } from '../application/verify-email-activation.use-case';
@@ -169,6 +173,54 @@ export class GetCustomerHandler extends ContractHandler<
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.identity);
+  }
+}
+
+/** The teller's queue of identities awaiting a verdict. A query — not guarded. */
+export class GetPendingValidationHandler extends ContractHandler<
+  ReturnType<typeof customerPendingValidationQueryV1.schema.parse>
+> {
+  public readonly messageType = customerPendingValidationQueryV1.name;
+  readonly #useCase: GetPendingValidationUseCase;
+
+  constructor(useCase: GetPendingValidationUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerPendingValidationQueryV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerPendingValidationQueryV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity);
+  }
+}
+
+/** A teller's manual VALIDATED/REJECTED verdict on an identity document. */
+export class SetIdentityVerdictHandler extends ContractHandler<
+  ReturnType<typeof customerSetIdentityVerdictV1.schema.parse>
+> {
+  public readonly messageType = customerSetIdentityVerdictV1.name;
+  readonly #useCase: SetIdentityVerdictUseCase;
+
+  constructor(useCase: SetIdentityVerdictUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerSetIdentityVerdictV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerSetIdentityVerdictV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);
   }
 }
 
