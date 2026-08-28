@@ -100,20 +100,20 @@ external:
 # infra/docker/docker-compose.yml's *_POSTGRES_DB / *_POSTGRES_USER.
 databases:
   customer:
-    name: bankusac_customer
-    user: customer_user
+    name: customer
+    user: customer_app
   account:
-    name: bankusac_account
-    user: account_user
+    name: account
+    user: account_app
   transaction:
-    name: bankusac_transaction
-    user: transaction_user
+    name: transaction
+    user: transaction_app
   payment:
-    name: bankusac_payment
-    user: payment_user
+    name: payment
+    user: payment_app
   notificationAudit:
-    name: bankusac_notification
-    user: notification_user
+    name: notification_audit
+    user: notification_audit_app
 
 # ---------------------------------------------------------------------------
 # The five internal domain services. One Deployment + one ClusterIP Service

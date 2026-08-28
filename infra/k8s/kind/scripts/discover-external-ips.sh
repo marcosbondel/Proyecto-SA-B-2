@@ -18,24 +18,24 @@ NETWORK="bank-usac-local"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="${SCRIPT_DIR}/../generated-external.values.yaml"
 
-# container name -> the values.yaml key under `external:`
-declare -A KEY_FOR=(
-  [postgres-customer]=postgresCustomer
-  [postgres-account]=postgresAccount
-  [postgres-transaction]=postgresTransaction
-  [postgres-payment]=postgresPayment
-  [postgres-notification-audit]=postgresNotificationAudit
-  [rabbitmq]=rabbitmq
-  [minio]=minio
-)
-
-# Deterministic order, independent of associative-array iteration order.
+# container name -> the values.yaml key under `external:`, as two parallel
+# arrays indexed together. Not an associative array on purpose: macOS ships
+# bash 3.2, which has no `declare -A`, and this must run on the team's Macs.
 CONTAINERS=(
   postgres-customer
   postgres-account
   postgres-transaction
   postgres-payment
   postgres-notification-audit
+  rabbitmq
+  minio
+)
+KEYS=(
+  postgresCustomer
+  postgresAccount
+  postgresTransaction
+  postgresPayment
+  postgresNotificationAudit
   rabbitmq
   minio
 )
@@ -47,7 +47,8 @@ CONTAINERS=(
   echo "external:"
 } > "${OUT}"
 
-for container in "${CONTAINERS[@]}"; do
+for i in "${!CONTAINERS[@]}"; do
+  container="${CONTAINERS[$i]}"
   if ! docker inspect "${container}" >/dev/null 2>&1; then
     echo "error: container '${container}' is not running — start the infra" \
       "stack first ('pnpm dev:infra' or 'pnpm images:up')" >&2
@@ -64,7 +65,7 @@ for container in "${CONTAINERS[@]}"; do
     exit 1
   fi
 
-  key="${KEY_FOR[${container}]}"
+  key="${KEYS[$i]}"
   {
     echo "  ${key}:"
     echo "    dockerNetwork:"
