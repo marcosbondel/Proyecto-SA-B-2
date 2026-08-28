@@ -19,6 +19,7 @@ import {
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresPaymentRepository } from './infrastructure/persistence/postgres-payment.repository';
+import { OutboxRelay } from './infrastructure/scheduler/outbox.scheduler';
 import { RetryScheduler } from './infrastructure/scheduler/retry.scheduler';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
@@ -41,6 +42,18 @@ const ATTACH_RETRY_DELAY_MS = 5_000;
 
 /** How many due payments one sweep takes. Bounded so a backlog cannot stall a pod. */
 const SWEEP_BATCH = 20;
+
+/**
+ * How often the outbox relay sweeps for events to publish. Short, because a
+ * terminal event waiting here is a transfer waiting to finish or compensate.
+ * Overridable with `OUTBOX_RELAY_MS`; a malformed value falls back rather than
+ * turning `setInterval` into a busy loop.
+ */
+const OUTBOX_RELAY_INTERVAL_MS = ((): number => {
+  const raw = Number(process.env.OUTBOX_RELAY_MS);
+
+  return Number.isFinite(raw) && raw > 0 ? raw : 200;
+})();
 
 /**
  * Composition: the one place allowed to see every layer at once.
@@ -178,6 +191,19 @@ async function bootstrap(): Promise<void> {
   });
 
   /**
+   * The relay that carries the outbox to the broker. Each attempt writes the
+   * event it produced into the outbox in the attempt's own transaction (TD-047);
+   * this is what finally publishes them, so a terminal event is never lost to a
+   * crash between the commit and a send.
+   */
+  const outboxRelay = new OutboxRelay({
+    repository,
+    broker,
+    intervalMs: OUTBOX_RELAY_INTERVAL_MS,
+    logger,
+  });
+
+  /**
    * Flipped once the queue is actually being consumed, and reported by
    * readiness. A replica that has reached its database and its broker but has
    * not yet attached can take no work.
@@ -222,6 +248,11 @@ async function bootstrap(): Promise<void> {
           } ms`,
         });
 
+        outboxRelay.start();
+        logger.info('outbox relay started', {
+          outcome: `every ${String(OUTBOX_RELAY_INTERVAL_MS)} ms`,
+        });
+
         return;
       } catch (error) {
         logger.error('dependencies unavailable; staying alive and unready', {
@@ -252,6 +283,7 @@ async function bootstrap(): Promise<void> {
 
   const shutdown = async (): Promise<void> => {
     scheduler.stop();
+    outboxRelay.stop();
     await application.close();
     await broker.stop();
     await pool.end();
