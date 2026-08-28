@@ -4,8 +4,9 @@
 ' Mermaid equivalente (06-uml-secuencia-crear-cuenta.mmd); ambos deben coincidir.
 ' Las casillas de activacion (activate/deactivate) muestran cuanto tiempo mantiene
 ' cada participante una tarea en curso.
-' Los mensajes usan lenguaje de negocio (legible para stakeholders no tecnicos); no
-' se incluyen nombres de tecnologia, protocolo ni framework, solo la accion realizada.
+' Cada mensaje declara la accion de negocio y, entre corchetes, su tecnologia,
+' protocolo y tipo de interaccion (sincrona o asincrona; comando, evento o
+' request/reply), como exige el enunciado (§4.2, "Tipo de comunicacion").
 
 title UML 2 - Diagrama de Secuencia\nCrear cuenta (Bank USAC)
 
@@ -14,8 +15,8 @@ skinparam defaultFontName "Segoe UI"
 skinparam ArrowColor #555555
 skinparam ArrowThickness 1.2
 skinparam sequenceMessageAlign center
-skinparam maxMessageSize 220
-skinparam wrapWidth 220
+skinparam maxMessageSize 260
+skinparam wrapWidth 260
 skinparam noteBackgroundColor #FFF8DC
 skinparam noteBorderColor #D6B656
 skinparam ParticipantBorderColor #1168BD
@@ -36,9 +37,10 @@ legend right
     | <color:#1168BD>Azul</color> | Actor, Frontend, Gateway, Account Service, Notification & Audit |
     | <color:#C11926>Rojo</color> | RabbitMQ (broker) |
     | <color:#398819>Verde</color> | Bases de datos PostgreSQL |
-    | `->>` | Mensaje asíncrono (comando / evento) |
-    | `-->>` | Respuesta asíncrona / reply |
-    | `->` | Llamada síncrona (HTTP, SQL) |
+    | `->>` | Mensaje asíncrono sobre AMQP 0-9-1 (comando o evento) |
+    | `-->>` | Respuesta asíncrona: reply de AMQP o respuesta HTTP a una petición en curso |
+    | `->` | Llamada síncrona (HTTPS/REST del navegador, SQL sobre PostgreSQL) |
+    | `[ … ]` | Tecnología · protocolo · tipo de interacción del mensaje |
     | `alt` / `else` | Flujo alternativo (fallo esperado) |
     | Barra sólida sobre la línea de vida | Casilla de activación: tiempo que el participante tarda en completar la tarea |
 endlegend
@@ -46,7 +48,7 @@ endlegend
 actor "Actor\n(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)" as Actor
 participant "Frontend" as Frontend
 participant "API Gateway" as Gateway
-queue "Message Broker" as Broker
+queue "Message Broker\n(RabbitMQ)" as Broker
 participant "Account Service" as Account
 database "Account Database" as AccountDB
 participant "Notification & Audit" as Notif
@@ -54,22 +56,22 @@ database "Audit Database" as AuditDB
 
 autonumber
 
-Actor -> Frontend : Solicitar apertura de cuenta
+Actor -> Frontend : Solicitar apertura de cuenta\n[interacción de usuario · navegador · síncrono]
 activate Frontend
-Frontend -> Gateway : Enviar la solicitud de apertura
+Frontend -> Gateway : Enviar la solicitud de apertura\n[HTTPS/REST · POST /api/accounts · síncrono]
 activate Gateway
 note over Gateway
   Genera un identificador
   de seguimiento (correlationId)
 end note
 
-Gateway ->> Broker : Publicar comando "crear cuenta" — account.create (correlationId)
-Gateway -->> Frontend : Confirmar recepción — 202 Accepted (correlationId)
+Gateway ->> Broker : Publicar comando "crear cuenta" — account.create (correlationId)\n[AMQP 0-9-1 · comando · asíncrono]
+Gateway -->> Frontend : Confirmar recepción — 202 Accepted (correlationId)\n[HTTPS/REST · respuesta síncrona]
 deactivate Gateway
 Frontend -->> Actor : "Solicitud recibida" (NO "cuenta creada")\n202 no es éxito
 deactivate Frontend
 
-Broker ->> Account : Entregar comando "crear cuenta" — account.create (correlationId)
+Broker ->> Account : Entregar comando "crear cuenta" — account.create (correlationId)\n[AMQP 0-9-1 · entrega de comando · asíncrono]
 activate Account
 
 alt tipo de cuenta válido (MONETARIA | AHORRO)
@@ -77,22 +79,22 @@ alt tipo de cuenta válido (MONETARIA | AHORRO)
       Validando los datos recibidos,
       aún sin guardar
     end note
-    Account -> AccountDB : Guardar la cuenta nueva\nestado inicial: ACTIVA, saldo Q0.00
+    Account -> AccountDB : Guardar la cuenta nueva\nestado inicial: ACTIVA, saldo Q0.00\n[SQL sobre PostgreSQL · síncrono]
     activate AccountDB
-    AccountDB -->> Account : Confirmar guardado
+    AccountDB -->> Account : Confirmar guardado\n[SQL sobre PostgreSQL · síncrono]
     deactivate AccountDB
     note over Account
       Cuenta creada — activa,
       con saldo inicial de Q0.00
     end note
-    Account ->> Broker : Publicar evento "cuenta abierta" — account.opened (correlationId)
-    Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nDESPUÉS de guardar
+    Account ->> Broker : Publicar evento "cuenta abierta" — account.opened (correlationId)\n[AMQP 0-9-1 · evento · asíncrono]
+    Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nDESPUÉS de guardar [AMQP basic.ack]
 else tipo de cuenta ausente o no reconocido
     note over Account
       Rechazar la solicitud, sin guardar
       el tipo de cuenta es obligatorio
     end note
-    Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nrechazo registrado
+    Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nrechazo registrado [AMQP basic.ack]
 end
 deactivate Account
 
@@ -102,13 +104,13 @@ note over Account, AccountDB
   adelante en el proceso, no en este paso.
 end note
 
-Broker ->> Notif : Entregar evento "cuenta abierta" — account.opened (correlationId)
+Broker ->> Notif : Entregar evento "cuenta abierta" — account.opened (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
 activate Notif
-Notif -> AuditDB : Registrar el evento para auditoría (correlationId)
+Notif -> AuditDB : Registrar el evento para auditoría (correlationId)\n[SQL sobre PostgreSQL · síncrono]
 activate AuditDB
-AuditDB -->> Notif : Confirmar registro guardado
+AuditDB -->> Notif : Confirmar registro guardado\n[SQL sobre PostgreSQL · síncrono]
 deactivate AuditDB
-Notif ->> Broker : Confirmar al broker que el evento fue procesado\nDESPUÉS de registrar
+Notif ->> Broker : Confirmar al broker que el evento fue procesado\nDESPUÉS de registrar [AMQP basic.ack]
 deactivate Notif
 
 note over Account
@@ -116,15 +118,17 @@ note over Account
   El resultado real se consulta después por correlationId.
 end note
 
-Actor -> Frontend : Consultar el estado de la solicitud
+Actor -> Frontend : Consultar el estado de la solicitud\n[interacción de usuario · navegador · síncrono]
 activate Frontend
-Frontend -> Gateway : Solicitar el estado real de la cuenta (correlationId)
+Frontend -> Gateway : Solicitar el estado real de la cuenta (correlationId)\n[HTTPS/REST · GET /api/accounts/:id · síncrono]
 activate Gateway
-Gateway ->> Account : Preguntar por el estado actual de la cuenta (correlationId)
+Gateway ->> Broker : Preguntar por el estado actual de la cuenta (correlationId)\n[AMQP 0-9-1 · request/reply · asíncrono · ceiling 5 s]
+Broker ->> Account : Entregar la consulta (correlationId)\n[AMQP 0-9-1 · entrega de consulta · asíncrono]
 activate Account
-Account -->> Gateway : Responder con el estado real de la cuenta
+Account -->> Broker : Responder con el estado real de la cuenta\n[AMQP 0-9-1 · reply a replyTo · asíncrono]
 deactivate Account
-Gateway -->> Frontend : Responder con el resultado real
+Broker -->> Gateway : Entregar la respuesta (correlationId)\n[AMQP 0-9-1 · reply · asíncrono]
+Gateway -->> Frontend : Responder con el resultado real\n[HTTPS/REST · 200 OK · síncrono]
 deactivate Gateway
 Frontend -->> Actor : Mostrar el resultado real de la creación de cuenta
 deactivate Frontend
