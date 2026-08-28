@@ -31,6 +31,7 @@ async function emit(): Promise<void> {
     OBJECT_STORAGE_SECRET_KEY: 'placeholder',
     OBJECT_STORAGE_BUCKET: 'customer-identity-documents',
     OBJECT_STORAGE_REGION: 'us-east-1',
+    CORS_ALLOWED_ORIGINS: 'http://localhost:3010',
   };
 
   const app = await NestFactory.create(AppModule.forRoot(environment), { logger: false });

@@ -33,25 +33,29 @@ The system models the core flows of a banking platform:
 The monorepo and its development base exist: seven applications and three
 shared packages that install, build, lint and test from a clean checkout.
 
-**The API Gateway is implemented** (T-15): eleven HTTP routes, JWT
-authentication, role authorization, asynchronous request/reply with a
-five-second ceiling, a seven-code error contract, and a versioned OpenAPI
-contract in `apps/gateway/openapi/`. It holds no business logic, no database
-and no HTTP client towards any internal service — and a test suite asserts all
-three rather than asking to be believed.
+**The API Gateway is implemented** (T-15): twelve HTTP routes over eleven
+paths, plus the `/health` and `/ready` probes; JWT authentication, role
+authorization, asynchronous request/reply with a five-second ceiling, a
+seven-code error contract, and a versioned OpenAPI contract in
+`apps/gateway/openapi/`. It holds no business logic, no database and no HTTP
+client towards any internal service — and a test suite asserts all three rather
+than asking to be believed.
 
 **`apps/web` is the frontend**: layout, role-filtered navigation, session, a
-single API client and four shared components, carrying two working modules —
-**Clientes** (T-16, with public registration at `/registro`) and **Cuentas**
-(T-17). The remaining modules are titled skeletons for T-18 to T-20.
+single API client and four shared components, carrying three working modules —
+**Clientes** (T-16, with public registration at `/registro`), **Cuentas** (T-17)
+and **Transferencias** (T-18). **Auditoría** is a page whose query nothing
+answers yet.
 
-**Customer Service and Account Service are implemented** (T-16, T-17): their own
-schemas, message handlers, idempotency enforced in the database, and — in
-Account Service — money as `NUMERIC(14,2)` that no float ever touches.
+**Customer, Account and Transaction Services are implemented** (T-16, T-17,
+T-18): a schema each, message handlers, idempotency enforced in the database,
+money as `NUMERIC(14,2)` that no float ever touches, and the transfer's
+six-state machine as one pure function that refuses every transition outside
+the diagram.
 
-The **other three domain services are still scaffolding** — health checks,
-environment validation, and empty `domain` and `application` layers. Transfers,
-payments and the audit trail therefore time out rather than answering: see
+The **other two domain services are still scaffolding** — health checks,
+environment validation, and empty `domain` and `application` layers. Payments
+and the audit trail therefore stall or time out rather than answering: see
 [Running It Locally](#running-it-locally).
 
 ## Repository Layout
@@ -75,7 +79,10 @@ apps/
     └── tooling/                     # @bank/tooling — shared TS/ESLint/Prettier/Jest config
 infra/docker/                        # local stack: PostgreSQL, RabbitMQ, MinIO (T-06)
                                      #   + docker-compose.dev.yml, the whole app in watch mode
-infra/k8s/                           # kind manifests
+                                     #   + docker-compose.images.yml, the whole app from
+                                     #     its built images (T-21)
+infra/k8s/                           # placeholder — the chart and the kind
+                                     #   cluster belong to T-22, not built yet
 docs/                                # durable project documentation
 specs/                               # Spec Kit artifacts for feature work
 ```
@@ -137,28 +144,93 @@ Run all of them from the **repository root**.
 | `pnpm lint` | Lints everything, including the isolation rules below |
 | `pnpm test` | Unit tests for every application and package |
 | `pnpm test:contract` | The contract tests over `@bank/contracts` |
+| `pnpm typecheck` | `tsc --noEmit` across the workspace |
 | `pnpm format` | Prettier over the repository |
 | `pnpm dev` | The whole stack in Docker: infrastructure and all seven applications, in watch mode |
 | `pnpm dev:down` | Stops it |
 | `pnpm dev:logs` | Follows its logs |
-| `pnpm dev:host` | Every application in watch mode on the host, in parallel — infrastructure still has to be up |
+| `pnpm dev:infra` | Only the infrastructure in Docker — five databases, the broker, MinIO — detached |
+| `pnpm dev:infra:down` | Stops the infrastructure |
+| `pnpm dev:host` | The seven applications in watch mode on your machine — infrastructure still has to be up |
+| `pnpm images:build` | Builds the seven Docker images, tagged with the commit inside them |
+| `pnpm images:up` | The stack from those images — no source mounted, nothing compiled at start-up |
+| `pnpm images:down` | Stops it, **and the infrastructure it includes** |
+| `pnpm images:logs` | Follows its logs |
+| `pnpm images:smoke` | Every check T-21 asks of an image and of a running container |
+| `pnpm images:flow` | Register a customer, open two accounts, transfer — through the images |
 
-Every command has a per-application form:
+### The task runner — Turborepo
+
+Everything in that table except `format` and the `dev:*` and `images:*` entries
+is [Turborepo](https://turborepo.com) running a task across the
+workspace. pnpm still resolves and links the nine packages from one lockfile;
+turbo only decides **what order** the tasks run in, **what runs in parallel**,
+and **what can be skipped** because none of its inputs moved.
+
+It reads the order from the `workspace:*` dependencies already declared in each
+package.json, so nothing restates it: `^build` in
+[`turbo.json`](turbo.json) means *every internal dependency builds first*, and
+that one rule is why `@bank/contracts/dist` exists before the Gateway imports
+it.
 
 ```bash
-pnpm --filter customer-service test
-pnpm --filter gateway lint
-pnpm --filter web build
+pnpm build          # 9 tasks, in dependency order, the independent ones at once
+pnpm build          # again, unchanged: FULL TURBO — a cache hit, in milliseconds
+turbo run build --force   # bypass the cache when you want to watch it compile
+```
+
+The cache is in `.turbo/`, git-ignored, and **local only** — no remote cache is
+configured, and none should be added without deciding first what a shared cache
+would be allowed to see.
+
+#### The task view
+
+`turbo.json` sets `"ui": "tui"`, so a run in an interactive terminal opens
+Turbo's terminal interface instead of a single interleaved column: a sidebar
+listing every task, and one scrollable log pane for whichever is selected.
+
+```text
+Tasks (/ - Search)              │ gateway#dev > cache bypass, force executing …
+ » @bank/contracts#dev          │ [Nest] LOG [NestApplication] Nest application …
+ » @bank/messaging#dev          │ …
+ » gateway#dev                  │
+ » customer-service#dev         │
+ » account-service#dev          │
+ » transaction-service#dev      │
+ » payment-service#dev          │
+ » notification-audit-service#dev
+ » web#dev                      │ u/d - Scroll logs   U/D - Page logs   m - More binds
+```
+
+`↑`/`↓` select a task, `/` searches, `u`/`d` scroll the selected log, `U`/`D`
+page it, `t`/`b` jump to top or bottom, `m` lists the remaining bindings, and
+`Ctrl-C` stops every task.
+
+Turbo 2.10 still defaults to `stream` — the prefixed, interleaved output — which
+is why the key is set explicitly. It is a preference and not a requirement:
+outside an interactive terminal (a pipe, a container, CI) Turbo falls back to
+`stream` on its own, so `pnpm dev:host | tee dev.log` and the Compose stack
+behave exactly as before. `turbo run <task> --ui=stream` forces it for one run.
+
+Filters take a task to one application and bring its dependencies with it,
+which is the difference that matters in a fresh clone:
+
+```bash
+turbo run test --filter=customer-service   # builds the shared packages first
+turbo run dev  --filter=gateway            # the Gateway alone, watchers included
+turbo run build --filter=web
+
+pnpm --filter customer-service test        # still works — but builds nothing
 ```
 
 Application names are `gateway`, `web`, `customer-service`, `account-service`,
 `transaction-service`, `payment-service`, `notification-audit-service`. The
 shared packages are `@bank/contracts`, `@bank/messaging` and `@bank/tooling`.
 
-**Build the shared packages before running one application on its own.** They
-are consumed from `dist/`, so a fresh clone needs a `pnpm build` first — or use
-`pnpm --filter gateway... build` (three dots) to build an application together
-with its dependencies.
+**`pnpm --filter <app> <task>` builds nothing.** The shared packages are
+consumed from `dist/`, so on a fresh clone that form needs a `pnpm build` first.
+`turbo run <task> --filter=<app>` does not — the build is a declared dependency
+of the task.
 
 ### Isolation rules
 
@@ -194,14 +266,36 @@ Spec-driven work uses [Spec Kit](https://github.com/github/spec-kit) under
 
 ## Running It Locally
 
-There are two ways to run this, and they are not equivalent. Pick by what you
-have installed and by what you are about to do.
+### Quick start
+
+Everything in Docker — nothing to configure per application, one command:
+
+```bash
+cp infra/docker/.env.example infra/docker/.env   # then fill in the credentials
+pnpm dev
+```
+
+Open <http://localhost:3010>. `pnpm dev:down` stops it.
+
+The applications on your machine instead — which is what you want for a
+debugger, for running one service alone, or for the Turborepo task view:
+
+```bash
+pnpm install
+pnpm dev:infra     # databases, broker and MinIO in Docker; the rest is yours
+                   # then the .env script in step 3 below, once
+pnpm dev:host      # the seven applications in watch mode
+```
+
+The two are detailed below. They are not equivalent — pick by what you have
+installed and by what you are about to do.
 
 | | `pnpm dev` | `pnpm dev:host` |
 | --- | --- | --- |
 | Infrastructure | Docker | Docker |
 | The seven applications | Docker, watch mode | your machine, watch mode |
 | You need installed | Docker | Docker, Node 24.19.0, pnpm 11.21.0 |
+| The task runner | Compose, one container per application | Turborepo, one process per application |
 | Per-application `.env` | none | one for each |
 | First start | minutes — it installs inside the containers | as fast as your last `pnpm install` |
 | Attaching a debugger, running one application alone | awkward | natural |
@@ -284,23 +378,27 @@ seconds.
 nvm use            # Node 24.19.0, from .nvmrc
 corepack enable    # pnpm 11.21.0
 pnpm install
-pnpm build         # shared packages first, then the seven applications
 ```
 
-`pnpm build` is not optional on a fresh clone. `@bank/contracts` and
-`@bank/messaging` are consumed from `dist/`, so anything that imports them
-fails until they have been built at least once.
+No build step here. `@bank/contracts` and `@bank/messaging` are consumed from
+`dist/`, so they do have to exist before anything imports them — but `dev`
+declares them as a dependency (`^build` in `turbo.json`), so `pnpm dev:host`
+compiles them itself on the way up. Run `pnpm build` when you want the seven
+applications built too, not to make `dev` work.
 
 #### 2. Local infrastructure
 
 RabbitMQ, MinIO and five PostgreSQL instances, from `infra/docker/`:
 
 ```bash
-cd infra/docker
-cp .env.example .env      # then fill in the credentials
-docker compose up -d
-docker compose ps         # wait for every service to read "healthy"
+cp infra/docker/.env.example infra/docker/.env   # then fill in the credentials
+pnpm dev:infra                                   # detached
+docker compose -f infra/docker/docker-compose.yml ps   # wait for "healthy"
 ```
+
+`pnpm dev:infra` is `docker compose -f infra/docker/docker-compose.yml up -d` —
+the infrastructure file only, without the seven application containers that
+`pnpm dev` adds on top. `pnpm dev:infra:down` stops it.
 
 Credentials live in `infra/docker/.env`, which is git-ignored. The Gateway is
 the one application with no `DATABASE_URL` and no way to add one: it owns no
@@ -308,25 +406,88 @@ data (constitution II and V).
 
 #### 3. Environment files
 
-Copy each `.env.example` to `.env` **in the same directory** and fill in local
-values. Never commit a `.env`.
-
-`RABBITMQ_URL`, `DATABASE_URL` and the `OBJECT_STORAGE_*` values must agree with
-`infra/docker/.env` — including the non-default ports, since from the host the
-broker is on 5673 and each database on its own port between 5433 and 5437:
+Every application reads its own `apps/<name>/.env` at boot. The values are not
+new information — they are the credentials already in `infra/docker/.env`,
+addressed from outside the Compose network: `localhost` instead of a container
+name, and the **published** port instead of the native one. So derive them
+rather than typing them. From the repository root:
 
 ```bash
-# apps/gateway/.env
+#!/usr/bin/env bash
+# Writes one .env per application from infra/docker/.env.
+# A file that already exists is never touched.
+set -euo pipefail
+[ -f infra/docker/.env ] || { echo "infra/docker/.env is missing — copy .env.example and fill it first"; exit 1; }
+set -a; . ./infra/docker/.env; set +a
+
+AMQP="amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@localhost:5673"
+S3="OBJECT_STORAGE_ENDPOINT=http://localhost:9002
+OBJECT_STORAGE_ACCESS_KEY=$MINIO_APP_USER
+OBJECT_STORAGE_SECRET_KEY=$MINIO_APP_PASSWORD
+OBJECT_STORAGE_BUCKET=$MINIO_BUCKET
+OBJECT_STORAGE_REGION=${MINIO_REGION:-us-east-1}"
+
+write() { # write <path> — body on stdin
+  if [ -e "$1" ]; then echo "·  $1 — already there, left alone"; cat >/dev/null
+  else cat >"$1"; echo "+  $1"; fi
+}
+
+write apps/gateway/.env <<EOF
+NODE_ENV=development
 PORT=3000
-RABBITMQ_URL=amqp://<app-user>:<app-password>@localhost:5673
-JWT_SECRET=<at least 32 characters>
-OBJECT_STORAGE_ENDPOINT=http://localhost:9002
-OBJECT_STORAGE_BUCKET=customer-identity-documents
-# ...and the rest, see apps/gateway/.env.example
+RABBITMQ_URL=$AMQP
+JWT_SECRET=${JWT_SECRET:-dev-only-secret-not-for-any-deployed-environment}
+JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-3600}
+GATEWAY_INSTANCE_ID=gateway-dev
+REPLY_TIMEOUT_MS=${REPLY_TIMEOUT_MS:-5000}
+$S3
+EOF
+
+# service | port | published PostgreSQL port | prefix in infra/docker/.env
+while read -r svc port pgport prefix; do
+  u="${prefix}_POSTGRES_USER"; p="${prefix}_POSTGRES_PASSWORD"; d="${prefix}_POSTGRES_DB"
+  write "apps/services/$svc/.env" <<EOF
+NODE_ENV=development
+PORT=$port
+DATABASE_URL=postgresql://${!u}:${!p}@localhost:$pgport/${!d}
+RABBITMQ_URL=$AMQP
+$S3
+EOF
+done <<'SERVICES'
+customer-service            3001 5433 CUSTOMER
+account-service             3002 5434 ACCOUNT
+transaction-service         3003 5435 TRANSACTION
+payment-service             3004 5436 PAYMENT
+notification-audit-service  3005 5437 NOTIFICATION_AUDIT
+SERVICES
+
+write apps/web/.env <<EOF
+NUXT_PUBLIC_API_BASE_URL=http://localhost:3000
+EOF
 ```
 
-A missing or malformed variable fails the boot immediately and **names the
-variable**, rather than surfacing later as a runtime error:
+It is safe to re-run: a `.env` that already exists is reported and left alone,
+so it fills gaps without overwriting anything you tuned by hand. It needs
+`bash` — the `${!var}` indirection is not POSIX `sh`.
+
+What it deliberately does not decide for you: `JWT_SECRET` falls back to the
+same development-only value the Compose file uses, which satisfies the
+32-character minimum and must never reach anything deployed. Account Service's
+`DEACTIVATION_*` and `INACTIVITY_*` knobs are left out entirely — they default
+in code to the assignment's own numbers, and are only worth setting when you
+want to watch the deactivation job do something without waiting six months.
+
+The five `OBJECT_STORAGE_*` lines go to every service, not only the two that
+read them today. An unused variable in a `.env` costs nothing; a missing one
+fails the boot.
+
+By hand instead: copy each `.env.example` to `.env` **in the same directory**
+and fill it in against `infra/docker/.env`, remembering the non-default ports —
+from the host the broker is on 5673 and each database on its own port between
+5433 and 5437. Never commit a `.env`.
+
+Either way, a missing or malformed variable fails the boot immediately and
+**names the variable**, rather than surfacing later as a runtime error:
 
 ```text
 Invalid environment for "gateway". Offending variables: JWT_SECRET
@@ -336,20 +497,33 @@ Invalid environment for "gateway". Offending variables: JWT_SECRET
 #### 4. Start the applications
 
 ```bash
-pnpm dev:host                 # all seven, in parallel
+pnpm dev:host                 # the seven applications + the two package watchers
 ```
 
-Or one at a time, the Gateway **first**:
+That is `turbo run dev`. It compiles `@bank/contracts` and `@bank/messaging`
+once, then starts nine watchers at once — the six NestJS applications, Nuxt, and
+a `tsc --watch` over each shared package so a change to a contract reaches
+everything that imports it without a restart.
+
+In an interactive terminal this opens the [task view](#the-task-view): a sidebar
+of the nine tasks, one scrollable log pane for the selected one. `Ctrl-C` stops
+all of them.
+
+It does **not** start the databases or the broker. Without `pnpm dev:infra`
+running first, every pane fills with `ECONNREFUSED`.
+
+Or a subset, which is what `--filter` is for:
 
 ```bash
-pnpm --filter gateway dev     # http://localhost:3000
-pnpm --filter web dev         # http://localhost:3010
+turbo run dev --filter=gateway              # http://localhost:3000
+turbo run dev --filter=web                  # http://localhost:3010
+turbo run dev --filter=gateway --filter=customer-service --filter=account-service
 ```
 
-The order matters when starting them by hand. The Gateway owns port 3000 and
-Nuxt defaults to 3000 too — start them the other way round and the frontend
-takes the port the Gateway needs, which shows up as a browser that loads but
-cannot reach any API.
+Start them in any order. `apps/web`'s `dev` script pins `--port 3010`, so Nuxt
+cannot default to 3000 and take the port the Gateway needs — a collision that
+shows up as a browser which loads but reaches no API, and which starting
+everything at once would otherwise turn into a race.
 
 > **Running the production build instead of `dev`?** `node .output/server/index.mjs`
 > does **not** read `apps/web/.env`, so the port has to be passed in:
@@ -418,6 +592,8 @@ inside a fresh container is slow.
 | <http://localhost:3010/activar> | no | The verdict of an emailed activation link |
 | <http://localhost:3010/clientes> | **yes** | The Clientes module (T-16) |
 | <http://localhost:3010/cuentas> | **yes** | The Cuentas module (T-17) |
+| <http://localhost:3010/transferencias> | **yes** | The Transferencias module (T-18) — a transfer stops at `PAYMENT_PENDING`, and the screen says so |
+| <http://localhost:3010/auditoria> | **yes** | The query nothing answers: a `504` after five seconds |
 | Everything else | **yes** | Redirects to `/login` |
 
 ### Getting a session
@@ -427,13 +603,23 @@ There are no seeded credentials — the way in is to register one:
 1. Open <http://localhost:3010/registro> and fill the form.
 2. The account is created **inactive**. Activation is triggered by
    `customer.activation.requested.v1`, which carries the clear token exactly
-   once and is delivered by Notification & Audit — which is not built. So read
-   the token off the wire instead: open <http://localhost:15673>, go to the
-   `audit.all` queue, *Get messages*, and find the event for your email.
-3. Open `http://localhost:3010/activar?token=<the token>`.
+   once. Notification & Audit consumes it and its delivery channel is
+   *simulated* — no mail is sent — so the link is printed instead:
+
+   ```sh
+   docker compose -f infra/docker/docker-compose.dev.yml \
+     logs notification-audit-service | grep activationLink
+   ```
+
+3. Open `http://localhost:3010<the activationLink>`.
 4. Sign in at <http://localhost:3010/login>.
 
-Step 2 disappears when T-20 lands and the mail is actually sent.
+**The link is printed only outside production** (`NODE_ENV !== 'production'`),
+which is the behaviour of every local mail catcher and is recorded as TD-043.
+The token is never stored: the audit trail redacts it, and `customers` holds
+only its digest. Before T-20 the token was readable in RabbitMQ's management UI
+because nothing consumed the audit queue; now `audit.customer` is drained, so
+this log line is the way in.
 
 ### Exercising the Gateway without a frontend
 
@@ -464,12 +650,19 @@ real infrastructure, including what the messages looked like on the wire.
 pnpm dev:down                              # everything, if you started it with pnpm dev
 ```
 
-If the applications were running on the host instead:
+If the applications were running on the host instead, `Ctrl-C` in the terminal
+holding `pnpm dev:host` stops all nine tasks at once. Then:
+
+```bash
+pnpm dev:infra:down                        # the databases, the broker, MinIO
+```
+
+Only if something survived the `Ctrl-C` — a task started outside turbo, or a
+terminal that was killed rather than interrupted:
 
 ```bash
 pkill -f 'dist/main.js'                    # the NestJS applications
 pkill -f 'output/server/index.mjs'         # web, if running the built output
-docker compose -f infra/docker/docker-compose.yml stop
 ```
 
 `pnpm dev:down` removes the application containers but keeps the named volumes,

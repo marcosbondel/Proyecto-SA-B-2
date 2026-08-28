@@ -51,8 +51,17 @@ describe('topic pattern matching', () => {
 });
 
 describe('queues', () => {
-  it('gives every logical consumer its own queue', () => {
-    expect(QUEUES).toHaveLength(6);
+  /**
+   * Ten and not seven: `notification-audit-service` owns five of them, because
+   * T-20 split the single `audit.all` into one queue per event family plus the
+   * query queue. A queue per *consumer* was never the rule — a queue never
+   * shared between two consumers is, and the test below is the one that
+   * enforces it.
+   */
+  it('gives every logical consumer at least one queue of its own', () => {
+    expect(QUEUES).toHaveLength(10);
+
+    expect(new Set(QUEUES.map((queue) => queue.owner)).size).toBe(5);
   });
 
   it('shares no queue between two services, which criterion 2.5 penalises', () => {
@@ -77,7 +86,38 @@ describe('queues', () => {
   it('sends the saga events to Transaction and to Audit, and to nobody else', () => {
     const debited = catalog.find((c) => c.name === 'account.debited.v1')!;
 
-    expect([...queuesFor(debited)].sort()).toEqual(['audit.all', 'transaction.saga']);
+    expect([...queuesFor(debited)].sort()).toEqual(['audit.account', 'transaction.saga']);
+  });
+
+  /**
+   * The point of the split T-20 made: each family lands on its own queue, so a
+   * message that keeps failing holds up its own family and nobody else's.
+   * Asserting the destinations rather than the patterns is what makes an
+   * accidental re-merge a failing test.
+   */
+  it('files each event family on its own audit queue, and never on another family\'s', () => {
+    const expected: Record<string, string> = {
+      'customer.registered.v1': 'audit.customer',
+      'account.debited.v1': 'audit.account',
+      'transaction.completed.v1': 'audit.transaction',
+      'payment.failed.v1': 'audit.payment',
+    };
+
+    for (const [name, queue] of Object.entries(expected)) {
+      const contract = catalog.find((c) => c.name === name)!;
+      const audited = queuesFor(contract).filter((q) => q.startsWith('audit.'));
+
+      expect(audited).toEqual([queue]);
+    }
+  });
+
+  /** The two questions share the query queue and touch no event queue. */
+  it('keeps the queries off every event queue', () => {
+    for (const name of ['audit.query.requested.v1', 'notification.list.query.v1']) {
+      const contract = catalog.find((c) => c.name === name)!;
+
+      expect([...queuesFor(contract)]).toEqual(['audit.query']);
+    }
   });
 
   /**
@@ -106,22 +146,22 @@ describe('the retry ladder', () => {
   });
 
   it('names a retry queue per rung', () => {
-    expect(retryQueueName('audit.all', 1)).toBe('audit.all.retry.1s');
-    expect(retryQueueName('audit.all', 3)).toBe('audit.all.retry.30s');
+    expect(retryQueueName('audit.account', 1)).toBe('audit.account.retry.1s');
+    expect(retryQueueName('audit.account', 3)).toBe('audit.account.retry.30s');
   });
 
   it('refuses a fourth rung rather than inventing one', () => {
-    expect(() => retryQueueName('audit.all', 4)).toThrow(/3 rungs/);
+    expect(() => retryQueueName('audit.account', 4)).toThrow(/3 rungs/);
   });
 
   it('returns a failed message to its own queue, never to the exchange', () => {
     const declarations = allQueueDeclarations();
-    const retry = declarations.find((d) => d.name === 'audit.all.retry.5s');
+    const retry = declarations.find((d) => d.name === 'audit.account.retry.5s');
 
     expect(retry?.arguments).toEqual({
       'x-message-ttl': 5_000,
       'x-dead-letter-exchange': '',
-      'x-dead-letter-routing-key': 'audit.all',
+      'x-dead-letter-routing-key': 'audit.account',
     });
   });
 

@@ -43,9 +43,16 @@ import { transactionInitiatedV1 } from './transaction/transaction.initiated.v1';
 import { transactionStatusRepliedV1 } from './transaction/transaction.status.replied.v1';
 import { transactionStatusRequestedV1 } from './transaction/transaction.status.requested.v1';
 import { transferRequestedV1 } from './transaction/transfer.requested.v1';
+import { paymentAttemptFailedV1 } from './payment/payment.attempt.failed.v1';
 import { paymentFailedV1 } from './payment/payment.failed.v1';
+import { paymentListQueryV1 } from './payment/payment.list.query.v1';
+import { paymentListRepliedV1 } from './payment/payment.list.replied.v1';
 import { paymentRequestedV1 } from './payment/payment.requested.v1';
+import { paymentStatusQueryV1 } from './payment/payment.status.query.v1';
+import { paymentStatusRepliedV1 } from './payment/payment.status.replied.v1';
 import { paymentSucceededV1 } from './payment/payment.succeeded.v1';
+import { notificationListQueryV1 } from './notification/notification.list.query.v1';
+import { notificationListRepliedV1 } from './notification/notification.list.replied.v1';
 import { auditQueryRepliedV1 } from './audit/audit.query.replied.v1';
 import { auditQueryRequestedV1 } from './audit/audit.query.requested.v1';
 
@@ -95,9 +102,18 @@ export * from './transaction/transaction.initiated.v1';
 export * from './transaction/transaction.status.replied.v1';
 export * from './transaction/transaction.status.requested.v1';
 export * from './transaction/transfer.requested.v1';
+export * from './payment/payment-view';
+export * from './payment/payment.attempt.failed.v1';
 export * from './payment/payment.failed.v1';
+export * from './payment/payment.list.query.v1';
+export * from './payment/payment.list.replied.v1';
+export * from './payment/payment.status.query.v1';
+export * from './payment/payment.status.replied.v1';
 export * from './payment/payment.requested.v1';
 export * from './payment/payment.succeeded.v1';
+export * from './notification/notification-view';
+export * from './notification/notification.list.query.v1';
+export * from './notification/notification.list.replied.v1';
 export * from './audit/audit.query.replied.v1';
 export * from './audit/audit.query.requested.v1';
 
@@ -152,9 +168,16 @@ export const catalog: readonly MessageContract[] = [
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
   transferRequestedV1,
+  paymentAttemptFailedV1,
   paymentFailedV1,
+  paymentListQueryV1,
+  paymentListRepliedV1,
   paymentRequestedV1,
+  paymentStatusQueryV1,
+  paymentStatusRepliedV1,
   paymentSucceededV1,
+  notificationListQueryV1,
+  notificationListRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
 ];

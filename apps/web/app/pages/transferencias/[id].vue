@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isUuidV4 } from '../../lib/account';
+import { mayMonitorPayments } from '../../lib/payment';
 import {
   POLL_CEILING_MS,
   POLL_INTERVAL_MS,
@@ -9,6 +10,7 @@ import {
   shouldKeepPolling,
 } from '../../lib/transaction';
 import type { TransferStatus } from '../../lib/transaction';
+import { mayQueryAudit } from '../../lib/audit';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
 import { formatDate, formatQuetzales } from '../../lib/money';
@@ -41,6 +43,7 @@ import { formatDate, formatQuetzales } from '../../lib/money';
  */
 const route = useRoute();
 const api = useGatewayApi();
+const { role } = useSession();
 
 const transactionId = computed(() => String(route.params.id ?? ''));
 const malformed = computed(() => !isUuidV4(transactionId.value));
@@ -60,8 +63,34 @@ const shownCorrelation = computed(
 
 const reason = computed(() => explainReason(transfer.value?.reason ?? null));
 
+/**
+ * Whether to offer the audit trail of this transfer.
+ *
+ * Offered rather than always shown, because `GET /api/audit` is the one route
+ * D-06 restricts by role outright: a `CLIENTE` who followed the button would
+ * get a `403` that reads like the bank refusing to explain their own transfer.
+ * The identifier is on screen for everybody either way (`SharedCorrelationIdBadge`),
+ * which is what makes the restriction a difference in convenience rather than
+ * in what somebody is told. Added by T-20.
+ */
+const mayAudit = computed(() => mayQueryAudit(role.value));
+
 const finished = computed(
   () => transfer.value !== null && isTerminal(transfer.value.status),
+);
+
+/**
+ * Where to send somebody who wants the payment's own record, or `null`.
+ *
+ * `GET /api/payments/:paymentId` admits every role, but the screen it opens is
+ * part of the staff-only Pagos module, and offering a `CLIENTE` a link into a
+ * module their navigation does not show would be offering a dead end. The panel
+ * shows the verdict either way; only the deeper evidence is staff work.
+ */
+const paymentDetailTo = computed(() =>
+  mayMonitorPayments(role.value) && transfer.value?.payment
+    ? `/pagos/${transfer.value.payment.paymentId}`
+    : null,
 );
 
 async function load(): Promise<void> {
@@ -228,7 +257,10 @@ useHead({ title: 'Transferencia · bonking' });
           </template>
         </UAlert>
 
-        <PaymentResultPanel :payment="transfer.payment ?? null" />
+        <PaymentResultPanel
+          :payment="transfer.payment ?? null"
+          :detail-to="paymentDetailTo"
+        />
       </template>
 
       <!-- Two minutes with no ending. Honest about not knowing. -->
@@ -262,6 +294,13 @@ useHead({ title: 'Transferencia · bonking' });
           color="neutral"
           @click="refresh"
         >Actualizar ahora</UButton>
+        <UButton
+          v-if="mayAudit && shownCorrelation"
+          :to="`/auditoria?correlationId=${shownCorrelation}`"
+          variant="outline"
+          color="neutral"
+          data-testid="transfer-audit-link"
+        >Ver auditoría</UButton>
         <UButton to="/cuentas" variant="ghost" color="neutral">Ver mis cuentas</UButton>
       </div>
 

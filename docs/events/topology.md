@@ -43,14 +43,31 @@ assignment refuses to award (§8.2, page 25).
 | `account.commands` | Account | `account.#` on `bank.commands` |
 | `transaction.commands` | Transaction | `transfer.requested.v1`, `transaction.status.requested.v1` on `bank.commands` |
 | `transaction.saga` | Transaction | The seven Saga events on `bank.events` |
-| `payment.commands` | Payment | `payment.requested.v1` on `bank.commands` |
-| `audit.all` | Notification & Audit | `#` on `bank.events`, `audit.query.requested.v1` on `bank.commands` |
+| `payment.commands` | Payment | `payment.#` on `bank.commands` |
+| `audit.customer` | Notification & Audit | `customer.#` on `bank.events` |
+| `audit.account` | Notification & Audit | `account.#` on `bank.events` |
+| `audit.transaction` | Notification & Audit | `transaction.#` on `bank.events` |
+| `audit.payment` | Notification & Audit | `payment.#` on `bank.events` |
+| `audit.query` | Notification & Audit | `audit.query.requested.v1`, `notification.list.query.v1` on `bank.commands` |
 
-Six declared queues, plus one more that is not declared here — see below.
+Ten declared queues, plus one more that is not declared here — see below.
 
 Transaction Service owns two queues rather than one because its two roles are different: it
 takes commands from outside, and it reacts to the Saga's events. Separating them means a
 backlog of Saga events cannot delay a new transfer request.
+
+Notification & Audit owns five, for the same kind of reason taken further. T-06 gave it a
+single `audit.all` bound to `#`, and T-20 split it: one queue per event family, plus one for
+the two questions it answers. A single queue makes every family share one head of line and one
+retry ladder, so a malformed `payment.*` event that fails its way down the ladder holds up the
+`customer.*` events queued behind it, and draining or replaying one family means draining all
+of them. The queries are kept off the event queues because a `correlationId` lookup is somebody
+waiting in front of a screen, and putting it behind a backlog of recorded events would make the
+one synchronous thing this service does the slowest.
+
+There is no `audit.gateway`. The Gateway publishes only commands, and a command is an intention
+aimed at one service rather than something that happened; what the trail records of a Gateway
+request is the event the receiving service published in response.
 
 ## The reply queue
 

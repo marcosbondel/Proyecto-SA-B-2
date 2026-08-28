@@ -1,0 +1,131 @@
+@startuml
+' Bank USAC - UML 2 Sequence Diagram - Crear cuenta
+' Caso de uso 2 (docs/domain/use-cases.md). Misma estructura y convenciones que el
+' Mermaid equivalente (06-uml-secuencia-crear-cuenta.mmd); ambos deben coincidir.
+' Las casillas de activacion (activate/deactivate) muestran cuanto tiempo mantiene
+' cada participante una tarea en curso.
+' Los mensajes usan lenguaje de negocio (legible para stakeholders no tecnicos); no
+' se incluyen nombres de tecnologia, protocolo ni framework, solo la accion realizada.
+
+title UML 2 - Diagrama de Secuencia\nCrear cuenta (Bank USAC)
+
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam ArrowColor #555555
+skinparam ArrowThickness 1.2
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 220
+skinparam wrapWidth 220
+skinparam noteBackgroundColor #FFF8DC
+skinparam noteBorderColor #D6B656
+skinparam ParticipantBorderColor #1168BD
+skinparam ParticipantBackgroundColor #EAF2FF
+skinparam ParticipantFontColor #1168BD
+skinparam ActorBorderColor #1168BD
+skinparam ActorBackgroundColor #EAF2FF
+skinparam QueueBorderColor #C11926
+skinparam QueueBackgroundColor #FFF0F0
+skinparam DatabaseBorderColor #398819
+skinparam DatabaseBackgroundColor #F2FAEF
+skinparam LifeLineBorderColor #1168BD
+skinparam ActivationBorderColor #1168BD
+skinparam ActivationBackgroundColor #C6DBF7
+
+legend right
+    |= Elemento | Notación |
+    | <color:#1168BD>Azul</color> | Actor, Frontend, Gateway, Account Service, Notification & Audit |
+    | <color:#C11926>Rojo</color> | RabbitMQ (broker) |
+    | <color:#398819>Verde</color> | Bases de datos PostgreSQL |
+    | `->>` | Mensaje asíncrono (comando / evento) |
+    | `-->>` | Respuesta asíncrona / reply |
+    | `->` | Llamada síncrona (HTTP, SQL) |
+    | `alt` / `else` | Flujo alternativo (fallo esperado) |
+    | Barra sólida sobre la línea de vida | Casilla de activación: tiempo que el participante tarda en completar la tarea |
+endlegend
+
+actor "Actor\n(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)" as Actor
+participant "Frontend" as Frontend
+participant "API Gateway" as Gateway
+queue "Message Broker" as Broker
+participant "Account Service" as Account
+database "Account Database" as AccountDB
+participant "Notification & Audit" as Notif
+database "Audit Database" as AuditDB
+
+autonumber
+
+Actor -> Frontend : Solicitar apertura de cuenta
+activate Frontend
+Frontend -> Gateway : Enviar la solicitud de apertura
+activate Gateway
+note over Gateway
+  Genera un identificador
+  de seguimiento (correlationId)
+end note
+
+Gateway ->> Broker : Publicar comando "crear cuenta" — account.create (correlationId)
+Gateway -->> Frontend : Confirmar recepción — 202 Accepted (correlationId)
+deactivate Gateway
+Frontend -->> Actor : "Solicitud recibida" (NO "cuenta creada")\n202 no es éxito
+deactivate Frontend
+
+Broker ->> Account : Entregar comando "crear cuenta" — account.create (correlationId)
+activate Account
+
+alt tipo de cuenta válido (MONETARIA | AHORRO)
+    note over Account
+      Validando los datos recibidos,
+      aún sin guardar
+    end note
+    Account -> AccountDB : Guardar la cuenta nueva\nestado inicial: ACTIVA, saldo Q0.00
+    activate AccountDB
+    AccountDB -->> Account : Confirmar guardado
+    deactivate AccountDB
+    note over Account
+      Cuenta creada — activa,
+      con saldo inicial de Q0.00
+    end note
+    Account ->> Broker : Publicar evento "cuenta abierta" — account.opened (correlationId)
+    Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nDESPUÉS de guardar
+else tipo de cuenta ausente o no reconocido
+    note over Account
+      Rechazar la solicitud, sin guardar
+      el tipo de cuenta es obligatorio
+    end note
+    Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nrechazo registrado
+end
+deactivate Account
+
+note over Account, AccountDB
+  Regla de diseño: el Servicio de Cuentas NUNCA consulta al Servicio de Clientes.
+  "El cliente no existe" o "el cliente no es elegible" se detectan más
+  adelante en el proceso, no en este paso.
+end note
+
+Broker ->> Notif : Entregar evento "cuenta abierta" — account.opened (correlationId)
+activate Notif
+Notif -> AuditDB : Registrar el evento para auditoría (correlationId)
+activate AuditDB
+AuditDB -->> Notif : Confirmar registro guardado
+deactivate AuditDB
+Notif ->> Broker : Confirmar al broker que el evento fue procesado\nDESPUÉS de registrar
+deactivate Notif
+
+note over Account
+  El 202 solo confirma que la solicitud se recibió.
+  El resultado real se consulta después por correlationId.
+end note
+
+Actor -> Frontend : Consultar el estado de la solicitud
+activate Frontend
+Frontend -> Gateway : Solicitar el estado real de la cuenta (correlationId)
+activate Gateway
+Gateway ->> Account : Preguntar por el estado actual de la cuenta (correlationId)
+activate Account
+Account -->> Gateway : Responder con el estado real de la cuenta
+deactivate Account
+Gateway -->> Frontend : Responder con el resultado real
+deactivate Gateway
+Frontend -->> Actor : Mostrar el resultado real de la creación de cuenta
+deactivate Frontend
+@enduml
