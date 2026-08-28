@@ -8,8 +8,10 @@ import {
   IsInt,
   IsNotEmpty,
   IsString,
+  IsUrl,
   Max,
   Min,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -72,6 +74,47 @@ export class NotificationAuditServiceEnvironment {
    */
   @IsBoolean()
   public REVEAL_ACTIVATION_LINKS!: boolean;
+
+  /**
+   * Which delivery channel actually sends notifications.
+   *
+   * `simulated` (the default) is the assignment's own request (§4.1): a log
+   * line, no mail. `resend` turns the activation email into a real one through
+   * Resend — the only notification that carries a real address — while every
+   * other notification stays simulated because the system holds no real
+   * address for it. Opt-in, so local development and `pnpm images:flow`, which
+   * read the activation link from the log, keep working untouched.
+   */
+  @IsIn(['simulated', 'resend'])
+  public NOTIFICATION_CHANNEL!: 'simulated' | 'resend';
+
+  /** The Resend API key. Required only for the `resend` channel; never logged. */
+  @ValidateIf((env: NotificationAuditServiceEnvironment) => env.NOTIFICATION_CHANNEL === 'resend')
+  @IsString()
+  @IsNotEmpty()
+  public RESEND_API_KEY?: string;
+
+  /**
+   * The verified sender, e.g. `bonking <no-reply@mail.tudominio.com>`. The
+   * domain must be verified in Resend (DKIM/SPF on Route 53) or delivery fails.
+   */
+  @ValidateIf((env: NotificationAuditServiceEnvironment) => env.NOTIFICATION_CHANNEL === 'resend')
+  @IsString()
+  @IsNotEmpty()
+  public EMAIL_FROM?: string;
+
+  /**
+   * The frontend's public origin, prepended to the activation path so the email
+   * carries an absolute link. This service does not know where the frontend is
+   * deployed — the domain builds a path, and this makes it a URL.
+   */
+  @ValidateIf((env: NotificationAuditServiceEnvironment) => env.NOTIFICATION_CHANNEL === 'resend')
+  @IsUrl({ require_tld: false })
+  public APP_BASE_URL?: string;
+
+  /** The Resend emails endpoint. Defaulted; overridable for a test double. */
+  @IsUrl({ require_tld: false })
+  public RESEND_API_URL!: string;
 }
 
 /**
@@ -98,6 +141,11 @@ export function loadEnvironment(
       source.REVEAL_ACTIVATION_LINKS,
       source.NODE_ENV !== 'production',
     ),
+    NOTIFICATION_CHANNEL: source.NOTIFICATION_CHANNEL ?? 'simulated',
+    RESEND_API_KEY: source.RESEND_API_KEY,
+    EMAIL_FROM: source.EMAIL_FROM,
+    APP_BASE_URL: source.APP_BASE_URL,
+    RESEND_API_URL: source.RESEND_API_URL ?? 'https://api.resend.com/emails',
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
