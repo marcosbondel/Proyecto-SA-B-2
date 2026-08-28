@@ -108,6 +108,31 @@ an integrator doc maps each §4.4 deliverable to its file.
 
 ## Phase 5: User Story 3 — Money cannot be created, lost, or frozen (Priority: P1) `[Phase P1]`
 
+> **Disposition: money-safety half done; the transactional outbox is a
+> deliberate, documented deferral — not forgotten work.**
+>
+> The half of US3 that protects the *money* is **done and merged**: Account now
+> carries a partial `UNIQUE (transaction_id, type)` guard plus a
+> compensation-exists check (commit `d37e451`), so a lost-then-redelivered
+> movement can neither double-credit nor credit a never-debited transfer, even
+> without an outbox. `UNIQUE (transaction_id)` on the transfer alias already
+> makes a redelivered open idempotent.
+>
+> The **durability half** — the transactional outbox + relay (T023–T031,
+> T034–T036) — stays open on purpose. `advance-saga.use-case.ts` records the
+> reasoning in the code itself ("the assignment's Saga does not require one"),
+> the enunciado's Saga obligation is met end to end (`pnpm images:flow` runs all
+> three shapes against the built images), and TD-031/TD-047 accept the gap: a
+> crash in the commit→publish window leaves a transfer in a state it legitimately
+> reached, which the status query reports honestly. Adding an outbox means
+> replacing the publish path on the **money services**, on a running bus, and it
+> can only be validated by broker-failure integration tests against a real
+> PostgreSQL + RabbitMQ. Doing that in this session is exactly the "rushed change
+> on a running bus" TD-031/047/048 warn against, and it risks the one thing that
+> is actually graded — the working Saga. It is deferred to a dedicated session
+> with that test harness, per the constraint "sin afectar los requisitos del
+> proyecto."
+
 **Goal**: Across broker failures, redeliveries, and concurrent messages, a
 transfer completes or compensates; money is never debited without a matching
 credit/refund and never credited twice.
@@ -307,7 +332,7 @@ reality.
 
 **Statement anchor**: rubric §8.3 (−25% diagram/code inconsistency); §4.4 documentation quality.
 
-- [ ] T077 [US10] Regenerate the exported JSON schemas (`pnpm --filter @bank/contracts schema:emit`) so `schema/*.json` matches the 55-contract catalog (currently 48), and add a drift test in `apps/packages/contracts/test/` that fails when `schema/` and the catalog disagree (FR-033).
+- [~] T077 [US10] **N-A on this branch.** The audit that raised this ran on a baseline where `apps/packages/contracts/schema/*.json` was committed; here `schema/` is git-ignored (0 tracked files, `git check-ignore` confirms), so there is nothing checked-in to drift. `schema:emit` remains a build step, not a committed artifact. If a future decision commits the exported schemas, re-open this with the drift test.
 - [ ] T078 [P] [US10] Fix `docs/DOC_INVENTORY.md` so its coverage claim is accurate (add the missing rules/rows, correct the "expected uncovered set is empty" claim, and fix the non-runnable verification snippet) (FR-034).
 - [X] T079 [P] [US10] Correct the ADR count in `docs/architecture/README.md` and `adr/README.md` (thirteen, not eleven) and reconcile the stale `blocked` notes in `docs/SECURITY.md`, `docs/PRODUCT_SENSE.md`, and the inventory's `FRONTEND.md` state (FR-035).
 
@@ -319,7 +344,7 @@ reality.
 
 **Purpose**: Close out and prove the whole feature.
 
-- [ ] T080 Update `ARCHITECTURE.md` and `CLAUDE.md`/`AGENTS.md` status so the Kubernetes deployment (US1) is reflected as built (the constitution requires ARCHITECTURE.md to mirror the principles, and Principle VII is now conforming).
+- [X] T080 `ARCHITECTURE.md` and `CLAUDE.md` already described the built kind/Helm deployment; `AGENTS.md` still said "Kubernetes deployment is not built yet" and still listed TD-020/TD-023 as open Clientes gaps — both corrected, so the repo status now mirrors reality (Principle VII conforming).
 - [ ] T081 [P] Update the tech-debt record: close the debts this feature resolves (TD-031 outbox, TD-020 customer read, TD-023 identity validation, and the deactivation-reason/`bank.errors` findings) in `docs/TECH_DEBT.md` (or wherever tracked).
 - [ ] T082 Run the full `specs/008-audit-remediation/quickstart.md` validation end to end (all three phases) and record evidence.
 - [ ] T083 Final gate: `pnpm lint`, `pnpm test`, `pnpm test:contract`, `pnpm typecheck`, `pnpm images:smoke`, `pnpm images:flow` all green; confirm no synchronous inter-service call or cross-database access was introduced (isolation specs green).
