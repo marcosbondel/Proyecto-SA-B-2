@@ -1,24 +1,39 @@
 @startuml
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
 
+' Bank USAC - C4 Nivel 1 - Diagrama de Contexto
+' El API Gateway aparece explicitamente dentro del limite del sistema porque el
+' enunciado lo exige en este nivel (§4.2, "Debe incluir: API Gateway") y evalua
+' la "Representacion correcta del Gateway como punto de entrada". Es el unico
+' elemento que recibe trafico de los actores; nada externo habla con el nucleo.
+' Cada relacion declara tecnologia, protocolo y tipo de interaccion (sincrona o
+' asincrona), tambien exigido por el enunciado.
+' Esta fuente debe coincidir con 02-c4-contexto.mmd en TODAS las etiquetas.
+
 title Bank USAC — Diagrama de Contexto (C4 Nivel 1)
 
 Person(cliente, "Cliente [CLIENTE]", "Cuentahabiente. Opera sobre sus propias cuentas: consulta saldo, transfiere y gestiona datos.")
 Person(cajero, "Cajero Receptor [CAJERO_RECEPTOR]", "Personal en ventanilla. Registra clientes, abre cuentas y transfiere por el cliente presente.")
 Person(admin, "Administrador [ADMINISTRADOR]", "Supervisa: gestiona roles, activa/desactiva cuentas y consulta la auditoría.")
 
-System(bankusac, "Bank USAC", "Sistema bancario distribuido. Gestiona clientes, cuentas, transferencias, pagos y auditoría. Único acceso web; autentica y coordina de forma asíncrona los servicios.")
+System_Boundary(limite, "Bank USAC") {
+    System(gateway, "API Gateway", "Único punto de entrada. Autentica con JWT, autoriza por rol y traduce cada petición HTTP en un mensaje. No contiene lógica de negocio ni orquesta la Saga.")
+    System(bankusac, "Núcleo Bancario Bank USAC", "Sistema bancario distribuido. Gestiona clientes, cuentas, transferencias, pagos y auditoría. No es accesible desde fuera: solo responde a mensajes.")
+}
 
-System_Ext(correo, "Servicio de Correo Electrónico ", "Entrega al cliente el enlace de activación de cuenta.")
-System_Ext(proveedorPagos, "Proveedor de Pagos ", "Procesa pagos externos que el banco no resuelve internamente.")
+System_Ext(correo, "Servicio de Correo Electrónico", "Entrega al cliente el enlace de activación de cuenta.")
+System_Ext(proveedorPagos, "Proveedor de Pagos", "Procesa pagos externos que el banco no resuelve internamente.")
 
-Rel(cliente, bankusac, "Consulta y gestiona sus cuentas", "Interacción de usuario")
-Rel(cajero, bankusac, "Atiende clientes en ventanilla", "Interacción de usuario")
-Rel(admin, bankusac, "Supervisa cuentas y auditoría", "Interacción de usuario")
+Rel(cliente, gateway, "Consulta y gestiona sus cuentas", "HTTPS/REST · síncrono")
+Rel(cajero, gateway, "Atiende clientes en ventanilla", "HTTPS/REST · síncrono")
+Rel(admin, gateway, "Supervisa cuentas y auditoría", "HTTPS/REST · síncrono")
 
-Rel(bankusac, correo, "Solicita correo de activación")
-Rel(correo, cliente, "Entrega enlace de activación ")
-Rel(bankusac, proveedorPagos, "Procesa pagos externos")
+Rel(gateway, bankusac, "Publica comandos y consultas con correlationId", "AMQP 0-9-1 · asíncrono")
+Rel(bankusac, gateway, "Responde por cola de respuesta", "AMQP 0-9-1 · request/reply")
+
+Rel(bankusac, correo, "Solicita el correo de activación", "SMTP · asíncrono")
+Rel(correo, cliente, "Entrega el enlace de activación", "Correo electrónico · asíncrono")
+Rel(bankusac, proveedorPagos, "Solicita la autorización del pago", "API del proveedor · síncrono")
 
 SHOW_LEGEND()
 @enduml

@@ -94,13 +94,13 @@ an integrator doc maps each §4.4 deliverable to its file.
 
 **Statement anchor**: §4.4 deliverables (user manual, diagrams, C4+UML); rubric §8.2 (documentation 10 pts), §8.3 (−25% diagram/code inconsistency).
 
-- [ ] T016 [P] [US2] Write the user manual at `docs/manual/README.md` (+ per-role sections): how ADMINISTRADOR, CAJERO_RECEPTOR, and CLIENTE each use every functionality (registration, activation, login, accounts, transfers, payments, audit). User-facing language, not developer setup.
-- [ ] T017 [P] [US2] Add the API Gateway to the C4 context diagram in both sources: `docs/architecture/diagrams/02-c4-contexto.puml` and `02-c4-contexto.mmd`, as the system's entry point, with interactions labeled technology/protocol/synchronicity.
-- [ ] T018 [P] [US2] Reconcile the two source forms of the context diagram so `02-c4-contexto.puml` and `.mmd` agree on every relation label (the repo's own "if the sources disagree, the diagram is not done" rule).
-- [ ] T019 [P] [US2] Add the required technology/protocol labels to the sequence diagrams `docs/architecture/diagrams/06-uml-secuencia-crear-cuenta.puml` and `07-uml-secuencia-transferencia.puml` (remove the "no technology names" headers) and reconcile their `.mmd` forms.
-- [ ] T020 [US2] Update the deployment diagram `docs/architecture/diagrams/05-uml-despliegue.puml` so every artifact it depicts resolves to a real path — the Helm chart now exists at `infra/k8s/helm/bank-usac` (built in US1); confirm the topology matches the chart (what runs in-cluster vs. external).
-- [ ] T021 [US2] Write the integrator technical document at `docs/TECHNICAL_DOCUMENT.md` mapping each §4.4 deliverable (technical doc, diagrams, SLI/SLO/SLA, use cases, decision justification, user manual) to its file in the repo.
-- [ ] T022 [US2] Re-render all touched diagrams (PlantUML + Mermaid) and confirm no source/export drift; link the rendered evidence.
+- [X] T016 [P] [US2] Write the user manual at `docs/manual/README.md` (+ per-role sections): how ADMINISTRADOR, CAJERO_RECEPTOR, and CLIENTE each use every functionality (registration, activation, login, accounts, transfers, payments, audit). User-facing language, not developer setup.
+- [X] T017 [P] [US2] Add the API Gateway to the C4 context diagram in both sources: `docs/architecture/diagrams/02-c4-contexto.puml` and `02-c4-contexto.mmd`, as the system's entry point, with interactions labeled technology/protocol/synchronicity.
+- [X] T018 [P] [US2] Reconcile the two source forms of the context diagram so `02-c4-contexto.puml` and `.mmd` agree on every relation label (the repo's own "if the sources disagree, the diagram is not done" rule).
+- [X] T019 [P] [US2] Add the required technology/protocol labels to the sequence diagrams `docs/architecture/diagrams/06-uml-secuencia-crear-cuenta.puml` and `07-uml-secuencia-transferencia.puml` (remove the "no technology names" headers) and reconcile their `.mmd` forms.
+- [X] T020 [US2] Update the deployment diagram `docs/architecture/diagrams/05-uml-despliegue.puml` so every artifact it depicts resolves to a real path — the Helm chart now exists at `infra/k8s/helm/bank-usac` (built in US1); confirm the topology matches the chart (what runs in-cluster vs. external).
+- [X] T021 [US2] Write the integrator technical document at `docs/TECHNICAL_DOCUMENT.md` mapping each §4.4 deliverable (technical doc, diagrams, SLI/SLO/SLA, use cases, decision justification, user manual) to its file in the repo.
+- [X] T022 [US2] Re-render all touched diagrams (PlantUML + Mermaid) and confirm no source/export drift; link the rendered evidence.
 
 **Checkpoint**: Deliverables complete and consistent.
 
