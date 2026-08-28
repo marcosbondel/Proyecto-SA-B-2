@@ -255,6 +255,10 @@ services:
       # of leaving an orphan behind on every reload.
       GATEWAY_INSTANCE_ID: gateway-images
       REPLY_TIMEOUT_MS: ${REPLY_TIMEOUT_MS:-5000}
+      # The browser frontend is a different origin, so every call it makes is
+      # cross-origin; the gateway must name the origin back or the browser
+      # discards the response. A deployment sets its own comma-separated list.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:${BANK_WEB_PORT:-3010}}
     ports:
       - '${BANK_GATEWAY_PORT:-3000}:3000'
     depends_on:

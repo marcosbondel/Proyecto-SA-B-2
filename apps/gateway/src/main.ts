@@ -21,6 +21,29 @@ async function bootstrap(): Promise<void> {
   const runtime = app.get<GatewayRuntime>(GATEWAY_RUNTIME);
 
   /**
+   * The frontend is a different origin, so every call it makes is cross-origin
+   * and the browser will discard the response unless the gateway names the
+   * origin back. `curl` never needed this — a browser does, for every screen.
+   *
+   * The origins are an allow-list, never `*`: the API answers to the frontend,
+   * not to any page on the internet. `X-Correlation-Id` is exposed because the
+   * client reads it off the response to correlate an asynchronous outcome, and
+   * a browser hides every response header that is not exposed by name.
+   */
+  const allowedOrigins = environment.CORS_ALLOWED_ORIGINS.split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  app.enableCors({
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Correlation-Id'],
+    exposedHeaders: ['X-Correlation-Id'],
+    maxAge: 600,
+  });
+  logger.log(`CORS allows: ${allowedOrigins.join(', ')}`);
+
+  /**
    * The broker is brought up before the port opens, but **not waited on
    * indefinitely**.
    *
