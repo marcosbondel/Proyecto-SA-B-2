@@ -309,7 +309,7 @@ reality.
 
 - [ ] T077 [US10] Regenerate the exported JSON schemas (`pnpm --filter @bank/contracts schema:emit`) so `schema/*.json` matches the 55-contract catalog (currently 48), and add a drift test in `apps/packages/contracts/test/` that fails when `schema/` and the catalog disagree (FR-033).
 - [ ] T078 [P] [US10] Fix `docs/DOC_INVENTORY.md` so its coverage claim is accurate (add the missing rules/rows, correct the "expected uncovered set is empty" claim, and fix the non-runnable verification snippet) (FR-034).
-- [ ] T079 [P] [US10] Correct the ADR count in `docs/architecture/README.md` and `adr/README.md` (thirteen, not eleven) and reconcile the stale `blocked` notes in `docs/SECURITY.md`, `docs/PRODUCT_SENSE.md`, and the inventory's `FRONTEND.md` state (FR-035).
+- [X] T079 [P] [US10] Correct the ADR count in `docs/architecture/README.md` and `adr/README.md` (thirteen, not eleven) and reconcile the stale `blocked` notes in `docs/SECURITY.md`, `docs/PRODUCT_SENSE.md`, and the inventory's `FRONTEND.md` state (FR-035).
 
 **Checkpoint**: Docs and contracts consistent.
 
