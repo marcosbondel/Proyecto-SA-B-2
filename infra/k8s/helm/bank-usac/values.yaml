@@ -207,7 +207,7 @@ web:
 secrets:
   jwtSecret: ""
   rabbitmq:
-    user: bank_app # matches infra/docker/rabbitmq/rabbitmq_definitions.json
+    user: bank_app # the app account provisioned by infra/docker/scripts/init-rabbitmq.sh
     password: ""
   objectStorage:
     accessKey: ""
