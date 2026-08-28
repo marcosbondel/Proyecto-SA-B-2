@@ -45,7 +45,7 @@ x-app: &app
 
 # Nothing is baked into an image, so everything a service needs arrives here.
 # The broker credentials are the application's, not the administrator's — the
-# same pair `rabbitmq_definitions.json` declares as `bank_app`.
+# same pair `scripts/init-rabbitmq.sh` declares from .env.
 x-rabbitmq-url: &rabbitmq-url
   RABBITMQ_URL: amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@rabbitmq:5672
 
@@ -112,6 +112,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
     healthcheck:
@@ -142,6 +146,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *ready-probe
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3002/ready']
@@ -163,6 +171,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *ready-probe
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3003/ready']
@@ -194,6 +206,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *ready-probe
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3004/ready']
@@ -233,6 +249,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *ready-probe
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3005/ready']
@@ -273,6 +293,10 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
       customer-service:
