@@ -1,5 +1,6 @@
 import {
   customerAuthenticateV1,
+  customerGetQueryV1,
   customerRegisterV1,
   customerUpdateV1,
   customerValidateIdentityV1,
@@ -8,6 +9,7 @@ import {
 import type { MessageEnvelope } from '@bank/contracts';
 
 import type { AuthenticateCustomerUseCase } from '../application/authenticate-customer.use-case';
+import type { GetCustomerUseCase } from '../application/get-customer.use-case';
 import type { RegisterCustomerUseCase } from '../application/register-customer.use-case';
 import type { UpdateCustomerUseCase } from '../application/update-customer.use-case';
 import type { ValidateIdentityUseCase } from '../application/validate-identity.use-case';
@@ -138,6 +140,35 @@ export class VerifyEmailHandler extends ContractHandler<
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.idempotencyKey);
+  }
+}
+
+/**
+ * Reading a customer, the first query this service answers.
+ *
+ * Not idempotency-guarded: a query changes nothing, and a redelivery must
+ * produce a fresh reply rather than a silence that leaves the Gateway waiting.
+ */
+export class GetCustomerHandler extends ContractHandler<
+  ReturnType<typeof customerGetQueryV1.schema.parse>
+> {
+  public readonly messageType = customerGetQueryV1.name;
+  readonly #useCase: GetCustomerUseCase;
+
+  constructor(useCase: GetCustomerUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerGetQueryV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerGetQueryV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity);
   }
 }
 

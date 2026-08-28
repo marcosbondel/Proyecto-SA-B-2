@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { CustomerRegisterV1 } from '@bank/contracts';
 
 import { AuthenticateCustomerUseCase } from '../src/application/authenticate-customer.use-case';
+import { GetCustomerUseCase } from '../src/application/get-customer.use-case';
 import { RegisterCustomerUseCase } from '../src/application/register-customer.use-case';
 import { UpdateCustomerUseCase } from '../src/application/update-customer.use-case';
 import { ValidateIdentityUseCase } from '../src/application/validate-identity.use-case';
@@ -70,6 +71,7 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
       clock,
     }),
     update: new UpdateCustomerUseCase({ repository, publisher, clock }),
+    getCustomer: new GetCustomerUseCase({ repository, publisher }),
     authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
     verifyEmail: new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
     validateIdentity: new ValidateIdentityUseCase({ repository, publisher, documents, clock }),
@@ -252,6 +254,72 @@ describe('role on registration (D-06)', () => {
     await context.register.execute(REGISTER, 'key-client', null);
 
     expect(context.repository.customers.size).toBe(1);
+  });
+});
+
+describe('reading a customer (US6)', () => {
+  it('lets a client read their own record', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CLIENTE', customerId: REGISTER.customerId },
+    );
+
+    const reply = context.publisher.replies.at(-1);
+    expect(reply?.messageType).toBe('customer.get.replied.v1');
+    expect(reply?.payload).toMatchObject({ outcome: 'FOUND', customerId: REGISTER.customerId });
+  });
+
+  it('lets staff read any customer', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ outcome: 'FOUND' });
+  });
+
+  it('answers NOT_FOUND when a client reads someone else, indistinguishable from unknown', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CLIENTE', customerId: '11111111-1111-4111-8111-111111111111' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ outcome: 'NOT_FOUND' });
+  });
+
+  it('answers NOT_FOUND for an unknown id', async () => {
+    const context = build();
+
+    await context.getCustomer.execute(
+      { customerId: '00000000-0000-4000-8000-000000000000' },
+      { role: 'ADMINISTRADOR', customerId: '33333333-3333-4333-8333-333333333333' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ outcome: 'NOT_FOUND' });
+  });
+
+  it('never carries the credential or the activation token in the reply', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'ADMINISTRADOR', customerId: '33333333-3333-4333-8333-333333333333' },
+    );
+
+    const serialised = JSON.stringify(context.publisher.replies.at(-1)?.payload);
+    expect(serialised).not.toContain('credential');
+    expect(serialised).not.toContain('token');
+    expect(serialised).not.toContain(REGISTER.credential);
   });
 });
 
