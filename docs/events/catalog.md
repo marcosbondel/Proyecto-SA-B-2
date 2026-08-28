@@ -1,8 +1,8 @@
 # Message catalogue
 
-The payload of every message the system can put on the broker. Forty-eight contracts: the
+The payload of every message the system can put on the broker. Fifty-five contracts: the
 thirty-five [`../domain/message-catalog.md`](../domain/message-catalog.md) fixed, plus the
-thirteen recorded there as an extension.
+twenty recorded there as an extension.
 
 **The executable definition is the code.** Each entry links to its contract in
 [`../../apps/packages/contracts/src/events/`](../../apps/packages/contracts/src/events/), and
@@ -11,7 +11,7 @@ the machine-readable form with `pnpm --filter @bank/contracts schema:emit`.
 
 ## Rules that hold for every message
 
-Stated once here instead of forty-eight times below.
+Stated once here instead of fifty-five times below.
 
 **Envelope.** Every payload travels inside the envelope described in
 [`envelope.md`](envelope.md). Field tables below describe the `payload` only.
@@ -87,6 +87,8 @@ messages, nothing that reveals whether an account or an email exists.
 | `transaction.status.replied.v1` | reply | transaction-service | gateway |
 | `audit.query.requested.v1` | command | gateway | notification-audit-service |
 | `audit.query.replied.v1` | reply | notification-audit-service | gateway |
+| `notification.list.query.v1` | command | gateway | notification-audit-service |
+| `notification.list.replied.v1` | reply | notification-audit-service | gateway |
 
 
 ---
@@ -1319,10 +1321,62 @@ messages, nothing that reveals whether an account or an email exists.
 | --- | --- | --- |
 | `correlationId` | UUID v4 | yes |
 | `events` | array of object | yes |
+| `events[].processingStatus` | `PROCESSED` \| `INVALID` \| `ERROR` | no |
+| `events[].payload` | object, redacted | no |
 | `notifications` | array of object | yes |
 
 **Preconditions.** An `audit.query.requested.v1` was handled.
 
-**Effects.** The Gateway answers with the ordered events and the notifications of that flow. Returns **metadata, not payloads**: echoing every payload back would recreate, in one reply, the data the per-service databases exist to keep apart.
+**Effects.** The Gateway answers with the ordered events and the notifications of that flow. Returns **metadata and a redacted payload, never the payload as published**: echoing every payload back verbatim would recreate, in one reply, the data the per-service databases exist to keep apart.
+
+The two optional fields were added by T-20 and are additive — a reply that omits them validates exactly as before (TD-039). `processingStatus` exists so that a message this service could not parse is visible rather than absent; `payload` exists because the interface has to show *something* of what happened, and the redaction is computed by the service that owns the record, never by the consumer. What survives redaction is decided in one place: `redactPayload` in the service's domain.
+
+**On error.** On timeout the Gateway stops waiting.
+
+## Consult the notifications console
+
+### `notification.list.query.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `notification.list.query.v1` |
+| **Contract** | [`notification.list.query.v1.ts`](../../apps/packages/contracts/src/events/notification/notification.list.query.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `correlationId` | UUID v4 | no |
+| `status` | `PENDING` \| `SENT` \| `FAILED` | no |
+| `type` | string, ≤ 50 | no |
+| `limit` | integer, 1–200 | no |
+
+**Preconditions.** None. Every filter is a request, not a permission.
+
+**Effects.** The notifications this service sent are read, newest first. Restricted to `ADMINISTRADOR` at the Gateway, because a notification row carries a simulated recipient and this service cannot narrow the list to one customer without reading another service's tables (§8.2, 2.3) — the same shape of gap as TD-037.
+
+**On error.** No rows is an empty list, not an error.
+
+### `notification.list.replied.v1`
+
+| | |
+| --- | --- |
+| **Category** | reply |
+| **Producer** | notification-audit-service |
+| **Consumers** | gateway |
+| **Exchange** | `bank.replies` |
+| **Routing key** | `notification.list.replied.v1` |
+| **Contract** | [`notification.list.replied.v1.ts`](../../apps/packages/contracts/src/events/notification/notification.list.replied.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `notifications` | array of object | yes |
+| `omitted` | integer ≥ 0 | yes |
+
+**Preconditions.** A `notification.list.query.v1` was handled.
+
+**Effects.** The Gateway answers with the page and with how many rows were left out, so a console can say "200 of 4,318" instead of implying it is showing everything.
 
 **On error.** On timeout the Gateway stops waiting.

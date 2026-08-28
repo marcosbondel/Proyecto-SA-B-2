@@ -11,19 +11,21 @@ frontend at the top level, the five domain services under `apps/services/`, and
 `apps/packages/`. All seven applications install, build, lint and test from a
 clean checkout.
 
-**The API Gateway is implemented** (T-15, extended by T-17): fourteen HTTP
-routes over eleven paths, JWT authentication, role authorization from decision
+**The API Gateway is implemented** (T-15, extended by T-17, T-19 and T-20):
+seventeen HTTP routes over fourteen paths, JWT authentication, role authorization from decision
 D-06, request/reply with a five-second ceiling, a seven-code error contract, the
 identity-document photo deposited in MinIO, and a versioned OpenAPI contract in
 `apps/gateway/openapi/`. **`apps/web` is the shared frontend shell**: layout,
 role-filtered navigation, session, `useGatewayApi` and four shared components.
-Three feature modules are built: **Clientes** (T-16) — public registration at
+Five feature modules are built: **Clientes** (T-16) — public registration at
 `/registro`, the staff form, the update screen and the teller's validation
 queue — **Cuentas** (T-17) — the account list, the opening flow, the
-balance-and-statement detail and the administrator's management screen — and
-**Transferencias** (T-18) — the request form and the live status timeline, plus
-the two `app/components/payment/` components T-19 owns on arrival (TD-034). The
-Auditoría module is still a titled skeleton.
+balance-and-statement detail and the administrator's management screen —
+**Transferencias** (T-18) — the request form and the live status timeline —
+**Pagos** (T-19) — the monitoring list and the single-payment state screen —
+and **Auditoría** (T-20) — the lookup by `correlationId`, the ordered event
+table with its redacted-payload panel, the notifications of the flow, and the
+staff notifications console at `/auditoria/notificaciones`.
 
 The Gateway has no `domain/` layer and never will — it holds no business logic
 (constitution V), and a test asserts it has no database and no HTTP client
@@ -53,15 +55,60 @@ arrives as an event, which is what criterion 8 asks for and what
 `test/isolation.spec.ts` enforces. Its concurrency and constraint tests need a
 real PostgreSQL and skip without `DATABASE_URL`.
 
-The **other two services are still scaffolding**: health checks, boot-time
-environment validation, and empty `domain` and `application` layers. Their
-screens are T-19 and T-20. Until Payment Service exists a transfer stops at
-`PAYMENT_PENDING` with the money already debited — the state machine is correct
-and nobody answers `payment.requested.v1`. What the Clientes screens still
-cannot show is recorded as TD-020, TD-021 and TD-023; the Cuentas screens,
-TD-026 and TD-027; the Transferencias screens, TD-032 to TD-035.
+**Notification & Audit Service is implemented** (T-20): three tables of its own,
+five queues rather than one — `audit.customer`, `audit.account`,
+`audit.transaction`, `audit.payment` for the event families and `audit.query`
+for the two questions it answers — deduplication as the primary key
+`(event_id, consumer)` so a redelivery produces neither a second record nor a
+second notification, the payload **redacted before the insert** so the one
+database that hears every event never stores a document, an address or an
+amount, and a simulated delivery channel that never throws. It is the only
+service that takes **no** validator from the broker: a message it cannot parse
+is recorded `INVALID` rather than parked, because the service whose job is to
+record what arrived cannot be the one that never sees it. It publishes replies
+and nothing else — `ReplyPublisher` has one method, and
+`test/isolation.spec.ts` fails the build if a command or an event is ever put
+on an exchange from here.
+
+**Payment Service is implemented** (the backend half of T-19, built in T-21):
+two tables of its own, three message handlers over `payment.commands`, the
+provider as a single pure function that decides an attempt with no clock and no
+database in sight, attempts serialised by `SELECT … FOR UPDATE` plus a check
+that the attempt number follows the row — so a redelivered command and the retry
+sweeper cannot both charge — and a retry ladder whose due time is a **column
+rather than a timer**, so a rescheduled pod does not forget a transfer
+mid-payment. It publishes `payment.attempt.failed.v1` for every failed attempt
+including the last, which is what makes the ladder observable while it is being
+climbed, and only the terminal event closes the Saga. It orders nothing from
+anybody: there is no `send` on its publisher and `test/isolation.spec.ts` fails
+the build if one appears.
+
+**The Saga now runs end to end, in all three of its shapes.**
+`pnpm images:flow` executes them against the built images and checks the
+balances before and after each: a transfer that COMPLETES, a refused payment
+that COMPENSATES on the first attempt, and one that climbs the ladder to its end
+and then COMPENSATES. The compensation is asserted as a fact about the money,
+not as a status somebody wrote down.
+
+What the Clientes screens still cannot show is recorded as TD-020 and TD-023; the Cuentas screens,
+TD-026 and TD-027; the Transferencias screens, TD-032 to TD-035; the Pagos
+screens, TD-037 and TD-038; the Auditoría screens, TD-039 to TD-043.
 `ARCHITECTURE.md` records the target architecture; Kubernetes deployment is not
 built yet.
+
+**Every component is containerised** (T-21): seven multi-stage images, one
+Dockerfile each and no generic one, all running as `node` (uid 1000), with
+nothing but `NODE_ENV` baked in and every credential arriving at run time.
+`/health` and `/ready` answer different questions in all seven — the port now
+opens *before* the migrations and the broker, so a database that is briefly away
+no longer turns a liveness probe into a restart loop. `pnpm images:build` tags
+each image with the commit inside it, which is the value T-22 puts in
+`values.yaml`; `pnpm images:smoke` asserts the labels, the port, the user, the
+absence of secrets in any layer, and the degraded cases; `pnpm images:flow` runs
+the assignment's own flow — register, open accounts, transfer — through the
+images end to end. The inventory, the required variables per component and the
+base-image bump procedure are in
+[docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
 ## Project Documentation
 
@@ -85,6 +132,7 @@ Consult these documents before making decisions or describing the repository:
 - [docs/AI_PROJECT_SKILLS.md](docs/AI_PROJECT_SKILLS.md): installed skills and stack-specific skill policy.
 - [docs/design-docs/index.md](docs/design-docs/index.md): durable design records before recording a new decision.
 - [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md): repository operating beliefs before changing agent practice.
+- [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md): **the image inventory** — one row per component with its Dockerfile, port, start command, health checks and required variables, plus the tagging scheme T-22 references. Read it before changing a Dockerfile, adding a variable a container needs, or writing the Helm chart.
 - [docs/references/README.md](docs/references/README.md): how to add or consult external references.
 - [apps/web/README.md](apps/web/README.md): Nuxt starter-level application commands when working inside the web app.
 - [.specify/memory/constitution.md](.specify/memory/constitution.md): mandatory architecture principles before writing a spec or plan.
@@ -92,28 +140,46 @@ Consult these documents before making decisions or describing the repository:
 ## Commands
 
 Run from the **repository root**, not from an application directory. The
-repository is a pnpm workspace: Node 24.19.0 (`.nvmrc`) and pnpm 11.21.0
-(`packageManager`) are enforced, and `engines.node` refuses anything older.
+repository is a pnpm workspace driven by **Turborepo**: Node 24.19.0 (`.nvmrc`)
+and pnpm 11.21.0 (`packageManager`) are enforced, and `engines.node` refuses
+anything older.
 
 ```bash
 pnpm install        # whole workspace, one lockfile
-pnpm build          # shared packages, then the seven applications
+pnpm build          # turbo: shared packages, then the seven applications
 pnpm lint           # includes the executable isolation rules
 pnpm test           # unit tests for every application and package
 pnpm test:contract  # contract tests over @bank/contracts
+pnpm typecheck      # tsc --noEmit everywhere
 pnpm format         # prettier
 pnpm dev            # the whole stack in Docker, applications included
 pnpm dev:down       # stops it
-pnpm dev:host       # applications on the host instead, infrastructure still in Docker
+pnpm dev:infra      # only the databases, the broker and MinIO, detached
+pnpm dev:host       # turbo: the seven applications on the host, in watch mode
 ```
 
-Per application: `pnpm --filter <name> <command>`, where `<name>` is `gateway`,
-`web`, `customer-service`, `account-service`, `transaction-service`,
-`payment-service` or `notification-audit-service`.
+pnpm resolves and links the packages; **turbo decides the order**. The graph is
+read from the `workspace:*` dependencies already declared in each package.json,
+so `@bank/contracts` compiles before `@bank/messaging` compiles before anything
+that imports them — no script restates that order.
 
-`pnpm build` must run before testing a single application in a fresh clone: the
-shared packages are consumed from `dist/`. `pnpm --filter <app>... build` (three
-dots) builds an application together with its dependencies.
+Per application: `pnpm --filter <name> <command>` still works, and
+`turbo run <task> --filter=<name>` is the same thing with the dependency
+builds included. `<name>` is `gateway`, `web`, `customer-service`,
+`account-service`, `transaction-service`, `payment-service` or
+`notification-audit-service`.
+
+Two consequences worth knowing:
+
+- **`^build` replaced the ordering discipline.** `pnpm --filter <app> test` in a
+  fresh clone still fails — pnpm alone does not build `dist/` first — but
+  `turbo run test --filter=<app>` does not, because the shared packages are a
+  declared dependency of the task.
+- **Cached tasks do not re-run.** A second `pnpm build` with nothing changed
+  reports `FULL TURBO` and finishes in milliseconds. That is a cache hit, not a
+  skipped build. `turbo run build --force` bypasses it when you need to see the
+  compiler actually work. The cache lives in `.turbo/`, is git-ignored, and is
+  local only — no remote cache is configured.
 
 `apps/web` has **no component-level test framework**; that needs a Nuxt-native
 runner and is recorded as TD-010. Do not claim component coverage.

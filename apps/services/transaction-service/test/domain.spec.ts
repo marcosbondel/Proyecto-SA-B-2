@@ -217,8 +217,18 @@ describe('the legal transitions', () => {
   });
 
   it('knows which three states nothing follows', () => {
-    expect(['COMPLETED', 'FAILED', 'COMPENSATED'].every(isTerminal)).toBe(true);
-    expect(['PENDING', 'DEBITING', 'PAYMENT_PENDING'].some(isTerminal)).toBe(false);
+    /**
+     * The annotations are what make this compile. A bare array literal widens
+     * to `string[]`, and `isTerminal` takes a `TransactionStatus` — so `every`
+     * is handed a predicate narrower than the elements it will be given, which
+     * `tsc` rejects. Jest never saw it because `ts-jest` here transpiles
+     * without type-checking, so the suite passed while `pnpm typecheck` failed.
+     */
+    const terminal: readonly TransactionStatus[] = ['COMPLETED', 'FAILED', 'COMPENSATED'];
+    const inFlight: readonly TransactionStatus[] = ['PENDING', 'DEBITING', 'PAYMENT_PENDING'];
+
+    expect(terminal.every(isTerminal)).toBe(true);
+    expect(inFlight.some(isTerminal)).toBe(false);
   });
 });
 

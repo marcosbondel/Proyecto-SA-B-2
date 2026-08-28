@@ -112,6 +112,11 @@ catalog:
   jest: 30.4.2
   ts-jest: 29.4.12
 
+  # Task runner over the workspace. pnpm still resolves and links the packages;
+  # turbo only orders the tasks and caches the ones whose inputs did not move.
+  # Root-only dependency — no package.json under apps/ references it.
+  turbo: 2.10.12
+
   # Lint and format
   '@eslint/js': 10.0.1
   eslint: 10.8.1

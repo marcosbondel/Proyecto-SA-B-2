@@ -10,6 +10,7 @@ import { AuditController } from '../src/interfaces/audit.controller';
 import { AuthController } from '../src/interfaces/auth.controller';
 import { CustomersController } from '../src/interfaces/customers.controller';
 import { HealthController } from '../src/interfaces/health.controller';
+import { PaymentsController } from '../src/interfaces/payments.controller';
 import { TransfersController } from '../src/interfaces/transfers.controller';
 import { buildOpenApiDocument } from '../src/openapi/document';
 import { ROUTE_MESSAGES } from '../src/openapi/route-messages';
@@ -31,6 +32,7 @@ const CONTROLLERS = [
   CustomersController,
   AccountsController,
   TransfersController,
+  PaymentsController,
   AuditController,
 ];
 
@@ -70,11 +72,16 @@ describe('the versioned API contract', () => {
   });
 
   /**
-   * Eleven paths for fourteen routes: `/api/accounts` carries both the listing
-   * and the opening. T-15 fixed nine of them; T-17 added the three the account
-   * screens needed and that nothing was publishing.
+   * Fourteen paths for seventeen routes: `/api/accounts` carries both the
+   * listing and the opening. T-15 fixed nine of them; T-17 added the three the
+   * account screens needed and that nothing was publishing; T-19 added the two
+   * that let anything ask Payment Service a question at all — before them a
+   * payment could be ordered and could answer the Saga, but nobody outside
+   * could look one up; T-20 added the notifications console, nested under
+   * `/api/audit` because D-06 grants the trail and the notifications together
+   * and they are the same record read two ways.
    */
-  it('declares the eleven paths the two tickets fixed', () => {
+  it('declares the fourteen paths the four tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -83,10 +90,16 @@ describe('the versioned API contract', () => {
         '/api/accounts/{accountId}/operations',
         '/api/accounts/{accountId}/status',
         '/api/audit',
+        // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
+        '/api/audit/notifications',
         '/api/auth/login',
         '/api/customers',
         '/api/customers/verify-email',
         '/api/customers/{customerId}',
+        // Added by T-19. Read-only: a payment is born from a transfer, never
+        // from a route.
+        '/api/payments',
+        '/api/payments/{paymentId}',
         '/api/transfers',
         '/api/transfers/{transactionId}',
         '/health',
@@ -121,7 +134,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(11);
+      expect(functional).toHaveLength(14);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

@@ -2,27 +2,36 @@
   "name": "bank-usac",
   "version": "0.0.0",
   "private": true,
-  "description": "Bank USAC monorepo \u2014 API Gateway, web app, five domain microservices, and shared packages.",
+  "description": "Bank USAC monorepo — API Gateway, web app, five domain microservices, and shared packages.",
   "license": "MIT",
   "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=24.19.0"
   },
   "scripts": {
-    "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
-    "test": "pnpm -r test",
-    "test:contract": "pnpm --filter @bank/contracts test",
-    "typecheck": "pnpm -r typecheck",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:contract": "turbo run test --filter=@bank/contracts",
+    "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "docker compose -f infra/docker/docker-compose.dev.yml up --build",
     "dev:down": "docker compose -f infra/docker/docker-compose.dev.yml down",
     "dev:logs": "docker compose -f infra/docker/docker-compose.dev.yml logs -f",
-    "dev:host": "pnpm -r --parallel dev"
+    "dev:host": "turbo run dev",
+    "dev:infra": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "dev:infra:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "images:build": "./infra/docker/scripts/build-images.sh",
+    "images:up": "docker compose -f infra/docker/docker-compose.images.yml up -d",
+    "images:down": "docker compose -f infra/docker/docker-compose.images.yml down",
+    "images:logs": "docker compose -f infra/docker/docker-compose.images.yml logs -f",
+    "images:smoke": "./infra/docker/scripts/smoke-images.sh",
+    "images:flow": "./infra/docker/scripts/flow-images.sh"
   },
   "devDependencies": {
     "@bank/tooling": "workspace:*",
-    "prettier": "catalog:"
+    "prettier": "catalog:",
+    "turbo": "catalog:"
   }
 }

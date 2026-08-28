@@ -62,20 +62,83 @@ export const QUEUES: readonly QueueDescriptor[] = [
       { exchange: EXCHANGES.events, pattern: 'account.debit.compensated.v1' },
       { exchange: EXCHANGES.events, pattern: 'payment.succeeded.v1' },
       { exchange: EXCHANGES.events, pattern: 'payment.failed.v1' },
+      /*
+       * Added by T-19. Not a second way for the payment to end — it is how the
+       * Saga learns that a rung of the retry ladder was climbed while the
+       * payment is still running. Transaction Service records the attempt and
+       * the error kind onto the transaction it already owns, and changes no
+       * state: `PAYMENT_PENDING` stays `PAYMENT_PENDING` until
+       * `payment.succeeded.v1` or `payment.failed.v1` says otherwise. Treating
+       * this as terminal would compensate a payment about to succeed.
+       */
+      { exchange: EXCHANGES.events, pattern: 'payment.attempt.failed.v1' },
     ],
   },
   {
     name: 'payment.commands',
     owner: 'payment-service',
-    bindings: [{ exchange: EXCHANGES.commands, pattern: 'payment.requested.v1' }],
+    /*
+     * Widened from `payment.requested.v1` to `payment.#` by T-19, when the two
+     * read queries arrived. The same shape `account.commands` already had, and
+     * for the same reason: enumerating command names here means every new
+     * question needs a broker change as well as a contract, and the one that
+     * gets forgotten is the binding.
+     */
+    bindings: [{ exchange: EXCHANGES.commands, pattern: 'payment.#' }],
+  },
+  /**
+   * Audit listens on one queue per family, not on one queue for everything.
+   *
+   * T-06 gave this service a single `audit.all` bound to `#`, and T-20 split
+   * it, because a single queue makes every family share one head of line and
+   * one retry ladder. A malformed `payment.*` event that fails four times holds
+   * up the `customer.*` events queued behind it, and draining or replaying one
+   * family means draining all of them. Four queues cost four bindings and buy
+   * independent failure: the ticket asks for exactly this ("colas propias por
+   * familia, no una cola global compartida").
+   *
+   * Audit is terminal by design — it hears these and nobody waits on it, which
+   * is what lets criterion 4 hold: with this service down the Saga continues,
+   * the durable queues accumulate, and the backlog is processed on return.
+   *
+   * **There is no `audit.gateway`.** The ticket names the Gateway as a
+   * producer, and the catalogue gives it none: every message the Gateway
+   * publishes is a command aimed at one service, and a command is an intention
+   * rather than something that happened. What the audit trail records of a
+   * Gateway request is the event the receiving service published in response.
+   */
+  {
+    name: 'audit.customer',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.events, pattern: 'customer.#' }],
   },
   {
-    // Audit is terminal by design: it hears everything and nobody waits on it.
-    name: 'audit.all',
+    name: 'audit.account',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.events, pattern: 'account.#' }],
+  },
+  {
+    name: 'audit.transaction',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.events, pattern: 'transaction.#' }],
+  },
+  {
+    name: 'audit.payment',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.events, pattern: 'payment.#' }],
+  },
+  {
+    /*
+     * The questions, kept off the event queues on purpose. A `correlationId`
+     * lookup is a person waiting in front of a screen; putting it behind a
+     * backlog of recorded events would make the one synchronous thing this
+     * service does the slowest.
+     */
+    name: 'audit.query',
     owner: 'notification-audit-service',
     bindings: [
-      { exchange: EXCHANGES.events, pattern: '#' },
       { exchange: EXCHANGES.commands, pattern: 'audit.query.requested.v1' },
+      { exchange: EXCHANGES.commands, pattern: 'notification.list.query.v1' },
     ],
   },
 ];
