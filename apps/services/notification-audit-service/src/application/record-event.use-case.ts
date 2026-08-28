@@ -1,4 +1,5 @@
 import {
+  deliverableEmailFrom,
   notificationFor,
   simulatedRecipientFor,
   subjectCustomerIdFrom,
@@ -104,6 +105,13 @@ export class RecordEventUseCase {
       return outcome;
     }
 
+    /**
+     * The real inbox, for the one event that carries one. Read here from the
+     * raw payload and handed straight to the channel — never to the repository,
+     * so the trail still stores only the simulated recipient above.
+     */
+    const deliveryAddress = deliverableEmailFrom(input.event.messageType, input.event.payload);
+
     const status = await this.#sender.send({
       notificationId: planned.notificationId,
       type: planned.intent.type,
@@ -111,6 +119,7 @@ export class RecordEventUseCase {
       subject: planned.intent.subject,
       correlationId: input.event.correlationId,
       ...(planned.intent.link === undefined ? {} : { link: planned.intent.link }),
+      ...(deliveryAddress === null ? {} : { deliveryAddress }),
     });
 
     await this.#repository.settleNotification({

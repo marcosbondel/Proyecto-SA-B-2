@@ -111,6 +111,23 @@ export class GatewayEnvironment {
   @IsString()
   @IsNotEmpty()
   public OBJECT_STORAGE_REGION!: string;
+
+  /**
+   * The browser origins allowed to call the gateway, comma-separated.
+   *
+   * The frontend is served from a different origin than the gateway
+   * (`:3010` vs `:3000` locally), so every call it makes is cross-origin. A
+   * browser refuses to read the response unless the gateway names the origin
+   * back — without this the whole frontend fails with a network error while
+   * `curl`, which does not enforce the same-origin policy, keeps working.
+   *
+   * A list rather than `*` on purpose: `*` cannot be combined with credentials
+   * and hands the API to any page on the internet. In development the frontend
+   * lives at `http://localhost:3010`; a deployment names its own origins.
+   */
+  @IsString()
+  @IsNotEmpty()
+  public CORS_ALLOWED_ORIGINS!: string;
 }
 
 /**
@@ -141,6 +158,11 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Gatewa
     OBJECT_STORAGE_SECRET_KEY: source.OBJECT_STORAGE_SECRET_KEY,
     OBJECT_STORAGE_BUCKET: source.OBJECT_STORAGE_BUCKET,
     OBJECT_STORAGE_REGION: source.OBJECT_STORAGE_REGION,
+    // The browser frontend runs at :3010 in every local topology; a
+    // deployment overrides this with its own origins. A default keeps
+    // development working without every operator setting it, the same way
+    // GATEWAY_INSTANCE_ID and REPLY_TIMEOUT_MS carry theirs.
+    CORS_ALLOWED_ORIGINS: source.CORS_ALLOWED_ORIGINS ?? 'http://localhost:3010',
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

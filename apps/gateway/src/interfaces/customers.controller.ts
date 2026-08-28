@@ -23,6 +23,8 @@ import type { VerifyEmailResult } from '../application/routes/verify-email.use-c
 import { GatewayError } from '../application/errors/gateway-error';
 import { RegisterCustomerDto, UpdateCustomerDto, VerifyEmailDto } from './dto/customer.dto';
 import { Public } from './guards/route-access.decorator';
+import { SESSION_VERIFIER } from './guards/jwt.guard';
+import type { SessionVerifierPort } from './guards/jwt.guard';
 import type { GatewayRequest } from './http-request';
 import { actorOf } from './actor';
 import { validated } from './validation';
@@ -40,15 +42,18 @@ export class CustomersController {
   readonly #register: RegisterCustomerUseCase;
   readonly #commands: CommandsUseCase;
   readonly #verifyEmail: VerifyEmailUseCase;
+  readonly #sessions: SessionVerifierPort;
 
   constructor(
     @Inject(RegisterCustomerUseCase) register: RegisterCustomerUseCase,
     @Inject(CommandsUseCase) commands: CommandsUseCase,
     @Inject(VerifyEmailUseCase) verifyEmail: VerifyEmailUseCase,
+    @Inject(SESSION_VERIFIER) sessions: SessionVerifierPort,
   ) {
     this.#register = register;
     this.#commands = commands;
     this.#verifyEmail = verifyEmail;
+    this.#sessions = sessions;
   }
 
   /**
@@ -97,6 +102,22 @@ export class CustomersController {
     @UploadedFile() photo: UploadedPhoto | undefined,
     @Req() request: GatewayRequest,
   ): Promise<{ readonly customerId: string; readonly correlationId: string }> {
+    /**
+     * Self-service registration is anonymous, but only for a `CLIENTE`.
+     * Creating a `CAJERO_RECEPTOR` or an `ADMINISTRADOR` is "assign a role",
+     * which decision D-06 grants to `ADMINISTRADOR` alone — and this route is
+     * `@Public()`, so the global guard never checked the token. Without this,
+     * an anonymous caller could mint themselves an administrator.
+     *
+     * The verdict is enforced here because the Gateway is the only component
+     * that holds the session (ADR-010); Customer Service sees an envelope whose
+     * identity is `null` for a public registration and cannot tell an anonymous
+     * caller from an administrator.
+     */
+    if (body.role !== 'CLIENTE') {
+      this.#requireAdministrator(request);
+    }
+
     return await this.#register.execute({
       fullName: body.fullName,
       identityDocument: body.identityDocument,
@@ -144,6 +165,41 @@ export class CustomersController {
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,
     });
+  }
+  /**
+   * Refuses unless the caller presents a valid administrator session.
+   *
+   * `UNAUTHENTICATED` when the token is missing, forged or expired — the same
+   * silence `JwtGuard` keeps, so a probe cannot tell which half of a guess was
+   * right. `FORBIDDEN` when the token is valid but the role is not
+   * `ADMINISTRADOR`: the caller is known and simply not allowed.
+   */
+  #requireAdministrator(request: GatewayRequest): void {
+    const header = request.headers.authorization;
+    const [scheme, value] = typeof header === 'string' ? header.split(' ') : [];
+    const token =
+      scheme?.toLowerCase() === 'bearer' && value !== undefined && value.length > 0
+        ? value
+        : undefined;
+
+    if (token === undefined) {
+      throw GatewayError.unauthenticated(
+        'Crear personal (CAJERO_RECEPTOR o ADMINISTRADOR) requiere una sesión de administrador.',
+      );
+    }
+
+    let role: string;
+    try {
+      role = this.#sessions.verify(token).role;
+    } catch {
+      throw GatewayError.unauthenticated();
+    }
+
+    if (role !== 'ADMINISTRADOR') {
+      throw GatewayError.forbidden(
+        'Solo un administrador puede asignar un rol distinto de CLIENTE.',
+      );
+    }
   }
 }
 
