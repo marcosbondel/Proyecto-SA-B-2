@@ -1,4 +1,4 @@
-import { canOpen } from '../lib/navigation';
+import { canOpen, isGuestOnly } from '../lib/navigation';
 
 /**
  * Decides what a visitor may open, before anything renders.
@@ -27,6 +27,17 @@ export default defineNuxtRouteMiddleware((to) => {
   }
 
   const { session, role } = useSession();
+
+  /**
+   * The guard's other direction: a signed-in visitor has no business on the
+   * sign-in or registration form. They are not refused anything — they are
+   * already past those doors — so they land on the signed-in landing page,
+   * for the same reason the role redirect below goes there and not to a login
+   * form they have already completed.
+   */
+  if (session.value !== null && isGuestOnly(to.path)) {
+    return navigateTo('/');
+  }
 
   if (canOpen(role.value, to.path)) {
     return;

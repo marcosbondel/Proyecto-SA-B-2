@@ -44,6 +44,43 @@ export const MODULES: readonly ModuleEntry[] = [
 /** Routes reachable with no session at all. */
 export const PUBLIC_ROUTES: readonly string[] = ['/login', '/registro', '/activar'];
 
+/**
+ * The public routes that stop making sense once a session exists.
+ *
+ * Signing in and registering are for the anonymous; showing either form to a
+ * signed-in visitor invites a second session on top of the first. `/activar` is
+ * deliberately **not** here: an activation link arrives by email and may well
+ * be opened in a browser where somebody else — a teller, say — is signed in,
+ * and the activation belongs to the token in the link, not to the session.
+ */
+export const GUEST_ONLY_ROUTES: readonly string[] = ['/login', '/registro'];
+
+/** Whether this path is one of the guest-only ones. */
+export function isGuestOnly(path: string): boolean {
+  return GUEST_ONLY_ROUTES.some((route) => path === route || path.startsWith(`${route}/`));
+}
+
+/**
+ * Where to go after signing in, given the untrusted `next` query value.
+ *
+ * The value rides in the address bar, so anyone can put anything there. Only a
+ * same-application path is honoured: no absolute URLs, no protocol-relative
+ * `//host` (which browsers read as "same scheme, that host"), no backslash
+ * variants of the same trick. A guest-only destination is discarded too —
+ * arriving signed in at `/login` would just bounce off the middleware.
+ * Everything suspicious collapses to the landing page rather than to an error:
+ * the sign-in itself succeeded.
+ */
+export function resolveNextPath(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) {
+    return '/';
+  }
+
+  const path = raw.split(/[?#]/, 1)[0] ?? raw;
+
+  return isGuestOnly(path) ? '/' : raw;
+}
+
 /** What this role should see in the navigation. */
 export function modulesFor(role: Role | null): readonly ModuleEntry[] {
   if (role === null) {
