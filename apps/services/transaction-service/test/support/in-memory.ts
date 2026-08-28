@@ -1,9 +1,11 @@
 import { IllegalTransition, afterTransition } from '../../src/domain/transaction';
 import type { Transaction, Transition } from '../../src/domain/transaction';
 import type {
+  AppliedEffects,
   EventOutcome,
   EventPublisher,
   OutboundMessage,
+  OutboxMessage,
   PaymentOutcome,
   StartOutcome,
   TransactionRepository,
@@ -30,6 +32,8 @@ export class InMemoryTransactionRepository implements TransactionRepository {
   public readonly aliases = new Map<string, string>();
   public readonly events: { transactionId: string; messageType: string; payload: unknown }[] = [];
   public readonly processed = new Set<string>();
+  /** What the Saga wrote to the outbox, in order — the durable form of `sent`/`published`. */
+  public readonly outbox: OutboxMessage[] = [];
   readonly #byKey = new Map<string, string>();
 
   public async start(input: { readonly transaction: Transaction }): Promise<StartOutcome> {
@@ -76,6 +80,7 @@ export class InMemoryTransactionRepository implements TransactionRepository {
     readonly messageType: string;
     readonly payload: unknown;
     readonly decide: (transaction: Transaction) => Transition;
+    readonly outbound?: (transaction: Transaction, transition: Transition) => AppliedEffects;
     readonly now: Date;
   }): Promise<EventOutcome> {
     const transaction = this.transactions.get(input.transactionId);
@@ -117,7 +122,42 @@ export class InMemoryTransactionRepository implements TransactionRepository {
       payload: input.payload,
     });
 
+    /**
+     * The same seam the real repository uses: whatever the transition implies is
+     * built by the use case and written here, in the one operation that also
+     * changed the state. The extra trail rows land in `events` (so
+     * `paymentOutcomeOf` sees the payment it ordered) and the dispatch rows in
+     * `outbox` (so a test can assert on what will be published, and `dispatch`
+     * can drain it).
+     */
+    if (input.outbound !== undefined) {
+      const effects = input.outbound(updated, transition);
+
+      for (const entry of effects.trail) {
+        this.events.push({
+          transactionId: input.transactionId,
+          messageType: entry.messageType,
+          payload: entry.payload,
+        });
+      }
+
+      this.outbox.push(...effects.dispatch);
+    }
+
     return { kind: 'APPLIED', transaction: updated, transition };
+  }
+
+  public async dispatchPendingOutbox(
+    deliver: (message: OutboxMessage) => Promise<void>,
+    limit: number,
+  ): Promise<number> {
+    const batch = this.outbox.splice(0, limit);
+
+    for (const message of batch) {
+      await deliver(message);
+    }
+
+    return batch.length;
   }
 
   public async recordCommand(input: {
@@ -199,6 +239,34 @@ export class RecordingPublisher implements EventPublisher {
 
   public async reply(message: OutboundMessage): Promise<void> {
     this.replies.push(message);
+  }
+
+  /**
+   * Records exactly as `send`/`publish` would, so every existing assertion on
+   * `sent` and `published` still describes what the Saga ordered — the outbox
+   * only means the message is written down before it is sent, not that it is a
+   * different message. Returns a stand-in outbox row for the repository double
+   * to carry.
+   */
+  public envelopeFor(message: OutboundMessage, kind: 'command' | 'event'): OutboxMessage {
+    (kind === 'command' ? this.sent : this.published).push(message);
+
+    return {
+      exchange: kind === 'command' ? 'bank.commands' : 'bank.events',
+      routingKey: message.messageType,
+      envelope: {
+        messageId: '00000000-0000-4000-8000-000000000000',
+        messageType: message.messageType,
+        messageVersion: 1,
+        producer: 'transaction-service',
+        correlationId: '00000000-0000-4000-8000-000000000001',
+        causationId: null,
+        idempotencyKey: 'test-idempotency-key',
+        occurredAt: '2026-01-01T00:00:00.000Z',
+        identity: null,
+        payload: message.payload,
+      },
+    };
   }
 
   /** Every message in the order the Saga produced it, whatever kind it was. */

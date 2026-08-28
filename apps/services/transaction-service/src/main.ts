@@ -16,6 +16,7 @@ import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environ
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresTransactionRepository } from './infrastructure/persistence/postgres-transaction.repository';
+import { OutboxRelay } from './infrastructure/scheduler/outbox.scheduler';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
@@ -44,6 +45,19 @@ const OWNED: readonly QueueDescriptor[] = QUEUES.filter(
  * does not produce two unrelated retry rhythms in one log.
  */
 const ATTACH_RETRY_DELAY_MS = 5_000;
+
+/**
+ * How often the outbox relay sweeps for messages to publish. Short, because it
+ * sits in the Saga's critical path — every hop waits at most this long between
+ * the transition committing and its command being sent. Overridable with
+ * `OUTBOX_RELAY_MS`; a malformed value falls back rather than turning
+ * `setInterval` into a busy loop.
+ */
+const OUTBOX_RELAY_INTERVAL_MS = ((): number => {
+  const raw = Number(process.env.OUTBOX_RELAY_MS);
+
+  return Number.isFinite(raw) && raw > 0 ? raw : 200;
+})();
 
 /**
  * Composition: the one place allowed to see every layer at once.
@@ -77,6 +91,19 @@ async function bootstrap(): Promise<void> {
   const clock = { now: (): Date => new Date() };
   const ids = { next: (): string => randomUUID() };
   const publisherFactory = new BrokerEventPublisher(broker);
+
+  /**
+   * The relay that carries the outbox to the broker. The Saga writes each
+   * command and event it orders into the outbox in the transition's own
+   * transaction (TD-031); this is what finally publishes them, so nothing is
+   * lost to a crash between the commit and a send.
+   */
+  const outboxRelay = new OutboxRelay({
+    repository,
+    broker,
+    intervalMs: OUTBOX_RELAY_INTERVAL_MS,
+    logger,
+  });
 
   /**
    * A router per delivery, because the publisher is bound to the message it is
@@ -179,6 +206,7 @@ async function bootstrap(): Promise<void> {
 
         await broker.start();
         await subscribeAll();
+        outboxRelay.start();
         consuming = true;
 
         logger.info('consuming', { outcome: OWNED.map((queue) => queue.name).join(', ') });
@@ -212,6 +240,7 @@ async function bootstrap(): Promise<void> {
   void attach();
 
   const shutdown = async (): Promise<void> => {
+    outboxRelay.stop();
     await application.close();
     await broker.stop();
     await pool.end();

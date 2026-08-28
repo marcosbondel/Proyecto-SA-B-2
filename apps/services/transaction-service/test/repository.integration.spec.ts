@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
+import { EXCHANGES, createEnvelope, routingKeyFor } from '@bank/contracts';
 import { Pool } from 'pg';
 
+import type { AppliedEffects, OutboxMessage } from '../src/application/ports';
 import { applyEvent, openTransaction } from '../src/domain/transaction';
-import type { Transaction } from '../src/domain/transaction';
+import type { Transaction, Transition } from '../src/domain/transaction';
 import { quetzales } from '../src/domain/money';
 import { migrate } from '../src/infrastructure/persistence/migrations';
 import { PostgresTransactionRepository } from '../src/infrastructure/persistence/postgres-transaction.repository';
@@ -53,7 +55,7 @@ describeIntegration('PostgresTransactionRepository', () => {
 
   beforeEach(async () => {
     await pool.query(
-      'TRUNCATE transaction_aliases, transaction_events, transactions, processed_messages',
+      'TRUNCATE outbox_messages, transaction_aliases, transaction_events, transactions, processed_messages',
     );
   });
 
@@ -391,6 +393,150 @@ describeIntegration('PostgresTransactionRepository', () => {
     it('answers null for an identifier that names nothing', async () => {
       await expect(repository.findById(randomUUID())).resolves.toBeNull();
       await expect(repository.findByCorrelationId(randomUUID())).resolves.toBeNull();
+    });
+  });
+
+  describe('the transactional outbox (TD-031)', () => {
+    /**
+     * The debit command a `DEBIT_ORDERED` transition implies, shaped exactly as
+     * the Saga builds it: the whole envelope, on the commands exchange, ready to
+     * be republished byte-for-byte.
+     */
+    const debitOutbound = (transaction: Transaction): AppliedEffects => ({
+      dispatch: [
+        {
+          exchange: EXCHANGES.commands,
+          routingKey: routingKeyFor('account.debit.requested.v1'),
+          envelope: createEnvelope(
+            {
+              transactionId: transaction.transactionId,
+              accountId: transaction.sourceAccount,
+              amount: transaction.amount,
+            },
+            {
+              messageType: 'account.debit.requested.v1',
+              producer: 'transaction-service',
+              identity: null,
+            },
+          ),
+        },
+      ],
+      trail: [],
+    });
+
+    const orderDebit = (transactionId: string, messageId: string): Promise<unknown> =>
+      repository.applyEvent({
+        transactionId,
+        messageId,
+        messageType: 'transfer.requested.v1',
+        payload: {},
+        decide: (found: Transaction): Transition => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+        outbound: (transaction) => debitOutbound(transaction),
+        now: NOW,
+      });
+
+    const pendingCount = async (): Promise<number> => {
+      const rows = await pool.query<{ n: number }>(
+        `SELECT count(*)::INT AS n FROM outbox_messages WHERE dispatch_status = 'PENDING'`,
+      );
+
+      return rows.rows[0]!.n;
+    };
+
+    it('writes the outbox row in the same transaction as the state change', async () => {
+      const { transaction } = await repository.start({ transaction: candidate() });
+
+      await orderDebit(transaction.transactionId, randomUUID());
+
+      const rows = await pool.query<{ dispatch_status: string; routing_key: string }>(
+        'SELECT dispatch_status, routing_key FROM outbox_messages WHERE transaction_id = $1',
+        [transaction.transactionId],
+      );
+
+      expect(rows.rows).toHaveLength(1);
+      expect(rows.rows[0]!.dispatch_status).toBe('PENDING');
+      expect(rows.rows[0]!.routing_key).toBe(routingKeyFor('account.debit.requested.v1'));
+    });
+
+    it('writes no outbox row for a redelivery that was deduplicated', async () => {
+      const { transaction } = await repository.start({ transaction: candidate() });
+      const messageId = randomUUID();
+
+      const first = await orderDebit(transaction.transactionId, messageId);
+      const second = await orderDebit(transaction.transactionId, messageId);
+
+      expect((first as { kind: string }).kind).toBe('APPLIED');
+      expect((second as { kind: string }).kind).toBe('DUPLICATE');
+
+      // The duplicate re-emits nothing: the outbox holds exactly one message.
+      const rows = await pool.query<{ n: number }>(
+        'SELECT count(*)::INT AS n FROM outbox_messages WHERE transaction_id = $1',
+        [transaction.transactionId],
+      );
+
+      expect(rows.rows[0]!.n).toBe(1);
+    });
+
+    it('publishes each pending row exactly once and marks it dispatched', async () => {
+      const { transaction } = await repository.start({ transaction: candidate() });
+      await orderDebit(transaction.transactionId, randomUUID());
+
+      const delivered: OutboxMessage[] = [];
+      const deliver = async (message: OutboxMessage): Promise<void> => {
+        delivered.push(message);
+      };
+
+      const first = await repository.dispatchPendingOutbox(deliver, 100);
+      const second = await repository.dispatchPendingOutbox(deliver, 100);
+
+      expect(first).toBe(1);
+      expect(second).toBe(0); // nothing left PENDING — it is not sent twice
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]!.envelope.messageType).toBe('account.debit.requested.v1');
+      expect(await pendingCount()).toBe(0);
+    });
+
+    it('republishes the same envelope byte-for-byte — messageId intact', async () => {
+      const { transaction } = await repository.start({ transaction: candidate() });
+      await orderDebit(transaction.transactionId, randomUUID());
+
+      // What the Saga stored, before the relay ever runs.
+      const stored = await pool.query<{ envelope: { messageId: string; idempotencyKey: string } }>(
+        'SELECT envelope FROM outbox_messages WHERE transaction_id = $1',
+        [transaction.transactionId],
+      );
+      const storedEnvelope = stored.rows[0]!.envelope;
+
+      const delivered: OutboxMessage[] = [];
+      await repository.dispatchPendingOutbox(async (m) => void delivered.push(m), 100);
+
+      // The relay must not mint a fresh identity — that would defeat every
+      // consumer's deduplication and let a redelivered relay double-apply.
+      expect(delivered[0]!.envelope.messageId).toBe(storedEnvelope.messageId);
+      expect(delivered[0]!.envelope.idempotencyKey).toBe(storedEnvelope.idempotencyKey);
+    });
+
+    it('leaves the row PENDING when the broker is away, and delivers it on recovery', async () => {
+      const { transaction } = await repository.start({ transaction: candidate() });
+      await orderDebit(transaction.transactionId, randomUUID());
+
+      // The broker is down: every delivery throws, so the batch rolls back.
+      await expect(
+        repository.dispatchPendingOutbox(() => {
+          throw new Error('broker unavailable');
+        }, 100),
+      ).rejects.toThrow('broker unavailable');
+
+      // Nothing was lost: the message is still waiting to be sent.
+      expect(await pendingCount()).toBe(1);
+
+      // The broker is back. The same message is delivered, once.
+      const delivered: OutboxMessage[] = [];
+      const count = await repository.dispatchPendingOutbox(async (m) => void delivered.push(m), 100);
+
+      expect(count).toBe(1);
+      expect(delivered).toHaveLength(1);
+      expect(await pendingCount()).toBe(0);
     });
   });
 });
