@@ -1,0 +1,227 @@
+# Default values for bank-usac.
+#
+# Nothing here is a secret. Real credentials live in templates/secret.yaml,
+# which reads from the `secrets:` tree below — every leaf there defaults to
+# an empty string and is marked `required` in the template, so a bare
+# `helm install` with no overrides fails loudly instead of deploying with a
+# guessable password. Supply real values with `--set` or (preferred, so
+# nothing lands in shell history) `--set-file` / `-f <untracked-file>`, per
+# ADR-007's "Secrets reach the cluster through chart values or --set-file,
+# never committed."
+
+imagePullPolicy: IfNotPresent
+replicaCount: 1
+
+# Modest defaults so five services, a gateway and a frontend fit comfortably
+# on kind's single node. Override per component if a heavier test needs it.
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# How pods reach the databases, RabbitMQ and MinIO outside the cluster
+# (ADR-007). Both modes keep the same in-cluster DNS names
+# (postgres-customer, postgres-account, ..., rabbitmq, minio) — an
+# application's DATABASE_URL/RABBITMQ_URL never carries a host address,
+# only that name. What differs between modes is the *port* behind that
+# name, because the two routes terminate on different things:
+#
+#   dockerNetwork (default) — the kind nodes were created on the same
+#     Docker network as the Compose stack (see ../../kind/cluster.yaml), so
+#     each dependency is exposed as a selectorless Service backed by an
+#     Endpoints object naming the container's real IP on that network, on
+#     its real port (5432, 5672, 9000). Discover the IPs with
+#     ../../kind/scripts/discover-external-ips.sh — it writes a values file
+#     for `-f`; the placeholders below are deliberately empty so a
+#     forgotten discovery step fails the template render, not the pod.
+#
+#   hostFallback — the shared-network route is unavailable, so the Service
+#     becomes `ExternalName` to `host.docker.internal`, which resolves
+#     inside kind's nodes without any change to cluster.yaml on Docker
+#     Desktop. ExternalName is DNS-only — it cannot remap a port — so the
+#     port switches to whatever infra/docker/docker-compose.yml *publishes*
+#     on the host for that container. That is a real, documented seam
+#     (ADR-007 calls the external connectivity "genuine additional
+#     complexity"), not an oversight: it is why the port lives beside the
+#     mode instead of being one fixed value.
+external:
+  mode: dockerNetwork # dockerNetwork | hostFallback
+
+  postgresCustomer:
+    dockerNetwork:
+      host: "" # required in dockerNetwork mode — see discover-external-ips.sh
+      port: 5432
+    hostFallback:
+      port: 5433 # infra/docker/.env: CUSTOMER_POSTGRES_PORT
+  postgresAccount:
+    dockerNetwork:
+      host: ""
+      port: 5432
+    hostFallback:
+      port: 5434 # ACCOUNT_POSTGRES_PORT
+  postgresTransaction:
+    dockerNetwork:
+      host: ""
+      port: 5432
+    hostFallback:
+      port: 5435 # TRANSACTION_POSTGRES_PORT
+  postgresPayment:
+    dockerNetwork:
+      host: ""
+      port: 5432
+    hostFallback:
+      port: 5436 # PAYMENT_POSTGRES_PORT
+  postgresNotificationAudit:
+    dockerNetwork:
+      host: ""
+      port: 5432
+    hostFallback:
+      port: 5437 # NOTIFICATION_AUDIT_POSTGRES_PORT
+  rabbitmq:
+    dockerNetwork:
+      host: ""
+      port: 5672
+    hostFallback:
+      port: 5673 # RABBITMQ_AMQP_PORT
+  minio:
+    dockerNetwork:
+      host: ""
+      port: 9000
+    hostFallback:
+      port: 9002 # MINIO_API_PORT
+
+# Per-database name and application user (not secret — the matching
+# password lives under secrets.databases.<key> below). Values match
+# docs/architecture/diagrams/05-uml-despliegue.puml and
+# infra/docker/docker-compose.yml's *_POSTGRES_DB / *_POSTGRES_USER.
+databases:
+  customer:
+    name: bankusac_customer
+    user: customer_user
+  account:
+    name: bankusac_account
+    user: account_user
+  transaction:
+    name: bankusac_transaction
+    user: transaction_user
+  payment:
+    name: bankusac_payment
+    user: payment_user
+  notificationAudit:
+    name: bankusac_notification
+    user: notification_user
+
+# ---------------------------------------------------------------------------
+# The five internal domain services. One Deployment + one ClusterIP Service
+# each, under templates/<key>/. Ports and required/optional env match the
+# matrix in docs/operations/CONTAINERS.md exactly.
+services:
+  customer:
+    component: customer-service
+    port: 3001
+    image:
+      repository: bank-usac/customer-service
+      tag: dev # overridden with the short commit build-images.sh tagged
+  account:
+    component: account-service
+    port: 3002
+    image:
+      repository: bank-usac/account-service
+      tag: dev
+    deactivation:
+      enabled: "true"
+      intervalMs: "86400000"
+      inactivityMonths: "6"
+      inactivityMinBalanceMinor: "5000"
+  transaction:
+    component: transaction-service
+    port: 3003
+    image:
+      repository: bank-usac/transaction-service
+      tag: dev
+  payment:
+    component: payment-service
+    port: 3004
+    image:
+      repository: bank-usac/payment-service
+      tag: dev
+    # The ladder docs/events/topology.md fixes: 1 s / 5 s / 30 s. Unlike
+    # docker-compose.images.yml this chart does not shorten it for a demo —
+    # shorten it explicitly with --set if a live walkthrough needs to.
+    retryDelaysMs: "1000,5000,30000"
+    retrySweepMs: "500"
+  notificationAudit:
+    component: notification-audit-service
+    port: 3005
+    image:
+      repository: bank-usac/notification-audit-service
+      tag: dev
+    # On here, as in docker-compose.images.yml, because this chart's job is
+    # to demonstrate the assignment's own flow (register, activate, sign
+    # in) against a real cluster. Set to "false" for anything reachable by
+    # someone who is not the demo operator — with it false, nobody can
+    # complete a sign-up unless NOTIFICATION_CHANNEL is also switched to a
+    # real channel (docs/operations/CONTAINERS.md, docs/operations/EMAIL_RESEND.md).
+    revealActivationLinks: "true"
+    notificationChannel: simulated
+
+# ---------------------------------------------------------------------------
+# Gateway — the system's only entry point (constitution V). No DATABASE_URL,
+# by design: it holds no business data.
+gateway:
+  component: gateway
+  port: 3000
+  image:
+    repository: bank-usac/gateway
+    tag: dev
+  jwtExpiresIn: "3600"
+  gatewayInstanceId: gateway-k8s
+  replyTimeoutMs: "5000"
+  # The browser reaches web on localhost via kubectl port-forward (see
+  # templates/NOTES.txt), so its origin is localhost:<forwarded web port>.
+  corsAllowedOrigins: "http://localhost:3010"
+
+# ---------------------------------------------------------------------------
+# web — the Nuxt frontend. NUXT_PUBLIC_API_BASE_URL is resolved by the
+# *browser*, not by the pod, so it must be the address a person's machine
+# can reach, not an in-cluster Service name — localhost:<forwarded gateway
+# port> when accessed through kubectl port-forward.
+web:
+  component: web
+  port: 3010
+  image:
+    repository: bank-usac/web
+    tag: dev
+  apiBaseUrl: "http://localhost:3000"
+
+# ---------------------------------------------------------------------------
+# Secrets. Every leaf defaults to "" and templates/secret.yaml wraps each in
+# `required`, so an install with no overrides fails at template-render time
+# naming exactly what is missing, rather than shipping a working default
+# password. Never set real values here — pass them with --set or -f against
+# an untracked file.
+secrets:
+  jwtSecret: ""
+  rabbitmq:
+    user: bank_app # matches infra/docker/rabbitmq/rabbitmq_definitions.json
+    password: ""
+  objectStorage:
+    accessKey: ""
+    secretKey: ""
+    bucket: bank-usac
+    region: us-east-1
+  databases:
+    customer:
+      password: ""
+    account:
+      password: ""
+    transaction:
+      password: ""
+    payment:
+      password: ""
+    notificationAudit:
+      password: ""
