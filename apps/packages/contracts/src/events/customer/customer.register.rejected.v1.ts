@@ -33,6 +33,7 @@ export const customerRegisterRejectedV1 = defineContract({
       'DOCUMENT_ALREADY_REGISTERED',
       'EMAIL_ALREADY_REGISTERED',
       'INVALID_BIRTH_DATE',
+      'ROLE_NOT_ELIGIBLE',
     ]),
     rejectedAt: isoTimestamp,
   }),

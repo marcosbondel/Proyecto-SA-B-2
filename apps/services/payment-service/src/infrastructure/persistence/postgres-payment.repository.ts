@@ -1,9 +1,11 @@
+import type { MessageEnvelope } from '@bank/contracts';
 import type { Pool, PoolClient } from 'pg';
 
 import type {
   AttemptRecord,
   AttemptResult,
   OpenOutcome,
+  OutboxMessage,
   PaymentFilter,
   PaymentRepository,
 } from '../../application/ports';
@@ -34,6 +36,24 @@ interface AttemptRow {
   error_type: string | null;
   failure_reason: string | null;
   occurred_at: Date;
+}
+
+interface OutboxRow {
+  id: string;
+  exchange: string;
+  routing_key: string;
+  /** JSONB, parsed by the driver back into the envelope it was stored as. */
+  envelope: MessageEnvelope<unknown>;
+}
+
+/** Whether a thrown error is a PostgreSQL unique violation on a named constraint. */
+function isUniqueViolation(error: unknown, constraint: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: string }).code === '23505' &&
+    (error as { constraint?: string }).constraint === constraint
+  );
 }
 
 const COLUMNS = `payment_id, transaction_id, amount, status, attempt, error_type,
@@ -70,23 +90,46 @@ export class PostgresPaymentRepository implements PaymentRepository {
      * insert. The second is a race: two deliveries both find nothing and both
      * insert, and one of them gets a primary-key violation it has to interpret.
      * This way the database decides, once.
+     *
+     * `ON CONFLICT (payment_id)` handles the ordinary redelivery, but this table
+     * carries a *second* unique key — one payment per transfer
+     * (`payments_transaction_key`) — that the clause cannot also name. A command
+     * bearing a fresh `paymentId` for a transfer already being paid would raise
+     * it as an error and land in the dead-letter queue for a race that is not a
+     * fault. So that specific violation is caught and read as "already open",
+     * exactly as a `payment_id` conflict is (TD-047 hardening).
      */
-    const inserted = await this.#pool.query<PaymentRow>(
-      `INSERT INTO payments (payment_id, transaction_id, amount, status, scenario,
-                             origin_correlation_id, next_attempt_at, created_at, updated_at)
-       VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $7)
-       ON CONFLICT (payment_id) DO NOTHING
-       RETURNING ${COLUMNS}`,
-      [
-        payment.paymentId,
-        payment.transactionId,
-        numericFromMinorUnits(payment.amount.amountMinor),
-        payment.scenario,
-        payment.originCorrelationId,
-        payment.nextAttemptAt,
-        payment.createdAt,
-      ],
-    );
+    let inserted;
+
+    try {
+      inserted = await this.#pool.query<PaymentRow>(
+        `INSERT INTO payments (payment_id, transaction_id, amount, status, scenario,
+                               origin_correlation_id, next_attempt_at, created_at, updated_at)
+         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $7)
+         ON CONFLICT (payment_id) DO NOTHING
+         RETURNING ${COLUMNS}`,
+        [
+          payment.paymentId,
+          payment.transactionId,
+          numericFromMinorUnits(payment.amount.amountMinor),
+          payment.scenario,
+          payment.originCorrelationId,
+          payment.nextAttemptAt,
+          payment.createdAt,
+        ],
+      );
+    } catch (error) {
+      if (!isUniqueViolation(error, 'payments_transaction_key')) {
+        throw error;
+      }
+
+      const byTransaction = await this.#pool.query<PaymentRow>(
+        `SELECT ${COLUMNS} FROM payments WHERE transaction_id = $1`,
+        [payment.transactionId],
+      );
+
+      return { kind: 'EXISTS', payment: paymentOf(byTransaction.rows[0]!) };
+    }
 
     if (inserted.rows.length > 0) {
       return { kind: 'CREATED', payment: paymentOf(inserted.rows[0]!) };
@@ -104,6 +147,7 @@ export class PostgresPaymentRepository implements PaymentRepository {
     readonly paymentId: string;
     readonly expectedAttempt: number;
     readonly decide: (payment: Payment, attempt: number) => AttemptResult;
+    readonly outbound?: (payment: Payment, attempt: number) => readonly OutboxMessage[];
     readonly now: Date;
   }): Promise<AttemptRecord> {
     return await this.#inTransaction(async (client) => {
@@ -182,12 +226,96 @@ export class PostgresPaymentRepository implements PaymentRepository {
         ],
       );
 
+      const recorded = paymentOf(updated.rows[0]!);
+
+      /**
+       * The outbox, written here with the attempt that produced it (TD-047).
+       * The `payment.attempt.failed` for this rung, and the terminal event when
+       * the ladder is spent, commit in this transaction or not at all — so there
+       * is no moment where the attempt is recorded but the event the Saga needs
+       * was lost to a crash.
+       */
+      if (input.outbound !== undefined) {
+        for (const message of input.outbound(recorded, input.expectedAttempt)) {
+          await client.query(
+            `INSERT INTO outbox_messages (payment_id, exchange, routing_key, envelope)
+             VALUES ($1, $2, $3, $4::JSONB)`,
+            [
+              input.paymentId,
+              message.exchange,
+              message.routingKey,
+              JSON.stringify(message.envelope),
+            ],
+          );
+        }
+      }
+
       return {
         kind: 'RECORDED',
-        payment: paymentOf(updated.rows[0]!),
+        payment: recorded,
         attempt: input.expectedAttempt,
       };
     });
+  }
+
+  public async dispatchPendingOutbox(
+    deliver: (message: OutboxMessage) => Promise<void>,
+    limit: number,
+  ): Promise<number> {
+    const client = await this.#pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      /**
+       * `FOR UPDATE SKIP LOCKED` lets more than one replica sweep the outbox
+       * without sending anything twice: each claims a disjoint set of rows.
+       * `ORDER BY id` keeps a payment's events in the order they were written —
+       * an `attempt.failed` never overtakes the terminal event that followed it.
+       */
+      const pending = await client.query<OutboxRow>(
+        `SELECT id, exchange, routing_key, envelope
+           FROM outbox_messages
+          WHERE dispatch_status = 'PENDING'
+          ORDER BY id
+          FOR UPDATE SKIP LOCKED
+          LIMIT $1`,
+        [limit],
+      );
+
+      for (const row of pending.rows) {
+        /**
+         * The publish is inside the transaction. If it throws — the broker is
+         * away — the batch rolls back, the rows stay `PENDING`, and the failure
+         * surfaces to the relay. If it succeeds but this process dies before the
+         * mark commits, the row is still `PENDING` and is sent again, which is
+         * harmless: the envelope's `messageId` is unchanged and every consumer
+         * deduplicates on it.
+         */
+        await deliver({
+          exchange: row.exchange,
+          routingKey: row.routing_key,
+          envelope: row.envelope,
+        });
+
+        await client.query(
+          `UPDATE outbox_messages
+              SET dispatch_status = 'DISPATCHED', published_at = now()
+            WHERE id = $1`,
+          [row.id],
+        );
+      }
+
+      await client.query('COMMIT');
+
+      return pending.rowCount ?? 0;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   public async findById(paymentId: string): Promise<Payment | null> {

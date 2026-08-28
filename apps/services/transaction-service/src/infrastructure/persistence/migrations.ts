@@ -135,6 +135,48 @@ export const MIGRATIONS: readonly Migration[] = [
          ON transaction_aliases (transaction_id)`,
     ],
   },
+  {
+    name: '005_outbox_messages',
+    statements: [
+      /*
+       * The transactional outbox (TD-031). Every command and event the Saga
+       * orders is written **here, in the same transaction as the state change
+       * that implies it** — never published straight to the broker after the
+       * commit. That window, between committing a transition and publishing its
+       * command, is where a crash used to leave a transfer stuck in a state it
+       * legitimately reached, with the money already moved and nothing on its
+       * way to finish the job. Now the row and its message commit together or
+       * not at all, and a relay (`OutboxRelay`) sweeps `PENDING` rows and
+       * publishes them.
+       *
+       * The **whole envelope** is stored, not the payload — so the relay
+       * republishes it byte-for-byte, `messageId` and `idempotencyKey` intact. A
+       * message rebuilt at relay time would carry a fresh `messageId`, and a
+       * fresh `messageId` is a new message to every consumer's deduplication:
+       * the relay would defeat the very idempotency the Saga depends on. Storing
+       * the envelope is what makes a redelivered relay harmless.
+       */
+      `CREATE TABLE IF NOT EXISTS outbox_messages (
+         id              BIGSERIAL    PRIMARY KEY,
+         transaction_id  UUID         NOT NULL REFERENCES transactions (transaction_id),
+         exchange        VARCHAR(120) NOT NULL,
+         routing_key     VARCHAR(200) NOT NULL,
+         envelope        JSONB        NOT NULL,
+         dispatch_status VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+         created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+         published_at    TIMESTAMPTZ,
+         CONSTRAINT outbox_messages_status_known
+           CHECK (dispatch_status IN ('PENDING','DISPATCHED'))
+       )`,
+      /*
+       * The relay reads only what it has not sent, oldest first. A partial index
+       * on the pending rows keeps that sweep cheap even once the dispatched rows
+       * have accumulated — the ones it never has to look at again.
+       */
+      `CREATE INDEX IF NOT EXISTS outbox_messages_pending_idx
+         ON outbox_messages (id) WHERE dispatch_status = 'PENDING'`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

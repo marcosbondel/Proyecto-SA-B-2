@@ -17,12 +17,18 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import { MAX_PHOTO_BYTES } from '@bank/contracts';
 
 import { CommandsUseCase } from '../application/routes/commands.use-case';
+import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { RegisterCustomerUseCase } from '../application/routes/register-customer.use-case';
 import { VerifyEmailUseCase } from '../application/routes/verify-email.use-case';
 import type { VerifyEmailResult } from '../application/routes/verify-email.use-case';
 import { GatewayError } from '../application/errors/gateway-error';
-import { RegisterCustomerDto, UpdateCustomerDto, VerifyEmailDto } from './dto/customer.dto';
-import { Public } from './guards/route-access.decorator';
+import {
+  RegisterCustomerDto,
+  SetIdentityVerdictDto,
+  UpdateCustomerDto,
+  VerifyEmailDto,
+} from './dto/customer.dto';
+import { Public, Roles } from './guards/route-access.decorator';
 import { SESSION_VERIFIER } from './guards/jwt.guard';
 import type { SessionVerifierPort } from './guards/jwt.guard';
 import type { GatewayRequest } from './http-request';
@@ -41,17 +47,20 @@ interface UploadedPhoto {
 export class CustomersController {
   readonly #register: RegisterCustomerUseCase;
   readonly #commands: CommandsUseCase;
+  readonly #queries: QueriesUseCase;
   readonly #verifyEmail: VerifyEmailUseCase;
   readonly #sessions: SessionVerifierPort;
 
   constructor(
     @Inject(RegisterCustomerUseCase) register: RegisterCustomerUseCase,
     @Inject(CommandsUseCase) commands: CommandsUseCase,
+    @Inject(QueriesUseCase) queries: QueriesUseCase,
     @Inject(VerifyEmailUseCase) verifyEmail: VerifyEmailUseCase,
     @Inject(SESSION_VERIFIER) sessions: SessionVerifierPort,
   ) {
     this.#register = register;
     this.#commands = commands;
+    this.#queries = queries;
     this.#verifyEmail = verifyEmail;
     this.#sessions = sessions;
   }
@@ -166,6 +175,82 @@ export class CustomersController {
       idempotencyKey: request.idempotencyKey,
     });
   }
+
+  /**
+   * The customers awaiting an identity verdict — the teller's queue. Declared
+   * before the parametric `:customerId` GET so this specific path keeps
+   * precedence. Staff only, guarded here and re-checked by the owning service.
+   */
+  @ApiOperation({ summary: 'Clientes pendientes de validación de identidad' })
+  @ApiBearerAuth('session')
+  @Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')
+  @Get('pending-validation')
+  public async pendingValidation(
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    return await this.#queries.pendingValidation({
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+  }
+
+  /**
+   * A teller's manual verdict on an identity document.
+   *
+   * Staff only, guarded here and re-checked by Customer Service (the assignment's
+   * "a cajero validates the document"). `202`: the verdict is applied
+   * asynchronously and the identity event follows.
+   */
+  @ApiOperation({ summary: 'Veredicto de identidad del cajero' })
+  @ApiBearerAuth('session')
+  @Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')
+  @Post(':customerId/identity-verdict')
+  @HttpCode(202)
+  public async setIdentityVerdict(
+    @Param('customerId') customerId: string,
+    @Body(validated(SetIdentityVerdictDto)) body: SetIdentityVerdictDto,
+    @Req() request: GatewayRequest,
+  ): Promise<{ readonly correlationId: string }> {
+    if (!isUuidV4(customerId)) {
+      throw GatewayError.validation('customerId debe ser un UUID v4', 'customerId');
+    }
+
+    return await this.#commands.setIdentityVerdict({
+      customerId,
+      verdict: body.verdict,
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+      idempotencyKey: request.idempotencyKey,
+    });
+  }
+
+  /**
+   * Read one customer's record.
+   *
+   * The owner check is Customer Service's, made from the envelope identity: a
+   * CLIENTE may read only their own record, staff may read anyone, and a record
+   * the caller may not see comes back as a business rejection, never a
+   * distinguishable "forbidden". The gateway only routes and carries the answer.
+   * Declared after `verify-email` and `pending-validation` so those specific GETs
+   * keep their precedence over this parametric one.
+   */
+  @ApiOperation({ summary: 'Consulta un cliente por id' })
+  @ApiBearerAuth('session')
+  @Get(':customerId')
+  public async get(
+    @Param('customerId') customerId: string,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    if (!isUuidV4(customerId)) {
+      throw GatewayError.validation('customerId debe ser un UUID v4', 'customerId');
+    }
+
+    return await this.#queries.getCustomer(customerId, {
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+  }
+
   /**
    * Refuses unless the caller presents a valid administrator session.
    *

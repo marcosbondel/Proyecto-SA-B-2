@@ -23,6 +23,7 @@ import type { GatewayErrorType } from './gateway-error';
 export const FAILURE_CODE_STATUS: Readonly<Record<FailureCode, number>> = {
   // Not found — the subject of the request does not exist.
   ACCOUNT_NOT_FOUND: 404,
+  CUSTOMER_NOT_FOUND: 404,
   IDENTITY_OBJECT_NOT_FOUND: 404,
 
   // Conflict — the request collides with a state that already exists.

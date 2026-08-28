@@ -6,7 +6,7 @@ this directory holds the decisions behind it and the diagrams that show it.
 
 ## Contents
 
-- [`adr/`](adr/README.md) — **the eleven decision records**, written in T-03.
+- [`adr/`](adr/README.md) — **the thirteen decision records**, begun in T-03.
   Backend and frontend stack, communication model, broker, persistence,
   containers, local orchestration, internal service architecture, distributed
   transactions, authentication and the diagramming toolchain.
@@ -101,6 +101,6 @@ not the rules.
 > `diagrams/cdu/*/flujos/`. PlantUML exports remain subject to the delivery
 > rule above wherever a rendered PlantUML artefact is required.
 >
-> The ADRs are **no longer blocked**: the eleven decision records were written in
-> T-03 and live in [`adr/`](adr/README.md), with the consolidated view in
+> The ADRs are **no longer blocked**: the thirteen decision records live in
+> [`adr/`](adr/README.md), with the consolidated view in
 > [`decision-matrix.md`](decision-matrix.md).

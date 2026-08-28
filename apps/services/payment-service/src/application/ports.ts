@@ -1,3 +1,5 @@
+import type { MessageEnvelope } from '@bank/contracts';
+
 import type { Money } from '../domain/money';
 import type {
   Payment,
@@ -81,8 +83,28 @@ export interface PaymentRepository {
     readonly paymentId: string;
     readonly expectedAttempt: number;
     readonly decide: (payment: Payment, attempt: number) => AttemptResult;
+    /**
+     * The events this attempt implies, built by the caller and written to the
+     * outbox **in the same transaction** as the attempt (TD-047). Called once,
+     * only when the attempt is actually `RECORDED`, with the updated payment —
+     * so a superseded or unknown attempt enqueues nothing.
+     */
+    readonly outbound?: (payment: Payment, attempt: number) => readonly OutboxMessage[];
     readonly now: Date;
   }): Promise<AttemptRecord>;
+
+  /**
+   * Publishes the `PENDING` outbox rows and marks them dispatched — the relay
+   * half of the outbox. `deliver` is the broker publish; each batch runs in one
+   * transaction that selects `FOR UPDATE SKIP LOCKED`, publishes, and marks. A
+   * crash after a publish and before the mark leaves the row `PENDING`, so the
+   * next sweep resends it and every consumer deduplicates on the unchanged
+   * `messageId`. Returns how many rows it dispatched.
+   */
+  dispatchPendingOutbox(
+    deliver: (message: OutboxMessage) => Promise<void>,
+    limit: number,
+  ): Promise<number>;
 
   findById(paymentId: string): Promise<Payment | null>;
 
@@ -121,6 +143,18 @@ export interface OutboundMessage {
 }
 
 /**
+ * The durable form of an event: its complete envelope, and the exchange and
+ * routing key it belongs on. Stored verbatim in the outbox and republished
+ * byte-for-byte by the relay, so the `messageId` a consumer deduplicates by
+ * never changes between the write and the send.
+ */
+export interface OutboxMessage {
+  readonly exchange: string;
+  readonly routingKey: string;
+  readonly envelope: MessageEnvelope<unknown>;
+}
+
+/**
  * How this service speaks to the rest of the system: events and replies.
  *
  * No `send`. This service orders nothing from anybody — it is the end of the
@@ -132,6 +166,15 @@ export interface OutboundMessage {
 export interface EventPublisher {
   publish(message: OutboundMessage): Promise<void>;
   reply(message: OutboundMessage): Promise<void>;
+
+  /**
+   * Builds the durable form of an event — its validated envelope on the events
+   * exchange — **without** publishing it. This is how a payment's events reach
+   * the outbox: the use case asks for the envelope, `attempt` writes it in the
+   * attempt's transaction, and the relay publishes it later. Synchronous, since
+   * building an envelope touches no broker.
+   */
+  envelopeFor(message: OutboundMessage): OutboxMessage;
 }
 
 /** Injected so a test can decide what "now" is. */

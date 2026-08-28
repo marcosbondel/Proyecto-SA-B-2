@@ -1,0 +1,28 @@
+# Non-sensitive runtime configuration, shared across the workloads that need
+# it. Each Deployment pulls only the keys it actually uses
+# (docs/operations/CONTAINERS.md's per-component matrix), not the whole map,
+# so a pod's env stays exactly what that component documents.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bank-usac.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bank-usac.labels" . | nindent 4 }}
+data:
+  NODE_ENV: production
+  CORS_ALLOWED_ORIGINS: {{ .Values.gateway.corsAllowedOrigins | quote }}
+  JWT_EXPIRES_IN: {{ .Values.gateway.jwtExpiresIn | quote }}
+  GATEWAY_INSTANCE_ID: {{ .Values.gateway.gatewayInstanceId | quote }}
+  REPLY_TIMEOUT_MS: {{ .Values.gateway.replyTimeoutMs | quote }}
+  # Resolved by the browser, not by the web pod — see the comment on
+  # `web.apiBaseUrl` in values.yaml.
+  NUXT_PUBLIC_API_BASE_URL: {{ .Values.web.apiBaseUrl | quote }}
+  NOTIFICATION_CHANNEL: {{ .Values.services.notificationAudit.notificationChannel | quote }}
+  REVEAL_ACTIVATION_LINKS: {{ .Values.services.notificationAudit.revealActivationLinks | quote }}
+  DEACTIVATION_ENABLED: {{ .Values.services.account.deactivation.enabled | quote }}
+  DEACTIVATION_INTERVAL_MS: {{ .Values.services.account.deactivation.intervalMs | quote }}
+  INACTIVITY_MONTHS: {{ .Values.services.account.deactivation.inactivityMonths | quote }}
+  INACTIVITY_MIN_BALANCE_MINOR: {{ .Values.services.account.deactivation.inactivityMinBalanceMinor | quote }}
+  PAYMENT_RETRY_DELAYS_MS: {{ .Values.services.payment.retryDelaysMs | quote }}
+  PAYMENT_RETRY_SWEEP_MS: {{ .Values.services.payment.retrySweepMs | quote }}

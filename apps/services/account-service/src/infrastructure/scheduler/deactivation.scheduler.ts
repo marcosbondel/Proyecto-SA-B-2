@@ -57,6 +57,15 @@ export class DeactivationScheduler {
      * to shut down would linger until the next daily tick.
      */
     this.#timer.unref();
+
+    /**
+     * Run once at startup, not only on the first interval tick. With a 24h
+     * interval, a pod that restarts more often than daily would otherwise reach
+     * the tick and never execute the job — the automatic sweep the assignment
+     * requires could then never run, and nothing would say so. The run is
+     * idempotent and guarded by `#running`, so an extra one costs nothing.
+     */
+    void this.runOnce();
   }
 
   public stop(): void {

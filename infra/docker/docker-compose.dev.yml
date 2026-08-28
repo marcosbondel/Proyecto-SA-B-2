@@ -95,8 +95,8 @@ x-node-env: &node-env
   TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
 
 # The broker credentials are the application's, not the administrator's — the
-# same pair `rabbitmq_definitions.json` declares as `bank_app`. Defaults match
-# that file so the stack comes up on a clone that has not set them.
+# same pair `scripts/init-rabbitmq.sh` declares from .env. Defaults are here so
+# the stack comes up on a clone that has not set them.
 x-rabbitmq-url: &rabbitmq-url
   RABBITMQ_URL: amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@rabbitmq:5672
 
@@ -189,6 +189,10 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
     healthcheck:
@@ -222,6 +226,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
     healthcheck:
@@ -255,6 +263,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/health']
@@ -281,6 +293,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3003/health']
@@ -302,6 +318,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3004/health']
@@ -331,6 +351,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3005/health']

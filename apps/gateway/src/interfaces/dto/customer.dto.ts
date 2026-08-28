@@ -11,6 +11,16 @@ import {
 
 const ROLES = ['CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR'] as const;
 
+const IDENTITY_VERDICTS = ['VALIDATED', 'REJECTED'] as const;
+
+/** A teller's manual verdict on an identity document. */
+export class SetIdentityVerdictDto {
+  @IsIn(IDENTITY_VERDICTS, {
+    message: `verdict debe ser uno de: ${IDENTITY_VERDICTS.join(', ')}`,
+  })
+  public verdict!: (typeof IDENTITY_VERDICTS)[number];
+}
+
 /**
  * The registration form, as it arrives in a `multipart/form-data` body.
  *
