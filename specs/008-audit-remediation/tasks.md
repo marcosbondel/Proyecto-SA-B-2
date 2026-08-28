@@ -137,8 +137,8 @@ transfer → zero credit.
 
 ### Account Service — business-identity dedup + compensation guard
 
-- [ ] T032 [US3] Migration in `apps/services/account-service/src/infrastructure/persistence/migrations.ts`: add a partial `UNIQUE (transaction_id, type)` on `account_operations` so a movement for a transfer cannot apply twice even under a fresh envelope (durable guard behind the existing transport dedup).
-- [ ] T033 [US3] In `postgres-account.repository.ts`, make compensation check the `rowCount` of the `UPDATE ... WHERE type='DEBIT'`: if no debit matched, do **not** credit — record the anomaly (rejected/ignored outcome) instead of silently creating funds (FR-009).
+- [X] T032 [US3] Migration in `apps/services/account-service/src/infrastructure/persistence/migrations.ts`: add a partial `UNIQUE (transaction_id, type)` on `account_operations` so a movement for a transfer cannot apply twice even under a fresh envelope (durable guard behind the existing transport dedup).
+- [X] T033 [US3] In `postgres-account.repository.ts`, make compensation check the `rowCount` of the `UPDATE ... WHERE type='DEBIT'`: if no debit matched, do **not** credit — record the anomaly (rejected/ignored outcome) instead of silently creating funds (FR-009).
 
 ### Tests (required by NFR-002)
 

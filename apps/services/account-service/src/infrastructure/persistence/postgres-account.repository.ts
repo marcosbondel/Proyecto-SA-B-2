@@ -155,6 +155,34 @@ export class PostgresAccountRepository implements AccountRepository {
 
       const before = accountFrom(locked.rows[0]);
 
+      /**
+       * Compensation must not credit unless the debit it reverses exists. The
+       * mark-COMPENSATED runs **before** the credit is applied, and a zero
+       * `rowCount` means there is no APPLIED debit for this transfer: crediting
+       * would create money that never left. We abort the whole transaction
+       * instead — nothing is credited — and the message goes to the error path,
+       * where the anomaly is recorded (rather than silently making funds).
+       * `AND status = 'APPLIED'` also means a debit already compensated will not
+       * match, so a duplicate compensation cannot credit twice.
+       */
+      if (input.compensates !== undefined) {
+        const reversed = await client.query(
+          `UPDATE account_operations
+              SET status = 'COMPENSATED'
+            WHERE account_id = $1 AND transaction_id = $2 AND type = 'DEBIT'
+              AND status = 'APPLIED'`,
+          [input.accountId, input.compensates.transactionId],
+        );
+
+        if (reversed.rowCount === 0) {
+          throw new Error(
+            `Cannot compensate transaction ${input.compensates.transactionId} on account ` +
+              `${input.accountId}: no applied debit to reverse. Crediting would create money ` +
+              'that never left; this needs a person.',
+          );
+        }
+      }
+
       // Runs inside the lock. That placement is the whole guarantee.
       const decided = input.decide(before);
 
@@ -200,15 +228,6 @@ export class PostgresAccountRepository implements AccountRepository {
           input.now,
         ],
       );
-
-      if (input.compensates !== undefined) {
-        await client.query(
-          `UPDATE account_operations
-              SET status = 'COMPENSATED'
-            WHERE account_id = $1 AND transaction_id = $2 AND type = 'DEBIT'`,
-          [input.accountId, input.compensates.transactionId],
-        );
-      }
 
       await recordProcessedWith(client, {
         idempotencyKey: input.idempotencyKey,
