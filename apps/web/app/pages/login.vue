@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { resolveNextPath } from '../lib/navigation';
+
 definePageMeta({ layout: 'public' });
 
 /**
@@ -46,8 +48,7 @@ async function submit(): Promise<void> {
     return;
   }
 
-  const next = typeof route.query.next === 'string' ? route.query.next : '/';
-  await navigateTo(next);
+  await navigateTo(resolveNextPath(route.query.next));
 }
 </script>
 
