@@ -76,7 +76,7 @@ describe('opening a route directly', () => {
   });
 
   test('the public routes are open to everyone, session or not', () => {
-    for (const route of ['/login', '/registro', '/activar', '/demo']) {
+    for (const route of ['/login', '/registro', '/activar']) {
       assert.equal(canOpen(null, route), true, route);
       assert.equal(canOpen('CLIENTE', route), true, route);
     }

@@ -286,9 +286,10 @@ aparecer fuera de `app/composables/` y `app/lib/`.
 
 ---
 
-## SC-009 · La página de demostración
+## SC-009 · Las cuatro piezas compartidas
 
-`/demo`, sin broker. Debe ejercitar visiblemente:
+Existen y su lógica está cubierta por prueba automatizada sobre `app/lib/`, sin
+broker:
 
 - Los **cinco** estados de `SharedAsyncStateAlert`, el de broker no disponible
   incluido.
@@ -304,7 +305,7 @@ aparecer fuera de `app/composables/` y `app/lib/`.
 | --- | --- |
 | Salida de las pruebas de las once rutas, plazo, correlación y broker caído | Evidencia esperada del ticket |
 | Capturas de la administración de RabbitMQ con los mensajes observados | ídem |
-| Capturas del shell: navegación de los tres roles, inicio de sesión, las dos resoluciones de activación, `/demo` | 6, 7, 8 |
+| Capturas del shell: navegación de los tres roles, inicio de sesión, las dos resoluciones de activación | 6, 7, 8 |
 | Salida de las tres búsquedas estáticas | 4 · SC-007 |
 | Nota de revisión visual contra `bonking.dc.html`, nombrando las tres discrepancias del plan | `docs/DESIGN.md` |
 

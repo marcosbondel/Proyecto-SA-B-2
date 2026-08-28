@@ -87,8 +87,8 @@ function: the permission matrix, the money rules, the error normalisation. A
 decision inside a template would be untestable by an accident of tooling. A
 decision in a plain module is testable today.
 
-Rendering is verified by eye against `/demo`, which exercises the four shared
-components and all five asynchronous states without needing a broker.
+Rendering is verified by eye against the feature screens, which exercise the
+four shared components and all five asynchronous states in their real context.
 
 ## Design
 

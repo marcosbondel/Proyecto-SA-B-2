@@ -617,7 +617,6 @@ inside a fresh container is slow.
 
 | Page | Needs a session | What it shows |
 | --- | --- | --- |
-| <http://localhost:3010/demo> | no | The four shared components and all five asynchronous states, with no broker |
 | <http://localhost:3010/registro> | no | Public customer registration |
 | <http://localhost:3010/login> | no | Sign-in |
 | <http://localhost:3010/activar> | no | The verdict of an emailed activation link |
