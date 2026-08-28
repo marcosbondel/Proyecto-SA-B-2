@@ -220,6 +220,31 @@ export function subjectCustomerIdFrom(messageType: string, payload: unknown): st
   return readString(payload, 'customerId');
 }
 
+/**
+ * The **real** address a notification may be delivered to, for the one event
+ * sanctioned to carry it.
+ *
+ * `customer.activation.requested.v1` is the single contract whose payload holds
+ * a real `email` — its own comment names it the exception to T-02's "does not
+ * cross" list (coherence check M-5): Notification cannot deliver a message
+ * without an address. Every other event carries no real address, so this is
+ * `null` for all of them, and a real provider has exactly one real inbox to
+ * reach: the activation email, which is the one that has to arrive for anybody
+ * to finish signing up.
+ *
+ * **Transient by construction.** It is handed to the delivery channel and never
+ * to the repository, so the audit database still stores only the *simulated*
+ * recipient from `simulatedRecipientFor`. The redaction rule two files over is
+ * untouched: no real address is ever written down, it is only used to send.
+ */
+export function deliverableEmailFrom(messageType: string, payload: unknown): string | null {
+  if (messageType !== 'customer.activation.requested.v1') {
+    return null;
+  }
+
+  return readString(payload, 'email');
+}
+
 function readString(payload: unknown, field: string): string | null {
   if (typeof payload !== 'object' || payload === null) {
     return null;

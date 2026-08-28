@@ -14,6 +14,7 @@ import { RecordEventUseCase } from './application/record-event.use-case';
 import { AppModule } from './app.module';
 import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environment';
 import { BrokerReplyPublisher } from './infrastructure/messaging/broker-reply.publisher';
+import { ResendNotificationAdapter } from './infrastructure/notification/resend-notification.adapter';
 import { SimulatedNotificationAdapter } from './infrastructure/notification/simulated-notification.adapter';
 import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresAuditRepository } from './infrastructure/persistence/postgres-audit.repository';
@@ -81,7 +82,27 @@ async function bootstrap(): Promise<void> {
    * there is no way to complete a sign-up anywhere in the system. See the
    * adapter, TD-043 and TD-044.
    */
-  const sender = new SimulatedNotificationAdapter(logger, environment.REVEAL_ACTIVATION_LINKS);
+  const simulated = new SimulatedNotificationAdapter(logger, environment.REVEAL_ACTIVATION_LINKS);
+
+  /**
+   * `resend` delivers the one email that carries a real address — activation —
+   * for real, and falls back to the simulated channel for every other
+   * notification, which has no real inbox by design. `simulated` (the default)
+   * sends nothing and only logs. The choice is made once, here.
+   */
+  const sender =
+    environment.NOTIFICATION_CHANNEL === 'resend'
+      ? new ResendNotificationAdapter(
+          {
+            apiKey: environment.RESEND_API_KEY ?? '',
+            from: environment.EMAIL_FROM ?? '',
+            appBaseUrl: environment.APP_BASE_URL ?? '',
+            endpoint: environment.RESEND_API_URL,
+          },
+          logger,
+          simulated,
+        )
+      : simulated;
   const broker = new MessageBroker({
     url: environment.RABBITMQ_URL,
     exchanges: [EXCHANGES.commands, EXCHANGES.events, EXCHANGES.replies],

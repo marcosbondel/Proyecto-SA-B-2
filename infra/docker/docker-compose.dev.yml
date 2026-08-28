@@ -177,6 +177,11 @@ services:
       # of leaving an orphan behind on every reload.
       GATEWAY_INSTANCE_ID: gateway-dev
       REPLY_TIMEOUT_MS: ${REPLY_TIMEOUT_MS:-5000}
+      # The browser frontend is a different origin (:3010), so every call it
+      # makes is cross-origin. Without the gateway naming the origin back the
+      # browser discards the response and every screen fails. Comma-separate to
+      # add origins; a deployment sets its own.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3010}
     ports:
       - '3000:3000'
     depends_on:
@@ -302,6 +307,14 @@ services:
       <<: [*pnpm-env, *node-env, *rabbitmq-url]
       PORT: 3005
       DATABASE_URL: postgresql://${NOTIFICATION_AUDIT_POSTGRES_USER}:${NOTIFICATION_AUDIT_POSTGRES_PASSWORD}@postgres-notification-audit:5432/${NOTIFICATION_AUDIT_POSTGRES_DB}
+      # Delivery channel. Default `simulated` writes the activation link to the
+      # log (this is what `pnpm images:flow` reads). Set to `resend` to send the
+      # real activation email through Resend, which then also requires
+      # RESEND_API_KEY, EMAIL_FROM and APP_BASE_URL. Fill them in infra/docker/.env.
+      NOTIFICATION_CHANNEL: ${NOTIFICATION_CHANNEL:-simulated}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3010}
     ports:
       - '3005:3005'
     depends_on:

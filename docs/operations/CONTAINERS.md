@@ -50,8 +50,8 @@ serve Compose, kind and a demonstration alike.
 | `account-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `DEACTIVATION_ENABLED` `DEACTIVATION_INTERVAL_MS` `INACTIVITY_MONTHS` `INACTIVITY_MIN_BALANCE_MINOR` |
 | `transaction-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | — |
 | `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` |
-| `notification-audit-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `REVEAL_ACTIVATION_LINKS` |
-| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` |
+| `notification-audit-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `REVEAL_ACTIVATION_LINKS` `NOTIFICATION_CHANNEL` `RESEND_API_KEY`¹ `EMAIL_FROM`¹ `APP_BASE_URL`¹ `RESEND_API_URL` |
+| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) |
 | `web` | — | `NUXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:3000`) |
 
 The Gateway has **no** `DATABASE_URL` and no way to acquire one: it holds no
@@ -72,6 +72,21 @@ the production images: with it closed the activation link exists nowhere — it 
 redacted in the audit trail and hashed in the customer's own table — so nobody
 can complete a sign-up. `docker-compose.images.yml` turns it on for the
 demonstration; anything a stranger can reach must not.
+
+`NOTIFICATION_CHANNEL` selects how notifications are delivered. It defaults to
+`simulated` — a log line and no mail, which is what the assignment asks for
+(§4.1) and what `pnpm images:flow` reads to finish a sign-up. Set it to `resend`
+to send the **real activation email** through [Resend](https://resend.com); ¹the
+three marked variables become required in that mode: `RESEND_API_KEY`,
+`EMAIL_FROM` (a verified sender such as `bonking <no-reply@mail.tudominio.com>`)
+and `APP_BASE_URL` (the frontend origin, so the emailed link is absolute).
+`RESEND_API_URL` defaults to `https://api.resend.com/emails` and exists only so
+a test can point elsewhere. Only the activation email carries a real address, so
+only it is delivered for real; every other notification has no real inbox by
+design and stays simulated. With `resend` on, set `REVEAL_ACTIVATION_LINKS` to
+`false`: the link belongs in the recipient's inbox, not in a log. The full
+Resend + Route 53 setup is in
+[docs/operations/EMAIL_RESEND.md](EMAIL_RESEND.md).
 
 A missing or malformed variable is fatal at boot, by name, on the first line of
 the log:
