@@ -15,6 +15,7 @@ import { AppModule } from './app.module';
 import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environment';
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { migrate } from './infrastructure/persistence/migrations';
+import { seedDemoUsers } from './infrastructure/persistence/seed-demo-data';
 import { PostgresCustomerRepository } from './infrastructure/persistence/postgres-customer.repository';
 import {
   RandomActivationTokenFactory,
@@ -180,6 +181,16 @@ async function bootstrap(): Promise<void> {
 
         if (applied.length > 0) {
           logger.info('schema migrations applied', { outcome: applied.join(', ') });
+        }
+
+        /**
+         * Demo users, right after the schema exists and before any command is
+         * taken, so a fresh stack can be signed into at once. Gated and
+         * idempotent — see `seedDemoUsers`.
+         */
+        if (environment.SEED_DEMO_DATA) {
+          const seeded = await seedDemoUsers(pool, hasher, environment.SEED_PASSWORD);
+          logger.info('demo users seeded', { outcome: seeded.join(', ') });
         }
 
         await broker.start();
