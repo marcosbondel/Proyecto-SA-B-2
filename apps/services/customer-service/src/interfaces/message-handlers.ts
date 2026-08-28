@@ -85,7 +85,7 @@ export class UpdateCustomerHandler extends ContractHandler<
     payload: ReturnType<typeof customerUpdateV1.schema.parse>,
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
-    await this.#useCase.execute(payload, envelope.idempotencyKey);
+    await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);
   }
 }
 

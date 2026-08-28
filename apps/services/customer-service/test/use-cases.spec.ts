@@ -229,6 +229,7 @@ describe('updating a customer', () => {
 
     await context.update.execute(
       { customerId: REGISTER.customerId, address: 'Nueva dirección 1-23' },
+      { role: 'CLIENTE', customerId: REGISTER.customerId },
       'key-update',
     );
 
@@ -238,6 +239,55 @@ describe('updating a customer', () => {
     expect(JSON.stringify(payload)).not.toContain('Nueva dirección');
   });
 
+  it('refuses a client updating another customer, and publishes nothing (D-06, IDOR)', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    const before = context.publisher.published.length;
+
+    // A different client, editing REGISTER's record by its id.
+    await context.update.execute(
+      { customerId: REGISTER.customerId, address: 'Intrusión 9-99' },
+      { role: 'CLIENTE', customerId: '11111111-1111-4111-8111-111111111111' },
+      'key-idor',
+    );
+
+    expect(context.publisher.published).toHaveLength(before);
+    expect(context.repository.customers.get(REGISTER.customerId)!.address).toBe(REGISTER.address);
+    expect(await context.repository.findProcessed('key-idor', 'customer.update.v1')).toMatchObject({
+      resultSummary: { outcome: 'FORBIDDEN' },
+    });
+  });
+
+  it('lets a teller update any customer (D-06, staff not own-only)', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.update.execute(
+      { customerId: REGISTER.customerId, address: 'Actualizado por cajero 2-34' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-staff',
+    );
+
+    expect(context.publisher.payloadOf('customer.updated.v1')).toMatchObject({
+      changedFields: ['address'],
+    });
+  });
+
+  it('refuses an update with no verified actor', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    const before = context.publisher.published.length;
+
+    await context.update.execute(
+      { customerId: REGISTER.customerId, address: 'Sin sesión 0-00' },
+      null,
+      'key-noidentity',
+    );
+
+    expect(context.publisher.published).toHaveLength(before);
+    expect(context.repository.customers.get(REGISTER.customerId)!.address).toBe(REGISTER.address);
+  });
+
   it('publishes nothing when the update changes nothing', async () => {
     const context = build();
     await context.register.execute(REGISTER, 'key-1');
@@ -245,6 +295,7 @@ describe('updating a customer', () => {
 
     await context.update.execute(
       { customerId: REGISTER.customerId, address: REGISTER.address },
+      { role: 'CLIENTE', customerId: REGISTER.customerId },
       'key-update',
     );
 
@@ -256,6 +307,7 @@ describe('updating a customer', () => {
 
     await context.update.execute(
       { customerId: '00000000-0000-4000-8000-000000000000', address: 'x' },
+      { role: 'ADMINISTRADOR', customerId: '33333333-3333-4333-8333-333333333333' },
       'key-update',
     );
 
