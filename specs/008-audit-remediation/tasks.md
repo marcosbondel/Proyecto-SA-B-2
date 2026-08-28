@@ -249,7 +249,7 @@ notification retries and delivers.
 - [ ] T064 [US7] Set `REVEAL_ACTIVATION_LINKS` to default-off in `infra/docker/docker-compose.images.yml` (production-style stack should not print activation links to logs) (FR-025, higiene).
 - [ ] T065 [US7] `[fuera-de-enunciado]` Add `@nestjs/throttler` to the Gateway with a global `ThrottlerGuard` and strict limits on the three `@Public()` routes (`/api/auth/login`, `POST /api/customers`, `GET /api/customers/verify-email`) in `apps/gateway/` (FR-021).
 - [ ] T066 [US7] `[fuera-de-enunciado]` Bound anonymous object-store writes: in `apps/gateway/src/application/routes/register-customer.use-case.ts`, prevent an unauthenticated loop from accumulating orphaned MinIO uploads (rate-limit-tied or defer the upload until after basic acceptance) (FR-022).
-- [ ] T067 [US7] `[fuera-de-enunciado]` Invalidate prior live activation tokens: in `postgres-customer.repository.ts` `saveActivationToken`, mark the customer's unused tokens consumed inside the same transaction as the insert, so only the latest link validates (FR-023).
+- [X] T067 [US7] `[fuera-de-enunciado]` Invalidate prior live activation tokens: in `postgres-customer.repository.ts` `saveActivationToken`, mark the customer's unused tokens consumed inside the same transaction as the insert, so only the latest link validates (FR-023).
 - [ ] T068 [P] [US7] Tests for the retry sweeper (a dropped-then-restored delivery is retried) and, if included, the token-invalidation behavior.
 
 **Checkpoint**: Public surface hardened. **End of Phase P2 — validate and demo.**

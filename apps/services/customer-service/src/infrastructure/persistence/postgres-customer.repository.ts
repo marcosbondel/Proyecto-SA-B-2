@@ -289,11 +289,24 @@ export class PostgresCustomerRepository implements CustomerRepository {
     readonly tokenHash: string;
     readonly expiresAt: string;
   }): Promise<void> {
-    await this.#pool.query(
-      `INSERT INTO email_activation_tokens (token_id, customer_id, token_hash, expires_at)
-       VALUES ($1, $2, $3, $4)`,
-      [randomUUID(), input.customerId, input.tokenHash, input.expiresAt],
-    );
+    await this.#inTransaction(async (client) => {
+      // Invalidate the customer's still-usable tokens before issuing a new one,
+      // so only the latest activation link works. Otherwise every sign-in on an
+      // unverified account left another live link valid for 24h, growing the
+      // attack surface and the table without bound.
+      await client.query(
+        `UPDATE email_activation_tokens
+            SET used_at = now()
+          WHERE customer_id = $1 AND used_at IS NULL`,
+        [input.customerId],
+      );
+
+      await client.query(
+        `INSERT INTO email_activation_tokens (token_id, customer_id, token_hash, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [randomUUID(), input.customerId, input.tokenHash, input.expiresAt],
+      );
+    });
   }
 
   public async findByActivationToken(
