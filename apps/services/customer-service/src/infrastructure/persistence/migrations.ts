@@ -115,6 +115,19 @@ export const MIGRATIONS: readonly Migration[] = [
        )`,
     ],
   },
+  {
+    /*
+     * Optimistic-concurrency version for the customers table. Two concurrent
+     * updates to the same customer would otherwise read the same row and the
+     * second write would silently revert the first (lost update). The update
+     * now guards `WHERE version = <read>` and bumps it; a losing write matches
+     * no row, rolls back and is retried by the broker against fresh data.
+     */
+    name: '005_customers_version',
+    statements: [
+      `ALTER TABLE customers ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */
