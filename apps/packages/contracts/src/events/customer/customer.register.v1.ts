@@ -20,12 +20,15 @@ export const customerRegisterV1 = defineContract({
   consumers: ['customer-service'],
   schema: z.object({
     customerId: uuidV4,
-    fullName: z.string().min(1).max(200),
-    identityDocument: z.string().min(1).max(50),
+    // Trimmed before the length check so a whitespace-only value collapses to
+    // empty and is refused, rather than being stored blank — a blank document
+    // would take the UNIQUE slot and block every later registration (FR-014).
+    fullName: z.string().trim().min(1).max(200),
+    identityDocument: z.string().trim().min(1).max(50),
     email: z.email(),
     /** Validated for coherence by the service, not by the wire format (C-5). */
     dateOfBirth: z.iso.date(),
-    address: z.string().min(1).max(300),
+    address: z.string().trim().min(1).max(300),
     role,
     /** Never logged. See the note above. */
     credential: z.string().min(8).max(256),
