@@ -37,6 +37,14 @@ export interface Customer {
   readonly emailVerifiedAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /**
+   * Optimistic-concurrency counter. Carried unchanged by the domain — an
+   * `applyChanges` result keeps the version it was read at, and the repository
+   * bumps it under a `WHERE version = <read>` guard, so two concurrent updates
+   * cannot silently overwrite each other (the "protección contra condiciones de
+   * carrera" the assignment asks of this service). Mirrors Account.
+   */
+  readonly version: number;
 }
 
 /** The fields `customer.update.v1` may change, and no others (C-1, C-3, C-6). */
@@ -123,6 +131,7 @@ export function registerCustomer(
     emailVerifiedAt: null,
     createdAt: timestamp,
     updatedAt: timestamp,
+    version: 0,
   };
 }
 
