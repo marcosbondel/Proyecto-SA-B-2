@@ -116,6 +116,29 @@ describe('the scheduler around it', () => {
     );
   });
 
+  it('runs once at startup, so a frequently-restarted pod still executes it', async () => {
+    const logger = silentLogger();
+    let runs = 0;
+    const scheduler = new DeactivationScheduler({
+      job: {
+        execute: async () => {
+          runs += 1;
+
+          return [];
+        },
+      },
+      intervalMs: 24 * 60 * 60 * 1_000,
+      logger,
+    });
+
+    scheduler.start();
+    // start() fires the initial run without awaiting; let the microtask settle.
+    await new Promise((resolve) => setImmediate(resolve));
+    scheduler.stop();
+
+    expect(runs).toBe(1);
+  });
+
   /**
    * "It ran and found nothing" and "it did not run" have to look different, or
    * a silently broken schedule is indistinguishable from a quiet month.
