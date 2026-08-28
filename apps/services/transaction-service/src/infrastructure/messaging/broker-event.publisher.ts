@@ -2,7 +2,7 @@ import { EXCHANGES, catalogByName, followUpEnvelope, routingKeyFor } from '@bank
 import type { MessageEnvelope } from '@bank/contracts';
 import type { MessageBroker } from '@bank/messaging';
 
-import type { EventPublisher, OutboundMessage } from '../../application/ports';
+import type { EventPublisher, OutboundMessage, OutboxMessage } from '../../application/ports';
 
 /**
  * Everything this service says, on the exchange the catalogue assigns it.
@@ -62,10 +62,27 @@ export class BrokerEventPublisher implements EventPublisher {
     await this.#dispatch(message, 'reply');
   }
 
+  /**
+   * The durable form of a message, built but not sent — the seam the outbox
+   * hangs on. Everything `#dispatch` does up to the publish, and then it stops:
+   * the caller writes this to the outbox in a transaction, and the relay is what
+   * finally hands it to the broker.
+   */
+  public envelopeFor(message: OutboundMessage, kind: 'command' | 'event'): OutboxMessage {
+    return this.#build(message, kind);
+  }
+
   async #dispatch(
     message: OutboundMessage,
     expected: 'command' | 'event' | 'reply',
   ): Promise<void> {
+    const { exchange, routingKey, envelope } = this.#build(message, expected);
+
+    await this.#broker.publish(exchange, routingKey, envelope);
+  }
+
+  /** Validates the message against its contract and wraps it in a follow-up envelope. */
+  #build(message: OutboundMessage, expected: 'command' | 'event' | 'reply'): OutboxMessage {
     const contract = catalogByName.get(message.messageType);
 
     if (contract === undefined) {
@@ -96,14 +113,14 @@ export class BrokerEventPublisher implements EventPublisher {
       throw new Error('BrokerEventPublisher was used without binding it to a cause.');
     }
 
-    await this.#broker.publish(
-      EXCHANGE_FOR[expected],
-      routingKeyFor(message.messageType),
-      followUpEnvelope(this.#cause, parsed.data, {
+    return {
+      exchange: EXCHANGE_FOR[expected],
+      routingKey: routingKeyFor(message.messageType),
+      envelope: followUpEnvelope(this.#cause, parsed.data, {
         messageType: message.messageType,
         producer: 'transaction-service',
       }),
-    );
+    };
   }
 }
 
