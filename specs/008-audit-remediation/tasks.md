@@ -287,7 +287,7 @@ audit trail.
 
 **Statement anchor**: Account function "proceso automático de desactivación de cuentas inactivas"; SRE "manejo de errores".
 
-- [ ] T073 [US9] Run the deactivation job at startup and/or catch up missed runs (consult `deactivation_runs`) in `apps/services/account-service/src/infrastructure/scheduler/deactivation.scheduler.ts`, so a frequently restarted pod does not skip it forever (FR-030).
+- [X] T073 [US9] Run the deactivation job at startup and/or catch up missed runs (consult `deactivation_runs`) in `apps/services/account-service/src/infrastructure/scheduler/deactivation.scheduler.ts`, so a frequently restarted pod does not skip it forever (FR-030).
 - [ ] T074 [US9] Fix the retry sweeper's lock in `apps/services/payment-service/src/infrastructure/persistence/postgres-payment.repository.ts` `due()`: run the `FOR UPDATE SKIP LOCKED` inside a real transaction so the lock holds across replicas (today it is autocommit and both sweepers read the same batch) (FR-031).
 - [X] T075 [US9] Persist the manual-deactivation `reason`: read it in `set-account-status.use-case.ts`, store it, and carry it on `account.deactivated.v1` (contract change) so the audit trail shows why (FR-032, and the required-but-discarded `reason` finding).
 - [ ] T076 [P] [US9] Tests: the job runs at startup; the retry sweeper claims each row once; the deactivation reason is persisted and emitted.
