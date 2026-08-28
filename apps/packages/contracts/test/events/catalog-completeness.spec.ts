@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(55);
+    expect(catalog).toHaveLength(60);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -96,9 +96,20 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'audit.query.requested.v1',
       'customer.authenticate.replied.v1',
       'customer.email.verification.rejected.v1',
+      // Added by the audit remediation (US6): Customer Service's first read
+      // path, so a staff member can see a customer before editing it and the
+      // update form is not filled in blind.
+      'customer.get.query.v1',
+      'customer.get.replied.v1',
+      // Also US6: the teller's queue of identities awaiting a verdict, and the
+      // manual verdict itself — the human "a teller validates the document" the
+      // assignment describes, distinct from the automatic photo check.
+      'customer.pending-validation.query.v1',
+      'customer.pending-validation.replied.v1',
       // Added by T-16: the refusal that had no message, so a duplicated
       // document produced silence rather than a rejection.
       'customer.register.rejected.v1',
+      'customer.set-identity-verdict.v1',
       /*
        * The two added by T-20. Nothing could ask this service for the
        * notifications it had sent: `audit.query.requested.v1` answers one

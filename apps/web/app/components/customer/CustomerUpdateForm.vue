@@ -11,15 +11,45 @@ import type { FieldErrors, UpdateFields } from '../../lib/customer';
  * is recorded in the ticket rather than papered over with a disabled box that
  * nobody can explain.
  *
- * The boxes start **empty**, and that is not laziness: there is no route to read
- * a customer, so there is nothing to prefill with. An empty box therefore means
+ * The edit boxes start **empty**, and that is not laziness: an empty box means
  * "leave this alone", which is stated on the screen and enforced in
- * `updatePayload`. Prefilling them with invented values would be worse than
- * empty — it would look like data.
+ * `updatePayload`. What used to be missing was any way to see the current data,
+ * so the form was edited blind (TD-020); now the current record is loaded from
+ * `GET /api/customers/{id}` and shown read-only above the boxes, without
+ * changing the "empty = leave alone" edit model.
  */
 const props = defineProps<{ customerId: string }>();
 
 const api = useGatewayApi();
+
+interface CurrentCustomer {
+  readonly fullName: string;
+  readonly identityDocument: string;
+  readonly email: string;
+  readonly dateOfBirth: string;
+  readonly address: string;
+  readonly username: string;
+  readonly role: string;
+  readonly status: string;
+  readonly identityStatus: string;
+}
+
+const current = ref<CurrentCustomer | null>(null);
+const loadError = ref<string | null>(null);
+
+onMounted(async () => {
+  const result = await api.call<CurrentCustomer & { outcome: string }>(
+    `/api/customers/${props.customerId}`,
+  );
+
+  if (result.ok) {
+    current.value = result.data;
+  } else {
+    // A client looking at somebody who is not theirs comes back as a business
+    // rejection; the edit boxes still work, there is just nothing to preview.
+    loadError.value = result.error.message;
+  }
+});
 
 const {
   state: outcomeState,
@@ -64,6 +94,25 @@ async function submit(): Promise<void> {
         username no se pueden modificar.
       </p>
     </template>
+
+    <dl
+      v-if="current"
+      class="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-[#F6F6F7] p-4 text-[13px]"
+      data-testid="customer-current"
+    >
+      <div><dt class="text-[#75767F]">Nombre</dt><dd class="font-medium">{{ current.fullName }}</dd></div>
+      <div><dt class="text-[#75767F]">Username</dt><dd class="font-medium">{{ current.username }}</dd></div>
+      <div><dt class="text-[#75767F]">Correo</dt><dd class="font-medium">{{ current.email }}</dd></div>
+      <div><dt class="text-[#75767F]">Documento</dt><dd class="font-medium">{{ current.identityDocument }}</dd></div>
+      <div><dt class="text-[#75767F]">Nacimiento</dt><dd class="font-medium">{{ current.dateOfBirth }}</dd></div>
+      <div><dt class="text-[#75767F]">Dirección</dt><dd class="font-medium">{{ current.address }}</dd></div>
+      <div><dt class="text-[#75767F]">Rol</dt><dd class="font-medium">{{ current.role }}</dd></div>
+      <div><dt class="text-[#75767F]">Identidad</dt><dd class="font-medium">{{ current.identityStatus }}</dd></div>
+    </dl>
+
+    <p v-else-if="loadError" class="mb-4 text-[13px] text-[#75767F]">
+      No se pudo cargar la ficha actual ({{ loadError }}). Aun así puedes escribir los cambios.
+    </p>
 
     <form class="flex flex-col gap-4" @submit.prevent="submit">
       <UFormField label="Nombre completo" name="fullName" :error="errors.fullName">

@@ -1,0 +1,77 @@
+# Notification & Audit Service (T-20). Env matches
+# docs/operations/CONTAINERS.md's notification-audit-service row: NODE_ENV,
+# PORT, DATABASE_URL, RABBITMQ_URL required; REVEAL_ACTIVATION_LINKS and
+# NOTIFICATION_CHANNEL optional. The Resend variables (RESEND_API_KEY,
+# EMAIL_FROM, APP_BASE_URL, RESEND_API_URL) are deliberately not wired here:
+# NOTIFICATION_CHANNEL defaults to "simulated", so they are not required,
+# and real outbound email is out of scope for a kind demonstration — set
+# them with --set if a specific test needs the real channel
+# (docs/operations/EMAIL_RESEND.md).
+{{- $component := .Values.services.notificationAudit.component }}
+{{- $ctx := dict "root" $ "component" $component }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bank-usac.componentFullname" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.services.notificationAudit.image.repository }}:{{ .Values.services.notificationAudit.image.tag }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.services.notificationAudit.port }}
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: NODE_ENV
+            - name: PORT
+              value: {{ .Values.services.notificationAudit.port | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: NOTIFICATION_AUDIT_DATABASE_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: RABBITMQ_URL
+            - name: REVEAL_ACTIVATION_LINKS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: REVEAL_ACTIVATION_LINKS
+            - name: NOTIFICATION_CHANNEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: NOTIFICATION_CHANNEL
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

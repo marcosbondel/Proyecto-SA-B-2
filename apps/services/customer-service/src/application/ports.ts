@@ -112,6 +112,16 @@ export interface CustomerRepository {
   /** Whether this exact photo already belongs to somebody else. */
   isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean>;
 
+  /**
+   * Customers whose identity is still awaiting a teller's verdict
+   * (`identityStatus = PENDING`), newest first and bounded by `limit`. `total`
+   * is the full count so the caller can report how many were omitted.
+   */
+  listPendingIdentityValidation(limit: number): Promise<{
+    readonly customers: readonly Customer[];
+    readonly total: number;
+  }>;
+
   /** What this message produced the first time, or `null` if it is new. */
   findProcessed(idempotencyKey: string, messageType: string): Promise<ProcessedMessage | null>;
 

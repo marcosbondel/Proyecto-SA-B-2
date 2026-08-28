@@ -61,6 +61,8 @@ export class DeactivateInactiveAccountsUseCase {
           balanceAtDeactivation: quetzales(account.balanceMinor),
           lastActivityAt: account.lastActivityAt?.toISOString() ?? null,
           deactivatedAt: now.toISOString(),
+          // The automatic sweep has no human reason; its cause is the rule.
+          reason: null,
         },
       });
     }

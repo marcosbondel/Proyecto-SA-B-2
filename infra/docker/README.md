@@ -31,10 +31,26 @@ RabbitMQ **must not** be 4.2.x: community support for that series ended on
   `bank.errors`. Commands and events are separate exchanges because they are
   different kinds of statement with different rules — one handler versus many.
   The names, the queues, the bindings and the retry arguments are fixed by
-  [`docs/events/topology.md`](../../docs/events/topology.md) (T-05); this ticket
-  declares them, it does not decide them.
+  [`docs/events/topology.md`](../../docs/events/topology.md) (T-05) and asserted
+  by the services themselves on startup, from the `@bank/contracts` catalogue —
+  the broker declares them, it does not decide them.
 - MinIO as the S3-compatible transfer buffer for identity-document photos,
   provisioned outside the cluster per [ADR-012](../../docs/architecture/adr/ADR-012-object-storage.md).
+- **No definitions file, and no broker accounts declared anywhere but `.env`.**
+  RabbitMQ 4.x skips seeding `RABBITMQ_DEFAULT_USER` whenever a definitions file
+  is loaded — even a users-less one — so loading a topology-only definitions file
+  left the `admin` account uncreated and the stack unable to start on a fresh
+  volume. The topology is asserted by the services on startup instead (they must
+  do so anyway, so a fresh broker works), which lets the image seed `admin` from
+  the environment as intended. The unprivileged `bank_app` account the
+  applications connect with is then created by the one-shot `rabbitmq-init`
+  service from `RABBITMQ_APP_USER` / `RABBITMQ_APP_PASSWORD`. One password, one
+  place. See [`rabbitmq/rabbitmq.conf`](rabbitmq/rabbitmq.conf).
+
+  The administrator is the one account this cannot re-set: the image creates it
+  only on a **fresh** volume. Changing `RABBITMQ_DEFAULT_PASS` against an
+  existing `rabbitmq-data` needs the volume recreated, and `rabbitmq-init` says
+  so rather than failing quietly.
 - No delayed-message plugin is needed. The retry backoff is built from queues
   with `x-message-ttl` that dead-letter back to the queue that failed, which the
   pinned `rabbitmq:4.3.4-management` image supports as it ships.
@@ -125,6 +141,7 @@ already up rather than starting a second copy of every database.
 | --- | --- |
 | `validate-env.sh` | Refuses to start with a variable `docker-compose.yml` needs missing (T-06) |
 | `init-minio.sh` | Provisions the bucket, the application user and the retention policy (T-06) |
+| `init-rabbitmq.sh` | Creates the `bank_app` broker account from `.env`, so no password is written down twice |
 | `test-broker.sh`, `test-isolation.sh`, `test-persistence.sh`, `test-failures.sh` | The four T-06 infrastructure checks |
 | `images.sh` | The seven components and their Dockerfiles, sourced by the two below so they cannot disagree (T-21) |
 | `build-images.sh` | Builds and tags every image, and optionally loads them into kind (T-21) |

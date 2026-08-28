@@ -35,6 +35,11 @@ not require a new row for every generated link or vendor file.
 | `docs/RELIABILITY.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/SECURITY.md` | project | Marcos Bonifasi | blocked | 2026-08-15 |
 | `docs/TECH_DEBT.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `docs/TECHNICAL_DOCUMENT.md` | project | Marcos Bonifasi | current | 2026-08-28 |
+| `docs/manual/README.md` | project | Marcos Bonifasi | current | 2026-08-28 |
+| `docs/manual/rol-cliente.md` | project | Marcos Bonifasi | current | 2026-08-28 |
+| `docs/manual/rol-cajero-receptor.md` | project | Marcos Bonifasi | current | 2026-08-28 |
+| `docs/manual/rol-administrador.md` | project | Marcos Bonifasi | current | 2026-08-28 |
 | `docs/domain/README.md` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/domain/bounded-contexts.md` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/domain/entities.md` | project | Marcos Bonifasi | current | 2026-08-14 |

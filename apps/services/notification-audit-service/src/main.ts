@@ -4,7 +4,13 @@ import { randomUUID } from 'node:crypto';
 
 import { EXCHANGES, QUEUES } from '@bank/contracts';
 import type { MessageEnvelope, QueueDescriptor } from '@bank/contracts';
-import { MessageBroker } from '@bank/messaging';
+import {
+  FAILURE_REASON_HEADER,
+  MessageBroker,
+  ORIGINAL_ROUTING_KEY_HEADER,
+  parseEnvelope,
+} from '@bank/messaging';
+import type { ParkedMessage } from '@bank/messaging';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
@@ -35,6 +41,15 @@ const OWNED: readonly QueueDescriptor[] = QUEUES.filter(
 const QUERY_QUEUE = 'audit.query';
 
 /**
+ * The consumer name every drained parked message is recorded under. A name of
+ * its own, distinct from the four family queues, so a message the system failed
+ * to process is a *separate* fact keyed by `(eventId, error-drain)` — never a
+ * duplicate of the copy this service already recorded on `audit.<family>`, and
+ * never colliding with it.
+ */
+const ERROR_DRAIN_CONSUMER = 'error-drain';
+
+/**
  * How long to wait before trying the database again when it is unreachable.
  *
  * Matched to the broker's own reconnect interval, so a stack coming up together
@@ -62,6 +77,22 @@ const ATTACH_RETRY_DELAY_MS = 5_000;
  * own boot. Since T-21 both happen *after* the port is open — see `attach`
  * below for why.
  */
+/** One header value, but only when it really is a string. */
+function headerString(headers: Record<string, unknown>, name: string): string | undefined {
+  const value = headers[name];
+
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** The delivery body as an envelope, or `null` when it is not one at all. */
+function tryParseEnvelope(content: Buffer): MessageEnvelope<unknown> | null {
+  try {
+    return parseEnvelope(content);
+  } catch {
+    return null;
+  }
+}
+
 async function bootstrap(): Promise<void> {
   loadDotEnvFile();
   const environment = loadEnvironment();
@@ -187,6 +218,77 @@ async function bootstrap(): Promise<void> {
   };
 
   /**
+   * The error exchange, drained. Every message that exhausted its retry ladder
+   * or could not be parsed was published to `bank.errors` by the broker — and,
+   * with no queue bound there, silently discarded. That is a hole in the one
+   * service whose entire job is to record what arrived: the events most worth
+   * investigating, the ones the system could not process, were the only ones it
+   * never saw.
+   *
+   * Recorded `INVALID`, under a consumer of its own so the row is a distinct
+   * fact and never a duplicate of the copy already on `audit.<family>`. A parked
+   * message is never notified about (the recorder only notifies `PROCESSED`) and
+   * never re-parked (the drain acknowledges whatever happens), so this closes the
+   * hole without adding a new failure of its own.
+   */
+  const drainRecorder = new RecordEventUseCase({ repository, sender, clock, ids });
+
+  const drainErrors = async (): Promise<void> => {
+    await broker.drainErrors(async (parked: ParkedMessage): Promise<void> => {
+      const reason = headerString(parked.headers, FAILURE_REASON_HEADER) ?? 'no reason recorded';
+      const originalRoutingKey =
+        headerString(parked.headers, ORIGINAL_ROUTING_KEY_HEADER) ?? parked.routingKey;
+
+      /**
+       * Best-effort: a parked delivery may be the very body that would not parse.
+       * When it does parse, the row carries the real flow — its `messageId`,
+       * `correlationId` and (redacted) payload. When it does not, only metadata
+       * is stored, never the raw bytes: an unparseable body may carry anything,
+       * and redaction hides values by field *name*, so raw text would slip past
+       * it. The reason and the routing key are enough to investigate from.
+       */
+      const envelope = tryParseEnvelope(parked.content);
+
+      const event =
+        envelope === null
+          ? {
+              eventId: ids.next(),
+              messageType: originalRoutingKey.length > 0 ? originalRoutingKey : 'unknown',
+              messageVersion: 0,
+              producer: 'unknown',
+              occurredAt: clock.now(),
+              correlationId: ids.next(),
+              causationId: null,
+              payload: { unparseable: true, failureReason: reason, originalRoutingKey },
+              processingStatus: 'INVALID' as const,
+              consumer: ERROR_DRAIN_CONSUMER,
+            }
+          : {
+              eventId: envelope.messageId,
+              messageType: envelope.messageType,
+              messageVersion: envelope.messageVersion,
+              producer: envelope.producer,
+              occurredAt: new Date(envelope.occurredAt),
+              correlationId: envelope.correlationId,
+              causationId: envelope.causationId,
+              payload: envelope.payload,
+              processingStatus: 'INVALID' as const,
+              consumer: ERROR_DRAIN_CONSUMER,
+            };
+
+      const outcome = await drainRecorder.execute({ event, customerId: null });
+
+      logger.info('parked message recorded', {
+        outcome: outcome.kind,
+        consumer: ERROR_DRAIN_CONSUMER,
+        messageType: event.messageType,
+        correlationId: event.correlationId,
+        reason,
+      });
+    });
+  };
+
+  /**
    * Flipped once the queues are actually being consumed, and reported by
    * readiness.
    *
@@ -229,6 +331,7 @@ async function bootstrap(): Promise<void> {
 
         await broker.start();
         await subscribeAll();
+        await drainErrors();
         consuming = true;
 
         logger.info('consuming', { outcome: OWNED.map((queue) => queue.name).join(', ') });
