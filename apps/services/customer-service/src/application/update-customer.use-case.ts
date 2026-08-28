@@ -1,7 +1,7 @@
 import { customerUpdatedV1 } from '@bank/contracts';
-import type { CustomerUpdateV1 } from '@bank/contracts';
+import type { CustomerUpdateV1, Identity } from '@bank/contracts';
 
-import { DomainRejection, applyChanges } from '../domain/customer';
+import { DomainRejection, applyChanges, mayUpdateCustomer } from '../domain/customer';
 import type { Clock, CustomerRepository, EventPublisher } from './ports';
 
 const MESSAGE_TYPE = 'customer.update.v1';
@@ -35,10 +35,31 @@ export class UpdateCustomerUseCase {
     this.#clock = dependencies.clock;
   }
 
-  public async execute(command: CustomerUpdateV1, idempotencyKey: string): Promise<void> {
+  public async execute(
+    command: CustomerUpdateV1,
+    identity: Identity | null,
+    idempotencyKey: string,
+  ): Promise<void> {
     const seen = await this.#repository.findProcessed(idempotencyKey, MESSAGE_TYPE);
 
     if (seen !== null) {
+      return;
+    }
+
+    /**
+     * The owner check the Gateway explicitly delegated to this service. A
+     * `CLIENTE` may update only their own record; without it, any authenticated
+     * client could change another customer's data by its id (D-06, "own only").
+     * The refusal is recorded so a redelivery answers the same, and publishes
+     * nothing — the absence of a `customer.updated` event is the proof it was
+     * refused.
+     */
+    if (!mayUpdateCustomer(identity, command.customerId)) {
+      await this.#repository.recordProcessed({
+        idempotencyKey,
+        messageType: MESSAGE_TYPE,
+        resultSummary: { outcome: 'FORBIDDEN', reason: 'NOT_OWNER' },
+      });
       return;
     }
 

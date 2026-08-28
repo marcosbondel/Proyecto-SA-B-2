@@ -5,6 +5,7 @@ import type {
   AttemptResult,
   OpenOutcome,
   OutboundMessage,
+  OutboxMessage,
   PaymentFilter,
   PaymentRepository,
 } from '../src/application/ports';
@@ -29,6 +30,8 @@ const TRANSACTION_ID = '22222222-2222-4222-8222-222222222222';
 class FakeRepository implements PaymentRepository {
   public readonly payments = new Map<string, Payment>();
   public readonly attempts = new Map<string, PaymentAttempt[]>();
+  /** What each attempt wrote to the outbox — the durable form of `published`. */
+  public readonly outbox: OutboxMessage[] = [];
 
   public async open(input: { readonly payment: Payment }): Promise<OpenOutcome> {
     const existing = this.payments.get(input.payment.paymentId);
@@ -46,6 +49,7 @@ class FakeRepository implements PaymentRepository {
     readonly paymentId: string;
     readonly expectedAttempt: number;
     readonly decide: (payment: Payment, attempt: number) => AttemptResult;
+    readonly outbound?: (payment: Payment, attempt: number) => readonly OutboxMessage[];
     readonly now: Date;
   }): Promise<AttemptRecord> {
     const found = this.payments.get(input.paymentId);
@@ -84,7 +88,24 @@ class FakeRepository implements PaymentRepository {
       },
     ]);
 
+    if (input.outbound !== undefined) {
+      this.outbox.push(...input.outbound(updated, input.expectedAttempt));
+    }
+
     return { kind: 'RECORDED', payment: updated, attempt: input.expectedAttempt };
+  }
+
+  public async dispatchPendingOutbox(
+    deliver: (message: OutboxMessage) => Promise<void>,
+    limit: number,
+  ): Promise<number> {
+    const batch = this.outbox.splice(0, limit);
+
+    for (const message of batch) {
+      await deliver(message);
+    }
+
+    return batch.length;
   }
 
   public async findById(paymentId: string): Promise<Payment | null> {
@@ -130,6 +151,33 @@ class RecordingPublisher {
 
   public async reply(message: OutboundMessage): Promise<void> {
     this.replied.push(message);
+  }
+
+  /**
+   * Records exactly as `publish` would, so every existing assertion on
+   * `published` still describes what the payment announced — the outbox only
+   * means the event is written down before it is sent. Returns a stand-in outbox
+   * row for the repository double to carry.
+   */
+  public envelopeFor(message: OutboundMessage): OutboxMessage {
+    this.published.push(message);
+
+    return {
+      exchange: 'bank.events',
+      routingKey: message.messageType,
+      envelope: {
+        messageId: '00000000-0000-4000-8000-000000000000',
+        messageType: message.messageType,
+        messageVersion: 1,
+        producer: 'payment-service',
+        correlationId: '00000000-0000-4000-8000-000000000001',
+        causationId: null,
+        idempotencyKey: 'test-idempotency-key',
+        occurredAt: '2026-01-01T00:00:00.000Z',
+        identity: null,
+        payload: message.payload,
+      },
+    };
   }
 }
 

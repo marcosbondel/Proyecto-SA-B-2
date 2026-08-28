@@ -7,9 +7,9 @@ import {
   customerRegisterRejectedV1,
   customerRegisteredV1,
 } from '@bank/contracts';
-import type { CustomerRegisterV1, PhotoReference } from '@bank/contracts';
+import type { CustomerRegisterV1, Identity, PhotoReference } from '@bank/contracts';
 
-import { DomainRejection } from '../domain/customer';
+import { DomainRejection, mayRegisterWithRole } from '../domain/customer';
 import type { IdentityStatus } from '../domain/customer';
 import { judgeIdentityPhoto } from '../domain/identity-validation';
 import type { IdentityVerdict } from '../domain/identity-validation';
@@ -75,7 +75,11 @@ export class RegisterCustomerUseCase {
     this.#clock = dependencies.clock;
   }
 
-  public async execute(command: CustomerRegisterV1, idempotencyKey: string): Promise<void> {
+  public async execute(
+    command: CustomerRegisterV1,
+    idempotencyKey: string,
+    identity: Identity | null = null,
+  ): Promise<void> {
     const seen = await this.#repository.findProcessed(idempotencyKey, MESSAGE_TYPE);
 
     if (seen !== null) {
@@ -83,6 +87,18 @@ export class RegisterCustomerUseCase {
     }
 
     const now = this.#clock.now();
+
+    /**
+     * Only an administrator may create staff; anyone may create a `CLIENTE`
+     * (D-06). Checked here and not only at the Gateway: a command reaching the
+     * broker with no actor and `role: ADMINISTRADOR` would otherwise mint an
+     * administrator. Refused before the photo is read — the role is wrong
+     * regardless of the document.
+     */
+    if (!mayRegisterWithRole(identity, command.role)) {
+      await this.#refuse(new DomainRejection('ROLE_NOT_ELIGIBLE'), idempotencyKey, now);
+      return;
+    }
 
     /**
      * The object is fetched **once**. Reading it twice — once to judge it, once
@@ -221,7 +237,11 @@ export class RegisterCustomerUseCase {
   /** Records the refusal and says so, since the caller was told `202` long ago. */
   async #refuse(rejection: DomainRejection, idempotencyKey: string, now: Date): Promise<void> {
     const reason = REGISTRATION_REJECTIONS.has(rejection.code)
-      ? (rejection.code as 'DOCUMENT_ALREADY_REGISTERED' | 'EMAIL_ALREADY_REGISTERED' | 'INVALID_BIRTH_DATE')
+      ? (rejection.code as
+          | 'DOCUMENT_ALREADY_REGISTERED'
+          | 'EMAIL_ALREADY_REGISTERED'
+          | 'INVALID_BIRTH_DATE'
+          | 'ROLE_NOT_ELIGIBLE')
       : 'INVALID_BIRTH_DATE';
 
     await this.#repository.recordProcessed({
@@ -265,4 +285,5 @@ const REGISTRATION_REJECTIONS = new Set([
   'DOCUMENT_ALREADY_REGISTERED',
   'EMAIL_ALREADY_REGISTERED',
   'INVALID_BIRTH_DATE',
+  'ROLE_NOT_ELIGIBLE',
 ]);

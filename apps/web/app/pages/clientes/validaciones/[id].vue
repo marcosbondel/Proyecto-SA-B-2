@@ -2,21 +2,33 @@
 /**
  * One identity under review — the prototype's `show.validationDetail`.
  *
- * Two panels: the uploaded document on the left, the declared data and the
- * verdict on the right. Both are empty, and deliberately so: there is no route
- * that returns the photo, no route that returns the customer, and no route that
- * publishes the teller's decision. The fields show a dash rather than a name.
- *
- * The approve and reject controls are present and disabled. Hiding them would
- * hide the shape of the work that is missing; enabling them would promise an
- * action that goes nowhere.
+ * The declared data is loaded from `GET /api/customers/{id}` and the teller's
+ * verdict is published through `POST /api/customers/{id}/identity-verdict`
+ * (VALIDATED or REJECTED). Both are staff-only; the owning service re-checks.
+ * The document image itself still has no read route, so that panel stays a
+ * placeholder — a separate, deferred piece.
  */
+interface CustomerRecord {
+  readonly fullName: string;
+  readonly identityDocument: string;
+  readonly email: string;
+  readonly dateOfBirth: string;
+  readonly address: string;
+  readonly username: string;
+  readonly identityStatus: string;
+}
+
 const route = useRoute();
 const { role } = useSession();
+const api = useGatewayApi();
 
 const customerId = computed(() => String(route.params.id));
 
 const rejectOpen = ref(false);
+const record = ref<CustomerRecord | null>(null);
+const loadError = ref<string | null>(null);
+const sending = ref(false);
+const sent = ref<'VALIDATED' | 'REJECTED' | null>(null);
 
 const mayReview = computed(
   () => role.value === 'CAJERO_RECEPTOR' || role.value === 'ADMINISTRADOR',
@@ -28,15 +40,35 @@ watchEffect(() => {
   }
 });
 
-const DECLARED_FIELDS = [
-  'Nombre completo',
-  'Número de documento',
-  'Fecha de nacimiento',
-  'Dirección',
-  'Username',
-] as const;
+onMounted(async () => {
+  const result = await api.call<CustomerRecord & { outcome: string }>(
+    `/api/customers/${customerId.value}`,
+  );
 
-useHead({ title: 'Revisión de identidad · bonking' });
+  if (result.ok) {
+    record.value = result.data;
+  } else {
+    loadError.value = result.error.message;
+  }
+});
+
+async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
+  sending.value = true;
+
+  const result = await api.call<{ correlationId: string }>(
+    `/api/customers/${customerId.value}/identity-verdict`,
+    { method: 'POST', body: { verdict } },
+  );
+
+  sending.value = false;
+  rejectOpen.value = false;
+
+  if (result.ok) {
+    sent.value = verdict;
+  } else {
+    loadError.value = result.error.message;
+  }
+}
 </script>
 
 <template>
@@ -51,6 +83,22 @@ useHead({ title: 'Revisión de identidad · bonking' });
       <UButton to="/clientes/validaciones" variant="ghost" color="neutral">Volver a la cola</UButton>
     </header>
 
+    <UAlert
+      v-if="sent"
+      color="success"
+      variant="subtle"
+      :title="sent === 'VALIDATED' ? 'Identidad aprobada' : 'Identidad rechazada'"
+      description="El veredicto se envió. El cliente saldrá de la cola cuando se procese."
+      data-testid="verdict-sent"
+    />
+    <UAlert
+      v-else-if="loadError"
+      color="error"
+      variant="subtle"
+      title="Ocurrió un problema"
+      :description="loadError"
+    />
+
     <div class="grid items-start gap-4 lg:grid-cols-2">
       <UCard>
         <h2 class="text-[16px] font-semibold">Documento cargado</h2>
@@ -61,7 +109,7 @@ useHead({ title: 'Revisión de identidad · bonking' });
           <span>
             La foto no puede mostrarse todavía
             <span class="mt-1 block text-[12px] font-normal">
-              El Gateway deposita la imagen en el almacenamiento de objetos y no expone una ruta
+              El Gateway deposita la imagen en el almacenamiento de objetos y aún no expone una ruta
               para leerla.
             </span>
           </span>
@@ -71,60 +119,70 @@ useHead({ title: 'Revisión de identidad · bonking' });
       <div class="flex flex-col gap-4">
         <UCard>
           <h2 class="text-[16px] font-semibold">Datos declarados</h2>
-          <div class="mt-4 flex flex-col">
-            <div
-              v-for="field in DECLARED_FIELDS"
-              :key="field"
-              class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3 first:border-t-0"
-            >
-              <span class="text-[13px] text-[#75767F]">{{ field }}</span>
-              <span class="text-[13px] font-medium text-[#A8A9B2]">—</span>
+          <div v-if="record" class="mt-4 flex flex-col" data-testid="validation-declared">
+            <div class="flex justify-between gap-4 py-3">
+              <span class="text-[13px] text-[#75767F]">Nombre completo</span>
+              <span class="text-[13px] font-medium">{{ record.fullName }}</span>
             </div>
             <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
-              <span class="text-[13px] text-[#75767F]">customerId</span>
-              <span
-                class="break-all text-right font-mono text-[12px]"
-                style="font-variant-numeric: tabular-nums lining-nums"
-              >{{ customerId }}</span>
+              <span class="text-[13px] text-[#75767F]">Número de documento</span>
+              <span class="text-[13px] font-medium">{{ record.identityDocument }}</span>
+            </div>
+            <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+              <span class="text-[13px] text-[#75767F]">Fecha de nacimiento</span>
+              <span class="text-[13px] font-medium">{{ record.dateOfBirth }}</span>
+            </div>
+            <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+              <span class="text-[13px] text-[#75767F]">Dirección</span>
+              <span class="text-[13px] font-medium">{{ record.address }}</span>
+            </div>
+            <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+              <span class="text-[13px] text-[#75767F]">Username</span>
+              <span class="text-[13px] font-medium">{{ record.username }}</span>
+            </div>
+            <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+              <span class="text-[13px] text-[#75767F]">Estado de identidad</span>
+              <span class="text-[13px] font-medium">{{ record.identityStatus }}</span>
             </div>
           </div>
+          <p v-else class="mt-4 text-[13px] text-[#75767F]">Cargando la ficha…</p>
         </UCard>
 
         <div class="flex gap-2">
-          <UButton color="primary" size="lg" class="flex-1 justify-center" disabled>
+          <UButton
+            color="primary"
+            size="lg"
+            class="flex-1 justify-center"
+            :loading="sending"
+            :disabled="!mayReview || sent !== null"
+            @click="decide('VALIDATED')"
+          >
             Aprobar identidad
           </UButton>
           <UButton
             variant="outline"
             color="error"
             size="lg"
-            :disabled="!mayReview"
+            :disabled="!mayReview || sent !== null"
             @click="rejectOpen = true"
           >Rechazar</UButton>
         </div>
-
-        <p class="text-[12px] leading-[18px] text-[#75767F]">
-          Ninguna de las dos acciones puede enviarse: el veredicto viaja en
-          <code class="font-mono">customer.validate-identity.v1</code>, que existe en el catálogo
-          de T-05 pero no tiene ruta en el Gateway.
-        </p>
       </div>
     </div>
 
     <UModal v-model:open="rejectOpen" title="Rechazar la identidad">
       <template #body>
         <p class="text-[14px] leading-5 text-[#5A5B63]">
-          El cliente recibirá una notificación con el motivo y podrá volver a subir su documento.
-          Esta acción no se puede deshacer.
+          El cliente recibirá una notificación y podrá volver a subir su documento. Esta acción no
+          se puede deshacer.
         </p>
-        <UFormField class="mt-4" label="Motivo del rechazo" name="reason">
-          <UTextarea disabled placeholder="La foto está borrosa o no coincide con los datos." class="w-full" />
-        </UFormField>
       </template>
       <template #footer>
         <div class="flex w-full justify-end gap-2">
           <UButton variant="outline" color="neutral" @click="rejectOpen = false">Cancelar</UButton>
-          <UButton color="error" disabled>Rechazar identidad</UButton>
+          <UButton color="error" :loading="sending" @click="decide('REJECTED')">
+            Rechazar identidad
+          </UButton>
         </div>
       </template>
     </UModal>

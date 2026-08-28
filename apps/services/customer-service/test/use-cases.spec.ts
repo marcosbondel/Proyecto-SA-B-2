@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto';
 import type { CustomerRegisterV1 } from '@bank/contracts';
 
 import { AuthenticateCustomerUseCase } from '../src/application/authenticate-customer.use-case';
+import { GetCustomerUseCase } from '../src/application/get-customer.use-case';
+import { GetPendingValidationUseCase } from '../src/application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from '../src/application/register-customer.use-case';
+import { SetIdentityVerdictUseCase } from '../src/application/set-identity-verdict.use-case';
 import { UpdateCustomerUseCase } from '../src/application/update-customer.use-case';
 import { ValidateIdentityUseCase } from '../src/application/validate-identity.use-case';
 import { VerifyEmailActivationUseCase } from '../src/application/verify-email-activation.use-case';
@@ -70,6 +73,9 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
       clock,
     }),
     update: new UpdateCustomerUseCase({ repository, publisher, clock }),
+    getCustomer: new GetCustomerUseCase({ repository, publisher }),
+    setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock }),
+    pending: new GetPendingValidationUseCase({ repository, publisher }),
     authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
     verifyEmail: new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
     validateIdentity: new ValidateIdentityUseCase({ repository, publisher, documents, clock }),
@@ -222,6 +228,175 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
   });
 });
 
+describe('role on registration (D-06)', () => {
+  it('refuses a non-CLIENTE role from an anonymous registration', async () => {
+    const context = build();
+
+    await context.register.execute({ ...REGISTER, role: 'ADMINISTRADOR' }, 'key-admin', null);
+
+    expect(context.repository.customers.size).toBe(0);
+    expect(context.publisher.payloadOf('customer.register.rejected.v1')).toMatchObject({
+      reason: 'ROLE_NOT_ELIGIBLE',
+    });
+  });
+
+  it('lets an administrator create staff', async () => {
+    const context = build();
+
+    await context.register.execute({ ...REGISTER, role: 'CAJERO_RECEPTOR' }, 'key-staff', {
+      role: 'ADMINISTRADOR',
+      customerId: '44444444-4444-4444-8444-444444444444',
+    });
+
+    expect(context.repository.customers.size).toBe(1);
+    expect([...context.repository.customers.values()][0]!.role).toBe('CAJERO_RECEPTOR');
+  });
+
+  it('lets the anonymous public form create a CLIENTE', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-client', null);
+
+    expect(context.repository.customers.size).toBe(1);
+  });
+});
+
+describe('the teller validates an identity (US6)', () => {
+  // A customer registered without a photo is PENDING: no automatic verdict ran.
+  const PENDING = { ...REGISTER, photo: null };
+
+  it('lets a teller approve a pending identity, publishing the validated event', async () => {
+    const context = build();
+    await context.register.execute(PENDING, 'key-1');
+
+    await context.setVerdict.execute(
+      { customerId: PENDING.customerId, verdict: 'VALIDATED' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-verdict',
+    );
+
+    expect(context.repository.customers.get(PENDING.customerId)!.identityStatus).toBe('VALIDATED');
+    expect(context.publisher.payloadOf('customer.identity.validated.v1')).toMatchObject({
+      customerId: PENDING.customerId,
+      identityStatus: 'VALIDATED',
+    });
+  });
+
+  it('lets a teller reject it, publishing the rejected event', async () => {
+    const context = build();
+    await context.register.execute(PENDING, 'key-1');
+
+    await context.setVerdict.execute(
+      { customerId: PENDING.customerId, verdict: 'REJECTED' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-verdict',
+    );
+
+    expect(context.repository.customers.get(PENDING.customerId)!.identityStatus).toBe('REJECTED');
+    expect(context.publisher.payloadOf('customer.identity.rejected.v1')).toMatchObject({
+      identityStatus: 'REJECTED',
+    });
+  });
+
+  it('refuses a client trying to validate an identity, publishing nothing', async () => {
+    const context = build();
+    await context.register.execute(PENDING, 'key-1');
+    const before = context.publisher.published.length;
+
+    await context.setVerdict.execute(
+      { customerId: PENDING.customerId, verdict: 'VALIDATED' },
+      { role: 'CLIENTE', customerId: PENDING.customerId },
+      'key-verdict',
+    );
+
+    expect(context.publisher.published).toHaveLength(before);
+    expect(context.repository.customers.get(PENDING.customerId)!.identityStatus).toBe('PENDING');
+  });
+
+  it('shows the pending queue to staff and an empty list to a client', async () => {
+    const context = build();
+    await context.register.execute(PENDING, 'key-1');
+
+    await context.pending.execute(
+      {},
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+    );
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({
+      customers: [{ customerId: PENDING.customerId }],
+      omitted: 0,
+    });
+
+    await context.pending.execute({}, { role: 'CLIENTE', customerId: PENDING.customerId });
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ customers: [], omitted: 0 });
+  });
+});
+
+describe('reading a customer (US6)', () => {
+  it('lets a client read their own record', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CLIENTE', customerId: REGISTER.customerId },
+    );
+
+    const reply = context.publisher.replies.at(-1);
+    expect(reply?.messageType).toBe('customer.get.replied.v1');
+    expect(reply?.payload).toMatchObject({ outcome: 'FOUND', customerId: REGISTER.customerId });
+  });
+
+  it('lets staff read any customer', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ outcome: 'FOUND' });
+  });
+
+  it('answers NOT_FOUND when a client reads someone else, indistinguishable from unknown', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CLIENTE', customerId: '11111111-1111-4111-8111-111111111111' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ outcome: 'NOT_FOUND' });
+  });
+
+  it('answers NOT_FOUND for an unknown id', async () => {
+    const context = build();
+
+    await context.getCustomer.execute(
+      { customerId: '00000000-0000-4000-8000-000000000000' },
+      { role: 'ADMINISTRADOR', customerId: '33333333-3333-4333-8333-333333333333' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ outcome: 'NOT_FOUND' });
+  });
+
+  it('never carries the credential or the activation token in the reply', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'ADMINISTRADOR', customerId: '33333333-3333-4333-8333-333333333333' },
+    );
+
+    const serialised = JSON.stringify(context.publisher.replies.at(-1)?.payload);
+    expect(serialised).not.toContain('credential');
+    expect(serialised).not.toContain('token');
+    expect(serialised).not.toContain(REGISTER.credential);
+  });
+});
+
 describe('updating a customer', () => {
   it('publishes the names of the fields that changed, never their values', async () => {
     const context = build();
@@ -229,6 +404,7 @@ describe('updating a customer', () => {
 
     await context.update.execute(
       { customerId: REGISTER.customerId, address: 'Nueva dirección 1-23' },
+      { role: 'CLIENTE', customerId: REGISTER.customerId },
       'key-update',
     );
 
@@ -238,6 +414,55 @@ describe('updating a customer', () => {
     expect(JSON.stringify(payload)).not.toContain('Nueva dirección');
   });
 
+  it('refuses a client updating another customer, and publishes nothing (D-06, IDOR)', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    const before = context.publisher.published.length;
+
+    // A different client, editing REGISTER's record by its id.
+    await context.update.execute(
+      { customerId: REGISTER.customerId, address: 'Intrusión 9-99' },
+      { role: 'CLIENTE', customerId: '11111111-1111-4111-8111-111111111111' },
+      'key-idor',
+    );
+
+    expect(context.publisher.published).toHaveLength(before);
+    expect(context.repository.customers.get(REGISTER.customerId)!.address).toBe(REGISTER.address);
+    expect(await context.repository.findProcessed('key-idor', 'customer.update.v1')).toMatchObject({
+      resultSummary: { outcome: 'FORBIDDEN' },
+    });
+  });
+
+  it('lets a teller update any customer (D-06, staff not own-only)', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.update.execute(
+      { customerId: REGISTER.customerId, address: 'Actualizado por cajero 2-34' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-staff',
+    );
+
+    expect(context.publisher.payloadOf('customer.updated.v1')).toMatchObject({
+      changedFields: ['address'],
+    });
+  });
+
+  it('refuses an update with no verified actor', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    const before = context.publisher.published.length;
+
+    await context.update.execute(
+      { customerId: REGISTER.customerId, address: 'Sin sesión 0-00' },
+      null,
+      'key-noidentity',
+    );
+
+    expect(context.publisher.published).toHaveLength(before);
+    expect(context.repository.customers.get(REGISTER.customerId)!.address).toBe(REGISTER.address);
+  });
+
   it('publishes nothing when the update changes nothing', async () => {
     const context = build();
     await context.register.execute(REGISTER, 'key-1');
@@ -245,6 +470,7 @@ describe('updating a customer', () => {
 
     await context.update.execute(
       { customerId: REGISTER.customerId, address: REGISTER.address },
+      { role: 'CLIENTE', customerId: REGISTER.customerId },
       'key-update',
     );
 
@@ -256,6 +482,7 @@ describe('updating a customer', () => {
 
     await context.update.execute(
       { customerId: '00000000-0000-4000-8000-000000000000', address: 'x' },
+      { role: 'ADMINISTRADOR', customerId: '33333333-3333-4333-8333-333333333333' },
       'key-update',
     );
 

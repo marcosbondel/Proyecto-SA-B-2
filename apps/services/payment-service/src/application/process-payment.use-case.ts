@@ -7,6 +7,7 @@ import type {
   Clock,
   EventPublisher,
   IdGenerator,
+  OutboxMessage,
   PaymentOrder,
   PaymentRepository,
 } from './ports';
@@ -49,12 +50,15 @@ export class ProcessPaymentUseCase {
   /**
    * A `payment.requested.v1` arrived: record the payment, then make attempt 1.
    *
-   * A redelivery finds the payment already there and stops. It does **not**
-   * re-publish the terminal event, deliberately: Transaction Service
-   * deduplicates by the envelope's `messageId` and would discard it, and
-   * `notification-audit-service` deduplicates by `(event_id, consumer)` and
-   * would too — so the only thing a re-publish achieves is a second row in
-   * nobody's table and a second notification nobody asked for.
+   * A redelivery finds the payment already there and stops, and with the outbox
+   * that is not just harmless but complete. Whatever event the original attempt
+   * produced was written to the outbox in that attempt's transaction, so the
+   * relay delivers it exactly once whether or not this redelivery does anything.
+   * And if the original crashed *after* recording the payment but *before* its
+   * first attempt, the payment is `PENDING` with `next_attempt_at` already set,
+   * so the sweeper makes the attempt — the terminal event is, or will be,
+   * dispatched either way. Re-attempting here would only race the sweeper into
+   * the row lock.
    */
   public async open(order: PaymentOrder, publisher: EventPublisher): Promise<void> {
     const now = this.#clock.now();
@@ -111,7 +115,7 @@ export class ProcessPaymentUseCase {
      */
     let outcome: AttemptOutcome | null = null;
 
-    const recorded = await this.#repository.attempt({
+    await this.#repository.attempt({
       paymentId: payment.paymentId,
       expectedAttempt: attemptNumber,
       now,
@@ -125,83 +129,91 @@ export class ProcessPaymentUseCase {
 
         return resultOf(outcome, now);
       },
+      /**
+       * The events this attempt implies, written to the outbox **in the same
+       * transaction** as the attempt (TD-047). Nothing is published here any
+       * more: the relay sweeps the outbox and does that, which closes the crash
+       * window between committing an attempt and telling the Saga what it was.
+       * Only reached for a `RECORDED` attempt, so a superseded one — another
+       * replica already finished this rung — enqueues nothing.
+       */
+      outbound: (recorded, attempt) =>
+        outcome === null ? [] : this.#effectsOf(recorded, attempt, outcome, now, publisher),
     });
-
-    if (recorded.kind !== 'RECORDED' || outcome === null) {
-      return;
-    }
-
-    await this.#announce(recorded.payment, recorded.attempt, outcome, now, publisher);
   }
 
   /**
-   * One outcome, one event — and for a retry, one event that says so.
+   * One outcome, one event — and for a retry, one event that says so — built
+   * into durable outbox messages without sending any of them.
    *
-   * `payment.attempt.failed.v1` is published for **every** failed attempt,
+   * `payment.attempt.failed.v1` is enqueued for **every** failed attempt,
    * including the last. That is what makes the ladder observable while it is
    * being climbed rather than only in a log: without it "we are retrying" is
    * something no screen can say truthfully. It does not close the Saga, and
-   * `willRetry` is what says so on the wire.
+   * `willRetry` is what says so on the wire. The terminal `payment.failed.v1`
+   * follows only when the ladder is spent — publishing it alongside every
+   * attempt failure would compensate a debit while an attempt that might still
+   * succeed was pending, which is the note `topology.md` carries on this binding.
    */
-  async #announce(
+  #effectsOf(
     payment: Payment,
     attempt: number,
     outcome: AttemptOutcome,
     now: Date,
     publisher: EventPublisher,
-  ): Promise<void> {
+  ): readonly OutboxMessage[] {
     if (outcome.kind === 'SUCCEEDED') {
-      await publisher.publish({
-        messageType: paymentSucceededV1.name,
-        payload: {
-          paymentId: payment.paymentId,
-          transactionId: payment.transactionId,
-          status: 'SUCCEEDED',
-          attempt,
-          succeededAt: now.toISOString(),
-        },
-      });
-
-      return;
+      return [
+        publisher.envelopeFor({
+          messageType: paymentSucceededV1.name,
+          payload: {
+            paymentId: payment.paymentId,
+            transactionId: payment.transactionId,
+            status: 'SUCCEEDED',
+            attempt,
+            succeededAt: now.toISOString(),
+          },
+        }),
+      ];
     }
 
     const willRetry = outcome.kind === 'RETRY';
 
-    await publisher.publish({
-      messageType: paymentAttemptFailedV1.name,
-      payload: {
-        paymentId: payment.paymentId,
-        transactionId: payment.transactionId,
-        attempt,
-        errorType: outcome.errorType,
-        willRetry,
-        nextAttemptAt: willRetry ? new Date(now.getTime() + outcome.delayMs).toISOString() : null,
-        failureReason: willRetry ? null : outcome.failureReason,
-        failedAt: now.toISOString(),
-      },
-    });
+    const messages: OutboxMessage[] = [
+      publisher.envelopeFor({
+        messageType: paymentAttemptFailedV1.name,
+        payload: {
+          paymentId: payment.paymentId,
+          transactionId: payment.transactionId,
+          attempt,
+          errorType: outcome.errorType,
+          willRetry,
+          nextAttemptAt: willRetry
+            ? new Date(now.getTime() + outcome.delayMs).toISOString()
+            : null,
+          failureReason: willRetry ? null : outcome.failureReason,
+          failedAt: now.toISOString(),
+        },
+      }),
+    ];
 
-    if (willRetry) {
-      return;
+    if (!willRetry) {
+      messages.push(
+        publisher.envelopeFor({
+          messageType: paymentFailedV1.name,
+          payload: {
+            paymentId: payment.paymentId,
+            transactionId: payment.transactionId,
+            status: 'FAILED',
+            attempt,
+            failureReason: outcome.failureReason,
+            failedAt: now.toISOString(),
+          },
+        }),
+      );
     }
 
-    /**
-     * Only now does the Saga learn the payment is over — and only now may it
-     * compensate. Publishing the terminal event alongside every attempt failure
-     * would compensate a debit while an attempt that might still succeed was
-     * pending, which is the note `topology.md` carries on this binding.
-     */
-    await publisher.publish({
-      messageType: paymentFailedV1.name,
-      payload: {
-        paymentId: payment.paymentId,
-        transactionId: payment.transactionId,
-        status: 'FAILED',
-        attempt,
-        failureReason: outcome.failureReason,
-        failedAt: now.toISOString(),
-      },
-    });
+    return messages;
   }
 }
 

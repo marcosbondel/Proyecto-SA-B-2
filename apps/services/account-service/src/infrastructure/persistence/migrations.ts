@@ -135,6 +135,24 @@ export const MIGRATIONS: readonly Migration[] = [
        )`,
     ],
   },
+  {
+    /*
+     * Business-identity dedup, behind the transport-level (idempotency_key,
+     * type) guard. A transfer has exactly one DEBIT, one CREDIT and one
+     * COMPENSATION, so at most one movement of each type may exist per
+     * transaction. If a movement is re-published under a fresh envelope — the
+     * PAYMENT_SUCCEEDED-twice bug this feature also fixes upstream — the second
+     * insert violates this and its transaction rolls back, so the balance
+     * cannot move twice for the same transfer even if the message-level guard
+     * is bypassed. A backstop, not the primary guard.
+     */
+    name: '005_account_operations_transaction_once',
+    statements: [
+      `CREATE UNIQUE INDEX IF NOT EXISTS account_operations_transaction_type_once
+         ON account_operations (transaction_id, type)
+         WHERE transaction_id IS NOT NULL`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

@@ -1,0 +1,4 @@
+# Written by scripts/discover-external-ips.sh. Docker container IPs on a
+# bridge network, not a secret, but a value nobody else's machine should
+# inherit — regenerate it, never copy it.
+generated-external.values.yaml

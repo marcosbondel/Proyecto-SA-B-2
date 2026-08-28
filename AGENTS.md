@@ -90,11 +90,13 @@ that COMPENSATES on the first attempt, and one that climbs the ladder to its end
 and then COMPENSATES. The compensation is asserted as a fact about the money,
 not as a status somebody wrote down.
 
-What the Clientes screens still cannot show is recorded as TD-020 and TD-023; the Cuentas screens,
-TD-026 and TD-027; the Transferencias screens, TD-032 to TD-035; the Pagos
-screens, TD-037 and TD-038; the Auditoría screens, TD-039 to TD-043.
-`ARCHITECTURE.md` records the target architecture; Kubernetes deployment is not
-built yet.
+What the Cuentas screens still cannot show is recorded as TD-026 and TD-027;
+the Transferencias screens, TD-032 to TD-035; the Pagos screens, TD-037 and
+TD-038; the Auditoría screens, TD-039 to TD-043. The Clientes gaps TD-020
+(reading a customer) and TD-023 (the identity-validation flow) were closed by
+the audit remediation (US6). `ARCHITECTURE.md` records the target architecture;
+the local Kubernetes deployment is built — a Helm chart over a kind cluster
+(US1), described in [infra/k8s/README.md](infra/k8s/README.md).
 
 **Every component is containerised** (T-21): seven multi-stage images, one
 Dockerfile each and no generic one, all running as `node` (uid 1000), with

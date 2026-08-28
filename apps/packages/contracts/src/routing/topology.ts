@@ -36,7 +36,9 @@ export const QUEUES: readonly QueueDescriptor[] = [
   {
     name: 'customer.commands',
     owner: 'customer-service',
-    bindings: [{ exchange: EXCHANGES.commands, pattern: 'customer.*.v1' }],
+    // `customer.#`, not `customer.*.v1`, so a query with a longer name
+    // (customer.get.query.v1) is routed too — mirrors account.#/payment.#.
+    bindings: [{ exchange: EXCHANGES.commands, pattern: 'customer.#' }],
   },
   {
     name: 'account.commands',

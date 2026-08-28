@@ -21,11 +21,15 @@ const { EXCHANGES } = routingKeys;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const adminUser = process.env.RABBITMQ_DEFAULT_USER ?? 'admin';
-const adminPass = process.env.RABBITMQ_DEFAULT_PASS ?? 'admin';
-const appUser = process.env.RABBITMQ_APP_USER ?? 'bank_app';
-const appPass = process.env.RABBITMQ_APP_PASSWORD ?? 'bank_app';
-
+/*
+ * This file emits the broker *topology* only — exchanges, queues, bindings — and
+ * deliberately no users or permissions. A definitions file that named accounts
+ * would win over RABBITMQ_DEFAULT_USER/PASS on import and silently overwrite the
+ * password a developer set in infra/docker/.env. The admin account comes from
+ * the image's RABBITMQ_DEFAULT_USER, and the application account from the
+ * `rabbitmq-init` service (scripts/init-rabbitmq.sh); see the comments in
+ * infra/docker/rabbitmq/rabbitmq.conf. Do not add users back here.
+ */
 const vhost = '/';
 
 const exchanges = Object.values(EXCHANGES).map((name) => ({
@@ -90,27 +94,10 @@ const definitions = {
   rabbitmq_version: '4.3.4',
   product_name: 'RabbitMQ',
   product_version: '4.3.4',
-  users: [
-    { name: adminUser, password: adminPass, tags: 'administrator' },
-    { name: appUser, password: appPass, tags: '' },
-  ],
+  // Topology only — no users/permissions. See the note above and rabbitmq.conf.
+  users: [],
   vhosts: [{ name: vhost }],
-  permissions: [
-    {
-      user: adminUser,
-      vhost,
-      configure: '.*',
-      write: '.*',
-      read: '.*',
-    },
-    {
-      user: appUser,
-      vhost,
-      configure: '.*',
-      write: '.*',
-      read: '.*',
-    },
-  ],
+  permissions: [],
   topic_permissions: [],
   parameters: [],
   global_parameters: [

@@ -1,0 +1,82 @@
+# Account Service (T-17). Env matches docs/operations/CONTAINERS.md's
+# account-service row: NODE_ENV, PORT, DATABASE_URL, RABBITMQ_URL required;
+# DEACTIVATION_* optional and included here so a demo does not wait six
+# months for the automatic-deactivation job to do something.
+{{- $component := .Values.services.account.component }}
+{{- $ctx := dict "root" $ "component" $component }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bank-usac.componentFullname" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.services.account.image.repository }}:{{ .Values.services.account.image.tag }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.services.account.port }}
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: NODE_ENV
+            - name: PORT
+              value: {{ .Values.services.account.port | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: ACCOUNT_DATABASE_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: RABBITMQ_URL
+            - name: DEACTIVATION_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: DEACTIVATION_ENABLED
+            - name: DEACTIVATION_INTERVAL_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: DEACTIVATION_INTERVAL_MS
+            - name: INACTIVITY_MONTHS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: INACTIVITY_MONTHS
+            - name: INACTIVITY_MIN_BALANCE_MINOR
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: INACTIVITY_MIN_BALANCE_MINOR
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
