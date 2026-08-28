@@ -106,11 +106,21 @@ export interface NotificationSender {
   send(notification: {
     readonly notificationId: string;
     readonly type: string;
+    /** The **simulated** address, and the one the repository stored. */
     readonly recipient: string | null;
     readonly subject: string;
     readonly correlationId: string;
     /** The path an email would link to. Passed through, never persisted. */
     readonly link?: string;
+    /**
+     * The **real** inbox to deliver to, when the message is one sanctioned to
+     * carry it (only the activation event — see `deliverableEmailFrom`).
+     *
+     * Transient: handed to a real provider to actually send, and never written
+     * anywhere. `null`/absent for every other notification, whose only address
+     * is the simulated one above — a real channel treats those as simulated.
+     */
+    readonly deliveryAddress?: string | null;
   }): Promise<Extract<NotificationStatus, 'SENT' | 'FAILED'>>;
 }
 

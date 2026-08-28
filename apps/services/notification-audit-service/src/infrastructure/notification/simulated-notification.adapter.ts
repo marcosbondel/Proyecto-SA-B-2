@@ -42,6 +42,8 @@ export class SimulatedNotificationAdapter implements NotificationSender {
     readonly subject: string;
     readonly correlationId: string;
     readonly link?: string;
+    /** A real channel delivers here; the simulation has no inbox and ignores it. */
+    readonly deliveryAddress?: string | null;
   }): Promise<'SENT' | 'FAILED'> {
     if (notification.recipient === null) {
       this.#logger.warn('notification has no recipient', {
