@@ -87,6 +87,27 @@ export type MessageValidator = (
  */
 export type MessageHandler = (envelope: MessageEnvelope<unknown>) => Promise<void> | void;
 
+/**
+ * One message that reached the error exchange — either it exhausted its retry
+ * ladder or it could not be parsed. Handed to the drain **raw**, because it may
+ * be the very delivery that would not parse into an envelope.
+ */
+export interface ParkedMessage {
+  readonly content: Buffer;
+  readonly routingKey: string;
+  readonly headers: Record<string, unknown>;
+}
+
+/** Records one parked message. Must not throw usefully — see `drainErrors`. */
+export type ParkedMessageHandler = (message: ParkedMessage) => Promise<void>;
+
+/**
+ * The single durable queue bound to the error exchange. One queue, pattern `#`,
+ * so every parked message — whatever routing key `#park` republished it under —
+ * lands here for the drainer to record.
+ */
+const ERROR_DRAIN_QUEUE = 'bank.errors.drain';
+
 const DEFAULT_RECONNECT_DELAY_MS = 5_000;
 
 /**
@@ -290,6 +311,54 @@ export class MessageBroker {
     await consumer.waitForConnect();
   }
 
+  /**
+   * Consumes the error exchange — every message that exhausted its retry ladder
+   * or could not be parsed — so nothing parked simply vanishes. Without a queue
+   * bound here, RabbitMQ discards whatever `#park` published, and the one system
+   * whose job is to record what happened loses exactly the messages it could
+   * not process.
+   *
+   * A **raw** consumer on purpose: a parked delivery is already dead, so it is
+   * never parsed again (it may be the very thing that would not parse), never
+   * retried (the ladder already ran), and always acknowledged — re-parking it
+   * would loop. The handler records it; whether it can be read is the recorder's
+   * problem, not this queue's.
+   */
+  public async drainErrors(handler: ParkedMessageHandler): Promise<void> {
+    const consumer = this.#connection.createChannel({
+      json: false,
+      setup: async (channel: ConfirmChannel) => {
+        await channel.assertExchange(this.#errorExchange, 'topic', { durable: true });
+        await channel.assertQueue(ERROR_DRAIN_QUEUE, { durable: true });
+        await channel.bindQueue(ERROR_DRAIN_QUEUE, this.#errorExchange, '#');
+        await channel.prefetch(DEFAULT_PREFETCH);
+
+        await channel.consume(ERROR_DRAIN_QUEUE, (message: ConsumeMessage | null) => {
+          if (message === null) {
+            return;
+          }
+
+          void (async () => {
+            try {
+              await handler({
+                content: message.content,
+                routingKey: message.fields.routingKey,
+                headers: (message.properties.headers ?? {}) as Record<string, unknown>,
+              });
+            } catch {
+              // A recorder that throws must not stop the drain or re-park the
+              // message: the whole point is that these deliveries stop moving.
+            } finally {
+              channel.ack(message);
+            }
+          })();
+        });
+      },
+    });
+
+    await consumer.waitForConnect();
+  }
+
   /** Closes the connection and every channel opened from it. */
   public async stop(): Promise<void> {
     await this.#connection.close();
@@ -420,6 +489,20 @@ export function parseEnvelope(content: Buffer): MessageEnvelope<unknown> {
   return parsed;
 }
 
+/**
+ * Answers one question — "does this delivery have the *shape* of an envelope" —
+ * and deliberately not the catalogue's question, "is every field a valid value".
+ * The second belongs to the injected `MessageValidator` (which runs the full
+ * `envelopeSchema`), so this stays free of the producer set, the UUID format and
+ * the version-match rule: importing them would move domain vocabulary into the
+ * transport (FR-010).
+ *
+ * What it does check is the **whole** structural shape, not a subset of it. A
+ * body missing `messageVersion`, `producer`, `causationId` or `identity` is not
+ * half an envelope to be waved through and sorted out later — for the one
+ * consumer that takes no validator (the audit service), this is the only gate,
+ * and a body that fails it must be recorded as what it is: unparseable.
+ */
 function isEnvelope(value: unknown): value is MessageEnvelope<unknown> {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -430,9 +513,14 @@ function isEnvelope(value: unknown): value is MessageEnvelope<unknown> {
   return (
     typeof candidate.messageId === 'string' &&
     typeof candidate.messageType === 'string' &&
+    typeof candidate.messageVersion === 'number' &&
+    typeof candidate.producer === 'string' &&
     typeof candidate.correlationId === 'string' &&
+    (typeof candidate.causationId === 'string' || candidate.causationId === null) &&
     typeof candidate.idempotencyKey === 'string' &&
     typeof candidate.occurredAt === 'string' &&
+    'identity' in candidate &&
+    typeof candidate.identity === 'object' &&
     'payload' in candidate
   );
 }
