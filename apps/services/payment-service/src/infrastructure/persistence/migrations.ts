@@ -131,6 +131,42 @@ export const MIGRATIONS: readonly Migration[] = [
        )`,
     ],
   },
+  {
+    name: '003_outbox_messages',
+    statements: [
+      /*
+       * The transactional outbox (TD-047). Every event this service publishes —
+       * the terminal `payment.succeeded`/`payment.failed`, and the
+       * `payment.attempt.failed` for each rung of the ladder — is written here,
+       * in the same transaction as the attempt that produced it, rather than
+       * published straight to the broker afterwards. That window, between
+       * committing an attempt and publishing its event, is where a crash used to
+       * leave a payment settled in this database and a Saga that never heard —
+       * the money debited and nothing on its way to finish or refund it. Now the
+       * event and the attempt commit together, and a relay sweeps `PENDING` rows.
+       *
+       * The whole envelope is stored, so the relay republishes it byte-for-byte:
+       * a `messageId` minted afresh at relay time would be a new message to
+       * Transaction Service's and the audit's deduplication, and the terminal
+       * event delivered twice could compensate a debit that had already been
+       * credited. Storing the envelope is what keeps a redelivered relay safe.
+       */
+      `CREATE TABLE IF NOT EXISTS outbox_messages (
+         id              BIGSERIAL    PRIMARY KEY,
+         payment_id      UUID         NOT NULL REFERENCES payments (payment_id) ON DELETE CASCADE,
+         exchange        VARCHAR(120) NOT NULL,
+         routing_key     VARCHAR(200) NOT NULL,
+         envelope        JSONB        NOT NULL,
+         dispatch_status VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+         created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+         published_at    TIMESTAMPTZ,
+         CONSTRAINT outbox_messages_status_known
+           CHECK (dispatch_status IN ('PENDING','DISPATCHED'))
+       )`,
+      `CREATE INDEX IF NOT EXISTS outbox_messages_pending_idx
+         ON outbox_messages (id) WHERE dispatch_status = 'PENDING'`,
+    ],
+  },
 ];
 
 /**
