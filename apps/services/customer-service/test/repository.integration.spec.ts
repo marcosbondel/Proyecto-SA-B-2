@@ -86,6 +86,34 @@ describeIntegration('PostgresCustomerRepository', () => {
     await expect(repository.isReachable()).resolves.toBe(true);
   });
 
+  it('invalidates prior activation tokens when a new one is issued (US7)', async () => {
+    const stored = await repository.registerCustomer(inputFor(registration()));
+
+    // Registration already issued one token; issue a second and a third.
+    await repository.saveActivationToken({
+      customerId: stored.customerId,
+      tokenHash: `hash-${randomUUID()}`,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    const latestHash = `hash-${randomUUID()}`;
+    await repository.saveActivationToken({
+      customerId: stored.customerId,
+      tokenHash: latestHash,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+
+    const live = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count FROM email_activation_tokens
+        WHERE customer_id = $1 AND used_at IS NULL`,
+      [stored.customerId],
+    );
+
+    // Exactly one live token, and it is the most recent.
+    expect(live.rows[0]?.count).toBe('1');
+    const found = await repository.findByActivationToken(latestHash, new Date('2098-01-01'));
+    expect(found.outcome).toBe('FOUND');
+  });
+
   it('stores a customer and reads it back with its dates intact', async () => {
     const request = registration();
 
