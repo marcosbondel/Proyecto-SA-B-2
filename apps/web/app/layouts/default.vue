@@ -29,7 +29,7 @@ async function signOut(): Promise<void> {
   <div class="min-h-screen bg-[#F6F6F7] text-[#23242A] antialiased">
     <div class="flex min-h-screen">
       <aside
-        class="hidden w-[248px] shrink-0 flex-col gap-6 border-r border-[#DCDCE0] bg-white px-4 py-6 lg:flex"
+        class="sticky top-0 hidden h-screen w-[248px] shrink-0 self-start flex-col gap-6 overflow-y-auto border-r border-[#DCDCE0] bg-white px-4 py-6 lg:flex"
       >
         <div class="flex items-center gap-3 px-2">
           <span
