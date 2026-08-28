@@ -81,7 +81,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the fourteen paths the four tickets fixed', () => {
+  it('declares the sixteen paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -95,7 +95,11 @@ describe('the versioned API contract', () => {
         '/api/auth/login',
         '/api/customers',
         '/api/customers/verify-email',
+        // Added by the audit remediation (US6): the read path, the teller's
+        // pending-validation queue, and the teller's manual identity verdict.
+        '/api/customers/pending-validation',
         '/api/customers/{customerId}',
+        '/api/customers/{customerId}/identity-verdict',
         // Added by T-19. Read-only: a payment is born from a transfer, never
         // from a route.
         '/api/payments',
@@ -134,7 +138,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(14);
+      expect(functional).toHaveLength(16);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
