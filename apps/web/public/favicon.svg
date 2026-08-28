@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!--
+    The "bk" tile from the application header (app/layouts/public.vue and
+    default.vue), reproduced at favicon scale: the lacquered-obsidian gradient,
+    the top inset highlight, and the lowercase mark in white.
+  -->
+  <defs>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E313C"/>
+      <stop offset="0.58" stop-color="#17191F"/>
+    </linearGradient>
+    <clipPath id="tile">
+      <rect width="64" height="64" rx="14"/>
+    </clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#sheen)"/>
+  <rect width="64" height="2" y="0" fill="#FFFFFF" opacity="0.14" clip-path="url(#tile)"/>
+  <text
+    x="32"
+    y="44"
+    text-anchor="middle"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+    font-size="34"
+    font-weight="600"
+    fill="#FFFFFF"
+  >bk</text>
+</svg>

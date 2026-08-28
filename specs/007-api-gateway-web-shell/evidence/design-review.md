@@ -90,8 +90,6 @@ operación sigue corriendo y reintentar podría duplicar la intención; un broke
 caído significa que no pasó nada. Un componente que los mezclara costaría una
 transferencia duplicada.
 
-Visible en `/demo`, con `data-state="BROKER_UNAVAILABLE"`.
-
 ---
 
 ## Una diferencia de alcance, no una discrepancia
@@ -117,12 +115,11 @@ pnpm --filter web dev
 | Navegación · `CLIENTE` | `/` | Clientes, Cuentas, Transferencias. **Sin Auditoría** |
 | Navegación · `CAJERO_RECEPTOR` | `/` | Las mismas tres. **Sin Auditoría** |
 | Navegación · `ADMINISTRADOR` | `/` | Las cuatro, Auditoría incluida |
-| Piezas compartidas | `/demo` | Los cinco estados y los cuatro componentes |
 
-Verificado sobre el build de producción: `/demo` renderiza
-`data-state` para `PENDING`, `SUCCESS`, `BUSINESS_REJECTION`, `REPLY_TIMEOUT` y
-`BROKER_UNAVAILABLE`, y sin sesión cada módulo redirige a
-`/login?next=<ruta>`.
+Verificado sobre el build de producción: sin sesión cada módulo redirige a
+`/login?next=<ruta>`. Los cinco estados asíncronos (`PENDING`, `SUCCESS`,
+`BUSINESS_REJECTION`, `REPLY_TIMEOUT`, `BROKER_UNAVAILABLE`) quedan verificados
+por prueba automatizada sobre `app/lib/`.
 
 > **Pendiente de recoger: las imágenes.** Los siete estados están verificados por
 > respuesta HTTP y por prueba automatizada; las capturas en sí requieren un
