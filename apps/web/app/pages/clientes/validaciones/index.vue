@@ -2,24 +2,21 @@
 /**
  * The teller's queue of identities waiting for review.
  *
- * **The screen exists; the data cannot.** The prototype defines this queue
- * (`show.validations`) and the assignment gives the receiving teller the job of
- * validating the document photo, but the Gateway has no route that lists
- * pending customers and none that publishes `customer.validate-identity.v1`.
- * Building the composition now — and saying plainly what is missing — is worth
- * more than a titled placeholder: the moment those routes exist, this page
- * needs rows, not a design.
- *
- * Nothing here fabricates a customer. An empty queue that says why is honest;
- * a table of invented names would be a demo pretending to be a system.
+ * The queue is real now: `GET /api/customers/pending-validation` lists everyone
+ * whose `identityStatus` is `PENDING`, and a row links to the detail where the
+ * teller gives a verdict. Staff only — the owning service returns an empty list
+ * to anyone else, which is what the redirect below anticipates as a courtesy.
  */
-const { role } = useSession();
+interface PendingCustomer {
+  readonly customerId: string;
+  readonly fullName: string;
+  readonly email: string;
+  readonly registeredAt: string;
+}
 
-/**
- * A courtesy redirect, not a control. D-06 restricts this work by scope and the
- * owning service is what refuses; this only avoids offering a screen whose every
- * request would fail.
- */
+const { role } = useSession();
+const api = useGatewayApi();
+
 const mayReview = computed(
   () => role.value === 'CAJERO_RECEPTOR' || role.value === 'ADMINISTRADOR',
 );
@@ -29,6 +26,31 @@ watchEffect(() => {
     navigateTo('/clientes');
   }
 });
+
+const pending = ref<PendingCustomer[]>([]);
+const omitted = ref(0);
+const loading = ref(true);
+const failure = ref<string | null>(null);
+
+async function load(): Promise<void> {
+  loading.value = true;
+  failure.value = null;
+
+  const result = await api.call<{ customers: PendingCustomer[]; omitted: number }>(
+    '/api/customers/pending-validation',
+  );
+
+  loading.value = false;
+
+  if (result.ok) {
+    pending.value = result.data.customers;
+    omitted.value = result.data.omitted;
+  } else {
+    failure.value = result.error.message;
+  }
+}
+
+onMounted(load);
 
 useHead({ title: 'Validación de identidad · bonking' });
 </script>
@@ -42,22 +64,18 @@ useHead({ title: 'Validación de identidad · bonking' });
       </p>
     </header>
 
-    <div class="flex flex-wrap items-center gap-2">
-      <UInput
-        placeholder="Buscar por nombre o documento"
-        disabled
-        class="w-[280px]"
-        aria-label="Buscar por nombre o documento"
-      />
-      <USelect
-        :items="['Todos los estados', 'Pendiente', 'Aprobado', 'Rechazada']"
-        :model-value="'Todos los estados'"
-        disabled
-        aria-label="Filtrar por estado"
-      />
-    </div>
+    <UAlert
+      v-if="failure"
+      color="error"
+      variant="subtle"
+      title="No se pudo cargar la cola"
+      :description="failure"
+      data-testid="validation-queue-error"
+    />
 
-    <UCard>
+    <p v-else-if="loading" class="text-[14px] text-[#5A5B63]">Cargando…</p>
+
+    <UCard v-else-if="pending.length === 0">
       <div
         class="rounded-2xl border border-dashed border-[#C6C6CC] px-8 py-14 text-center"
         data-testid="validation-queue-empty"
@@ -70,21 +88,29 @@ useHead({ title: 'Validación de identidad · bonking' });
       </div>
     </UCard>
 
-    <UAlert
-      color="warning"
-      variant="subtle"
-      title="Esta cola todavía no puede llenarse"
-      data-testid="validation-queue-blocked"
-    >
-      <template #description>
-        <p class="text-[13px] leading-[22px]">
-          Le faltan dos rutas que el Gateway no expone: una que liste los clientes pendientes de
-          validación y otra que publique el veredicto del cajero
-          (<code class="font-mono">customer.validate-identity.v1</code> existe en el catálogo de
-          T-05, pero nadie lo publica desde HTTP). La composición está construida contra
-          <code class="font-mono">bonking.dc.html</code>; las filas llegan con el backend de T-16.
-        </p>
-      </template>
-    </UAlert>
+    <UCard v-else>
+      <ul class="divide-y divide-[#E9E9EC]" data-testid="validation-queue">
+        <li
+          v-for="customer in pending"
+          :key="customer.customerId"
+          class="flex items-center justify-between gap-4 py-3"
+        >
+          <div>
+            <p class="text-[15px] font-medium">{{ customer.fullName }}</p>
+            <p class="text-[13px] text-[#75767F]">{{ customer.email }}</p>
+          </div>
+          <NuxtLink
+            :to="`/clientes/validaciones/${customer.customerId}`"
+            class="text-[14px] font-semibold text-[#17191F] underline"
+          >
+            Revisar →
+          </NuxtLink>
+        </li>
+      </ul>
+
+      <p v-if="omitted > 0" class="mt-3 text-[13px] text-[#75767F]">
+        y {{ omitted }} más no mostrados.
+      </p>
+    </UCard>
   </section>
 </template>

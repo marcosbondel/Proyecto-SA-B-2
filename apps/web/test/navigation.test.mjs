@@ -1,7 +1,15 @@
 import { strict as assert } from 'node:assert';
 import { test, describe } from 'node:test';
 
-import { MODULES, canOpen, labelForRole, modulesFor } from '../app/lib/navigation.ts';
+import {
+  GUEST_ONLY_ROUTES,
+  MODULES,
+  canOpen,
+  isGuestOnly,
+  labelForRole,
+  modulesFor,
+  resolveNextPath,
+} from '../app/lib/navigation.ts';
 
 // The permission matrix is the one piece of frontend logic that decides
 // something, so it lives in a plain module and is asserted here rather than
@@ -76,7 +84,7 @@ describe('opening a route directly', () => {
   });
 
   test('the public routes are open to everyone, session or not', () => {
-    for (const route of ['/login', '/registro', '/activar', '/demo']) {
+    for (const route of ['/login', '/registro', '/activar']) {
       assert.equal(canOpen(null, route), true, route);
       assert.equal(canOpen('CLIENTE', route), true, route);
     }
@@ -86,6 +94,61 @@ describe('opening a route directly', () => {
     for (const module of MODULES) {
       assert.equal(canOpen(null, module.to), false, module.to);
     }
+  });
+});
+
+describe('the guest-only routes', () => {
+  /**
+   * `canOpen` answers "may this role render this path" and stays permissive
+   * for the public routes; whether a *signed-in* visitor should still be
+   * offered the sign-in or registration form is a different question, and
+   * `auth.global.ts` asks it with `isGuestOnly` before consulting `canOpen`.
+   */
+  test('are the sign-in and the registration, and not the activation link', () => {
+    assert.deepEqual(GUEST_ONLY_ROUTES, ['/login', '/registro']);
+
+    assert.equal(isGuestOnly('/login'), true);
+    assert.equal(isGuestOnly('/registro'), true);
+    // The activation link arrives by email and may be opened in a browser
+    // where somebody else is signed in; the token decides, not the session.
+    assert.equal(isGuestOnly('/activar'), false);
+  });
+
+  test('match by segment, not by prefix string', () => {
+    assert.equal(isGuestOnly('/login/whatever'), true);
+    assert.equal(isGuestOnly('/loginx'), false);
+    assert.equal(isGuestOnly('/registros'), false);
+  });
+
+  test('every module is somewhere a session may stay', () => {
+    for (const module of MODULES) {
+      assert.equal(isGuestOnly(module.to), false, module.to);
+    }
+  });
+});
+
+describe('where to go after signing in', () => {
+  test('a same-application path is honoured, query and all', () => {
+    assert.equal(resolveNextPath('/transferencias'), '/transferencias');
+    assert.equal(resolveNextPath('/cuentas/abc?tab=movimientos'), '/cuentas/abc?tab=movimientos');
+  });
+
+  test('anything that is not a same-application path collapses to the landing page', () => {
+    assert.equal(resolveNextPath(undefined), '/');
+    assert.equal(resolveNextPath(42), '/');
+    assert.equal(resolveNextPath(''), '/');
+    assert.equal(resolveNextPath('cuentas'), '/');
+    assert.equal(resolveNextPath('https://evil.example'), '/');
+    // Protocol-relative: browsers read this as "same scheme, that host".
+    assert.equal(resolveNextPath('//evil.example'), '/');
+    // Some URL parsers treat the backslash as a slash; refuse the family.
+    assert.equal(resolveNextPath('/\\evil.example'), '/');
+  });
+
+  test('a guest-only destination is discarded — it would bounce anyway', () => {
+    assert.equal(resolveNextPath('/login'), '/');
+    assert.equal(resolveNextPath('/login?next=%2F'), '/');
+    assert.equal(resolveNextPath('/registro'), '/');
   });
 });
 

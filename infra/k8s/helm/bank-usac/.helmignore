@@ -1,0 +1,14 @@
+# Patterns to ignore when building packages.
+.DS_Store
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+*.orig
+.vscode/
+.idea/
+# Never let a generated or real values override ship inside the chart
+# package — those are supplied at install time with -f/--set, not packaged.
+*.values.local.yaml
+generated-external.values.yaml

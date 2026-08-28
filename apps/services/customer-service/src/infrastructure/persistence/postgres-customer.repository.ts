@@ -27,6 +27,7 @@ interface CustomerRow {
   readonly email_verified_at: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
+  readonly version: number;
 }
 
 /**
@@ -169,23 +170,62 @@ export class PostgresCustomerRepository implements CustomerRepository {
     return { customer: toCustomer(row), credentialHash: row.password_hash };
   }
 
+  public async listPendingIdentityValidation(limit: number): Promise<{
+    readonly customers: readonly Customer[];
+    readonly total: number;
+  }> {
+    const [rows, count] = await Promise.all([
+      this.#pool.query<CustomerRow>(
+        `SELECT * FROM customers WHERE identity_status = 'PENDING'
+          ORDER BY created_at DESC LIMIT $1`,
+        [limit],
+      ),
+      this.#pool.query<{ total: string }>(
+        `SELECT COUNT(*)::TEXT AS total FROM customers WHERE identity_status = 'PENDING'`,
+      ),
+    ]);
+
+    return {
+      customers: rows.rows.map(toCustomer),
+      total: Number(count.rows[0]?.total ?? '0'),
+    };
+  }
+
   public async saveUpdate(input: {
     readonly customer: Customer;
     readonly idempotency: ProcessedMessage;
   }): Promise<void> {
     await this.#inTransaction(async (client) => {
-      await client.query(
+      /**
+       * Optimistic guard: the write only lands if the row is still at the
+       * version the use case read (`input.customer.version`), and it bumps that
+       * version. Two concurrent updates read the same version; the first to
+       * commit wins, the second matches no row. A zero `rowCount` is a lost
+       * race, not a missing customer — the whole transaction rolls back (the
+       * idempotency record with it) and the broker redelivers, which re-reads
+       * fresh and succeeds. This is what closes the lost-update the assignment's
+       * "protección contra condiciones de carrera" asks this service to prevent.
+       */
+      const written = await client.query(
         `UPDATE customers
-            SET full_name = $2, address = $3, birth_date = $4, updated_at = $5
-          WHERE customer_id = $1`,
+            SET full_name = $2, address = $3, birth_date = $4, updated_at = $5,
+                version = version + 1
+          WHERE customer_id = $1 AND version = $6`,
         [
           input.customer.customerId,
           input.customer.fullName,
           input.customer.address,
           input.customer.dateOfBirth,
           input.customer.updatedAt,
+          input.customer.version,
         ],
       );
+
+      if (written.rowCount === 0) {
+        throw new Error(
+          `concurrent update of customer ${input.customer.customerId} at version ${input.customer.version}`,
+        );
+      }
 
       await this.#recordProcessed(client, input.idempotency);
     });
@@ -249,11 +289,24 @@ export class PostgresCustomerRepository implements CustomerRepository {
     readonly tokenHash: string;
     readonly expiresAt: string;
   }): Promise<void> {
-    await this.#pool.query(
-      `INSERT INTO email_activation_tokens (token_id, customer_id, token_hash, expires_at)
-       VALUES ($1, $2, $3, $4)`,
-      [randomUUID(), input.customerId, input.tokenHash, input.expiresAt],
-    );
+    await this.#inTransaction(async (client) => {
+      // Invalidate the customer's still-usable tokens before issuing a new one,
+      // so only the latest activation link works. Otherwise every sign-in on an
+      // unverified account left another live link valid for 24h, growing the
+      // attack surface and the table without bound.
+      await client.query(
+        `UPDATE email_activation_tokens
+            SET used_at = now()
+          WHERE customer_id = $1 AND used_at IS NULL`,
+        [input.customerId],
+      );
+
+      await client.query(
+        `INSERT INTO email_activation_tokens (token_id, customer_id, token_hash, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [randomUUID(), input.customerId, input.tokenHash, input.expiresAt],
+      );
+    });
   }
 
   public async findByActivationToken(
@@ -432,6 +485,7 @@ function toCustomer(row: CustomerRow): Customer {
     emailVerifiedAt: row.email_verified_at === null ? null : row.email_verified_at.toISOString(),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    version: row.version,
   };
 }
 

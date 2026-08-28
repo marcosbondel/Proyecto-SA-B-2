@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { Pool } from 'pg';
 
-import { DomainRejection } from '../src/domain/customer';
+import { DomainRejection, applyChanges } from '../src/domain/customer';
 import { usernameCandidates } from '../src/domain/username';
 import { migrate } from '../src/infrastructure/persistence/migrations';
 import { PostgresCustomerRepository } from '../src/infrastructure/persistence/postgres-customer.repository';
@@ -86,6 +86,34 @@ describeIntegration('PostgresCustomerRepository', () => {
     await expect(repository.isReachable()).resolves.toBe(true);
   });
 
+  it('invalidates prior activation tokens when a new one is issued (US7)', async () => {
+    const stored = await repository.registerCustomer(inputFor(registration()));
+
+    // Registration already issued one token; issue a second and a third.
+    await repository.saveActivationToken({
+      customerId: stored.customerId,
+      tokenHash: `hash-${randomUUID()}`,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    const latestHash = `hash-${randomUUID()}`;
+    await repository.saveActivationToken({
+      customerId: stored.customerId,
+      tokenHash: latestHash,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+
+    const live = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count FROM email_activation_tokens
+        WHERE customer_id = $1 AND used_at IS NULL`,
+      [stored.customerId],
+    );
+
+    // Exactly one live token, and it is the most recent.
+    expect(live.rows[0]?.count).toBe('1');
+    const found = await repository.findByActivationToken(latestHash, new Date('2098-01-01'));
+    expect(found.outcome).toBe('FOUND');
+  });
+
   it('stores a customer and reads it back with its dates intact', async () => {
     const request = registration();
 
@@ -136,6 +164,46 @@ describeIntegration('PostgresCustomerRepository', () => {
     expect([first.username, second.username].sort()).toEqual(
       [...take(usernameCandidates(name), 2)].sort(),
     );
+  });
+
+  it('refuses a concurrent update instead of losing one silently (optimistic version)', async () => {
+    const stored = await repository.registerCustomer(inputFor(registration()));
+    const base = await repository.findById(stored.customerId);
+    expect(base?.version).toBe(0);
+
+    // Two updates computed from the *same* read (both at version 0): one changes
+    // the address, the other the name. A read-then-write without a version guard
+    // would let the second silently revert the first. With the guard, exactly
+    // one lands and the other matches no row and throws.
+    const resultA = applyChanges(base!, { address: 'Dirección A 1-11' }, NOW);
+    const resultB = applyChanges(base!, { fullName: 'Nombre B Distinto' }, NOW);
+
+    const settled = await Promise.allSettled([
+      repository.saveUpdate({
+        customer: resultA.customer,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'customer.update.v1',
+          resultSummary: { outcome: 'UPDATED' },
+        },
+      }),
+      repository.saveUpdate({
+        customer: resultB.customer,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'customer.update.v1',
+          resultSummary: { outcome: 'UPDATED' },
+        },
+      }),
+    ]);
+
+    const fulfilled = settled.filter((s) => s.status === 'fulfilled');
+    const rejected = settled.filter((s) => s.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const after = await repository.findById(stored.customerId);
+    expect(after?.version).toBe(1);
   });
 
   it('records a processed message once, and reports it thereafter', async () => {

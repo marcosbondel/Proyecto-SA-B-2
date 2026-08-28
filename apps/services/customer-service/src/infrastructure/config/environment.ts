@@ -2,7 +2,17 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { plainToInstance } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsString, Max, Min, validateSync } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+  validateSync,
+} from 'class-validator';
 
 /**
  * Raised when a required environment variable is missing or malformed.
@@ -68,6 +78,21 @@ export class CustomerServiceEnvironment {
   @IsString()
   @IsNotEmpty()
   public OBJECT_STORAGE_REGION!: string;
+
+  /**
+   * Whether to insert the three demo users (one per role) at boot.
+   *
+   * Off by default; on in the dev and demo stacks. It is the standard way to
+   * bootstrap a first administrator, which anonymous registration can no longer
+   * create. Idempotent — a restart refreshes the same rows, never duplicates.
+   */
+  @IsBoolean()
+  public SEED_DEMO_DATA!: boolean;
+
+  /** The password the seeded users share. Only read when `SEED_DEMO_DATA` is on. */
+  @IsString()
+  @MinLength(8)
+  public SEED_PASSWORD!: string;
 }
 
 /**
@@ -95,6 +120,8 @@ export function loadEnvironment(
     OBJECT_STORAGE_SECRET_KEY: source.OBJECT_STORAGE_SECRET_KEY,
     OBJECT_STORAGE_BUCKET: source.OBJECT_STORAGE_BUCKET,
     OBJECT_STORAGE_REGION: source.OBJECT_STORAGE_REGION,
+    SEED_DEMO_DATA: toBoolean(source.SEED_DEMO_DATA, false),
+    SEED_PASSWORD: source.SEED_PASSWORD ?? 'BankUsac#2026',
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
@@ -107,6 +134,25 @@ export function loadEnvironment(
   }
 
   return candidate;
+}
+
+/** `"true"`/`"false"`, the default when absent, `undefined` (a boot failure) otherwise. */
+function toBoolean(raw: string | undefined, fallback: boolean): boolean | undefined {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+
+  const normalised = raw.trim().toLowerCase();
+
+  if (normalised === 'true') {
+    return true;
+  }
+
+  if (normalised === 'false') {
+    return false;
+  }
+
+  return undefined;
 }
 
 /** `undefined` when absent, `NaN` when present but not an integer. */

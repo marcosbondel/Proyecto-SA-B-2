@@ -95,8 +95,8 @@ x-node-env: &node-env
   TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
 
 # The broker credentials are the application's, not the administrator's — the
-# same pair `rabbitmq_definitions.json` declares as `bank_app`. Defaults match
-# that file so the stack comes up on a clone that has not set them.
+# same pair `scripts/init-rabbitmq.sh` declares from .env. Defaults are here so
+# the stack comes up on a clone that has not set them.
 x-rabbitmq-url: &rabbitmq-url
   RABBITMQ_URL: amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@rabbitmq:5672
 
@@ -189,6 +189,10 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
     healthcheck:
@@ -209,6 +213,10 @@ services:
       <<: [*pnpm-env, *node-env, *rabbitmq-url, *object-storage]
       PORT: 3001
       DATABASE_URL: postgresql://${CUSTOMER_POSTGRES_USER}:${CUSTOMER_POSTGRES_PASSWORD}@postgres-customer:5432/${CUSTOMER_POSTGRES_DB}
+      # Insert the three demo users (admin/cajero/cliente) at boot, so a fresh
+      # dev stack can be signed into at once. Idempotent; off by default in code.
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      SEED_PASSWORD: ${SEED_PASSWORD:-BankUsac#2026}
     ports:
       - '3001:3001'
     depends_on:
@@ -218,6 +226,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
     healthcheck:
@@ -239,6 +251,9 @@ services:
       DEACTIVATION_INTERVAL_MS: ${DEACTIVATION_INTERVAL_MS:-86400000}
       INACTIVITY_MONTHS: ${INACTIVITY_MONTHS:-6}
       INACTIVITY_MIN_BALANCE_MINOR: ${INACTIVITY_MIN_BALANCE_MINOR:-5000}
+      # Two accounts for the demo client (one funded), matching customer-service's
+      # SEED_DEMO_DATA. Idempotent; off by default in code.
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
     ports:
       - '3002:3002'
     depends_on:
@@ -248,6 +263,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/health']
@@ -274,6 +293,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3003/health']
@@ -295,6 +318,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3004/health']
@@ -324,6 +351,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # A healthy broker is not yet a broker that knows `bank_app`: that account
+      # is created from .env by rabbitmq-init, not by the definitions file.
+      rabbitmq-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3005/health']

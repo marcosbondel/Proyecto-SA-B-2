@@ -85,10 +85,14 @@ that COMPENSATES on the first attempt, and one that climbs the ladder to its end
 and then COMPENSATES. The compensation is asserted as a fact about the money,
 not as a status somebody wrote down.
 
-What the Clientes screens still cannot show is TD-020 and TD-023; the Cuentas
-screens TD-026 and TD-027; the Transferencias screens TD-032 to TD-035; the
-Pagos screens TD-037 and TD-038; the Auditoría screens TD-039 to TD-043.
-Kubernetes deployment is not built yet.
+The Cuentas screens still cannot show TD-026 and TD-027; the Transferencias
+screens TD-032 to TD-035; the Pagos screens TD-037 and TD-038; the Auditoría
+screens TD-039 to TD-043. TD-020 and TD-023 (the Clientes read path and the
+teller identity-validation flow) are **closed** by the audit-remediation feature
+(`specs/008-audit-remediation`), which also added the Kubernetes deployment: a
+Helm chart at `infra/k8s/helm/bank-usac` plus a kind cluster config, verified
+with `helm lint` and `helm template`; the live `helm upgrade --install` on a real
+kind cluster (T014/T015) still needs a machine with kind.
 
 **Every component is containerised** (T-21): seven multi-stage images, one
 Dockerfile each and no generic one, all running as `node` (uid 1000), with

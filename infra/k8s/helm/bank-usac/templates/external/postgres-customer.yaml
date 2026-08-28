@@ -1,0 +1,6 @@
+{{/*
+Customer Service's own PostgreSQL — outside the cluster per ADR-005.
+See templates/_helpers.tpl:bank-usac.externalDependency and the `external:`
+block in values.yaml for what dockerNetwork vs. hostFallback mean here.
+*/}}
+{{ include "bank-usac.externalDependency" (dict "root" $ "key" "postgresCustomer" "dnsName" "postgres-customer" "portName" "postgresql") }}
