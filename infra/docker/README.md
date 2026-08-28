@@ -35,6 +35,21 @@ RabbitMQ **must not** be 4.2.x: community support for that series ended on
   declares them, it does not decide them.
 - MinIO as the S3-compatible transfer buffer for identity-document photos,
   provisioned outside the cluster per [ADR-012](../../docs/architecture/adr/ADR-012-object-storage.md).
+- **No broker accounts in `rabbitmq_definitions.json`.** That file declares the
+  topology and nothing else; its `users` and `permissions` arrays are empty on
+  purpose. Definitions are imported *after* the node has applied its
+  environment, so a user named there outranks `RABBITMQ_DEFAULT_PASS` — and a
+  developer who changes the password in `.env` would get a new connection URL
+  against a broker still expecting the old one, with nothing on either side
+  saying so. The administrator comes from the environment, and the
+  unprivileged `bank_app` account the applications connect with is created by
+  the one-shot `rabbitmq-init` service from `RABBITMQ_APP_USER` and
+  `RABBITMQ_APP_PASSWORD`. One password, one place.
+
+  The administrator is the one account this cannot re-set: the image creates it
+  only on a **fresh** volume. Changing `RABBITMQ_DEFAULT_PASS` against an
+  existing `rabbitmq-data` needs the volume recreated, and `rabbitmq-init` says
+  so rather than failing quietly.
 - No delayed-message plugin is needed. The retry backoff is built from queues
   with `x-message-ttl` that dead-letter back to the queue that failed, which the
   pinned `rabbitmq:4.3.4-management` image supports as it ships.
@@ -125,6 +140,7 @@ already up rather than starting a second copy of every database.
 | --- | --- |
 | `validate-env.sh` | Refuses to start with a variable `docker-compose.yml` needs missing (T-06) |
 | `init-minio.sh` | Provisions the bucket, the application user and the retention policy (T-06) |
+| `init-rabbitmq.sh` | Creates the `bank_app` broker account from `.env`, so no password is written down twice |
 | `test-broker.sh`, `test-isolation.sh`, `test-persistence.sh`, `test-failures.sh` | The four T-06 infrastructure checks |
 | `images.sh` | The seven components and their Dockerfiles, sourced by the two below so they cannot disagree (T-21) |
 | `build-images.sh` | Builds and tags every image, and optionally loads them into kind (T-21) |
