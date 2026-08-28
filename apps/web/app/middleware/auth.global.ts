@@ -15,6 +15,17 @@ import { canOpen } from '../lib/navigation';
  * have already completed would be a loop with no exit.
  */
 export default defineNuxtRouteMiddleware((to) => {
+  /**
+   * The session lives in the browser (`sessionStorage`, rehydrated by
+   * `plugins/session.client.ts`), so on the server it is always empty and a
+   * check here would bounce every signed-in visitor to `/login` on a reload.
+   * Deciding on the client is safe precisely because this is convenience, not
+   * the boundary — the Gateway refuses regardless of what ran here.
+   */
+  if (import.meta.server) {
+    return;
+  }
+
   const { session, role } = useSession();
 
   if (canOpen(role.value, to.path)) {
