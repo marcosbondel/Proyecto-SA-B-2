@@ -329,6 +329,8 @@ surfaces exist and their owners request them.
 | `setup-pre-commit` | `mattpocock/skills` | Encode checks as commit-time guardrails. |
 | `frontend-design` | `anthropics/skills` | Production-grade UI direction. |
 | `web-design-guidelines` | `vercel-labs/agent-skills` | Spacing, typography, interaction, accessibility. |
+| `run` | project-local | Bank USAC local stack startup for Claude Code and OpenCode. |
+| `codex-run` | project-local | Generic Codex workflow for starting and verifying local projects. |
 
 Deferred until the stack exists: `webapp-testing`, `mobile-responsiveness`,
 `vercel-react-best-practices`, `vercel-composition-patterns`, `shadcn`,
@@ -348,10 +350,11 @@ Skills are vendor-neutral, not Claude-specific. This mirrors the choice to use
 - `.claude/skills/<name>` is a relative symlink into `.agents/skills/`, because
   Claude Code does not read `.agents/` natively. Relative targets keep the links
   valid after a clone.
-- `skills-lock.json` at the repository root pins all 14 by content hash.
-  Skill content is committed, so a fresh clone works offline with no install
-  step. Use `npx skills experimental_install` to re-sync if the tree and the
-  lockfile ever disagree.
+- `skills-lock.json` at the repository root pins the external installed skills
+  by content hash. Project-local skills such as `run` and `codex-run` are
+  committed directly under `.agents/skills/` and are maintained in this
+  repository. Use `npx skills experimental_install` to re-sync if the tree and
+  the lockfile ever disagree.
 
 No skill content is duplicated: adding an agent means adding a symlink, not a
 copy.
@@ -415,6 +418,7 @@ Phrasing that reliably reaches each installed skill:
 | "design this screen", "it looks templated" | `frontend-design` |
 | "review my UI", "check accessibility" (+ a path) | `web-design-guidelines` |
 | "add pre-commit hooks", "set up Husky" | `setup-pre-commit` |
+| "run the app", "start the local stack" | `run` for Bank USAC, or `codex-run` as the generic Codex fallback |
 | "is there a skill for X?" | `find-skills` |
 
 ### Which Skill Serves Which Phase
