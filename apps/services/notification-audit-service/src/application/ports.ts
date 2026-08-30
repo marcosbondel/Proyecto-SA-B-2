@@ -110,6 +110,21 @@ export interface AuditRepository {
     readonly now: Date;
   }): Promise<number>;
 
+  /**
+   * The dashboard's counts over the trail.
+   *
+   * `invalidToday` is the number a trail that counted only successes would
+   * hide: a message this service cannot parse is recorded `INVALID` rather than
+   * parked, so that somebody can see it happened.
+   */
+  stats(): Promise<{
+    readonly eventsToday: number;
+    readonly invalidToday: number;
+    readonly notificationsToday: number;
+    readonly lastEventType: string | null;
+    readonly lastEventAt: string | null;
+  }>;
+
   /** Moves a notification out of `PENDING`. The only update in this service. */
   settleNotification(input: {
     readonly notificationId: string;

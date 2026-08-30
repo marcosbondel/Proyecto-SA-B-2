@@ -1,5 +1,6 @@
 import {
   auditQueryRequestedV1,
+  auditStatsQueryV1,
   contractFor,
   notificationInboxQueryV1,
   notificationListQueryV1,
@@ -7,6 +8,7 @@ import {
 } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 
+import type { GetAuditStatsUseCase } from '../application/get-audit-stats.use-case';
 import type { ListNotificationsUseCase } from '../application/list-notifications.use-case';
 import type { MarkNotificationsReadUseCase } from '../application/mark-notifications-read.use-case';
 import type { ReadInboxUseCase } from '../application/read-inbox.use-case';
@@ -174,6 +176,22 @@ export class NotificationMarkReadHandler implements InboundMessageHandler {
     const command = notificationMarkReadV1.schema.parse(envelope.payload);
 
     await this.#useCase.execute(command, envelope.identity);
+  }
+}
+
+/** `audit.stats.query.v1` — what the trail recorded today. Administrator only. */
+export class AuditStatsHandler implements InboundMessageHandler {
+  public readonly messageType = auditStatsQueryV1.name;
+  readonly #useCase: GetAuditStatsUseCase;
+
+  constructor(useCase: GetAuditStatsUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    auditStatsQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.execute(envelope.identity);
   }
 }
 

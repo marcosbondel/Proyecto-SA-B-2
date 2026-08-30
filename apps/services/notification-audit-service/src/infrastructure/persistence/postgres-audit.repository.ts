@@ -206,6 +206,44 @@ export class PostgresAuditRepository implements AuditRepository {
     return Number(counted.rows[0]?.total ?? '0');
   }
 
+  public async stats(): Promise<{
+    readonly eventsToday: number;
+    readonly invalidToday: number;
+    readonly notificationsToday: number;
+    readonly lastEventType: string | null;
+    readonly lastEventAt: string | null;
+  }> {
+    const [events, notifications, last] = await Promise.all([
+      this.#pool.query<{ events_today: string; invalid_today: string }>(
+        `SELECT COUNT(*) FILTER (WHERE occurred_at::date = CURRENT_DATE)::TEXT AS events_today,
+                COUNT(*) FILTER (WHERE occurred_at::date = CURRENT_DATE
+                                  AND processing_status = 'INVALID')::TEXT AS invalid_today
+           FROM audit_events`,
+      ),
+      this.#pool.query<{ total: string }>(
+        `SELECT COUNT(*)::TEXT AS total FROM notifications
+          WHERE created_at::date = CURRENT_DATE`,
+      ),
+      /* A message name and a timestamp. Never a payload: this says the system
+         is alive and what it was last doing, and carries nothing about anyone. */
+      this.#pool.query<{ message_type: string; occurred_at: Date }>(
+        `SELECT message_type, occurred_at FROM audit_events
+          ORDER BY occurred_at DESC, event_id LIMIT 1`,
+      ),
+    ]);
+
+    const row = events.rows[0];
+    const newest = last.rows[0];
+
+    return {
+      eventsToday: Number(row?.events_today ?? '0'),
+      invalidToday: Number(row?.invalid_today ?? '0'),
+      notificationsToday: Number(notifications.rows[0]?.total ?? '0'),
+      lastEventType: newest?.message_type ?? null,
+      lastEventAt: newest?.occurred_at.toISOString() ?? null,
+    };
+  }
+
   public async settleNotification(input: {
     readonly notificationId: string;
     readonly status: Extract<NotificationStatus, 'SENT' | 'FAILED'>;
