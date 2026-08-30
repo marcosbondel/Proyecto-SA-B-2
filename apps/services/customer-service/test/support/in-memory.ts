@@ -285,6 +285,24 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     await this.recordProcessed(input.idempotency);
   }
 
+  public async savePasswordChange(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly changedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void> {
+    this.credentials.set(input.customerId, input.credentialHash);
+
+    // Outstanding reset links die with the change, as the real repository does.
+    for (const token of this.resetTokens.values()) {
+      if (token.customerId === input.customerId && token.usedAt === null) {
+        token.usedAt = input.changedAt;
+      }
+    }
+
+    await this.recordProcessed(input.idempotency);
+  }
+
   public async isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean> {
     return await Promise.resolve(
       this.documents.some(

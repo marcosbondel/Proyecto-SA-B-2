@@ -51,11 +51,11 @@ describe('the gateway reply queue', () => {
     });
 
     /**
-     * Four event bindings, two flows, one reason: both end in an event pair
+     * Six event bindings, three flows, one reason: both end in an event pair
      * rather than a reply, and in both somebody is holding an HTTP connection
      * open waiting to be told which of the two happened.
      */
-    it('listens for both outcomes of an email activation and of a password reset', () => {
+    it('listens for both outcomes of an activation, a reset and a password change', () => {
       const events = GATEWAY_REPLY_BINDINGS.filter(
         (binding) => binding.exchange === EXCHANGES.events,
       ).map((binding) => binding.pattern);
@@ -65,6 +65,8 @@ describe('the gateway reply queue', () => {
         'customer.email.verification.rejected.v1',
         'customer.password-reset.completed.v1',
         'customer.password-reset.rejected.v1',
+        'customer.password-changed.v1',
+        'customer.password-change.rejected.v1',
       ]);
     });
 

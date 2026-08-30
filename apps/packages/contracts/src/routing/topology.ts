@@ -178,6 +178,10 @@ export const GATEWAY_REPLY_BINDINGS: readonly {
    */
   { exchange: EXCHANGES.events, pattern: 'customer.password-reset.completed.v1' },
   { exchange: EXCHANGES.events, pattern: 'customer.password-reset.rejected.v1' },
+  // And of a password changed from inside a session, which is the same shape
+  // again: a command, two events, and somebody watching a spinner.
+  { exchange: EXCHANGES.events, pattern: 'customer.password-changed.v1' },
+  { exchange: EXCHANGES.events, pattern: 'customer.password-change.rejected.v1' },
 ];
 
 /** The name of one replica's private reply queue. Never shared. */
