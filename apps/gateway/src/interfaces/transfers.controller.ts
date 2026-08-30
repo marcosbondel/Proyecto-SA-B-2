@@ -86,6 +86,7 @@ export class TransfersController {
       sourceAccount: body.sourceAccount,
       targetAccount: body.targetAccount,
       amount: { amountMinor: body.amount.amountMinor, currency: body.amount.currency },
+      ...(body.reference === undefined ? {} : { reference: body.reference }),
       ...(body.paymentScenario === undefined ? {} : { paymentScenario: body.paymentScenario }),
       actor: actorOf(request),
       correlationId: request.correlationId,

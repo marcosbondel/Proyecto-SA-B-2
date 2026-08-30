@@ -113,9 +113,16 @@ describe('the frontend matrix agrees with the Gateway', () => {
     // The single-payment route stays open, like the transfer status it mirrors.
     assert.equal((source.match(/@Roles\(/g) ?? []).length, 1);
 
+    /*
+     * The module itself is no longer restricted — paying a bill is what a
+     * client does, and the front door reads the *transfer* listing, which
+     * Transaction Service scopes. What stays staff-only is Payment Service's
+     * own listing and the screen that reads it, which is what
+     * `mayMonitorPayments` guards.
+     */
     const pagos = MODULES.find((module) => module.to === '/pagos');
 
-    assert.deepEqual(pagos.roles, ['CAJERO_RECEPTOR', 'ADMINISTRADOR']);
+    assert.deepEqual(pagos.roles, ['CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR']);
 
     assert.equal(mayMonitorPayments('CAJERO_RECEPTOR'), true);
     assert.equal(mayMonitorPayments('ADMINISTRADOR'), true);
@@ -177,14 +184,12 @@ describe('the frontend matrix agrees with the Gateway', () => {
 
     assert.equal((customers.match(/@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)/g) ?? []).length, 2);
 
-    // Two modules are restricted: Auditoría by D-06 outright, and Pagos because
-    // its owning service cannot scope its own listing (TD-037).
+    // One module is restricted: Auditoría, by D-06 outright. Pagos was the
+    // second until the service-payment product moved the unscoped listing
+    // behind a screen inside the module.
     const restricted = MODULES.filter((module) => module.roles.length < 3);
 
-    assert.deepEqual(
-      restricted.map((module) => module.to).sort(),
-      ['/auditoria', '/pagos'],
-    );
+    assert.deepEqual(restricted.map((module) => module.to), ['/auditoria']);
   });
 });
 

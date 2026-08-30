@@ -377,3 +377,46 @@ export const POLL_INTERVAL_MS = 2_000;
  * report "no sabemos" about a payment that was still on schedule.
  */
 export const POLL_CEILING_MS = 120_000;
+
+/** One biller, as `GET /api/accounts/billers` returns it. */
+export interface Biller {
+  readonly code: string;
+  readonly name: string;
+  /** The collection account a service payment is a transfer to. */
+  readonly accountId: string;
+}
+
+/**
+ * The biller a transfer paid, or `null` if it was an ordinary transfer.
+ *
+ * This is what turns the transfer listing into `G-03`, "historial de pagos".
+ * A service payment **is** a transfer to a biller's collection account, so
+ * nothing new has to be listed — the same rows read two ways, and which way
+ * depends on whether the target is in the catalogue.
+ *
+ * Deliberately a lookup against the catalogue rather than a flag on the row.
+ * A flag would have to be set by whoever created the transfer and would then be
+ * wrong for every transfer created before the catalogue existed; the account id
+ * is a fact the row already carries.
+ */
+export function billerOf(
+  targetAccount: string,
+  billers: readonly Biller[],
+): Biller | null {
+  return billers.find((biller) => biller.accountId === targetAccount) ?? null;
+}
+
+/**
+ * Whether a payment is **internal** — between accounts of this bank — or
+ * **external**, to a biller.
+ *
+ * The prototype's `G-01` asks this first and changes the rest of the form on
+ * the answer. It is a property of the destination and not a separate product:
+ * both are transfers, and the only difference downstream is that one carries a
+ * `reference` and the other does not.
+ */
+export type PaymentKind = 'INTERNAL' | 'EXTERNAL';
+
+export function kindOf(targetAccount: string, billers: readonly Biller[]): PaymentKind {
+  return billerOf(targetAccount, billers) === null ? 'INTERNAL' : 'EXTERNAL';
+}

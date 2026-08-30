@@ -37,6 +37,32 @@ export class AccountsController {
   }
 
   /**
+   * `G-01`'s dropdown: which services this bank collects for, and where each
+   * one's collection account is.
+   *
+   * Open to every signed-in role, including `CLIENTE`, because paying a bill is
+   * what a client does. It carries no balance — what a biller has collected is
+   * none of a paying customer's business.
+   *
+   * It lives under `/api/accounts` rather than at a `/api/billers` of its own
+   * because a biller *is* an account, held by Account Service, and a second
+   * top-level path would suggest a second owner.
+   */
+  @ApiOperation({
+    summary: 'Lista los servicios que se pueden pagar',
+    description:
+      'El catálogo de prestadores y la cuenta recaudadora de cada uno. Un pago de servicio ' +
+      'es una transferencia a esa cuenta, así que no hay un tipo de movimiento aparte.',
+  })
+  @Get('billers')
+  public async billers(@Req() request: GatewayRequest): Promise<Record<string, unknown>> {
+    return await this.#queries.billers({
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+  }
+
+  /**
    * `A-05` — the deposit window. `200`, not `202`, and it is the only
    * money-moving route in the system that answers synchronously.
    *

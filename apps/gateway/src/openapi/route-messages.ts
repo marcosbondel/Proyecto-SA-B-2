@@ -1,6 +1,8 @@
 import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
+  accountBillersQueryV1,
+  accountBillersRepliedV1,
   accountCreateV1,
   accountDepositRejectedV1,
   accountDepositV1,
@@ -109,6 +111,10 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'GET /api/accounts/{accountId}/operations': {
     publishes: accountOperationsQueryV1.name,
     awaits: [accountOperationsRepliedV1.name],
+  },
+  'GET /api/accounts/billers': {
+    publishes: accountBillersQueryV1.name,
+    awaits: [accountBillersRepliedV1.name],
   },
   'POST /api/accounts/{accountId}/deposit': {
     publishes: accountDepositV1.name,

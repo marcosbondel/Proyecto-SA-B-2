@@ -8,6 +8,7 @@ import {
   IsString,
   Matches,
   Max,
+  MaxLength,
   Min,
   IsUUID,
   ValidateNested,
@@ -57,6 +58,18 @@ export class TransferDto {
   @ValidateNested()
   @Type(() => MoneyDto)
   public amount!: MoneyDto;
+
+  /**
+   * What the payment is for, when the target is a biller's collection account.
+   *
+   * Optional and never interpreted: the contract number belongs to the biller,
+   * and a bank that validated its shape would refuse a valid one the day a
+   * biller changed theirs. The Gateway carries it and passes it on.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60, { message: 'reference no puede exceder 60 caracteres' })
+  public reference?: string;
 
   /**
    * Demonstration only, and optional.
