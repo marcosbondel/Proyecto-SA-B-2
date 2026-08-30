@@ -210,6 +210,19 @@ export const failureCode = z.enum([
   'ROLE_NOT_ELIGIBLE',
   'ACTIVATION_TOKEN_INVALID',
   'ACTIVATION_TOKEN_EXPIRED',
+  /*
+   * Added for the password-recovery flow the prototype's `P-07` draws, which
+   * T-05 had no message for at all. Safe in the way `FORBIDDEN_ACCOUNT_ACCESS`
+   * was and TD-024's addition was not: no message T-05 closed narrows to either
+   * code with `extract()`, so no closed contract changes shape — only the new
+   * `customer.password-reset.rejected.v1` admits them.
+   *
+   * They are separate from the two activation codes rather than reused because
+   * they are separate facts: a dead activation link should offer to resend the
+   * activation, and a dead reset link should offer to start the reset again.
+   */
+  'RESET_TOKEN_INVALID',
+  'RESET_TOKEN_EXPIRED',
   'INVALID_CREDENTIALS',
   'IDENTITY_DOCUMENT_UNREADABLE',
   'IDENTITY_OBJECT_NOT_FOUND',

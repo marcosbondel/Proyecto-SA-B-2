@@ -72,6 +72,12 @@ export type RejectionCode =
   | 'ROLE_NOT_ELIGIBLE'
   | 'ACTIVATION_TOKEN_INVALID'
   | 'ACTIVATION_TOKEN_EXPIRED'
+  /* The password-recovery pair, kept distinct from the activation pair for the
+   * reason the catalogue keeps them distinct: a dead activation link should
+   * offer to resend the activation, a dead reset link should offer to start the
+   * reset again. */
+  | 'RESET_TOKEN_INVALID'
+  | 'RESET_TOKEN_EXPIRED'
   | 'INVALID_CREDENTIALS'
   | 'IDENTITY_DOCUMENT_UNREADABLE'
   | 'IDENTITY_OBJECT_NOT_FOUND'

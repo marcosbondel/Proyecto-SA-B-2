@@ -7,6 +7,11 @@ import { customerEmailVerificationRejectedV1 } from './customer/customer.email.v
 import { customerEmailVerifiedV1 } from './customer/customer.email.verified.v1';
 import { customerGetQueryV1 } from './customer/customer.get.query.v1';
 import { customerGetRepliedV1 } from './customer/customer.get.replied.v1';
+import { customerPasswordResetCompletedV1 } from './customer/customer.password-reset.completed.v1';
+import { customerPasswordResetConfirmV1 } from './customer/customer.password-reset.confirm.v1';
+import { customerPasswordResetIssuedV1 } from './customer/customer.password-reset.issued.v1';
+import { customerPasswordResetRejectedV1 } from './customer/customer.password-reset.rejected.v1';
+import { customerPasswordResetRequestedV1 } from './customer/customer.password-reset.requested.v1';
 import { customerPendingValidationQueryV1 } from './customer/customer.pending-validation.query.v1';
 import { customerPendingValidationRepliedV1 } from './customer/customer.pending-validation.replied.v1';
 import { customerSetIdentityVerdictV1 } from './customer/customer.set-identity-verdict.v1';
@@ -71,6 +76,11 @@ export * from './customer/customer.email.verification.rejected.v1';
 export * from './customer/customer.email.verified.v1';
 export * from './customer/customer.get.query.v1';
 export * from './customer/customer.get.replied.v1';
+export * from './customer/customer.password-reset.completed.v1';
+export * from './customer/customer.password-reset.confirm.v1';
+export * from './customer/customer.password-reset.issued.v1';
+export * from './customer/customer.password-reset.rejected.v1';
+export * from './customer/customer.password-reset.requested.v1';
 export * from './customer/customer.pending-validation.query.v1';
 export * from './customer/customer.pending-validation.replied.v1';
 export * from './customer/customer.set-identity-verdict.v1';
@@ -152,6 +162,11 @@ export const catalog: readonly MessageContract[] = [
   customerValidateIdentityV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerPasswordResetCompletedV1,
+  customerPasswordResetConfirmV1,
+  customerPasswordResetIssuedV1,
+  customerPasswordResetRejectedV1,
+  customerPasswordResetRequestedV1,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
   customerSetIdentityVerdictV1,

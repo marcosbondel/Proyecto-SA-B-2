@@ -128,6 +128,39 @@ export const MIGRATIONS: readonly Migration[] = [
       `ALTER TABLE customers ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0`,
     ],
   },
+  {
+    /*
+     * The password-recovery tokens, for the prototype's `P-07`.
+     *
+     * Deliberately a **second table** rather than a `purpose` column on
+     * `email_activation_tokens`. The two tokens look alike and are not alike: an
+     * activation token proves an address was reachable and makes an account
+     * usable, a reset token replaces a credential. Sharing a table would mean a
+     * bug in either lookup could spend the other kind, and the shorter life this
+     * one gets — an hour, not a day — would have to be enforced by whoever
+     * remembered to pass the right expiry.
+     */
+    name: '006_password_reset_tokens',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+         token_id    UUID PRIMARY KEY,
+         customer_id UUID NOT NULL REFERENCES customers (customer_id) ON DELETE CASCADE,
+         /* The digest, never the token. A dump of this table changes no password. */
+         token_hash  CHAR(64)    NOT NULL UNIQUE,
+         expires_at  TIMESTAMPTZ NOT NULL,
+         used_at     TIMESTAMPTZ,
+         created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+       )`,
+      /*
+       * Issuing a new link invalidates the outstanding ones (the fix US7 made
+       * for activation tokens, applied here from the start), and spending one
+       * burns every live token for that customer. Both are a write over this
+       * index.
+       */
+      `CREATE INDEX IF NOT EXISTS password_reset_tokens_customer_idx
+         ON password_reset_tokens (customer_id) WHERE used_at IS NULL`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */
