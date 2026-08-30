@@ -303,6 +303,17 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     await this.recordProcessed(input.idempotency);
   }
 
+  public async findNames(
+    customerIds: readonly string[],
+  ): Promise<readonly { readonly customerId: string; readonly fullName: string }[]> {
+    return await Promise.resolve(
+      customerIds
+        .map((customerId) => this.customers.get(customerId))
+        .filter((customer): customer is Customer => customer !== undefined)
+        .map((customer) => ({ customerId: customer.customerId, fullName: customer.fullName })),
+    );
+  }
+
   public async isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean> {
     return await Promise.resolve(
       this.documents.some(

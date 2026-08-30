@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(71);
+    expect(catalog).toHaveLength(73);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the thirty-one messages recorded as an extension, and no others', () => {
+  it('adds exactly the thirty-three messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -128,6 +128,16 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        * link, a command spending it, and the two outcomes — because a second
        * shape for the same problem would be a second thing to get wrong.
        */
+      /*
+       * The two that close TD-026. The account tables show a `customerId`
+       * where the prototype shows the holder's name, and Account Service holds
+       * only the opaque reference — resolving it there would mean reading
+       * Customer Service's database, which §8.2 (2.3) forbids. The Gateway asks
+       * the owning service instead and composes two replies, in a batch so a
+       * table of forty rows is two round trips rather than forty.
+       */
+      'customer.names.query.v1',
+      'customer.names.replied.v1',
       // The other two of `C-01`'s three.
       'customer.password-change.rejected.v1',
       'customer.password-changed.v1',

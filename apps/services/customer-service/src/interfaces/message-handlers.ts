@@ -4,6 +4,7 @@ import {
   customerGetQueryV1,
   customerPasswordResetConfirmV1,
   customerPasswordResetRequestedV1,
+  customerNamesQueryV1,
   customerPendingValidationQueryV1,
   customerRegisterV1,
   customerSetIdentityVerdictV1,
@@ -16,6 +17,7 @@ import type { MessageEnvelope } from '@bank/contracts';
 import type { AuthenticateCustomerUseCase } from '../application/authenticate-customer.use-case';
 import type { ChangePasswordUseCase } from '../application/change-password.use-case';
 import type { ConfirmPasswordResetUseCase } from '../application/confirm-password-reset.use-case';
+import type { GetCustomerNamesUseCase } from '../application/get-customer-names.use-case';
 import type { GetCustomerUseCase } from '../application/get-customer.use-case';
 import type { GetPendingValidationUseCase } from '../application/get-pending-validation.use-case';
 import type { RegisterCustomerUseCase } from '../application/register-customer.use-case';
@@ -235,6 +237,34 @@ export class ChangePasswordHandler extends ContractHandler<
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);
+  }
+}
+
+/**
+ * The display names behind a set of ids, for a table that would otherwise show
+ * opaque references. Staff-only, and the refusal is an empty list rather than
+ * an error — see the use case.
+ */
+export class GetCustomerNamesHandler extends ContractHandler<
+  ReturnType<typeof customerNamesQueryV1.schema.parse>
+> {
+  public readonly messageType = customerNamesQueryV1.name;
+  readonly #useCase: GetCustomerNamesUseCase;
+
+  constructor(useCase: GetCustomerNamesUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerNamesQueryV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerNamesQueryV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity);
   }
 }
 

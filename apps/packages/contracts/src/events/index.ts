@@ -15,6 +15,8 @@ import { customerPasswordResetConfirmV1 } from './customer/customer.password-res
 import { customerPasswordResetIssuedV1 } from './customer/customer.password-reset.issued.v1';
 import { customerPasswordResetRejectedV1 } from './customer/customer.password-reset.rejected.v1';
 import { customerPasswordResetRequestedV1 } from './customer/customer.password-reset.requested.v1';
+import { customerNamesQueryV1 } from './customer/customer.names.query.v1';
+import { customerNamesRepliedV1 } from './customer/customer.names.replied.v1';
 import { customerPendingValidationQueryV1 } from './customer/customer.pending-validation.query.v1';
 import { customerPendingValidationRepliedV1 } from './customer/customer.pending-validation.replied.v1';
 import { customerSetIdentityVerdictV1 } from './customer/customer.set-identity-verdict.v1';
@@ -90,6 +92,8 @@ export * from './customer/customer.password-reset.confirm.v1';
 export * from './customer/customer.password-reset.issued.v1';
 export * from './customer/customer.password-reset.rejected.v1';
 export * from './customer/customer.password-reset.requested.v1';
+export * from './customer/customer.names.query.v1';
+export * from './customer/customer.names.replied.v1';
 export * from './customer/customer.pending-validation.query.v1';
 export * from './customer/customer.pending-validation.replied.v1';
 export * from './customer/customer.set-identity-verdict.v1';
@@ -182,6 +186,8 @@ export const catalog: readonly MessageContract[] = [
   customerPasswordResetIssuedV1,
   customerPasswordResetRejectedV1,
   customerPasswordResetRequestedV1,
+  customerNamesQueryV1,
+  customerNamesRepliedV1,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
   customerSetIdentityVerdictV1,
