@@ -6,7 +6,6 @@
  * No navigation, deliberately. Offering the four modules to somebody who cannot
  * open any of them is an invitation to a redirect.
  */
-const { bank } = useAppConfig();
 </script>
 
 <template>
@@ -14,13 +13,7 @@ const { bank } = useAppConfig();
     <div class="mx-auto flex min-h-screen max-w-[440px] flex-col justify-center px-4 py-12">
       <header class="mb-8 flex items-center gap-3">
         <!-- Lacquered obsidian: the one lit object against a matte field. -->
-        <span
-          class="grid h-9 w-9 place-items-center rounded-lg text-[13px] font-semibold text-white"
-          :style="{
-            background: bank.primarySheen,
-            boxShadow: `inset 0 1px 0 ${bank.primaryHighlight}`,
-          }"
-        >bk</span>
+        <SharedBrandMark :size="36" />
         <span class="text-[17px] font-bold tracking-tight">bonking</span>
       </header>
 

@@ -16,17 +16,24 @@ import {
 // hiding in a template where TD-010 would make it unverifiable.
 
 describe('what each role sees in the navigation', () => {
-  test('the five modules are the five the spec fixed', () => {
+  /**
+   * Six entries: the five modules the spec fixed, preceded by the landing page.
+   * The prototype's three role navigations all open with "Inicio", and putting
+   * it in the same list is what keeps one matrix deciding the whole rail —
+   * a second, unfiltered entry drawn straight in the template would be exactly
+   * the untestable authorization logic this file exists to avoid.
+   */
+  test('the five modules are the five the spec fixed, behind the landing page', () => {
     assert.deepEqual(
       MODULES.map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
     );
   });
 
   test('a client sees everything except the audit record', () => {
     assert.deepEqual(
       modulesFor('CLIENTE').map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias'],
     );
   });
 
@@ -39,14 +46,14 @@ describe('what each role sees in the navigation', () => {
   test('a receiving teller also sees the payment monitoring', () => {
     assert.deepEqual(
       modulesFor('CAJERO_RECEPTOR').map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos'],
     );
   });
 
   test('an administrator is the only one who sees the audit record', () => {
     assert.deepEqual(
       modulesFor('ADMINISTRADOR').map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
     );
 
     assert.equal(modulesFor('CLIENTE').some((module) => module.to === '/auditoria'), false);
