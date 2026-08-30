@@ -7,6 +7,7 @@ import { parse, stringify } from 'yaml';
 
 import { AccountsController } from '../src/interfaces/accounts.controller';
 import { AuditController } from '../src/interfaces/audit.controller';
+import { NotificationsController } from '../src/interfaces/notifications.controller';
 import { AuthController } from '../src/interfaces/auth.controller';
 import { CustomersController } from '../src/interfaces/customers.controller';
 import { HealthController } from '../src/interfaces/health.controller';
@@ -34,6 +35,7 @@ const CONTROLLERS = [
   TransfersController,
   PaymentsController,
   AuditController,
+  NotificationsController,
 ];
 
 interface OpenApiDocument {
@@ -81,7 +83,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the twenty-one paths the tickets fixed', () => {
+  it('declares the twenty-three paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -115,6 +117,12 @@ describe('the versioned API contract', () => {
         // inside a session, which needs the current one and which nobody else
         // may do for you.
         '/api/customers/{customerId}/password',
+        // Added for the prototype's N-01: a person's own inbox, and the write
+        // that marks it read. Top-level rather than nested under /api/audit,
+        // because it is a different audience and a different shape from the
+        // staff console — no recipient, no delivery status, scoped by identity.
+        '/api/notifications',
+        '/api/notifications/read',
         // Added by T-19. Read-only: a payment is born from a transfer, never
         // from a route.
         '/api/payments',
@@ -153,7 +161,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(21);
+      expect(functional).toHaveLength(23);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

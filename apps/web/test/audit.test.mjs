@@ -13,6 +13,8 @@ import {
   isCorrelationId,
   mayQueryAudit,
   messageTypesIn,
+  notificationLabel,
+  notificationLink,
   notificationStatusFrom,
   orderedTrail,
   producersIn,
@@ -287,3 +289,66 @@ describe('who may open the module', () => {
     assert.equal(mayQueryAudit(null), false);
   });
 });
+
+/**
+ * `N-01`'s two presentation decisions, in a plain module so they are testable
+ * despite TD-010. Both are the kind of mapping that looks obvious until the
+ * fallback case is wrong on a screen nobody was looking at.
+ */
+describe('where a notification links', () => {
+  const notification = (overrides = {}) => ({
+    notificationId: '5f3a19c8-2b47-4de0-9a15-7c8e3b0d6142',
+    type: 'transfer.completed',
+    subject: 'Tu transferencia se completó',
+    referenceId: '7c9f1a30-2b48-4d56-9e01-2f3a4b5c6d70',
+    correlationId: '44444444-4444-4444-8444-444444444401',
+    createdAt: '2026-08-19T14:32:08.100Z',
+    readAt: null,
+    ...overrides,
+  });
+
+  test('a transfer notification opens the transfer', () => {
+    assert.equal(
+      notificationLink(notification()),
+      '/transferencias/7c9f1a30-2b48-4d56-9e01-2f3a4b5c6d70',
+    );
+  });
+
+  test('an account notification opens the account', () => {
+    assert.equal(
+      notificationLink(notification({ type: 'account.deactivated' })),
+      '/cuentas/7c9f1a30-2b48-4d56-9e01-2f3a4b5c6d70',
+    );
+  });
+
+  test('a customer notification opens the profile, whatever it references', () => {
+    assert.equal(notificationLink(notification({ type: 'identity.validated' })), '/perfil');
+    assert.equal(notificationLink(notification({ type: 'customer.activated' })), '/perfil');
+  });
+
+  /**
+   * A notification that cannot be opened is better than one whose link lands on
+   * a 404, so both unknowns resolve to no link at all.
+   */
+  test('nothing to reference and nothing recognised both mean no link', () => {
+    assert.equal(notificationLink(notification({ referenceId: null })), null);
+    assert.equal(notificationLink(notification({ type: 'payment.settled' })), null);
+  });
+});
+
+describe('what a notification is called', () => {
+  test('the known kinds are written in words', () => {
+    assert.equal(notificationLabel('transfer.compensated'), 'Transferencia revertida');
+    assert.equal(notificationLabel('customer.password-changed'), 'Contraseña cambiada');
+  });
+
+  /**
+   * Falls back to the raw type rather than to "Notificación": a reader who sees
+   * an untranslated `payment.settled` learns something and can report it; one
+   * who sees a generic label learns nothing.
+   */
+  test('an unknown kind falls back to its own name', () => {
+    assert.equal(notificationLabel('payment.settled'), 'payment.settled');
+  });
+});
+

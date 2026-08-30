@@ -23,6 +23,20 @@ const modules = computed(() => modulesFor(role.value));
 const roleLabel = computed(() => (role.value === null ? '' : labelForRole(role.value)));
 const initials = computed(() => initialsOf(session.value?.username));
 
+/**
+ * The bell's unread count.
+ *
+ * `loadOnce` rather than `load`: this header is mounted on every screen, and
+ * fetching on each navigation would be a request per page for a number that
+ * only changes when an event arrives — which no screen here is told about
+ * anyway. `/notificaciones` refreshes it when somebody actually looks.
+ */
+const { unread, loadOnce } = useInbox();
+
+onMounted(() => {
+  void loadOnce();
+});
+
 const menuOpen = ref(false);
 const query = ref('');
 const destinations = computed(() => searchDestinations(query.value, role.value));
@@ -147,10 +161,28 @@ async function signOut(): Promise<void> {
 
           <div class="flex-1" />
 
+          <!-- The bell, as the prototype draws it: a count that is a count. It
+               used to be impossible — no row said whose notification it was
+               (TD-041) — and it is the one number in the header. -->
+          <UButton
+            to="/notificaciones"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-bell"
+            class="relative"
+            aria-label="Notificaciones"
+          >
+            <span
+              v-if="unread > 0"
+              class="tab absolute -right-1.5 -top-1.5 grid h-[17px] min-w-[17px] place-items-center rounded-full bg-[#B01B1B] px-1 text-[10px] font-bold leading-none text-white"
+            >{{ unread > 99 ? '99+' : unread }}</span>
+          </UButton>
+
           <UDropdownMenu
             :items="[
               [
                 { label: 'Mi perfil', icon: 'i-lucide-user', to: '/perfil' },
+                { label: 'Notificaciones', icon: 'i-lucide-bell', to: '/notificaciones' },
                 { label: 'Cerrar sesión', icon: 'i-lucide-log-out', color: 'error', onSelect: signOut },
               ],
             ]"

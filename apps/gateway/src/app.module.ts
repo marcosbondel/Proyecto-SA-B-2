@@ -13,10 +13,12 @@ import { CommandsUseCase } from './application/routes/commands.use-case';
 import { ChangePasswordUseCase } from './application/routes/change-password.use-case';
 import { DepositUseCase } from './application/routes/deposit.use-case';
 import { LoginUseCase } from './application/routes/login.use-case';
+import { MarkNotificationsReadUseCase } from './application/routes/mark-read.use-case';
 import { PasswordResetUseCase } from './application/routes/password-reset.use-case';
 import { QueriesUseCase } from './application/routes/queries.use-case';
 import { RegisterCustomerUseCase } from './application/routes/register-customer.use-case';
 import { VerifyEmailUseCase } from './application/routes/verify-email.use-case';
+import { NotificationsController } from './interfaces/notifications.controller';
 import { AuditController } from './interfaces/audit.controller';
 import { AccountsController } from './interfaces/accounts.controller';
 import { AuthController } from './interfaces/auth.controller';
@@ -84,6 +86,7 @@ export class AppModule implements NestModule {
         TransfersController,
         PaymentsController,
         AuditController,
+        NotificationsController,
       ],
       providers: [
         { provide: GATEWAY_RUNTIME, useValue: runtime },
@@ -105,6 +108,7 @@ export class AppModule implements NestModule {
         ChangePasswordUseCase,
         DepositUseCase,
         LoginUseCase,
+        MarkNotificationsReadUseCase,
         PasswordResetUseCase,
         RegisterCustomerUseCase,
         CommandsUseCase,

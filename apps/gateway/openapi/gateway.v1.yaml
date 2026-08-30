@@ -516,6 +516,48 @@ paths:
       x-bank-publishes: notification.list.query.v1
       x-bank-awaits:
         - notification.list.replied.v1
+  /api/notifications:
+    get:
+      description: "El alcance sale del token y la consulta no lleva customerId: no hay forma de apuntarla
+        al buzón de otra persona. Es una pregunta distinta de /api/audit/notifications, que es la
+        consola de staff y sí lleva el destinatario simulado de cada envío."
+      operationId: NotificationsController_inbox
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista las notificaciones del propio cliente
+      tags:
+        - notifications
+      x-bank-publishes: notification.inbox.query.v1
+      x-bank-awaits:
+        - notification.inbox.replied.v1
+  /api/notifications/read:
+    post:
+      description: "Sin notificationIds marca todas. El alcance sale del token: un id de otra persona no
+        coincide con ninguna fila y no cambia nada, en lugar de producir un rechazo que confirmaría
+        que ese id existe."
+      operationId: NotificationsController_markRead
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkNotificationsReadDto"
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Marca notificaciones como leídas
+      tags:
+        - notifications
+      x-bank-publishes: notification.mark-read.v1
+      x-bank-awaits:
+        - notification.read.replied.v1
 info:
   title: Bank USAC — API Gateway
   description: The only external entry point of the system (constitution V). It validates shape,
@@ -563,5 +605,8 @@ components:
       type: object
       properties: {}
     TransferDto:
+      type: object
+      properties: {}
+    MarkNotificationsReadDto:
       type: object
       properties: {}
