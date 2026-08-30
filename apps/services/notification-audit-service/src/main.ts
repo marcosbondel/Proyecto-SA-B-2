@@ -17,6 +17,7 @@ import { Pool } from 'pg';
 import { ListNotificationsUseCase } from './application/list-notifications.use-case';
 import { MarkNotificationsReadUseCase } from './application/mark-notifications-read.use-case';
 import { ReadInboxUseCase } from './application/read-inbox.use-case';
+import { GetAuditStatsUseCase } from './application/get-audit-stats.use-case';
 import { QueryAuditUseCase } from './application/query-audit.use-case';
 import { RecordEventUseCase } from './application/record-event.use-case';
 import { AppModule } from './app.module';
@@ -30,6 +31,7 @@ import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   AuditQueryHandler,
+  AuditStatsHandler,
   NotificationInboxHandler,
   NotificationListHandler,
   NotificationMarkReadHandler,
@@ -166,6 +168,7 @@ async function bootstrap(): Promise<void> {
 
     return new InboundMessageRouter([
       new AuditQueryHandler(new QueryAuditUseCase({ repository, publisher })),
+      new AuditStatsHandler(new GetAuditStatsUseCase({ repository, publisher })),
       new NotificationListHandler(new ListNotificationsUseCase({ repository, publisher })),
       new NotificationInboxHandler(new ReadInboxUseCase({ repository, publisher })),
       new NotificationMarkReadHandler(

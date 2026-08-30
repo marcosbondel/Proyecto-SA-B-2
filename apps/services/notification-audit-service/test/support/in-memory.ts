@@ -139,6 +139,24 @@ export class InMemoryAuditRepository implements AuditRepository {
     return await Promise.resolve(changed);
   }
 
+  public async stats(): Promise<{
+    readonly eventsToday: number;
+    readonly invalidToday: number;
+    readonly notificationsToday: number;
+    readonly lastEventType: string | null;
+    readonly lastEventAt: string | null;
+  }> {
+    const newest = this.events.at(-1);
+
+    return await Promise.resolve({
+      eventsToday: this.events.length,
+      invalidToday: this.events.filter((event) => event.processingStatus === 'INVALID').length,
+      notificationsToday: this.notifications.length,
+      lastEventType: newest?.messageType ?? null,
+      lastEventAt: newest?.occurredAt.toISOString() ?? null,
+    });
+  }
+
   public async settleNotification(input: {
     readonly notificationId: string;
     readonly status: 'SENT' | 'FAILED';

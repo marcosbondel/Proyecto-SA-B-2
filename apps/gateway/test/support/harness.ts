@@ -22,6 +22,7 @@ import { GatewayError } from '../../src/application/errors/gateway-error';
 import { CommandsUseCase } from '../../src/application/routes/commands.use-case';
 import { ChangePasswordUseCase } from '../../src/application/routes/change-password.use-case';
 import { DepositUseCase } from '../../src/application/routes/deposit.use-case';
+import { DashboardUseCase } from '../../src/application/routes/dashboard.use-case';
 import { LoginUseCase } from '../../src/application/routes/login.use-case';
 import { MarkNotificationsReadUseCase } from '../../src/application/routes/mark-read.use-case';
 import { PasswordResetUseCase } from '../../src/application/routes/password-reset.use-case';
@@ -192,6 +193,7 @@ export async function buildHarness(
        */
       ChangePasswordUseCase,
       DepositUseCase,
+      DashboardUseCase,
       LoginUseCase,
       MarkNotificationsReadUseCase,
       PasswordResetUseCase,

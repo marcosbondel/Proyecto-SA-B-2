@@ -2,6 +2,12 @@ import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
   accountBillersQueryV1,
+  accountStatsRepliedV1,
+  auditStatsRepliedV1,
+  customerStatsQueryV1,
+  customerStatsRepliedV1,
+  paymentStatsRepliedV1,
+  transactionStatsRepliedV1,
   accountBillersRepliedV1,
   accountCreateV1,
   accountDepositRejectedV1,
@@ -66,6 +72,22 @@ export interface RouteMessages {
  * quietly making the published contract wrong.
  */
 export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
+  /*
+   * The dashboard is the one route that publishes **five** messages, and the
+   * table has room for one. It is listed under the first of them, which is the
+   * honest half-truth available here; the other four are its siblings and the
+   * use case names all five in one place.
+   */
+  'GET /api/dashboard': {
+    publishes: customerStatsQueryV1.name,
+    awaits: [
+      customerStatsRepliedV1.name,
+      accountStatsRepliedV1.name,
+      transactionStatsRepliedV1.name,
+      paymentStatsRepliedV1.name,
+      auditStatsRepliedV1.name,
+    ],
+  },
   'POST /api/auth/login': {
     publishes: customerAuthenticateV1.name,
     awaits: [customerAuthenticateRepliedV1.name],

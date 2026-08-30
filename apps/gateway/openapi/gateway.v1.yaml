@@ -558,6 +558,28 @@ paths:
       x-bank-publishes: notification.mark-read.v1
       x-bank-awaits:
         - notification.read.replied.v1
+  /api/dashboard:
+    get:
+      description: "Pregunta a los cinco servicios y devuelve lo que cada uno respondió. No calcula nada:
+        cada número lo contó el servicio dueño de la tabla, que es el único que puede. Una sección
+        que no llegó viene en null y deja el tile vacío en lugar de romper la pantalla."
+      operationId: DashboardController_read
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Compone los contadores de los tableros por rol
+      tags:
+        - dashboard
+      x-bank-publishes: customer.stats.query.v1
+      x-bank-awaits:
+        - customer.stats.replied.v1
+        - account.stats.replied.v1
+        - transaction.stats.replied.v1
+        - payment.stats.replied.v1
+        - audit.stats.replied.v1
 info:
   title: Bank USAC — API Gateway
   description: The only external entry point of the system (constitution V). It validates shape,

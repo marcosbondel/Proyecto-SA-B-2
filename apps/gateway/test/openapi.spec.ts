@@ -7,6 +7,7 @@ import { parse, stringify } from 'yaml';
 
 import { AccountsController } from '../src/interfaces/accounts.controller';
 import { AuditController } from '../src/interfaces/audit.controller';
+import { DashboardController } from '../src/interfaces/dashboard.controller';
 import { NotificationsController } from '../src/interfaces/notifications.controller';
 import { AuthController } from '../src/interfaces/auth.controller';
 import { CustomersController } from '../src/interfaces/customers.controller';
@@ -36,6 +37,7 @@ const CONTROLLERS = [
   PaymentsController,
   AuditController,
   NotificationsController,
+  DashboardController,
 ];
 
 interface OpenApiDocument {
@@ -83,7 +85,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the twenty-three paths the tickets fixed', () => {
+  it('declares the twenty-four paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -101,6 +103,9 @@ describe('the versioned API contract', () => {
         '/api/audit',
         // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
         '/api/audit/notifications',
+        // Added for the prototype's D-01 and D-02: five services' own counts,
+        // composed. The Gateway holds five replies and computes nothing.
+        '/api/dashboard',
         '/api/auth/login',
         // Added for the prototype's P-07: the password recovery the assignment's
         // flow needs and that no route offered.
@@ -161,7 +166,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(23);
+      expect(functional).toHaveLength(24);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
