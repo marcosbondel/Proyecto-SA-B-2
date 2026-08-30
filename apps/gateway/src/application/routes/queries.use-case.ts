@@ -17,6 +17,8 @@ import {
   MAX_NAME_LOOKUPS,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
+  notificationInboxQueryV1,
+  notificationInboxRepliedV1,
   notificationListQueryV1,
   notificationListRepliedV1,
   paymentListQueryV1,
@@ -422,5 +424,32 @@ export class QueriesUseCase {
     );
 
     return reply.payload;
+  }
+
+  /**
+   * `N-01` — the signed-in customer's own notifications.
+   *
+   * A different question from `notifications()` above, which is the staff
+   * console: that one carries the simulated recipient of every delivery in the
+   * system and is restricted to `ADMINISTRADOR` for exactly that reason. This
+   * one is scoped by the envelope's identity inside the owning service, and the
+   * query carries no field that could point it at somebody else.
+   */
+  public async inbox(
+    limit: number | undefined,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(
+      notificationInboxQueryV1.name,
+      limit === undefined ? {} : { limit },
+      context,
+    );
+    const parsed = notificationInboxRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
   }
 }

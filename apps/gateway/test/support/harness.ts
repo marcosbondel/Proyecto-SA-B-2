@@ -23,6 +23,7 @@ import { CommandsUseCase } from '../../src/application/routes/commands.use-case'
 import { ChangePasswordUseCase } from '../../src/application/routes/change-password.use-case';
 import { DepositUseCase } from '../../src/application/routes/deposit.use-case';
 import { LoginUseCase } from '../../src/application/routes/login.use-case';
+import { MarkNotificationsReadUseCase } from '../../src/application/routes/mark-read.use-case';
 import { PasswordResetUseCase } from '../../src/application/routes/password-reset.use-case';
 import { QueriesUseCase } from '../../src/application/routes/queries.use-case';
 import { RegisterCustomerUseCase } from '../../src/application/routes/register-customer.use-case';
@@ -192,6 +193,7 @@ export async function buildHarness(
       ChangePasswordUseCase,
       DepositUseCase,
       LoginUseCase,
+      MarkNotificationsReadUseCase,
       PasswordResetUseCase,
       RegisterCustomerUseCase,
       CommandsUseCase,

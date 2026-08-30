@@ -1,5 +1,17 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { MAX_INBOX_ROWS } from '@bank/contracts';
 
 const NOTIFICATION_STATUSES = ['PENDING', 'SENT', 'FAILED'] as const;
 
@@ -43,4 +55,22 @@ export class ListNotificationsQueryDto {
   @Min(1, { message: 'limit debe ser al menos 1' })
   @Max(200, { message: 'limit admite a lo sumo 200' })
   public limit?: number;
+}
+
+/**
+ * `N-01`'s write: which notifications the reader has read.
+ *
+ * Absent `notificationIds` means all of them — the prototype's "marcar todas
+ * como leídas", and by far the common case. There is deliberately no
+ * `customerId`: whose notifications these are is decided by the owning service
+ * from the token, and a field here would be a way to ask about somebody else's.
+ */
+export class MarkNotificationsReadDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_INBOX_ROWS, {
+    message: `notificationIds no puede tener más de ${String(MAX_INBOX_ROWS)} elementos`,
+  })
+  @IsUUID('4', { each: true, message: 'cada notificationId debe ser un UUID v4' })
+  public notificationIds?: string[];
 }
