@@ -4,6 +4,8 @@ import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
   accountListQueryV1,
+  customerNamesQueryV1,
+  customerNamesRepliedV1,
   accountListRepliedV1,
   accountOperationsQueryV1,
   accountOperationsRepliedV1,
@@ -23,6 +25,7 @@ import type { Harness } from './support/harness';
 
 const ACTOR = '3f2a1c04-9c2e-4a71-b8f5-2d6e7c0a1b93';
 const ACCOUNT = '8b7e5d21-9c2e-4a71-b8f5-2d6e7c0a1b93';
+const OTHER_ACCOUNT = '9c8f6e32-0d3f-4b82-9a06-3e7f4c9d6b82';
 const TRANSACTION = '1d4c9f60-9c2e-4a71-b8f5-2d6e7c0a1b93';
 const TRACE = '6f1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93';
 
@@ -112,9 +115,73 @@ describe('the five queries that wait for an answer', () => {
         .set('Authorization', client);
 
       expect(response.status).toBe(200);
-      expect(harness.publisher.lastType).toBe(accountListQueryV1.name);
+      // The *first* question, not the last: this route composes two replies
+      // (TD-026), so the last message on the broker is the name lookup.
+      expect(harness.publisher.published[0]!.messageType).toBe(accountListQueryV1.name);
       expect(response.body.accounts).toEqual([row]);
       expect(response.body.correlationId).toBeDefined();
+    });
+
+    /**
+     * TD-026, closed. Account Service holds an opaque `customerId` and may not
+     * read Customer Service's database (§8.2, 2.3); Customer Service does not
+     * know what an account is. The Gateway is the only component that may hold
+     * both replies at once — and holding two replies is aggregation, not domain
+     * logic.
+     */
+    describe('the holder’s name, composed from two services', () => {
+      it('asks Customer Service once for the distinct holders and merges the names', async () => {
+        const other = { ...row, accountId: OTHER_ACCOUNT };
+
+        harness.replier.answerInOrder([
+          { messageType: accountListRepliedV1.name, payload: { accounts: [row, other] } },
+          {
+            messageType: customerNamesRepliedV1.name,
+            payload: { names: [{ customerId: ACTOR, fullName: 'María Fernanda López' }] },
+          },
+        ]);
+
+        const response = await request(app.getHttpServer())
+          .get('/api/accounts')
+          .set('Authorization', client);
+
+        expect(harness.publisher.published).toHaveLength(2);
+        expect(harness.publisher.published[1]!.messageType).toBe(customerNamesQueryV1.name);
+        // Two accounts, one holder, one id asked about.
+        expect(harness.publisher.published[1]!.payload).toEqual({ customerIds: [ACTOR] });
+
+        for (const account of response.body.accounts) {
+          expect(account.holderName).toBe('María Fernanda López');
+        }
+      });
+
+      /**
+       * A table of accounts with opaque ids is worse than one with names and
+       * far better than an error page, so the name lookup can never fail the
+       * listing it decorates.
+       */
+      it('still answers when the name lookup times out', async () => {
+        harness.replier.answerInOrder([
+          { messageType: accountListRepliedV1.name, payload: { accounts: [row] } },
+          // Nothing more scripted: the second wait is rejected.
+        ]);
+
+        const response = await request(app.getHttpServer())
+          .get('/api/accounts')
+          .set('Authorization', client);
+
+        expect(response.status).toBe(200);
+        expect(response.body.accounts).toHaveLength(1);
+        expect(response.body.accounts[0].holderName).toBeUndefined();
+      });
+
+      it('asks nobody anything when the listing is empty', async () => {
+        harness.replier.answerWith(accountListRepliedV1.name, { accounts: [] });
+
+        await request(app.getHttpServer()).get('/api/accounts').set('Authorization', client);
+
+        expect(harness.publisher.published).toHaveLength(1);
+      });
     });
 
     it('carries the filters through untouched, because they are a request and not a permission', async () => {

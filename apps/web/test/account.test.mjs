@@ -7,7 +7,10 @@ import {
   INACTIVITY_MIN_BALANCE_MINOR,
   INACTIVITY_MONTHS,
   deactivationRisk,
+  holderIsName,
+  holderLabel,
   isUuidV4,
+  mayTakeDeposits,
   outcomeFromAccountAudit,
   totalBalanceMinor,
 } from '../app/lib/account.ts';
@@ -184,5 +187,36 @@ describe('the words the interface uses', () => {
   test('explains what an inactive account cannot do, rather than only naming it', () => {
     assert.match(ACCOUNT_STATUS_PRESENTATION.INACTIVE.explanation, /debitar/i);
     assert.equal(ACCOUNT_STATUS_PRESENTATION.INACTIVE.color, 'warning');
+  });
+});
+
+/**
+ * TD-026, on the frontend side. The name is optional because the composition
+ * that produces it can fail — a client asking, a timeout, a broker that is
+ * away — and the interesting case is exactly the failing one, which a template
+ * expression would make invisible (TD-010).
+ */
+describe('what a "Titular" cell shows', () => {
+  test('the name when the Gateway resolved one', () => {
+    const withName = account({ holderName: 'María Fernanda López' });
+
+    assert.equal(holderLabel(withName), 'María Fernanda López');
+    assert.equal(holderIsName(withName), true);
+  });
+
+  test('the identifier when it did not, rather than an empty cell', () => {
+    const withoutName = account();
+
+    assert.equal(holderLabel(withoutName), withoutName.customerId);
+    assert.equal(holderIsName(withoutName), false);
+  });
+});
+
+describe('who may register a deposit at a window', () => {
+  test('staff, and no client', () => {
+    assert.equal(mayTakeDeposits('CAJERO_RECEPTOR'), true);
+    assert.equal(mayTakeDeposits('ADMINISTRADOR'), true);
+    assert.equal(mayTakeDeposits('CLIENTE'), false);
+    assert.equal(mayTakeDeposits(null), false);
   });
 });
