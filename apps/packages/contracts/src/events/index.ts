@@ -34,6 +34,9 @@ import { accountBalanceRepliedV1 } from './account/account.balance.replied.v1';
 import { accountCreateV1 } from './account/account.create.v1';
 import { accountCreditRejectedV1 } from './account/account.credit.rejected.v1';
 import { accountCreditRequestedV1 } from './account/account.credit.requested.v1';
+import { accountDepositV1 } from './account/account.deposit.v1';
+import { accountDepositedV1 } from './account/account.deposited.v1';
+import { accountDepositRejectedV1 } from './account/account.deposit.rejected.v1';
 import { accountCreditedV1 } from './account/account.credited.v1';
 import { accountDeactivatedV1 } from './account/account.deactivated.v1';
 import { accountDebitCompensatedV1 } from './account/account.debit.compensated.v1';
@@ -107,6 +110,9 @@ export * from './account/account.create.v1';
 export * from './account/account.credit.rejected.v1';
 export * from './account/account.credit.requested.v1';
 export * from './account/account.credited.v1';
+export * from './account/account.deposit.rejected.v1';
+export * from './account/account.deposit.v1';
+export * from './account/account.deposited.v1';
 export * from './account/account.deactivated.v1';
 export * from './account/account.debit.compensated.v1';
 export * from './account/account.debit.compensation.requested.v1';
@@ -186,6 +192,9 @@ export const catalog: readonly MessageContract[] = [
   accountCreditRejectedV1,
   accountCreditRequestedV1,
   accountCreditedV1,
+  accountDepositV1,
+  accountDepositedV1,
+  accountDepositRejectedV1,
   accountDeactivatedV1,
   accountDebitCompensatedV1,
   accountDebitCompensationRequestedV1,

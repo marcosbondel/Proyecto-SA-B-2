@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(68);
+    expect(catalog).toHaveLength(71);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the twenty-eight messages recorded as an extension, and no others', () => {
+  it('adds exactly the thirty-one messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -87,6 +87,18 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       // screens need data the catalogue could not carry: a list of accounts,
       // the movements of one, and the refusal of an opening that until now
       // produced silence.
+      /*
+       * The three added for the prototype's `A-05`, the deposit window. A
+       * deposit is the one movement with no counterparty — nothing to debit,
+       * nothing to compensate, no second service that has to agree — so it is
+       * an Account Service command rather than a Saga. Routing it through
+       * Transaction Service would mean a transfer with a null source account
+       * and a state machine with a path that never fails, which is how an
+       * orchestrator becomes the "god object" §4.1 penalises.
+       */
+      'account.deposit.rejected.v1',
+      'account.deposit.v1',
+      'account.deposited.v1',
       'account.list.query.v1',
       'account.list.replied.v1',
       'account.open.rejected.v1',
