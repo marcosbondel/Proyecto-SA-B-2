@@ -156,6 +156,38 @@ Every frontend ticket must include evidence that the implemented screen was
 compared with this reference: a screenshot or review note naming the imported
 file, the relevant states, and any intentional deviation.
 
+### Where the prototype stands against the build
+
+All thirty-four screens of `bonking.dc.html` have a route, mapped one by one in
+[FRONTEND.md](FRONTEND.md#the-screen-inventory).
+
+Five intentional deviations are recorded as TD-050 to TD-054 in
+[TECH_DEBT.md](TECH_DEBT.md), which is what this document asks for — the
+repository rule wins and the discrepancy is written down rather than resolved by
+inventing a third variant. Four of them are places where the prototype should
+change rather than the code:
+
+| Deviation | Which side is right |
+| --- | --- |
+| `C-01` edits the email; the build shows it read-only | The build. Email is the sign-in identifier (D-05) and changing it needs a verify-the-new-address flow. |
+| `P-07b` says the reset link lasts 24 hours; the build says one | The build. This link replaces a credential; the activation link's 24 hours only prove an address was reachable. |
+| `A-05`'s receipt says `transactionId`; the build says `operationId` | The build. A deposit belongs to no transaction. |
+| `G-03` is drawn as a payment list; the build reads the transfer list | The build. A service payment *is* a transfer to the biller's collection account. |
+| Nothing was checked in a browser | **The prototype.** TD-054 — static checks are not this evidence. |
+
+The last row is the one that matters. Lint, tests, typecheck and build are green
+across the workspace and every pure function the screens depend on is asserted.
+
+A live run of `pnpm dev:host` has since exercised the **API**: the migrations
+land, the billers seed, and a service payment completes end to end with the
+money on the biller's collection account, the row in the customer's history and
+the notification unread in their inbox. That run found a defect no test could —
+a stats handler that was never registered, which showed as an empty dashboard
+tile rather than as an error.
+
+**No screen has been rendered.** Closing TD-054 means walking the thirty-four in
+a browser and attaching the notes.
+
 ## Brand & Style
 
 This design system embodies "Calm Confidence" for modern banking. It prioritizes clarity, operational truth, and financial legibility above all else. The aesthetic is a refined blend of **Minimalism** and **Corporate Modern**, utilizing generous whitespace and a purposeful color palette to ensure that complex financial data remains scannable and unintimidating.
