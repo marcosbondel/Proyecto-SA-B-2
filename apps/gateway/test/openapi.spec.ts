@@ -81,12 +81,15 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the nineteen paths the tickets fixed', () => {
+  it('declares the twenty paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
         '/api/accounts/{accountId}/balance',
         // Added by T-17.
+        // Added for the prototype's A-05: the deposit window, the only
+        // money-moving route that answers synchronously.
+        '/api/accounts/{accountId}/deposit',
         '/api/accounts/{accountId}/operations',
         '/api/accounts/{accountId}/status',
         '/api/audit',
@@ -146,7 +149,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(19);
+      expect(functional).toHaveLength(20);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

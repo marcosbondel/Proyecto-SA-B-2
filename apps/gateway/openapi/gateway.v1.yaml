@@ -231,6 +231,36 @@ paths:
       tags:
         - customers
       x-bank-publishes: customer.set-identity-verdict.v1
+  /api/accounts/{accountId}/deposit:
+    post:
+      description: "Solo CAJERO_RECEPTOR o ADMINISTRADOR. Devuelve 200 con el saldo resultante: es la
+        única ruta de dinero que responde de forma síncrona, porque no hay Saga que esperar. Un
+        depósito en una cuenta inactiva la reactiva (A-3) en lugar de ser rechazado."
+      operationId: AccountsController_deposit
+      parameters:
+        - name: accountId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositDto"
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Registra un depósito en ventanilla
+      tags:
+        - accounts
+      x-bank-publishes: account.deposit.v1
+      x-bank-awaits:
+        - account.deposited.v1
+        - account.deposit.rejected.v1
   /api/accounts:
     post:
       description: Devuelve 202 y un accountId. La cuenta todavía no existe.
@@ -487,6 +517,9 @@ components:
       type: object
       properties: {}
     SetIdentityVerdictDto:
+      type: object
+      properties: {}
+    DepositDto:
       type: object
       properties: {}
     OpenAccountDto:

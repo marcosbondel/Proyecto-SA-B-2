@@ -220,6 +220,25 @@ export function mayManageAccounts(role: Role | null): boolean {
 }
 
 /**
+ * Who may register a deposit at a window: staff, and no client.
+ *
+ * The sibling of `mayManageAccounts`, restricted one step wider because a
+ * deposit is a teller's daily work rather than an administrator's intervention.
+ * It carries the same caveat and for the same reason: **convenience, not
+ * defence**. The Gateway restricts the route with `@Roles` and Account Service
+ * refuses the command outright — a deposit mints money into an account from
+ * outside the system, so the service that moves the balance checks too rather
+ * than trusting the edge.
+ *
+ * Also deliberately not a navigation entry. The deposit window is a screen
+ * inside Cuentas, which everybody sees; `docs/FRONTEND.md` says a module that
+ * needs a role-restricted screen filters in the page.
+ */
+export function mayTakeDeposits(role: Role | null): boolean {
+  return role === 'CAJERO_RECEPTOR' || role === 'ADMINISTRADOR';
+}
+
+/**
  * How an account opening ended, read from the audit trail — or `null` to wait.
  *
  * The same shape `outcomeFromAudit` has for customers, and it exists separately
