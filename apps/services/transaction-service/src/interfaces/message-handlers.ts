@@ -7,6 +7,7 @@ import {
   paymentFailedV1,
   paymentSucceededV1,
   transactionListQueryV1,
+  transactionStatsQueryV1,
   transactionStatusRequestedV1,
   transferRequestedV1,
 } from '@bank/contracts';
@@ -14,6 +15,7 @@ import type { MessageEnvelope } from '@bank/contracts';
 
 import type { AdvanceSagaUseCase } from '../application/advance-saga.use-case';
 import type { GetTransactionStatusUseCase } from '../application/get-transaction-status.use-case';
+import type { GetTransactionStatsUseCase } from '../application/get-transaction-stats.use-case';
 import type { ListTransactionsUseCase } from '../application/list-transactions.use-case';
 import type { RequestTransferUseCase } from '../application/request-transfer.use-case';
 import type { SagaEvent } from '../domain/transaction';
@@ -320,3 +322,25 @@ export class TransactionListHandler implements InboundMessageHandler {
     );
   }
 }
+
+/**
+ * `transaction.stats.query.v1` — the dashboard's counts, and the third
+ * unguarded message here for the reason the other two are: a query changes
+ * nothing, and a redelivery must produce a fresh reply rather than a silence
+ * that leaves the Gateway waiting out its five seconds.
+ */
+export class TransactionStatsHandler implements InboundMessageHandler {
+  public readonly messageType = transactionStatsQueryV1.name;
+  readonly #useCase: GetTransactionStatsUseCase;
+
+  constructor(useCase: GetTransactionStatsUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    transactionStatsQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.execute(envelope.identity);
+  }
+}
+

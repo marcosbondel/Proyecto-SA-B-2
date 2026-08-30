@@ -10,6 +10,7 @@ import { Pool } from 'pg';
 
 import { AdvanceSagaUseCase } from './application/advance-saga.use-case';
 import { GetTransactionStatusUseCase } from './application/get-transaction-status.use-case';
+import { GetTransactionStatsUseCase } from './application/get-transaction-stats.use-case';
 import { ListTransactionsUseCase } from './application/list-transactions.use-case';
 import { RequestTransferUseCase } from './application/request-transfer.use-case';
 import { AppModule } from './app.module';
@@ -23,6 +24,7 @@ import { StructuredLogger } from './interfaces/logging';
 import {
   RequestTransferHandler,
   TransactionListHandler,
+  TransactionStatsHandler,
   TransactionStatusHandler,
   sagaHandlers,
 } from './interfaces/message-handlers';
@@ -126,6 +128,7 @@ async function bootstrap(): Promise<void> {
       ),
       new TransactionStatusHandler(new GetTransactionStatusUseCase({ repository, publisher })),
       new TransactionListHandler(new ListTransactionsUseCase({ repository, publisher })),
+      new TransactionStatsHandler(new GetTransactionStatsUseCase({ repository, publisher })),
       ...sagaHandlers(saga, logger),
     ]);
   };
