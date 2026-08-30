@@ -366,6 +366,23 @@ paths:
         - accounts
       x-bank-publishes: account.set-status.v1
   /api/transfers:
+    get:
+      description: "Los filtros son una PETICIÓN, no un permiso: Transaction Service los cruza con el
+        alcance que deriva de la identidad del sobre. Un CLIENTE que nombre el customerId de otro
+        recibe una lista vacía, nunca un 403."
+      operationId: TransfersController_list
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista transferencias
+      tags:
+        - transfers
+      x-bank-publishes: transaction.list.query.v1
+      x-bank-awaits:
+        - transaction.list.replied.v1
     post:
       description: "paymentScenario es opcional y solo de demostración: el Gateway lo valida y lo
         traslada, y nunca actúa sobre él."
