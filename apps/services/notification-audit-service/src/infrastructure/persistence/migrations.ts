@@ -150,6 +150,38 @@ export const MIGRATIONS: readonly Migration[] = [
        )`,
     ],
   },
+  {
+    /*
+     * The two columns `N-01` needed, and the two TD-041 said did not exist.
+     *
+     * The prototype's notification centre is a **customer's inbox** with a
+     * read state; what this service had was a staff console. Neither piece was
+     * a small omission: no row said whose notification it was, and nothing
+     * anywhere recorded that somebody had read something.
+     *
+     * `customer_id` was not missing information — it was information this
+     * service was already computing and throwing away. `RecordEventUseCase`
+     * derives the subject to build the simulated recipient; it now writes it
+     * down too. Nullable, because a notification with no subject is a real
+     * case: the nightly deactivation job has nobody in its envelope.
+     *
+     * `read_at` is a timestamp rather than a boolean so "when" survives, which
+     * is the only version of this column worth having in a service whose job is
+     * to record what happened.
+     */
+    name: '004_notifications_inbox',
+    statements: [
+      `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS customer_id UUID`,
+      `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`,
+      /*
+       * The inbox's own query: one person's notifications, newest first. A
+       * partial index on the unread ones would not help — an inbox shows both —
+       * so this is the whole listing, ordered the way it is read.
+       */
+      `CREATE INDEX IF NOT EXISTS notifications_customer_idx
+         ON notifications (customer_id, created_at DESC)`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

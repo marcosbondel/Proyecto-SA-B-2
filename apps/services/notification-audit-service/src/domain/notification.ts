@@ -23,6 +23,17 @@ export interface Notification {
   readonly correlationId: string;
   readonly createdAt: Date;
   readonly processedAt: Date | null;
+  /**
+   * Whose inbox this belongs in — the subject, not the address.
+   *
+   * The same value `recipient` is derived from, kept rather than discarded.
+   * Without it a notification is a row nobody can claim, which is what made the
+   * prototype's `N-01` impossible (TD-041). `null` when nobody originated the
+   * work: the nightly deactivation job has no customer in its envelope.
+   */
+  readonly customerId: string | null;
+  /** When the recipient read it, or `null` while it is still unread. */
+  readonly readAt: Date | null;
 }
 
 /** What the policy decides, before an id or a clock is involved. */
