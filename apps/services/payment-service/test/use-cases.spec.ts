@@ -28,6 +28,24 @@ const PAYMENT_ID = '11111111-1111-4111-8111-111111111111';
 const TRANSACTION_ID = '22222222-2222-4222-8222-222222222222';
 
 class FakeRepository implements PaymentRepository {
+  public async stats(): Promise<{
+    readonly today: number;
+    readonly succeededToday: number;
+    readonly failedToday: number;
+    readonly retrying: number;
+  }> {
+    const all = [...this.payments.values()];
+
+    return await Promise.resolve({
+      today: all.length,
+      succeededToday: all.filter((payment) => payment.status === 'SUCCEEDED').length,
+      failedToday: all.filter((payment) => payment.status === 'FAILED').length,
+      retrying: all.filter(
+        (payment) => payment.status === 'PENDING' && payment.nextAttemptAt !== null,
+      ).length,
+    });
+  }
+
   public readonly payments = new Map<string, Payment>();
   public readonly attempts = new Map<string, PaymentAttempt[]>();
   /** What each attempt wrote to the outbox — the durable form of `published`. */

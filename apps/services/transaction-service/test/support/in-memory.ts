@@ -77,6 +77,27 @@ export class InMemoryTransactionRepository implements TransactionRepository {
     };
   }
 
+  public async stats(): Promise<{
+    readonly today: number;
+    readonly completedToday: number;
+    readonly failedToday: number;
+    readonly compensatedToday: number;
+    readonly inFlight: number;
+  }> {
+    const all = [...this.transactions.values()];
+    const counted = (status: string) => all.filter((one) => one.status === status).length;
+
+    return await Promise.resolve({
+      today: all.length,
+      completedToday: counted('COMPLETED'),
+      failedToday: counted('FAILED'),
+      compensatedToday: counted('COMPENSATED'),
+      inFlight: all.filter((one) =>
+        ['PENDING', 'DEBITING', 'PAYMENT_PENDING'].includes(one.status),
+      ).length,
+    });
+  }
+
   public async recordAlias(input: {
     readonly requestedTransactionId: string;
     readonly transactionId: string;
