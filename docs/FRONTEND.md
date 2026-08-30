@@ -109,7 +109,8 @@ access, and meaningful mobile layouts.
 ## Routing And State
 
 Routes follow the Nuxt file convention under `app/pages/`, one directory per
-module. `app/lib/navigation.ts` holds the five modules and the public routes;
+module. `app/lib/navigation.ts` holds the six rail entries — the landing page and the
+five modules — and the public routes;
 `middleware/auth.global.ts` applies them. A module that needs a screen a role
 should not see filters it **in the page**, not by adding an entry to `MODULES` —
 the five are fixed and asserted by a test.
@@ -135,11 +136,77 @@ pure function in `app/lib/`. `useCustomerOutcome` and `useAccountOutcome` are
 three-line wrappers over it; T-16 wrote the engine and T-17 extracted it rather
 than copying it a second time.
 
-**A screen a role should not see is filtered in the page**, never by adding a
-sixth entry to `MODULES` — the five are fixed and asserted by a test. The
-decision itself still lives in `app/lib/` so it is testable and so
+**A screen a role should not see is filtered in the page**, never by adding an
+entry to `MODULES` — the modules are fixed and asserted by a test. The decision
+itself still lives in `app/lib/` so it is testable and so
 `test/navigation-parity.test.mjs` can hold it against the Gateway's own `@Roles`
-decorator; `mayManageAccounts` in `app/lib/account.ts` is the worked example.
+decorator. There are three worked examples now, in `app/lib/account.ts` and
+`app/lib/payment.ts`: `mayManageAccounts` (the manual status change),
+`mayTakeDeposits` (the window) and `mayMonitorPayments` (Payment Service's own
+listing).
+
+**Exactly one module is restricted by role**: Auditoría, which is the only thing
+D-06 restricts that way. Pagos was a second for one ticket, because the module
+*was* the unscoped payment listing; it stopped being one when the service-payment
+product arrived and that listing became a screen inside the module.
+
+## The screen inventory
+
+The Claude Design prototype (`bonking.dc.html`) draws thirty-four screens across
+eight modules, and every one of them has a route. What follows is the map, so a
+reviewer can go from a prototype code to a file without guessing.
+
+| Prototype | Screen | Route |
+| --- | --- | --- |
+| `P-01`–`P-01c` | Sign in, and its failures | `/login` |
+| `P-02`–`P-05` | Registration, three steps and its confirmation | `/registro` |
+| `P-06a`, `P-06b` | Activation link, opened | `/activar` |
+| `P-07`, `P-07b` | Recover a password | `/recuperar` |
+| — | Choose the new password *(not drawn; the flow needs it)* | `/restablecer` |
+| `C-01`–`C-01c` | Mi perfil, and changing your password | `/perfil` |
+| `C-02`, `C-02b` | The teller's validation queue | `/clientes/validaciones` |
+| `C-03`, `C-03b` | One identity, and the rejection modal | `/clientes/validaciones/[id]` |
+| `A-01`, `A-01b` | The client's landing page | `/` |
+| `A-02`, `A-02b` | Mis cuentas | `/cuentas` |
+| `A-03`, `A-03b` | One account, and the deactivation warning | `/cuentas/[id]` |
+| `A-04`–`A-04c` | Open an account | `/cuentas/nueva` |
+| `A-05`–`A-05e` | The deposit window | `/cuentas/deposito` |
+| `A-06` | Account management | `/cuentas/administracion` |
+| `T-01`, `T-02` | New transfer, and its confirmation | `/transferencias/nueva` |
+| `T-03a`–`T-03d` | Tracking, in its four states | `/transferencias/[id]` |
+| `T-04`, `T-04b` | The history | `/transferencias` |
+| `T-05`, `T-05b` | The Saga monitor | `/transferencias/monitor` |
+| `G-01`, `G-01b` | Nuevo pago | `/pagos/nuevo` |
+| `G-02a`–`G-02d` | One payment's state | `/pagos/[id]` |
+| `G-03`, `G-03b` | The payment history | `/pagos` |
+| `G-04` | Payment monitoring | `/pagos/monitor` |
+| `N-01`, `N-01b` | The notification centre | `/notificaciones` |
+| `N-02`, `N-03` | The audit trail, and one event's payload | `/auditoria` |
+| — | The staff notifications console | `/auditoria/notificaciones` |
+| `D-01` | The teller's dashboard | `/` |
+| `D-02` | The administrator's dashboard | `/` |
+| `X-01` | Not found, or not yours | `app/error.vue` |
+
+Three rows are worth reading twice.
+
+**`/` is three screens.** `A-01`, `D-01` and `D-02` are one route, because "where
+do I land" must not be a URL somebody can be sent to by mistake. `dashboardFor`
+picks; it is a pure function and it is tested.
+
+**`/restablecer` is not in the prototype.** `P-07b` ends at "revisa tu correo",
+which is where a prototype can stop and an implementation cannot — somebody has
+to type the new password somewhere (§4.1: "el estudiante deberá complementar
+cualquier funcionalidad faltante").
+
+**`/notificaciones` and `/auditoria/notificaciones` are two screens over one
+table**, and deliberately so: the first is a person's inbox, the second is the
+operational console that carries the simulated recipient of every delivery in
+the system. D-06 grants the second to `ADMINISTRADOR` alone.
+
+Deviations from the prototype are recorded as TD-050 to TD-053 in
+[TECH_DEBT.md](TECH_DEBT.md), as `docs/DESIGN.md` requires — the repository rule
+wins, and the discrepancy is written down rather than resolved by inventing a
+third variant.
 
 ## Verification
 
@@ -155,3 +222,18 @@ pnpm --filter web dev
 `test` covers `app/lib/` only. There is still no component-level runner, so no
 change may claim component coverage; that gap is TD-010 in
 [TECH_DEBT.md](TECH_DEBT.md).
+
+**What the prototype-parity work verified, and what it did not.** Every pure
+function the new screens depend on is tested — `dashboardFor` and `alertsFrom`
+for the dashboards, `directionOf` and `statusFilterOptions` for the transfer
+tables, `holderLabel` and `holderIsName` for the account tables,
+`notificationLink` and `notificationLabel` for the inbox, `searchDestinations`
+and `initialsOf` for the shell, `mayTakeDeposits` for the window. That is
+deliberate under TD-010: anything that decides something is a function, so the
+deciding is covered even though the drawing is not.
+
+**No screen was opened in a browser.** `pnpm lint`, `pnpm test`,
+`pnpm -r typecheck` and `pnpm build` are green across the workspace, and static
+checks are not the evidence `docs/DESIGN.md` asks for — a template that compiles
+can still be wrong. That gap is TD-054, and closing it means running the stack
+and walking the thirty-four screens against `bonking.dc.html`.

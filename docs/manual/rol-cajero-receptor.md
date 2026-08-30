@@ -11,16 +11,44 @@ el [manual general](README.md#3-cómo-leer-lo-que-el-sistema-te-responde).
 
 | Módulo | Qué puedes hacer |
 | --- | --- |
+| **Inicio** | Tu turno en tres números: validaciones pendientes, cuentas creadas hoy y depósitos del día. |
 | **Clientes** | Registrar clientes con cualquier rol, actualizar tus datos, abrir la ficha de un cliente, entrar a la cola de validación de identidad. |
-| **Cuentas** | Abrir cuentas **a nombre de otro cliente**, consultar cuentas y sus movimientos. |
-| **Transferencias** | Enviar transferencias entre cuentas y seguir su estado. |
-| **Pagos** | Vigilar el paso de pago de las transferencias y sus reintentos. |
+| **Cuentas** | Abrir cuentas **a nombre de otro cliente**, consultar cuentas y sus movimientos, y **registrar depósitos en ventanilla**. |
+| **Transferencias** | Enviar transferencias, seguir su estado y vigilar la Saga desde el monitoreo. |
+| **Pagos** | Pagar servicios y vigilar el paso de pago de las transferencias y sus reintentos. |
 
 **Lo que no puedes hacer:** activar o desactivar cuentas (es del Administrador),
-ni consultar el rastro de auditoría ni la consola de notificaciones.
+ni consultar el rastro de auditoría ni la consola de notificaciones. Tampoco
+puedes cambiar la contraseña de un cliente: si no puede entrar, dile que use
+**¿Olvidaste tu contraseña?** — el enlace llega a su propio correo, que es lo
+único que prueba que es él.
 
-Tu menú lateral tiene cuatro módulos: **Clientes**, **Cuentas**,
+Tu menú lateral tiene cinco entradas: **Inicio**, **Clientes**, **Cuentas**,
 **Transferencias** y **Pagos**.
+
+---
+
+## Registrar un depósito
+
+**Cuentas → Depósito.** Es la única operación de dinero del sistema que responde
+en el momento: no hay Saga que esperar, porque un depósito acredita una cuenta y
+no tiene contraparte.
+
+1. Escribe el **número de cuenta** completo (el identificador, no un alias) y el
+   **monto**. La descripción es opcional y **queda registrada tal cual**: no
+   anotes datos personales ahí.
+2. Presiona **Continuar**. La pantalla te repite la cuenta y el monto antes de
+   comprometerlos — es el único lugar donde un dígito mal tecleado mueve dinero
+   real a la cuenta equivocada sin que nadie más lo note.
+3. **Registrar depósito.** El comprobante muestra el monto, el saldo resultante
+   y un `operationId`.
+
+Si la cuenta estaba **inactiva**, el depósito la reactiva en lugar de ser
+rechazado.
+
+**Si la pantalla dice que no recibió confirmación a tiempo, no vuelvas a
+cobrar.** El depósito pudo haberse registrado: consulta el saldo de la cuenta
+antes de intentar de nuevo.
 
 ---
 

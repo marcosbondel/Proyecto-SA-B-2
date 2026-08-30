@@ -13,16 +13,64 @@ primera vez, léelo antes que esta guía.
 
 | Módulo | Qué puedes hacer |
 | --- | --- |
-| **Clientes** | Registrarte, actualizar tus datos personales. |
+| **Inicio** | Ver tu saldo total y tus movimientos recientes. |
+| **Clientes** | Registrarte, actualizar tus datos, cambiar tu contraseña desde *Mi perfil*. |
 | **Cuentas** | Abrir cuentas a tu nombre, consultar tu saldo, ver tus movimientos. |
-| **Transferencias** | Enviar dinero y seguir el estado de cada envío. |
+| **Transferencias** | Enviar dinero, seguir cada envío y ver tu historial. |
+| **Pagos** | Pagar luz, agua o teléfono, y ver los pagos que ya hiciste. |
+
+Además, la campana de la barra superior lleva a tus **notificaciones**: lo que el
+banco te ha comunicado, con un punto rojo en las que no has leído.
 
 **Lo que no puedes hacer:** abrir cuentas a nombre de otra persona, activar o
-desactivar cuentas, ver el módulo de Pagos, ni consultar la auditoría. Todo eso
-es trabajo del personal del banco.
+desactivar cuentas, registrar depósitos en ventanilla, ver el monitoreo de pagos
+ni consultar la auditoría. Todo eso es trabajo del personal del banco. Tampoco
+puedes cambiar tu correo electrónico: es tu identificador de acceso, y cambiarlo
+exige verificar la dirección nueva antes de reemplazar la vieja — un flujo que
+todavía no está construido.
 
-Tu menú lateral tiene tres módulos: **Clientes**, **Cuentas** y
-**Transferencias**.
+Tu menú lateral tiene cinco entradas: **Inicio**, **Clientes**, **Cuentas**,
+**Transferencias** y **Pagos**.
+
+---
+
+## Si olvidaste tu contraseña
+
+En la pantalla de inicio de sesión, **¿Olvidaste tu contraseña?** te lleva a
+pedir un enlace. Escribe tu correo y presiona **Enviar enlace**.
+
+La pantalla siempre responde lo mismo, esté o no registrado ese correo. No es un
+error: si respondiera distinto, cualquiera podría averiguar qué direcciones
+tienen cuenta en este banco escribiéndolas una por una.
+
+El enlace llega al correo y **vence en una hora** — es más corto que el de
+activación porque este cambia una contraseña. Al abrirlo eliges la nueva clave;
+al guardarla, cualquier otro enlace de recuperación que hubieras pedido deja de
+funcionar.
+
+Si ya puedes entrar y solo quieres cambiar la contraseña, hazlo desde **Mi
+perfil**: ahí se te pide la contraseña actual. Nadie más puede cambiarla por ti,
+ni un cajero ni un administrador — para eso está el enlace por correo, que llega
+a tu propia bandeja.
+
+---
+
+## Pagar un servicio
+
+**Pagos → Nuevo pago.** Primero eliges el tipo:
+
+- **Pago interno** — mover dinero entre tus propias cuentas.
+- **Pago externo** — luz, agua o teléfono. Eliges el servicio de la lista y
+  escribes tu **número de contrato o de medidor**, que es lo que le dice al
+  prestador de quién es el pago.
+
+Un pago de servicio **es una transferencia**: cada prestador tiene una cuenta
+recaudadora en este banco. Por eso, al terminar, la pantalla te lleva al
+seguimiento de la transferencia — es la misma operación, con los mismos pasos y
+con la misma devolución automática si el pago falla.
+
+El saldo que ves junto a la cuenta de origen es el de la última consulta. Quien
+decide si alcanza es el sistema en el momento del débito, no esta pantalla.
 
 ---
 
