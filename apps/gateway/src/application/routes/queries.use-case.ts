@@ -21,6 +21,8 @@ import {
   paymentListRepliedV1,
   paymentStatusQueryV1,
   paymentStatusRepliedV1,
+  transactionListQueryV1,
+  transactionListRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
 } from '@bank/contracts';
@@ -53,6 +55,19 @@ export interface NotificationListFilter {
   readonly correlationId?: string;
   readonly status?: 'PENDING' | 'SENT' | 'FAILED';
   readonly type?: string;
+  readonly limit?: number;
+}
+
+/**
+ * What a transfer listing may be narrowed by. None of these is a permission
+ * either: Transaction Service intersects them with the scope it derives from
+ * the envelope identity, so a client naming somebody else's `customerId` gets
+ * an empty list rather than a `403`.
+ */
+export interface TransferListFilter {
+  readonly customerId?: string;
+  readonly accountId?: string;
+  readonly status?: 'PENDING' | 'DEBITING' | 'PAYMENT_PENDING' | 'COMPLETED' | 'FAILED' | 'COMPENSATED';
   readonly limit?: number;
 }
 
@@ -233,6 +248,21 @@ export class QueriesUseCase {
     if (parsed.data.outcome === 'NOT_FOUND') {
       // The owning service's own code, carried untouched (FR-030).
       throw GatewayError.businessRejection(parsed.data.reason, 'La cuenta consultada no existe.');
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /** A page of transfers, already narrowed by the owning service (TD-033). */
+  public async transfers(
+    filter: TransferListFilter,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(transactionListQueryV1.name, filter, context);
+    const parsed = transactionListRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
     }
 
     return { ...parsed.data, correlationId: context.correlationId };

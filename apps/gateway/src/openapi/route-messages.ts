@@ -37,6 +37,8 @@ import {
   notificationListQueryV1,
   notificationListRepliedV1,
   paymentStatusRepliedV1,
+  transactionListQueryV1,
+  transactionListRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
   transferRequestedV1,
@@ -114,6 +116,10 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     awaits: [accountDepositedV1.name, accountDepositRejectedV1.name],
   },
   'POST /api/accounts/{accountId}/status': { publishes: accountSetStatusV1.name },
+  'GET /api/transfers': {
+    publishes: transactionListQueryV1.name,
+    awaits: [transactionListRepliedV1.name],
+  },
   'POST /api/transfers': { publishes: transferRequestedV1.name },
   'GET /api/transfers/{transactionId}': {
     publishes: transactionStatusRequestedV1.name,

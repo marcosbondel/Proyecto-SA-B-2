@@ -1,11 +1,11 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from '@nestjs/common';
 
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CommandsUseCase } from '../application/routes/commands.use-case';
 import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { GatewayError } from '../application/errors/gateway-error';
-import { TransferDto } from './dto/transfer.dto';
+import { ListTransfersQueryDto, TransferDto } from './dto/transfer.dto';
 import type { GatewayRequest } from './http-request';
 import { actorOf } from './actor';
 import { validated } from './validation';
@@ -23,6 +23,44 @@ export class TransfersController {
   ) {
     this.#commands = commands;
     this.#queries = queries;
+  }
+
+  /**
+   * `T-04` — "which transfers are mine", the question no route could answer
+   * until now (TD-033).
+   *
+   * `GET /api/transfers/{id}` has existed since T-18 and answers "how did this
+   * one end". Without a listing, `/transferencias` offered a lookup by
+   * identifier and explained why there was no history — honest, and not what
+   * anybody wants after their third transfer.
+   *
+   * No `@Roles`. The restriction is by **scope**, not by role: Transaction
+   * Service narrows the answer to the asker's own transfers unless they are
+   * staff, using the `customer_id` it records at request time. A role decorator
+   * here would be a second, coarser copy of a rule the owning service already
+   * applies per row.
+   */
+  @ApiOperation({
+    summary: 'Lista transferencias',
+    description:
+      'Los filtros son una PETICIÓN, no un permiso: Transaction Service los cruza con el ' +
+      'alcance que deriva de la identidad del sobre. Un CLIENTE que nombre el customerId de ' +
+      'otro recibe una lista vacía, nunca un 403.',
+  })
+  @Get()
+  public async list(
+    @Query(validated(ListTransfersQueryDto)) query: ListTransfersQueryDto,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    return await this.#queries.transfers(
+      {
+        ...(query.customerId === undefined ? {} : { customerId: query.customerId }),
+        ...(query.accountId === undefined ? {} : { accountId: query.accountId }),
+        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+      },
+      { actor: actorOf(request), correlationId: request.correlationId },
+    );
   }
 
   /**

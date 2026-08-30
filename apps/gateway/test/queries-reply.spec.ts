@@ -13,6 +13,8 @@ import {
   auditQueryRequestedV1,
   notificationListQueryV1,
   notificationListRepliedV1,
+  transactionListQueryV1,
+  transactionListRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
 } from '@bank/contracts';
@@ -452,5 +454,66 @@ describe('the five queries that wait for an answer', () => {
 
     expect(response.status).toBe(500);
     expect(response.body.type).toBe('INTERNAL_ERROR');
+  });
+
+  /**
+   * `T-04`, the listing that closes TD-033. The Gateway forwards the filters
+   * untouched and forwards the answer untouched: the scope is applied by
+   * Transaction Service against the `customer_id` it records at request time,
+   * and a Gateway that filtered here would be a second, coarser copy of a rule
+   * the owning service already applies per row.
+   */
+  describe('a list of transfers', () => {
+    const row = {
+      transactionId: '7c9f1a30-2b48-4d56-9e01-2f3a4b5c6d70',
+      sourceAccount: ACCOUNT,
+      targetAccount: OTHER_ACCOUNT,
+      amount: { amountMinor: 125_000, currency: 'GTQ' },
+      status: 'COMPLETED' as const,
+      reason: null,
+      createdAt: '2026-08-19T14:32:08.100Z',
+      completedAt: '2026-08-19T14:32:11.400Z',
+    };
+
+    it('publishes the query and returns the rows Transaction Service sent', async () => {
+      harness.replier.answerWith(transactionListRepliedV1.name, {
+        transactions: [row],
+        total: 1,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/api/transfers')
+        .set('Authorization', client);
+
+      expect(response.status).toBe(200);
+      expect(harness.publisher.lastType).toBe(transactionListQueryV1.name);
+      expect(response.body.transactions).toEqual([row]);
+      expect(response.body.total).toBe(1);
+    });
+
+    it('carries the filters through untouched, because they are a request and not a permission', async () => {
+      harness.replier.answerWith(transactionListRepliedV1.name, { transactions: [], total: 0 });
+
+      await request(app.getHttpServer())
+        .get('/api/transfers')
+        .query({ accountId: ACCOUNT, status: 'FAILED', limit: 10 })
+        .set('Authorization', client);
+
+      expect(harness.publisher.published[0]!.payload).toEqual({
+        accountId: ACCOUNT,
+        status: 'FAILED',
+        limit: 10,
+      });
+    });
+
+    it('refuses a status the machine does not have, publishing nothing', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/transfers')
+        .query({ status: 'INVENTADO' })
+        .set('Authorization', client);
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
   });
 });
