@@ -290,6 +290,50 @@ export class PostgresAccountRepository implements AccountRepository {
     }));
   }
 
+  public async stats(): Promise<{
+    readonly active: number;
+    readonly inactive: number;
+    readonly openedToday: number;
+    readonly depositsToday: number;
+    readonly depositedToday: { readonly amountMinor: number; readonly currency: string };
+  }> {
+    const [accounts, deposits] = await Promise.all([
+      this.#pool.query<{ active: string; inactive: string; opened_today: string }>(
+        `SELECT COUNT(*) FILTER (WHERE status = 'ACTIVE')::TEXT   AS active,
+                COUNT(*) FILTER (WHERE status = 'INACTIVE')::TEXT AS inactive,
+                COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)::TEXT AS opened_today
+           FROM accounts
+          WHERE biller_code IS NULL`,
+      ),
+      /*
+       * A deposit is a `CREDIT` with no transaction: the Saga's credits all
+       * belong to one. That is what distinguishes a teller's shift from the
+       * bank's traffic, and it needs no column of its own.
+       */
+      this.#pool.query<{ deposits: string; total: string }>(
+        `SELECT COUNT(*)::TEXT AS deposits,
+                COALESCE(SUM(amount), 0)::TEXT AS total
+           FROM account_operations
+          WHERE type = 'CREDIT' AND transaction_id IS NULL
+            AND created_at::date = CURRENT_DATE`,
+      ),
+    ]);
+
+    const row = accounts.rows[0];
+    const movement = deposits.rows[0];
+
+    return {
+      active: Number(row?.active ?? '0'),
+      inactive: Number(row?.inactive ?? '0'),
+      openedToday: Number(row?.opened_today ?? '0'),
+      depositsToday: Number(movement?.deposits ?? '0'),
+      depositedToday: {
+        amountMinor: minorUnitsFromNumeric(movement?.total ?? '0'),
+        currency: 'GTQ',
+      },
+    };
+  }
+
   public async setStatus(input: {
     readonly accountId: string;
     readonly status: 'ACTIVE' | 'INACTIVE';

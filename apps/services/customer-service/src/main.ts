@@ -10,6 +10,7 @@ import { AuthenticateCustomerUseCase } from './application/authenticate-customer
 import { ChangePasswordUseCase } from './application/change-password.use-case';
 import { ConfirmPasswordResetUseCase } from './application/confirm-password-reset.use-case';
 import { GetCustomerNamesUseCase } from './application/get-customer-names.use-case';
+import { GetCustomerStatsUseCase } from './application/get-customer-stats.use-case';
 import { GetCustomerUseCase } from './application/get-customer.use-case';
 import { GetPendingValidationUseCase } from './application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from './application/register-customer.use-case';
@@ -39,6 +40,7 @@ import {
   RequestPasswordResetHandler,
   GetCustomerHandler,
   GetCustomerNamesHandler,
+  GetCustomerStatsHandler,
   GetPendingValidationHandler,
   SetIdentityVerdictHandler,
   UpdateCustomerHandler,
@@ -112,6 +114,7 @@ async function bootstrap(): Promise<void> {
       new UpdateCustomerHandler(new UpdateCustomerUseCase({ repository, publisher, clock })),
       new GetCustomerHandler(new GetCustomerUseCase({ repository, publisher })),
       new GetCustomerNamesHandler(new GetCustomerNamesUseCase({ repository, publisher })),
+      new GetCustomerStatsHandler(new GetCustomerStatsUseCase({ repository, publisher })),
       new GetPendingValidationHandler(
         new GetPendingValidationUseCase({ repository, publisher }),
       ),

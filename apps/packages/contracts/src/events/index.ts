@@ -1,4 +1,14 @@
 import type { MessageContract } from './contract';
+import { customerStatsQueryV1 } from './customer/customer.stats.query.v1';
+import { customerStatsRepliedV1 } from './customer/customer.stats.replied.v1';
+import { accountStatsQueryV1 } from './account/account.stats.query.v1';
+import { accountStatsRepliedV1 } from './account/account.stats.replied.v1';
+import { transactionStatsQueryV1 } from './transaction/transaction.stats.query.v1';
+import { transactionStatsRepliedV1 } from './transaction/transaction.stats.replied.v1';
+import { paymentStatsQueryV1 } from './payment/payment.stats.query.v1';
+import { paymentStatsRepliedV1 } from './payment/payment.stats.replied.v1';
+import { auditStatsQueryV1 } from './audit/audit.stats.query.v1';
+import { auditStatsRepliedV1 } from './audit/audit.stats.replied.v1';
 
 import { customerActivationRequestedV1 } from './customer/customer.activation.requested.v1';
 import { customerAuthenticateRepliedV1 } from './customer/customer.authenticate.replied.v1';
@@ -121,6 +131,16 @@ export * from './account/account.balance.replied.v1';
 export * from './account/account.create.v1';
 export * from './account/account.credit.rejected.v1';
 export * from './account/account.credit.requested.v1';
+export * from './customer/customer.stats.query.v1';
+export * from './customer/customer.stats.replied.v1';
+export * from './account/account.stats.query.v1';
+export * from './account/account.stats.replied.v1';
+export * from './transaction/transaction.stats.query.v1';
+export * from './transaction/transaction.stats.replied.v1';
+export * from './payment/payment.stats.query.v1';
+export * from './payment/payment.stats.replied.v1';
+export * from './audit/audit.stats.query.v1';
+export * from './audit/audit.stats.replied.v1';
 export * from './account/account.billers.query.v1';
 export * from './account/account.billers.replied.v1';
 export * from './account/account.credited.v1';
@@ -214,6 +234,16 @@ export const catalog: readonly MessageContract[] = [
   accountCreditRejectedV1,
   accountCreditRequestedV1,
   accountCreditedV1,
+  customerStatsQueryV1,
+  customerStatsRepliedV1,
+  accountStatsQueryV1,
+  accountStatsRepliedV1,
+  transactionStatsQueryV1,
+  transactionStatsRepliedV1,
+  paymentStatsQueryV1,
+  paymentStatsRepliedV1,
+  auditStatsQueryV1,
+  auditStatsRepliedV1,
   accountBillersQueryV1,
   accountBillersRepliedV1,
   accountDepositV1,

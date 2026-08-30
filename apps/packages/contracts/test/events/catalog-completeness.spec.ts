@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(81);
+    expect(catalog).toHaveLength(91);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the forty-one messages recorded as an extension, and no others', () => {
+  it('adds exactly the fifty-one messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -115,8 +115,19 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'account.open.rejected.v1',
       'account.operations.query.v1',
       'account.operations.replied.v1',
+      /*
+       * The ten that make `D-01` and `D-02` honest — one count query per owning
+       * service, because each service is the only one that has its own rows.
+       * The alternative was a dashboard that counted the rows a listing
+       * happened to return and drew the result as a bank-wide total, which is a
+       * number nobody can reproduce and everybody will quote.
+       */
+      'account.stats.query.v1',
+      'account.stats.replied.v1',
       'audit.query.replied.v1',
       'audit.query.requested.v1',
+      'audit.stats.query.v1',
+      'audit.stats.replied.v1',
       'customer.authenticate.replied.v1',
       /*
        * The first of the three added for the prototype's `C-01`, which draws a
@@ -166,6 +177,8 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       // document produced silence rather than a rejection.
       'customer.register.rejected.v1',
       'customer.set-identity-verdict.v1',
+      'customer.stats.query.v1',
+      'customer.stats.replied.v1',
       /*
        * The two added by T-20. Nothing could ask this service for the
        * notifications it had sent: `audit.query.requested.v1` answers one
@@ -203,6 +216,8 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'payment.attempt.failed.v1',
       'payment.list.query.v1',
       'payment.list.replied.v1',
+      'payment.stats.query.v1',
+      'payment.stats.replied.v1',
       'payment.status.query.v1',
       'payment.status.replied.v1',
       /*
@@ -216,6 +231,8 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        */
       'transaction.list.query.v1',
       'transaction.list.replied.v1',
+      'transaction.stats.query.v1',
+      'transaction.stats.replied.v1',
       'transaction.status.replied.v1',
       'transaction.status.requested.v1',
     ]);

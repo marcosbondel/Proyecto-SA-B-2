@@ -499,6 +499,31 @@ export class PostgresCustomerRepository implements CustomerRepository {
     return (found.rowCount ?? 0) > 0;
   }
 
+  public async stats(): Promise<{
+    readonly registered: number;
+    readonly pendingValidation: number;
+    readonly activatedToday: number;
+  }> {
+    const counted = await this.#pool.query<{
+      registered: string;
+      pending_validation: string;
+      activated_today: string;
+    }>(
+      `SELECT COUNT(*)::TEXT AS registered,
+              COUNT(*) FILTER (WHERE identity_status = 'PENDING')::TEXT AS pending_validation,
+              COUNT(*) FILTER (WHERE email_verified_at::date = CURRENT_DATE)::TEXT AS activated_today
+         FROM customers`,
+    );
+
+    const row = counted.rows[0];
+
+    return {
+      registered: Number(row?.registered ?? '0'),
+      pendingValidation: Number(row?.pending_validation ?? '0'),
+      activatedToday: Number(row?.activated_today ?? '0'),
+    };
+  }
+
   public async findProcessed(
     idempotencyKey: string,
     messageType: string,

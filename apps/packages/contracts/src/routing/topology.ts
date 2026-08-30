@@ -56,6 +56,7 @@ export const QUEUES: readonly QueueDescriptor[] = [
       // this service publishes about its own transactions if one were ever
       // routed to the command exchange by mistake.
       { exchange: EXCHANGES.commands, pattern: 'transaction.list.query.v1' },
+      { exchange: EXCHANGES.commands, pattern: 'transaction.stats.query.v1' },
     ],
   },
   {
@@ -155,6 +156,8 @@ export const QUEUES: readonly QueueDescriptor[] = [
        */
       { exchange: EXCHANGES.commands, pattern: 'notification.inbox.query.v1' },
       { exchange: EXCHANGES.commands, pattern: 'notification.mark-read.v1' },
+      // The dashboard's count of what the trail recorded today.
+      { exchange: EXCHANGES.commands, pattern: 'audit.stats.query.v1' },
     ],
   },
 ];

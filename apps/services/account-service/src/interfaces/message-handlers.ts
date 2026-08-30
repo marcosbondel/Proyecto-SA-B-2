@@ -3,6 +3,7 @@ import {
   accountCreateV1,
   accountCreditRequestedV1,
   accountBillersQueryV1,
+  accountStatsQueryV1,
   accountDepositV1,
   accountDebitCompensationRequestedV1,
   accountDebitRequestedV1,
@@ -16,6 +17,7 @@ import type { CompensateDebitUseCase } from '../application/compensate-debit.use
 import type { CreateAccountUseCase } from '../application/create-account.use-case';
 import type { CreditAccountUseCase } from '../application/credit-account.use-case';
 import type { DepositUseCase } from '../application/deposit.use-case';
+import type { GetAccountStatsUseCase } from '../application/get-account-stats.use-case';
 import type { ListBillersUseCase } from '../application/list-billers.use-case';
 import type { DebitAccountUseCase } from '../application/debit-account.use-case';
 import type { GetBalanceUseCase } from '../application/get-balance.use-case';
@@ -250,6 +252,30 @@ export class ListBillersHandler extends ContractHandler<
 
   protected async run(): Promise<void> {
     await this.#useCase.execute();
+  }
+}
+
+/** The dashboard's counts. Staff only; zeroes rather than a refusal otherwise. */
+export class GetAccountStatsHandler extends ContractHandler<
+  ReturnType<typeof accountStatsQueryV1.schema.parse>
+> {
+  public readonly messageType = accountStatsQueryV1.name;
+  readonly #useCase: GetAccountStatsUseCase;
+
+  constructor(useCase: GetAccountStatsUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return accountStatsQueryV1.schema.parse(payload);
+  }
+
+  protected async run(
+    _payload: ReturnType<typeof accountStatsQueryV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(envelope.identity);
   }
 }
 
