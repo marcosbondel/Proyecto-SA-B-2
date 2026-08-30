@@ -147,6 +147,20 @@ export interface CustomerRepository {
     readonly idempotency: ProcessedMessage;
   }): Promise<void>;
 
+  /**
+   * Replaces the credential of a customer who proved they knew the old one, and
+   * records the message as processed — in one transaction.
+   *
+   * No token to burn, unlike `savePasswordReset`: the authorisation for this
+   * one was the current password, verified before this is called.
+   */
+  savePasswordChange(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly changedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void>;
+
   /** Whether this exact photo already belongs to somebody else. */
   isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean>;
 

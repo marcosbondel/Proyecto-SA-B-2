@@ -1,5 +1,6 @@
 import {
   customerAuthenticateV1,
+  customerChangePasswordV1,
   customerGetQueryV1,
   customerPasswordResetConfirmV1,
   customerPasswordResetRequestedV1,
@@ -13,6 +14,7 @@ import {
 import type { MessageEnvelope } from '@bank/contracts';
 
 import type { AuthenticateCustomerUseCase } from '../application/authenticate-customer.use-case';
+import type { ChangePasswordUseCase } from '../application/change-password.use-case';
 import type { ConfirmPasswordResetUseCase } from '../application/confirm-password-reset.use-case';
 import type { GetCustomerUseCase } from '../application/get-customer.use-case';
 import type { GetPendingValidationUseCase } from '../application/get-pending-validation.use-case';
@@ -202,6 +204,37 @@ export class ConfirmPasswordResetHandler extends ContractHandler<
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.idempotencyKey);
+  }
+}
+
+/**
+ * Changing a password from inside a session.
+ *
+ * Idempotency-guarded like its siblings, and for a reason particular to it: a
+ * redelivery must not re-verify the *old* password, which the first delivery
+ * has already replaced — the second attempt would report a wrong credential
+ * for a change that succeeded.
+ */
+export class ChangePasswordHandler extends ContractHandler<
+  ReturnType<typeof customerChangePasswordV1.schema.parse>
+> {
+  public readonly messageType = customerChangePasswordV1.name;
+  readonly #useCase: ChangePasswordUseCase;
+
+  constructor(useCase: ChangePasswordUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerChangePasswordV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerChangePasswordV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);
   }
 }
 

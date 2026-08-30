@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(65);
+    expect(catalog).toHaveLength(68);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the twenty-five messages recorded as an extension, and no others', () => {
+  it('adds exactly the twenty-eight messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -95,6 +95,14 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'audit.query.replied.v1',
       'audit.query.requested.v1',
       'customer.authenticate.replied.v1',
+      /*
+       * The first of the three added for the prototype's `C-01`, which draws a
+       * "cambiar contraseña" form the catalogue had no message for. Kept
+       * separate from the reset family because the trail must be able to tell
+       * "proved control of the inbox" from "knew the old password" — the two
+       * outcomes sit further down, where the sort puts them.
+       */
+      'customer.change-password.v1',
       'customer.email.verification.rejected.v1',
       // Added by the audit remediation (US6): Customer Service's first read
       // path, so a staff member can see a customer before editing it and the
@@ -108,6 +116,9 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        * link, a command spending it, and the two outcomes — because a second
        * shape for the same problem would be a second thing to get wrong.
        */
+      // The other two of `C-01`'s three.
+      'customer.password-change.rejected.v1',
+      'customer.password-changed.v1',
       'customer.password-reset.completed.v1',
       'customer.password-reset.confirm.v1',
       'customer.password-reset.issued.v1',

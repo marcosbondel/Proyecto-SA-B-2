@@ -445,6 +445,36 @@ export class PostgresCustomerRepository implements CustomerRepository {
     });
   }
 
+  public async savePasswordChange(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly changedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void> {
+    await this.#inTransaction(async (client) => {
+      await client.query(
+        `UPDATE customers
+            SET password_hash = $2, updated_at = $3, version = version + 1
+          WHERE customer_id = $1`,
+        [input.customerId, input.credentialHash, input.changedAt],
+      );
+
+      /*
+       * Every outstanding reset link dies too. Somebody who has just proved
+       * they know the current password does not need one, and a live link in an
+       * inbox is exactly what an attacker who asked for one is waiting on.
+       */
+      await client.query(
+        `UPDATE password_reset_tokens
+            SET used_at = $2
+          WHERE customer_id = $1 AND used_at IS NULL`,
+        [input.customerId, input.changedAt],
+      );
+
+      await this.#recordProcessed(client, input.idempotency);
+    });
+  }
+
   public async isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean> {
     const found = await this.#pool.query(
       'SELECT 1 FROM identity_documents WHERE sha256 = $1 AND customer_id <> $2 LIMIT 1',

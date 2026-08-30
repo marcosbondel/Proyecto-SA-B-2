@@ -7,6 +7,7 @@ import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
 import { AuthenticateCustomerUseCase } from './application/authenticate-customer.use-case';
+import { ChangePasswordUseCase } from './application/change-password.use-case';
 import { ConfirmPasswordResetUseCase } from './application/confirm-password-reset.use-case';
 import { GetCustomerUseCase } from './application/get-customer.use-case';
 import { GetPendingValidationUseCase } from './application/get-pending-validation.use-case';
@@ -31,6 +32,7 @@ import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   AuthenticateCustomerHandler,
+  ChangePasswordHandler,
   ConfirmPasswordResetHandler,
   RegisterCustomerHandler,
   RequestPasswordResetHandler,
@@ -118,6 +120,9 @@ async function bootstrap(): Promise<void> {
       ),
       new VerifyEmailHandler(
         new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
+      ),
+      new ChangePasswordHandler(
+        new ChangePasswordUseCase({ repository, publisher, hasher, clock }),
       ),
       new RequestPasswordResetHandler(
         new RequestPasswordResetUseCase({ repository, publisher, tokens, clock }),

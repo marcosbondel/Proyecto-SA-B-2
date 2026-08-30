@@ -27,6 +27,12 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
    */
   'customer.password-reset.issued.v1': ['resetToken'],
   'customer.password-reset.confirm.v1': ['resetToken', 'credential'],
+  /*
+   * Changing a password from inside a session. Both credentials travel: the old
+   * one is the authorisation and the new one is the thing being set, and there
+   * is no way to do this without carrying them together exactly once.
+   */
+  'customer.change-password.v1': ['currentCredential', 'newCredential'],
 };
 
 const FORBIDDEN = /password|passwd|secret|jwt|bearer|signature|privatekey|apikey/i;

@@ -3,6 +3,9 @@ import type { MessageContract } from './contract';
 import { customerActivationRequestedV1 } from './customer/customer.activation.requested.v1';
 import { customerAuthenticateRepliedV1 } from './customer/customer.authenticate.replied.v1';
 import { customerAuthenticateV1 } from './customer/customer.authenticate.v1';
+import { customerChangePasswordV1 } from './customer/customer.change-password.v1';
+import { customerPasswordChangedV1 } from './customer/customer.password-changed.v1';
+import { customerPasswordChangeRejectedV1 } from './customer/customer.password-change.rejected.v1';
 import { customerEmailVerificationRejectedV1 } from './customer/customer.email.verification.rejected.v1';
 import { customerEmailVerifiedV1 } from './customer/customer.email.verified.v1';
 import { customerGetQueryV1 } from './customer/customer.get.query.v1';
@@ -72,6 +75,9 @@ export { defineContract } from './contract';
 export * from './customer/customer.activation.requested.v1';
 export * from './customer/customer.authenticate.replied.v1';
 export * from './customer/customer.authenticate.v1';
+export * from './customer/customer.change-password.v1';
+export * from './customer/customer.password-change.rejected.v1';
+export * from './customer/customer.password-changed.v1';
 export * from './customer/customer.email.verification.rejected.v1';
 export * from './customer/customer.email.verified.v1';
 export * from './customer/customer.get.query.v1';
@@ -162,6 +168,9 @@ export const catalog: readonly MessageContract[] = [
   customerValidateIdentityV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerChangePasswordV1,
+  customerPasswordChangedV1,
+  customerPasswordChangeRejectedV1,
   customerPasswordResetCompletedV1,
   customerPasswordResetConfirmV1,
   customerPasswordResetIssuedV1,
