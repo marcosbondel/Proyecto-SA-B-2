@@ -89,6 +89,7 @@ export class RequestTransferUseCase {
       correlationId: envelope.correlationId,
       idempotencyKey: envelope.idempotencyKey,
       customerId: envelope.identity?.customerId ?? null,
+      reference: payload.reference ?? null,
       paymentScenario: payload.paymentScenario ?? null,
       now,
     });

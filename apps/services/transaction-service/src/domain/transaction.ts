@@ -72,6 +72,14 @@ export interface Transaction {
    * before the column did.
    */
   readonly customerId: string | null;
+  /**
+   * What a service payment is for — the biller's contract or meter number.
+   *
+   * `null` for an ordinary transfer between two people. This service never
+   * interprets it: the number belongs to the biller, and a bank that validated
+   * its shape would refuse a valid one the day the biller changed theirs.
+   */
+  readonly reference: string | null;
   readonly failureReason: FailureReason | null;
   readonly paymentScenario: PaymentScenario | null;
   readonly createdAt: Date;
@@ -211,6 +219,7 @@ export function openTransaction(input: {
   readonly correlationId: string;
   readonly idempotencyKey: string;
   readonly customerId: string | null;
+  readonly reference: string | null;
   readonly paymentScenario: PaymentScenario | null;
   readonly now: Date;
 }): Transaction {
@@ -223,6 +232,7 @@ export function openTransaction(input: {
     correlationId: input.correlationId,
     idempotencyKey: input.idempotencyKey,
     customerId: input.customerId,
+    reference: input.reference,
     failureReason: null,
     paymentScenario: input.paymentScenario,
     createdAt: input.now,

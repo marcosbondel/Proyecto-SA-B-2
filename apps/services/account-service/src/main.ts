@@ -10,6 +10,7 @@ import { CompensateDebitUseCase } from './application/compensate-debit.use-case'
 import { CreateAccountUseCase } from './application/create-account.use-case';
 import { CreditAccountUseCase } from './application/credit-account.use-case';
 import { DepositUseCase } from './application/deposit.use-case';
+import { ListBillersUseCase } from './application/list-billers.use-case';
 import { DeactivateInactiveAccountsUseCase } from './application/deactivate-inactive-accounts.use-case';
 import { DebitAccountUseCase } from './application/debit-account.use-case';
 import { GetBalanceUseCase } from './application/get-balance.use-case';
@@ -20,6 +21,7 @@ import { AppModule } from './app.module';
 import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environment';
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { migrate } from './infrastructure/persistence/migrations';
+import { seedBillerAccounts } from './infrastructure/persistence/seed-billers';
 import { seedDemoAccounts } from './infrastructure/persistence/seed-demo-data';
 import { PostgresAccountRepository } from './infrastructure/persistence/postgres-account.repository';
 import { DeactivationScheduler } from './infrastructure/scheduler/deactivation.scheduler';
@@ -30,6 +32,7 @@ import {
   CreateAccountHandler,
   CreditAccountHandler,
   DepositHandler,
+  ListBillersHandler,
   DebitAccountHandler,
   GetBalanceHandler,
   GetOperationsHandler,
@@ -97,6 +100,7 @@ async function bootstrap(): Promise<void> {
       new DebitAccountHandler(new DebitAccountUseCase({ repository, publisher, clock })),
       new CreditAccountHandler(new CreditAccountUseCase({ repository, publisher, clock })),
       new DepositHandler(new DepositUseCase({ repository, publisher, clock })),
+      new ListBillersHandler(new ListBillersUseCase({ repository, publisher })),
       new CompensateDebitHandler(new CompensateDebitUseCase({ repository, publisher, clock })),
       new SetAccountStatusHandler(new SetAccountStatusUseCase({ repository, publisher, clock })),
     ]);
@@ -193,6 +197,17 @@ async function bootstrap(): Promise<void> {
         if (applied.length > 0) {
           logger.info('schema migrations applied', { outcome: applied.join(', ') });
         }
+
+        /**
+         * The billers' collection accounts, **not** gated on `SEED_DEMO_DATA`.
+         *
+         * These are product data: a bank that offers "pago de servicios" has an
+         * account per biller whether or not anybody is demonstrating anything,
+         * and gating them on a development flag would leave `G-01` with an
+         * empty dropdown in the one environment where it matters.
+         */
+        const billers = await seedBillerAccounts(pool);
+        logger.info('biller accounts ready', { outcome: billers.join(', ') });
 
         /** The demo client's accounts, gated and idempotent — see `seedDemoAccounts`. */
         if (environment.SEED_DEMO_DATA) {

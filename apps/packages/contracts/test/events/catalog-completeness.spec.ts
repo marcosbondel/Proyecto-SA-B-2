@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(75);
+    expect(catalog).toHaveLength(77);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,12 +77,23 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the thirty-five messages recorded as an extension, and no others', () => {
+  it('adds exactly the thirty-seven messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
     expect(added.sort()).toEqual([
       'account.balance.replied.v1',
+      /*
+       * The two that make the prototype's `G-01` "pago de servicios" possible.
+       * A service payment **is a transfer** — to an account the biller holds at
+       * this bank — so the catalogue needed no new money movement, no nullable
+       * target account and no branch in the state machine. What it needed was a
+       * way to ask which billers exist and where their collection accounts are,
+       * because an account id compiled into a browser bundle is an account id
+       * that is wrong the first time anything is reseeded.
+       */
+      'account.billers.query.v1',
+      'account.billers.replied.v1',
       // The five added by T-17. Three of them exist because the assignment's
       // screens need data the catalogue could not carry: a list of accounts,
       // the movements of one, and the refusal of an opening that until now
