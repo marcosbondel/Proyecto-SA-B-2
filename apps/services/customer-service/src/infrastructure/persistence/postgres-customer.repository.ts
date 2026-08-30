@@ -475,6 +475,21 @@ export class PostgresCustomerRepository implements CustomerRepository {
     });
   }
 
+  public async findNames(
+    customerIds: readonly string[],
+  ): Promise<readonly { readonly customerId: string; readonly fullName: string }[]> {
+    if (customerIds.length === 0) {
+      return [];
+    }
+
+    const found = await this.#pool.query<{ customer_id: string; full_name: string }>(
+      'SELECT customer_id, full_name FROM customers WHERE customer_id = ANY($1::uuid[])',
+      [[...customerIds]],
+    );
+
+    return found.rows.map((row) => ({ customerId: row.customer_id, fullName: row.full_name }));
+  }
+
   public async isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean> {
     const found = await this.#pool.query(
       'SELECT 1 FROM identity_documents WHERE sha256 = $1 AND customer_id <> $2 LIMIT 1',

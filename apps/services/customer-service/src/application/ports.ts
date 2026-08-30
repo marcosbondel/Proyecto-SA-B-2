@@ -161,6 +161,17 @@ export interface CustomerRepository {
     readonly idempotency: ProcessedMessage;
   }): Promise<void>;
 
+  /**
+   * The display names behind a set of ids, for the ones that exist.
+   *
+   * Returns fewer rows than it was asked about when some do not exist, and says
+   * nothing about which — the caller cannot tell a missing customer from one it
+   * may not see, which is the point.
+   */
+  findNames(customerIds: readonly string[]): Promise<
+    readonly { readonly customerId: string; readonly fullName: string }[]
+  >;
+
   /** Whether this exact photo already belongs to somebody else. */
   isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean>;
 
