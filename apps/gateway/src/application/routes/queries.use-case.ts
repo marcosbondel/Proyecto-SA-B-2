@@ -10,6 +10,9 @@ import {
   auditQueryRequestedV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerNamesQueryV1,
+  customerNamesRepliedV1,
+  MAX_NAME_LOOKUPS,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
   notificationListQueryV1,
@@ -154,7 +157,65 @@ export class QueriesUseCase {
       throw GatewayError.internal();
     }
 
-    return { ...parsed.data, correlationId: context.correlationId };
+    const holders = await this.#holderNames(parsed.data.accounts, context);
+
+    return {
+      ...parsed.data,
+      accounts: parsed.data.accounts.map((account) => ({
+        ...account,
+        // Absent rather than null-filled when the name is not available: a
+        // screen can tell "we did not ask" from "there is no name", and the
+        // table falls back to the identifier it already had.
+        ...(holders.get(account.customerId) === undefined
+          ? {}
+          : { holderName: holders.get(account.customerId) }),
+      })),
+      correlationId: context.correlationId,
+    };
+  }
+
+  /**
+   * The holders' names for a listing, resolved in **one** extra round trip.
+   *
+   * This is the composition TD-026 needed and the reason it could not be done
+   * anywhere else. Account Service holds an opaque `customerId` and may not read
+   * Customer Service's database (§8.2, 2.3); Customer Service does not know what
+   * an account is. The Gateway is the only component that may hold both replies
+   * at once, and holding two replies is aggregation — it computes nothing,
+   * decides nothing, and reinterprets nothing.
+   *
+   * It **never fails the listing**. A table of accounts with opaque ids is worse
+   * than one with names and far better than an error page, so a refusal, a
+   * timeout or a broker that is away all resolve to an empty map and the screen
+   * shows what it already had. That is also what a `CLIENTE` gets: the owning
+   * service answers them with an empty list by design, and their own listing is
+   * their own accounts, where the holder is themselves.
+   */
+  async #holderNames(
+    accounts: readonly { readonly customerId: string }[],
+    context: QueryContext,
+  ): Promise<ReadonlyMap<string, string>> {
+    const customerIds = [...new Set(accounts.map((account) => account.customerId))].slice(
+      0,
+      MAX_NAME_LOOKUPS,
+    );
+
+    if (customerIds.length === 0) {
+      return new Map();
+    }
+
+    try {
+      const raw = await this.#ask(customerNamesQueryV1.name, { customerIds }, context);
+      const parsed = customerNamesRepliedV1.schema.safeParse(raw);
+
+      if (!parsed.success) {
+        return new Map();
+      }
+
+      return new Map(parsed.data.names.map((name) => [name.customerId, name.fullName]));
+    } catch {
+      return new Map();
+    }
   }
 
   /** The movements of one account, or the owning service's refusal, untouched. */

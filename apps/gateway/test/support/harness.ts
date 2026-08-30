@@ -73,10 +73,12 @@ export class RecordingPublisher implements MessagePublisherPort {
 /** Answers a question, refuses to, or never answers at all. */
 export class ScriptedReplier implements ReplyWaiterPort {
   #next: ((correlationId: string) => MessageEnvelope<unknown>) | undefined;
+  #queue: { readonly messageType: string; readonly payload: unknown }[] = [];
   #timeout = false;
 
   public answerWith(messageType: string, payload: unknown): void {
     this.#timeout = false;
+    this.#queue = [];
     this.#next = (correlationId) =>
       createEnvelope(payload, {
         messageType,
@@ -84,6 +86,21 @@ export class ScriptedReplier implements ReplyWaiterPort {
         identity: null,
         correlationId,
       });
+  }
+
+  /**
+   * A different answer per question, in order.
+   *
+   * Needed once the Gateway started asking **two** services to build one
+   * response — the accounts listing composes Account Service's rows with
+   * Customer Service's names (TD-026). A single scripted reply cannot express
+   * that, and a test that could not tell the two apart would pass against a
+   * Gateway that asked the wrong service.
+   */
+  public answerInOrder(answers: readonly { messageType: string; payload: unknown }[]): void {
+    this.#timeout = false;
+    this.#queue = [...answers];
+    this.#next = undefined;
   }
 
   /** Nobody answers. The wait ends the way it does in production. */
@@ -94,6 +111,19 @@ export class ScriptedReplier implements ReplyWaiterPort {
   public waitFor(correlationId: string): Promise<MessageEnvelope<unknown>> {
     if (this.#timeout) {
       return Promise.reject(GatewayError.replyTimeout());
+    }
+
+    const scripted = this.#queue.shift();
+
+    if (scripted !== undefined) {
+      return Promise.resolve(
+        createEnvelope(scripted.payload, {
+          messageType: scripted.messageType,
+          producer: 'customer-service',
+          identity: null,
+          correlationId,
+        }),
+      );
     }
 
     if (this.#next === undefined) {
