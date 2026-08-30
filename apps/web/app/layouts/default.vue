@@ -23,17 +23,6 @@ const modules = computed(() => modulesFor(role.value));
 const roleLabel = computed(() => (role.value === null ? '' : labelForRole(role.value)));
 const initials = computed(() => initialsOf(session.value?.username));
 
-/**
- * Where "Mi perfil" goes until `C-01` exists as a screen of its own.
- *
- * The session carries the `customerId`, and `/clientes/[id]` already reads a
- * customer through the route the audit remediation added, so the menu entry
- * resolves to something real rather than to a route nobody has written yet.
- */
-const profilePath = computed(() =>
-  session.value === null ? '/' : `/clientes/${session.value.customerId}`,
-);
-
 const menuOpen = ref(false);
 const query = ref('');
 const destinations = computed(() => searchDestinations(query.value, role.value));
@@ -161,7 +150,7 @@ async function signOut(): Promise<void> {
           <UDropdownMenu
             :items="[
               [
-                { label: 'Mi perfil', icon: 'i-lucide-user', to: profilePath },
+                { label: 'Mi perfil', icon: 'i-lucide-user', to: '/perfil' },
                 { label: 'Cerrar sesión', icon: 'i-lucide-log-out', color: 'error', onSelect: signOut },
               ],
             ]"

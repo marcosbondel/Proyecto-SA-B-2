@@ -10,6 +10,7 @@ import {
   SESSION_SIGNER,
 } from './application/ports';
 import { CommandsUseCase } from './application/routes/commands.use-case';
+import { ChangePasswordUseCase } from './application/routes/change-password.use-case';
 import { LoginUseCase } from './application/routes/login.use-case';
 import { PasswordResetUseCase } from './application/routes/password-reset.use-case';
 import { QueriesUseCase } from './application/routes/queries.use-case';
@@ -100,6 +101,7 @@ export class AppModule implements NestModule {
         { provide: SESSION_VERIFIER, useValue: sessions },
         { provide: SESSION_SIGNER, useValue: sessions },
 
+        ChangePasswordUseCase,
         LoginUseCase,
         PasswordResetUseCase,
         RegisterCustomerUseCase,

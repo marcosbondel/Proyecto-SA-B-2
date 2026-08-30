@@ -153,8 +153,22 @@ describe('which events are worth telling somebody about', () => {
     }
   });
 
-  it('notifies on thirteen message types and no more', () => {
-    expect(notifyingMessageTypes()).toHaveLength(13);
+  it('notifies on fourteen message types and no more', () => {
+    expect(notifyingMessageTypes()).toHaveLength(14);
+  });
+
+  /**
+   * A wrong current password belongs in the trail, not in an inbox: emailing
+   * somebody every time they mistype their own password is how a real warning
+   * gets ignored.
+   */
+  it('emails a password change but not a refused one', () => {
+    expect(notificationFor('customer.password-changed.v1', { customerId: 'c-1' })?.type).toBe(
+      'customer.password-changed',
+    );
+    expect(
+      notificationFor('customer.password-change.rejected.v1', { customerId: 'c-1' }),
+    ).toBeNull();
   });
 
   /**
