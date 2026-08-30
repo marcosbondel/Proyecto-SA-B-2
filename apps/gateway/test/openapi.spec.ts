@@ -81,7 +81,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the sixteen paths the tickets fixed', () => {
+  it('declares the eighteen paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -93,6 +93,10 @@ describe('the versioned API contract', () => {
         // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
         '/api/audit/notifications',
         '/api/auth/login',
+        // Added for the prototype's P-07: the password recovery the assignment's
+        // flow needs and that no route offered.
+        '/api/auth/password-reset',
+        '/api/auth/password-reset/confirm',
         '/api/customers',
         '/api/customers/verify-email',
         // Added by the audit remediation (US6): the read path, the teller's
@@ -138,7 +142,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(16);
+      expect(functional).toHaveLength(18);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
@@ -173,10 +177,15 @@ describe('the versioned API contract', () => {
     });
 
     /**
-     * The five public routes, and only those. If a sixth ever appears here
+     * The seven public routes, and only those. If an eighth ever appears here
      * without a bearer requirement, this is where it is noticed.
+     *
+     * The two password-recovery routes are public because they have to be: the
+     * whole premise is somebody who cannot sign in. The token in the emailed
+     * link is the credential for the second, and the first is deliberately
+     * uninformative so being open costs nothing.
      */
-    it('marks exactly the five public routes as needing no token', () => {
+    it('marks exactly the seven public routes as needing no token', () => {
       const withoutAuth: string[] = [];
 
       for (const [path, operations] of Object.entries(committed.paths)) {
@@ -192,6 +201,8 @@ describe('the versioned API contract', () => {
           'GET /health',
           'GET /ready',
           'POST /api/auth/login',
+          'POST /api/auth/password-reset',
+          'POST /api/auth/password-reset/confirm',
           'POST /api/customers',
           'GET /api/customers/verify-email',
         ].sort(),

@@ -32,15 +32,20 @@ export interface LogFields {
   readonly reason?: string;
   readonly attempt?: number;
   /**
-   * The activation path, written only by the simulated delivery channel and
+   * The path an email would link to — the activation link, or the
+   * password-reset one — written only by the simulated delivery channel and
    * only outside production (TD-043).
+   *
+   * Named for what it is rather than for the first flow that needed it: two
+   * messages in the catalogue carry a token now, and a reset link logged under
+   * `activationLink` would send a developer looking for the wrong screen.
    *
    * `redact` below drops anything whose *name* suggests a secret, and this one
    * deliberately does not match — the gate is the adapter's `revealLinks`
    * flag, decided once in `main.ts` from `NODE_ENV`, rather than a name this
    * filter would have to be taught to make an exception for.
    */
-  readonly activationLink?: string;
+  readonly deliveryLink?: string;
   readonly durationMs?: number;
   readonly error?: string;
 }

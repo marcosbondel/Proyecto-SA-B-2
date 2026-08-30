@@ -47,7 +47,7 @@ export interface NotificationIntent {
 /**
  * Which events produce a notification, and what it says.
  *
- * Eleven entries and not fifty-five. The trail records everything; the *inbox*
+ * Thirteen entries and not sixty-five. The trail records everything; the *inbox*
  * records the things a person would want to be told, and a notification for
  * `account.debit.requested.v1` would be the bank narrating its own plumbing.
  * The three the ticket names — completed, failed, compensated — are the first
@@ -86,6 +86,22 @@ const POLICY: Readonly<
   'customer.activation.requested.v1': {
     type: 'customer.activation',
     subject: 'Activa tu cuenta de bonking',
+    reference: 'customerId',
+  },
+  /*
+   * Password recovery, added for the prototype's `P-07`. Two entries rather
+   * than one, and the second is the one that matters: "tu contraseña cambió"
+   * is worth sending precisely when the person reading it did not ask for the
+   * change, which is how somebody finds out their account was taken.
+   */
+  'customer.password-reset.issued.v1': {
+    type: 'customer.password-reset',
+    subject: 'Restablece tu contraseña de bonking',
+    reference: 'customerId',
+  },
+  'customer.password-reset.completed.v1': {
+    type: 'customer.password-changed',
+    subject: 'Tu contraseña fue cambiada',
     reference: 'customerId',
   },
   'customer.email.verified.v1': {
@@ -136,7 +152,7 @@ export function notificationFor(messageType: string, payload: unknown): Notifica
     return null;
   }
 
-  const link = activationLinkFrom(messageType, payload);
+  const link = linkFrom(messageType, payload);
 
   return {
     type: rule.type,
@@ -147,26 +163,33 @@ export function notificationFor(messageType: string, payload: unknown): Notifica
 }
 
 /**
- * The activation link, for the one message that carries a token.
+ * The two messages that carry a token, and the path each one links to.
  *
- * `customer.activation.requested.v1` is the single contract in the catalogue
- * where a clear secret travels, and its own comment says the value "must never
- * be logged or echoed". This function does not break that rule — it hands the
- * link to the delivery channel, which is what an email would do with it. What
- * the channel then does is gated on the environment, one file over.
+ * These are the only contracts in the catalogue where a clear secret travels,
+ * and both say the value "must never be logged or echoed". This function does
+ * not break that rule — it hands the link to the delivery channel, which is
+ * what an email would do with it. What the channel then does is gated on the
+ * environment, one file over.
  *
  * A path rather than an absolute URL, because this service does not know where
  * the frontend is deployed and inventing a host would produce a link that is
  * confidently wrong.
  */
-function activationLinkFrom(messageType: string, payload: unknown): string | null {
-  if (messageType !== 'customer.activation.requested.v1') {
+const LINKS: Readonly<Record<string, { readonly path: string; readonly field: string }>> = {
+  'customer.activation.requested.v1': { path: '/activar', field: 'activationToken' },
+  'customer.password-reset.issued.v1': { path: '/restablecer', field: 'resetToken' },
+};
+
+function linkFrom(messageType: string, payload: unknown): string | null {
+  const rule = LINKS[messageType];
+
+  if (rule === undefined) {
     return null;
   }
 
-  const token = readString(payload, 'activationToken');
+  const token = readString(payload, rule.field);
 
-  return token === null ? null : `/activar?token=${encodeURIComponent(token)}`;
+  return token === null ? null : `${rule.path}?token=${encodeURIComponent(token)}`;
 }
 
 /** Every message type that notifies. For the tests, and for the documentation. */
@@ -238,12 +261,24 @@ export function subjectCustomerIdFrom(messageType: string, payload: unknown): st
  * untouched: no real address is ever written down, it is only used to send.
  */
 export function deliverableEmailFrom(messageType: string, payload: unknown): string | null {
-  if (messageType !== 'customer.activation.requested.v1') {
+  if (!DELIVERABLE.has(messageType)) {
     return null;
   }
 
   return readString(payload, 'email');
 }
+
+/**
+ * The two events sanctioned to carry a real address, and the reason both are.
+ *
+ * Neither email can be delivered without one, and neither reaches a person who
+ * has a session — one is finishing a sign-up, the other has lost their
+ * password. Every other event in the catalogue carries no real address at all.
+ */
+const DELIVERABLE = new Set([
+  'customer.activation.requested.v1',
+  'customer.password-reset.issued.v1',
+]);
 
 function readString(payload: unknown, field: string): string | null {
   if (typeof payload !== 'object' || payload === null) {

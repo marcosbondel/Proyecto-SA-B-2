@@ -4,6 +4,7 @@ import { test, describe } from 'node:test';
 import {
   GUEST_ONLY_ROUTES,
   MODULES,
+  PUBLIC_ROUTES,
   canOpen,
   isGuestOnly,
   labelForRole,
@@ -119,6 +120,20 @@ describe('the guest-only routes', () => {
     // The activation link arrives by email and may be opened in a browser
     // where somebody else is signed in; the token decides, not the session.
     assert.equal(isGuestOnly('/activar'), false);
+
+    // The reset link is the same case. And `/recuperar` is not guest-only
+    // either: being unable to sign in and having a stale session open in a tab
+    // are not mutually exclusive, and bouncing that person to the landing page
+    // would leave them with no way to ask for a new password at all.
+    assert.equal(isGuestOnly('/restablecer'), false);
+    assert.equal(isGuestOnly('/recuperar'), false);
+  });
+
+  test('the password-recovery screens need no session', () => {
+    for (const route of ['/recuperar', '/restablecer']) {
+      assert.equal(PUBLIC_ROUTES.includes(route), true, route);
+      assert.equal(canOpen(null, route), true, route);
+    }
   });
 
   test('match by segment, not by prefix string', () => {

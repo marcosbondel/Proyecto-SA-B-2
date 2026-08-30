@@ -17,6 +17,10 @@ import {
   customerGetRepliedV1,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
+  customerPasswordResetCompletedV1,
+  customerPasswordResetConfirmV1,
+  customerPasswordResetRejectedV1,
+  customerPasswordResetRequestedV1,
   customerRegisterV1,
   customerSetIdentityVerdictV1,
   customerUpdateV1,
@@ -51,6 +55,17 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'POST /api/auth/login': {
     publishes: customerAuthenticateV1.name,
     awaits: [customerAuthenticateRepliedV1.name],
+  },
+  /*
+   * Password recovery. The request awaits nothing on purpose: an unknown
+   * address produces no event at all, so there is nothing to correlate — which
+   * is what keeps the route from answering "does this person bank here".
+   */
+  'POST /api/auth/password-reset': { publishes: customerPasswordResetRequestedV1.name },
+  'POST /api/auth/password-reset/confirm': {
+    publishes: customerPasswordResetConfirmV1.name,
+    // Events, not replies — the same correlation the activation link uses.
+    awaits: [customerPasswordResetCompletedV1.name, customerPasswordResetRejectedV1.name],
   },
   'POST /api/customers': { publishes: customerRegisterV1.name },
   'GET /api/customers/verify-email': {

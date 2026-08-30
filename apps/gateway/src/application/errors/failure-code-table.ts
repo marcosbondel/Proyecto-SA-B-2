@@ -3,7 +3,7 @@ import type { FailureCode } from '@bank/contracts';
 import type { GatewayErrorType } from './gateway-error';
 
 /**
- * Which HTTP status stands for each of the catalogue's twenty-one failure codes.
+ * Which HTTP status stands for each of the catalogue's twenty-three failure codes.
  *
  * **A table, not a chain of conditionals**, and the difference is not
  * stylistic. Translating a verdict someone else reached is routing; deciding
@@ -32,6 +32,16 @@ export const FAILURE_CODE_STATUS: Readonly<Record<FailureCode, number>> = {
   IDEMPOTENCY_KEY_CONFLICT: 409,
   ACTIVATION_TOKEN_INVALID: 409,
   ACTIVATION_TOKEN_EXPIRED: 409,
+  /*
+   * The password-recovery pair, `409` for the same reason its activation
+   * siblings are: the link is well-formed and the request is fine — the token
+   * has simply already been spent or has run out of time, which is a collision
+   * with state rather than something to correct in the request. Both collapse
+   * into one sentence before they reach a browser; the distinction lives here
+   * and in the audit record.
+   */
+  RESET_TOKEN_INVALID: 409,
+  RESET_TOKEN_EXPIRED: 409,
   ILLEGAL_TRANSITION: 409,
   ACCOUNT_INACTIVE: 409,
 

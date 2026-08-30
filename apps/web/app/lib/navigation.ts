@@ -49,8 +49,24 @@ export const MODULES: readonly ModuleEntry[] = [
   { label: 'Auditoría', to: '/auditoria', roles: ['ADMINISTRADOR'] },
 ];
 
-/** Routes reachable with no session at all. */
-export const PUBLIC_ROUTES: readonly string[] = ['/login', '/registro', '/activar'];
+/**
+ * Routes reachable with no session at all.
+ *
+ * `/recuperar` and `/restablecer` join the three T-15 fixed, and neither is
+ * guest-only. `/restablecer` for the reason `/activar` is not: it arrives by
+ * email and may well be opened in a browser where somebody else is signed in,
+ * and the token in the link decides, not the session. `/recuperar` because
+ * being unable to sign in and having a stale session open in a tab are not
+ * mutually exclusive — bouncing that person to the landing page would leave
+ * them with no way to ask for a new password at all.
+ */
+export const PUBLIC_ROUTES: readonly string[] = [
+  '/login',
+  '/registro',
+  '/activar',
+  '/recuperar',
+  '/restablecer',
+];
 
 /**
  * The public routes that stop making sense once a session exists.
