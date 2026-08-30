@@ -124,6 +124,15 @@ export class InMemoryAccountRepository implements AccountRepository {
     return { account: decided.account, operation, reactivated: decided.reactivated };
   }
 
+  /** The billers this fake knows about. Empty unless a test puts one here. */
+  public readonly billers: { code: string; name: string; accountId: string }[] = [];
+
+  public async listBillers(): Promise<
+    readonly { readonly code: string; readonly name: string; readonly accountId: string }[]
+  > {
+    return await Promise.resolve([...this.billers]);
+  }
+
   public async setStatus(input: {
     readonly accountId: string;
     readonly status: 'ACTIVE' | 'INACTIVE';

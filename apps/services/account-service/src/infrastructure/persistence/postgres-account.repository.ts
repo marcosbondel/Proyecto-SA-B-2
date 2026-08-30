@@ -106,7 +106,16 @@ export class PostgresAccountRepository implements AccountRepository {
       }
     }
 
-    const where = conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')}`;
+    /*
+     * A biller's collection account is an account and is not somebody's
+     * account. It never appears in a customer listing or in an administrator's
+     * management table — showing EEGSA among a person's accounts would be the
+     * kind of internal plumbing a screen should not leak, and letting an
+     * administrator deactivate one would break every service payment at once.
+     */
+    conditions.push('biller_code IS NULL');
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
     const result = await this.#pool.query<AccountRow>(
       `SELECT ${ACCOUNT_COLUMNS} FROM accounts ${where} ORDER BY created_at DESC, account_id`,
@@ -260,6 +269,27 @@ export class PostgresAccountRepository implements AccountRepository {
     });
   }
 
+  public async listBillers(): Promise<
+    readonly { readonly code: string; readonly name: string; readonly accountId: string }[]
+  > {
+    const found = await this.#pool.query<{
+      biller_code: string;
+      biller_name: string;
+      account_id: string;
+    }>(
+      `SELECT biller_code, biller_name, account_id
+         FROM accounts
+        WHERE biller_code IS NOT NULL
+        ORDER BY biller_name`,
+    );
+
+    return found.rows.map((row) => ({
+      code: row.biller_code,
+      name: row.biller_name,
+      accountId: row.account_id,
+    }));
+  }
+
   public async setStatus(input: {
     readonly accountId: string;
     readonly status: 'ACTIVE' | 'INACTIVE';
@@ -310,6 +340,13 @@ export class PostgresAccountRepository implements AccountRepository {
            WHERE status = 'ACTIVE'
              AND balance < ($2::NUMERIC)
              AND last_activity_at <= $3
+             /*
+              * Never a biller. A collection account with no traffic for six
+              * months is a service nobody has paid recently, not a dormant
+              * customer — and deactivating it would refuse the next payment
+              * for a rule that was written about people.
+              */
+             AND biller_code IS NULL
            ORDER BY account_id
              FOR UPDATE
         )

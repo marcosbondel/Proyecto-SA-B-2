@@ -202,6 +202,24 @@ export const MIGRATIONS: readonly Migration[] = [
          ON transactions (customer_id, created_at DESC)`,
     ],
   },
+  {
+    /*
+     * What a service payment is *for* — a contract number, a meter number, a
+     * phone line — carried on the transfer that pays it.
+     *
+     * A service payment is a transfer to an account the biller holds at this
+     * bank, so it needed no new table and no new state. The one thing a
+     * transfer could not carry was the number that tells the biller whose bill
+     * was paid, and this is that number.
+     *
+     * Nullable: an ordinary transfer between two people has no reference, and
+     * making one up would be worse than leaving the column empty.
+     */
+    name: '007_transactions_reference',
+    statements: [
+      `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS reference VARCHAR(60)`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

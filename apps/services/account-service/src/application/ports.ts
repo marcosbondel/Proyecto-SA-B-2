@@ -109,6 +109,17 @@ export interface AccountRepository {
     readonly now: Date;
   }): Promise<AppliedMovement | null>;
 
+  /**
+   * The billers' collection accounts, as a catalogue.
+   *
+   * No balance and no status: this is read by the screen that lets anybody pay
+   * a bill, and what a biller has collected is none of a paying customer's
+   * business.
+   */
+  listBillers(): Promise<
+    readonly { readonly code: string; readonly name: string; readonly accountId: string }[]
+  >;
+
   /** Sets the status by hand and records the message. `null` if there is no such account. */
   setStatus(input: {
     readonly accountId: string;
