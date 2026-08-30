@@ -1,6 +1,8 @@
 import {
   customerAuthenticateV1,
   customerGetQueryV1,
+  customerPasswordResetConfirmV1,
+  customerPasswordResetRequestedV1,
   customerPendingValidationQueryV1,
   customerRegisterV1,
   customerSetIdentityVerdictV1,
@@ -11,9 +13,11 @@ import {
 import type { MessageEnvelope } from '@bank/contracts';
 
 import type { AuthenticateCustomerUseCase } from '../application/authenticate-customer.use-case';
+import type { ConfirmPasswordResetUseCase } from '../application/confirm-password-reset.use-case';
 import type { GetCustomerUseCase } from '../application/get-customer.use-case';
 import type { GetPendingValidationUseCase } from '../application/get-pending-validation.use-case';
 import type { RegisterCustomerUseCase } from '../application/register-customer.use-case';
+import type { RequestPasswordResetUseCase } from '../application/request-password-reset.use-case';
 import type { SetIdentityVerdictUseCase } from '../application/set-identity-verdict.use-case';
 import type { UpdateCustomerUseCase } from '../application/update-customer.use-case';
 import type { ValidateIdentityUseCase } from '../application/validate-identity.use-case';
@@ -141,6 +145,60 @@ export class VerifyEmailHandler extends ContractHandler<
 
   protected async run(
     payload: ReturnType<typeof customerVerifyEmailV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.idempotencyKey);
+  }
+}
+
+/**
+ * "I forgot my password", and the reset that follows it.
+ *
+ * Both are idempotency-guarded inside their use cases, and both must be: the
+ * first issues a token that invalidates the previous one, so a broker retry
+ * would kill the link the person is about to click; the second spends a token,
+ * so a retry would reject a link that had just worked.
+ */
+export class RequestPasswordResetHandler extends ContractHandler<
+  ReturnType<typeof customerPasswordResetRequestedV1.schema.parse>
+> {
+  public readonly messageType = customerPasswordResetRequestedV1.name;
+  readonly #useCase: RequestPasswordResetUseCase;
+
+  constructor(useCase: RequestPasswordResetUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerPasswordResetRequestedV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerPasswordResetRequestedV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.idempotencyKey);
+  }
+}
+
+export class ConfirmPasswordResetHandler extends ContractHandler<
+  ReturnType<typeof customerPasswordResetConfirmV1.schema.parse>
+> {
+  public readonly messageType = customerPasswordResetConfirmV1.name;
+  readonly #useCase: ConfirmPasswordResetUseCase;
+
+  constructor(useCase: ConfirmPasswordResetUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerPasswordResetConfirmV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerPasswordResetConfirmV1.schema.parse>,
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.idempotencyKey);

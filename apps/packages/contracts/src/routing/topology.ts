@@ -171,6 +171,13 @@ export const GATEWAY_REPLY_BINDINGS: readonly {
   // The verdict of an email activation, which T-15 answers synchronously.
   { exchange: EXCHANGES.events, pattern: 'customer.email.verified.v1' },
   { exchange: EXCHANGES.events, pattern: 'customer.email.verification.rejected.v1' },
+  /*
+   * The verdict of a password reset, for the same reason and in the same shape:
+   * somebody who just chose a new password is holding a connection open, and
+   * "go read the audit trail" is not an answer for them either.
+   */
+  { exchange: EXCHANGES.events, pattern: 'customer.password-reset.completed.v1' },
+  { exchange: EXCHANGES.events, pattern: 'customer.password-reset.rejected.v1' },
 ];
 
 /** The name of one replica's private reply queue. Never shared. */

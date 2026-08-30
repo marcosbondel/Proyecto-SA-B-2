@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(60);
+    expect(catalog).toHaveLength(65);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the twenty messages recorded as an extension, and no others', () => {
+  it('adds exactly the twenty-five messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -101,6 +101,18 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       // update form is not filled in blind.
       'customer.get.query.v1',
       'customer.get.replied.v1',
+      /*
+       * The five added for the prototype's `P-07`, the password recovery the
+       * assignment's flow needs and T-05 had no message for. They repeat the
+       * activation flow's shape exactly — a command in, an event carrying the
+       * link, a command spending it, and the two outcomes — because a second
+       * shape for the same problem would be a second thing to get wrong.
+       */
+      'customer.password-reset.completed.v1',
+      'customer.password-reset.confirm.v1',
+      'customer.password-reset.issued.v1',
+      'customer.password-reset.rejected.v1',
+      'customer.password-reset.requested.v1',
       // Also US6: the teller's queue of identities awaiting a verdict, and the
       // manual verdict itself — the human "a teller validates the document" the
       // assignment describes, distinct from the automatic photo check.

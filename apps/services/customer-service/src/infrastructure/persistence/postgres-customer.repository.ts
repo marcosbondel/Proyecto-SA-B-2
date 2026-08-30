@@ -344,6 +344,107 @@ export class PostgresCustomerRepository implements CustomerRepository {
     return { outcome: 'FOUND', customer: toCustomer(row) };
   }
 
+  public async savePasswordResetToken(input: {
+    readonly customerId: string;
+    readonly tokenHash: string;
+    readonly expiresAt: string;
+  }): Promise<void> {
+    await this.#inTransaction(async (client) => {
+      // The same invalidation `saveActivationToken` does, and for the same
+      // reason: asking twice must not leave two live ways into the account.
+      await client.query(
+        `UPDATE password_reset_tokens
+            SET used_at = now()
+          WHERE customer_id = $1 AND used_at IS NULL`,
+        [input.customerId],
+      );
+
+      await client.query(
+        `INSERT INTO password_reset_tokens (token_id, customer_id, token_hash, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [randomUUID(), input.customerId, input.tokenHash, input.expiresAt],
+      );
+    });
+  }
+
+  public async findByPasswordResetToken(
+    tokenHash: string,
+    now: Date,
+  ): Promise<
+    | { readonly outcome: 'FOUND'; readonly customer: Customer }
+    | { readonly outcome: 'EXPIRED' }
+    | { readonly outcome: 'UNKNOWN' }
+  > {
+    const found = await this.#pool.query<CustomerRow & { expires_at: Date; used_at: Date | null }>(
+      `SELECT c.*, t.expires_at, t.used_at
+         FROM password_reset_tokens t
+         JOIN customers c ON c.customer_id = t.customer_id
+        WHERE t.token_hash = $1`,
+      [tokenHash],
+    );
+
+    if (found.rows.length === 0) {
+      return { outcome: 'UNKNOWN' };
+    }
+
+    const row = found.rows[0]!;
+
+    // A spent token is reported as unknown, not as spent — the same refusal to
+    // confirm that a token once existed for an address.
+    if (row.used_at !== null) {
+      return { outcome: 'UNKNOWN' };
+    }
+
+    if (row.expires_at.getTime() <= now.getTime()) {
+      return { outcome: 'EXPIRED' };
+    }
+
+    return { outcome: 'FOUND', customer: toCustomer(row) };
+  }
+
+  public async savePasswordReset(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly tokenHash: string;
+    readonly usedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void> {
+    await this.#inTransaction(async (client) => {
+      /**
+       * `used_at IS NULL` in the WHERE clause rather than checked beforehand:
+       * two deliveries of the same link race here, and the one that finds the
+       * token already spent updates nothing and changes no password.
+       */
+      const burned = await client.query(
+        `UPDATE password_reset_tokens
+            SET used_at = $2
+          WHERE token_hash = $1 AND used_at IS NULL`,
+        [input.tokenHash, input.usedAt],
+      );
+
+      if (burned.rowCount === 0) {
+        throw new DomainRejection('RESET_TOKEN_INVALID', 'the token was already used');
+      }
+
+      // Every other live link for this customer dies with it.
+      await client.query(
+        `UPDATE password_reset_tokens
+            SET used_at = $2
+          WHERE customer_id = $1 AND used_at IS NULL`,
+        [input.customerId, input.usedAt],
+      );
+
+      await client.query(
+        `UPDATE customers
+            SET password_hash = $2, updated_at = $3, version = version + 1
+          WHERE customer_id = $1`,
+        [input.customerId, input.credentialHash, input.usedAt],
+      );
+
+      await this.#recordProcessed(client, input.idempotency);
+    });
+  }
+
   public async isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean> {
     const found = await this.#pool.query(
       'SELECT 1 FROM identity_documents WHERE sha256 = $1 AND customer_id <> $2 LIMIT 1',

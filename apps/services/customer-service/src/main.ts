@@ -7,9 +7,11 @@ import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
 import { AuthenticateCustomerUseCase } from './application/authenticate-customer.use-case';
+import { ConfirmPasswordResetUseCase } from './application/confirm-password-reset.use-case';
 import { GetCustomerUseCase } from './application/get-customer.use-case';
 import { GetPendingValidationUseCase } from './application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from './application/register-customer.use-case';
+import { RequestPasswordResetUseCase } from './application/request-password-reset.use-case';
 import { SetIdentityVerdictUseCase } from './application/set-identity-verdict.use-case';
 import { UpdateCustomerUseCase } from './application/update-customer.use-case';
 import { ValidateIdentityUseCase } from './application/validate-identity.use-case';
@@ -29,7 +31,9 @@ import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   AuthenticateCustomerHandler,
+  ConfirmPasswordResetHandler,
   RegisterCustomerHandler,
+  RequestPasswordResetHandler,
   GetCustomerHandler,
   GetPendingValidationHandler,
   SetIdentityVerdictHandler,
@@ -114,6 +118,12 @@ async function bootstrap(): Promise<void> {
       ),
       new VerifyEmailHandler(
         new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
+      ),
+      new RequestPasswordResetHandler(
+        new RequestPasswordResetUseCase({ repository, publisher, tokens, clock }),
+      ),
+      new ConfirmPasswordResetHandler(
+        new ConfirmPasswordResetUseCase({ repository, publisher, hasher, tokens, clock }),
       ),
       new ValidateIdentityHandler(
         new ValidateIdentityUseCase({ repository, publisher, documents, clock }),

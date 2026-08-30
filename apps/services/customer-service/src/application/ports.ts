@@ -109,6 +109,44 @@ export interface CustomerRepository {
     | { readonly outcome: 'UNKNOWN' }
   >;
 
+  /**
+   * Records a new password-reset token, invalidating the customer's live ones.
+   *
+   * The invalidation is part of issuing rather than a separate call, for the
+   * reason US7 gave for activation tokens: every request otherwise left another
+   * usable link behind, so asking twice doubled the number of ways in.
+   */
+  savePasswordResetToken(input: {
+    readonly customerId: string;
+    readonly tokenHash: string;
+    readonly expiresAt: string;
+  }): Promise<void>;
+
+  /** The customer a live reset token belongs to, or why it cannot be used. */
+  findByPasswordResetToken(tokenHash: string, now: Date): Promise<
+    | { readonly outcome: 'FOUND'; readonly customer: Customer }
+    | { readonly outcome: 'EXPIRED' }
+    | { readonly outcome: 'UNKNOWN' }
+  >;
+
+  /**
+   * Replaces the credential, burns every reset token the customer holds, and
+   * records the message as processed — in one transaction.
+   *
+   * Burning **all** of them rather than only the one spent is the point: a
+   * person who asks twice and then completes the reset should not leave a
+   * second live link in an inbox that may be the reason they were resetting.
+   *
+   * @throws DomainRejection RESET_TOKEN_INVALID when the token was already spent
+   */
+  savePasswordReset(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly tokenHash: string;
+    readonly usedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void>;
+
   /** Whether this exact photo already belongs to somebody else. */
   isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean>;
 
