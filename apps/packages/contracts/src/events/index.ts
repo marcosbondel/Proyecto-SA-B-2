@@ -58,6 +58,8 @@ import { transactionCompensatedV1 } from './transaction/transaction.compensated.
 import { transactionCompletedV1 } from './transaction/transaction.completed.v1';
 import { transactionFailedV1 } from './transaction/transaction.failed.v1';
 import { transactionInitiatedV1 } from './transaction/transaction.initiated.v1';
+import { transactionListQueryV1 } from './transaction/transaction.list.query.v1';
+import { transactionListRepliedV1 } from './transaction/transaction.list.replied.v1';
 import { transactionStatusRepliedV1 } from './transaction/transaction.status.replied.v1';
 import { transactionStatusRequestedV1 } from './transaction/transaction.status.requested.v1';
 import { transferRequestedV1 } from './transaction/transfer.requested.v1';
@@ -135,6 +137,8 @@ export * from './transaction/transaction.compensated.v1';
 export * from './transaction/transaction.completed.v1';
 export * from './transaction/transaction.failed.v1';
 export * from './transaction/transaction.initiated.v1';
+export * from './transaction/transaction.list.query.v1';
+export * from './transaction/transaction.list.replied.v1';
 export * from './transaction/transaction.status.replied.v1';
 export * from './transaction/transaction.status.requested.v1';
 export * from './transaction/transfer.requested.v1';
@@ -219,6 +223,8 @@ export const catalog: readonly MessageContract[] = [
   transactionCompletedV1,
   transactionFailedV1,
   transactionInitiatedV1,
+  transactionListQueryV1,
+  transactionListRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
   transferRequestedV1,

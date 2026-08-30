@@ -60,6 +60,16 @@ export class RequestTransferUseCase {
       readonly messageId: string;
       readonly correlationId: string;
       readonly idempotencyKey: string;
+      /**
+       * Who the system is acting for, recorded on the row at request time.
+       *
+       * It is the only moment this service ever learns that a transfer belongs
+       * to a person: both account references are opaque here, and resolving
+       * either means reading Account Service's database (§8.2, 2.3). Missing it
+       * once is missing it forever — which is why the column is written on the
+       * insert rather than derived later (TD-033, TD-035).
+       */
+      readonly identity: { readonly customerId: string } | null;
     },
   ): Promise<RequestOutcome> {
     const refusal = requestRefusal(payload);
@@ -78,6 +88,7 @@ export class RequestTransferUseCase {
       amount: payload.amount,
       correlationId: envelope.correlationId,
       idempotencyKey: envelope.idempotencyKey,
+      customerId: envelope.identity?.customerId ?? null,
       paymentScenario: payload.paymentScenario ?? null,
       now,
     });

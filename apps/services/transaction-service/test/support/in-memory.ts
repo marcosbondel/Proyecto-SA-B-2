@@ -49,6 +49,34 @@ export class InMemoryTransactionRepository implements TransactionRepository {
     return { kind: 'CREATED', transaction: input.transaction };
   }
 
+  public async list(input: {
+    readonly ownerId: string | null;
+    readonly customerId?: string;
+    readonly accountId?: string;
+    readonly status?: Transaction['status'];
+    readonly limit: number;
+  }): Promise<{ readonly transactions: readonly Transaction[]; readonly total: number }> {
+    const matching = [...this.transactions.values()]
+      .filter((transaction) => input.ownerId === null || transaction.customerId === input.ownerId)
+      .filter(
+        (transaction) =>
+          input.customerId === undefined || transaction.customerId === input.customerId,
+      )
+      .filter(
+        (transaction) =>
+          input.accountId === undefined ||
+          transaction.sourceAccount === input.accountId ||
+          transaction.targetAccount === input.accountId,
+      )
+      .filter((transaction) => input.status === undefined || transaction.status === input.status)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    return {
+      transactions: matching.slice(0, input.limit),
+      total: matching.length,
+    };
+  }
+
   public async recordAlias(input: {
     readonly requestedTransactionId: string;
     readonly transactionId: string;

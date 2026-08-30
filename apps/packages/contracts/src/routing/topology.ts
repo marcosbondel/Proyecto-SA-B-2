@@ -51,6 +51,11 @@ export const QUEUES: readonly QueueDescriptor[] = [
     bindings: [
       { exchange: EXCHANGES.commands, pattern: 'transfer.requested.v1' },
       { exchange: EXCHANGES.commands, pattern: 'transaction.status.requested.v1' },
+      // Added with the listing (TD-033). Enumerated rather than widened to
+      // `transaction.#`, because that pattern would also catch the *events*
+      // this service publishes about its own transactions if one were ever
+      // routed to the command exchange by mistake.
+      { exchange: EXCHANGES.commands, pattern: 'transaction.list.query.v1' },
     ],
   },
   {

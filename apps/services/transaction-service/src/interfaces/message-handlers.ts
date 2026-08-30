@@ -6,6 +6,7 @@ import {
   accountDebitedV1,
   paymentFailedV1,
   paymentSucceededV1,
+  transactionListQueryV1,
   transactionStatusRequestedV1,
   transferRequestedV1,
 } from '@bank/contracts';
@@ -13,6 +14,7 @@ import type { MessageEnvelope } from '@bank/contracts';
 
 import type { AdvanceSagaUseCase } from '../application/advance-saga.use-case';
 import type { GetTransactionStatusUseCase } from '../application/get-transaction-status.use-case';
+import type { ListTransactionsUseCase } from '../application/list-transactions.use-case';
 import type { RequestTransferUseCase } from '../application/request-transfer.use-case';
 import type { SagaEvent } from '../domain/transaction';
 import type { InboundMessageHandler } from './inbound-message.handler';
@@ -242,6 +244,7 @@ export class RequestTransferHandler implements InboundMessageHandler {
       messageId: envelope.messageId,
       correlationId: envelope.correlationId,
       idempotencyKey: envelope.idempotencyKey,
+      identity: envelope.identity,
     });
 
     const fields = {
@@ -287,6 +290,33 @@ export class TransactionStatusHandler implements InboundMessageHandler {
   }
 
   public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
-    await this.#useCase.execute(transactionStatusRequestedV1.schema.parse(envelope.payload));
+    await this.#useCase.execute(
+      transactionStatusRequestedV1.schema.parse(envelope.payload),
+      // The identity is what makes the ownership check possible (TD-035).
+      envelope.identity,
+    );
+  }
+}
+
+/**
+ * The listing, the second query and the second unguarded message, for the same
+ * reason as the first.
+ *
+ * Its scope is decided from the envelope identity inside the use case and never
+ * from the payload — see `ListTransactionsUseCase`.
+ */
+export class TransactionListHandler implements InboundMessageHandler {
+  public readonly messageType = transactionListQueryV1.name;
+  readonly #useCase: ListTransactionsUseCase;
+
+  constructor(useCase: ListTransactionsUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.#useCase.execute(
+      transactionListQueryV1.schema.parse(envelope.payload),
+      envelope.identity,
+    );
   }
 }
