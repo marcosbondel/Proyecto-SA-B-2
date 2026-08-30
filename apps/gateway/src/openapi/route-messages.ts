@@ -2,6 +2,9 @@ import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
   accountCreateV1,
+  accountDepositRejectedV1,
+  accountDepositV1,
+  accountDepositedV1,
   accountListQueryV1,
   accountListRepliedV1,
   accountOperationsQueryV1,
@@ -104,6 +107,11 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'GET /api/accounts/{accountId}/operations': {
     publishes: accountOperationsQueryV1.name,
     awaits: [accountOperationsRepliedV1.name],
+  },
+  'POST /api/accounts/{accountId}/deposit': {
+    publishes: accountDepositV1.name,
+    // Events, not replies — the same correlation the activation link uses.
+    awaits: [accountDepositedV1.name, accountDepositRejectedV1.name],
   },
   'POST /api/accounts/{accountId}/status': { publishes: accountSetStatusV1.name },
   'POST /api/transfers': { publishes: transferRequestedV1.name },
