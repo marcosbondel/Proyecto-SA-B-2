@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(73);
+    expect(catalog).toHaveLength(75);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the thirty-three messages recorded as an extension, and no others', () => {
+  it('adds exactly the thirty-five messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -178,6 +178,17 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'payment.list.replied.v1',
       'payment.status.query.v1',
       'payment.status.replied.v1',
+      /*
+       * The two that close TD-033. `GET /api/transfers/{id}` answered "how did
+       * this one end" since T-18; nothing answered "which transfers are mine",
+       * because a transaction holds two opaque account references and resolving
+       * either to a person means reading Account Service's database (§8.2,
+       * 2.3). The transfer now records who asked for it, from the envelope
+       * identity that was there all along, and the listing is scoped against
+       * that column — which also closes TD-035 on the single-transfer route.
+       */
+      'transaction.list.query.v1',
+      'transaction.list.replied.v1',
       'transaction.status.replied.v1',
       'transaction.status.requested.v1',
     ]);

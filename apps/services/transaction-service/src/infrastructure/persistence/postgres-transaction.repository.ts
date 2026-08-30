@@ -56,9 +56,9 @@ export class PostgresTransactionRepository implements TransactionRepository {
       const inserted = await client.query<TransactionRow>(
         `INSERT INTO transactions
            (transaction_id, source_account, target_account, amount, status,
-            correlation_id, idempotency_key, failure_reason, payment_scenario,
+            correlation_id, idempotency_key, customer_id, failure_reason, payment_scenario,
             created_at, updated_at, completed_at)
-         VALUES ($1, $2, $3, $4::NUMERIC, $5, $6, $7, NULL, $8, $9, $9, NULL)
+         VALUES ($1, $2, $3, $4::NUMERIC, $5, $6, $7, $8, NULL, $9, $10, $10, NULL)
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
@@ -69,6 +69,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
           transaction.status,
           transaction.correlationId,
           transaction.idempotencyKey,
+          transaction.customerId,
           transaction.paymentScenario,
           transaction.createdAt,
         ],
@@ -91,6 +92,66 @@ export class PostgresTransactionRepository implements TransactionRepository {
 
       return { kind: 'EXISTS', transaction: transactionFrom(existing.rows[0]!) };
     });
+  }
+
+  public async list(input: {
+    readonly ownerId: string | null;
+    readonly customerId?: string;
+    readonly accountId?: string;
+    readonly status?: TransactionStatus;
+    readonly limit: number;
+  }): Promise<{ readonly transactions: readonly Transaction[]; readonly total: number }> {
+    const where: string[] = [];
+    const values: unknown[] = [];
+
+    /**
+     * The scope, first and non-negotiable. It is a separate clause from the
+     * `customerId` *filter* below on purpose: the filter is what the caller
+     * asked for and the scope is what they are allowed, so a client naming
+     * somebody else's id ends up with two contradictory conditions and an empty
+     * result — never a widened one.
+     */
+    if (input.ownerId !== null) {
+      values.push(input.ownerId);
+      where.push(`customer_id = $${String(values.length)}`);
+    }
+
+    if (input.customerId !== undefined) {
+      values.push(input.customerId);
+      where.push(`customer_id = $${String(values.length)}`);
+    }
+
+    if (input.accountId !== undefined) {
+      values.push(input.accountId);
+      where.push(
+        `(source_account = $${String(values.length)} OR target_account = $${String(values.length)})`,
+      );
+    }
+
+    if (input.status !== undefined) {
+      values.push(input.status);
+      where.push(`status = $${String(values.length)}`);
+    }
+
+    const clause = where.length === 0 ? '' : `WHERE ${where.join(' AND ')}`;
+
+    const [rows, count] = await Promise.all([
+      this.#pool.query<TransactionRow>(
+        `SELECT ${COLUMNS} FROM transactions ${clause}
+          ORDER BY created_at DESC, transaction_id
+          LIMIT $${String(values.length + 1)}`,
+        [...values, input.limit],
+      ),
+      this.#pool.query<{ total: string }>(
+        `SELECT COUNT(*)::TEXT AS total FROM transactions ${clause}`,
+        values,
+      ),
+    ]);
+
+    return {
+      transactions: rows.rows.map(transactionFrom),
+      total: Number(count.rows[0]?.total ?? '0'),
+    };
   }
 
   public async recordAlias(input: {
@@ -460,8 +521,8 @@ const TERMINAL: ReadonlySet<TransactionStatus> = new Set<TransactionStatus>([
 ]);
 
 const COLUMNS = `transaction_id, source_account, target_account, amount::TEXT AS amount,
-                 status, correlation_id, idempotency_key, failure_reason, payment_scenario,
-                 created_at, updated_at, completed_at`;
+                 status, correlation_id, idempotency_key, customer_id, failure_reason,
+                 payment_scenario, created_at, updated_at, completed_at`;
 
 interface TransactionRow {
   transaction_id: string;
@@ -472,6 +533,7 @@ interface TransactionRow {
   status: TransactionStatus;
   correlation_id: string;
   idempotency_key: string;
+  customer_id: string | null;
   failure_reason: string | null;
   payment_scenario: string | null;
   created_at: Date;
@@ -509,6 +571,7 @@ function transactionFrom(row: TransactionRow): Transaction {
     status: row.status,
     correlationId: row.correlation_id,
     idempotencyKey: row.idempotency_key,
+    customerId: row.customer_id,
     failureReason: row.failure_reason as FailureReason | null,
     paymentScenario: row.payment_scenario as PaymentScenario | null,
     createdAt: row.created_at,

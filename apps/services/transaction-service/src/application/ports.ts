@@ -118,6 +118,23 @@ export interface TransactionRepository {
   findById(transactionId: string): Promise<Transaction | null>;
 
   /**
+   * A page of transfers, newest first, already narrowed to what the asker may
+   * see — and the total before the limit, so a screen can say how much it is
+   * not showing.
+   *
+   * The scope is a parameter rather than a filter the caller may set: `ownerId`
+   * is decided by the use case from the envelope identity, and a `CLIENTE`
+   * cannot widen it by asking nicely.
+   */
+  list(input: {
+    readonly ownerId: string | null;
+    readonly customerId?: string;
+    readonly accountId?: string;
+    readonly status?: TransactionStatus;
+    readonly limit: number;
+  }): Promise<{ readonly transactions: readonly Transaction[]; readonly total: number }>;
+
+  /**
    * By the correlation the transfer was created under.
    *
    * `transaction.status.requested.v1` admits either identifier, and this is the

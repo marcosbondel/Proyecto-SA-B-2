@@ -177,6 +177,31 @@ export const MIGRATIONS: readonly Migration[] = [
          ON outbox_messages (id) WHERE dispatch_status = 'PENDING'`,
     ],
   },
+  {
+    /*
+     * Who asked for the transfer, recorded at request time from the envelope's
+     * verified identity — the column that closes TD-033 and TD-035.
+     *
+     * This service could not answer "which transfers are mine" and could not
+     * check ownership on a status query, because a transaction holds two
+     * account references and resolving either to a person means reading Account
+     * Service's database (§8.2, 2.3). The identity was in the envelope the
+     * whole time; nothing was missing but a place to put it.
+     *
+     * **Nullable, and it has to be.** Rows written before this migration have
+     * no identity to recover, and the Saga's own follow-up commands carry the
+     * identity of whoever started the transfer rather than of a person — so a
+     * transfer opened by a process rather than a person is a real, if rare,
+     * case. A `NOT NULL` here would have made the migration fail on any
+     * existing database, which is the worst possible time to find out.
+     */
+    name: '006_transactions_customer_id',
+    statements: [
+      `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS customer_id UUID`,
+      `CREATE INDEX IF NOT EXISTS transactions_customer_idx
+         ON transactions (customer_id, created_at DESC)`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

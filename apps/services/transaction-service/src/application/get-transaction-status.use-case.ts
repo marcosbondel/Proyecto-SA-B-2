@@ -1,6 +1,7 @@
 import { transactionStatusRepliedV1 } from '@bank/contracts';
-import type { TransactionStatusRequestedV1 } from '@bank/contracts';
+import type { Identity, TransactionStatusRequestedV1 } from '@bank/contracts';
 
+import { mayReadTransaction } from '../domain/transaction';
 import type { Transaction } from '../domain/transaction';
 import type { PaymentOutcome, EventPublisher, TransactionRepository } from './ports';
 
@@ -36,8 +37,22 @@ export class GetTransactionStatusUseCase {
     this.#publisher = dependencies.publisher;
   }
 
-  public async execute(payload: TransactionStatusRequestedV1): Promise<void> {
-    const transaction = await this.#find(payload);
+  public async execute(
+    payload: TransactionStatusRequestedV1,
+    identity: Identity | null,
+  ): Promise<void> {
+    const found = await this.#find(payload);
+
+    /**
+     * The ownership check TD-035 said this service could not make.
+     *
+     * It can now, because the row records who asked for the transfer. A
+     * transfer that is not this actor's is answered `NOT_FOUND` and **not**
+     * "forbidden": the identifier is a UUID v4, and a distinguishable refusal
+     * would turn a guessed one into a way to learn that it names something real.
+     * The same reasoning the account read paths use.
+     */
+    const transaction = found !== null && mayReadTransaction(identity, found) ? found : null;
 
     if (transaction === null) {
       /**
