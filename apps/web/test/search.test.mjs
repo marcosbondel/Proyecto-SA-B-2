@@ -44,14 +44,14 @@ describe('where an identifier could take you', () => {
   });
 
   /**
-   * A client is not offered the payment screen, because `/pagos` is staff work
-   * (TD-037) and the Gateway would refuse it. Offering a destination that fails
-   * is the same discourtesy as showing a module a role cannot open.
+   * A client is offered all four now. `/pagos` stopped being staff-only when
+   * the service-payment product landed: paying a bill is what a client does,
+   * and the staff-only part is the monitor screen inside the module.
    */
-  test('a client is not offered the payment screen', () => {
+  test('a client is offered the same four', () => {
     assert.deepEqual(
       searchDestinations(ACCOUNT, 'CLIENTE').map((destination) => destination.label),
-      ['Cuenta', 'Cliente', 'Transferencia'],
+      ['Cuenta', 'Cliente', 'Transferencia', 'Pago'],
     );
   });
 

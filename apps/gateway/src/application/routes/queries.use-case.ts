@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   accountBalanceQueryV1,
+  accountBillersQueryV1,
+  accountBillersRepliedV1,
   accountBalanceRepliedV1,
   accountListQueryV1,
   accountListRepliedV1,
@@ -248,6 +250,25 @@ export class QueriesUseCase {
     if (parsed.data.outcome === 'NOT_FOUND') {
       // The owning service's own code, carried untouched (FR-030).
       throw GatewayError.businessRejection(parsed.data.reason, 'La cuenta consultada no existe.');
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * The biller catalogue — `G-01`'s dropdown.
+   *
+   * The only query here that carries no filter and no scope: the list of
+   * services the bank collects for is the same for everybody. What each entry
+   * carries is the biller's **collection account**, because a service payment
+   * is a transfer to it.
+   */
+  public async billers(context: QueryContext): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(accountBillersQueryV1.name, {}, context);
+    const parsed = accountBillersRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
     }
 
     return { ...parsed.data, correlationId: context.correlationId };

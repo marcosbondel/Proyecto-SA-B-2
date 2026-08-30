@@ -5,16 +5,18 @@ import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
 
 /**
- * "Monitoreo de pagos" — the prototype's `show.payMonitor` (G-04), merged with
- * the payment history it also draws (G-03).
+ * `G-04` — "Monitoreo de pagos", the operational list.
  *
- * **The prototype has two screens here and this has one**, and the merge is the
- * honest reading rather than a shortcut. G-03 is a customer's own list of bills
- * they paid; in this system a customer does not start payments — a payment is
- * step 4 of a transfer — so their "historial de pagos" is their history of
- * transfers, and it is `/transferencias` that owes it (TD-033). What is left
- * once that is taken out is exactly G-04: the operational list, which is staff
- * work. Recorded as TD-038.
+ * It used to live at `/pagos` and be the whole module, because a customer could
+ * not start a payment at all: a payment was step 4 of a transfer and nothing
+ * else, so there was no `G-01` to build and no `G-03` to fill. That is no
+ * longer true — a service payment is a transfer to a biller's collection
+ * account — so the module's front door is the customer's, and this moved one
+ * level down to where staff work.
+ *
+ * What it lists is still **Payment Service's own rows**: the attempts, the
+ * retry ladder, the error kinds. That is a different question from "which bills
+ * did I pay", which `/pagos` answers from the transfer listing.
  *
  * **Restricted, and unusually so.** Every other listing in this system narrows
  * itself to what the asker owns. Payment Service cannot: a payment row holds a
@@ -35,7 +37,7 @@ const mayMonitor = computed(() => mayMonitorPayments(role.value));
 
 watchEffect(() => {
   if (role.value !== null && !mayMonitor.value) {
-    navigateTo('/transferencias');
+    navigateTo('/pagos');
   }
 });
 
@@ -125,7 +127,7 @@ watch([statusFilter, errorFilter], async () => {
   }
 });
 
-useHead({ title: 'Pagos · bonking' });
+useHead({ title: 'Monitoreo de pagos · bonking' });
 </script>
 
 <template>

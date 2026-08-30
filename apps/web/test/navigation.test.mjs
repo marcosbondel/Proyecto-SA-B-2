@@ -31,10 +31,17 @@ describe('what each role sees in the navigation', () => {
     );
   });
 
+  /**
+   * Pagos joined the client's list when the service-payment product landed. It
+   * was staff-only for one ticket because the module *was* Payment Service's
+   * unscoped listing (TD-037); that listing is now a screen inside the module,
+   * and the front door is the customer's own service payments, read from the
+   * transfer listing that Transaction Service scopes.
+   */
   test('a client sees everything except the audit record', () => {
     assert.deepEqual(
       modulesFor('CLIENTE').map((module) => module.label),
-      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos'],
     );
   });
 
@@ -44,7 +51,7 @@ describe('what each role sees in the navigation', () => {
    * and staff is the narrowest audience that still makes the screen useful
    * (TD-037).
    */
-  test('a receiving teller also sees the payment monitoring', () => {
+  test('a receiving teller sees the same five', () => {
     assert.deepEqual(
       modulesFor('CAJERO_RECEPTOR').map((module) => module.label),
       ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos'],
@@ -76,13 +83,15 @@ describe('opening a route directly', () => {
     assert.equal(canOpen('ADMINISTRADOR', '/auditoria'), true);
   });
 
-  /** Including one payment's own detail, which lives under the same module. */
-  test('a client cannot render the payment module either', () => {
-    assert.equal(canOpen('CLIENTE', '/pagos'), false);
-    assert.equal(
-      canOpen('CLIENTE', '/pagos/6f1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93'),
-      false,
-    );
+  /**
+   * A client may open the payment module now — paying a bill is what a client
+   * does. The staff-only part is the monitor *screen*, which filters in the
+   * page against `mayMonitorPayments` rather than in this matrix
+   * (`docs/FRONTEND.md`).
+   */
+  test('every role can render the payment module', () => {
+    assert.equal(canOpen('CLIENTE', '/pagos'), true);
+    assert.equal(canOpen('CLIENTE', '/pagos/nuevo'), true);
     assert.equal(canOpen('CAJERO_RECEPTOR', '/pagos'), true);
     assert.equal(canOpen('ADMINISTRADOR', '/pagos'), true);
   });
@@ -180,18 +189,18 @@ describe('the matrix agrees with decision D-06', () => {
    * by scope, which neither this file nor the Gateway can evaluate: neither
    * knows who owns what. Those refusals come from the owning service.
    *
-   * Pagos is the exception that proves the rule rather than a second reading of
-   * D-06. It is restricted because the owning service cannot apply a scope at
-   * all — Payment Service holds no customer reference — so the choice was
-   * between a role restriction and handing every client every payment in the
-   * bank. Recorded as TD-037, and it is the row D-06 will eventually grow.
+   * Pagos was a second restricted entry for one ticket, because the module *was*
+   * Payment Service's unscoped listing (TD-037). It is not any more: the front
+   * door is a customer's own service payments, read from the transfer listing
+   * that Transaction Service scopes, and the unscoped listing is a staff-only
+   * screen inside the module. So the matrix is back to what D-06 actually says.
    */
-  test('two modules are role-restricted, and for different reasons', () => {
+  test('exactly one module is role-restricted, and D-06 is why', () => {
     const restricted = MODULES.filter((module) => module.roles.length < 3);
 
     assert.deepEqual(
       restricted.map((module) => module.label),
-      ['Pagos', 'Auditoría'],
+      ['Auditoría'],
     );
 
     assert.deepEqual(

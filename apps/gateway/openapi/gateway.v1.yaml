@@ -231,6 +231,23 @@ paths:
       tags:
         - customers
       x-bank-publishes: customer.set-identity-verdict.v1
+  /api/accounts/billers:
+    get:
+      description: El catálogo de prestadores y la cuenta recaudadora de cada uno. Un pago de servicio es
+        una transferencia a esa cuenta, así que no hay un tipo de movimiento aparte.
+      operationId: AccountsController_billers
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista los servicios que se pueden pagar
+      tags:
+        - accounts
+      x-bank-publishes: account.billers.query.v1
+      x-bank-awaits:
+        - account.billers.replied.v1
   /api/accounts/{accountId}/deposit:
     post:
       description: "Solo CAJERO_RECEPTOR o ADMINISTRADOR. Devuelve 200 con el saldo resultante: es la
