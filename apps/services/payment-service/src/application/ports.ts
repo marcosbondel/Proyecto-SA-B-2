@@ -72,6 +72,21 @@ export interface PaymentRepository {
   open(input: { readonly payment: Payment }): Promise<OpenOutcome>;
 
   /**
+   * The dashboard's counts.
+   *
+   * `retrying` is a payment that has failed at least once and is still due
+   * another attempt — `status = 'PENDING'` with a `next_attempt_at`. It is the
+   * one figure here that is about something happening rather than something
+   * that happened, which is why it is not scoped to today.
+   */
+  stats(): Promise<{
+    readonly today: number;
+    readonly succeededToday: number;
+    readonly failedToday: number;
+    readonly retrying: number;
+  }>;
+
+  /**
    * Locks the payment, asks `decide` what this attempt produced, and writes
    * both the new state and the attempt in one transaction.
    *

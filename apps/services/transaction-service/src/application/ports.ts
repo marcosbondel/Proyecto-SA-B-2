@@ -114,6 +114,18 @@ export interface TransactionRepository {
     readonly transactionId: string;
   }): Promise<void>;
 
+  /**
+   * The dashboard's counts. `inFlight` is deliberately not scoped to today —
+   * see `GetTransactionStatsUseCase`.
+   */
+  stats(): Promise<{
+    readonly today: number;
+    readonly completedToday: number;
+    readonly failedToday: number;
+    readonly compensatedToday: number;
+    readonly inFlight: number;
+  }>;
+
   /** By its own id, or by an alias a retry was answered with. `null` if unknown. */
   findById(transactionId: string): Promise<Transaction | null>;
 

@@ -29,6 +29,8 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
     amount: quetzales(15_000),
     correlationId: '55555555-5555-4555-8555-555555555555',
     idempotencyKey: 'key-1',
+    customerId: null,
+    reference: null,
     paymentScenario: null,
     now: NOW,
   }),

@@ -1,8 +1,14 @@
-import { paymentListQueryV1, paymentRequestedV1, paymentStatusQueryV1 } from '@bank/contracts';
+import {
+  paymentListQueryV1,
+  paymentRequestedV1,
+  paymentStatsQueryV1,
+  paymentStatusQueryV1,
+} from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 
 import type { EventPublisher } from '../application/ports';
 import type { ProcessPaymentUseCase } from '../application/process-payment.use-case';
+import type { GetPaymentStatsUseCase } from '../application/get-payment-stats.use-case';
 import type { QueryPaymentUseCase } from '../application/query-payment.use-case';
 import type { InboundMessageHandler } from './inbound-message.handler';
 
@@ -69,6 +75,23 @@ export class ListPaymentsHandler implements InboundMessageHandler {
     const query = paymentListQueryV1.schema.parse(envelope.payload);
 
     await this.#useCase.list(query, this.#publisher);
+  }
+}
+
+/** `payment.stats.query.v1` — the dashboard's counts. Staff only. */
+export class PaymentStatsHandler implements InboundMessageHandler {
+  public readonly messageType = paymentStatsQueryV1.name;
+
+  readonly #useCase: GetPaymentStatsUseCase;
+
+  constructor(useCase: GetPaymentStatsUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    paymentStatsQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.execute(envelope.identity);
   }
 }
 

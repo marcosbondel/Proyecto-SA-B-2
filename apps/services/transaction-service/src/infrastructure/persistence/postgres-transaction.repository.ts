@@ -155,6 +155,45 @@ export class PostgresTransactionRepository implements TransactionRepository {
     };
   }
 
+  public async stats(): Promise<{
+    readonly today: number;
+    readonly completedToday: number;
+    readonly failedToday: number;
+    readonly compensatedToday: number;
+    readonly inFlight: number;
+  }> {
+    const counted = await this.#pool.query<{
+      today: string;
+      completed_today: string;
+      failed_today: string;
+      compensated_today: string;
+      in_flight: string;
+    }>(
+      `SELECT COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)::TEXT AS today,
+              COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE
+                                AND status = 'COMPLETED')::TEXT AS completed_today,
+              COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE
+                                AND status = 'FAILED')::TEXT AS failed_today,
+              COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE
+                                AND status = 'COMPENSATED')::TEXT AS compensated_today,
+              /* Not scoped to today: a transfer stuck since yesterday is the
+                 one worth seeing, and midnight must not hide it. */
+              COUNT(*) FILTER (WHERE status IN ('PENDING','DEBITING','PAYMENT_PENDING'))::TEXT
+                AS in_flight
+         FROM transactions`,
+    );
+
+    const row = counted.rows[0];
+
+    return {
+      today: Number(row?.today ?? '0'),
+      completedToday: Number(row?.completed_today ?? '0'),
+      failedToday: Number(row?.failed_today ?? '0'),
+      compensatedToday: Number(row?.compensated_today ?? '0'),
+      inFlight: Number(row?.in_flight ?? '0'),
+    };
+  }
+
   public async recordAlias(input: {
     readonly requestedTransactionId: string;
     readonly transactionId: string;
