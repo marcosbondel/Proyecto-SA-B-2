@@ -56,6 +56,35 @@ Two consequences worth stating, because code will otherwise assume otherwise:
 | Deactivate or reactivate an account manually | ✘ | ✘ | ✔ |
 | Assign roles | ✘ | ✘ | ✔ |
 | Read the audit record and notifications | ✘ | ✘ | ✔ |
+| List own accounts, read an account's movements | ✔ own accounts | ✔ any account | ✔ any account |
+| List transfers | ✔ own only | ✔ all | ✔ all |
+| List own service payments | ✔ own only | ✔ all | ✔ all |
+| Read own notifications, mark them read | ✔ own only | ✔ own only | ✔ own only |
+| Change own password | ✔ **own only** | ✔ own only | ✔ own only |
+| Recover a password by email | ✔ anonymous | ✔ anonymous | ✔ anonymous |
+| Register a deposit at a window | ✘ | ✔ | ✔ |
+| Read the biller catalogue | ✔ | ✔ | ✔ |
+| Read the dashboard counters | ✘ (own money instead) | ✔ own shift | ✔ system-wide |
+
+The nine rows below the audit line were added after the Claude Design prototype
+was implemented in full. Six of them close TD-027, TD-033, TD-035, TD-037 and
+TD-041, which existed precisely because these operations were being enforced
+against a rule that had never been written down. Three are new operations.
+
+Two are worth reading twice.
+
+**"Change own password" is `own only` for every role, an administrator
+included** — and it is the only row in this table where staff have *less* reach
+than they do elsewhere. Editing a customer's address is a service a teller
+performs for somebody in front of them; replacing their credential is taking the
+account. Staff helping somebody locked out use the recovery flow, whose link
+goes to that customer's own inbox.
+
+**"Read own notifications" is `own only` for every role too**, and it does not
+contradict the audit row above it. Those are two different things over one
+table: the audit row is the operational console, which carries the simulated
+recipient of every delivery in the system; this is a person's inbox. An
+administrator has both, and gets their own inbox from the second.
 
 ## Explicit boundaries
 

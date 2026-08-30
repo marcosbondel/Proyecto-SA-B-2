@@ -11,11 +11,36 @@ Los conceptos que se repiten en todas las pantallas están en el
 
 | Módulo | Qué puedes hacer |
 | --- | --- |
+| **Inicio** | El tablero del sistema: clientes, cuentas activas, transferencias y pagos del día, estados de las operaciones y **alertas operativas**. |
 | **Clientes** | Registrar personas con **cualquier rol**, incluidos cajeros y administradores. |
-| **Cuentas** | Todo lo del cajero, más **Gestión de cuentas**: ver todas las cuentas del sistema y activarlas o desactivarlas. |
-| **Transferencias** | Enviar y consultar transferencias, y saltar desde una transferencia a su rastro de auditoría. |
-| **Pagos** | Vigilar los pagos y sus reintentos. |
+| **Cuentas** | Todo lo del cajero, más **Gestión de cuentas**: ver todas las cuentas del sistema con el nombre de su titular, y activarlas o desactivarlas. |
+| **Transferencias** | Enviar, consultar, ver el **monitoreo de la Saga** y saltar desde una transferencia a su rastro de auditoría. |
+| **Pagos** | Pagar servicios y vigilar los pagos y sus reintentos. |
 | **Auditoría** | Reconstruir el rastro completo de una operación y revisar la consola de notificaciones. |
+
+### Cómo leer el tablero
+
+Cada número lo cuenta el servicio dueño de sus propias filas; el sistema
+pregunta a los cinco a la vez y dibuja lo que cada uno respondió.
+
+Un recuadro que dice **«Sin dato»** no es un cero: significa que ese servicio no
+alcanzó a responder. Un cero ahí sería un número equivocado en la pantalla que
+más se mira justo cuando algo va mal.
+
+Dos cifras **no son de hoy**, a propósito:
+
+- **En proceso** cuenta todas las transferencias en vuelo, empezaran cuando
+  empezaran. Una atascada desde ayer preocupa más que una de esta mañana: el
+  dinero ya salió de una cuenta y todavía no llegó a la otra.
+- **Pagos reintentando** son los que fallaron al menos una vez y tienen otro
+  intento pendiente. No requieren reproceso manual — la escalera de reintentos
+  corre sola.
+
+Las **alertas operativas** salen de esos mismos números, ordenadas por lo que
+cuesta ignorarlas: primero el dinero en vuelo, después las compensaciones del
+día (el cliente ya vio dos movimientos en su estado de cuenta), y al final los
+mensajes que la auditoría no pudo interpretar — no se perdió nada, falta
+explicarlos.
 
 Eres el único rol que ve **Auditoría**, y el único que puede **cambiar el estado
 de una cuenta**. También eres el único que puede confirmar en pantalla cómo

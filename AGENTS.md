@@ -11,21 +11,26 @@ frontend at the top level, the five domain services under `apps/services/`, and
 `apps/packages/`. All seven applications install, build, lint and test from a
 clean checkout.
 
-**The API Gateway is implemented** (T-15, extended by T-17, T-19 and T-20):
-seventeen HTTP routes over fourteen paths, JWT authentication, role authorization from decision
-D-06, request/reply with a five-second ceiling, a seven-code error contract, the
-identity-document photo deposited in MinIO, and a versioned OpenAPI contract in
-`apps/gateway/openapi/`. **`apps/web` is the shared frontend shell**: layout,
-role-filtered navigation, session, `useGatewayApi` and four shared components.
-Five feature modules are built: **Clientes** (T-16) — public registration at
-`/registro`, the staff form, the update screen and the teller's validation
-queue — **Cuentas** (T-17) — the account list, the opening flow, the
-balance-and-statement detail and the administrator's management screen —
-**Transferencias** (T-18) — the request form and the live status timeline —
-**Pagos** (T-19) — the monitoring list and the single-payment state screen —
-and **Auditoría** (T-20) — the lookup by `correlationId`, the ordered event
-table with its redacted-payload panel, the notifications of the flow, and the
-staff notifications console at `/auditoria/notificaciones`.
+**The API Gateway is implemented** (T-15, extended by T-17, T-19, T-20 and the
+prototype-parity work): twenty-four paths, JWT authentication, role
+authorization from decision D-06, request/reply with a five-second ceiling, a
+seven-code error contract, the identity-document photo deposited in MinIO, and a
+versioned OpenAPI contract in `apps/gateway/openapi/`.
+
+**`apps/web` implements the Claude Design prototype in full** — all thirty-four
+screens of `bonking.dc.html`, mapped route by route in
+[docs/FRONTEND.md](docs/FRONTEND.md#the-screen-inventory). Beyond the five
+original modules it now carries password recovery, Mi perfil with its password
+change, the deposit window, the transfer history and the Saga monitor, the
+service-payment product, the customer's notification inbox, and the three
+per-role dashboards behind one route.
+
+Two Gateway routes are worth knowing about because they are the only ones that
+**compose**: `GET /api/accounts` merges Account Service's rows with Customer
+Service's names in one extra round trip (closing TD-026), and
+`GET /api/dashboard` asks five services at once and returns what each answered,
+with every section independently optional. Neither computes anything — holding
+several replies is aggregation, which is what an entry point is for.
 
 The Gateway has no `domain/` layer and never will — it holds no business logic
 (constitution V), and a test asserts it has no database and no HTTP client
@@ -90,13 +95,29 @@ that COMPENSATES on the first attempt, and one that climbs the ladder to its end
 and then COMPENSATES. The compensation is asserted as a fact about the money,
 not as a status somebody wrote down.
 
-What the Cuentas screens still cannot show is recorded as TD-026 and TD-027;
-the Transferencias screens, TD-032 to TD-035; the Pagos screens, TD-037 and
-TD-038; the Auditoría screens, TD-039 to TD-043. The Clientes gaps TD-020
-(reading a customer) and TD-023 (the identity-validation flow) were closed by
-the audit remediation (US6). `ARCHITECTURE.md` records the target architecture;
-the local Kubernetes deployment is built — a Helm chart over a kind cluster
-(US1), described in [infra/k8s/README.md](infra/k8s/README.md).
+**Six of the debts that blocked screens are closed** (TD-026, TD-027, TD-033,
+TD-035, TD-038, TD-041), and none by the remedy its own row proposed — each
+turned out to rest on a premise that was wrong:
+
+- The transfer's originator was **already in the envelope**; nothing was missing
+  but a column to put it in, which closed the listing and the ownership check
+  together.
+- A holder's name needed neither a projection nor a per-row lookup: one batch
+  query and one composition at the Gateway.
+- A service payment is **a transfer to an account the biller holds**, so `G-01`
+  needed no second money movement, no nullable target and no branch in the state
+  machine.
+- The notification's subject was **already being computed** to derive the
+  simulated address, and thrown away.
+
+TD-021 (a customer cannot read their own audit trail), TD-032, TD-037, TD-039
+and TD-040 stand as recorded. Five deviations from the prototype are now written
+down as TD-050 to TD-054 — including TD-054, which is the honest one: the whole
+prototype was implemented without opening a browser.
+
+`ARCHITECTURE.md` records the target architecture; the local Kubernetes
+deployment is built — a Helm chart over a kind cluster (US1), described in
+[infra/k8s/README.md](infra/k8s/README.md).
 
 **Every component is containerised** (T-21): seven multi-stage images, one
 Dockerfile each and no generic one, all running as `node` (uid 1000), with
