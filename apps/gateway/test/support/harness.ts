@@ -20,6 +20,7 @@ import type {
 } from '../../src/application/ports';
 import { GatewayError } from '../../src/application/errors/gateway-error';
 import { CommandsUseCase } from '../../src/application/routes/commands.use-case';
+import { ChangePasswordUseCase } from '../../src/application/routes/change-password.use-case';
 import { LoginUseCase } from '../../src/application/routes/login.use-case';
 import { PasswordResetUseCase } from '../../src/application/routes/password-reset.use-case';
 import { QueriesUseCase } from '../../src/application/routes/queries.use-case';
@@ -157,6 +158,7 @@ export async function buildHarness(
        * dependency would otherwise break every suite that had not listed it,
        * with a DI error that says nothing about the actual change.
        */
+      ChangePasswordUseCase,
       LoginUseCase,
       PasswordResetUseCase,
       RegisterCustomerUseCase,

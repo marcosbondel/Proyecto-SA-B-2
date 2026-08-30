@@ -82,6 +82,36 @@ paths:
       x-bank-awaits:
         - customer.password-reset.completed.v1
         - customer.password-reset.rejected.v1
+  /api/customers/{customerId}/password:
+    post:
+      description: "Publica customer.change-password.v1 y espera el evento correlacionado. Requiere la
+        contraseña actual: la sesión no basta. NADIE puede cambiar la de otra persona,
+        administradores incluidos — para eso está la recuperación por correo."
+      operationId: CustomersController_changePassword
+      parameters:
+        - name: customerId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordDto"
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Cambia la contraseña de la propia cuenta
+      tags:
+        - customers
+      x-bank-publishes: customer.change-password.v1
+      x-bank-awaits:
+        - customer.password-changed.v1
+        - customer.password-change.rejected.v1
   /api/customers/verify-email:
     get:
       description: Devuelve un veredicto en la misma respuesta, esperando el evento correlacionado hasta
@@ -445,6 +475,9 @@ components:
       type: object
       properties: {}
     ConfirmPasswordResetDto:
+      type: object
+      properties: {}
+    ChangePasswordDto:
       type: object
       properties: {}
     RegisterCustomerDto:

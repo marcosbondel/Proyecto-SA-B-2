@@ -47,7 +47,7 @@ export interface NotificationIntent {
 /**
  * Which events produce a notification, and what it says.
  *
- * Thirteen entries and not sixty-five. The trail records everything; the *inbox*
+ * Fourteen entries and not sixty-eight. The trail records everything; the *inbox*
  * records the things a person would want to be told, and a notification for
  * `account.debit.requested.v1` would be the bank narrating its own plumbing.
  * The three the ticket names — completed, failed, compensated — are the first
@@ -100,6 +100,18 @@ const POLICY: Readonly<
     reference: 'customerId',
   },
   'customer.password-reset.completed.v1': {
+    type: 'customer.password-changed',
+    subject: 'Tu contraseña fue cambiada',
+    reference: 'customerId',
+  },
+  /*
+   * A password changed from inside a session. Worth telling somebody for the
+   * same reason the reset completion is: the message matters precisely when the
+   * person reading it did not make the change. The refusal is *not* here — a
+   * wrong current password belongs in the trail, not in an inbox, or a
+   * mistyped password would email you about it.
+   */
+  'customer.password-changed.v1': {
     type: 'customer.password-changed',
     subject: 'Tu contraseña fue cambiada',
     reference: 'customerId',

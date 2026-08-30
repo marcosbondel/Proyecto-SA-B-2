@@ -81,7 +81,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the eighteen paths the tickets fixed', () => {
+  it('declares the nineteen paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -104,6 +104,10 @@ describe('the versioned API contract', () => {
         '/api/customers/pending-validation',
         '/api/customers/{customerId}',
         '/api/customers/{customerId}/identity-verdict',
+        // Added for the prototype's C-01: changing your own password from
+        // inside a session, which needs the current one and which nobody else
+        // may do for you.
+        '/api/customers/{customerId}/password',
         // Added by T-19. Read-only: a payment is born from a transfer, never
         // from a route.
         '/api/payments',
@@ -142,7 +146,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(18);
+      expect(functional).toHaveLength(19);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
