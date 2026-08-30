@@ -185,6 +185,19 @@ export interface CustomerRepository {
     readonly total: number;
   }>;
 
+  /**
+   * The dashboard's counts, computed in SQL rather than by loading the table.
+   *
+   * "Today" is the database's day, not Node's: the query compares against
+   * `CURRENT_DATE`, so the number does not shift when a replica runs in a
+   * different timezone from the one before it.
+   */
+  stats(): Promise<{
+    readonly registered: number;
+    readonly pendingValidation: number;
+    readonly activatedToday: number;
+  }>;
+
   /** What this message produced the first time, or `null` if it is new. */
   findProcessed(idempotencyKey: string, messageType: string): Promise<ProcessedMessage | null>;
 

@@ -10,6 +10,7 @@ import { CompensateDebitUseCase } from './application/compensate-debit.use-case'
 import { CreateAccountUseCase } from './application/create-account.use-case';
 import { CreditAccountUseCase } from './application/credit-account.use-case';
 import { DepositUseCase } from './application/deposit.use-case';
+import { GetAccountStatsUseCase } from './application/get-account-stats.use-case';
 import { ListBillersUseCase } from './application/list-billers.use-case';
 import { DeactivateInactiveAccountsUseCase } from './application/deactivate-inactive-accounts.use-case';
 import { DebitAccountUseCase } from './application/debit-account.use-case';
@@ -32,6 +33,7 @@ import {
   CreateAccountHandler,
   CreditAccountHandler,
   DepositHandler,
+  GetAccountStatsHandler,
   ListBillersHandler,
   DebitAccountHandler,
   GetBalanceHandler,
@@ -101,6 +103,7 @@ async function bootstrap(): Promise<void> {
       new CreditAccountHandler(new CreditAccountUseCase({ repository, publisher, clock })),
       new DepositHandler(new DepositUseCase({ repository, publisher, clock })),
       new ListBillersHandler(new ListBillersUseCase({ repository, publisher })),
+      new GetAccountStatsHandler(new GetAccountStatsUseCase({ repository, publisher })),
       new CompensateDebitHandler(new CompensateDebitUseCase({ repository, publisher, clock })),
       new SetAccountStatusHandler(new SetAccountStatusUseCase({ repository, publisher, clock })),
     ]);

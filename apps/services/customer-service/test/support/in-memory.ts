@@ -322,6 +322,20 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     );
   }
 
+  public async stats(): Promise<{
+    readonly registered: number;
+    readonly pendingValidation: number;
+    readonly activatedToday: number;
+  }> {
+    const all = [...this.customers.values()];
+
+    return await Promise.resolve({
+      registered: all.length,
+      pendingValidation: all.filter((customer) => customer.identityStatus === 'PENDING').length,
+      activatedToday: all.filter((customer) => customer.emailVerifiedAt !== null).length,
+    });
+  }
+
   public async findProcessed(
     idempotencyKey: string,
     messageType: string,

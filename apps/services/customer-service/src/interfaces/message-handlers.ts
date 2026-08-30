@@ -5,6 +5,7 @@ import {
   customerPasswordResetConfirmV1,
   customerPasswordResetRequestedV1,
   customerNamesQueryV1,
+  customerStatsQueryV1,
   customerPendingValidationQueryV1,
   customerRegisterV1,
   customerSetIdentityVerdictV1,
@@ -18,6 +19,7 @@ import type { AuthenticateCustomerUseCase } from '../application/authenticate-cu
 import type { ChangePasswordUseCase } from '../application/change-password.use-case';
 import type { ConfirmPasswordResetUseCase } from '../application/confirm-password-reset.use-case';
 import type { GetCustomerNamesUseCase } from '../application/get-customer-names.use-case';
+import type { GetCustomerStatsUseCase } from '../application/get-customer-stats.use-case';
 import type { GetCustomerUseCase } from '../application/get-customer.use-case';
 import type { GetPendingValidationUseCase } from '../application/get-pending-validation.use-case';
 import type { RegisterCustomerUseCase } from '../application/register-customer.use-case';
@@ -265,6 +267,30 @@ export class GetCustomerNamesHandler extends ContractHandler<
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.identity);
+  }
+}
+
+/** The dashboard's counts. Staff only; zeroes rather than a refusal otherwise. */
+export class GetCustomerStatsHandler extends ContractHandler<
+  ReturnType<typeof customerStatsQueryV1.schema.parse>
+> {
+  public readonly messageType = customerStatsQueryV1.name;
+  readonly #useCase: GetCustomerStatsUseCase;
+
+  constructor(useCase: GetCustomerStatsUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerStatsQueryV1.schema.parse(payload);
+  }
+
+  protected async run(
+    _payload: ReturnType<typeof customerStatsQueryV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(envelope.identity);
   }
 }
 

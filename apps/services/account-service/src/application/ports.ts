@@ -120,6 +120,18 @@ export interface AccountRepository {
     readonly { readonly code: string; readonly name: string; readonly accountId: string }[]
   >;
 
+  /**
+   * The dashboard's counts. Billers' collection accounts are excluded from all
+   * of them, for the reason they are excluded from every listing.
+   */
+  stats(): Promise<{
+    readonly active: number;
+    readonly inactive: number;
+    readonly openedToday: number;
+    readonly depositsToday: number;
+    readonly depositedToday: { readonly amountMinor: number; readonly currency: string };
+  }>;
+
   /** Sets the status by hand and records the message. `null` if there is no such account. */
   setStatus(input: {
     readonly accountId: string;
