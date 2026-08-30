@@ -1,5 +1,6 @@
 import { redactPayload } from '../../src/domain/redaction';
 import { deduplicationKeyOf } from '../../src/domain/deduplication';
+import type { InboxNotification } from '../../src/application/ports';
 import type { RecordOutcome } from '../../src/domain/deduplication';
 import type { AuditEvent } from '../../src/domain/audit-event';
 import type { Notification, NotificationIntent } from '../../src/domain/notification';
@@ -35,6 +36,7 @@ export class InMemoryAuditRepository implements AuditRepository {
       readonly notificationId: string;
       readonly intent: NotificationIntent;
       readonly recipient: string | null;
+      readonly customerId: string | null;
     } | null;
     readonly now: Date;
   }): Promise<RecordOutcome & { readonly notificationId?: string }> {
@@ -73,6 +75,8 @@ export class InMemoryAuditRepository implements AuditRepository {
         correlationId: event.correlationId,
         createdAt: now,
         processedAt: null,
+        customerId: notification.customerId,
+        readAt: null,
       });
     }
 
@@ -81,6 +85,58 @@ export class InMemoryAuditRepository implements AuditRepository {
       notified: notification !== null,
       ...(notification === null ? {} : { notificationId: notification.notificationId }),
     });
+  }
+
+  public async inboxOf(input: {
+    readonly customerId: string;
+    readonly limit: number;
+  }): Promise<{ readonly notifications: readonly InboxNotification[]; readonly unread: number }> {
+    const mine = this.notifications
+      .filter((notification) => notification.customerId === input.customerId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    return await Promise.resolve({
+      notifications: mine.slice(0, input.limit).map((notification) => ({
+        notificationId: notification.notificationId,
+        type: notification.type,
+        subject: notification.subject,
+        referenceId: notification.referenceId,
+        correlationId: notification.correlationId,
+        createdAt: notification.createdAt.toISOString(),
+        readAt: notification.readAt?.toISOString() ?? null,
+      })),
+      unread: mine.filter((notification) => notification.readAt === null).length,
+    });
+  }
+
+  public async unreadCountOf(customerId: string): Promise<number> {
+    return await Promise.resolve(
+      this.notifications.filter(
+        (notification) => notification.customerId === customerId && notification.readAt === null,
+      ).length,
+    );
+  }
+
+  public async markRead(input: {
+    readonly customerId: string;
+    readonly notificationIds: readonly string[] | null;
+    readonly now: Date;
+  }): Promise<number> {
+    let changed = 0;
+
+    for (const [index, notification] of this.notifications.entries()) {
+      const mine = notification.customerId === input.customerId;
+      const named =
+        input.notificationIds === null ||
+        input.notificationIds.includes(notification.notificationId);
+
+      if (mine && named && notification.readAt === null) {
+        this.notifications[index] = { ...notification, readAt: input.now };
+        changed += 1;
+      }
+    }
+
+    return await Promise.resolve(changed);
   }
 
   public async settleNotification(input: {

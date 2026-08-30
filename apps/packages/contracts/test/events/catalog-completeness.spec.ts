@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(77);
+    expect(catalog).toHaveLength(81);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the thirty-seven messages recorded as an extension, and no others', () => {
+  it('adds exactly the forty-one messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -173,8 +173,24 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        * across all of them. Restricted to `ADMINISTRADOR` at the Gateway
        * because a notification row carries a simulated recipient.
        */
+      /*
+       * The four that close TD-041. The prototype's `N-01` is a customer's
+       * inbox with a read state; what T-20 built was the staff console. Neither
+       * missing piece was small — no row said whose notification it was, and
+       * nothing recorded that somebody had read something — and the first turned
+       * out to be information this service was already computing and discarding.
+       *
+       * Separate from the console's two messages on purpose: `notificationView`
+       * carries the simulated recipient of every delivery in the system, and one
+       * reply shape serving both audiences would carry a field a customer must
+       * never see.
+       */
+      'notification.inbox.query.v1',
+      'notification.inbox.replied.v1',
       'notification.list.query.v1',
       'notification.list.replied.v1',
+      'notification.mark-read.v1',
+      'notification.read.replied.v1',
       /*
        * The five added by T-19. `payment.attempt.failed.v1` exists because the
        * catalogue described a payment as a thing that succeeds or fails once,

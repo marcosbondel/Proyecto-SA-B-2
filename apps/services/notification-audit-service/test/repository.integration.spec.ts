@@ -74,6 +74,7 @@ describeIntegration('PostgresAuditRepository', () => {
       referenceId: null,
     },
     recipient: 'cliente-3f2a1c04@simulado.bonking.gt',
+    customerId: '3f2a1c04-9c2e-4a71-b8f5-2d6e7c0a1b93',
   });
 
   it('records an event and its notification in one transaction', async () => {

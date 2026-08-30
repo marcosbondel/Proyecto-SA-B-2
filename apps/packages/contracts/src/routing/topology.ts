@@ -146,6 +146,15 @@ export const QUEUES: readonly QueueDescriptor[] = [
     bindings: [
       { exchange: EXCHANGES.commands, pattern: 'audit.query.requested.v1' },
       { exchange: EXCHANGES.commands, pattern: 'notification.list.query.v1' },
+      /*
+       * The customer's own inbox and the write that marks it read. On the
+       * query queue rather than an event one for the reason the others are:
+       * somebody is waiting in front of a screen, and putting them behind a
+       * backlog of recorded events would make the fastest thing this service
+       * does the slowest.
+       */
+      { exchange: EXCHANGES.commands, pattern: 'notification.inbox.query.v1' },
+      { exchange: EXCHANGES.commands, pattern: 'notification.mark-read.v1' },
     ],
   },
 ];

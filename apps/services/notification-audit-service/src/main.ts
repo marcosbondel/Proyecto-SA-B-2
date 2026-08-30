@@ -15,6 +15,8 @@ import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
 import { ListNotificationsUseCase } from './application/list-notifications.use-case';
+import { MarkNotificationsReadUseCase } from './application/mark-notifications-read.use-case';
+import { ReadInboxUseCase } from './application/read-inbox.use-case';
 import { QueryAuditUseCase } from './application/query-audit.use-case';
 import { RecordEventUseCase } from './application/record-event.use-case';
 import { AppModule } from './app.module';
@@ -28,7 +30,9 @@ import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   AuditQueryHandler,
+  NotificationInboxHandler,
   NotificationListHandler,
+  NotificationMarkReadHandler,
   RecordEventHandler,
 } from './interfaces/message-handlers';
 
@@ -163,6 +167,10 @@ async function bootstrap(): Promise<void> {
     return new InboundMessageRouter([
       new AuditQueryHandler(new QueryAuditUseCase({ repository, publisher })),
       new NotificationListHandler(new ListNotificationsUseCase({ repository, publisher })),
+      new NotificationInboxHandler(new ReadInboxUseCase({ repository, publisher })),
+      new NotificationMarkReadHandler(
+        new MarkNotificationsReadUseCase({ repository, publisher, clock }),
+      ),
     ]);
   };
 
