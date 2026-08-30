@@ -4,7 +4,13 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { LoginUseCase } from '../application/routes/login.use-case';
 import type { LoginResult } from '../application/routes/login.use-case';
+import { PasswordResetUseCase } from '../application/routes/password-reset.use-case';
+import type {
+  AcceptedReset,
+  CompletedReset,
+} from '../application/routes/password-reset.use-case';
 import { LoginDto } from './dto/login.dto';
+import { ConfirmPasswordResetDto, RequestPasswordResetDto } from './dto/password-reset.dto';
 import { validated } from './validation';
 import { Public } from './guards/route-access.decorator';
 import type { GatewayRequest } from './http-request';
@@ -21,9 +27,14 @@ import type { GatewayRequest } from './http-request';
 @Controller('api/auth')
 export class AuthController {
   readonly #login: LoginUseCase;
+  readonly #passwordReset: PasswordResetUseCase;
 
-  constructor(@Inject(LoginUseCase) login: LoginUseCase) {
+  constructor(
+    @Inject(LoginUseCase) login: LoginUseCase,
+    @Inject(PasswordResetUseCase) passwordReset: PasswordResetUseCase,
+  ) {
     this.#login = login;
+    this.#passwordReset = passwordReset;
   }
 
   /**
@@ -45,6 +56,59 @@ export class AuthController {
   ): Promise<LoginResult> {
     return await this.#login.execute({
       email: body.email,
+      credential: body.credential,
+      correlationId: request.correlationId,
+    });
+  }
+  /**
+   * `202` for every address, known or not.
+   *
+   * This is the one route whose *uselessness* as an oracle is the feature. A
+   * `404` for an unknown address — or even a measurably faster answer — would
+   * let anyone with a word list find out who banks here. Customer Service
+   * publishes nothing for an address it does not know, so there is no event to
+   * correlate and nothing this route could accidentally reveal.
+   */
+  @ApiOperation({
+    summary: 'Solicita un enlace para restablecer la contraseña',
+    description:
+      'Publica customer.password-reset.requested.v1 y devuelve 202 SIEMPRE, exista o no ' +
+      'la dirección. Responder distinto revelaría qué correos están registrados.',
+  })
+  @Public()
+  @Post('password-reset')
+  @HttpCode(202)
+  public async requestPasswordReset(
+    @Body(validated(RequestPasswordResetDto)) body: RequestPasswordResetDto,
+    @Req() request: GatewayRequest,
+  ): Promise<AcceptedReset> {
+    return await this.#passwordReset.request({
+      email: body.email,
+      correlationId: request.correlationId,
+      idempotencyKey: request.idempotencyKey,
+    });
+  }
+
+  /**
+   * `200`: the verdict is known by the time the response is written, the same
+   * way the activation link's is. The three ways a link can fail — invented,
+   * already spent, expired — produce one identical rejection.
+   */
+  @ApiOperation({
+    summary: 'Restablece la contraseña con el enlace del correo',
+    description:
+      'Publica customer.password-reset.confirm.v1 y espera el evento correlacionado hasta ' +
+      'cinco segundos. Enlace inválido, ya usado y vencido producen el MISMO rechazo.',
+  })
+  @Public()
+  @Post('password-reset/confirm')
+  @HttpCode(200)
+  public async confirmPasswordReset(
+    @Body(validated(ConfirmPasswordResetDto)) body: ConfirmPasswordResetDto,
+    @Req() request: GatewayRequest,
+  ): Promise<CompletedReset> {
+    return await this.#passwordReset.confirm({
+      resetToken: body.resetToken,
       credential: body.credential,
       correlationId: request.correlationId,
     });

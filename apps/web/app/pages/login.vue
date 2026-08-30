@@ -88,12 +88,14 @@ async function submit(): Promise<void> {
 
     <template #footer>
       <div class="flex flex-col gap-4">
-        <!-- The prototype's own pairing: sign in, or start the registration. -->
+        <!-- The prototype's own pairing: sign in, register, or recover. -->
         <div class="flex items-center justify-between border-b border-[#E9E9EC] pb-4">
           <NuxtLink to="/registro" class="text-[14px] font-semibold text-[#17191F]">
             Crear cuenta
           </NuxtLink>
-          <span class="text-[13px] text-[#75767F]">Se activa desde el correo</span>
+          <NuxtLink to="/recuperar" class="text-[13px] font-semibold text-[#5A5B63] underline">
+            ¿Olvidaste tu contraseña?
+          </NuxtLink>
         </div>
 
         <SharedCorrelationIdBadge :correlation-id="correlationId" />

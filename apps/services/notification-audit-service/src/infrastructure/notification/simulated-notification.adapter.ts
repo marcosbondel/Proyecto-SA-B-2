@@ -62,8 +62,8 @@ export class SimulatedNotificationAdapter implements NotificationSender {
       correlationId: notification.correlationId,
       outcome: 'SENT',
       /**
-       * The one place a clear activation token is written down, and it is
-       * closed in production.
+       * The one place a clear token — an activation link or a password-reset
+       * one — is written down, and it is closed in production.
        *
        * `customer.activation.requested.v1` says the token "must never be logged
        * or echoed", and outside a developer's machine this obeys that: the
@@ -79,7 +79,7 @@ export class SimulatedNotificationAdapter implements NotificationSender {
        * completely. Recorded as TD-043.
        */
       ...(this.#revealLinks && notification.link !== undefined
-        ? { activationLink: notification.link }
+        ? { deliveryLink: notification.link }
         : {}),
     });
 

@@ -21,6 +21,7 @@ import type {
 import { GatewayError } from '../../src/application/errors/gateway-error';
 import { CommandsUseCase } from '../../src/application/routes/commands.use-case';
 import { LoginUseCase } from '../../src/application/routes/login.use-case';
+import { PasswordResetUseCase } from '../../src/application/routes/password-reset.use-case';
 import { QueriesUseCase } from '../../src/application/routes/queries.use-case';
 import { RegisterCustomerUseCase } from '../../src/application/routes/register-customer.use-case';
 import { VerifyEmailUseCase } from '../../src/application/routes/verify-email.use-case';
@@ -157,6 +158,7 @@ export async function buildHarness(
        * with a DI error that says nothing about the actual change.
        */
       LoginUseCase,
+      PasswordResetUseCase,
       RegisterCustomerUseCase,
       CommandsUseCase,
       QueriesUseCase,

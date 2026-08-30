@@ -41,6 +41,47 @@ paths:
       x-bank-publishes: customer.authenticate.v1
       x-bank-awaits:
         - customer.authenticate.replied.v1
+  /api/auth/password-reset:
+    post:
+      description: Publica customer.password-reset.requested.v1 y devuelve 202 SIEMPRE, exista o no la
+        dirección. Responder distinto revelaría qué correos están registrados.
+      operationId: AuthController_requestPasswordReset
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestPasswordResetDto"
+      responses:
+        "202":
+          description: ""
+      summary: Solicita un enlace para restablecer la contraseña
+      tags:
+        - auth
+      x-bank-publishes: customer.password-reset.requested.v1
+  /api/auth/password-reset/confirm:
+    post:
+      description: Publica customer.password-reset.confirm.v1 y espera el evento correlacionado hasta
+        cinco segundos. Enlace inválido, ya usado y vencido producen el MISMO rechazo.
+      operationId: AuthController_confirmPasswordReset
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmPasswordResetDto"
+      responses:
+        "200":
+          description: ""
+      summary: Restablece la contraseña con el enlace del correo
+      tags:
+        - auth
+      x-bank-publishes: customer.password-reset.confirm.v1
+      x-bank-awaits:
+        - customer.password-reset.completed.v1
+        - customer.password-reset.rejected.v1
   /api/customers/verify-email:
     get:
       description: Devuelve un veredicto en la misma respuesta, esperando el evento correlacionado hasta
@@ -398,6 +439,12 @@ components:
       type: http
   schemas:
     LoginDto:
+      type: object
+      properties: {}
+    RequestPasswordResetDto:
+      type: object
+      properties: {}
+    ConfirmPasswordResetDto:
       type: object
       properties: {}
     RegisterCustomerDto:
