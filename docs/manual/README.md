@@ -466,7 +466,10 @@ claro:
 En `/transferencias`, la tarjeta **Consultar una transferencia** te deja pegar el
 identificador que devolvió un envío y ver su estado.
 
-**No hay un listado de transferencias.** Para volver a una transferencia hay que
+**El historial vive en `/transferencias`** y muestra tus transferencias más
+recientes; si acabas de enviar una y todavía no aparece, o si solo tienes el
+identificador de un comprobante, la búsqueda por `transactionId` sigue estando
+en la misma pantalla. Para volver a una transferencia hay que
 tener su identificador, así que conviene guardarlo.
 
 ---
@@ -575,18 +578,19 @@ interno, así que hay operaciones que no generan ninguna notificación.
 Esta lista es deliberada. Son funciones que la interfaz muestra o que un usuario
 esperaría, y que todavía no están disponibles. Ninguna es una avería.
 
+Ocho de las funciones que esta lista describía ya existen: depositar en
+ventanilla, ver los datos de un cliente, validar su identidad, cambiar la
+contraseña, recuperarla por correo, listar transferencias, ver el historial de
+pagos propio y marcar notificaciones como leídas. Lo que queda es esto.
+
 | Lo que no se puede | Detalle |
 | --- | --- |
-| **Depositar dinero** | No existe ninguna operación que ingrese efectivo. Una cuenta nueva empieza en Q 0.00 y solo crece recibiendo transferencias. |
-| **Buscar clientes** | No hay listado ni búsqueda de clientes. Para abrir una ficha hay que tener el customerId. |
-| **Ver los datos de un cliente** | La ficha permite *cambiar* datos, pero no *leerlos*: los campos aparecen vacíos y el estado de la validación de identidad no puede consultarse. |
-| **Validar la identidad de un cliente** | La cola de validación y la pantalla de revisión existen, pero los botones están deshabilitados y la foto del documento no puede mostrarse. |
-| **Cambiar el correo o la contraseña** | No hay pantalla para hacerlo. |
-| **Listar transferencias** | Solo se puede consultar una transferencia a la vez, por su identificador. |
-| **Ver el historial de pagos de un cliente** | El módulo de Pagos es para personal del banco y no se puede filtrar por cliente. |
+| **Buscar clientes por nombre** | No hay listado ni búsqueda de clientes. Para abrir una ficha hay que tener el customerId; el buscador de la barra superior salta a un identificador, no busca texto. |
+| **Cambiar tu correo electrónico** | El correo es tu identificador de acceso: cambiarlo cambia con qué entras. Hacerlo bien exige verificar la dirección nueva antes de reemplazar la vieja, y ese flujo no está construido. La pantalla lo muestra de solo lectura y lo explica. |
 | **Confirmar el resultado de un registro o de una apertura de cuenta** | Solo un Administrador puede consultar el rastro de auditoría. Las demás sesiones se quedan en «solicitud aceptada» con el identificador de correlación para preguntar. |
 | **Filtrar la auditoría por fecha** | La auditoría se consulta por identificador de correlación, no por rango de fechas ni por navegación general. |
-| **Marcar notificaciones como leídas** | La consola de notificaciones es una herramienta de supervisión, no una bandeja de entrada: no hay estado de leído. |
+| **Agregar un servicio al catálogo de pagos** | Los prestadores (EEGSA, Empagua, Claro) están fijos. Agregar uno necesita decidir quién puede hacerlo y con qué cuenta recaudadora, y eso no está definido. |
+| **Ver la foto del documento de identidad** | La cola de validación y los botones de veredicto funcionan; la imagen todavía no se muestra. |
 | **Crear el primer administrador** | El registro público siempre crea un Cliente. El primer administrador lo prepara el equipo técnico al instalar. |
 
 El detalle técnico de cada una, con su decisión y su ticket, está en

@@ -51,6 +51,12 @@ export const QUEUES: readonly QueueDescriptor[] = [
     bindings: [
       { exchange: EXCHANGES.commands, pattern: 'transfer.requested.v1' },
       { exchange: EXCHANGES.commands, pattern: 'transaction.status.requested.v1' },
+      // Added with the listing (TD-033). Enumerated rather than widened to
+      // `transaction.#`, because that pattern would also catch the *events*
+      // this service publishes about its own transactions if one were ever
+      // routed to the command exchange by mistake.
+      { exchange: EXCHANGES.commands, pattern: 'transaction.list.query.v1' },
+      { exchange: EXCHANGES.commands, pattern: 'transaction.stats.query.v1' },
     ],
   },
   {
@@ -141,6 +147,17 @@ export const QUEUES: readonly QueueDescriptor[] = [
     bindings: [
       { exchange: EXCHANGES.commands, pattern: 'audit.query.requested.v1' },
       { exchange: EXCHANGES.commands, pattern: 'notification.list.query.v1' },
+      /*
+       * The customer's own inbox and the write that marks it read. On the
+       * query queue rather than an event one for the reason the others are:
+       * somebody is waiting in front of a screen, and putting them behind a
+       * backlog of recorded events would make the fastest thing this service
+       * does the slowest.
+       */
+      { exchange: EXCHANGES.commands, pattern: 'notification.inbox.query.v1' },
+      { exchange: EXCHANGES.commands, pattern: 'notification.mark-read.v1' },
+      // The dashboard's count of what the trail recorded today.
+      { exchange: EXCHANGES.commands, pattern: 'audit.stats.query.v1' },
     ],
   },
 ];
@@ -171,6 +188,24 @@ export const GATEWAY_REPLY_BINDINGS: readonly {
   // The verdict of an email activation, which T-15 answers synchronously.
   { exchange: EXCHANGES.events, pattern: 'customer.email.verified.v1' },
   { exchange: EXCHANGES.events, pattern: 'customer.email.verification.rejected.v1' },
+  /*
+   * The verdict of a password reset, for the same reason and in the same shape:
+   * somebody who just chose a new password is holding a connection open, and
+   * "go read the audit trail" is not an answer for them either.
+   */
+  { exchange: EXCHANGES.events, pattern: 'customer.password-reset.completed.v1' },
+  { exchange: EXCHANGES.events, pattern: 'customer.password-reset.rejected.v1' },
+  // And of a password changed from inside a session, which is the same shape
+  // again: a command, two events, and somebody watching a spinner.
+  { exchange: EXCHANGES.events, pattern: 'customer.password-changed.v1' },
+  { exchange: EXCHANGES.events, pattern: 'customer.password-change.rejected.v1' },
+  /*
+   * And of a deposit at a window. A teller is standing in front of somebody
+   * who just handed over cash; "202, check the audit trail" is not an answer
+   * either of them can act on.
+   */
+  { exchange: EXCHANGES.events, pattern: 'account.deposited.v1' },
+  { exchange: EXCHANGES.events, pattern: 'account.deposit.rejected.v1' },
 ];
 
 /** The name of one replica's private reply queue. Never shared. */

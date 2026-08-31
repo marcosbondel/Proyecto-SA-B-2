@@ -67,6 +67,8 @@ describeIntegration('PostgresTransactionRepository', () => {
       amount: quetzales(15_000),
       correlationId: randomUUID(),
       idempotencyKey: randomUUID(),
+      customerId: null,
+      reference: null,
       paymentScenario: null,
       now: NOW,
       ...overrides,

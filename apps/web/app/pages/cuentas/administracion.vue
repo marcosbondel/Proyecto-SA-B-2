@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { mayManageAccounts } from '../../lib/account';
+import { holderIsName, holderLabel, mayManageAccounts } from '../../lib/account';
 import type { AccountStatus, AccountSummary, AccountType } from '../../lib/account';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
@@ -17,10 +17,13 @@ import { formatDate, formatQuetzales } from '../../lib/money';
  * The redirect is a courtesy and not the defence. The Gateway refuses the
  * listing and the status change whether or not this ran.
  *
- * **One column of the prototype is missing on purpose.** It shows "Titular" as
- * a person's name; Account Service holds only an opaque `customerId` and cannot
- * read Customer Service to resolve it (§8.2, 2.3). The identifier is shown
- * instead of a name that would have to be invented.
+ * **The "Titular" column shows a name again.** Account Service holds only an
+ * opaque `customerId` and may not read Customer Service to resolve it (§8.2,
+ * 2.3), so for two tickets this column showed the identifier — an administrator
+ * scanning the table saw UUIDs in exactly the column they would use to
+ * recognise an account (TD-026). The Gateway now composes the listing with one
+ * batch name lookup, and the identifier stays underneath as the fallback for
+ * the rows where no name came back.
  */
 const api = useGatewayApi();
 const { role } = useSession();
@@ -68,7 +71,9 @@ const visible = computed(() => {
     : accounts.value.filter(
         (account) =>
           account.accountId.toLowerCase().includes(needle) ||
-          account.customerId.toLowerCase().includes(needle),
+          account.customerId.toLowerCase().includes(needle) ||
+          // Searching by the holder's name is the reason the column exists.
+          (account.holderName ?? '').toLowerCase().includes(needle),
       );
 });
 
@@ -232,7 +237,7 @@ useHead({ title: 'Gestión de cuentas · bonking' });
         <thead>
           <tr class="text-[11px] uppercase tracking-[0.06em] text-[#75767F]">
             <th class="py-4 pr-4 text-left font-semibold">Número</th>
-            <th class="py-4 pr-4 text-left font-semibold">Titular (customerId)</th>
+            <th class="py-4 pr-4 text-left font-semibold">Titular</th>
             <th class="py-4 pr-4 text-left font-semibold">Tipo</th>
             <th class="py-4 pr-4 text-left font-semibold">Estado</th>
             <th class="py-4 pr-4 text-left font-semibold">Última actividad</th>
@@ -246,10 +251,18 @@ useHead({ title: 'Gestión de cuentas · bonking' });
               class="border-t border-[#E9E9EC] py-3.5 pr-4 font-mono text-[13px] tracking-[0.03em]"
               style="font-variant-numeric: tabular-nums lining-nums"
             >{{ account.accountId }}</td>
-            <td
-              class="border-t border-[#E9E9EC] py-3.5 pr-4 font-mono text-[13px] text-[#5A5B63]"
-              style="font-variant-numeric: tabular-nums lining-nums"
-            >{{ account.customerId }}</td>
+            <td class="border-t border-[#E9E9EC] py-3.5 pr-4">
+              <div
+                class="text-[13px] font-medium text-[#23242A]"
+                :class="holderIsName(account) ? '' : 'font-mono tracking-[0.03em] text-[#5A5B63]'"
+                style="font-variant-numeric: tabular-nums lining-nums"
+              >{{ holderLabel(account) }}</div>
+              <div
+                v-if="holderIsName(account)"
+                class="font-mono text-[11px] text-[#75767F]"
+                style="font-variant-numeric: tabular-nums lining-nums"
+              >{{ account.customerId }}</div>
+            </td>
             <td class="border-t border-[#E9E9EC] py-3.5 pr-4 text-[13px] text-[#5A5B63]">
               {{ account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro' }}
             </td>

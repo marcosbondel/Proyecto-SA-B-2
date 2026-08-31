@@ -68,9 +68,62 @@ export interface AuditRepository {
       readonly notificationId: string;
       readonly intent: NotificationIntent;
       readonly recipient: string | null;
+      /**
+       * Whose inbox this belongs in — the subject, not the address.
+       *
+       * The same value `recipient` is derived from, written down instead of
+       * discarded. Without it a notification is a row nobody can claim, which
+       * is what made `N-01` impossible (TD-041).
+       */
+      readonly customerId: string | null;
     } | null;
     readonly now: Date;
   }): Promise<RecordOutcome & { readonly notificationId?: string }>;
+
+  /**
+   * One person's notifications, newest first, with the unread count.
+   *
+   * Scoped by the caller, never by a filter: `customerId` is taken from the
+   * envelope identity by the use case. There is no "all inboxes" mode — the
+   * staff console is a different query over the same table
+   * (`notification.list.query.v1`) and it answers a different question.
+   */
+  inboxOf(input: { readonly customerId: string; readonly limit: number }): Promise<{
+    readonly notifications: readonly InboxNotification[];
+    readonly unread: number;
+  }>;
+
+  /** The unread count alone, for the answer a write gives back. */
+  unreadCountOf(customerId: string): Promise<number>;
+
+  /**
+   * Marks a person's notifications read, and says how many changed.
+   *
+   * All of them, or the ones named. Scoped by `customerId` in the `WHERE`
+   * clause rather than checked beforehand: an id belonging to somebody else
+   * simply matches no row, so a request to read a stranger's notification is a
+   * no-op instead of a refusal that would confirm the id exists.
+   */
+  markRead(input: {
+    readonly customerId: string;
+    readonly notificationIds: readonly string[] | null;
+    readonly now: Date;
+  }): Promise<number>;
+
+  /**
+   * The dashboard's counts over the trail.
+   *
+   * `invalidToday` is the number a trail that counted only successes would
+   * hide: a message this service cannot parse is recorded `INVALID` rather than
+   * parked, so that somebody can see it happened.
+   */
+  stats(): Promise<{
+    readonly eventsToday: number;
+    readonly invalidToday: number;
+    readonly notificationsToday: number;
+    readonly lastEventType: string | null;
+    readonly lastEventAt: string | null;
+  }>;
 
   /** Moves a notification out of `PENDING`. The only update in this service. */
   settleNotification(input: {
@@ -169,3 +222,23 @@ export interface Clock {
 export interface IdGenerator {
   next(): string;
 }
+
+/**
+ * A notification as **its own recipient** sees it.
+ *
+ * Mirrors `notification.inbox.replied.v1`, and is not `NotificationView`: that
+ * one carries the simulated recipient of every delivery in the system and its
+ * delivery status, both of which exist for a console restricted to
+ * `ADMINISTRADOR`. One shape serving both audiences would be one shape carrying
+ * a field a customer must never see.
+ */
+export interface InboxNotification {
+  readonly notificationId: string;
+  readonly type: string;
+  readonly subject: string;
+  readonly referenceId: string | null;
+  readonly correlationId: string;
+  readonly createdAt: string;
+  readonly readAt: string | null;
+}
+

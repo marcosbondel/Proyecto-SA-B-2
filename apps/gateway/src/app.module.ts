@@ -10,10 +10,17 @@ import {
   SESSION_SIGNER,
 } from './application/ports';
 import { CommandsUseCase } from './application/routes/commands.use-case';
+import { ChangePasswordUseCase } from './application/routes/change-password.use-case';
+import { DepositUseCase } from './application/routes/deposit.use-case';
+import { DashboardUseCase } from './application/routes/dashboard.use-case';
 import { LoginUseCase } from './application/routes/login.use-case';
+import { MarkNotificationsReadUseCase } from './application/routes/mark-read.use-case';
+import { PasswordResetUseCase } from './application/routes/password-reset.use-case';
 import { QueriesUseCase } from './application/routes/queries.use-case';
 import { RegisterCustomerUseCase } from './application/routes/register-customer.use-case';
 import { VerifyEmailUseCase } from './application/routes/verify-email.use-case';
+import { DashboardController } from './interfaces/dashboard.controller';
+import { NotificationsController } from './interfaces/notifications.controller';
 import { AuditController } from './interfaces/audit.controller';
 import { AccountsController } from './interfaces/accounts.controller';
 import { AuthController } from './interfaces/auth.controller';
@@ -81,6 +88,8 @@ export class AppModule implements NestModule {
         TransfersController,
         PaymentsController,
         AuditController,
+        NotificationsController,
+        DashboardController,
       ],
       providers: [
         { provide: GATEWAY_RUNTIME, useValue: runtime },
@@ -99,7 +108,12 @@ export class AppModule implements NestModule {
         { provide: SESSION_VERIFIER, useValue: sessions },
         { provide: SESSION_SIGNER, useValue: sessions },
 
+        ChangePasswordUseCase,
+        DepositUseCase,
+        DashboardUseCase,
         LoginUseCase,
+        MarkNotificationsReadUseCase,
+        PasswordResetUseCase,
         RegisterCustomerUseCase,
         CommandsUseCase,
         QueriesUseCase,

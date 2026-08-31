@@ -153,6 +153,36 @@ export const MIGRATIONS: readonly Migration[] = [
          WHERE transaction_id IS NOT NULL`,
     ],
   },
+  {
+    /*
+     * The billers' collection accounts — what makes `G-01` "pago de servicios"
+     * possible without a second kind of money movement.
+     *
+     * A service payment **is a transfer**, to an account the biller holds at
+     * this bank. That is how the product works in the world and it is why this
+     * feature needed no new Saga, no nullable target account and no change to a
+     * message T-05 closed: EEGSA's account is an account, the transfer to it is
+     * a transfer, and the state machine never learns that anything is different.
+     *
+     * The alternative — a `SERVICE_PAYMENT` kind with a null target and a
+     * branch in the state machine — would have put a second shape through every
+     * consumer of `transaction.completed.v1`, for a distinction the ledger does
+     * not have.
+     *
+     * `customer_id` is synthetic and stays `NOT NULL`: a biller is not a
+     * customer of this bank, but the column is a plain reference with no
+     * foreign key, and a nullable one would have to be handled by every read
+     * path for the sake of three rows.
+     */
+    name: '006_biller_accounts',
+    statements: [
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS biller_code VARCHAR(20)`,
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS biller_name VARCHAR(60)`,
+      /* One account per biller, and the index the catalogue query reads. */
+      `CREATE UNIQUE INDEX IF NOT EXISTS accounts_biller_code_once
+         ON accounts (biller_code) WHERE biller_code IS NOT NULL`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

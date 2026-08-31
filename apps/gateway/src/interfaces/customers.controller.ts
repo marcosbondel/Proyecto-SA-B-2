@@ -16,6 +16,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MAX_PHOTO_BYTES } from '@bank/contracts';
 
+import { ChangePasswordUseCase } from '../application/routes/change-password.use-case';
+import type { ChangedPassword } from '../application/routes/change-password.use-case';
 import { CommandsUseCase } from '../application/routes/commands.use-case';
 import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { RegisterCustomerUseCase } from '../application/routes/register-customer.use-case';
@@ -23,6 +25,7 @@ import { VerifyEmailUseCase } from '../application/routes/verify-email.use-case'
 import type { VerifyEmailResult } from '../application/routes/verify-email.use-case';
 import { GatewayError } from '../application/errors/gateway-error';
 import {
+  ChangePasswordDto,
   RegisterCustomerDto,
   SetIdentityVerdictDto,
   UpdateCustomerDto,
@@ -49,6 +52,7 @@ export class CustomersController {
   readonly #commands: CommandsUseCase;
   readonly #queries: QueriesUseCase;
   readonly #verifyEmail: VerifyEmailUseCase;
+  readonly #changePassword: ChangePasswordUseCase;
   readonly #sessions: SessionVerifierPort;
 
   constructor(
@@ -56,13 +60,49 @@ export class CustomersController {
     @Inject(CommandsUseCase) commands: CommandsUseCase,
     @Inject(QueriesUseCase) queries: QueriesUseCase,
     @Inject(VerifyEmailUseCase) verifyEmail: VerifyEmailUseCase,
+    @Inject(ChangePasswordUseCase) changePassword: ChangePasswordUseCase,
     @Inject(SESSION_VERIFIER) sessions: SessionVerifierPort,
   ) {
     this.#register = register;
     this.#commands = commands;
     this.#queries = queries;
     this.#verifyEmail = verifyEmail;
+    this.#changePassword = changePassword;
     this.#sessions = sessions;
+  }
+
+  /**
+   * `C-01`'s "cambiar contraseña" — `200`, because the verdict is known by the
+   * time the response is written.
+   *
+   * Not `@Roles`-guarded, and that is not an omission: the rule is narrower
+   * than any role — **only the account's owner**, an administrator included —
+   * and it is Customer Service that applies it, because the Gateway has no
+   * customer table. A role decorator here would be a second, looser copy of an
+   * authorization rule, which is the drift `navigation-parity` exists to catch.
+   */
+  @ApiOperation({
+    summary: 'Cambia la contraseña de la propia cuenta',
+    description:
+      'Publica customer.change-password.v1 y espera el evento correlacionado. Requiere la ' +
+      'contraseña actual: la sesión no basta. NADIE puede cambiar la de otra persona, ' +
+      'administradores incluidos — para eso está la recuperación por correo.',
+  })
+  @ApiBearerAuth('session')
+  @Post(':customerId/password')
+  @HttpCode(200)
+  public async changePassword(
+    @Param('customerId') customerId: string,
+    @Body(validated(ChangePasswordDto)) body: ChangePasswordDto,
+    @Req() request: GatewayRequest,
+  ): Promise<ChangedPassword> {
+    return await this.#changePassword.execute({
+      customerId,
+      currentCredential: body.currentCredential,
+      newCredential: body.newCredential,
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
   }
 
   /**

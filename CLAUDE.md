@@ -19,17 +19,24 @@ A pnpm workspace with all code under `apps/`: Gateway and the Nuxt frontend at
 the top level, the five domain services under `apps/services/`, and
 `@bank/contracts`, `@bank/messaging`, `@bank/tooling` under `apps/packages/`.
 Seven applications, all of them building, linting and testing. The Gateway
-carries seventeen routes over fourteen paths, JWT authentication, D-06 role
-authorization, request/reply with a five-second ceiling, seven error codes and a
-versioned OpenAPI contract; it has no `domain/` layer and never will. `apps/web`
-carries the layout, the role-filtered navigation, the session, four shared
-components and five feature modules: **Clientes** (T-16) in
-`app/components/customer/` + `app/pages/clientes/` with public registration at
-`/registro`, **Cuentas** (T-17) in `app/components/account/` +
-`app/pages/cuentas/`, **Transferencias** (T-18) in
-`app/components/transaction/` + `app/pages/transferencias/`, **Pagos** (T-19) in
-`app/components/payment/` + `app/pages/pagos/`, and **Auditoría** (T-20) in
-`app/components/audit/` + `app/pages/auditoria/`.
+carries twenty-four paths, JWT authentication, D-06 role authorization,
+request/reply with a five-second ceiling, seven error codes and a versioned
+OpenAPI contract; it has no `domain/` layer and never will.
+
+**`apps/web` implements the Claude Design prototype in full** — all thirty-four
+screens of `bonking.dc.html`, mapped route by route in
+[docs/FRONTEND.md](docs/FRONTEND.md#the-screen-inventory). Beyond the five
+original modules (`app/components/<module>/` + `app/pages/<module>/`) it carries
+password recovery, Mi perfil, the deposit window, the transfer history and Saga
+monitor, the service-payment product, the customer's notification inbox, and the
+three per-role dashboards behind one route — `/` is `A-01`, `D-01` and `D-02`,
+picked by `dashboardFor`, because "where do I land" must not be a URL somebody
+can be sent to by mistake.
+
+Two Gateway routes **compose** and are the only ones that do:
+`GET /api/accounts` merges Account Service's rows with Customer Service's names
+in one extra round trip, and `GET /api/dashboard` asks five services at once
+with every section independently optional. Neither computes anything.
 
 **Customer Service is implemented** (T-16) — its own PostgreSQL schema, the five
 message handlers, idempotency enforced by a unique constraint, scrypt
@@ -85,9 +92,18 @@ that COMPENSATES on the first attempt, and one that climbs the ladder to its end
 and then COMPENSATES. The compensation is asserted as a fact about the money,
 not as a status somebody wrote down.
 
-The Cuentas screens still cannot show TD-026 and TD-027; the Transferencias
-screens TD-032 to TD-035; the Pagos screens TD-037 and TD-038; the Auditoría
-screens TD-039 to TD-043. TD-020 and TD-023 (the Clientes read path and the
+Six of the debts that blocked screens are **closed** (TD-026, TD-027, TD-033,
+TD-035, TD-038, TD-041), and none by the remedy its own row proposed: the
+transfer's originator was already in the envelope, a holder's name needed one
+batch query rather than a projection, a service payment turned out to be a
+transfer to the biller's own account, and the notification's subject was already
+being computed and discarded. TD-021, TD-032, TD-037, TD-039 and TD-040 stand.
+Five deviations from the prototype are recorded as TD-050 to TD-054 — the last
+of which is that **the whole prototype was implemented without opening a
+browser**: lint, tests, typecheck and build are green, and that is not the
+evidence `docs/DESIGN.md` asks for.
+
+TD-020 and TD-023 (the Clientes read path and the
 teller identity-validation flow) are **closed** by the audit-remediation feature
 (`specs/008-audit-remediation`), which also added the Kubernetes deployment: a
 Helm chart at `infra/k8s/helm/bank-usac` plus a kind cluster config, verified

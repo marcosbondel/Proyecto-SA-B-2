@@ -403,3 +403,72 @@ export const POLL_INTERVAL_MS = 2_000;
  * leaves open for a week.
  */
 export const POLL_CEILING_MS = 120_000;
+
+/**
+ * One row of the transfer listing — `T-04`.
+ *
+ * Thinner than `TransferStatus`, which is the shape of the single-transfer
+ * screen: a hundred rows each carrying a nested payment outcome would be a
+ * large answer to render four columns from, and the detail screen is where the
+ * rest belongs. Mirrors `transaction.list.replied.v1`.
+ */
+export interface TransferRow {
+  readonly transactionId: string;
+  readonly sourceAccount: string;
+  readonly targetAccount: string;
+  readonly amount: WireMoney;
+  readonly status: TransactionStatus;
+  readonly reason: string | null;
+  readonly createdAt: string;
+  readonly completedAt: string | null;
+}
+
+/**
+ * Whether a transfer is still moving, from a row rather than from a status
+ * screen's polling state.
+ *
+ * A list of transfers is a list of things in different states, and the two that
+ * are still in flight — `DEBITING` and `PAYMENT_PENDING` — are the ones a
+ * reader most needs to pick out, because they are the ones whose row will look
+ * different in a minute. `PENDING` counts too: it is accepted and unmoved.
+ */
+export function isInFlight(status: TransactionStatus): boolean {
+  return !isTerminal(status);
+}
+
+/**
+ * How a row reads from **this account's** side, when there is one.
+ *
+ * A transfer between two accounts is money leaving one and arriving at another,
+ * and a history that showed every row the same way would make an incoming
+ * transfer indistinguishable from an outgoing one — the single most useful
+ * distinction on the screen. With no account in context (the admin monitor,
+ * where rows belong to many people) it is neither, and the amount is shown
+ * unsigned.
+ */
+export type TransferDirection = 'OUT' | 'IN' | 'NEUTRAL';
+
+export function directionOf(row: TransferRow, accountId: string | null): TransferDirection {
+  if (accountId === null) {
+    return 'NEUTRAL';
+  }
+
+  if (row.sourceAccount === accountId) {
+    return 'OUT';
+  }
+
+  return row.targetAccount === accountId ? 'IN' : 'NEUTRAL';
+}
+
+/**
+ * The six states a listing may be filtered by, with the words the screen uses.
+ *
+ * Derived from `STATUS_PRESENTATION` rather than restated, so a label can never
+ * differ between the filter and the badge it filters for.
+ */
+export function statusFilterOptions(): readonly { readonly value: TransactionStatus; readonly label: string }[] {
+  return (Object.keys(STATUS_PRESENTATION) as TransactionStatus[]).map((value) => ({
+    value,
+    label: STATUS_PRESENTATION[value].label,
+  }));
+}

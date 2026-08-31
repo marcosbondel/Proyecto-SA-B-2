@@ -9,6 +9,7 @@ import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
 import { ProcessPaymentUseCase } from './application/process-payment.use-case';
+import { GetPaymentStatsUseCase } from './application/get-payment-stats.use-case';
 import { QueryPaymentUseCase } from './application/query-payment.use-case';
 import { AppModule } from './app.module';
 import {
@@ -25,6 +26,7 @@ import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   ListPaymentsHandler,
+  PaymentStatsHandler,
   PaymentStatusHandler,
   ProcessPaymentHandler,
 } from './interfaces/message-handlers';
@@ -107,6 +109,7 @@ async function bootstrap(): Promise<void> {
       new ProcessPaymentHandler(processPayment, publisher),
       new ListPaymentsHandler(queryPayment, publisher),
       new PaymentStatusHandler(queryPayment, publisher),
+      new PaymentStatsHandler(new GetPaymentStatsUseCase({ repository, publisher })),
     ]);
   };
 

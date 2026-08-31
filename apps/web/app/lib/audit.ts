@@ -326,3 +326,81 @@ export function redactedCount(payload: Record<string, unknown> | undefined): num
 
   return JSON.stringify(payload).split(`"${REDACTION_MARKER}"`).length - 1;
 }
+
+/**
+ * One notification as its own recipient sees it — `N-01`'s row.
+ *
+ * Mirrors `notification.inbox.replied.v1`, and it is **not** the console's
+ * shape: no `recipient`, because a person does not need to be told their own
+ * simulated address, and no delivery `status`, because "PENDING" is a fact
+ * about the bank's mail plumbing that the person reading the notification right
+ * now cannot act on.
+ */
+export interface InboxNotification {
+  readonly notificationId: string;
+  readonly type: string;
+  readonly subject: string;
+  readonly referenceId: string | null;
+  readonly correlationId: string;
+  readonly createdAt: string;
+  readonly readAt: string | null;
+}
+
+/**
+ * Where a notification's "Ver" link goes, from the event that caused it.
+ *
+ * The type is named after that event — `transfer.completed`, `account.opened`,
+ * `customer.password-changed` — and the reference is whatever that event was
+ * about. Mapping the two to a route is presentation, which is why it is a
+ * function here rather than a field on the wire: the day a screen moves, one
+ * table changes and no message does.
+ *
+ * `null` when there is nowhere useful to go. A notification that cannot be
+ * opened is better than one whose link lands on a 404.
+ */
+export function notificationLink(notification: InboxNotification): string | null {
+  if (notification.referenceId === null) {
+    return null;
+  }
+
+  if (notification.type.startsWith('transfer.')) {
+    return `/transferencias/${notification.referenceId}`;
+  }
+
+  if (notification.type.startsWith('account.')) {
+    return `/cuentas/${notification.referenceId}`;
+  }
+
+  if (notification.type.startsWith('customer.') || notification.type.startsWith('identity.')) {
+    return '/perfil';
+  }
+
+  return null;
+}
+
+/**
+ * The words a notification's kind is written in.
+ *
+ * Falls back to the raw type rather than to "Notificación": a reader who sees
+ * an untranslated `payment.settled` learns something, and a reader who sees a
+ * generic label learns nothing and cannot report it either.
+ */
+const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
+  'transfer.completed': 'Transferencia completada',
+  'transfer.failed': 'Transferencia fallida',
+  'transfer.compensated': 'Transferencia revertida',
+  'customer.registered': 'Registro recibido',
+  'customer.activation': 'Activación de cuenta',
+  'customer.activated': 'Cuenta activada',
+  'customer.password-reset': 'Recuperación de contraseña',
+  'customer.password-changed': 'Contraseña cambiada',
+  'identity.validated': 'Identidad verificada',
+  'identity.rejected': 'Identidad rechazada',
+  'account.opened': 'Cuenta creada',
+  'account.deactivated': 'Cuenta desactivada',
+  'account.reactivated': 'Cuenta reactivada',
+};
+
+export function notificationLabel(type: string): string {
+  return NOTIFICATION_LABELS[type] ?? type;
+}

@@ -28,10 +28,17 @@ const transferRequest = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const envelope = (overrides: Record<string, string> = {}) => ({
+/**
+ * Whoever asked for the transfer. Recorded on the row and used to scope reads;
+ * the other actors — staff, a stranger — live in `listing-and-scope.spec.ts`,
+ * which is the suite about the scope itself.
+ */
+const OWNER = { customerId: '77777777-7777-4777-8777-777777777701', role: 'CLIENTE' as const };
+const envelope = (overrides: Record<string, unknown> = {}) => ({
   messageId: '66666666-6666-4666-8666-666666666601',
   correlationId: CORRELATION,
   idempotencyKey: 'transfer-key-1',
+  identity: OWNER,
   ...overrides,
 });
 
@@ -461,7 +468,7 @@ describe('the status query', () => {
 
     await request.execute(transferRequest(), envelope());
 
-    await status.execute({ transactionId: TRANSACTION });
+    await status.execute({ transactionId: TRANSACTION }, OWNER);
 
     const reply = publisher.replies.at(-1)!;
 
@@ -481,7 +488,7 @@ describe('the status query', () => {
     await request.execute(transferRequest(), envelope());
     await deliver('account.debited.v1', { kind: 'DEBITED' });
 
-    await status.execute({ transactionId: TRANSACTION });
+    await status.execute({ transactionId: TRANSACTION }, OWNER);
 
     // Ordered and undecided is a real state, and a different statement from
     // "there is no payment".
@@ -500,7 +507,7 @@ describe('the status query', () => {
       },
     );
 
-    await status.execute({ transactionId: TRANSACTION });
+    await status.execute({ transactionId: TRANSACTION }, OWNER);
 
     const reply = publisher.replies.at(-1)!;
 
@@ -524,7 +531,7 @@ describe('the status query', () => {
     const retriedId = '77777777-7777-4777-8777-777777777777';
     await request.execute(transferRequest({ transactionId: retriedId }), envelope());
 
-    await status.execute({ transactionId: retriedId });
+    await status.execute({ transactionId: retriedId }, OWNER);
 
     expect(publisher.replies.at(-1)!.payload).toMatchObject({
       outcome: 'FOUND',
@@ -537,7 +544,7 @@ describe('the status query', () => {
 
     await request.execute(transferRequest(), envelope());
 
-    await status.execute({ correlationId: CORRELATION });
+    await status.execute({ correlationId: CORRELATION }, OWNER);
 
     expect(publisher.replies.at(-1)!.payload).toMatchObject({ transactionId: TRANSACTION });
   });
@@ -545,7 +552,7 @@ describe('the status query', () => {
   it('says NOT_FOUND rather than inventing a transfer', async () => {
     const { status, publisher } = world();
 
-    await status.execute({ transactionId: TRANSACTION });
+    await status.execute({ transactionId: TRANSACTION }, OWNER);
 
     expect(publisher.replies.at(-1)!.payload).toEqual({ outcome: 'NOT_FOUND' });
   });

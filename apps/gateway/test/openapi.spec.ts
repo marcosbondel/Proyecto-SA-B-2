@@ -7,6 +7,8 @@ import { parse, stringify } from 'yaml';
 
 import { AccountsController } from '../src/interfaces/accounts.controller';
 import { AuditController } from '../src/interfaces/audit.controller';
+import { DashboardController } from '../src/interfaces/dashboard.controller';
+import { NotificationsController } from '../src/interfaces/notifications.controller';
 import { AuthController } from '../src/interfaces/auth.controller';
 import { CustomersController } from '../src/interfaces/customers.controller';
 import { HealthController } from '../src/interfaces/health.controller';
@@ -34,6 +36,8 @@ const CONTROLLERS = [
   TransfersController,
   PaymentsController,
   AuditController,
+  NotificationsController,
+  DashboardController,
 ];
 
 interface OpenApiDocument {
@@ -81,18 +85,32 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the sixteen paths the tickets fixed', () => {
+  it('declares the twenty-four paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
         '/api/accounts/{accountId}/balance',
+        // Added for the prototype's G-01: which services can be paid, and where
+        // each one's collection account is. A service payment is a transfer to
+        // it, so there is no separate kind of money movement.
+        '/api/accounts/billers',
         // Added by T-17.
+        // Added for the prototype's A-05: the deposit window, the only
+        // money-moving route that answers synchronously.
+        '/api/accounts/{accountId}/deposit',
         '/api/accounts/{accountId}/operations',
         '/api/accounts/{accountId}/status',
         '/api/audit',
         // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
         '/api/audit/notifications',
+        // Added for the prototype's D-01 and D-02: five services' own counts,
+        // composed. The Gateway holds five replies and computes nothing.
+        '/api/dashboard',
         '/api/auth/login',
+        // Added for the prototype's P-07: the password recovery the assignment's
+        // flow needs and that no route offered.
+        '/api/auth/password-reset',
+        '/api/auth/password-reset/confirm',
         '/api/customers',
         '/api/customers/verify-email',
         // Added by the audit remediation (US6): the read path, the teller's
@@ -100,6 +118,16 @@ describe('the versioned API contract', () => {
         '/api/customers/pending-validation',
         '/api/customers/{customerId}',
         '/api/customers/{customerId}/identity-verdict',
+        // Added for the prototype's C-01: changing your own password from
+        // inside a session, which needs the current one and which nobody else
+        // may do for you.
+        '/api/customers/{customerId}/password',
+        // Added for the prototype's N-01: a person's own inbox, and the write
+        // that marks it read. Top-level rather than nested under /api/audit,
+        // because it is a different audience and a different shape from the
+        // staff console — no recipient, no delivery status, scoped by identity.
+        '/api/notifications',
+        '/api/notifications/read',
         // Added by T-19. Read-only: a payment is born from a transfer, never
         // from a route.
         '/api/payments',
@@ -138,7 +166,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(16);
+      expect(functional).toHaveLength(24);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
@@ -173,10 +201,15 @@ describe('the versioned API contract', () => {
     });
 
     /**
-     * The five public routes, and only those. If a sixth ever appears here
+     * The seven public routes, and only those. If an eighth ever appears here
      * without a bearer requirement, this is where it is noticed.
+     *
+     * The two password-recovery routes are public because they have to be: the
+     * whole premise is somebody who cannot sign in. The token in the emailed
+     * link is the credential for the second, and the first is deliberately
+     * uninformative so being open costs nothing.
      */
-    it('marks exactly the five public routes as needing no token', () => {
+    it('marks exactly the seven public routes as needing no token', () => {
       const withoutAuth: string[] = [];
 
       for (const [path, operations] of Object.entries(committed.paths)) {
@@ -192,6 +225,8 @@ describe('the versioned API contract', () => {
           'GET /health',
           'GET /ready',
           'POST /api/auth/login',
+          'POST /api/auth/password-reset',
+          'POST /api/auth/password-reset/confirm',
           'POST /api/customers',
           'GET /api/customers/verify-email',
         ].sort(),

@@ -153,8 +153,55 @@ describe('which events are worth telling somebody about', () => {
     }
   });
 
-  it('notifies on eleven message types and no more', () => {
-    expect(notifyingMessageTypes()).toHaveLength(11);
+  it('notifies on fourteen message types and no more', () => {
+    expect(notifyingMessageTypes()).toHaveLength(14);
+  });
+
+  /**
+   * A wrong current password belongs in the trail, not in an inbox: emailing
+   * somebody every time they mistype their own password is how a real warning
+   * gets ignored.
+   */
+  it('emails a password change but not a refused one', () => {
+    expect(notificationFor('customer.password-changed.v1', { customerId: 'c-1' })?.type).toBe(
+      'customer.password-changed',
+    );
+    expect(
+      notificationFor('customer.password-change.rejected.v1', { customerId: 'c-1' }),
+    ).toBeNull();
+  });
+
+  /**
+   * The password-recovery pair. The second is the one that matters: telling
+   * somebody their password changed is worth sending precisely when they did
+   * not ask for the change.
+   */
+  it('tells somebody their password was changed, not only that a link went out', () => {
+    expect(notificationFor('customer.password-reset.issued.v1', { customerId: 'c-1' })?.type).toBe(
+      'customer.password-reset',
+    );
+    expect(
+      notificationFor('customer.password-reset.completed.v1', { customerId: 'c-1' })?.type,
+    ).toBe('customer.password-changed');
+  });
+
+  it('builds the reset link from the token the event carries', () => {
+    const intent = notificationFor('customer.password-reset.issued.v1', {
+      customerId: 'c-1',
+      resetToken: 'abcdef0123456789abcdef',
+    });
+
+    expect(intent?.link).toBe('/restablecer?token=abcdef0123456789abcdef');
+  });
+
+  /**
+   * The completion event carries no token, so it carries no link — a "your
+   * password changed" email must not contain a way to change it again.
+   */
+  it('puts no link on the completion', () => {
+    expect(
+      notificationFor('customer.password-reset.completed.v1', { customerId: 'c-1' })?.link,
+    ).toBeUndefined();
   });
 
   it('has no reference when the payload carries none', () => {

@@ -57,7 +57,7 @@ describe('the simulated delivery channel', () => {
 
     await new SimulatedNotificationAdapter(sink, false).send(delivery);
 
-    expect(sink.lines[0]?.fields.activationLink).toBeUndefined();
+    expect(sink.lines[0]?.fields.deliveryLink).toBeUndefined();
     expect(JSON.stringify(sink.lines)).not.toContain('abcdef0123456789abcdef');
   });
 
@@ -66,7 +66,7 @@ describe('the simulated delivery channel', () => {
 
     await new SimulatedNotificationAdapter(sink, true).send(delivery);
 
-    expect(sink.lines[0]?.fields.activationLink).toBe('/activar?token=abcdef0123456789abcdef');
+    expect(sink.lines[0]?.fields.deliveryLink).toBe('/activar?token=abcdef0123456789abcdef');
   });
 
   /** Only the activation message carries one; nothing else can leak through. */
@@ -79,7 +79,7 @@ describe('the simulated delivery channel', () => {
       link: undefined,
     });
 
-    expect(sink.lines[0]?.fields.activationLink).toBeUndefined();
+    expect(sink.lines[0]?.fields.deliveryLink).toBeUndefined();
   });
 });
 

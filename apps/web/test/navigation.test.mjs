@@ -4,6 +4,7 @@ import { test, describe } from 'node:test';
 import {
   GUEST_ONLY_ROUTES,
   MODULES,
+  PUBLIC_ROUTES,
   canOpen,
   isGuestOnly,
   labelForRole,
@@ -16,17 +17,31 @@ import {
 // hiding in a template where TD-010 would make it unverifiable.
 
 describe('what each role sees in the navigation', () => {
-  test('the five modules are the five the spec fixed', () => {
+  /**
+   * Six entries: the five modules the spec fixed, preceded by the landing page.
+   * The prototype's three role navigations all open with "Inicio", and putting
+   * it in the same list is what keeps one matrix deciding the whole rail —
+   * a second, unfiltered entry drawn straight in the template would be exactly
+   * the untestable authorization logic this file exists to avoid.
+   */
+  test('the five modules are the five the spec fixed, behind the landing page', () => {
     assert.deepEqual(
       MODULES.map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
     );
   });
 
+  /**
+   * Pagos joined the client's list when the service-payment product landed. It
+   * was staff-only for one ticket because the module *was* Payment Service's
+   * unscoped listing (TD-037); that listing is now a screen inside the module,
+   * and the front door is the customer's own service payments, read from the
+   * transfer listing that Transaction Service scopes.
+   */
   test('a client sees everything except the audit record', () => {
     assert.deepEqual(
       modulesFor('CLIENTE').map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos'],
     );
   });
 
@@ -36,17 +51,17 @@ describe('what each role sees in the navigation', () => {
    * and staff is the narrowest audience that still makes the screen useful
    * (TD-037).
    */
-  test('a receiving teller also sees the payment monitoring', () => {
+  test('a receiving teller sees the same five', () => {
     assert.deepEqual(
       modulesFor('CAJERO_RECEPTOR').map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos'],
     );
   });
 
   test('an administrator is the only one who sees the audit record', () => {
     assert.deepEqual(
       modulesFor('ADMINISTRADOR').map((module) => module.label),
-      ['Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
+      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
     );
 
     assert.equal(modulesFor('CLIENTE').some((module) => module.to === '/auditoria'), false);
@@ -68,13 +83,15 @@ describe('opening a route directly', () => {
     assert.equal(canOpen('ADMINISTRADOR', '/auditoria'), true);
   });
 
-  /** Including one payment's own detail, which lives under the same module. */
-  test('a client cannot render the payment module either', () => {
-    assert.equal(canOpen('CLIENTE', '/pagos'), false);
-    assert.equal(
-      canOpen('CLIENTE', '/pagos/6f1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93'),
-      false,
-    );
+  /**
+   * A client may open the payment module now — paying a bill is what a client
+   * does. The staff-only part is the monitor *screen*, which filters in the
+   * page against `mayMonitorPayments` rather than in this matrix
+   * (`docs/FRONTEND.md`).
+   */
+  test('every role can render the payment module', () => {
+    assert.equal(canOpen('CLIENTE', '/pagos'), true);
+    assert.equal(canOpen('CLIENTE', '/pagos/nuevo'), true);
     assert.equal(canOpen('CAJERO_RECEPTOR', '/pagos'), true);
     assert.equal(canOpen('ADMINISTRADOR', '/pagos'), true);
   });
@@ -112,6 +129,20 @@ describe('the guest-only routes', () => {
     // The activation link arrives by email and may be opened in a browser
     // where somebody else is signed in; the token decides, not the session.
     assert.equal(isGuestOnly('/activar'), false);
+
+    // The reset link is the same case. And `/recuperar` is not guest-only
+    // either: being unable to sign in and having a stale session open in a tab
+    // are not mutually exclusive, and bouncing that person to the landing page
+    // would leave them with no way to ask for a new password at all.
+    assert.equal(isGuestOnly('/restablecer'), false);
+    assert.equal(isGuestOnly('/recuperar'), false);
+  });
+
+  test('the password-recovery screens need no session', () => {
+    for (const route of ['/recuperar', '/restablecer']) {
+      assert.equal(PUBLIC_ROUTES.includes(route), true, route);
+      assert.equal(canOpen(null, route), true, route);
+    }
   });
 
   test('match by segment, not by prefix string', () => {
@@ -158,18 +189,18 @@ describe('the matrix agrees with decision D-06', () => {
    * by scope, which neither this file nor the Gateway can evaluate: neither
    * knows who owns what. Those refusals come from the owning service.
    *
-   * Pagos is the exception that proves the rule rather than a second reading of
-   * D-06. It is restricted because the owning service cannot apply a scope at
-   * all — Payment Service holds no customer reference — so the choice was
-   * between a role restriction and handing every client every payment in the
-   * bank. Recorded as TD-037, and it is the row D-06 will eventually grow.
+   * Pagos was a second restricted entry for one ticket, because the module *was*
+   * Payment Service's unscoped listing (TD-037). It is not any more: the front
+   * door is a customer's own service payments, read from the transfer listing
+   * that Transaction Service scopes, and the unscoped listing is a staff-only
+   * screen inside the module. So the matrix is back to what D-06 actually says.
    */
-  test('two modules are role-restricted, and for different reasons', () => {
+  test('exactly one module is role-restricted, and D-06 is why', () => {
     const restricted = MODULES.filter((module) => module.roles.length < 3);
 
     assert.deepEqual(
       restricted.map((module) => module.label),
-      ['Pagos', 'Auditoría'],
+      ['Auditoría'],
     );
 
     assert.deepEqual(

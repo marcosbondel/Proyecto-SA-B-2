@@ -89,10 +89,13 @@ export class RecordEventUseCase {
              * and it is the one that most needs to be told anything — see
              * `subjectCustomerIdFrom`.
              */
-            recipient: simulatedRecipientFor(
-              input.customerId ??
-                subjectCustomerIdFrom(input.event.messageType, input.event.payload),
-            ),
+            recipient: simulatedRecipientFor(subjectOf(input)),
+            /**
+             * The same subject, written down rather than only derived into an
+             * address. This is the column that makes `N-01` possible: without
+             * it a notification is a row nobody can claim (TD-041).
+             */
+            customerId: subjectOf(input),
           };
 
     const outcome = await this.#repository.record({
@@ -131,3 +134,23 @@ export class RecordEventUseCase {
     return { kind: 'RECORDED', notified: true };
   }
 }
+
+/**
+ * Whom a notification is about: the envelope's identity, or the payload's
+ * subject when there is none.
+ *
+ * Public registration is the one flow with no session and the one that most
+ * needs to be told anything — see `subjectCustomerIdFrom`. Pulled out of the
+ * expression it used to be written inline in, because it is now read twice: once
+ * to derive the simulated address, once to write the column that makes the row
+ * claimable.
+ */
+function subjectOf(input: {
+  readonly customerId: string | null;
+  readonly event: { readonly messageType: string; readonly payload: unknown };
+}): string | null {
+  return (
+    input.customerId ?? subjectCustomerIdFrom(input.event.messageType, input.event.payload)
+  );
+}
+
