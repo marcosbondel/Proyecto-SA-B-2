@@ -1,12 +1,32 @@
 import type { MessageContract } from './contract';
+import { customerStatsQueryV1 } from './customer/customer.stats.query.v1';
+import { customerStatsRepliedV1 } from './customer/customer.stats.replied.v1';
+import { accountStatsQueryV1 } from './account/account.stats.query.v1';
+import { accountStatsRepliedV1 } from './account/account.stats.replied.v1';
+import { transactionStatsQueryV1 } from './transaction/transaction.stats.query.v1';
+import { transactionStatsRepliedV1 } from './transaction/transaction.stats.replied.v1';
+import { paymentStatsQueryV1 } from './payment/payment.stats.query.v1';
+import { paymentStatsRepliedV1 } from './payment/payment.stats.replied.v1';
+import { auditStatsQueryV1 } from './audit/audit.stats.query.v1';
+import { auditStatsRepliedV1 } from './audit/audit.stats.replied.v1';
 
 import { customerActivationRequestedV1 } from './customer/customer.activation.requested.v1';
 import { customerAuthenticateRepliedV1 } from './customer/customer.authenticate.replied.v1';
 import { customerAuthenticateV1 } from './customer/customer.authenticate.v1';
+import { customerChangePasswordV1 } from './customer/customer.change-password.v1';
+import { customerPasswordChangedV1 } from './customer/customer.password-changed.v1';
+import { customerPasswordChangeRejectedV1 } from './customer/customer.password-change.rejected.v1';
 import { customerEmailVerificationRejectedV1 } from './customer/customer.email.verification.rejected.v1';
 import { customerEmailVerifiedV1 } from './customer/customer.email.verified.v1';
 import { customerGetQueryV1 } from './customer/customer.get.query.v1';
 import { customerGetRepliedV1 } from './customer/customer.get.replied.v1';
+import { customerPasswordResetCompletedV1 } from './customer/customer.password-reset.completed.v1';
+import { customerPasswordResetConfirmV1 } from './customer/customer.password-reset.confirm.v1';
+import { customerPasswordResetIssuedV1 } from './customer/customer.password-reset.issued.v1';
+import { customerPasswordResetRejectedV1 } from './customer/customer.password-reset.rejected.v1';
+import { customerPasswordResetRequestedV1 } from './customer/customer.password-reset.requested.v1';
+import { customerNamesQueryV1 } from './customer/customer.names.query.v1';
+import { customerNamesRepliedV1 } from './customer/customer.names.replied.v1';
 import { customerPendingValidationQueryV1 } from './customer/customer.pending-validation.query.v1';
 import { customerPendingValidationRepliedV1 } from './customer/customer.pending-validation.replied.v1';
 import { customerSetIdentityVerdictV1 } from './customer/customer.set-identity-verdict.v1';
@@ -26,6 +46,11 @@ import { accountBalanceRepliedV1 } from './account/account.balance.replied.v1';
 import { accountCreateV1 } from './account/account.create.v1';
 import { accountCreditRejectedV1 } from './account/account.credit.rejected.v1';
 import { accountCreditRequestedV1 } from './account/account.credit.requested.v1';
+import { accountBillersQueryV1 } from './account/account.billers.query.v1';
+import { accountBillersRepliedV1 } from './account/account.billers.replied.v1';
+import { accountDepositV1 } from './account/account.deposit.v1';
+import { accountDepositedV1 } from './account/account.deposited.v1';
+import { accountDepositRejectedV1 } from './account/account.deposit.rejected.v1';
 import { accountCreditedV1 } from './account/account.credited.v1';
 import { accountDeactivatedV1 } from './account/account.deactivated.v1';
 import { accountDebitCompensatedV1 } from './account/account.debit.compensated.v1';
@@ -45,6 +70,8 @@ import { transactionCompensatedV1 } from './transaction/transaction.compensated.
 import { transactionCompletedV1 } from './transaction/transaction.completed.v1';
 import { transactionFailedV1 } from './transaction/transaction.failed.v1';
 import { transactionInitiatedV1 } from './transaction/transaction.initiated.v1';
+import { transactionListQueryV1 } from './transaction/transaction.list.query.v1';
+import { transactionListRepliedV1 } from './transaction/transaction.list.replied.v1';
 import { transactionStatusRepliedV1 } from './transaction/transaction.status.replied.v1';
 import { transactionStatusRequestedV1 } from './transaction/transaction.status.requested.v1';
 import { transferRequestedV1 } from './transaction/transfer.requested.v1';
@@ -56,6 +83,10 @@ import { paymentRequestedV1 } from './payment/payment.requested.v1';
 import { paymentStatusQueryV1 } from './payment/payment.status.query.v1';
 import { paymentStatusRepliedV1 } from './payment/payment.status.replied.v1';
 import { paymentSucceededV1 } from './payment/payment.succeeded.v1';
+import { notificationInboxQueryV1 } from './notification/notification.inbox.query.v1';
+import { notificationInboxRepliedV1 } from './notification/notification.inbox.replied.v1';
+import { notificationMarkReadV1 } from './notification/notification.mark-read.v1';
+import { notificationReadRepliedV1 } from './notification/notification.read.replied.v1';
 import { notificationListQueryV1 } from './notification/notification.list.query.v1';
 import { notificationListRepliedV1 } from './notification/notification.list.replied.v1';
 import { auditQueryRepliedV1 } from './audit/audit.query.replied.v1';
@@ -67,10 +98,20 @@ export { defineContract } from './contract';
 export * from './customer/customer.activation.requested.v1';
 export * from './customer/customer.authenticate.replied.v1';
 export * from './customer/customer.authenticate.v1';
+export * from './customer/customer.change-password.v1';
+export * from './customer/customer.password-change.rejected.v1';
+export * from './customer/customer.password-changed.v1';
 export * from './customer/customer.email.verification.rejected.v1';
 export * from './customer/customer.email.verified.v1';
 export * from './customer/customer.get.query.v1';
 export * from './customer/customer.get.replied.v1';
+export * from './customer/customer.password-reset.completed.v1';
+export * from './customer/customer.password-reset.confirm.v1';
+export * from './customer/customer.password-reset.issued.v1';
+export * from './customer/customer.password-reset.rejected.v1';
+export * from './customer/customer.password-reset.requested.v1';
+export * from './customer/customer.names.query.v1';
+export * from './customer/customer.names.replied.v1';
 export * from './customer/customer.pending-validation.query.v1';
 export * from './customer/customer.pending-validation.replied.v1';
 export * from './customer/customer.set-identity-verdict.v1';
@@ -90,7 +131,22 @@ export * from './account/account.balance.replied.v1';
 export * from './account/account.create.v1';
 export * from './account/account.credit.rejected.v1';
 export * from './account/account.credit.requested.v1';
+export * from './customer/customer.stats.query.v1';
+export * from './customer/customer.stats.replied.v1';
+export * from './account/account.stats.query.v1';
+export * from './account/account.stats.replied.v1';
+export * from './transaction/transaction.stats.query.v1';
+export * from './transaction/transaction.stats.replied.v1';
+export * from './payment/payment.stats.query.v1';
+export * from './payment/payment.stats.replied.v1';
+export * from './audit/audit.stats.query.v1';
+export * from './audit/audit.stats.replied.v1';
+export * from './account/account.billers.query.v1';
+export * from './account/account.billers.replied.v1';
 export * from './account/account.credited.v1';
+export * from './account/account.deposit.rejected.v1';
+export * from './account/account.deposit.v1';
+export * from './account/account.deposited.v1';
 export * from './account/account.deactivated.v1';
 export * from './account/account.debit.compensated.v1';
 export * from './account/account.debit.compensation.requested.v1';
@@ -109,6 +165,8 @@ export * from './transaction/transaction.compensated.v1';
 export * from './transaction/transaction.completed.v1';
 export * from './transaction/transaction.failed.v1';
 export * from './transaction/transaction.initiated.v1';
+export * from './transaction/transaction.list.query.v1';
+export * from './transaction/transaction.list.replied.v1';
 export * from './transaction/transaction.status.replied.v1';
 export * from './transaction/transaction.status.requested.v1';
 export * from './transaction/transfer.requested.v1';
@@ -122,6 +180,10 @@ export * from './payment/payment.status.replied.v1';
 export * from './payment/payment.requested.v1';
 export * from './payment/payment.succeeded.v1';
 export * from './notification/notification-view';
+export * from './notification/notification.inbox.query.v1';
+export * from './notification/notification.inbox.replied.v1';
+export * from './notification/notification.mark-read.v1';
+export * from './notification/notification.read.replied.v1';
 export * from './notification/notification.list.query.v1';
 export * from './notification/notification.list.replied.v1';
 export * from './audit/audit.query.replied.v1';
@@ -152,6 +214,16 @@ export const catalog: readonly MessageContract[] = [
   customerValidateIdentityV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerChangePasswordV1,
+  customerPasswordChangedV1,
+  customerPasswordChangeRejectedV1,
+  customerPasswordResetCompletedV1,
+  customerPasswordResetConfirmV1,
+  customerPasswordResetIssuedV1,
+  customerPasswordResetRejectedV1,
+  customerPasswordResetRequestedV1,
+  customerNamesQueryV1,
+  customerNamesRepliedV1,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
   customerSetIdentityVerdictV1,
@@ -162,6 +234,21 @@ export const catalog: readonly MessageContract[] = [
   accountCreditRejectedV1,
   accountCreditRequestedV1,
   accountCreditedV1,
+  customerStatsQueryV1,
+  customerStatsRepliedV1,
+  accountStatsQueryV1,
+  accountStatsRepliedV1,
+  transactionStatsQueryV1,
+  transactionStatsRepliedV1,
+  paymentStatsQueryV1,
+  paymentStatsRepliedV1,
+  auditStatsQueryV1,
+  auditStatsRepliedV1,
+  accountBillersQueryV1,
+  accountBillersRepliedV1,
+  accountDepositV1,
+  accountDepositedV1,
+  accountDepositRejectedV1,
   accountDeactivatedV1,
   accountDebitCompensatedV1,
   accountDebitCompensationRequestedV1,
@@ -180,6 +267,8 @@ export const catalog: readonly MessageContract[] = [
   transactionCompletedV1,
   transactionFailedV1,
   transactionInitiatedV1,
+  transactionListQueryV1,
+  transactionListRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
   transferRequestedV1,
@@ -191,6 +280,10 @@ export const catalog: readonly MessageContract[] = [
   paymentStatusQueryV1,
   paymentStatusRepliedV1,
   paymentSucceededV1,
+  notificationInboxQueryV1,
+  notificationInboxRepliedV1,
+  notificationMarkReadV1,
+  notificationReadRepliedV1,
   notificationListQueryV1,
   notificationListRepliedV1,
   auditQueryRepliedV1,

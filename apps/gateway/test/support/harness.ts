@@ -20,7 +20,12 @@ import type {
 } from '../../src/application/ports';
 import { GatewayError } from '../../src/application/errors/gateway-error';
 import { CommandsUseCase } from '../../src/application/routes/commands.use-case';
+import { ChangePasswordUseCase } from '../../src/application/routes/change-password.use-case';
+import { DepositUseCase } from '../../src/application/routes/deposit.use-case';
+import { DashboardUseCase } from '../../src/application/routes/dashboard.use-case';
 import { LoginUseCase } from '../../src/application/routes/login.use-case';
+import { MarkNotificationsReadUseCase } from '../../src/application/routes/mark-read.use-case';
+import { PasswordResetUseCase } from '../../src/application/routes/password-reset.use-case';
 import { QueriesUseCase } from '../../src/application/routes/queries.use-case';
 import { RegisterCustomerUseCase } from '../../src/application/routes/register-customer.use-case';
 import { VerifyEmailUseCase } from '../../src/application/routes/verify-email.use-case';
@@ -70,10 +75,12 @@ export class RecordingPublisher implements MessagePublisherPort {
 /** Answers a question, refuses to, or never answers at all. */
 export class ScriptedReplier implements ReplyWaiterPort {
   #next: ((correlationId: string) => MessageEnvelope<unknown>) | undefined;
+  #queue: { readonly messageType: string; readonly payload: unknown }[] = [];
   #timeout = false;
 
   public answerWith(messageType: string, payload: unknown): void {
     this.#timeout = false;
+    this.#queue = [];
     this.#next = (correlationId) =>
       createEnvelope(payload, {
         messageType,
@@ -81,6 +88,21 @@ export class ScriptedReplier implements ReplyWaiterPort {
         identity: null,
         correlationId,
       });
+  }
+
+  /**
+   * A different answer per question, in order.
+   *
+   * Needed once the Gateway started asking **two** services to build one
+   * response — the accounts listing composes Account Service's rows with
+   * Customer Service's names (TD-026). A single scripted reply cannot express
+   * that, and a test that could not tell the two apart would pass against a
+   * Gateway that asked the wrong service.
+   */
+  public answerInOrder(answers: readonly { messageType: string; payload: unknown }[]): void {
+    this.#timeout = false;
+    this.#queue = [...answers];
+    this.#next = undefined;
   }
 
   /** Nobody answers. The wait ends the way it does in production. */
@@ -91,6 +113,19 @@ export class ScriptedReplier implements ReplyWaiterPort {
   public waitFor(correlationId: string): Promise<MessageEnvelope<unknown>> {
     if (this.#timeout) {
       return Promise.reject(GatewayError.replyTimeout());
+    }
+
+    const scripted = this.#queue.shift();
+
+    if (scripted !== undefined) {
+      return Promise.resolve(
+        createEnvelope(scripted.payload, {
+          messageType: scripted.messageType,
+          producer: 'customer-service',
+          identity: null,
+          correlationId,
+        }),
+      );
     }
 
     if (this.#next === undefined) {
@@ -156,7 +191,12 @@ export async function buildHarness(
        * dependency would otherwise break every suite that had not listed it,
        * with a DI error that says nothing about the actual change.
        */
+      ChangePasswordUseCase,
+      DepositUseCase,
+      DashboardUseCase,
       LoginUseCase,
+      MarkNotificationsReadUseCase,
+      PasswordResetUseCase,
       RegisterCustomerUseCase,
       CommandsUseCase,
       QueriesUseCase,

@@ -47,6 +47,28 @@ export const transferRequestedV1 = defineContract({
       targetAccount: uuidV4,
       amount: money,
       paymentScenario: paymentScenario.optional(),
+
+      /**
+       * What the payment is *for*, when the target is a biller's collection
+       * account — a contract number, a meter number, a phone line.
+       *
+       * **Added for the prototype's `G-01`, optional and backward-compatible**,
+       * the same additive shape T-15 used for `paymentScenario` and T-18 used
+       * for the payment fields on the status reply: a message that omits it
+       * validates exactly as before, so the version does not move and no
+       * existing consumer breaks. Recorded alongside TD-036.
+       *
+       * It exists because a service payment **is a transfer** — to an account
+       * the biller holds at this bank — and the one thing a transfer could not
+       * carry was the number that tells the biller whose bill was paid. That is
+       * the whole difference between the two, and it is one optional string
+       * rather than a second kind of money movement with its own state machine.
+       *
+       * Free text on purpose: a contract number's shape is the biller's
+       * business, not this bank's, and a format rule here would refuse a valid
+       * one the day a biller changed theirs.
+       */
+      reference: z.string().trim().min(1).max(60).optional(),
     })
     .refine((value) => value.amount.amountMinor > 0, {
       message: 'amount must be greater than zero (T-1)',

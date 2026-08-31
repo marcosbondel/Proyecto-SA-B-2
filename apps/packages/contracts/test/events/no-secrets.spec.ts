@@ -18,6 +18,21 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   // without the token there is nothing to put in the link, and Customer Service
   // keeps only the digest.
   'customer.activation.requested.v1': ['activationToken'],
+  /*
+   * The password-recovery flow, added for the prototype's `P-07`. It is the
+   * activation flow's shape repeated exactly: the clear token travels only in
+   * the event that asks for the email, and comes back only in the command that
+   * spends it — this time alongside the new credential, which travels here and
+   * in `customer.register.v1` and nowhere else.
+   */
+  'customer.password-reset.issued.v1': ['resetToken'],
+  'customer.password-reset.confirm.v1': ['resetToken', 'credential'],
+  /*
+   * Changing a password from inside a session. Both credentials travel: the old
+   * one is the authorisation and the new one is the thing being set, and there
+   * is no way to do this without carrying them together exactly once.
+   */
+  'customer.change-password.v1': ['currentCredential', 'newCredential'],
 };
 
 const FORBIDDEN = /password|passwd|secret|jwt|bearer|signature|privatekey|apikey/i;

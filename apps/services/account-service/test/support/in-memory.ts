@@ -124,6 +124,39 @@ export class InMemoryAccountRepository implements AccountRepository {
     return { account: decided.account, operation, reactivated: decided.reactivated };
   }
 
+  /** The billers this fake knows about. Empty unless a test puts one here. */
+  public readonly billers: { code: string; name: string; accountId: string }[] = [];
+
+  public async listBillers(): Promise<
+    readonly { readonly code: string; readonly name: string; readonly accountId: string }[]
+  > {
+    return await Promise.resolve([...this.billers]);
+  }
+
+  public async stats(): Promise<{
+    readonly active: number;
+    readonly inactive: number;
+    readonly openedToday: number;
+    readonly depositsToday: number;
+    readonly depositedToday: { readonly amountMinor: number; readonly currency: string };
+  }> {
+    const all = [...this.accounts.values()];
+    const deposits = this.operations.filter(
+      (operation) => operation.type === 'CREDIT' && operation.transactionId === null,
+    );
+
+    return await Promise.resolve({
+      active: all.filter((account) => account.status === 'ACTIVE').length,
+      inactive: all.filter((account) => account.status === 'INACTIVE').length,
+      openedToday: all.length,
+      depositsToday: deposits.length,
+      depositedToday: {
+        amountMinor: deposits.reduce((sum, operation) => sum + operation.amount.amountMinor, 0),
+        currency: 'GTQ',
+      },
+    });
+  }
+
   public async setStatus(input: {
     readonly accountId: string;
     readonly status: 'ACTIVE' | 'INACTIVE';

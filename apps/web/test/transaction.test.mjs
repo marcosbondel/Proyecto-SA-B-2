@@ -9,8 +9,11 @@ import {
   POLL_INTERVAL_MS,
   STATUS_PRESENTATION,
   canSend,
+  directionOf,
   explainReason,
+  isInFlight,
   isTerminal,
+  statusFilterOptions,
   meaningOfMissing,
   shouldKeepPolling,
   timelineFor,
@@ -299,5 +302,65 @@ describe('the demonstration scenarios', () => {
     }
 
     assert.match(PAYMENT_SCENARIOS[1].description, /COMPENSATED/);
+  });
+});
+
+/**
+ * `T-04`'s table, which is where a row stops being a record and becomes
+ * something somebody reads.
+ */
+describe('how a transfer reads from an account', () => {
+  const row = {
+    transactionId: '7c9f1a30-2b48-4d56-9e01-2f3a4b5c6d70',
+    sourceAccount: SOURCE,
+    targetAccount: TARGET,
+    amount: { amountMinor: 125_000, currency: 'GTQ' },
+    status: 'COMPLETED',
+    reason: null,
+    createdAt: '2026-08-19T14:32:08.100Z',
+    completedAt: '2026-08-19T14:32:11.400Z',
+  };
+
+  test('money leaving is not money arriving', () => {
+    assert.equal(directionOf(row, SOURCE), 'OUT');
+    assert.equal(directionOf(row, TARGET), 'IN');
+  });
+
+  /**
+   * "Out" and "in" are not properties of a transfer — they are properties of
+   * looking at one from a particular account. With no account in context (the
+   * admin monitor, where rows belong to many people) it is neither.
+   */
+  test('is neither when there is no account to look from', () => {
+    assert.equal(directionOf(row, null), 'NEUTRAL');
+    assert.equal(directionOf(row, '00000000-0000-4000-8000-000000000000'), 'NEUTRAL');
+  });
+});
+
+describe('which transfers are still moving', () => {
+  test('the three non-terminal states, and no others', () => {
+    for (const status of ['PENDING', 'DEBITING', 'PAYMENT_PENDING']) {
+      assert.equal(isInFlight(status), true, status);
+    }
+
+    for (const status of ['COMPLETED', 'FAILED', 'COMPENSATED']) {
+      assert.equal(isInFlight(status), false, status);
+    }
+  });
+});
+
+describe('the status filter', () => {
+  /**
+   * Derived from `STATUS_PRESENTATION` rather than restated, so a label can
+   * never differ between the filter and the badge it filters for.
+   */
+  test('offers every state, labelled the way the badge labels it', () => {
+    const options = statusFilterOptions();
+
+    assert.equal(options.length, Object.keys(STATUS_PRESENTATION).length);
+
+    for (const option of options) {
+      assert.equal(option.label, STATUS_PRESENTATION[option.value].label);
+    }
   });
 });

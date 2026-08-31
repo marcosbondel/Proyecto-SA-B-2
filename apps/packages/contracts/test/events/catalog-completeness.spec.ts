@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(60);
+    expect(catalog).toHaveLength(91);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,30 +77,97 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the twenty messages recorded as an extension, and no others', () => {
+  it('adds exactly the fifty-one messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
     expect(added.sort()).toEqual([
       'account.balance.replied.v1',
+      /*
+       * The two that make the prototype's `G-01` "pago de servicios" possible.
+       * A service payment **is a transfer** — to an account the biller holds at
+       * this bank — so the catalogue needed no new money movement, no nullable
+       * target account and no branch in the state machine. What it needed was a
+       * way to ask which billers exist and where their collection accounts are,
+       * because an account id compiled into a browser bundle is an account id
+       * that is wrong the first time anything is reseeded.
+       */
+      'account.billers.query.v1',
+      'account.billers.replied.v1',
       // The five added by T-17. Three of them exist because the assignment's
       // screens need data the catalogue could not carry: a list of accounts,
       // the movements of one, and the refusal of an opening that until now
       // produced silence.
+      /*
+       * The three added for the prototype's `A-05`, the deposit window. A
+       * deposit is the one movement with no counterparty — nothing to debit,
+       * nothing to compensate, no second service that has to agree — so it is
+       * an Account Service command rather than a Saga. Routing it through
+       * Transaction Service would mean a transfer with a null source account
+       * and a state machine with a path that never fails, which is how an
+       * orchestrator becomes the "god object" §4.1 penalises.
+       */
+      'account.deposit.rejected.v1',
+      'account.deposit.v1',
+      'account.deposited.v1',
       'account.list.query.v1',
       'account.list.replied.v1',
       'account.open.rejected.v1',
       'account.operations.query.v1',
       'account.operations.replied.v1',
+      /*
+       * The ten that make `D-01` and `D-02` honest — one count query per owning
+       * service, because each service is the only one that has its own rows.
+       * The alternative was a dashboard that counted the rows a listing
+       * happened to return and drew the result as a bank-wide total, which is a
+       * number nobody can reproduce and everybody will quote.
+       */
+      'account.stats.query.v1',
+      'account.stats.replied.v1',
       'audit.query.replied.v1',
       'audit.query.requested.v1',
+      'audit.stats.query.v1',
+      'audit.stats.replied.v1',
       'customer.authenticate.replied.v1',
+      /*
+       * The first of the three added for the prototype's `C-01`, which draws a
+       * "cambiar contraseña" form the catalogue had no message for. Kept
+       * separate from the reset family because the trail must be able to tell
+       * "proved control of the inbox" from "knew the old password" — the two
+       * outcomes sit further down, where the sort puts them.
+       */
+      'customer.change-password.v1',
       'customer.email.verification.rejected.v1',
       // Added by the audit remediation (US6): Customer Service's first read
       // path, so a staff member can see a customer before editing it and the
       // update form is not filled in blind.
       'customer.get.query.v1',
       'customer.get.replied.v1',
+      /*
+       * The five added for the prototype's `P-07`, the password recovery the
+       * assignment's flow needs and T-05 had no message for. They repeat the
+       * activation flow's shape exactly — a command in, an event carrying the
+       * link, a command spending it, and the two outcomes — because a second
+       * shape for the same problem would be a second thing to get wrong.
+       */
+      /*
+       * The two that close TD-026. The account tables show a `customerId`
+       * where the prototype shows the holder's name, and Account Service holds
+       * only the opaque reference — resolving it there would mean reading
+       * Customer Service's database, which §8.2 (2.3) forbids. The Gateway asks
+       * the owning service instead and composes two replies, in a batch so a
+       * table of forty rows is two round trips rather than forty.
+       */
+      'customer.names.query.v1',
+      'customer.names.replied.v1',
+      // The other two of `C-01`'s three.
+      'customer.password-change.rejected.v1',
+      'customer.password-changed.v1',
+      'customer.password-reset.completed.v1',
+      'customer.password-reset.confirm.v1',
+      'customer.password-reset.issued.v1',
+      'customer.password-reset.rejected.v1',
+      'customer.password-reset.requested.v1',
       // Also US6: the teller's queue of identities awaiting a verdict, and the
       // manual verdict itself — the human "a teller validates the document" the
       // assignment describes, distinct from the automatic photo check.
@@ -110,6 +177,8 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       // document produced silence rather than a rejection.
       'customer.register.rejected.v1',
       'customer.set-identity-verdict.v1',
+      'customer.stats.query.v1',
+      'customer.stats.replied.v1',
       /*
        * The two added by T-20. Nothing could ask this service for the
        * notifications it had sent: `audit.query.requested.v1` answers one
@@ -117,8 +186,24 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        * across all of them. Restricted to `ADMINISTRADOR` at the Gateway
        * because a notification row carries a simulated recipient.
        */
+      /*
+       * The four that close TD-041. The prototype's `N-01` is a customer's
+       * inbox with a read state; what T-20 built was the staff console. Neither
+       * missing piece was small — no row said whose notification it was, and
+       * nothing recorded that somebody had read something — and the first turned
+       * out to be information this service was already computing and discarding.
+       *
+       * Separate from the console's two messages on purpose: `notificationView`
+       * carries the simulated recipient of every delivery in the system, and one
+       * reply shape serving both audiences would carry a field a customer must
+       * never see.
+       */
+      'notification.inbox.query.v1',
+      'notification.inbox.replied.v1',
       'notification.list.query.v1',
       'notification.list.replied.v1',
+      'notification.mark-read.v1',
+      'notification.read.replied.v1',
       /*
        * The five added by T-19. `payment.attempt.failed.v1` exists because the
        * catalogue described a payment as a thing that succeeds or fails once,
@@ -131,8 +216,23 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'payment.attempt.failed.v1',
       'payment.list.query.v1',
       'payment.list.replied.v1',
+      'payment.stats.query.v1',
+      'payment.stats.replied.v1',
       'payment.status.query.v1',
       'payment.status.replied.v1',
+      /*
+       * The two that close TD-033. `GET /api/transfers/{id}` answered "how did
+       * this one end" since T-18; nothing answered "which transfers are mine",
+       * because a transaction holds two opaque account references and resolving
+       * either to a person means reading Account Service's database (§8.2,
+       * 2.3). The transfer now records who asked for it, from the envelope
+       * identity that was there all along, and the listing is scoped against
+       * that column — which also closes TD-035 on the single-transfer route.
+       */
+      'transaction.list.query.v1',
+      'transaction.list.replied.v1',
+      'transaction.stats.query.v1',
+      'transaction.stats.replied.v1',
       'transaction.status.replied.v1',
       'transaction.status.requested.v1',
     ]);

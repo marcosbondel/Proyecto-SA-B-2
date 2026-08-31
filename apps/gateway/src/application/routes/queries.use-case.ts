@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   accountBalanceQueryV1,
+  accountBillersQueryV1,
+  accountBillersRepliedV1,
   accountBalanceRepliedV1,
   accountListQueryV1,
   accountListRepliedV1,
@@ -10,14 +12,21 @@ import {
   auditQueryRequestedV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerNamesQueryV1,
+  customerNamesRepliedV1,
+  MAX_NAME_LOOKUPS,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
+  notificationInboxQueryV1,
+  notificationInboxRepliedV1,
   notificationListQueryV1,
   notificationListRepliedV1,
   paymentListQueryV1,
   paymentListRepliedV1,
   paymentStatusQueryV1,
   paymentStatusRepliedV1,
+  transactionListQueryV1,
+  transactionListRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
 } from '@bank/contracts';
@@ -50,6 +59,19 @@ export interface NotificationListFilter {
   readonly correlationId?: string;
   readonly status?: 'PENDING' | 'SENT' | 'FAILED';
   readonly type?: string;
+  readonly limit?: number;
+}
+
+/**
+ * What a transfer listing may be narrowed by. None of these is a permission
+ * either: Transaction Service intersects them with the scope it derives from
+ * the envelope identity, so a client naming somebody else's `customerId` gets
+ * an empty list rather than a `403`.
+ */
+export interface TransferListFilter {
+  readonly customerId?: string;
+  readonly accountId?: string;
+  readonly status?: 'PENDING' | 'DEBITING' | 'PAYMENT_PENDING' | 'COMPLETED' | 'FAILED' | 'COMPENSATED';
   readonly limit?: number;
 }
 
@@ -154,7 +176,65 @@ export class QueriesUseCase {
       throw GatewayError.internal();
     }
 
-    return { ...parsed.data, correlationId: context.correlationId };
+    const holders = await this.#holderNames(parsed.data.accounts, context);
+
+    return {
+      ...parsed.data,
+      accounts: parsed.data.accounts.map((account) => ({
+        ...account,
+        // Absent rather than null-filled when the name is not available: a
+        // screen can tell "we did not ask" from "there is no name", and the
+        // table falls back to the identifier it already had.
+        ...(holders.get(account.customerId) === undefined
+          ? {}
+          : { holderName: holders.get(account.customerId) }),
+      })),
+      correlationId: context.correlationId,
+    };
+  }
+
+  /**
+   * The holders' names for a listing, resolved in **one** extra round trip.
+   *
+   * This is the composition TD-026 needed and the reason it could not be done
+   * anywhere else. Account Service holds an opaque `customerId` and may not read
+   * Customer Service's database (§8.2, 2.3); Customer Service does not know what
+   * an account is. The Gateway is the only component that may hold both replies
+   * at once, and holding two replies is aggregation — it computes nothing,
+   * decides nothing, and reinterprets nothing.
+   *
+   * It **never fails the listing**. A table of accounts with opaque ids is worse
+   * than one with names and far better than an error page, so a refusal, a
+   * timeout or a broker that is away all resolve to an empty map and the screen
+   * shows what it already had. That is also what a `CLIENTE` gets: the owning
+   * service answers them with an empty list by design, and their own listing is
+   * their own accounts, where the holder is themselves.
+   */
+  async #holderNames(
+    accounts: readonly { readonly customerId: string }[],
+    context: QueryContext,
+  ): Promise<ReadonlyMap<string, string>> {
+    const customerIds = [...new Set(accounts.map((account) => account.customerId))].slice(
+      0,
+      MAX_NAME_LOOKUPS,
+    );
+
+    if (customerIds.length === 0) {
+      return new Map();
+    }
+
+    try {
+      const raw = await this.#ask(customerNamesQueryV1.name, { customerIds }, context);
+      const parsed = customerNamesRepliedV1.schema.safeParse(raw);
+
+      if (!parsed.success) {
+        return new Map();
+      }
+
+      return new Map(parsed.data.names.map((name) => [name.customerId, name.fullName]));
+    } catch {
+      return new Map();
+    }
   }
 
   /** The movements of one account, or the owning service's refusal, untouched. */
@@ -172,6 +252,40 @@ export class QueriesUseCase {
     if (parsed.data.outcome === 'NOT_FOUND') {
       // The owning service's own code, carried untouched (FR-030).
       throw GatewayError.businessRejection(parsed.data.reason, 'La cuenta consultada no existe.');
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * The biller catalogue — `G-01`'s dropdown.
+   *
+   * The only query here that carries no filter and no scope: the list of
+   * services the bank collects for is the same for everybody. What each entry
+   * carries is the biller's **collection account**, because a service payment
+   * is a transfer to it.
+   */
+  public async billers(context: QueryContext): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(accountBillersQueryV1.name, {}, context);
+    const parsed = accountBillersRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /** A page of transfers, already narrowed by the owning service (TD-033). */
+  public async transfers(
+    filter: TransferListFilter,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(transactionListQueryV1.name, filter, context);
+    const parsed = transactionListRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
     }
 
     return { ...parsed.data, correlationId: context.correlationId };
@@ -310,5 +424,32 @@ export class QueriesUseCase {
     );
 
     return reply.payload;
+  }
+
+  /**
+   * `N-01` — the signed-in customer's own notifications.
+   *
+   * A different question from `notifications()` above, which is the staff
+   * console: that one carries the simulated recipient of every delivery in the
+   * system and is restricted to `ADMINISTRADOR` for exactly that reason. This
+   * one is scoped by the envelope's identity inside the owning service, and the
+   * query carries no field that could point it at somebody else.
+   */
+  public async inbox(
+    limit: number | undefined,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(
+      notificationInboxQueryV1.name,
+      limit === undefined ? {} : { limit },
+      context,
+    );
+    const parsed = notificationInboxRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
   }
 }

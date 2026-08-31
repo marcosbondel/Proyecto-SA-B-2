@@ -93,3 +93,24 @@ export class VerifyEmailDto {
   @MaxLength(512)
   public token!: string;
 }
+
+/**
+ * `C-01`'s "cambiar contraseña".
+ *
+ * The current credential has **no minimum beyond one character**, the way
+ * `LoginDto`'s does not: refusing a short one here would tell the caller
+ * something about what a valid password looks like, and every wrong current
+ * password must be answered identically. The new one carries registration's own
+ * bounds, so a password set here and one set at sign-up are equally acceptable.
+ */
+export class ChangePasswordDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(256)
+  public currentCredential!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(256)
+  public newCredential!: string;
+}

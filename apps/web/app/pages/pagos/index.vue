@@ -1,241 +1,187 @@
 <script setup lang="ts">
-import { mayMonitorPayments, summariseFailures } from '../../lib/payment';
-import type { PaymentErrorType, PaymentRow, PaymentStatus } from '../../lib/payment';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
+import { formatDate, formatQuetzales } from '../../lib/money';
+import { billerOf, mayMonitorPayments } from '../../lib/payment';
+import type { Biller } from '../../lib/payment';
+import type { TransferRow } from '../../lib/transaction';
 
 /**
- * "Monitoreo de pagos" — the prototype's `show.payMonitor` (G-04), merged with
- * the payment history it also draws (G-03).
+ * `G-03` — "Historial de pagos", and the module's front door.
  *
- * **The prototype has two screens here and this has one**, and the merge is the
- * honest reading rather than a shortcut. G-03 is a customer's own list of bills
- * they paid; in this system a customer does not start payments — a payment is
- * step 4 of a transfer — so their "historial de pagos" is their history of
- * transfers, and it is `/transferencias` that owes it (TD-033). What is left
- * once that is taken out is exactly G-04: the operational list, which is staff
- * work. Recorded as TD-038.
+ * **It lists transfers, not payments, and that is the point.** A service
+ * payment is a transfer to the biller's collection account, so the rows are
+ * already there and already scoped: Transaction Service narrows them against
+ * the `customer_id` it records at request time. Payment Service's own listing —
+ * the attempts, the retry ladder — answers a different question and is still
+ * staff work, one level down at `/pagos/monitor` (TD-037).
  *
- * **Restricted, and unusually so.** Every other listing in this system narrows
- * itself to what the asker owns. Payment Service cannot: a payment row holds a
- * `transactionId` and no customer reference, and resolving one to the other
- * means reading another service's tables (§8.2, 2.3). So an unrestricted
- * listing would hand every `CLIENTE` every payment in the bank, and the
- * restriction is what makes the route safe rather than a policy preference
- * (TD-037).
+ * Which transfers are *payments* is decided by looking the target account up in
+ * the biller catalogue, rather than by a flag on the row. A flag would have to
+ * be set by whoever created the transfer and would then be wrong for every
+ * transfer created before the catalogue existed; the account id is a fact the
+ * row already carries.
  *
- * The redirect is a courtesy and not the defence. The Gateway's
- * `@Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')` refuses the listing whether or
- * not this ran — which is the whole point of the parity test.
+ * A catalogue that fails to load empties the list rather than filling it with
+ * every transfer: showing somebody's rent transfer under "pagos de servicios"
+ * would be worse than showing nothing.
  */
 const api = useGatewayApi();
 const { role } = useSession();
 
 const mayMonitor = computed(() => mayMonitorPayments(role.value));
 
-watchEffect(() => {
-  if (role.value !== null && !mayMonitor.value) {
-    navigateTo('/transferencias');
-  }
-});
-
-const payments = ref<PaymentRow[]>([]);
-const state = ref<'LOADING' | 'READY' | AsyncState>('LOADING');
-const message = ref<string | undefined>(undefined);
+const rows = ref<readonly TransferRow[]>([]);
+const billers = ref<readonly Biller[]>([]);
+const state = ref<AsyncState>('LOADING');
+const failure = ref<string | null>(null);
 const correlationId = ref<string | null>(null);
-
-const search = ref('');
-const statusFilter = ref<'TODOS' | PaymentStatus>('TODOS');
-const errorFilter = ref<'TODOS' | PaymentErrorType>('TODOS');
-
-const STATUS_ITEMS = [
-  { label: 'Todos los estados', value: 'TODOS' },
-  { label: 'En proceso', value: 'PENDING' },
-  { label: 'Aprobado', value: 'SUCCEEDED' },
-  { label: 'No completado', value: 'FAILED' },
-];
-
-const ERROR_ITEMS = [
-  { label: 'Cualquier tipo de fallo', value: 'TODOS' },
-  { label: 'Transitorio', value: 'TRANSIENT' },
-  { label: 'Permanente', value: 'PERMANENT' },
-];
-
-/**
- * The search filters what is already on screen; the two dropdowns go to the
- * Gateway. Same split as the account administration screen, and for the same
- * reason: `payment.list.query.v1` has `status` and `errorType` and no free-text
- * field, so a search sent to the server would be a parameter nobody reads.
- */
-const visible = computed(() => {
-  const needle = search.value.trim().toLowerCase();
-
-  return needle.length === 0
-    ? payments.value
-    : payments.value.filter(
-        (payment) =>
-          payment.paymentId.toLowerCase().includes(needle) ||
-          payment.transactionId.toLowerCase().includes(needle),
-      );
-});
-
-/**
- * The banner counts what is on screen rather than a time window nobody can
- * verify. A banner that claimed "las últimas 24 horas" over a list that does
- * not cover them would eventually contradict the table beneath it.
- */
-const failures = computed(() => summariseFailures(visible.value));
 
 async function load(): Promise<void> {
   state.value = 'LOADING';
-  message.value = undefined;
+  failure.value = null;
 
-  const result = await api.call<{ payments: PaymentRow[]; correlationId?: string }>(
-    '/api/payments',
-    {
-      query: {
-        ...(statusFilter.value === 'TODOS' ? {} : { status: statusFilter.value }),
-        ...(errorFilter.value === 'TODOS' ? {} : { errorType: errorFilter.value }),
-      },
-    },
-  );
+  const [transfers, catalogue] = await Promise.all([
+    api.call<{ transactions: TransferRow[]; correlationId: string }>('/api/transfers', {
+      query: { limit: '100' },
+    }),
+    api.call<{ billers: Biller[] }>('/api/accounts/billers'),
+  ]);
 
-  if (!result.ok) {
-    state.value = asyncStateFor(result.error);
-    message.value = result.error.message;
-    correlationId.value = result.error.correlationId;
-
+  if (!transfers.ok) {
+    correlationId.value = transfers.error.correlationId;
+    failure.value = transfers.error.message;
+    state.value = asyncStateFor(transfers.error);
     return;
   }
 
-  payments.value = result.data.payments;
-  correlationId.value = result.data.correlationId ?? result.correlationId;
+  rows.value = transfers.data.transactions;
+  billers.value = catalogue.ok ? catalogue.data.billers : [];
+  correlationId.value = transfers.data.correlationId;
   state.value = 'READY';
 }
 
-onMounted(async () => {
-  if (mayMonitor.value) {
-    await load();
-  }
-});
+onMounted(load);
 
-watch([statusFilter, errorFilter], async () => {
-  if (mayMonitor.value) {
-    await load();
-  }
-});
+/** The transfers that went to a biller — the service payments. */
+const payments = computed(() =>
+  rows.value
+    .map((row) => ({ row, biller: billerOf(row.targetAccount, billers.value) }))
+    .filter((entry): entry is { row: TransferRow; biller: Biller } => entry.biller !== null),
+);
 
 useHead({ title: 'Pagos · bonking' });
 </script>
 
 <template>
-  <section v-if="mayMonitor" class="flex flex-col gap-4">
+  <section class="flex flex-col gap-6">
     <header class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-[32px] font-bold leading-10 tracking-tight">Monitoreo de pagos</h1>
+        <h1 class="text-[32px] font-bold leading-10 tracking-tight">Pagos</h1>
         <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-          Payment Service · el paso de pago de cada transferencia y sus reintentos.
+          Paga servicios y consulta los pagos que ya hiciste.
         </p>
       </div>
-      <UButton variant="outline" color="neutral" :disabled="state === 'LOADING'" @click="load">
-        Actualizar
-      </UButton>
+      <div class="flex gap-3">
+        <UButton v-if="mayMonitor" to="/pagos/monitor" variant="outline" color="neutral">
+          Monitoreo
+        </UButton>
+        <UButton to="/pagos/nuevo" color="primary" size="lg">Nuevo pago</UButton>
+      </div>
     </header>
 
-    <!--
-      The prototype's red banner, counting rows this table can be counted to
-      confirm. Refusals and exhausted ladders are separated because they are
-      different incidents: one is a provider saying no, the other is the system
-      giving up, and only the second is worth paging somebody about.
-    -->
-    <div
-      v-if="failures.total > 0"
-      class="flex gap-4 rounded-2xl bg-[#F7DCD7] px-5 py-4"
-      data-testid="payment-failure-banner"
-    >
-      <span
-        class="grid h-[22px] w-[22px] flex-none place-items-center rounded-full bg-[#B01B1B] text-[13px] font-bold text-white"
-        aria-hidden="true"
-      >!</span>
-      <div>
-        <p class="text-[14px] font-semibold leading-5 text-[#8A1010]">
-          {{ failures.total }}
-          {{ failures.total === 1 ? 'pago no se completó' : 'pagos no se completaron' }}
-          en esta lista
-        </p>
-        <p class="text-[13px] leading-5 text-[#8A1010]">
-          <template v-if="failures.permanent > 0">
-            {{ failures.permanent }} por rechazo permanente, que no se reintenta.
-          </template>
-          <template v-if="failures.transient > 0">
-            {{ failures.transient }} por agotar los reintentos.
-          </template>
-          En ambos casos el débito ya fue compensado por la Saga.
-        </p>
+    <UCard>
+      <template #header>
+        <h2 class="text-[20px] font-semibold leading-7">Historial de pagos</h2>
+      </template>
+
+      <div v-if="state === 'LOADING'" class="flex flex-col gap-2">
+        <USkeleton v-for="line in 4" :key="line" class="h-12 w-full rounded-xl" />
       </div>
-    </div>
 
-    <div class="flex flex-wrap items-center gap-2">
-      <UInput
-        v-model="search"
-        placeholder="Buscar por paymentId o transactionId"
-        class="w-[320px] max-w-full"
-        style="font-variant-numeric: tabular-nums lining-nums"
-        data-testid="payment-search"
-      />
-      <USelect v-model="statusFilter" :items="STATUS_ITEMS" value-key="value" class="w-[190px]" />
-      <USelect v-model="errorFilter" :items="ERROR_ITEMS" value-key="value" class="w-[210px]" />
-    </div>
-
-    <div v-if="state === 'LOADING'" class="flex flex-col gap-4">
-      <USkeleton class="h-64 w-full rounded-2xl" />
-    </div>
-
-    <template v-else-if="state === 'READY'">
-      <PaymentMonitorTable v-if="visible.length > 0" :payments="visible" />
-
-      <!--
-        Two different emptinesses. "Nothing matched what you asked" is a filter
-        problem the reader can fix; "no payments exist" is a statement about the
-        system, and on a bank with no Payment Service running it is the expected
-        one. Collapsing them would send somebody looking for a bug in a filter.
-      -->
-      <div
-        v-else
-        class="rounded-2xl border border-dashed border-[#C6C6CC] bg-white px-8 py-14 text-center"
-      >
-        <h2 class="text-[20px] font-semibold leading-7">
-          {{ payments.length === 0 ? 'Todavía no hay pagos' : 'Ningún pago coincide' }}
-        </h2>
-        <p class="mx-auto mt-2 max-w-[440px] text-[14px] leading-5 text-[#5A5B63]">
-          <template v-if="payments.length === 0">
-            Un pago nace de una transferencia, no de esta pantalla. Cuando alguien envíe una,
-            su paso de pago aparecerá aquí.
-          </template>
-          <template v-else>
-            Hay {{ payments.length }} pagos en la consulta, pero ninguno coincide con la
-            búsqueda.
-          </template>
-        </p>
-        <UButton
-          v-if="payments.length === 0"
-          to="/transferencias/nueva"
-          color="primary"
-          class="mt-6"
-        >Ir a una transferencia nueva</UButton>
-      </div>
-    </template>
-
-    <div v-else class="flex flex-col items-start gap-3">
       <SharedAsyncStateAlert
-        class="w-full"
-        :state="state as AsyncState"
-        :message="message"
-        :correlation-id="correlationId"
+        v-else-if="state !== 'READY'"
+        :state="state"
+        :message="failure"
+        @retry="load"
       />
-      <UButton variant="outline" color="neutral" @click="load">Reintentar la consulta</UButton>
-    </div>
 
-    <SharedCorrelationIdBadge v-if="correlationId" :correlation-id="correlationId" />
+      <div v-else-if="payments.length === 0" class="py-10 text-center" data-testid="payments-empty">
+        <p class="text-[20px] font-semibold leading-7">Todavía no has pagado ningún servicio</p>
+        <p class="mx-auto mt-2 max-w-[46ch] text-[14px] leading-[22px] text-[#5A5B63]">
+          Cuando pagues luz, agua o teléfono, cada pago aparecerá aquí con su referencia y su
+          estado.
+        </p>
+        <UButton to="/pagos/nuevo" color="primary" class="mt-6">Pagar un servicio</UButton>
+      </div>
+
+      <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-[680px] border-collapse text-[13px]">
+          <thead>
+            <tr class="text-[12px] uppercase tracking-[0.04em] text-[#75767F]">
+              <th class="py-3 pr-4 text-left font-semibold">Fecha</th>
+              <th class="py-3 pr-4 text-left font-semibold">Servicio</th>
+              <th class="py-3 pr-4 text-left font-semibold">Estado</th>
+              <th class="py-3 pl-4 text-right font-semibold">Monto</th>
+              <th class="py-3 pl-4 text-right font-semibold" />
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="entry in payments" :key="entry.row.transactionId" class="align-top">
+              <td class="tab border-t border-[#E9E9EC] py-3.5 pr-4 text-[#5A5B63]">
+                {{ formatDate(entry.row.createdAt) }}
+              </td>
+              <td class="border-t border-[#E9E9EC] py-3.5 pr-4">
+                <div class="text-[13px] font-medium text-[#23242A]">{{ entry.biller.name }}</div>
+                <!-- The pill the prototype draws. Everything in this table is
+                     external by construction: an internal payment does not go
+                     to a biller, so it is not in this list at all. -->
+                <UBadge
+                  variant="subtle"
+                  color="warning"
+                  class="mt-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                >Externo</UBadge>
+              </td>
+              <td class="border-t border-[#E9E9EC] py-3.5 pr-4">
+                <TransactionStatusBadge :status="entry.row.status" />
+              </td>
+              <td class="tab border-t border-[#E9E9EC] py-3.5 pl-4 text-right font-semibold">
+                {{ formatQuetzales(entry.row.amount.amountMinor) }}
+              </td>
+              <td class="border-t border-[#E9E9EC] py-3.5 pl-4 text-right">
+                <UButton
+                  :to="`/transferencias/${entry.row.transactionId}`"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                >Ver →</UButton>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <template #footer>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <UButton
+            variant="ghost"
+            color="neutral"
+            :disabled="state === 'LOADING'"
+            @click="load"
+          >Actualizar</UButton>
+          <SharedCorrelationIdBadge :correlation-id="correlationId" />
+        </div>
+      </template>
+    </UCard>
+
+    <UCard>
+      <h2 class="text-[14px] font-semibold">Por qué un pago aparece como transferencia</h2>
+      <p class="mt-2 max-w-[70ch] text-[13px] leading-5 text-[#5A5B63]">
+        Cada prestador tiene una cuenta recaudadora en este banco, así que pagar un servicio
+        <strong class="font-semibold">es</strong> transferirle dinero. Por eso el detalle de un
+        pago se ve en la pantalla de la transferencia: es la misma operación, con la misma Saga y
+        la misma compensación automática si el pago falla.
+      </p>
+    </UCard>
   </section>
 </template>

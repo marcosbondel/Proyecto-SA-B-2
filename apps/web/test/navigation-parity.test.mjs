@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { test, describe } from 'node:test';
 
 import { mayQueryAudit } from '../app/lib/audit.ts';
-import { mayManageAccounts } from '../app/lib/account.ts';
+import { mayManageAccounts, mayTakeDeposits } from '../app/lib/account.ts';
 import { mayMonitorPayments } from '../app/lib/payment.ts';
 import { MODULES } from '../app/lib/navigation.ts';
 
@@ -113,9 +113,16 @@ describe('the frontend matrix agrees with the Gateway', () => {
     // The single-payment route stays open, like the transfer status it mirrors.
     assert.equal((source.match(/@Roles\(/g) ?? []).length, 1);
 
+    /*
+     * The module itself is no longer restricted — paying a bill is what a
+     * client does, and the front door reads the *transfer* listing, which
+     * Transaction Service scopes. What stays staff-only is Payment Service's
+     * own listing and the screen that reads it, which is what
+     * `mayMonitorPayments` guards.
+     */
     const pagos = MODULES.find((module) => module.to === '/pagos');
 
-    assert.deepEqual(pagos.roles, ['CAJERO_RECEPTOR', 'ADMINISTRADOR']);
+    assert.deepEqual(pagos.roles, ['CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR']);
 
     assert.equal(mayMonitorPayments('CAJERO_RECEPTOR'), true);
     assert.equal(mayMonitorPayments('ADMINISTRADOR'), true);
@@ -141,13 +148,30 @@ describe('the frontend matrix agrees with the Gateway', () => {
       );
     }
 
-    // The accounts controller restricts exactly one of its five routes.
+    /*
+     * The accounts controller restricts two of its six routes, and the second
+     * one is a *screen* inside a module everybody shares rather than a seventh
+     * navigation entry — the deposit window, which only staff may use. So the
+     * module matrix below is unchanged and `mayTakeDeposits` carries it, the
+     * same shape `mayManageAccounts` already had for the manual status change.
+     */
     const accounts = await readFile(
       new URL('../../gateway/src/interfaces/accounts.controller.ts', import.meta.url),
       'utf8',
     );
 
-    assert.equal((accounts.match(/@Roles\(/g) ?? []).length, 1);
+    assert.equal((accounts.match(/@Roles\(/g) ?? []).length, 2);
+
+    assert.match(
+      accounts,
+      /@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)\s*\n\s*@Post\(':accountId\/deposit'\)/,
+      'the deposit window no longer restricts itself to staff',
+    );
+
+    assert.equal(mayTakeDeposits('CAJERO_RECEPTOR'), true);
+    assert.equal(mayTakeDeposits('ADMINISTRADOR'), true);
+    assert.equal(mayTakeDeposits('CLIENTE'), false);
+    assert.equal(mayTakeDeposits(null), false);
 
     // The customers controller restricts exactly two routes to staff, both added
     // by the audit remediation (US6): the teller's pending-validation queue and
@@ -160,14 +184,12 @@ describe('the frontend matrix agrees with the Gateway', () => {
 
     assert.equal((customers.match(/@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)/g) ?? []).length, 2);
 
-    // Two modules are restricted: Auditoría by D-06 outright, and Pagos because
-    // its owning service cannot scope its own listing (TD-037).
+    // One module is restricted: Auditoría, by D-06 outright. Pagos was the
+    // second until the service-payment product moved the unscoped listing
+    // behind a screen inside the module.
     const restricted = MODULES.filter((module) => module.roles.length < 3);
 
-    assert.deepEqual(
-      restricted.map((module) => module.to).sort(),
-      ['/auditoria', '/pagos'],
-    );
+    assert.deepEqual(restricted.map((module) => module.to), ['/auditoria']);
   });
 });
 

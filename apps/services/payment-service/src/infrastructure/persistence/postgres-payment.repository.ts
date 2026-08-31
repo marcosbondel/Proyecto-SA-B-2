@@ -82,6 +82,41 @@ export class PostgresPaymentRepository implements PaymentRepository {
     this.#pool = pool;
   }
 
+  public async stats(): Promise<{
+    readonly today: number;
+    readonly succeededToday: number;
+    readonly failedToday: number;
+    readonly retrying: number;
+  }> {
+    const counted = await this.#pool.query<{
+      today: string;
+      succeeded_today: string;
+      failed_today: string;
+      retrying: string;
+    }>(
+      `SELECT COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)::TEXT AS today,
+              COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE
+                                AND status = 'SUCCEEDED')::TEXT AS succeeded_today,
+              COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE
+                                AND status = 'FAILED')::TEXT AS failed_today,
+              /* Climbing the ladder right now: still PENDING and already due
+                 another attempt. Not scoped to today — it is a thing that is
+                 happening, not a thing that happened. */
+              COUNT(*) FILTER (WHERE status = 'PENDING' AND next_attempt_at IS NOT NULL)::TEXT
+                AS retrying
+         FROM payments`,
+    );
+
+    const row = counted.rows[0];
+
+    return {
+      today: Number(row?.today ?? '0'),
+      succeededToday: Number(row?.succeeded_today ?? '0'),
+      failedToday: Number(row?.failed_today ?? '0'),
+      retrying: Number(row?.retrying ?? '0'),
+    };
+  }
+
   public async open(input: { readonly payment: Payment }): Promise<OpenOutcome> {
     const { payment } = input;
 

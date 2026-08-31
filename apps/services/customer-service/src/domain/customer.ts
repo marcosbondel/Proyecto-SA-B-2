@@ -72,6 +72,12 @@ export type RejectionCode =
   | 'ROLE_NOT_ELIGIBLE'
   | 'ACTIVATION_TOKEN_INVALID'
   | 'ACTIVATION_TOKEN_EXPIRED'
+  /* The password-recovery pair, kept distinct from the activation pair for the
+   * reason the catalogue keeps them distinct: a dead activation link should
+   * offer to resend the activation, a dead reset link should offer to start the
+   * reset again. */
+  | 'RESET_TOKEN_INVALID'
+  | 'RESET_TOKEN_EXPIRED'
   | 'INVALID_CREDENTIALS'
   | 'IDENTITY_DOCUMENT_UNREADABLE'
   | 'IDENTITY_OBJECT_NOT_FOUND'
@@ -270,6 +276,20 @@ export function mayUpdateCustomer(actor: Actor | null, subjectCustomerId: string
  */
 export function mayReadCustomer(actor: Actor | null, subjectCustomerId: string): boolean {
   return mayUpdateCustomer(actor, subjectCustomerId);
+}
+
+/**
+ * Who may change a password from inside a session: **the account's owner, and
+ * nobody else** — an administrator included.
+ *
+ * This is deliberately stricter than `mayUpdateCustomer`, which lets staff edit
+ * a customer's name or address. Editing a record is something a teller does for
+ * somebody standing in front of them; replacing a credential is taking the
+ * account. Staff who need to help somebody locked out have the recovery flow,
+ * and its link goes to the customer's own inbox, which is the whole point.
+ */
+export function mayChangeOwnPassword(actor: Actor | null, subjectCustomerId: string): boolean {
+  return actor !== null && actor.customerId === subjectCustomerId;
 }
 
 /**

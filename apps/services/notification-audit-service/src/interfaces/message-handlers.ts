@@ -1,7 +1,17 @@
-import { auditQueryRequestedV1, contractFor, notificationListQueryV1 } from '@bank/contracts';
+import {
+  auditQueryRequestedV1,
+  auditStatsQueryV1,
+  contractFor,
+  notificationInboxQueryV1,
+  notificationListQueryV1,
+  notificationMarkReadV1,
+} from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 
+import type { GetAuditStatsUseCase } from '../application/get-audit-stats.use-case';
 import type { ListNotificationsUseCase } from '../application/list-notifications.use-case';
+import type { MarkNotificationsReadUseCase } from '../application/mark-notifications-read.use-case';
+import type { ReadInboxUseCase } from '../application/read-inbox.use-case';
 import type { QueryAuditUseCase } from '../application/query-audit.use-case';
 import type { RecordEventUseCase } from '../application/record-event.use-case';
 import type { InboundMessageHandler } from './inbound-message.handler';
@@ -129,3 +139,59 @@ export class NotificationListHandler implements InboundMessageHandler {
     await this.#useCase.execute(query);
   }
 }
+
+/**
+ * "What has the bank told **me**?" — a different question from the console
+ * above, over the same table.
+ *
+ * The identity is the scope and the query carries no field that could point it
+ * elsewhere, so this handler passes the envelope's identity and nothing from
+ * the payload decides who is being read.
+ */
+export class NotificationInboxHandler implements InboundMessageHandler {
+  public readonly messageType = notificationInboxQueryV1.name;
+  readonly #useCase: ReadInboxUseCase;
+
+  constructor(useCase: ReadInboxUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const query = notificationInboxQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.execute(query, envelope.identity);
+  }
+}
+
+/** "I have read these." The only write this service takes from outside a flow. */
+export class NotificationMarkReadHandler implements InboundMessageHandler {
+  public readonly messageType = notificationMarkReadV1.name;
+  readonly #useCase: MarkNotificationsReadUseCase;
+
+  constructor(useCase: MarkNotificationsReadUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const command = notificationMarkReadV1.schema.parse(envelope.payload);
+
+    await this.#useCase.execute(command, envelope.identity);
+  }
+}
+
+/** `audit.stats.query.v1` — what the trail recorded today. Administrator only. */
+export class AuditStatsHandler implements InboundMessageHandler {
+  public readonly messageType = auditStatsQueryV1.name;
+  readonly #useCase: GetAuditStatsUseCase;
+
+  constructor(useCase: GetAuditStatsUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    auditStatsQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.execute(envelope.identity);
+  }
+}
+

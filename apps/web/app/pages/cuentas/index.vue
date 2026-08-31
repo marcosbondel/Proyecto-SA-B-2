@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { totalBalanceMinor } from '../../lib/account';
+import { mayTakeDeposits, totalBalanceMinor } from '../../lib/account';
 import type { AccountSummary } from '../../lib/account';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
@@ -30,6 +30,14 @@ const correlationId = ref<string | null>(null);
 const total = computed(() => totalBalanceMinor(accounts.value));
 
 const canManage = computed(() => role.value === 'ADMINISTRADOR');
+
+/**
+ * The deposit window is a screen inside this module rather than a navigation
+ * entry of its own, which is what `docs/FRONTEND.md` prescribes for a
+ * role-restricted screen. The rule lives in `app/lib/account.ts` so a test can
+ * assert it against the Gateway's decorator (TD-010).
+ */
+const canDeposit = computed(() => mayTakeDeposits(role.value));
 
 async function load(): Promise<void> {
   state.value = 'LOADING';
@@ -76,6 +84,9 @@ useHead({ title: 'Cuentas · bonking' });
             data-testid="consolidated-total"
           >{{ formatQuetzales(total) }}</p>
         </div>
+        <UButton v-if="canDeposit" to="/cuentas/deposito" variant="outline" color="neutral">
+          Depósito
+        </UButton>
         <UButton to="/cuentas/nueva" color="primary">Abrir cuenta</UButton>
       </div>
     </header>

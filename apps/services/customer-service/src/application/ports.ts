@@ -109,6 +109,69 @@ export interface CustomerRepository {
     | { readonly outcome: 'UNKNOWN' }
   >;
 
+  /**
+   * Records a new password-reset token, invalidating the customer's live ones.
+   *
+   * The invalidation is part of issuing rather than a separate call, for the
+   * reason US7 gave for activation tokens: every request otherwise left another
+   * usable link behind, so asking twice doubled the number of ways in.
+   */
+  savePasswordResetToken(input: {
+    readonly customerId: string;
+    readonly tokenHash: string;
+    readonly expiresAt: string;
+  }): Promise<void>;
+
+  /** The customer a live reset token belongs to, or why it cannot be used. */
+  findByPasswordResetToken(tokenHash: string, now: Date): Promise<
+    | { readonly outcome: 'FOUND'; readonly customer: Customer }
+    | { readonly outcome: 'EXPIRED' }
+    | { readonly outcome: 'UNKNOWN' }
+  >;
+
+  /**
+   * Replaces the credential, burns every reset token the customer holds, and
+   * records the message as processed — in one transaction.
+   *
+   * Burning **all** of them rather than only the one spent is the point: a
+   * person who asks twice and then completes the reset should not leave a
+   * second live link in an inbox that may be the reason they were resetting.
+   *
+   * @throws DomainRejection RESET_TOKEN_INVALID when the token was already spent
+   */
+  savePasswordReset(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly tokenHash: string;
+    readonly usedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void>;
+
+  /**
+   * Replaces the credential of a customer who proved they knew the old one, and
+   * records the message as processed — in one transaction.
+   *
+   * No token to burn, unlike `savePasswordReset`: the authorisation for this
+   * one was the current password, verified before this is called.
+   */
+  savePasswordChange(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly changedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void>;
+
+  /**
+   * The display names behind a set of ids, for the ones that exist.
+   *
+   * Returns fewer rows than it was asked about when some do not exist, and says
+   * nothing about which — the caller cannot tell a missing customer from one it
+   * may not see, which is the point.
+   */
+  findNames(customerIds: readonly string[]): Promise<
+    readonly { readonly customerId: string; readonly fullName: string }[]
+  >;
+
   /** Whether this exact photo already belongs to somebody else. */
   isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean>;
 
@@ -120,6 +183,19 @@ export interface CustomerRepository {
   listPendingIdentityValidation(limit: number): Promise<{
     readonly customers: readonly Customer[];
     readonly total: number;
+  }>;
+
+  /**
+   * The dashboard's counts, computed in SQL rather than by loading the table.
+   *
+   * "Today" is the database's day, not Node's: the query compares against
+   * `CURRENT_DATE`, so the number does not shift when a replica runs in a
+   * different timezone from the one before it.
+   */
+  stats(): Promise<{
+    readonly registered: number;
+    readonly pendingValidation: number;
+    readonly activatedToday: number;
   }>;
 
   /** What this message produced the first time, or `null` if it is new. */

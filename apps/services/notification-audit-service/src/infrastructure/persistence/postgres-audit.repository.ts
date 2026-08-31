@@ -8,6 +8,7 @@ import type {
   NotificationStatus,
 } from '../../domain/notification';
 import type { RecordOutcome } from '../../domain/deduplication';
+import type { InboxNotification } from '../../application/ports';
 import type {
   AuditRepository,
   InboundRecord,
@@ -43,6 +44,8 @@ export class PostgresAuditRepository implements AuditRepository {
       readonly notificationId: string;
       readonly intent: NotificationIntent;
       readonly recipient: string | null;
+      /** Whose inbox this belongs in — the subject, not the address. */
+      readonly customerId: string | null;
     } | null;
     readonly now: Date;
   }): Promise<RecordOutcome & { readonly notificationId?: string }> {
@@ -102,8 +105,8 @@ export class PostgresAuditRepository implements AuditRepository {
         await client.query(
           `INSERT INTO notifications
              (notification_id, type, channel, recipient, reference_id, subject,
-              status, correlation_id, caused_by, created_at, processed_at)
-           VALUES ($1, $2, 'EMAIL', $3, $4, $5, 'PENDING', $6, $7, $8, NULL)
+              status, correlation_id, caused_by, created_at, processed_at, customer_id)
+           VALUES ($1, $2, 'EMAIL', $3, $4, $5, 'PENDING', $6, $7, $8, NULL, $9)
            ON CONFLICT DO NOTHING`,
           [
             notification.notificationId,
@@ -114,6 +117,7 @@ export class PostgresAuditRepository implements AuditRepository {
             event.correlationId,
             event.eventId,
             now,
+            notification.customerId,
           ],
         );
       }
@@ -127,6 +131,119 @@ export class PostgresAuditRepository implements AuditRepository {
   }
 
   /** The only `UPDATE` in this service, and it touches no trail row. */
+  public async inboxOf(input: {
+    readonly customerId: string;
+    readonly limit: number;
+  }): Promise<{ readonly notifications: readonly InboxNotification[]; readonly unread: number }> {
+    const [rows, unread] = await Promise.all([
+      this.#pool.query<InboxRow>(
+        `SELECT notification_id, type, subject, reference_id, correlation_id, created_at, read_at
+           FROM notifications
+          WHERE customer_id = $1
+          ORDER BY created_at DESC, notification_id
+          LIMIT $2`,
+        [input.customerId, input.limit],
+      ),
+      this.#unreadCount(input.customerId),
+    ]);
+
+    return {
+      notifications: rows.rows.map((row) => ({
+        notificationId: row.notification_id,
+        type: row.type,
+        subject: row.subject,
+        referenceId: row.reference_id,
+        correlationId: row.correlation_id,
+        createdAt: row.created_at.toISOString(),
+        readAt: row.read_at?.toISOString() ?? null,
+      })),
+      unread,
+    };
+  }
+
+  public async unreadCountOf(customerId: string): Promise<number> {
+    return await this.#unreadCount(customerId);
+  }
+
+  public async markRead(input: {
+    readonly customerId: string;
+    readonly notificationIds: readonly string[] | null;
+    readonly now: Date;
+  }): Promise<number> {
+    /*
+     * `customer_id = $1` is in the WHERE clause rather than checked beforehand.
+     * An id belonging to somebody else matches no row, so the request is a
+     * no-op instead of a refusal that would confirm the id exists — and there
+     * is no window between a check and a write for the two to disagree.
+     *
+     * `read_at IS NULL` keeps the first read's timestamp: marking an already
+     * read notification read again is not a second reading.
+     */
+    const updated =
+      input.notificationIds === null
+        ? await this.#pool.query(
+            `UPDATE notifications SET read_at = $2
+              WHERE customer_id = $1 AND read_at IS NULL`,
+            [input.customerId, input.now],
+          )
+        : await this.#pool.query(
+            `UPDATE notifications SET read_at = $2
+              WHERE customer_id = $1 AND read_at IS NULL
+                AND notification_id = ANY($3::uuid[])`,
+            [input.customerId, input.now, [...input.notificationIds]],
+          );
+
+    return updated.rowCount ?? 0;
+  }
+
+  async #unreadCount(customerId: string): Promise<number> {
+    const counted = await this.#pool.query<{ total: string }>(
+      `SELECT COUNT(*)::TEXT AS total FROM notifications
+        WHERE customer_id = $1 AND read_at IS NULL`,
+      [customerId],
+    );
+
+    return Number(counted.rows[0]?.total ?? '0');
+  }
+
+  public async stats(): Promise<{
+    readonly eventsToday: number;
+    readonly invalidToday: number;
+    readonly notificationsToday: number;
+    readonly lastEventType: string | null;
+    readonly lastEventAt: string | null;
+  }> {
+    const [events, notifications, last] = await Promise.all([
+      this.#pool.query<{ events_today: string; invalid_today: string }>(
+        `SELECT COUNT(*) FILTER (WHERE occurred_at::date = CURRENT_DATE)::TEXT AS events_today,
+                COUNT(*) FILTER (WHERE occurred_at::date = CURRENT_DATE
+                                  AND processing_status = 'INVALID')::TEXT AS invalid_today
+           FROM audit_events`,
+      ),
+      this.#pool.query<{ total: string }>(
+        `SELECT COUNT(*)::TEXT AS total FROM notifications
+          WHERE created_at::date = CURRENT_DATE`,
+      ),
+      /* A message name and a timestamp. Never a payload: this says the system
+         is alive and what it was last doing, and carries nothing about anyone. */
+      this.#pool.query<{ message_type: string; occurred_at: Date }>(
+        `SELECT message_type, occurred_at FROM audit_events
+          ORDER BY occurred_at DESC, event_id LIMIT 1`,
+      ),
+    ]);
+
+    const row = events.rows[0];
+    const newest = last.rows[0];
+
+    return {
+      eventsToday: Number(row?.events_today ?? '0'),
+      invalidToday: Number(row?.invalid_today ?? '0'),
+      notificationsToday: Number(notifications.rows[0]?.total ?? '0'),
+      lastEventType: newest?.message_type ?? null,
+      lastEventAt: newest?.occurred_at.toISOString() ?? null,
+    };
+  }
+
   public async settleNotification(input: {
     readonly notificationId: string;
     readonly status: Extract<NotificationStatus, 'SENT' | 'FAILED'>;
@@ -272,6 +389,9 @@ interface NotificationRow {
   readonly correlation_id: string;
   readonly created_at: Date;
   readonly processed_at: Date | null;
+  /** Optional in the row type: the console's projection does not select them. */
+  readonly customer_id?: string | null;
+  readonly read_at?: Date | null;
 }
 
 function auditEventFrom(row: AuditRow): AuditEvent {
@@ -302,5 +422,19 @@ function notificationFrom(row: NotificationRow): Notification {
     correlationId: row.correlation_id,
     createdAt: row.created_at,
     processedAt: row.processed_at,
+    customerId: row.customer_id ?? null,
+    readAt: row.read_at ?? null,
   };
 }
+
+/** One row of a customer's inbox, as the projection returns it. */
+interface InboxRow {
+  notification_id: string;
+  type: string;
+  subject: string;
+  reference_id: string | null;
+  correlation_id: string;
+  created_at: Date;
+  read_at: Date | null;
+}
+

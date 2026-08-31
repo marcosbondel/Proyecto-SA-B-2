@@ -28,6 +28,18 @@ export interface WireMoney {
 export interface AccountSummary {
   readonly accountId: string;
   readonly customerId: string;
+  /**
+   * The holder's name, when the Gateway could resolve it.
+   *
+   * **Optional, and absent rather than null.** Account Service holds only the
+   * opaque `customerId` and may not read Customer Service's database (§8.2,
+   * 2.3); the Gateway composes the two replies and leaves the field out when it
+   * could not — a client asking, a name lookup that timed out, a broker that is
+   * away. A screen can then tell "we did not get a name" from "there is no
+   * name" and fall back to the identifier it already had, instead of rendering
+   * an empty cell that reads as a missing customer. Closes TD-026.
+   */
+  readonly holderName?: string;
   readonly accountType: AccountType;
   readonly balance: WireMoney;
   readonly status: AccountStatus;
@@ -217,6 +229,42 @@ function daysInUtcMonth(date: Date): number {
  */
 export function mayManageAccounts(role: Role | null): boolean {
   return role === 'ADMINISTRADOR';
+}
+
+/**
+ * What to write in a "Titular" cell: the name when there is one, the identifier
+ * when there is not.
+ *
+ * A function rather than a template expression so the fallback is asserted
+ * rather than assumed — the interesting case is the one where the composition
+ * failed, and that is exactly the case a template makes invisible (TD-010).
+ */
+export function holderLabel(account: AccountSummary): string {
+  return account.holderName ?? account.customerId;
+}
+
+/** Whether the holder cell is showing a name or falling back to an identifier. */
+export function holderIsName(account: AccountSummary): boolean {
+  return account.holderName !== undefined;
+}
+
+/**
+ * Who may register a deposit at a window: staff, and no client.
+ *
+ * The sibling of `mayManageAccounts`, restricted one step wider because a
+ * deposit is a teller's daily work rather than an administrator's intervention.
+ * It carries the same caveat and for the same reason: **convenience, not
+ * defence**. The Gateway restricts the route with `@Roles` and Account Service
+ * refuses the command outright — a deposit mints money into an account from
+ * outside the system, so the service that moves the balance checks too rather
+ * than trusting the edge.
+ *
+ * Also deliberately not a navigation entry. The deposit window is a screen
+ * inside Cuentas, which everybody sees; `docs/FRONTEND.md` says a module that
+ * needs a role-restricted screen filters in the page.
+ */
+export function mayTakeDeposits(role: Role | null): boolean {
+  return role === 'CAJERO_RECEPTOR' || role === 'ADMINISTRADOR';
 }
 
 /**

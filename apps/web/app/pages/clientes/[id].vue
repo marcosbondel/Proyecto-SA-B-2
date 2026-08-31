@@ -4,17 +4,24 @@ import type { IdentityStatus } from '../../lib/customer';
 /**
  * One customer: what can be changed, and where their identity stands.
  *
- * **Nothing is read from the system, because nothing can be.** The Gateway has
- * eleven routes and none of them returns a customer, so this page shows what
- * the session already knows and refuses to invent the rest. The alternative —
- * filling the boxes with plausible values — would be a screen that looks
- * informative and is fiction.
+ * The identity status is **read from the system** now. It used to come from a
+ * query parameter (`?identidad=`) because the Gateway had no route that
+ * returned a customer at all, so this screen could either invent a badge or
+ * admit it did not know; it admitted it. `GET /api/customers/{customerId}`
+ * arrived with the audit remediation (US6, closing TD-020), and with it the
+ * badge, the username and the record itself are facts rather than parameters.
  *
- * The identity status is taken from the query string (`?identidad=`) so that a
- * link from the validation queue, or a reviewer producing evidence, can show
- * the real badge in each of its three states. Absent, it says it does not know,
- * which is the truthful answer until `GET /api/customers/:id` exists.
+ * The query parameter is still honoured as an override, and only as one: a
+ * reviewer producing evidence for the three identity states needs to be able to
+ * show all three without three customers in three states. When it is absent —
+ * which is every real visit — the answer comes from the service.
+ *
+ * Changing your own password lives at `/perfil`, not here. This page is also
+ * how staff open somebody else's record, and a password box on a screen a
+ * teller uses to look at a customer is the wrong affordance even when the
+ * service would refuse it.
  */
+const api = useGatewayApi();
 const route = useRoute();
 const { session } = useSession();
 
@@ -24,11 +31,41 @@ const isMe = computed(() => session.value?.customerId === customerId.value);
 
 const STATUSES: readonly string[] = ['PENDING', 'VALIDATED', 'REJECTED'];
 
-const identityStatus = computed<IdentityStatus | null>(() => {
+interface CustomerRecord {
+  readonly username: string;
+  readonly identityStatus: IdentityStatus;
+}
+
+const record = ref<CustomerRecord | null>(null);
+const unreadable = ref(false);
+
+onMounted(async () => {
+  const result = await api.call<CustomerRecord>(`/api/customers/${customerId.value}`);
+
+  if (result.ok) {
+    record.value = result.data;
+    return;
+  }
+
+  // A client looking at a record that is not theirs is refused by the owning
+  // service. The page still renders — the edit form says its own piece — and
+  // this panel says what it does not know rather than guessing.
+  unreadable.value = true;
+});
+
+const overridden = computed<IdentityStatus | null>(() => {
   const declared = String(route.query.identidad ?? '').toUpperCase();
 
   return STATUSES.includes(declared) ? (declared as IdentityStatus) : null;
 });
+
+const identityStatus = computed<IdentityStatus | null>(
+  () => overridden.value ?? record.value?.identityStatus ?? null,
+);
+
+const username = computed(() =>
+  isMe.value ? (session.value?.username ?? null) : (record.value?.username ?? null),
+);
 
 useHead({ title: 'Ficha de cliente · bonking' });
 </script>
@@ -55,9 +92,11 @@ useHead({ title: 'Ficha de cliente · bonking' });
             <IdentityStatusBadge v-if="identityStatus" :status="identityStatus" explain />
 
             <p v-else class="text-[13px] leading-5 text-[#5A5B63]" data-testid="identity-unknown">
-              Todavía no se puede consultar. El Gateway no expone una ruta que lea un cliente, así
-              que esta pantalla no sabe si la foto del documento ya fue revisada. Llega con el
-              backend de T-16.
+              {{
+                unreadable
+                  ? 'No puedes consultar la ficha de este cliente, así que esta pantalla no sabe si la foto de su documento ya fue revisada.'
+                  : 'Consultando el estado de la validación…'
+              }}
             </p>
           </div>
 
@@ -69,21 +108,23 @@ useHead({ title: 'Ficha de cliente · bonking' });
             >{{ customerId }}</div>
           </div>
 
-          <div v-if="isMe && session" class="mt-4">
+          <div v-if="username" class="mt-4">
             <div class="text-[12px] text-[#75767F]">Username</div>
             <div
               class="text-[13px] font-semibold text-[#23242A]"
               style="font-variant-numeric: tabular-nums lining-nums"
-            >{{ session.username }}</div>
+            >{{ username }}</div>
           </div>
         </UCard>
 
         <UCard v-if="isMe">
           <h2 class="text-[14px] font-semibold">Cuenta</h2>
           <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-            La contraseña y el correo los administra Customer Service y todavía no hay ruta para
-            cambiarlos desde aquí. El prototipo los incluye; el contrato del Gateway, no.
+            La contraseña se cambia desde tu perfil, con la contraseña actual.
           </p>
+          <UButton to="/perfil" variant="outline" color="neutral" class="mt-3">
+            Ir a mi perfil →
+          </UButton>
         </UCard>
       </div>
     </div>

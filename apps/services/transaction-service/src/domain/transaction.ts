@@ -59,6 +59,27 @@ export interface Transaction {
   /** The flow this transfer was born in. Never regenerated (constitution VIII). */
   readonly correlationId: string;
   readonly idempotencyKey: string;
+  /**
+   * Who asked for this transfer, from the envelope's verified identity.
+   *
+   * The only thing in this service that knows a transaction belongs to a
+   * person. Both account references are opaque here — resolving either to a
+   * customer means reading Account Service's database, which §8.2 (2.3)
+   * forbids — so without this column "which transfers are mine" and "may this
+   * actor read this transfer" were both unanswerable (TD-033, TD-035).
+   *
+   * `null` for a transfer nobody originated, and for the rows that existed
+   * before the column did.
+   */
+  readonly customerId: string | null;
+  /**
+   * What a service payment is for — the biller's contract or meter number.
+   *
+   * `null` for an ordinary transfer between two people. This service never
+   * interprets it: the number belongs to the biller, and a bank that validated
+   * its shape would refuse a valid one the day the biller changed theirs.
+   */
+  readonly reference: string | null;
   readonly failureReason: FailureReason | null;
   readonly paymentScenario: PaymentScenario | null;
   readonly createdAt: Date;
@@ -197,6 +218,8 @@ export function openTransaction(input: {
   readonly amount: Money;
   readonly correlationId: string;
   readonly idempotencyKey: string;
+  readonly customerId: string | null;
+  readonly reference: string | null;
   readonly paymentScenario: PaymentScenario | null;
   readonly now: Date;
 }): Transaction {
@@ -208,6 +231,8 @@ export function openTransaction(input: {
     status: 'PENDING',
     correlationId: input.correlationId,
     idempotencyKey: input.idempotencyKey,
+    customerId: input.customerId,
+    reference: input.reference,
     failureReason: null,
     paymentScenario: input.paymentScenario,
     createdAt: input.now,
@@ -329,4 +354,31 @@ export function afterTransition(
      */
     completedAt: isTerminal(transition.status) ? (transaction.completedAt ?? now) : null,
   };
+}
+
+/**
+ * Who may read a transfer: its originator, or staff.
+ *
+ * The check TD-035 said this service could not make. It can now, because the
+ * row records who asked — and it is made **here**, in the domain, rather than
+ * at the Gateway, because the Gateway holds no transactions and would have to
+ * read one to decide whether it may be read.
+ *
+ * A transfer with no recorded originator is readable by staff alone. That is
+ * the safe reading of an unknown: the rows that predate the column belong to
+ * somebody, and guessing which client would be worse than showing nobody.
+ */
+export function mayReadTransaction(
+  actor: { readonly customerId: string; readonly role: string } | null,
+  transaction: { readonly customerId: string | null },
+): boolean {
+  if (actor === null) {
+    return false;
+  }
+
+  if (actor.role !== 'CLIENTE') {
+    return true;
+  }
+
+  return transaction.customerId !== null && transaction.customerId === actor.customerId;
 }

@@ -7,12 +7,25 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
+  MaxLength,
   Min,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
+import { MAX_TRANSACTION_ROWS } from '@bank/contracts';
 
 const SCENARIOS = ['APPROVE', 'REJECT', 'TRANSIENT_FAILURE'] as const;
+
+/** The six states of the machine, as the listing may filter by them. */
+const TRANSACTION_STATUSES = [
+  'PENDING',
+  'DEBITING',
+  'PAYMENT_PENDING',
+  'COMPLETED',
+  'FAILED',
+  'COMPENSATED',
+] as const;
 
 /** Money on the wire: an integer of minor units, never a float. */
 export class MoneyDto {
@@ -47,6 +60,18 @@ export class TransferDto {
   public amount!: MoneyDto;
 
   /**
+   * What the payment is for, when the target is a biller's collection account.
+   *
+   * Optional and never interpreted: the contract number belongs to the biller,
+   * and a bank that validated its shape would refuse a valid one the day a
+   * biller changed theirs. The Gateway carries it and passes it on.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60, { message: 'reference no puede exceder 60 caracteres' })
+  public reference?: string;
+
+  /**
    * Demonstration only, and optional.
    *
    * The gateway checks it is one of the three names and passes it on. It never
@@ -57,4 +82,41 @@ export class TransferDto {
   @IsOptional()
   @IsIn(SCENARIOS, { message: `paymentScenario debe ser uno de: ${SCENARIOS.join(', ')}` })
   public paymentScenario?: (typeof SCENARIOS)[number];
+}
+
+/**
+ * The filters a transfer listing may carry — every one optional, and every one
+ * a **request** rather than a permission.
+ *
+ * The Gateway holds no transactions, so it cannot know which of them the asker
+ * is entitled to see. Transaction Service intersects these with the scope it
+ * derives from the envelope identity, which is why naming somebody else's
+ * `customerId` here produces an empty list rather than a `403`.
+ */
+export class ListTransfersQueryDto {
+  @IsOptional()
+  @IsUUID('4', { message: 'customerId debe ser un UUID v4' })
+  public customerId?: string;
+
+  @IsOptional()
+  @IsUUID('4', { message: 'accountId debe ser un UUID v4' })
+  public accountId?: string;
+
+  @IsOptional()
+  @IsIn(TRANSACTION_STATUSES, {
+    message: `status debe ser uno de: ${TRANSACTION_STATUSES.join(', ')}`,
+  })
+  public status?: (typeof TRANSACTION_STATUSES)[number];
+
+  /**
+   * Coerced from the query string, where everything is text. Without the
+   * transform this arrives as `"25"` and the contract refuses it as not an
+   * integer — a `400` for a request that was perfectly well formed.
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit debe ser un entero' })
+  @Min(1, { message: 'limit debe ser mayor que cero' })
+  @Max(MAX_TRANSACTION_ROWS, { message: `limit no puede exceder ${String(MAX_TRANSACTION_ROWS)}` })
+  public limit?: number;
 }

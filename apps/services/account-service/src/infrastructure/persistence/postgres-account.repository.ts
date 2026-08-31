@@ -106,7 +106,16 @@ export class PostgresAccountRepository implements AccountRepository {
       }
     }
 
-    const where = conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')}`;
+    /*
+     * A biller's collection account is an account and is not somebody's
+     * account. It never appears in a customer listing or in an administrator's
+     * management table — showing EEGSA among a person's accounts would be the
+     * kind of internal plumbing a screen should not leak, and letting an
+     * administrator deactivate one would break every service payment at once.
+     */
+    conditions.push('biller_code IS NULL');
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
     const result = await this.#pool.query<AccountRow>(
       `SELECT ${ACCOUNT_COLUMNS} FROM accounts ${where} ORDER BY created_at DESC, account_id`,
@@ -260,6 +269,71 @@ export class PostgresAccountRepository implements AccountRepository {
     });
   }
 
+  public async listBillers(): Promise<
+    readonly { readonly code: string; readonly name: string; readonly accountId: string }[]
+  > {
+    const found = await this.#pool.query<{
+      biller_code: string;
+      biller_name: string;
+      account_id: string;
+    }>(
+      `SELECT biller_code, biller_name, account_id
+         FROM accounts
+        WHERE biller_code IS NOT NULL
+        ORDER BY biller_name`,
+    );
+
+    return found.rows.map((row) => ({
+      code: row.biller_code,
+      name: row.biller_name,
+      accountId: row.account_id,
+    }));
+  }
+
+  public async stats(): Promise<{
+    readonly active: number;
+    readonly inactive: number;
+    readonly openedToday: number;
+    readonly depositsToday: number;
+    readonly depositedToday: { readonly amountMinor: number; readonly currency: string };
+  }> {
+    const [accounts, deposits] = await Promise.all([
+      this.#pool.query<{ active: string; inactive: string; opened_today: string }>(
+        `SELECT COUNT(*) FILTER (WHERE status = 'ACTIVE')::TEXT   AS active,
+                COUNT(*) FILTER (WHERE status = 'INACTIVE')::TEXT AS inactive,
+                COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)::TEXT AS opened_today
+           FROM accounts
+          WHERE biller_code IS NULL`,
+      ),
+      /*
+       * A deposit is a `CREDIT` with no transaction: the Saga's credits all
+       * belong to one. That is what distinguishes a teller's shift from the
+       * bank's traffic, and it needs no column of its own.
+       */
+      this.#pool.query<{ deposits: string; total: string }>(
+        `SELECT COUNT(*)::TEXT AS deposits,
+                COALESCE(SUM(amount), 0)::TEXT AS total
+           FROM account_operations
+          WHERE type = 'CREDIT' AND transaction_id IS NULL
+            AND created_at::date = CURRENT_DATE`,
+      ),
+    ]);
+
+    const row = accounts.rows[0];
+    const movement = deposits.rows[0];
+
+    return {
+      active: Number(row?.active ?? '0'),
+      inactive: Number(row?.inactive ?? '0'),
+      openedToday: Number(row?.opened_today ?? '0'),
+      depositsToday: Number(movement?.deposits ?? '0'),
+      depositedToday: {
+        amountMinor: minorUnitsFromNumeric(movement?.total ?? '0'),
+        currency: 'GTQ',
+      },
+    };
+  }
+
   public async setStatus(input: {
     readonly accountId: string;
     readonly status: 'ACTIVE' | 'INACTIVE';
@@ -310,6 +384,13 @@ export class PostgresAccountRepository implements AccountRepository {
            WHERE status = 'ACTIVE'
              AND balance < ($2::NUMERIC)
              AND last_activity_at <= $3
+             /*
+              * Never a biller. A collection account with no traffic for six
+              * months is a service nobody has paid recently, not a dormant
+              * customer — and deactivating it would refuse the next payment
+              * for a rule that was written about people.
+              */
+             AND biller_code IS NULL
            ORDER BY account_id
              FOR UPDATE
         )

@@ -1,7 +1,18 @@
 import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
+  accountBillersQueryV1,
+  accountStatsRepliedV1,
+  auditStatsRepliedV1,
+  customerStatsQueryV1,
+  customerStatsRepliedV1,
+  paymentStatsRepliedV1,
+  transactionStatsRepliedV1,
+  accountBillersRepliedV1,
   accountCreateV1,
+  accountDepositRejectedV1,
+  accountDepositV1,
+  accountDepositedV1,
   accountListQueryV1,
   accountListRepliedV1,
   accountOperationsQueryV1,
@@ -17,6 +28,13 @@ import {
   customerGetRepliedV1,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
+  customerChangePasswordV1,
+  customerPasswordChangedV1,
+  customerPasswordChangeRejectedV1,
+  customerPasswordResetCompletedV1,
+  customerPasswordResetConfirmV1,
+  customerPasswordResetRejectedV1,
+  customerPasswordResetRequestedV1,
   customerRegisterV1,
   customerSetIdentityVerdictV1,
   customerUpdateV1,
@@ -24,9 +42,15 @@ import {
   paymentListQueryV1,
   paymentListRepliedV1,
   paymentStatusQueryV1,
+  notificationInboxQueryV1,
+  notificationInboxRepliedV1,
   notificationListQueryV1,
+  notificationMarkReadV1,
+  notificationReadRepliedV1,
   notificationListRepliedV1,
   paymentStatusRepliedV1,
+  transactionListQueryV1,
+  transactionListRepliedV1,
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
   transferRequestedV1,
@@ -48,9 +72,36 @@ export interface RouteMessages {
  * quietly making the published contract wrong.
  */
 export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
+  /*
+   * The dashboard is the one route that publishes **five** messages, and the
+   * table has room for one. It is listed under the first of them, which is the
+   * honest half-truth available here; the other four are its siblings and the
+   * use case names all five in one place.
+   */
+  'GET /api/dashboard': {
+    publishes: customerStatsQueryV1.name,
+    awaits: [
+      customerStatsRepliedV1.name,
+      accountStatsRepliedV1.name,
+      transactionStatsRepliedV1.name,
+      paymentStatsRepliedV1.name,
+      auditStatsRepliedV1.name,
+    ],
+  },
   'POST /api/auth/login': {
     publishes: customerAuthenticateV1.name,
     awaits: [customerAuthenticateRepliedV1.name],
+  },
+  /*
+   * Password recovery. The request awaits nothing on purpose: an unknown
+   * address produces no event at all, so there is nothing to correlate — which
+   * is what keeps the route from answering "does this person bank here".
+   */
+  'POST /api/auth/password-reset': { publishes: customerPasswordResetRequestedV1.name },
+  'POST /api/auth/password-reset/confirm': {
+    publishes: customerPasswordResetConfirmV1.name,
+    // Events, not replies — the same correlation the activation link uses.
+    awaits: [customerPasswordResetCompletedV1.name, customerPasswordResetRejectedV1.name],
   },
   'POST /api/customers': { publishes: customerRegisterV1.name },
   'GET /api/customers/verify-email': {
@@ -59,6 +110,10 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     awaits: [customerEmailVerifiedV1.name, customerEmailVerificationRejectedV1.name],
   },
   'PATCH /api/customers/{customerId}': { publishes: customerUpdateV1.name },
+  'POST /api/customers/{customerId}/password': {
+    publishes: customerChangePasswordV1.name,
+    awaits: [customerPasswordChangedV1.name, customerPasswordChangeRejectedV1.name],
+  },
   'GET /api/customers/pending-validation': {
     publishes: customerPendingValidationQueryV1.name,
     awaits: [customerPendingValidationRepliedV1.name],
@@ -83,7 +138,28 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     publishes: accountOperationsQueryV1.name,
     awaits: [accountOperationsRepliedV1.name],
   },
+  'GET /api/accounts/billers': {
+    publishes: accountBillersQueryV1.name,
+    awaits: [accountBillersRepliedV1.name],
+  },
+  'POST /api/accounts/{accountId}/deposit': {
+    publishes: accountDepositV1.name,
+    // Events, not replies — the same correlation the activation link uses.
+    awaits: [accountDepositedV1.name, accountDepositRejectedV1.name],
+  },
   'POST /api/accounts/{accountId}/status': { publishes: accountSetStatusV1.name },
+  'GET /api/notifications': {
+    publishes: notificationInboxQueryV1.name,
+    awaits: [notificationInboxRepliedV1.name],
+  },
+  'POST /api/notifications/read': {
+    publishes: notificationMarkReadV1.name,
+    awaits: [notificationReadRepliedV1.name],
+  },
+  'GET /api/transfers': {
+    publishes: transactionListQueryV1.name,
+    awaits: [transactionListRepliedV1.name],
+  },
   'POST /api/transfers': { publishes: transferRequestedV1.name },
   'GET /api/transfers/{transactionId}': {
     publishes: transactionStatusRequestedV1.name,

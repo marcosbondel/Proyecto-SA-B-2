@@ -7,9 +7,14 @@ import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
 import { AuthenticateCustomerUseCase } from './application/authenticate-customer.use-case';
+import { ChangePasswordUseCase } from './application/change-password.use-case';
+import { ConfirmPasswordResetUseCase } from './application/confirm-password-reset.use-case';
+import { GetCustomerNamesUseCase } from './application/get-customer-names.use-case';
+import { GetCustomerStatsUseCase } from './application/get-customer-stats.use-case';
 import { GetCustomerUseCase } from './application/get-customer.use-case';
 import { GetPendingValidationUseCase } from './application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from './application/register-customer.use-case';
+import { RequestPasswordResetUseCase } from './application/request-password-reset.use-case';
 import { SetIdentityVerdictUseCase } from './application/set-identity-verdict.use-case';
 import { UpdateCustomerUseCase } from './application/update-customer.use-case';
 import { ValidateIdentityUseCase } from './application/validate-identity.use-case';
@@ -29,8 +34,13 @@ import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   AuthenticateCustomerHandler,
+  ChangePasswordHandler,
+  ConfirmPasswordResetHandler,
   RegisterCustomerHandler,
+  RequestPasswordResetHandler,
   GetCustomerHandler,
+  GetCustomerNamesHandler,
+  GetCustomerStatsHandler,
   GetPendingValidationHandler,
   SetIdentityVerdictHandler,
   UpdateCustomerHandler,
@@ -103,6 +113,8 @@ async function bootstrap(): Promise<void> {
       ),
       new UpdateCustomerHandler(new UpdateCustomerUseCase({ repository, publisher, clock })),
       new GetCustomerHandler(new GetCustomerUseCase({ repository, publisher })),
+      new GetCustomerNamesHandler(new GetCustomerNamesUseCase({ repository, publisher })),
+      new GetCustomerStatsHandler(new GetCustomerStatsUseCase({ repository, publisher })),
       new GetPendingValidationHandler(
         new GetPendingValidationUseCase({ repository, publisher }),
       ),
@@ -114,6 +126,15 @@ async function bootstrap(): Promise<void> {
       ),
       new VerifyEmailHandler(
         new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
+      ),
+      new ChangePasswordHandler(
+        new ChangePasswordUseCase({ repository, publisher, hasher, clock }),
+      ),
+      new RequestPasswordResetHandler(
+        new RequestPasswordResetUseCase({ repository, publisher, tokens, clock }),
+      ),
+      new ConfirmPasswordResetHandler(
+        new ConfirmPasswordResetUseCase({ repository, publisher, hasher, tokens, clock }),
       ),
       new ValidateIdentityHandler(
         new ValidateIdentityUseCase({ repository, publisher, documents, clock }),

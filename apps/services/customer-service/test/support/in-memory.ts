@@ -32,6 +32,11 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     string,
     { customerId: string; expiresAt: string; usedAt: string | null }
   >();
+  /** The reset links, in their own map for the reason they have their own table. */
+  public readonly resetTokens = new Map<
+    string,
+    { customerId: string; expiresAt: string; usedAt: string | null }
+  >();
   public readonly processed = new Map<string, ProcessedMessage>();
 
   public async registerCustomer(input: {
@@ -209,12 +214,126 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     });
   }
 
+  public async savePasswordResetToken(input: {
+    readonly customerId: string;
+    readonly tokenHash: string;
+    readonly expiresAt: string;
+  }): Promise<void> {
+    // Issuing invalidates the customer's live links, exactly as the real
+    // repository does inside one transaction. Without this the fake would let a
+    // test pass that the database would refuse.
+    for (const token of this.resetTokens.values()) {
+      if (token.customerId === input.customerId && token.usedAt === null) {
+        token.usedAt = input.expiresAt;
+      }
+    }
+
+    this.resetTokens.set(input.tokenHash, {
+      customerId: input.customerId,
+      expiresAt: input.expiresAt,
+      usedAt: null,
+    });
+
+    await Promise.resolve();
+  }
+
+  public async findByPasswordResetToken(
+    tokenHash: string,
+    now: Date,
+  ): Promise<
+    | { readonly outcome: 'FOUND'; readonly customer: Customer }
+    | { readonly outcome: 'EXPIRED' }
+    | { readonly outcome: 'UNKNOWN' }
+  > {
+    const token = this.resetTokens.get(tokenHash);
+
+    if (token === undefined || token.usedAt !== null) {
+      return await Promise.resolve({ outcome: 'UNKNOWN' });
+    }
+
+    if (new Date(token.expiresAt).getTime() <= now.getTime()) {
+      return await Promise.resolve({ outcome: 'EXPIRED' });
+    }
+
+    return await Promise.resolve({
+      outcome: 'FOUND',
+      customer: this.customers.get(token.customerId)!,
+    });
+  }
+
+  public async savePasswordReset(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly tokenHash: string;
+    readonly usedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void> {
+    const token = this.resetTokens.get(input.tokenHash);
+
+    if (token === undefined || token.usedAt !== null) {
+      throw new DomainRejection('RESET_TOKEN_INVALID');
+    }
+
+    // Every live link for this customer dies with the one being spent.
+    for (const other of this.resetTokens.values()) {
+      if (other.customerId === input.customerId && other.usedAt === null) {
+        other.usedAt = input.usedAt;
+      }
+    }
+
+    this.credentials.set(input.customerId, input.credentialHash);
+    await this.recordProcessed(input.idempotency);
+  }
+
+  public async savePasswordChange(input: {
+    readonly customerId: string;
+    readonly credentialHash: string;
+    readonly changedAt: string;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void> {
+    this.credentials.set(input.customerId, input.credentialHash);
+
+    // Outstanding reset links die with the change, as the real repository does.
+    for (const token of this.resetTokens.values()) {
+      if (token.customerId === input.customerId && token.usedAt === null) {
+        token.usedAt = input.changedAt;
+      }
+    }
+
+    await this.recordProcessed(input.idempotency);
+  }
+
+  public async findNames(
+    customerIds: readonly string[],
+  ): Promise<readonly { readonly customerId: string; readonly fullName: string }[]> {
+    return await Promise.resolve(
+      customerIds
+        .map((customerId) => this.customers.get(customerId))
+        .filter((customer): customer is Customer => customer !== undefined)
+        .map((customer) => ({ customerId: customer.customerId, fullName: customer.fullName })),
+    );
+  }
+
   public async isDocumentDigestTaken(sha256: string, customerId: string): Promise<boolean> {
     return await Promise.resolve(
       this.documents.some(
         (document) => document.sha256 === sha256 && document.customerId !== customerId,
       ),
     );
+  }
+
+  public async stats(): Promise<{
+    readonly registered: number;
+    readonly pendingValidation: number;
+    readonly activatedToday: number;
+  }> {
+    const all = [...this.customers.values()];
+
+    return await Promise.resolve({
+      registered: all.length,
+      pendingValidation: all.filter((customer) => customer.identityStatus === 'PENDING').length,
+      activatedToday: all.filter((customer) => customer.emailVerifiedAt !== null).length,
+    });
   }
 
   public async findProcessed(

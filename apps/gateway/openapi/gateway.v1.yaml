@@ -41,6 +41,77 @@ paths:
       x-bank-publishes: customer.authenticate.v1
       x-bank-awaits:
         - customer.authenticate.replied.v1
+  /api/auth/password-reset:
+    post:
+      description: Publica customer.password-reset.requested.v1 y devuelve 202 SIEMPRE, exista o no la
+        dirección. Responder distinto revelaría qué correos están registrados.
+      operationId: AuthController_requestPasswordReset
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestPasswordResetDto"
+      responses:
+        "202":
+          description: ""
+      summary: Solicita un enlace para restablecer la contraseña
+      tags:
+        - auth
+      x-bank-publishes: customer.password-reset.requested.v1
+  /api/auth/password-reset/confirm:
+    post:
+      description: Publica customer.password-reset.confirm.v1 y espera el evento correlacionado hasta
+        cinco segundos. Enlace inválido, ya usado y vencido producen el MISMO rechazo.
+      operationId: AuthController_confirmPasswordReset
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmPasswordResetDto"
+      responses:
+        "200":
+          description: ""
+      summary: Restablece la contraseña con el enlace del correo
+      tags:
+        - auth
+      x-bank-publishes: customer.password-reset.confirm.v1
+      x-bank-awaits:
+        - customer.password-reset.completed.v1
+        - customer.password-reset.rejected.v1
+  /api/customers/{customerId}/password:
+    post:
+      description: "Publica customer.change-password.v1 y espera el evento correlacionado. Requiere la
+        contraseña actual: la sesión no basta. NADIE puede cambiar la de otra persona,
+        administradores incluidos — para eso está la recuperación por correo."
+      operationId: CustomersController_changePassword
+      parameters:
+        - name: customerId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordDto"
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Cambia la contraseña de la propia cuenta
+      tags:
+        - customers
+      x-bank-publishes: customer.change-password.v1
+      x-bank-awaits:
+        - customer.password-changed.v1
+        - customer.password-change.rejected.v1
   /api/customers/verify-email:
     get:
       description: Devuelve un veredicto en la misma respuesta, esperando el evento correlacionado hasta
@@ -160,6 +231,53 @@ paths:
       tags:
         - customers
       x-bank-publishes: customer.set-identity-verdict.v1
+  /api/accounts/billers:
+    get:
+      description: El catálogo de prestadores y la cuenta recaudadora de cada uno. Un pago de servicio es
+        una transferencia a esa cuenta, así que no hay un tipo de movimiento aparte.
+      operationId: AccountsController_billers
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista los servicios que se pueden pagar
+      tags:
+        - accounts
+      x-bank-publishes: account.billers.query.v1
+      x-bank-awaits:
+        - account.billers.replied.v1
+  /api/accounts/{accountId}/deposit:
+    post:
+      description: "Solo CAJERO_RECEPTOR o ADMINISTRADOR. Devuelve 200 con el saldo resultante: es la
+        única ruta de dinero que responde de forma síncrona, porque no hay Saga que esperar. Un
+        depósito en una cuenta inactiva la reactiva (A-3) en lugar de ser rechazado."
+      operationId: AccountsController_deposit
+      parameters:
+        - name: accountId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositDto"
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Registra un depósito en ventanilla
+      tags:
+        - accounts
+      x-bank-publishes: account.deposit.v1
+      x-bank-awaits:
+        - account.deposited.v1
+        - account.deposit.rejected.v1
   /api/accounts:
     post:
       description: Devuelve 202 y un accountId. La cuenta todavía no existe.
@@ -265,6 +383,23 @@ paths:
         - accounts
       x-bank-publishes: account.set-status.v1
   /api/transfers:
+    get:
+      description: "Los filtros son una PETICIÓN, no un permiso: Transaction Service los cruza con el
+        alcance que deriva de la identidad del sobre. Un CLIENTE que nombre el customerId de otro
+        recibe una lista vacía, nunca un 403."
+      operationId: TransfersController_list
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista transferencias
+      tags:
+        - transfers
+      x-bank-publishes: transaction.list.query.v1
+      x-bank-awaits:
+        - transaction.list.replied.v1
     post:
       description: "paymentScenario es opcional y solo de demostración: el Gateway lo valida y lo
         traslada, y nunca actúa sobre él."
@@ -381,6 +516,70 @@ paths:
       x-bank-publishes: notification.list.query.v1
       x-bank-awaits:
         - notification.list.replied.v1
+  /api/notifications:
+    get:
+      description: "El alcance sale del token y la consulta no lleva customerId: no hay forma de apuntarla
+        al buzón de otra persona. Es una pregunta distinta de /api/audit/notifications, que es la
+        consola de staff y sí lleva el destinatario simulado de cada envío."
+      operationId: NotificationsController_inbox
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista las notificaciones del propio cliente
+      tags:
+        - notifications
+      x-bank-publishes: notification.inbox.query.v1
+      x-bank-awaits:
+        - notification.inbox.replied.v1
+  /api/notifications/read:
+    post:
+      description: "Sin notificationIds marca todas. El alcance sale del token: un id de otra persona no
+        coincide con ninguna fila y no cambia nada, en lugar de producir un rechazo que confirmaría
+        que ese id existe."
+      operationId: NotificationsController_markRead
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkNotificationsReadDto"
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Marca notificaciones como leídas
+      tags:
+        - notifications
+      x-bank-publishes: notification.mark-read.v1
+      x-bank-awaits:
+        - notification.read.replied.v1
+  /api/dashboard:
+    get:
+      description: "Pregunta a los cinco servicios y devuelve lo que cada uno respondió. No calcula nada:
+        cada número lo contó el servicio dueño de la tabla, que es el único que puede. Una sección
+        que no llegó viene en null y deja el tile vacío en lugar de romper la pantalla."
+      operationId: DashboardController_read
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Compone los contadores de los tableros por rol
+      tags:
+        - dashboard
+      x-bank-publishes: customer.stats.query.v1
+      x-bank-awaits:
+        - customer.stats.replied.v1
+        - account.stats.replied.v1
+        - transaction.stats.replied.v1
+        - payment.stats.replied.v1
+        - audit.stats.replied.v1
 info:
   title: Bank USAC — API Gateway
   description: The only external entry point of the system (constitution V). It validates shape,
@@ -400,6 +599,15 @@ components:
     LoginDto:
       type: object
       properties: {}
+    RequestPasswordResetDto:
+      type: object
+      properties: {}
+    ConfirmPasswordResetDto:
+      type: object
+      properties: {}
+    ChangePasswordDto:
+      type: object
+      properties: {}
     RegisterCustomerDto:
       type: object
       properties: {}
@@ -409,6 +617,9 @@ components:
     SetIdentityVerdictDto:
       type: object
       properties: {}
+    DepositDto:
+      type: object
+      properties: {}
     OpenAccountDto:
       type: object
       properties: {}
@@ -416,5 +627,8 @@ components:
       type: object
       properties: {}
     TransferDto:
+      type: object
+      properties: {}
+    MarkNotificationsReadDto:
       type: object
       properties: {}

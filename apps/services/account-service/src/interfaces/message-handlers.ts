@@ -2,6 +2,9 @@ import {
   accountBalanceQueryV1,
   accountCreateV1,
   accountCreditRequestedV1,
+  accountBillersQueryV1,
+  accountStatsQueryV1,
+  accountDepositV1,
   accountDebitCompensationRequestedV1,
   accountDebitRequestedV1,
   accountListQueryV1,
@@ -13,6 +16,9 @@ import type { MessageEnvelope } from '@bank/contracts';
 import type { CompensateDebitUseCase } from '../application/compensate-debit.use-case';
 import type { CreateAccountUseCase } from '../application/create-account.use-case';
 import type { CreditAccountUseCase } from '../application/credit-account.use-case';
+import type { DepositUseCase } from '../application/deposit.use-case';
+import type { GetAccountStatsUseCase } from '../application/get-account-stats.use-case';
+import type { ListBillersUseCase } from '../application/list-billers.use-case';
 import type { DebitAccountUseCase } from '../application/debit-account.use-case';
 import type { GetBalanceUseCase } from '../application/get-balance.use-case';
 import type { GetOperationsUseCase } from '../application/get-operations.use-case';
@@ -190,6 +196,86 @@ export class CreditAccountHandler extends ContractHandler<
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.idempotencyKey);
+  }
+}
+
+/**
+ * A deposit at a window.
+ *
+ * The only movement handler that reads the **identity** off the envelope: the
+ * Saga's debits and credits are ordered by Transaction Service and carry
+ * whoever originated the transfer, while this one mints money into an account
+ * from outside the system and the service that moves the balance has to be sure
+ * a teller asked for it.
+ */
+export class DepositHandler extends ContractHandler<
+  ReturnType<typeof accountDepositV1.schema.parse>
+> {
+  public readonly messageType = accountDepositV1.name;
+  readonly #useCase: DepositUseCase;
+
+  constructor(useCase: DepositUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return accountDepositV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof accountDepositV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);
+  }
+}
+
+/**
+ * The biller catalogue. The only query in this service with no arguments and no
+ * scope: the list of services the bank collects for is the same for everybody.
+ */
+export class ListBillersHandler extends ContractHandler<
+  ReturnType<typeof accountBillersQueryV1.schema.parse>
+> {
+  public readonly messageType = accountBillersQueryV1.name;
+  readonly #useCase: ListBillersUseCase;
+
+  constructor(useCase: ListBillersUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return accountBillersQueryV1.schema.parse(payload);
+  }
+
+  protected async run(): Promise<void> {
+    await this.#useCase.execute();
+  }
+}
+
+/** The dashboard's counts. Staff only; zeroes rather than a refusal otherwise. */
+export class GetAccountStatsHandler extends ContractHandler<
+  ReturnType<typeof accountStatsQueryV1.schema.parse>
+> {
+  public readonly messageType = accountStatsQueryV1.name;
+  readonly #useCase: GetAccountStatsUseCase;
+
+  constructor(useCase: GetAccountStatsUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return accountStatsQueryV1.schema.parse(payload);
+  }
+
+  protected async run(
+    _payload: ReturnType<typeof accountStatsQueryV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(envelope.identity);
   }
 }
 

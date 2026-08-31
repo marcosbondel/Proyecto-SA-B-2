@@ -3,9 +3,16 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CommandsUseCase } from '../application/routes/commands.use-case';
+import { DepositUseCase } from '../application/routes/deposit.use-case';
+import type { DepositResult } from '../application/routes/deposit.use-case';
 import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { GatewayError } from '../application/errors/gateway-error';
-import { ListAccountsQueryDto, OpenAccountDto, SetAccountStatusDto } from './dto/account.dto';
+import {
+  DepositDto,
+  ListAccountsQueryDto,
+  OpenAccountDto,
+  SetAccountStatusDto,
+} from './dto/account.dto';
 import { Roles } from './guards/route-access.decorator';
 import type { GatewayRequest } from './http-request';
 import { actorOf } from './actor';
@@ -17,13 +24,86 @@ import { validated } from './validation';
 export class AccountsController {
   readonly #commands: CommandsUseCase;
   readonly #queries: QueriesUseCase;
+  readonly #deposit: DepositUseCase;
 
   constructor(
     @Inject(CommandsUseCase) commands: CommandsUseCase,
     @Inject(QueriesUseCase) queries: QueriesUseCase,
+    @Inject(DepositUseCase) deposit: DepositUseCase,
   ) {
     this.#commands = commands;
     this.#queries = queries;
+    this.#deposit = deposit;
+  }
+
+  /**
+   * `G-01`'s dropdown: which services this bank collects for, and where each
+   * one's collection account is.
+   *
+   * Open to every signed-in role, including `CLIENTE`, because paying a bill is
+   * what a client does. It carries no balance — what a biller has collected is
+   * none of a paying customer's business.
+   *
+   * It lives under `/api/accounts` rather than at a `/api/billers` of its own
+   * because a biller *is* an account, held by Account Service, and a second
+   * top-level path would suggest a second owner.
+   */
+  @ApiOperation({
+    summary: 'Lista los servicios que se pueden pagar',
+    description:
+      'El catálogo de prestadores y la cuenta recaudadora de cada uno. Un pago de servicio ' +
+      'es una transferencia a esa cuenta, así que no hay un tipo de movimiento aparte.',
+  })
+  @Get('billers')
+  public async billers(@Req() request: GatewayRequest): Promise<Record<string, unknown>> {
+    return await this.#queries.billers({
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+  }
+
+  /**
+   * `A-05` — the deposit window. `200`, not `202`, and it is the only
+   * money-moving route in the system that answers synchronously.
+   *
+   * A transfer is `202` because the Saga has four more steps to take and nobody
+   * can promise the outcome; a deposit is one credit to one account with no
+   * counterparty, so the answer exists the moment the movement commits. It has
+   * to: a teller is standing in front of somebody holding cash.
+   *
+   * Restricted to staff **here and in Account Service**, and the duplication is
+   * deliberate rather than an oversight. This route mints money into an account
+   * from outside the system, so the service that moves the balance must be sure
+   * who asked — a `@Roles` here alone would be an authorization rule enforced
+   * only by the component that has no ledger.
+   */
+  @ApiOperation({
+    summary: 'Registra un depósito en ventanilla',
+    description:
+      'Solo CAJERO_RECEPTOR o ADMINISTRADOR. Devuelve 200 con el saldo resultante: es la ' +
+      'única ruta de dinero que responde de forma síncrona, porque no hay Saga que esperar. ' +
+      'Un depósito en una cuenta inactiva la reactiva (A-3) en lugar de ser rechazado.',
+  })
+  @Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')
+  @Post(':accountId/deposit')
+  @HttpCode(200)
+  public async deposit(
+    @Param('accountId') accountId: string,
+    @Body(validated(DepositDto)) body: DepositDto,
+    @Req() request: GatewayRequest,
+  ): Promise<DepositResult> {
+    if (!UUID_V4.test(accountId)) {
+      throw GatewayError.validation('accountId debe ser un UUID v4', 'accountId');
+    }
+
+    return await this.#deposit.execute({
+      accountId,
+      amount: body.amount,
+      ...(body.description === undefined ? {} : { description: body.description }),
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+      idempotencyKey: request.idempotencyKey,
+    });
   }
 
   /**
