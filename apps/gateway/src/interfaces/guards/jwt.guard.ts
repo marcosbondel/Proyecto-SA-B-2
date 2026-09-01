@@ -66,7 +66,18 @@ export class JwtGuard implements CanActivate {
   }
 }
 
-function bearerTokenOf(request: GatewayRequest): string | undefined {
+/**
+ * The bearer token out of `Authorization`, or `undefined` when the header is
+ * absent or not shaped as one.
+ *
+ * Exported because `#requireAdministrator` in `CustomersController` needs the
+ * same parse: registration is `@Public()`, so this guard never runs for it,
+ * and that route still has to know whether the caller is an administrator
+ * before it lets them mint one. Two copies of this parsing at the point that
+ * decides who may create staff was the risk; one function called from both
+ * places is not.
+ */
+export function bearerTokenOf(request: GatewayRequest): string | undefined {
   const header = request.headers.authorization;
   if (typeof header !== 'string') {
     return undefined;
