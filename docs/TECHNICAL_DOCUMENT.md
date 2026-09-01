@@ -289,6 +289,20 @@ Las bases de datos, el broker y el almacén de objetos corren fuera del clúster
 propósito: es el principio III de la constitución del proyecto, y es lo que
 dibuja el [diagrama de despliegue](architecture/diagrams/05-uml-despliegue.puml).
 
+El chart **se instaló en un clúster kind real** (v0.33.0) el 2026-08-28, y no
+solo pasó `helm lint` y `helm template`: los siete pods llegaron a `1/1 Ready`
+contra el PostgreSQL, el RabbitMQ y el MinIO de fuera del clúster, el Gateway
+respondió por `port-forward` y una transferencia recorrió la Saga hasta un
+estado terminal. Esa instalación encontró dos defectos que un chequeo de
+renderizado no podía ver —un arreglo asociativo de bash 4 que rompía en el bash
+3.2 de macOS, y unos valores por defecto de usuario y base de datos que
+apuntaban cada pod al rol equivocado—, que es exactamente la razón por la que
+`helm template` no basta. Dos matices honestos acompañan a ese párrafo: la
+transferencia terminó en `FAILED` por `DEBIT_REJECTED` sobre una cuenta en cero
+—la forma de manejo de fallos, no la que se completa—, y **de esa ejecución no
+quedó evidencia capturada en el repositorio**: `specs/008-audit-remediation/quickstart.md`
+guarda lo que se esperaba, no lo que salió.
+
 ---
 
 ## 10. Frontend
@@ -319,17 +333,36 @@ el [manual](manual/README.md#9-lo-que-el-sistema-todavía-no-puede-hacer).
 
 Los huecos que más se notan:
 
-- **No existe ninguna operación que ingrese dinero.** Una cuenta abre en Q 0.00
-  y solo crece recibiendo transferencias.
-- **El Gateway no expone rutas para leer ni listar clientes**, así que la ficha
-  de cliente permite modificar datos pero no mostrarlos, y no hay búsqueda.
-- **La validación de identidad no puede ejecutarse**: falta la ruta que publique
-  el veredicto del cajero y la que lea la foto del documento.
+- **El dinero entra por ventanilla, pero no sale.** `POST /api/accounts/:accountId/deposit`
+  registra un depósito y la pantalla `/cuentas/deposito` lo usa; es la única ruta
+  de dinero que responde `200` en lugar de `202`, porque un depósito es un solo
+  abono sin contraparte y no hay Saga que esperar. **La operación simétrica no
+  existe**: nadie puede retirar efectivo, así que el saldo de una cuenta solo
+  baja transfiriendo. Es la mitad todavía abierta de la deuda TD-018.
+- **No hay listado ni búsqueda de clientes.** `GET /api/customers/:customerId`
+  lee una ficha —y por eso el formulario de actualización se rellena con datos
+  reales y la pantalla muestra el estado de identidad verdadero—, pero ninguna
+  ruta devuelve *varios* clientes. `/clientes` es por eso un conjunto de puertas
+  en lugar de una tabla: para abrir una ficha hay que conocer su UUID. La única
+  lista de personas que existe es la cola de validación pendiente, que responde
+  a otra pregunta.
+- **La foto del documento no puede mostrarse al cajero.** La validación de
+  identidad sí se ejecuta de principio a fin:
+  `GET /api/customers/pending-validation` arma la cola del cajero y
+  `POST /api/customers/:customerId/identity-verdict` publica su veredicto
+  manual. Lo que falta es la imagen. El Gateway la deposita en el almacenamiento
+  de objetos durante el registro y por el broker viaja solo su referencia
+  ([ADR-012](architecture/adr/ADR-012-object-storage.md)); ninguna ruta la lee de
+  vuelta, así que `/clientes/validaciones/[id]` contrasta los datos declarados
+  contra un recuadro vacío que explica por qué está vacío.
 - **Solo un administrador puede confirmar el desenlace** de un registro o de una
-  apertura de cuenta, porque el rastro de auditoría está restringido a ese rol.
+  apertura de cuenta, porque `GET /api/audit` —la vía por la que la interfaz
+  averigua cómo terminó cualquier comando asíncrono— está restringida a ese rol
+  por la decisión D-06. La deuda TD-021 explica por qué relajar esa restricción
+  sería una posición peor que mantenerla.
 - **No hay forma de crear el primer administrador desde la aplicación**: el
-  registro público siempre crea un cliente, y crear otros roles exige una sesión
-  de administrador.
+  registro público solo acepta el rol `CLIENTE`, y pedir cualquier otro exige
+  presentar una sesión de administrador que todavía no existe.
 
 ---
 

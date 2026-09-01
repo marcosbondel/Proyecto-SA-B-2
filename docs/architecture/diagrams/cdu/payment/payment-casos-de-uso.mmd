@@ -1,5 +1,6 @@
 flowchart LR
     client["👤 Cliente"]
+    teller["👤 Cajero Receptor"]
     admin["👤 Administrador"]
     transactionService["⚙ Transaction Service"]
     provider["🌐 Proveedor de pagos"]
@@ -16,6 +17,7 @@ flowchart LR
 
     client --- process
     client --- history
+    teller --- history
     admin --- history
     transactionService --- process
     provider --- external
@@ -28,5 +30,8 @@ flowchart LR
 
     note["Los reintentos son internos a Payment Service y no sustituyen la Saga"]:::note
     retry -.-> note
+
+    historyNote["La lista de monitoreo es solo de personal; un cliente consulta un pago por su id y ve su historial dentro de la transferencia que lo originó"]:::note
+    history -.-> historyNote
 
     classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

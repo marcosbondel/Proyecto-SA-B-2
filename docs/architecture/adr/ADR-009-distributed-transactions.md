@@ -1,6 +1,6 @@
 # ADR-009: Implement the transfer as a Saga by choreography
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-15
 - **Deciders**: Bank USAC team (approved in the `feature/T-03` pull request)
 - **Assignment reference**: "Patrones esperados", page 7; §6 step 6, page 17; §8.1 requirements,

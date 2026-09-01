@@ -60,15 +60,24 @@ sequenceDiagram
 
             %% Paso 4
             Broker->>Pay: Entregar payment.requested (correlationId)<br/>[AMQP 0-9-1 · entrega de comando · asíncrono]
-            loop reintentos — cuenta el número de intento (attempt)
-                Note over Pay: Procesando el pago
+            Note over Pay: Registra el pago en PENDING y ejecuta el intento 1. El momento del siguiente intento<br/>se guarda como columna (next_attempt_at, con índice parcial): NO es un temporizador en memoria
+
+            %% Paso 4b: la escalera de reintentos, un intento por barrido
+            loop por cada intento fallido transitorio que aún tenga peldaño (1 s / 5 s / 30 s)
+                Pay->>Broker: Publicar evento "intento de pago fallido" — payment.attempt.failed (attempt, errorType, willRetry = true, nextAttemptAt)<br/>[AMQP 0-9-1 · evento · asíncrono]
+                Broker->>Txn: Entregar payment.attempt.failed (correlationId)<br/>[AMQP 0-9-1 · entrega de evento · asíncrono]
+                Note over Txn: Evento observable, NO terminal: la Saga sigue en PAYMENT_PENDING
+                Note over Pay: el siguiente intento no ocurre dentro de esta entrega: vence en next_attempt_at
+                Pay->>Pay: Barrer los pagos vencidos — SELECT ... WHERE next_attempt_at <= now() ... FOR UPDATE SKIP LOCKED<br/>[RetryScheduler · barrido periódico sobre la propia base · asíncrono]
+                Note over Pay: El vencimiento es una columna, así que un pod reprogramado no olvida el reintento
             end
-            alt reintentos agotados — dispara compensación
-                Pay->>Broker: Publicar evento "pago fallido" — payment.failed (failureReason, ack)<br/>[AMQP 0-9-1 · evento · asíncrono]
+            alt escalera agotada o pago rechazado — dispara compensación
+                Pay->>Broker: Publicar evento "intento de pago fallido" — payment.attempt.failed (attempt, errorType, willRetry = false)<br/>[AMQP 0-9-1 · evento · asíncrono]
+                Pay->>Broker: Publicar evento "pago fallido" — payment.failed (failureReason, ack)<br/>[AMQP 0-9-1 · evento terminal, el único que cierra la Saga · asíncrono]
                 Broker->>Txn: Entregar payment.failed (correlationId)<br/>[AMQP 0-9-1 · entrega de evento · asíncrono]
                 Note over Txn: Débito ya aplicado -> requiere compensación (T-7)
-            else pago exitoso
-                Pay->>Broker: Publicar evento "pago exitoso" — payment.succeeded (ack)<br/>[AMQP 0-9-1 · evento · asíncrono]
+            else algún intento tiene éxito
+                Pay->>Broker: Publicar evento "pago exitoso" — payment.succeeded (attempt, ack)<br/>[AMQP 0-9-1 · evento terminal, el único que cierra la Saga · asíncrono]
 
                 %% Paso 5
                 Broker->>Txn: Entregar payment.succeeded (correlationId)<br/>[AMQP 0-9-1 · entrega de evento · asíncrono]
@@ -110,4 +119,4 @@ sequenceDiagram
 
     Note over Usr,Gateway: El estado real se consulta después por transactionId: GET /api/transfers/:id llega al<br/>Transaction Service como request/reply sobre AMQP, con un techo de 5 s.
     Note over Txn,Acc: Transaction Service NUNCA lee el balance: ordena el débito/crédito y espera el evento (bounded-contexts.md)
-    Note over Txn: Evento repetido se descarta por eventId (T-5), transición fuera de orden se descarta como ILLEGAL_TRANSITION (T-6)
+    Note over Txn: Evento repetido se descarta por el messageId del envelope (T-5), transición fuera de orden se descarta como ILLEGAL_TRANSITION (T-6)

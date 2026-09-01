@@ -1,0 +1,8 @@
+flowchart TD
+    actor["Visitante: escribir el correo en /recuperar"] --> gateway["Gateway: publicar customer.password-reset.requested y responder 202"]
+    gateway --> lookup["Customer Service: buscar el correo normalizado"]
+    lookup --> exists{"¿Existe ese correo?"}
+    exists -->|No| ignored["Registrar IGNORED sin correo ni customerId y no publicar nada"]
+    exists -->|Sí| issue["Emitir token y guardar solo su digest con vencimiento"]
+    issue --> publish["Publicar customer.password-reset.issued"]
+    publish --> deliver["Notification & Audit: entregar el enlace al correo"]

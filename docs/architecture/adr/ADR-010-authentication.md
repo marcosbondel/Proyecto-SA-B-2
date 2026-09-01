@@ -1,6 +1,6 @@
 # ADR-010: Issue and validate the session JWT in the Gateway
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-15
 - **Deciders**: Bank USAC team (decided 2026-08-14; approved in the `feature/T-03` pull request)
 - **Assignment reference**: §4.1 "Customer Service", page 5 (revision 2026-08-13)

@@ -56,8 +56,8 @@ Rel(rabbitmq, transaction, "Account -> Transaction: account.debited, account.deb
 
 Rel(transaction, rabbitmq, "Publica payment.requested | AMQP | comando | correlationId")
 Rel(rabbitmq, payment, "Transaction -> Payment: payment.requested | AMQP | comando | correlationId")
-Rel(payment, rabbitmq, "Publica payment.succeeded, payment.failed | AMQP | eventos | correlationId")
-Rel(rabbitmq, transaction, "Payment -> Transaction: payment.succeeded, payment.failed | AMQP | eventos | correlationId")
+Rel(payment, rabbitmq, "Publica payment.attempt.failed (uno por intento fallido, no terminal), payment.succeeded, payment.failed | AMQP | eventos | correlationId")
+Rel(rabbitmq, transaction, "Payment -> Transaction: payment.attempt.failed (uno por intento fallido, no terminal), payment.succeeded, payment.failed | AMQP | eventos | correlationId")
 
 Rel(customer, rabbitmq, "Publica customer.registered, activation.requested, email.verified, identity.* y login.* | AMQP | eventos | correlationId")
 Rel(account, rabbitmq, "Publica account.* | AMQP | eventos | correlationId")

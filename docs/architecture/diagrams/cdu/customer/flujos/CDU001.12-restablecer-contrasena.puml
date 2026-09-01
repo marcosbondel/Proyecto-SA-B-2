@@ -1,0 +1,37 @@
+@startuml CDU001.12-restablecer-contrasena
+title CDU001.12 - Restablecer contraseña con el enlace
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Visitante|
+start
+:Abrir el enlace y escribir la contraseña nueva;
+|Gateway|
+:Publicar customer.password-reset.confirm;
+:Esperar el evento correlacionado hasta cinco segundos;
+|Customer Service|
+:Buscar el token por su digest;
+if (¿Token válido, sin usar y vigente?) then (No)
+    :Rechazar con el MISMO motivo en los tres casos;
+    :Publicar customer.password-reset.rejected;
+else (Sí)
+    :Hashear la contraseña con el hasher del registro;
+    :Quemar todos los tokens vivos del cliente;
+    :Publicar customer.password-reset.completed;
+    |Notification & Audit|
+    :Registrar el restablecimiento;
+endif
+stop
+
+legend right
+    Inventado, ya usado y vencido producen un rechazo idéntico:
+    distinguirlos diría si el enlace existió alguna vez.
+    Se queman todos los tokens vivos, no solo el gastado: quien
+    restablece puede estar haciéndolo porque su buzón no es solo suyo.
+endlegend
+@enduml

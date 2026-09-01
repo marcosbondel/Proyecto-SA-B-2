@@ -1,6 +1,6 @@
 # ADR-003: Communicate between services with events and asynchronous request/reply only
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-15
 - **Deciders**: Bank USAC team (approved in the `feature/T-03` pull request)
 - **Assignment reference**: §4.2 "Alcance del proyecto", page 8; §4.2 "Restricciones
