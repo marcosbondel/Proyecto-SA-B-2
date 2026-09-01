@@ -40,6 +40,13 @@ const props = defineProps<{
   payment: PaymentOutcome | null;
   /** Where to read the full evidence. Omitted where nobody may follow it. */
   detailTo?: string | null;
+  /**
+   * Whether this session may query `GET /api/audit` (D-06: `ADMINISTRADOR`
+   * only). This panel sits inside a transfer every role can open, so it is the
+   * caller's job to say — the same way `detailTo` already does — rather than
+   * this component guessing at a session it has no other reason to know about.
+   */
+  mayQueryAudit?: boolean;
 }>();
 
 /**
@@ -67,7 +74,7 @@ const presentation = computed(() =>
  * one. It is more specific than the verdict's own sentence, so it wins the
  * position under the headline; the verdict's sentence stays as the fallback.
  */
-const reason = computed(() => explainReason(props.payment?.reason ?? null));
+const reason = computed(() => explainReason(props.payment?.reason ?? null, props.mayQueryAudit ?? false));
 </script>
 
 <template>
@@ -94,7 +101,7 @@ const reason = computed(() => explainReason(props.payment?.reason ?? null));
 
     <dl class="mt-4 flex flex-col">
       <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-2.5">
-        <dt class="text-[13px] text-[#75767F]">paymentId</dt>
+        <dt class="text-[13px] text-[#75767F]">Número del pago</dt>
         <dd
           class="break-all text-right font-mono text-[12px] text-[#5A5B63]"
           style="font-variant-numeric: tabular-nums lining-nums"

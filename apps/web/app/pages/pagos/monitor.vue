@@ -136,7 +136,7 @@ useHead({ title: 'Monitoreo de pagos · bonking' });
       <div>
         <h1 class="text-[32px] font-bold leading-10 tracking-tight">Monitoreo de pagos</h1>
         <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-          Payment Service · el paso de pago de cada transferencia y sus reintentos.
+          El paso de pago de cada transferencia y sus reintentos.
         </p>
       </div>
       <UButton variant="outline" color="neutral" :disabled="state === 'LOADING'" @click="load">
@@ -172,7 +172,7 @@ useHead({ title: 'Monitoreo de pagos · bonking' });
           <template v-if="failures.transient > 0">
             {{ failures.transient }} por agotar los reintentos.
           </template>
-          En ambos casos el débito ya fue compensado por la Saga.
+          En ambos casos el dinero ya fue devuelto a la cuenta de origen.
         </p>
       </div>
     </div>
@@ -180,7 +180,7 @@ useHead({ title: 'Monitoreo de pagos · bonking' });
     <div class="flex flex-wrap items-center gap-2">
       <UInput
         v-model="search"
-        placeholder="Buscar por paymentId o transactionId"
+        placeholder="Buscar por número de pago o de transferencia"
         class="w-[320px] max-w-full"
         style="font-variant-numeric: tabular-nums lining-nums"
         data-testid="payment-search"

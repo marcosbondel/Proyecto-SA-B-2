@@ -9,6 +9,7 @@
     "preview": "nuxt preview",
     "lint": "eslint .",
     "test": "node --test \"test/**/*.test.mjs\"",
+    "typecheck": "nuxt typecheck",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
@@ -21,5 +22,8 @@
     "typescript": "^6.0.3",
     "vue": "^3.5.41",
     "vue-router": "^5.2.0"
+  },
+  "devDependencies": {
+    "vue-tsc": "^3.3.11"
   }
 }

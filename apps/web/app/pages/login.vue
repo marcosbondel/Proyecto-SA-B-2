@@ -22,6 +22,22 @@ const pending = ref(false);
 const failure = ref<string | null>(null);
 const correlationId = ref<string | null>(null);
 
+/**
+ * Whether this visit followed a session ending on its own, rather than a
+ * plain visit to `/login` — with or without a `?next=`, which by itself means
+ * nothing: a shared link or a stale bookmark carries one too, and nobody's
+ * session expired to produce it. `useGatewayApi` sets `expired=1` on the one
+ * redirect that actually means "your session just ended", so this reads that
+ * signal rather than inferring it from `next`.
+ *
+ * Read once, into a plain value rather than a computed over `route.query`: a
+ * normal sign-in from this same form navigates away and never revisits this
+ * component, so there is no later moment at which the notice needs to
+ * disappear on its own — but a second failed attempt on this page must not
+ * lose it either, which a `ref` initialised once and left alone guarantees.
+ */
+const sessionExpired = ref(route.query.expired === '1');
+
 async function submit(): Promise<void> {
   pending.value = true;
   failure.value = null;
@@ -58,6 +74,16 @@ async function submit(): Promise<void> {
       <h1 class="text-[20px] font-semibold leading-7">Iniciar sesión</h1>
       <p class="mt-1 text-[14px] text-[#5A5B63]">Accede con el correo con el que te registraste.</p>
     </template>
+
+    <UAlert
+      v-if="sessionExpired"
+      class="mb-4"
+      color="neutral"
+      variant="subtle"
+      title="Tu sesión terminó por seguridad"
+      description="Vuelve a entrar y te llevamos donde estabas."
+      data-testid="session-expired-notice"
+    />
 
     <form class="flex flex-col gap-4" @submit.prevent="submit">
       <UFormField label="Correo" name="email">

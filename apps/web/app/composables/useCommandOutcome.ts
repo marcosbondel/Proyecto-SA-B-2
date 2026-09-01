@@ -17,6 +17,9 @@ export interface AcceptedCommand {
 /** Reads a verdict out of the audit trail, or `null` to keep waiting. */
 export type AuditVerdict = (events: readonly AuditEvent[]) => CommandOutcome | null;
 
+/** Reads *why* a rejection happened, or `null` when there is nothing module-specific to say. */
+export type RejectionExplainer = (events: readonly AuditEvent[]) => string | null;
+
 /**
  * The distance between `202 Accepted` and knowing what happened.
  *
@@ -39,8 +42,13 @@ export type AuditVerdict = (events: readonly AuditEvent[]) => CommandOutcome | n
  * success*, so that is the parameter. Everything else — the polling cadence,
  * the ceiling, the role check, the cleanup — is identical, and was duplicated
  * once before this was extracted.
+ *
+ * `explainRejection` is the one other thing a module may supply: what a
+ * `BUSINESS_REJECTION` was actually *about*, read from the same trail. Most
+ * callers have nothing more specific to say than the trail's bare presence, so
+ * it is optional and the fallback below covers them.
  */
-export function useCommandOutcome(verdict: AuditVerdict) {
+export function useCommandOutcome(verdict: AuditVerdict, explainRejection?: RejectionExplainer) {
   const api = useGatewayApi();
   const { role } = useSession();
 
@@ -129,11 +137,22 @@ export function useCommandOutcome(verdict: AuditVerdict) {
 
       if (outcome === 'BUSINESS_REJECTION') {
         state.value = 'BUSINESS_REJECTION';
-        // The trail carries metadata, not payloads, so there is no reason text
-        // to show. Saying so beats inventing one.
+        /**
+         * `explainRejection` reads the reason when the module has one to give
+         * (e.g. a duplicated email in Clientes). When it does not — or the
+         * trail did not carry one — the fallback below still must not send a
+         * `CLIENTE` toward a route only `ADMINISTRADOR` may open: this branch
+         * only runs once `canWatch` is already `true` (`run` gates
+         * `watchTrail` on it), but the advice has to stay correct even if that
+         * ever stops being the only session that reaches here.
+         */
         message.value =
-          'Un servicio rechazó la solicitud. Consulta el rastro de auditoría con el ' +
-          'identificador de correlación para ver el detalle.';
+          explainRejection?.(events) ??
+          (canWatch.value
+            ? 'Un servicio rechazó la solicitud. Consulta el rastro de auditoría con el ' +
+              'código de seguimiento para ver el detalle.'
+            : 'Un servicio rechazó la solicitud. Guarda el código de seguimiento y repórtalo ' +
+              'si necesitas más detalle.');
         stopWatching();
         return;
       }

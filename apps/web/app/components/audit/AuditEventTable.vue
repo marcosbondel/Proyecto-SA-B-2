@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { PROCESSING_STATUS_PRESENTATION, orderedTrail, tintFor } from '../../lib/audit';
+import {
+  PROCESSING_STATUS_PRESENTATION,
+  messageTypeLabel,
+  orderedTrail,
+  tintFor,
+} from '../../lib/audit';
 import type { AuditEventRow } from '../../lib/audit';
 import { formatDate } from '../../lib/money';
 
@@ -60,11 +65,18 @@ const TINT_CLASS = {
           >{{ formatDate(event.occurredAt) }}</td>
 
           <td class="border-t border-[#E9E9EC] py-3.5 pr-4">
+            <!--
+              The technical name is the record itself — an administrator
+              reading a trail needs the exact string a service published — so
+              it stays first and verbatim. The Spanish label underneath is what
+              makes it legible without asking the type to disappear.
+            -->
             <span
-              class="text-[13px] font-semibold"
+              class="block text-[13px] font-semibold"
               :class="TINT_CLASS[tintFor(event.messageType)]"
               style="font-variant-numeric: tabular-nums lining-nums"
             >{{ event.messageType }}</span>
+            <span class="mt-0.5 block text-[12px] text-[#5A5B63]">{{ messageTypeLabel(event.messageType) }}</span>
             <!--
               The causal link, not the causal *order*. A trail whose first
               message was published while this service was down has no complete

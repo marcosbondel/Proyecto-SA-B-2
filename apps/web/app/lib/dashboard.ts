@@ -103,7 +103,7 @@ export function alertsFrom(dashboard: Dashboard): readonly Alert[] {
       title: `${String(dashboard.transfers.inFlight)} transferencias en vuelo`,
       detail:
         'Aceptadas, debitando o esperando el pago. Las que ya pasaron el débito tienen dinero ' +
-        'fuera de toda cuenta hasta que la Saga termine.',
+        'fuera de toda cuenta hasta que la transferencia cierre.',
       to: '/transferencias/monitor',
     });
   }

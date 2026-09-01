@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { updatePayload, validateUpdate } from '../../lib/customer';
-import type { FieldErrors, UpdateFields } from '../../lib/customer';
+import { IDENTITY_PRESENTATION, updatePayload, validateUpdate } from '../../lib/customer';
+import type { FieldErrors, IdentityStatus, UpdateFields } from '../../lib/customer';
+import { labelForRole } from '../../lib/navigation';
+import type { Role } from '../../lib/navigation';
 
 /**
  * Changing what Customer Service holds about a person.
@@ -29,9 +31,14 @@ interface CurrentCustomer {
   readonly dateOfBirth: string;
   readonly address: string;
   readonly username: string;
-  readonly role: string;
+  /**
+   * The two closed sets, typed as such, because this card renders them through
+   * the project's own words — `labelForRole` and `IDENTITY_PRESENTATION` — and
+   * `string` would let a value neither of them has a label for reach a reader.
+   */
+  readonly role: Role;
   readonly status: string;
-  readonly identityStatus: string;
+  readonly identityStatus: IdentityStatus;
 }
 
 const current = ref<CurrentCustomer | null>(null);
@@ -91,7 +98,7 @@ async function submit(): Promise<void> {
       <h2 class="text-[20px] font-semibold leading-7">Datos personales</h2>
       <p class="mt-1 text-[13px] leading-5 text-[#5A5B63]">
         Escribe solo lo que quieras cambiar: un campo vacío se deja como está. El correo y el
-        username no se pueden modificar.
+        usuario no se pueden modificar.
       </p>
     </template>
 
@@ -101,17 +108,25 @@ async function submit(): Promise<void> {
       data-testid="customer-current"
     >
       <div><dt class="text-[#75767F]">Nombre</dt><dd class="font-medium">{{ current.fullName }}</dd></div>
-      <div><dt class="text-[#75767F]">Username</dt><dd class="font-medium">{{ current.username }}</dd></div>
+      <div><dt class="text-[#75767F]">Usuario</dt><dd class="font-medium">{{ current.username }}</dd></div>
       <div><dt class="text-[#75767F]">Correo</dt><dd class="font-medium">{{ current.email }}</dd></div>
       <div><dt class="text-[#75767F]">Documento</dt><dd class="font-medium">{{ current.identityDocument }}</dd></div>
       <div><dt class="text-[#75767F]">Nacimiento</dt><dd class="font-medium">{{ current.dateOfBirth }}</dd></div>
       <div><dt class="text-[#75767F]">Dirección</dt><dd class="font-medium">{{ current.address }}</dd></div>
-      <div><dt class="text-[#75767F]">Rol</dt><dd class="font-medium">{{ current.role }}</dd></div>
-      <div><dt class="text-[#75767F]">Identidad</dt><dd class="font-medium">{{ current.identityStatus }}</dd></div>
+      <!--
+        The words this project already has for these two, rather than the enum.
+        Two cards down the same screen writes "Pendiente de revisión"; printing
+        `PENDING` here made one page say it both ways.
+      -->
+      <div><dt class="text-[#75767F]">Rol</dt><dd class="font-medium">{{ labelForRole(current.role) }}</dd></div>
+      <div>
+        <dt class="text-[#75767F]">Identidad</dt>
+        <dd class="font-medium">{{ IDENTITY_PRESENTATION[current.identityStatus].label }}</dd>
+      </div>
     </dl>
 
     <p v-else-if="loadError" class="mb-4 text-[13px] text-[#75767F]">
-      No se pudo cargar la ficha actual ({{ loadError }}). Aun así puedes escribir los cambios.
+      No pudimos cargar tus datos actuales. Aun así puedes escribir los cambios.
     </p>
 
     <form class="flex flex-col gap-4" @submit.prevent="submit">
@@ -141,8 +156,8 @@ async function submit(): Promise<void> {
       />
 
       <p v-if="outcomeState === 'PENDING' && !canWatch" class="text-[12px] leading-[18px] text-[#75767F]">
-        Esta sesión no puede consultar el rastro de auditoría (decisión D-06), así que el cambio
-        queda aceptado sin confirmación visible. Guarda el identificador de correlación.
+        Tu sesión no puede consultar el rastro de auditoría — solo un administrador puede —, así
+        que el cambio queda aceptado sin confirmación visible. Guarda el código de seguimiento.
       </p>
 
       <div class="flex justify-end">

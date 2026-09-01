@@ -71,7 +71,7 @@ function validate(): boolean {
 
   if (forSomebodyElse.value && !isUuidV4(customerId.value)) {
     found.customerId =
-      'Escribe el customerId que devolvió el registro. Es un UUID de 36 caracteres.';
+      'Escribe el número de cliente que devolvió el registro. Son 36 caracteres.';
   }
 
   errors.value = found;
@@ -153,10 +153,10 @@ async function copyAccountId(): Promise<void> {
 
         <UFormField
           v-if="forSomebodyElse"
-          label="customerId del titular"
+          label="Número de cliente del titular"
           name="customerId"
           :error="errors.customerId"
-          help="El identificador que devolvió el registro. No hay búsqueda: el Gateway no expone una ruta que liste clientes."
+          help="El número que devolvió el registro del cliente. Todavía no hay búsqueda por nombre, así que hay que pedírselo o tomarlo de la cola de validación."
         >
           <UInput
             v-model="customerId"
@@ -241,7 +241,7 @@ async function copyAccountId(): Promise<void> {
             size="xs"
             variant="outline"
             color="neutral"
-            :aria-label="copied ? 'Copiado' : 'Copiar el accountId'"
+            :aria-label="copied ? 'Copiado' : 'Copiar el número de cuenta'"
             @click="copyAccountId"
           >{{ copied ? 'Copiado' : 'Copiar' }}</UButton>
         </div>

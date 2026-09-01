@@ -4,7 +4,7 @@ import { totalBalanceMinor } from '../lib/account';
 import { alertsFrom, dashboardFor } from '../lib/dashboard';
 import type { Dashboard } from '../lib/dashboard';
 import { asyncStateFor } from '../lib/gateway-error';
-import type { AsyncState } from '../lib/gateway-error';
+import type { LoadState } from '../lib/gateway-error';
 import { formatDate, formatQuetzales } from '../lib/money';
 import { labelForRole } from '../lib/navigation';
 import type { TransferRow } from '../lib/transaction';
@@ -41,7 +41,7 @@ const dashboard = ref<Dashboard>({
 });
 const accounts = ref<readonly AccountSummary[]>([]);
 const recent = ref<readonly TransferRow[]>([]);
-const state = ref<AsyncState>('LOADING');
+const state = ref<LoadState>('LOADING');
 const failure = ref<string | null>(null);
 const correlationId = ref<string | null>(null);
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { asyncStateFor } from '../../lib/gateway-error';
-import type { AsyncState } from '../../lib/gateway-error';
+import type { LoadState } from '../../lib/gateway-error';
 import { formatDate, formatQuetzales } from '../../lib/money';
 import { billerOf, mayMonitorPayments } from '../../lib/payment';
 import type { Biller } from '../../lib/payment';
@@ -33,7 +33,7 @@ const mayMonitor = computed(() => mayMonitorPayments(role.value));
 
 const rows = ref<readonly TransferRow[]>([]);
 const billers = ref<readonly Biller[]>([]);
-const state = ref<AsyncState>('LOADING');
+const state = ref<LoadState>('LOADING');
 const failure = ref<string | null>(null);
 const correlationId = ref<string | null>(null);
 
@@ -179,8 +179,8 @@ useHead({ title: 'Pagos · bonking' });
       <p class="mt-2 max-w-[70ch] text-[13px] leading-5 text-[#5A5B63]">
         Cada prestador tiene una cuenta recaudadora en este banco, así que pagar un servicio
         <strong class="font-semibold">es</strong> transferirle dinero. Por eso el detalle de un
-        pago se ve en la pantalla de la transferencia: es la misma operación, con la misma Saga y
-        la misma compensación automática si el pago falla.
+        pago se ve en la pantalla de la transferencia: es la misma operación, con los mismos pasos
+        y con la misma devolución automática si el pago falla.
       </p>
     </UCard>
   </section>

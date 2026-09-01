@@ -130,7 +130,7 @@ useHead({ title: 'Notificaciones · bonking' });
       <div>
         <h1 class="text-[32px] font-bold leading-10 tracking-tight">Notificaciones</h1>
         <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-          Notification &amp; Audit Service · lo que el sistema avisó, con su estado real de
+          Lo que el sistema avisó, con su estado real de
           entrega. Los envíos son simulados: no sale correo de este sistema.
         </p>
       </div>

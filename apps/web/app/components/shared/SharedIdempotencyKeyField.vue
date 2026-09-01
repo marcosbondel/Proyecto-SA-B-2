@@ -31,7 +31,7 @@ defineExpose({ renew, key });
 <template>
   <div v-if="props.visible" class="flex flex-col gap-1">
     <span class="text-[11px] uppercase tracking-[0.06em] text-[#75767F]">
-      Clave de idempotencia
+      Código de esta operación
     </span>
     <code
       class="break-all font-mono text-[12px] text-[#5A5B63]"

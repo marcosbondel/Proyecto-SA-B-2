@@ -31,7 +31,7 @@ defineProps<{ payments: readonly PaymentRow[] }>();
     <table class="w-full border-collapse">
       <thead>
         <tr class="text-[11px] uppercase tracking-[0.06em] text-[#75767F]">
-          <th class="py-4 pr-4 text-left font-semibold">paymentId / transactionId</th>
+          <th class="py-4 pr-4 text-left font-semibold">Pago / transferencia</th>
           <th class="py-4 pr-4 text-left font-semibold">Fecha</th>
           <th class="py-4 pr-4 text-left font-semibold">Intentos</th>
           <th class="py-4 pr-4 text-left font-semibold">Estado</th>

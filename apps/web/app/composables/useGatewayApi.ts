@@ -80,10 +80,16 @@ export function useGatewayApi() {
        * the form's failure to render, not a session to end, and the redirect
        * would wipe the `?next=` the visitor arrived with. The visitor's
        * whereabouts ride along so that signing back in returns them there.
+       *
+       * `expired: '1'` is a second, explicit signal, separate from `next`.
+       * `next` alone cannot mean "your session ended" — somebody can arrive at
+       * `/login?next=/cuentas` from a plain link with nothing having expired —
+       * so the login screen needs its own flag to know it should explain
+       * itself rather than guess from where the visitor was headed.
        */
       if (isSessionFailure(error) && session.value !== null) {
         end();
-        await navigateTo({ path: '/login', query: { next: route.fullPath } });
+        await navigateTo({ path: '/login', query: { next: route.fullPath, expired: '1' } });
       }
 
       return { ok: false, error };

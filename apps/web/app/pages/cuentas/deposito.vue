@@ -149,8 +149,8 @@ useHead({ title: 'Depósito en ventanilla · bonking' });
       color="error"
       variant="subtle"
       title="Esta pantalla es para ventanilla"
-      description="Solo un cajero receptor o un administrador puede registrar un depósito. El
-        Gateway y Account Service rechazan la operación, así que el formulario está oculto."
+      description="Solo un cajero receptor o un administrador puede registrar un depósito, así
+        que el formulario está oculto. Si necesitas depositar, acércate a una ventanilla."
       data-testid="deposit-forbidden"
     />
 
@@ -162,7 +162,12 @@ useHead({ title: 'Depósito en ventanilla · bonking' });
 
         <form class="flex flex-col gap-4" @submit.prevent="review">
           <UFormField label="Cuenta destino" name="accountId">
-            <UInput v-model="accountId" class="w-full tab" placeholder="UUID de la cuenta" required />
+            <UInput
+              v-model="accountId"
+              class="w-full tab"
+              placeholder="Pega aquí el número de cuenta"
+              required
+            />
           </UFormField>
 
           <SharedMoneyInput label="Monto" name="amount" @update:amount-minor="amountMinor = $event" />
@@ -303,16 +308,17 @@ useHead({ title: 'Depósito en ventanilla · bonking' });
         <h2 class="text-[14px] font-semibold">Qué hace esta operación</h2>
         <ul class="mt-3 flex list-disc flex-col gap-2 pl-4 text-[13px] leading-5 text-[#5A5B63]">
           <li>
-            Es un movimiento de <strong class="font-semibold">crédito</strong> sin contraparte: no
-            hay Saga que esperar, así que la respuesta llega en la misma petición.
+            El dinero <strong class="font-semibold">entra</strong> y no sale de ninguna otra
+            cuenta, así que no hay que esperar a nadie: el resultado se sabe de inmediato.
           </li>
           <li>
             Si la cuenta estaba inactiva, el depósito la
             <strong class="font-semibold">reactiva</strong> en lugar de ser rechazado.
           </li>
           <li>
-            Reintentar con la misma <code>Idempotency-Key</code> no acredita dos veces: Account
-            Service responde el mismo movimiento.
+            Volver a intentarlo con el mismo código de operación
+            <strong class="font-semibold">no acredita dos veces</strong>: el sistema reconoce que
+            es el mismo depósito y responde el movimiento que ya hizo.
           </li>
         </ul>
       </UCard>
