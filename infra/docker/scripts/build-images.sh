@@ -89,7 +89,18 @@ for row in "${BANK_COMPONENTS[@]}"; do
     --build-arg "GIT_COMMIT=${commit}" \
     "$REPO_ROOT"
 
-  built+=("${image}:${tag}")
+  # Both names, because `kind load` only puts into the cluster what it is given,
+  # and the chart's default is `:dev`. Loading only the commit tag left a
+  # `helm install` with defaults failing on `ImagePullBackOff` — the documented
+  # quick start, broken against a real cluster, discovered by reading rather than
+  # by anyone hitting it.
+  #
+  # It costs nothing: the two names are the same image, so kind dedupes the
+  # layers. And it does not weaken the traceability the immutable tag exists for,
+  # because that lives in the image itself — `org.opencontainers.image.revision`
+  # carries the commit, so a running pod can name the commit it is, whichever tag
+  # pulled it.
+  built+=("${image}:${tag}" "${image}:dev")
 done
 
 if [[ ${#built[@]} -eq 0 ]]; then

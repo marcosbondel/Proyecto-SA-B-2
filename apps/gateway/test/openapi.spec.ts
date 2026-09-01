@@ -85,7 +85,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the twenty-four paths the tickets fixed', () => {
+  it('declares the twenty-five paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -118,6 +118,10 @@ describe('the versioned API contract', () => {
         '/api/customers/pending-validation',
         '/api/customers/{customerId}',
         '/api/customers/{customerId}/identity-verdict',
+        // Added by this ticket: the document photo itself, which until now had
+        // no read route and left the teller's validation screen with a
+        // placeholder instead of the image it asked them to compare.
+        '/api/customers/{customerId}/identity-document',
         // Added for the prototype's C-01: changing your own password from
         // inside a session, which needs the current one and which nobody else
         // may do for you.
@@ -166,7 +170,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(24);
+      expect(functional).toHaveLength(25);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

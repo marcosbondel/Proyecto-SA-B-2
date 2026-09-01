@@ -15,7 +15,7 @@ export type GatewayErrorType =
   | 'BROKER_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
-/** The five a screen may have to draw, plus the state before any of them. */
+/** The six a screen may have to draw, plus the state before any of them. */
 export type AsyncState =
   | 'PENDING'
   | 'SUCCESS'
@@ -23,7 +23,29 @@ export type AsyncState =
   | 'REPLY_TIMEOUT'
   | 'BROKER_UNAVAILABLE'
   | 'VALIDATION_ERROR'
+  | 'FORBIDDEN'
   | 'INTERNAL_ERROR';
+
+/**
+ * What a screen that fetches on mount can be showing.
+ *
+ * `LOADING` is during the request, `READY` is with data on the screen, and the
+ * rest are the failures `SharedAsyncStateAlert` draws. It is one named type
+ * because six screens spelled this union by hand as `AsyncState` and then
+ * assigned `'LOADING'` to it — a value the union never held, which nothing
+ * caught because this package had no `typecheck`.
+ */
+export type LoadState = 'LOADING' | 'READY' | AsyncState;
+
+/**
+ * `LoadState` plus the state before anything was asked for.
+ *
+ * Only for state that waits to be requested rather than fetching on mount —
+ * the shared inbox, a command's outcome. A screen that loads in `onMounted`
+ * starts at `LOADING` and should use `LoadState`, so that `IDLE` cannot reach
+ * an alert that has no entry for it.
+ */
+export type ScreenState = 'IDLE' | LoadState;
 
 export interface GatewayError {
   readonly type: GatewayErrorType;
@@ -94,11 +116,26 @@ export function isSessionFailure(error: GatewayError): boolean {
   return error.type === 'UNAUTHENTICATED';
 }
 
-/** The state `SharedAsyncStateAlert` should draw for this failure. */
+/**
+ * The state `SharedAsyncStateAlert` should draw for this failure.
+ *
+ * `UNAUTHENTICATED` alone folds into `INTERNAL_ERROR`: it is the session
+ * boundary, intercepted by `useGatewayApi` before a screen ever sees it, so a
+ * screen that reaches this function with that type has nothing more specific
+ * to say. `FORBIDDEN` is not that — it is a role rule the system enforced
+ * correctly, and folding it into "an unexpected error occurred" would title a
+ * `403` as though the system had broken. It draws its own state instead.
+ */
 export function asyncStateFor(error: GatewayError): AsyncState {
-  return error.type === 'UNAUTHENTICATED' || error.type === 'FORBIDDEN'
-    ? 'INTERNAL_ERROR'
-    : error.type;
+  if (error.type === 'UNAUTHENTICATED') {
+    return 'INTERNAL_ERROR';
+  }
+
+  if (error.type === 'FORBIDDEN') {
+    return 'FORBIDDEN';
+  }
+
+  return error.type;
 }
 
 function bodyOf(error: unknown): Record<string, unknown> | null {

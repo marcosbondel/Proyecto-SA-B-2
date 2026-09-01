@@ -30,7 +30,7 @@ async function copy(): Promise<void> {
 <template>
   <div v-if="correlationId" class="flex flex-col gap-1">
     <span class="text-[11px] uppercase tracking-[0.06em] text-[#75767F]">
-      {{ label ?? 'correlationId' }}
+      {{ label ?? 'Código de seguimiento' }}
     </span>
     <span class="flex items-start gap-2">
       <code
@@ -41,7 +41,7 @@ async function copy(): Promise<void> {
         size="xs"
         variant="ghost"
         color="neutral"
-        :aria-label="copied ? 'Copiado' : 'Copiar correlationId'"
+        :aria-label="copied ? 'Copiado' : 'Copiar el código de seguimiento'"
         @click="copy"
       >{{ copied ? 'Copiado' : 'Copiar' }}</UButton>
     </span>

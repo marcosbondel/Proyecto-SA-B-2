@@ -107,10 +107,18 @@ services:
       NODE_ENV: production
       PORT: 3001
       DATABASE_URL: postgresql://${CUSTOMER_POSTGRES_USER}:${CUSTOMER_POSTGRES_PASSWORD}@postgres-customer:5432/${CUSTOMER_POSTGRES_DB}
-      # Set SEED_DEMO_DATA=true in infra/docker/.env to bootstrap the three demo
-      # users (admin/cajero/cliente) at boot. Off by default here so `images:flow`
-      # runs against a clean database. Idempotent.
-      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      # On by default here, and `pnpm images:flow` does not work without it.
+      #
+      # The flow funds its source account through the deposit window rather than
+      # by writing to the database, which is the point — every step goes through
+      # the Gateway. But a deposit needs a `CAJERO_RECEPTOR`, and there is no way
+      # to create the first one through the Gateway: `POST /api/customers` forces
+      # `role=CLIENTE` unless the caller already holds an administrator session.
+      # Seeding is the bootstrap the code itself documents for exactly this.
+      #
+      # It does not pollute the run: the flow registers its own customer and
+      # opens its own accounts, and asserts only against those. Idempotent.
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       SEED_PASSWORD: ${SEED_PASSWORD:-BankUsac#2026}
     depends_on:
       postgres-customer:
@@ -147,8 +155,9 @@ services:
       INACTIVITY_MONTHS: ${INACTIVITY_MONTHS:-6}
       INACTIVITY_MIN_BALANCE_MINOR: ${INACTIVITY_MIN_BALANCE_MINOR:-5000}
       # Matches customer-service: two accounts for the demo client when
-      # SEED_DEMO_DATA=true. Off by default. Idempotent.
-      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      # SEED_DEMO_DATA=true. On by default here for the reason given there.
+      # Idempotent.
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
     depends_on:
       postgres-account:
         condition: service_healthy
@@ -252,6 +261,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:${BANK_WEB_PORT:-3010}}
+      RESEND_API_URL: ${RESEND_API_URL:-https://api.resend.com/emails}
     depends_on:
       postgres-notification-audit:
         condition: service_healthy

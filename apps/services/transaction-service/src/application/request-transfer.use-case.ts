@@ -1,7 +1,12 @@
 import { transactionFailedV1, transactionInitiatedV1 } from '@bank/contracts';
 import type { TransferRequestedV1 } from '@bank/contracts';
 
-import { conflictsWithOriginal, openTransaction, requestRefusal } from '../domain/transaction';
+import {
+  conflictsWithOriginal,
+  isPending,
+  openTransaction,
+  requestRefusal,
+} from '../domain/transaction';
 import type { RequestRejection, Transaction } from '../domain/transaction';
 import type { AdvanceSagaUseCase } from './advance-saga.use-case';
 import type { Clock, EventPublisher, TransactionRepository } from './ports';
@@ -94,29 +99,42 @@ export class RequestTransferUseCase {
       now,
     });
 
-    const outcome = await this.#repository.start({ transaction: candidate });
+    const outcome = await this.#repository.start({
+      transaction: candidate,
+      /**
+       * Announced in `PENDING`, which is where it genuinely is for the length
+       * of this method. The audit record is meant to reconstruct the flow, and
+       * a flow whose first event already claimed `DEBITING` would have no
+       * record of the transfer ever having been merely accepted.
+       *
+       * Built here as a callback rather than up front, and — like
+       * `applyEvent`'s own `outbound` — called only for the delivery that
+       * actually creates the row (TD-031's one remaining gap, now closed): the
+       * repository writes it to the outbox in the same insert transaction, and
+       * a delivery that loses the race to an existing key never builds it at
+       * all, so a retry of the request never announces
+       * `transaction.initiated.v1` a second time.
+       */
+      outbound: (created) =>
+        this.#publisher.envelopeFor(
+          {
+            messageType: transactionInitiatedV1.name,
+            payload: {
+              transactionId: created.transactionId,
+              sourceAccount: created.sourceAccount,
+              targetAccount: created.targetAccount,
+              amount: created.amount,
+              status: 'PENDING',
+              createdAt: created.createdAt.toISOString(),
+            },
+          },
+          'event',
+        ),
+    });
 
     if (outcome.kind === 'EXISTS') {
-      return await this.#existing(outcome.transaction, payload);
+      return await this.#existing(outcome.transaction, payload, envelope);
     }
-
-    /**
-     * Announced in `PENDING`, which is where it genuinely is for the length of
-     * this method. The audit record is meant to reconstruct the flow, and a
-     * flow whose first event already claimed `DEBITING` would have no record of
-     * the transfer ever having been merely accepted.
-     */
-    await this.#publisher.publish({
-      messageType: transactionInitiatedV1.name,
-      payload: {
-        transactionId: outcome.transaction.transactionId,
-        sourceAccount: outcome.transaction.sourceAccount,
-        targetAccount: outcome.transaction.targetAccount,
-        amount: outcome.transaction.amount,
-        status: 'PENDING',
-        createdAt: outcome.transaction.createdAt.toISOString(),
-      },
-    });
 
     /**
      * The first edge of the diagram, taken through the same code path as every
@@ -136,7 +154,11 @@ export class RequestTransferUseCase {
   }
 
   /** A key that was used before. Which of T-3 and T-4 applies is the content. */
-  async #existing(original: Transaction, payload: TransferRequestedV1): Promise<RequestOutcome> {
+  async #existing(
+    original: Transaction,
+    payload: TransferRequestedV1,
+    envelope: { readonly messageId: string },
+  ): Promise<RequestOutcome> {
     if (conflictsWithOriginal(original, payload)) {
       await this.#refuse(payload.transactionId, 'IDEMPOTENCY_KEY_CONFLICT');
 
@@ -152,6 +174,37 @@ export class RequestTransferUseCase {
       requestedTransactionId: payload.transactionId,
       transactionId: original.transactionId,
     });
+
+    /**
+     * The row this delivery found can be a transfer whose Saga never started:
+     * `start` committed the insert, and the process died before the
+     * `saga.execute` below ever ran — a real crash window, not a hypothetical
+     * one, because the two used to be two separate steps with nothing between
+     * them but the process staying alive. A transaction left in `PENDING` is
+     * indistinguishable from that crash, so it is resumed here, on whatever
+     * delivery next finds it.
+     *
+     * Resuming costs nothing extra. `saga.execute` deduplicates by `messageId`
+     * under the same row lock every other transition uses, so a plain
+     * redelivery — the common case, same `messageId` as the request that
+     * already ordered the debit — is a no-op the moment the row shows
+     * `DEBITING`. And if two *different* deliveries (different `messageId`s)
+     * ever raced here at once, the domain's own guard closes the gap the
+     * dedup check cannot: `applyEvent`'s `DEBIT_ORDERED` case only accepts a
+     * transaction that is still `PENDING` (`domain/transaction.ts`), so
+     * whichever delivery's lock loses the race finds the row already
+     * `DEBITING` and gets `ILLEGAL` — discarded and recorded, never a second
+     * debit.
+     */
+    if (isPending(original)) {
+      await this.#saga.execute({
+        transactionId: original.transactionId,
+        event: { kind: 'DEBIT_ORDERED' },
+        messageId: envelope.messageId,
+        messageType: 'transfer.requested.v1',
+        payload,
+      });
+    }
 
     return { kind: 'DUPLICATE', transaction: original };
   }

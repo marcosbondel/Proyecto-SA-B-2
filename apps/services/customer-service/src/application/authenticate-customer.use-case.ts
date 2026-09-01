@@ -28,6 +28,17 @@ import type {
 const TIMING_DECOY = 'decoy';
 
 /**
+ * Not a real contract — a private key under which this use case marks its own
+ * side effect processed. `saveActivationToken` invalidates every live token
+ * before issuing a new one, so a broker redelivery of the same authenticate
+ * command must not run it twice: the second run would invalidate the very
+ * token the first run just handed to the customer, moments before they open
+ * the email carrying it. Scoped to the delivery's own `idempotencyKey`, never
+ * the customer's, so a genuinely new sign-in attempt still gets a fresh link.
+ */
+const ACTIVATION_REISSUE_MESSAGE_TYPE = 'customer.authenticate.activation-reissue';
+
+/**
  * Signing in, and the two ways it can fail that must look identical.
  *
  * An unknown email and a wrong password produce the same `INVALID_CREDENTIALS`,
@@ -41,6 +52,12 @@ const TIMING_DECOY = 'decoy';
  * email** and answers with `activationPending`. The Gateway turns that into the
  * same `401` as the other two, so nothing leaks; what the person gets is a
  * fresh link in their inbox, which is the only useful thing that can happen.
+ *
+ * The reply itself stays deliberately unguarded — a redelivery must produce a
+ * fresh answer, not a silence the Gateway waits out — but re-issuing the
+ * activation link is a write, and it is guarded by the delivery's own
+ * `idempotencyKey` (see `#requestActivation`), so a redelivery cannot
+ * invalidate the token the first delivery just emailed.
  */
 export class AuthenticateCustomerUseCase {
   readonly #repository: CustomerRepository;
@@ -68,7 +85,7 @@ export class AuthenticateCustomerUseCase {
    * Gateway waiting out its five seconds and reporting a timeout for something
    * this service decided instantly.
    */
-  public async execute(command: CustomerAuthenticateV1): Promise<void> {
+  public async execute(command: CustomerAuthenticateV1, idempotencyKey: string): Promise<void> {
     const now = this.#clock.now();
     const found = await this.#repository.findByEmail(normaliseEmail(command.email));
 
@@ -89,7 +106,7 @@ export class AuthenticateCustomerUseCase {
     const { customer } = found;
 
     if (!canSignIn(customer)) {
-      await this.#requestActivation(customer.customerId, customer.email, now);
+      await this.#requestActivation(customer.customerId, customer.email, now, idempotencyKey);
 
       await this.#publisher.reply({
         messageType: customerAuthenticateRepliedV1.name,
@@ -134,8 +151,28 @@ export class AuthenticateCustomerUseCase {
     });
   }
 
-  /** Issues a fresh link, because the old one may be expired or lost. */
-  async #requestActivation(customerId: string, email: string, now: Date): Promise<void> {
+  /**
+   * Issues a fresh link, because the old one may be expired or lost.
+   *
+   * Guarded by the delivery's own `idempotencyKey` — not by the login as a
+   * whole, which stays deliberately unguarded so every delivery gets a fresh
+   * reply. A redelivery of the same command finds its marker already recorded
+   * and skips straight past the invalidate-then-insert, so the token the first
+   * delivery just emailed out stays live.
+   */
+  async #requestActivation(
+    customerId: string,
+    email: string,
+    now: Date,
+    idempotencyKey: string,
+  ): Promise<void> {
+    if (
+      (await this.#repository.findProcessed(idempotencyKey, ACTIVATION_REISSUE_MESSAGE_TYPE)) !==
+      null
+    ) {
+      return;
+    }
+
     const activation = this.#tokens.issue();
     const expiresAt = new Date(now.getTime() + ACTIVATION_TTL_MS).toISOString();
 
@@ -143,6 +180,12 @@ export class AuthenticateCustomerUseCase {
       customerId,
       tokenHash: activation.tokenHash,
       expiresAt,
+    });
+
+    await this.#repository.recordProcessed({
+      idempotencyKey,
+      messageType: ACTIVATION_REISSUE_MESSAGE_TYPE,
+      resultSummary: { outcome: 'ACTIVATION_REISSUED', customerId },
     });
 
     await this.#publisher.publish({

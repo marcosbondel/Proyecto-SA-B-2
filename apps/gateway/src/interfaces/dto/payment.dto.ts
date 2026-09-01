@@ -17,16 +17,16 @@ const PAYMENT_ERROR_TYPES = ['TRANSIENT', 'PERMANENT'] as const;
  */
 export class ListPaymentsQueryDto {
   @IsOptional()
-  @IsUUID('4', { message: 'transactionId debe ser un UUID v4' })
+  @IsUUID('4', { message: 'El identificador de la transacción no tiene un formato válido.' })
   public transactionId?: string;
 
   @IsOptional()
-  @IsIn(PAYMENT_STATUSES, { message: `status debe ser uno de: ${PAYMENT_STATUSES.join(', ')}` })
+  @IsIn(PAYMENT_STATUSES, { message: `El estado debe ser uno de: ${PAYMENT_STATUSES.join(', ')}.` })
   public status?: (typeof PAYMENT_STATUSES)[number];
 
   @IsOptional()
   @IsIn(PAYMENT_ERROR_TYPES, {
-    message: `errorType debe ser uno de: ${PAYMENT_ERROR_TYPES.join(', ')}`,
+    message: `El tipo de error debe ser uno de: ${PAYMENT_ERROR_TYPES.join(', ')}.`,
   })
   public errorType?: (typeof PAYMENT_ERROR_TYPES)[number];
 }

@@ -115,6 +115,7 @@ function wire(payment: PaymentOutcome): Record<string, unknown> {
     status: payment.status,
     attempt: payment.attempt,
     reason: payment.reason,
+    errorType: payment.errorType,
     decidedAt: payment.decidedAt?.toISOString() ?? null,
   };
 }

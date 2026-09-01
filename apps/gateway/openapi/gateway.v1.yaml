@@ -231,6 +231,28 @@ paths:
       tags:
         - customers
       x-bank-publishes: customer.set-identity-verdict.v1
+  /api/customers/{customerId}/identity-document:
+    get:
+      description: Devuelve la imagen tal como la tiene guardada Customer Service, con su tipo de
+        contenido. El Gateway no decide nada sobre la imagen; solo la sirve.
+      operationId: CustomersController_identityDocument
+      parameters:
+        - name: customerId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Foto del documento de identidad de un cliente
+      tags:
+        - customers
+      x-bank-publishes: customer.identity-document.query.v1
+      x-bank-awaits:
+        - customer.identity-document.replied.v1
   /api/accounts/billers:
     get:
       description: El catálogo de prestadores y la cuenta recaudadora de cada uno. Un pago de servicio es

@@ -42,7 +42,23 @@ export class DeactivateInactiveAccountsUseCase {
     this.#criteria = dependencies.criteria ?? DEFAULT_CRITERIA;
   }
 
-  /** Returns the accounts it deactivated, so a caller can log the count. */
+  /**
+   * Returns the accounts it deactivated, so a caller can log the count.
+   *
+   * **Known gap (no outbox here, unlike Transaction and Payment Service):**
+   * the `UPDATE` and this publish loop are not one atomic step. A crash or a
+   * broker outage between them leaves an account genuinely `INACTIVE` with no
+   * `account.deactivated.v1` ever emitted — and because the next run's
+   * predicate is `status = 'ACTIVE'`, that account is never selected again, so
+   * the event is lost for good rather than merely delayed. Evaluated for T-16
+   * and deliberately left this way rather than adding an outbox table to the
+   * balances service four days before delivery: see TD-055 in
+   * `docs/TECH_DEBT.md` for the trade-off. What **is** done here is contain the
+   * blast radius of that gap: each account's publish is isolated so one
+   * broker hiccup does not also silence every account queued behind it in the
+   * same run, and a failure names exactly which accounts it hit so a person can
+   * replay them by hand instead of guessing from a batch-level "run failed".
+   */
   public async execute(runId: string): Promise<readonly string[]> {
     const now = this.#clock.now();
 
@@ -52,19 +68,38 @@ export class DeactivateInactiveAccountsUseCase {
       runId,
     });
 
+    const failures: string[] = [];
+
     for (const account of deactivated) {
-      await this.#publisher.publish({
-        messageType: accountDeactivatedV1.name,
-        payload: {
-          accountId: account.accountId,
-          cause: 'AUTOMATIC_INACTIVITY',
-          balanceAtDeactivation: quetzales(account.balanceMinor),
-          lastActivityAt: account.lastActivityAt?.toISOString() ?? null,
-          deactivatedAt: now.toISOString(),
-          // The automatic sweep has no human reason; its cause is the rule.
-          reason: null,
-        },
-      });
+      try {
+        await this.#publisher.publish({
+          messageType: accountDeactivatedV1.name,
+          payload: {
+            accountId: account.accountId,
+            cause: 'AUTOMATIC_INACTIVITY',
+            balanceAtDeactivation: quetzales(account.balanceMinor),
+            lastActivityAt: account.lastActivityAt?.toISOString() ?? null,
+            deactivatedAt: now.toISOString(),
+            // The automatic sweep has no human reason; its cause is the rule.
+            reason: null,
+          },
+        });
+      } catch (error) {
+        // The account is already INACTIVE in this database regardless of what
+        // happens next — isolated per account precisely so this account's
+        // failure does not also stop the ones still queued behind it.
+        failures.push(
+          `${account.accountId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(
+        `${String(failures.length)} of ${String(deactivated.length)} ` +
+          `account.deactivated.v1 events failed to publish for run ${runId}: ` +
+          failures.join('; '),
+      );
     }
 
     return deactivated.map((account) => account.accountId);

@@ -79,13 +79,19 @@ useHead({ title: 'Notificaciones · bonking' });
         </div>
       </template>
 
-      <div v-if="state === 'LOADING'" class="flex flex-col gap-2">
+      <!--
+        `IDLE` draws the skeleton too. It used to fall through to the alert as
+        `'LOADING'`, a state the alert has no entry for, so every first render
+        of the inbox — the server's, before `onMounted` has run — told the
+        reader that an unexpected error had occurred.
+      -->
+      <div v-if="state === 'IDLE' || state === 'LOADING'" class="flex flex-col gap-2">
         <USkeleton v-for="line in 5" :key="line" class="h-14 w-full rounded-xl" />
       </div>
 
       <SharedAsyncStateAlert
         v-else-if="state !== 'READY'"
-        :state="state === 'IDLE' ? 'LOADING' : state"
+        :state="state"
         :message="failure"
         @retry="load(50)"
       />

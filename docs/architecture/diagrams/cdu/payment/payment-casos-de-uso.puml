@@ -16,6 +16,7 @@ skinparam actor {
 }
 
 actor "Cliente" as actor_payment_customer
+actor "Cajero Receptor" as actor_payment_teller
 actor "Administrador" as actor_payment_admin
 actor "Transaction Service" as actor_payment_transaction
 actor "Proveedor de pagos" as actor_payment_provider
@@ -32,6 +33,7 @@ rectangle "CDU004 - Gestionar pagos" as system_payment {
 
 actor_payment_customer -- uc_payment_process
 actor_payment_customer -- uc_payment_history
+actor_payment_teller -- uc_payment_history
 actor_payment_admin -- uc_payment_history
 actor_payment_transaction -- uc_payment_process
 actor_payment_provider -- uc_payment_external
@@ -46,5 +48,12 @@ note right of uc_payment_process
     En la Saga de transferencias,
     Transaction Service publica payment.requested.
     Payment Service responde con succeeded o failed.
+end note
+
+note bottom of uc_payment_history
+    La lista de monitoreo es solo de personal.
+    Un cliente consulta un pago concreto por su id y ve
+    su historial dentro de la transferencia que lo originó:
+    Payment Service no guarda referencia al cliente.
 end note
 @enduml

@@ -64,7 +64,7 @@ async function copy(): Promise<void> {
             size="xs"
             variant="outline"
             color="neutral"
-            class="border-white/25 text-white hover:bg-white/10"
+            class="border-white/25 bg-transparent text-white hover:bg-white/10"
             :aria-label="copied ? 'Copiado' : 'Copiar el número de cuenta'"
             @click="copy"
           >{{ copied ? 'Copiado' : 'Copiar' }}</UButton>
@@ -86,7 +86,7 @@ async function copy(): Promise<void> {
           to="/cuentas"
           variant="outline"
           color="neutral"
-          class="border-white/25 text-white hover:bg-white/10"
+          class="border-white/25 bg-transparent text-white hover:bg-white/10"
         >Volver</UButton>
       </div>
     </div>

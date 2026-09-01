@@ -12,16 +12,18 @@ el [manual general](README.md#3-cómo-leer-lo-que-el-sistema-te-responde).
 | Módulo | Qué puedes hacer |
 | --- | --- |
 | **Inicio** | Tu turno en tres números: validaciones pendientes, cuentas creadas hoy y depósitos del día. |
-| **Clientes** | Registrar clientes con cualquier rol, actualizar tus datos, abrir la ficha de un cliente, entrar a la cola de validación de identidad. |
+| **Clientes** | Registrar clientes, actualizar tus datos, abrir la ficha de un cliente y **revisar la cola de validación de identidad**. |
 | **Cuentas** | Abrir cuentas **a nombre de otro cliente**, consultar cuentas y sus movimientos, y **registrar depósitos en ventanilla**. |
 | **Transferencias** | Enviar transferencias, seguir su estado y vigilar la Saga desde el monitoreo. |
 | **Pagos** | Pagar servicios y vigilar el paso de pago de las transferencias y sus reintentos. |
 
 **Lo que no puedes hacer:** activar o desactivar cuentas (es del Administrador),
 ni consultar el rastro de auditoría ni la consola de notificaciones. Tampoco
-puedes cambiar la contraseña de un cliente: si no puede entrar, dile que use
-**¿Olvidaste tu contraseña?** — el enlace llega a su propio correo, que es lo
-único que prueba que es él.
+puedes **registrar cajeros ni administradores**: solo un administrador puede
+crear personal del banco, y el sistema rechaza el registro si lo intentas desde
+tu sesión. Y tampoco puedes cambiar la contraseña de un cliente: si no puede
+entrar, dile que use **¿Olvidaste tu contraseña?** — el enlace llega a su propio
+correo, que es lo único que prueba que es él.
 
 Tu menú lateral tiene cinco entradas: **Inicio**, **Clientes**, **Cuentas**,
 **Transferencias** y **Pagos**.
@@ -67,10 +69,14 @@ trae la persona.
 | Fecha de nacimiento | Debe tener **18 años o más**. El campo muestra la edad calculada. |
 | Dirección | Su dirección de residencia. |
 | Correo electrónico | **Un correo al que tenga acceso.** Ahí llega el enlace de activación, y sin abrirlo no podrá entrar. |
-| **Rol** | Cliente, Cajero receptor o Administrador. En ventanilla es casi siempre **Cliente**. |
+| **Rol** | Déjalo en **Cliente**. La lista ofrece también Cajero receptor y Administrador, pero desde tu sesión el banco no los acepta. |
 
 El campo **Rol** es lo único que distingue este formulario del registro público.
-Úsalo con cuidado: es el que decide qué podrá hacer esa persona en el sistema.
+La lista muestra los tres roles, pero **desde ventanilla solo funciona
+Cliente**: si eliges Cajero receptor o Administrador, el registro se rechaza,
+porque solo un administrador puede dar de alta al personal del banco. No es una
+avería del formulario; es la regla que impide que alguien se nombre
+administrador a sí mismo.
 
 **Paso 2 — Documento de identidad**
 
@@ -90,9 +96,9 @@ Pulsa **Crear cuenta**.
 La pantalla confirma que el registro fue **enviado**, no completado. Antes de
 que se vaya de la ventanilla:
 
-1. **Dale su customerId.** Está en pantalla con un botón para copiarlo. Sin él
-   no hay forma de encontrar su ficha después: el sistema no tiene búsqueda de
-   clientes.
+1. **Dale su customerId.** Está en pantalla con un botón para copiarlo. Es la
+   forma de abrir su ficha después: el sistema no tiene búsqueda de clientes por
+   nombre ni por DPI.
 2. **Explícale la activación.** Le llegará un correo con un enlace. Hasta que lo
    abra, **no podrá iniciar sesión**.
 3. **Explícale la validación del documento.** Su acceso queda activo con el
@@ -117,9 +123,9 @@ La cuenta se abre con **Q 0.00** y activa. **Dale al cliente el número de cuent
 que aparece al final: es con lo que consulta su saldo y con lo que recibe
 transferencias.
 
-> **No hay campo de depósito inicial**, y el sistema no tiene ninguna operación
-> que ingrese efectivo. Una cuenta nueva empieza en cero y solo crece recibiendo
-> transferencias.
+> **No hay campo de depósito inicial**: la cuenta se abre en cero. Si el cliente
+> trae dinero, ábrele la cuenta y luego regístrale el depósito desde
+> *Cuentas → Depósito*, con el número de cuenta que acaba de salir.
 
 Si dejas la casilla sin marcar, la cuenta se abre **a tu nombre**, no al del
 cliente. Revísalo antes de confirmar.
@@ -150,8 +156,10 @@ puedes decir al cliente según el estado:
 Si termina mal, la pantalla explica el motivo —saldo insuficiente, cuenta
 inactiva, cuenta no encontrada, pago rechazado— en lenguaje claro.
 
-**Dale al cliente el identificador de la transferencia.** No existe un listado:
-sin ese identificador nadie puede volver a consultarla.
+**Dale al cliente el identificador de la transferencia.** Con él puede abrirla
+directamente desde *Transferencias → Consultar una transferencia*. Aunque lo
+pierda, la pantalla de **Transferencias** lista las más recientes de quien está
+en sesión, así que no es la única forma de volver a ella.
 
 Si la pantalla dice *«Dejamos de consultar tras dos minutos»*, la transferencia
 sigue viva. No es un fallo; es que la pantalla dejó de preguntar.
@@ -190,19 +198,42 @@ desde la transferencia al pago.
 
 Menú **Clientes** → tarjeta **Validación de identidad** → **Ver la cola**.
 
-> **Esta función todavía no está disponible.** La pantalla existe y la propia
-> aplicación lo advierte: la cola no puede llenarse, la foto del documento no
-> puede mostrarse, y los botones *Aprobar identidad* y *Rechazar* están
-> deshabilitados. No es una avería; es una funcionalidad pendiente.
+Esta es una de tus tareas de ventanilla. La cola lista a los clientes cuyo
+documento espera revisión, con su nombre y su correo; el enlace **Revisar** abre
+la ficha de uno.
 
-Mientras tanto, cuando registres a alguien explícale que la revisión del
-documento queda pendiente y que no bloquea su acceso al sistema.
+En la pantalla de revisión verás los **datos declarados** —nombre, número de
+documento, fecha de nacimiento, dirección, username y el estado actual de la
+identidad— y dos botones:
+
+| Botón | Qué hace |
+| --- | --- |
+| **Aprobar identidad** | Da la identidad por validada. |
+| **Rechazar** | Pide confirmación y, al confirmar, la rechaza. El cliente recibe un aviso y podrá volver a subir su documento. |
+
+El veredicto no se puede deshacer, así que confírmalo antes de pulsar. Al
+enviarlo, la pantalla avisa que se registró; el cliente sale de la cola cuando
+el banco termine de procesarlo, no en el instante del clic.
+
+> **La foto del documento todavía no se muestra.** En su lugar aparece un
+> recuadro gris que lo explica: la imagen se guarda cuando la persona se
+> registra, pero el sistema aún no tiene una pantalla que la muestre. Es lo
+> único que falta de esta función. Mientras tanto, revisa la identidad con el
+> documento que la persona te presenta en ventanilla y con los datos declarados
+> que sí ves en pantalla.
+
+Cuando registres a alguien, explícale que la revisión de su documento queda
+pendiente y que **no bloquea su acceso** al sistema: podrá entrar en cuanto
+active su cuenta desde el correo.
 
 ## 6. Tus propios datos
 
 Menú **Clientes** → **Abrir mi ficha**. Puedes cambiar tu nombre, tu dirección y
-tu fecha de nacimiento. El correo, el username y la contraseña no se pueden
-cambiar desde la aplicación.
+tu fecha de nacimiento.
+
+Tu **contraseña** se cambia en **Mi perfil**, en el menú de tu nombre arriba a
+la derecha: ahí se te pide la actual antes de poner la nueva. El correo y el
+username no se pueden cambiar desde la aplicación.
 
 ---
 
@@ -214,7 +245,9 @@ demostración, pide el enlace al equipo técnico.
 
 **Registré a alguien y no encuentro su ficha.**
 Necesitas su customerId. No hay búsqueda de clientes por nombre ni por DPI. Si
-lo perdiste, no hay forma de recuperarlo desde la aplicación.
+lo perdiste y esa persona todavía tiene el documento sin revisar, búscala por su
+nombre en la **cola de validación de identidad**: es el único lugar donde el
+sistema lista clientes.
 
 **Abrí la cuenta y quedó a mi nombre.**
 Faltó marcar *«La cuenta es para otro cliente»*. La cuenta no se puede

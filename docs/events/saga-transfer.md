@@ -18,7 +18,7 @@ generated from the contracts, so they cannot describe a flow the code would reje
 | 2 | Account | `account.debit.requested.v1` | Locks the source, checks it is `ACTIVE` and funded, debits, updates `lastActivityAt` | `account.debited.v1` \| `account.debit.rejected.v1` | — |
 | 3 | Transaction | `account.debited.v1` | Moves on to payment | `payment.requested.v1` | `PAYMENT_PENDING` |
 | 4 | Payment | `payment.requested.v1` | Processes, retrying internally and counting `attempt` | `payment.succeeded.v1` \| `payment.failed.v1` | — |
-| 5 | Transaction | `payment.succeeded.v1` | Orders the credit | `account.credit.requested.v1` | — |
+| 5 | Transaction | `payment.succeeded.v1` | Orders the credit | `account.credit.requested.v1` | `PAYMENT_PENDING` (unchanged) |
 | 6 | Account | `account.credit.requested.v1` | Credits the target; reactivates it if it was `INACTIVE` (A-3) | `account.credited.v1` \| `account.credit.rejected.v1` | — |
 | 7 | Transaction | `account.credited.v1` | Closes | `transaction.completed.v1` | `COMPLETED` |
 
@@ -30,25 +30,72 @@ orchestration — no service waits on another, and each reacts to what it hears.
 
 ## States
 
+There are **six**, and not one more: `PENDING`, `DEBITING`, `PAYMENT_PENDING`, `COMPLETED`,
+`FAILED`, `COMPENSATED`. Three independent places say so and agree —
+[`transaction.ts`](../../apps/services/transaction-service/src/domain/transaction.ts)'s
+`TransactionStatus`, the `transactions_status_known` `CHECK` on the status column, and
+`transactionStatus` in `@bank/contracts`.
+
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING: transfer.requested.v1
-    PENDING --> DEBITING: account.debit.requested.v1
+    PENDING --> DEBITING: DEBIT_ORDERED
     DEBITING --> FAILED: account.debit.rejected.v1
     DEBITING --> PAYMENT_PENDING: account.debited.v1
-    PAYMENT_PENDING --> COMPENSATING: payment.failed.v1
-    PAYMENT_PENDING --> CREDITING: payment.succeeded.v1
-    CREDITING --> COMPENSATING: account.credit.rejected.v1
-    CREDITING --> COMPLETED: account.credited.v1
-    COMPENSATING --> COMPENSATED: account.debit.compensated.v1
+    PAYMENT_PENDING --> PAYMENT_PENDING
+    PAYMENT_PENDING --> COMPLETED: account.credited.v1
+    PAYMENT_PENDING --> COMPENSATED: account.debit.compensated.v1
     COMPLETED --> [*]
     FAILED --> [*]
     COMPENSATED --> [*]
+    note right of PAYMENT_PENDING
+        Three self-transitions, listed in the table below:
+        payment.succeeded.v1, payment.failed.v1 and
+        account.credit.rejected.v1 each order the next
+        command without moving the status.
+    end note
 ```
 
-`COMPLETED`, `FAILED` and `COMPENSATED` are terminal. Any transition not drawn here is illegal,
-is discarded, and is recorded as `ILLEGAL_TRANSITION` (T-6). The diagram is the source; the
-formal UML sequence diagram is **T-13**, and it must agree with this.
+The loop on `PAYMENT_PENDING` carries three transitions a state diagram cannot label separately,
+so every transition of the machine is written out here as well. Below the first row, which is the
+request that opens the transaction, this table **is** `applyEvent`: one row per arm of it, in the
+order the choreography produces them.
+
+| From | Arrives as | Legal when | Orders / publishes | To |
+| --- | --- | --- | --- | --- |
+| — | `transfer.requested.v1` | The request passes T-1 to T-4 | `transaction.initiated.v1` | `PENDING` |
+| `PENDING` | `DEBIT_ORDERED`, taken in the same handler | always | `account.debit.requested.v1` | `DEBITING` |
+| `DEBITING` | `account.debited.v1` | always | `payment.requested.v1` | `PAYMENT_PENDING` |
+| `DEBITING` | `account.debit.rejected.v1` | always | `transaction.failed.v1` | `FAILED` |
+| `PAYMENT_PENDING` | `payment.succeeded.v1` | no cause recorded | `account.credit.requested.v1` | `PAYMENT_PENDING` |
+| `PAYMENT_PENDING` | `payment.failed.v1` | no cause recorded | records the cause, `account.debit.compensation.requested.v1` | `PAYMENT_PENDING` |
+| `PAYMENT_PENDING` | `account.credit.rejected.v1` | no cause recorded | records the cause, `account.debit.compensation.requested.v1` | `PAYMENT_PENDING` |
+| `PAYMENT_PENDING` | `account.credited.v1` | no cause recorded | `transaction.completed.v1` | `COMPLETED` |
+| `PAYMENT_PENDING` | `account.debit.compensated.v1` | a cause was recorded | `transaction.compensated.v1` | `COMPENSATED` |
+
+`COMPLETED`, `FAILED` and `COMPENSATED` are terminal. Any transition not in this table is
+illegal, is discarded, and is recorded as `ILLEGAL_TRANSITION` (T-6). The diagram and the table
+are the source; the formal UML sequence diagram is **T-13**, and it must agree with this.
+
+**There is no `CREDITING` and no `COMPENSATING`.** The credit is ordered from `PAYMENT_PENDING`
+and so is the compensation: both are self-transitions, which is why the three middle rows above
+end where they started. Inventing a seventh or eighth state to name those moments would mean a
+status the contract cannot carry and the column's `CHECK` will not store, so the machine has six
+and the deviation is deliberate — see the `applyEvent` docstring, which says the same thing next
+to the code that does it.
+
+What tells the two branches apart is therefore not a state but **`failureReason`**, the "legal
+when" column above. It is `null` while the transfer is still trying to complete, and is set on
+the same transition that orders the compensation. That single column is what makes
+`account.credited.v1` legal only on a transfer with no recorded cause,
+`account.debit.compensated.v1` legal only on one that has one, and a **second**
+`payment.failed.v1` illegal rather than a second refund (T-5).
+
+`DEBIT_ORDERED` is the one transition with no message of its own — it is a domain event, not a
+wire event. Transaction Service takes it itself, in the same call that accepted
+`transfer.requested.v1`, through the same locked and deduplicated path as every other transition,
+rather than ordering the debit by hand outside the machine. Every other row is a handler bound in
+`sagaHandlers`.
 
 ## The two endings
 
@@ -71,8 +118,11 @@ Reachable from two different failures, both after the debit succeeded:
 
 Both take the same path:
 
-1. Transaction Service publishes `account.debit.compensation.requested.v1`, carrying
-   `triggeredBy` so the audit record can say which failure caused it.
+1. Transaction Service records the cause in `failureReason` and publishes
+   `account.debit.compensation.requested.v1`, carrying `triggeredBy` so the audit record can say
+   which failure caused it. **The status does not move**: the transfer stays in
+   `PAYMENT_PENDING` for as long as the compensation is in flight, and the recorded cause is what
+   says a refund was already ordered.
 2. Account Service returns the amount to the source account and publishes
    `account.debit.compensated.v1`.
 3. Transaction Service closes in `COMPENSATED` and publishes `transaction.compensated.v1`.
@@ -118,8 +168,16 @@ compensation whose cause was not recorded produces an audit trail that explains 
 ### 5. Duplicate message
 
 Any step, any message. The consumer recognises the redelivery through the envelope's
-`idempotencyKey` and produces **no second effect** — no second debit, no second transition, no
-second compensation (T-5, X-4).
+**`messageId`**, which it claims as the primary key of its own `processed_messages` table before
+touching any state — a redelivery loses that insert and produces **no second effect**: no second
+debit, no second transition, no second compensation (T-5, X-4).
+
+The envelope also carries an `idempotencyKey`, and on most messages in this flow the two values
+are identical, which is why the mechanism is easy to misname. They coincide because
+`createEnvelope` defaults `idempotencyKey` to the `messageId` it just minted, and every follow-up
+in the Saga takes that default. The transfer request is the exception: the Gateway passes the
+caller's own key, so there `idempotencyKey` is the client's intention (T-3, T-4, enforced by a
+unique constraint on `transactions`) while `messageId` is this delivery of it.
 
 This is not a nicety. The delivery policy retries up to three times and the broker may redeliver
 on its own after a consumer crash, so every step in this flow will eventually be delivered

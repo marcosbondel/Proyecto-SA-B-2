@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 
-import { EXCHANGES, QUEUES } from '@bank/contracts';
+import { EXCHANGES, QUEUES, validateMessage } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
 import { NestFactory } from '@nestjs/core';
@@ -219,7 +219,21 @@ async function bootstrap(): Promise<void> {
         }
 
         await broker.start();
-        await broker.subscribe({ queue: QUEUE.name, bindings: QUEUE.bindings }, onDelivery);
+        await broker.subscribe(
+          { queue: QUEUE.name, bindings: QUEUE.bindings },
+          onDelivery,
+          /**
+           * TD-046, closed for this service: every producer that can reach
+           * `account.commands` builds its envelope through `createEnvelope` /
+           * `followUpEnvelope` and checks the payload against this same
+           * `@bank/contracts` schema before publishing (the Gateway's
+           * `CommandsUseCase#publish` and every service's `BrokerEventPublisher`
+           * both `safeParse` first) — so a message that fails this check is not
+           * a producer this system trusts, and three redeliveries could never
+           * have made it parse.
+           */
+          validateMessage,
+        );
         consuming = true;
 
         logger.info('consuming', { outcome: QUEUE.name });

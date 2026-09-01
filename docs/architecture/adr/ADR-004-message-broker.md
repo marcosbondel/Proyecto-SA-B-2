@@ -1,6 +1,6 @@
 # ADR-004: Use RabbitMQ as the message broker
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-15
 - **Deciders**: Bank USAC team (approved in the `feature/T-03` pull request)
 - **Assignment reference**: §4.2 "Alcance del proyecto", page 8; §4.3 "Recursos y herramientas

@@ -9,16 +9,19 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { MAX_PHOTO_BYTES } from '@bank/contracts';
+import type { Response } from 'express';
 
 import { ChangePasswordUseCase } from '../application/routes/change-password.use-case';
 import type { ChangedPassword } from '../application/routes/change-password.use-case';
 import { CommandsUseCase } from '../application/routes/commands.use-case';
+import { IdentityDocumentUseCase } from '../application/routes/identity-document.use-case';
 import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { RegisterCustomerUseCase } from '../application/routes/register-customer.use-case';
 import { VerifyEmailUseCase } from '../application/routes/verify-email.use-case';
@@ -32,7 +35,7 @@ import {
   VerifyEmailDto,
 } from './dto/customer.dto';
 import { Public, Roles } from './guards/route-access.decorator';
-import { SESSION_VERIFIER } from './guards/jwt.guard';
+import { SESSION_VERIFIER, bearerTokenOf } from './guards/jwt.guard';
 import type { SessionVerifierPort } from './guards/jwt.guard';
 import type { GatewayRequest } from './http-request';
 import { actorOf } from './actor';
@@ -51,6 +54,7 @@ export class CustomersController {
   readonly #register: RegisterCustomerUseCase;
   readonly #commands: CommandsUseCase;
   readonly #queries: QueriesUseCase;
+  readonly #identityDocument: IdentityDocumentUseCase;
   readonly #verifyEmail: VerifyEmailUseCase;
   readonly #changePassword: ChangePasswordUseCase;
   readonly #sessions: SessionVerifierPort;
@@ -59,6 +63,7 @@ export class CustomersController {
     @Inject(RegisterCustomerUseCase) register: RegisterCustomerUseCase,
     @Inject(CommandsUseCase) commands: CommandsUseCase,
     @Inject(QueriesUseCase) queries: QueriesUseCase,
+    @Inject(IdentityDocumentUseCase) identityDocument: IdentityDocumentUseCase,
     @Inject(VerifyEmailUseCase) verifyEmail: VerifyEmailUseCase,
     @Inject(ChangePasswordUseCase) changePassword: ChangePasswordUseCase,
     @Inject(SESSION_VERIFIER) sessions: SessionVerifierPort,
@@ -66,6 +71,7 @@ export class CustomersController {
     this.#register = register;
     this.#commands = commands;
     this.#queries = queries;
+    this.#identityDocument = identityDocument;
     this.#verifyEmail = verifyEmail;
     this.#changePassword = changePassword;
     this.#sessions = sessions;
@@ -265,6 +271,51 @@ export class CustomersController {
   }
 
   /**
+   * The identity-document photo itself — what a teller compares against the
+   * declared data to give the verdict above. Staff only, guarded here and
+   * re-checked by Customer Service, the same as the two routes above.
+   *
+   * `@Res()` because this answers with the image's own bytes and its own
+   * `Content-Type`, not with the JSON envelope every other route returns —
+   * a browser `<img>` needs the former. Thrown failures still reach
+   * `GatewayExceptionFilter`: using the response object directly does not
+   * remove a route from Nest's exception handling, only from its default
+   * JSON serialisation of a return value.
+   */
+  @ApiOperation({
+    summary: 'Foto del documento de identidad de un cliente',
+    description:
+      'Devuelve la imagen tal como la tiene guardada Customer Service, con su tipo de contenido. ' +
+      'El Gateway no decide nada sobre la imagen; solo la sirve.',
+  })
+  @ApiBearerAuth('session')
+  @ApiProduces('image/jpeg', 'image/png')
+  @Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')
+  @Get(':customerId/identity-document')
+  public async identityDocument(
+    @Param('customerId') customerId: string,
+    @Req() request: GatewayRequest,
+    @Res({ passthrough: false }) response: Response,
+  ): Promise<void> {
+    if (!isUuidV4(customerId)) {
+      throw GatewayError.validation('customerId debe ser un UUID v4', 'customerId');
+    }
+
+    const document = await this.#identityDocument.fetch(customerId, {
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+
+    response
+      .status(200)
+      .set('Content-Type', document.contentType)
+      // Personal data: nothing in between — proxy, CDN or browser disk cache
+      // — should keep a copy once this response leaves the process.
+      .set('Cache-Control', 'private, no-store')
+      .send(document.content);
+  }
+
+  /**
    * Read one customer's record.
    *
    * The owner check is Customer Service's, made from the envelope identity: a
@@ -300,12 +351,7 @@ export class CustomersController {
    * `ADMINISTRADOR`: the caller is known and simply not allowed.
    */
   #requireAdministrator(request: GatewayRequest): void {
-    const header = request.headers.authorization;
-    const [scheme, value] = typeof header === 'string' ? header.split(' ') : [];
-    const token =
-      scheme?.toLowerCase() === 'bearer' && value !== undefined && value.length > 0
-        ? value
-        : undefined;
+    const token = bearerTokenOf(request);
 
     if (token === undefined) {
       throw GatewayError.unauthenticated(

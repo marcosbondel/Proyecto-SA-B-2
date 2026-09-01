@@ -3,7 +3,7 @@ import type { FailureCode } from '@bank/contracts';
 import type { GatewayErrorType } from './gateway-error';
 
 /**
- * Which HTTP status stands for each of the catalogue's twenty-three failure codes.
+ * Which HTTP status stands for each of the catalogue's twenty-four failure codes.
  *
  * **A table, not a chain of conditionals**, and the difference is not
  * stylistic. Translating a verdict someone else reached is routing; deciding

@@ -54,14 +54,30 @@ aplicación.
 
 | Rol | Quién es | Qué módulos ve en el menú |
 | --- | --- | --- |
-| **Cliente** (`CLIENTE`) | El cuentahabiente. Opera sobre sus propias cuentas. | Clientes, Cuentas, Transferencias |
-| **Cajero receptor** (`CAJERO_RECEPTOR`) | Personal de ventanilla. Registra clientes, abre cuentas y transfiere por el cliente que tiene enfrente. | Clientes, Cuentas, Transferencias, Pagos |
-| **Administrador** (`ADMINISTRADOR`) | Supervisa la operación: administra cuentas y consulta el rastro de auditoría. | Clientes, Cuentas, Transferencias, Pagos, Auditoría |
+| **Cliente** (`CLIENTE`) | El cuentahabiente. Opera sobre sus propias cuentas. | Inicio, Clientes, Cuentas, Transferencias, Pagos |
+| **Cajero receptor** (`CAJERO_RECEPTOR`) | Personal de ventanilla. Registra clientes, abre cuentas, recibe depósitos y transfiere por el cliente que tiene enfrente. | Inicio, Clientes, Cuentas, Transferencias, Pagos |
+| **Administrador** (`ADMINISTRADOR`) | Supervisa la operación: administra cuentas y consulta el rastro de auditoría. | Inicio, Clientes, Cuentas, Transferencias, Pagos, Auditoría |
+
+Todos los roles tienen además dos pantallas fuera del menú lateral, en el menú
+de tu nombre arriba a la derecha: **Mi perfil** (tus datos y tu contraseña) y
+**Notificaciones**, a la que también lleva la campana de la barra superior.
 
 El menú lateral izquierdo muestra solo los módulos de tu rol, y debajo de tu
 nombre aparece siempre el rol con el que estás operando. Si escribes en la barra
 de direcciones la ruta de un módulo que tu rol no tiene, el sistema te devuelve
 al inicio en lugar de mostrarlo.
+
+**Auditoría es el único módulo que se oculta por rol.** Los demás los ven los
+tres, y lo que cambia es lo que ofrecen adentro: en *Clientes*, un Cliente
+encuentra solo su propia ficha, mientras que el personal ve además el registro
+de nuevos clientes, la cola de validación de identidad y la búsqueda por número
+de cliente.
+
+Las dos diferencias entre los tres menús son **Clientes**, que es trabajo del
+personal del banco, y **Auditoría**, que es solo del Administrador. Todo lo
+demás lo ven los tres; lo que cambia es el alcance: un Cliente ve sus cuentas y
+sus transferencias, no las de los demás, y esa restricción la aplica el servicio
+que guarda el dato, no la pantalla.
 
 Un **Cliente** ve sólo sus propias cuentas y sus propios movimientos: esa
 restricción no depende de la pantalla, la aplica el servicio que guarda el
@@ -256,11 +272,14 @@ más de dos decimales — el campo los rechaza en vez de redondearlos.
 
 ## 4. Clientes
 
-**Quién lo ve:** los tres roles. **Ruta:** `/clientes`.
+**Quién lo ve:** Cajero receptor y Administrador. **Ruta:** `/clientes`.
 
 Este módulo no es una lista de clientes: es un conjunto de accesos. El sistema
 todavía no ofrece una búsqueda de clientes, así que para abrir la ficha de
 alguien hay que tener su **customerId**.
+
+Un **Cliente** no ve este módulo, y no le hace falta: sus propios datos y su
+contraseña están en *Mi perfil*.
 
 ### 4.1 Registrar un cliente
 
@@ -268,19 +287,30 @@ Botón **Nuevo cliente**. Es el mismo asistente de tres pasos de la sección 2.1
 con una diferencia: en el primer paso aparece un campo **Rol**, donde eliges si
 la persona será Cliente, Cajero receptor o Administrador.
 
+**La lista ofrece los tres roles, pero solo un Administrador puede crear
+personal del banco.** Si un Cajero receptor elige Cajero receptor o
+Administrador, el banco rechaza el registro. Desde ventanilla, el rol que
+funciona es **Cliente**.
+
 El registro dispara el correo de activación igual que el registro público: la
 persona no podrá iniciar sesión hasta abrir ese enlace.
 
 ### 4.2 Mis datos
 
-Botón **Abrir mi ficha**. Te lleva a tu propia ficha, donde puedes cambiar tu
-**nombre completo**, tu **dirección** y tu **fecha de nacimiento**.
+Botón **Abrir mi ficha**, o **Mi perfil** en el menú de tu nombre — que es por
+donde llega un Cliente. En cualquiera de las dos verás tus datos actuales y
+podrás cambiar tu **nombre completo**, tu **dirección** y tu **fecha de
+nacimiento**.
 
 Escribe solo lo que quieras cambiar: un campo vacío se deja como está. Tienes
 que cambiar al menos un dato para poder guardar.
 
-**El correo y el username no se pueden modificar** desde la aplicación, y
-tampoco la contraseña. Todavía no existe una pantalla para eso.
+**Mi perfil** añade el cambio de **contraseña**, que pide la actual antes de
+aceptar la nueva. Nadie puede cambiar la contraseña de otra persona,
+administradores incluidos: para eso está la recuperación por correo, que llega a
+la bandeja de su dueño. Quien no recuerda la actual usa ese camino.
+
+**El correo y el username no se pueden modificar** desde la aplicación.
 
 ### 4.3 Abrir la ficha de otra persona
 
@@ -292,10 +322,19 @@ identificador tiene la forma correcta.
 
 **Quién lo ve:** Cajero receptor y Administrador.
 
-La cola de identidades pendientes de revisar. Está construida y visible, pero
-**todavía no puede llenarse ni usarse**: la propia pantalla lo advierte. Los
-botones *Aprobar identidad* y *Rechazar* están deshabilitados, y la foto del
-documento no puede mostrarse. Es una funcionalidad pendiente, no una avería.
+La cola de identidades pendientes de revisar, con el nombre y el correo de cada
+cliente que espera. **Revisar** abre uno: arriba, sus datos declarados; abajo,
+los botones **Aprobar identidad** y **Rechazar**. El veredicto se envía al
+banco y no se puede deshacer; un rechazo avisa al cliente y le permite volver a
+subir su documento.
+
+El cliente sale de la cola cuando el banco termina de procesar el veredicto, no
+en el instante del clic.
+
+> **Lo único que falta aquí es la foto.** La imagen del documento se guarda al
+> registrarse, pero todavía no hay una pantalla que la muestre: en su lugar
+> aparece un recuadro gris que lo explica. La revisión se hace comparando el
+> documento físico que la persona presenta con los datos declarados en pantalla.
 
 ---
 
@@ -337,9 +376,14 @@ puede abrir cuentas a su propio nombre.
 > el saldo y con lo que se envían transferencias, y no hay forma de buscarlo por
 > nombre.
 
-**No existe un campo de depósito inicial.** El sistema no tiene ninguna
-operación que ingrese dinero: una cuenta nueva empieza en Q 0.00 y solo crece
-recibiendo transferencias.
+**No existe un campo de depósito inicial.** Una cuenta nueva empieza en Q 0.00.
+Para ingresarle dinero hay dos caminos: **recibir una transferencia**, o que un
+Cajero receptor o un Administrador registre un **depósito en ventanilla** desde
+*Cuentas → Depósito*. Ese depósito responde en el momento —no hay nada que
+esperar— y **reactiva la cuenta si estaba inactiva**.
+
+Lo que el sistema no tiene es un **retiro** de efectivo: no hay ninguna
+operación que saque dinero de una cuenta salvo una transferencia.
 
 ### 5.3 Ver una cuenta y sus movimientos
 
@@ -386,9 +430,11 @@ El cambio no es inmediato: la pantalla te dirá que la solicitud fue aceptada y
 recargará la lista. Si el estado todavía no cambió, vuelve a actualizar en unos
 segundos.
 
-> En esta tabla, la columna **Titular** muestra el identificador del cliente, no
-> su nombre. El servicio de cuentas no tiene acceso a los nombres de los
-> clientes: son dos servicios distintos y así está diseñado.
+> En esta tabla, la columna **Titular** muestra el **nombre** del cliente, con su
+> identificador debajo. El nombre no lo guarda el servicio de cuentas —son dos
+> servicios distintos y así está diseñado—, sino que la pantalla lo pide al de
+> clientes en una segunda consulta. Si esa consulta no llega, la columna muestra
+> solo el identificador: no es un dato faltante, es esa pregunta sin responder.
 
 ---
 
@@ -469,23 +515,37 @@ identificador que devolvió un envío y ver su estado.
 **El historial vive en `/transferencias`** y muestra tus transferencias más
 recientes; si acabas de enviar una y todavía no aparece, o si solo tienes el
 identificador de un comprobante, la búsqueda por `transactionId` sigue estando
-en la misma pantalla. Para volver a una transferencia hay que
-tener su identificador, así que conviene guardarlo.
+en la misma pantalla. Cada quien ve las suyas: la lista la acota el servicio que
+guarda las transferencias, no la pantalla.
 
 ---
 
 ## 7. Pagos
 
-**Quién lo ve:** Cajero receptor y Administrador. **Ruta:** `/pagos`.
+**Quién lo ve:** los tres roles. **Ruta:** `/pagos`.
 
-Un pago es el paso intermedio de una transferencia: después de cobrar la cuenta
-de origen y antes de acreditar la de destino. **Un pago no se crea desde esta
-pantalla** — nace de una transferencia. Este módulo sirve para vigilarlos.
+Este módulo tiene dos caras, y conviene no confundirlas.
 
-Un **Cliente** no ve este módulo, pero sí ve el resultado del pago dentro de la
-transferencia que lo originó.
+**La puerta de entrada, `/pagos`, es el pago de servicios**, y la ven los tres
+roles. Ahí un Cliente paga la luz, el agua o el teléfono desde **Nuevo pago**, y
+ve el historial de los servicios que ya pagó. Un pago de servicio **es una
+transferencia** a la cuenta recaudadora del prestador, así que se comporta
+exactamente igual que cualquier otra: los mismos estados, la misma devolución
+automática si algo falla.
+
+**El monitoreo, `/pagos/monitor`, es otra cosa** y es solo para Cajero receptor
+y Administrador. Ahí «pago» no significa pagar un servicio, sino el paso
+intermedio por el que pasa **toda** transferencia: después de cobrar la cuenta
+de origen y antes de acreditar la de destino. Eso **no se crea desde ninguna
+pantalla** — nace de una transferencia—, y el monitoreo sirve para vigilar los
+que están en curso y los que terminaron mal, de todo el banco.
+
+Un **Cliente** no entra al monitoreo, pero sí ve cómo terminó el pago de su
+propia transferencia dentro de la transferencia que lo originó.
 
 ### 7.1 Monitoreo
+
+**Quién lo ve:** Cajero receptor y Administrador. **Ruta:** `/pagos/monitor`.
 
 La tabla lista los pagos con su identificador, la fecha, el **número de
 intento**, el estado y el monto. Se puede filtrar por estado (*En proceso*,
@@ -498,7 +558,9 @@ ambos casos **el dinero ya fue devuelto**.
 
 ### 7.2 El estado de un pago
 
-Pulsa **Ver estado** en cualquier fila. Un pago termina en uno de cuatro
+Se llega por dos caminos: **Ver estado** en cualquier fila del monitoreo, o el
+enlace al pago desde la transferencia que lo originó — que es como llega un
+Cliente al pago de su propia transferencia. Un pago termina en uno de cuatro
 resultados:
 
 | Resultado | Qué significa |
@@ -585,7 +647,8 @@ pagos propio y marcar notificaciones como leídas. Lo que queda es esto.
 
 | Lo que no se puede | Detalle |
 | --- | --- |
-| **Buscar clientes por nombre** | No hay listado ni búsqueda de clientes. Para abrir una ficha hay que tener el customerId; el buscador de la barra superior salta a un identificador, no busca texto. |
+| **Buscar clientes por nombre** | No hay listado ni búsqueda de clientes. Para abrir una ficha hay que tener el customerId; el buscador de la barra superior salta a un identificador, no busca texto. La única lista de clientes que existe es la cola de validación de identidad, y solo trae a los que esperan revisión. |
+| **Retirar efectivo** | Se puede depositar en ventanilla, pero no existe la operación inversa. El dinero sale de una cuenta únicamente por una transferencia. |
 | **Cambiar tu correo electrónico** | El correo es tu identificador de acceso: cambiarlo cambia con qué entras. Hacerlo bien exige verificar la dirección nueva antes de reemplazar la vieja, y ese flujo no está construido. La pantalla lo muestra de solo lectura y lo explica. |
 | **Confirmar el resultado de un registro o de una apertura de cuenta** | Solo un Administrador puede consultar el rastro de auditoría. Las demás sesiones se quedan en «solicitud aceptada» con el identificador de correlación para preguntar. |
 | **Filtrar la auditoría por fecha** | La auditoría se consulta por identificador de correlación, no por rango de fechas ni por navegación general. |
@@ -630,9 +693,13 @@ intento.
 No lo sabes todavía, y el sistema tampoco. La operación sigue en curso; nadie
 respondió a tiempo. Guarda el identificador de correlación y vuelve a consultar.
 
-**No veo el módulo de Pagos / de Auditoría.**
-Tu rol no los incluye. Pagos es para Cajero receptor y Administrador; Auditoría,
-solo para Administrador.
+**No veo el módulo de Auditoría.**
+Es el único que se oculta por rol: solo lo ve el Administrador. **Los demás
+módulos los ven los tres roles**, y lo que cambia es lo que ofrecen adentro. Si
+eres Cliente y no encuentras dónde pagar un servicio, está en *Pagos → Nuevo
+pago*; lo que no verás es el *monitoreo* de pagos, que muestra los de todo el
+banco. Y en *Clientes* verás solo tu propia ficha, no el registro de clientes ni
+la cola de validación, que son tareas de ventanilla.
 
 **¿Dónde consigo el número de mi cuenta?**
 En *Cuentas → Ver detalle*, con el botón **Copiar**. También aparece al terminar

@@ -84,8 +84,9 @@ export function correlationProblem(value: string): CorrelationProblem | null {
 }
 
 export const CORRELATION_PROBLEM_TEXT: Readonly<Record<CorrelationProblem, string>> = {
-  EMPTY: 'Ingresá un identificador de correlación para consultar.',
-  NOT_A_UUID: 'Un identificador de correlación es un UUID v4, como 7d41e8b2-9a3f-4c15-8ee0-1b2f9a4c7d10.',
+  EMPTY: 'Ingresa un código de seguimiento para consultar.',
+  NOT_A_UUID:
+    'Un código de seguimiento se ve así: 7d41e8b2-9a3f-4c15-8ee0-1b2f9a4c7d10. Revisa que lo hayas pegado completo.',
 };
 
 /**
@@ -403,4 +404,88 @@ const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
 
 export function notificationLabel(type: string): string {
   return NOTIFICATION_LABELS[type] ?? type;
+}
+
+/**
+ * What a `messageType` means, for the trail table's "Qué pasó" column.
+ *
+ * The technical name (`transaction.completed.v1`) is itself part of the
+ * record — an administrator reading an audit trail needs the exact string a
+ * service published, not a paraphrase that replaced it — so this is written
+ * **alongside** `event.messageType` in the table, never instead of it.
+ *
+ * Every type this service actually consumes has an entry: everything else in
+ * the catalogue is a query or a reply between the Gateway and one service, and
+ * never reaches `audit_events` at all (`notification-audit-service`'s own
+ * contracts name it as a consumer, or it cannot appear here). A type outside
+ * that closed set — the catalogue may still grow — falls back to a sentence
+ * built from its family, which stays honest without needing a ninety-second
+ * entry for every reply the audit trail will never actually show.
+ */
+const MESSAGE_TYPE_LABELS: Readonly<Record<string, string>> = {
+  'account.credit.rejected.v1': 'Crédito a la cuenta rechazado',
+  'account.credited.v1': 'Cuenta acreditada',
+  'account.deactivated.v1': 'Cuenta desactivada',
+  'account.debit.compensated.v1': 'Débito compensado',
+  'account.debit.rejected.v1': 'Débito rechazado',
+  'account.debited.v1': 'Cuenta debitada',
+  'account.deposit.rejected.v1': 'Depósito rechazado',
+  'account.deposited.v1': 'Depósito acreditado',
+  'account.open.rejected.v1': 'Apertura de cuenta rechazada',
+  'account.opened.v1': 'Cuenta abierta',
+  'account.reactivated.v1': 'Cuenta reactivada',
+  'audit.query.replied.v1': 'Consulta de auditoría respondida',
+  'audit.query.requested.v1': 'Consulta de auditoría solicitada',
+  'audit.stats.query.v1': 'Estadísticas de auditoría solicitadas',
+  'audit.stats.replied.v1': 'Estadísticas de auditoría respondidas',
+  'customer.activation.requested.v1': 'Correo de activación solicitado',
+  'customer.email.verification.rejected.v1': 'Verificación de correo rechazada',
+  'customer.email.verified.v1': 'Correo verificado',
+  'customer.identity.rejected.v1': 'Identidad rechazada',
+  'customer.identity.validated.v1': 'Identidad validada',
+  'customer.login.rejected.v1': 'Inicio de sesión rechazado',
+  'customer.login.succeeded.v1': 'Inicio de sesión exitoso',
+  'customer.password-change.rejected.v1': 'Cambio de contraseña rechazado',
+  'customer.password-changed.v1': 'Contraseña cambiada',
+  'customer.password-reset.completed.v1': 'Restablecimiento de contraseña completado',
+  'customer.password-reset.issued.v1': 'Enlace de restablecimiento emitido',
+  'customer.password-reset.rejected.v1': 'Restablecimiento de contraseña rechazado',
+  'customer.register.rejected.v1': 'Registro rechazado',
+  'customer.registered.v1': 'Cliente registrado',
+  'customer.updated.v1': 'Datos del cliente actualizados',
+  'notification.inbox.query.v1': 'Bandeja de notificaciones consultada',
+  'notification.inbox.replied.v1': 'Bandeja de notificaciones respondida',
+  'notification.list.query.v1': 'Lista de notificaciones consultada',
+  'notification.list.replied.v1': 'Lista de notificaciones respondida',
+  'notification.mark-read.v1': 'Notificación marcada como leída',
+  'notification.read.replied.v1': 'Confirmación de lectura respondida',
+  'payment.attempt.failed.v1': 'Intento de pago fallido',
+  'payment.failed.v1': 'Pago fallido',
+  'payment.succeeded.v1': 'Pago aprobado',
+  'transaction.compensated.v1': 'Transferencia compensada',
+  'transaction.completed.v1': 'Transferencia completada',
+  'transaction.failed.v1': 'Transferencia fallida',
+  'transaction.initiated.v1': 'Transferencia iniciada',
+};
+
+/** The domain a `messageType` belongs to, for the fallback nobody wrote a label for. */
+const MESSAGE_FAMILY_LABELS: Readonly<Record<string, string>> = {
+  customer: 'cliente',
+  account: 'cuenta',
+  transaction: 'transferencia',
+  payment: 'pago',
+  notification: 'notificación',
+  audit: 'auditoría',
+};
+
+export function messageTypeLabel(messageType: string): string {
+  const known = MESSAGE_TYPE_LABELS[messageType];
+
+  if (known !== undefined) {
+    return known;
+  }
+
+  const family = MESSAGE_FAMILY_LABELS[messageType.split('.')[0] ?? ''];
+
+  return family !== undefined ? `Evento de ${family}` : 'Evento del sistema';
 }

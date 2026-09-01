@@ -1,9 +1,12 @@
 import { transactionStatusRepliedV1 } from '@bank/contracts';
+import type { PaymentAttemptFailedV1 } from '@bank/contracts';
 
 import { AdvanceSagaUseCase } from '../src/application/advance-saga.use-case';
 import { GetTransactionStatusUseCase } from '../src/application/get-transaction-status.use-case';
+import { RecordPaymentAttemptUseCase } from '../src/application/record-payment-attempt.use-case';
 import { RequestTransferUseCase } from '../src/application/request-transfer.use-case';
 import { quetzales } from '../src/domain/money';
+import { openTransaction } from '../src/domain/transaction';
 import type { SagaEvent } from '../src/domain/transaction';
 import {
   FixedClock,
@@ -50,6 +53,7 @@ function world() {
   const ids = new SequentialIds();
 
   const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids });
+  const attempts = new RecordPaymentAttemptUseCase({ repository });
 
   return {
     repository,
@@ -71,6 +75,25 @@ function world() {
         messageId,
         messageType,
         payload,
+      });
+    },
+    /** One `payment.attempt.failed.v1`, as the interface layer would deliver it. */
+    async deliverAttempt(overrides: Partial<PaymentAttemptFailedV1>, messageId: string) {
+      const payload: PaymentAttemptFailedV1 = {
+        paymentId: PAYMENT,
+        transactionId: TRANSACTION,
+        attempt: 1,
+        errorType: 'TRANSIENT',
+        willRetry: true,
+        nextAttemptAt: '2026-08-26T12:00:01.000Z',
+        failureReason: null,
+        failedAt: '2026-08-26T12:00:01.000Z',
+        ...overrides,
+      };
+
+      return await attempts.execute(payload, {
+        messageId,
+        messageType: 'payment.attempt.failed.v1',
       });
     },
   };
@@ -188,6 +211,74 @@ describe('a repeated idempotency key', () => {
      */
     expect(repository.aliases.size).toBe(0);
     expect(publisher.typesOf('published')).toContain('transaction.failed.v1');
+  });
+});
+
+describe('a transfer request that crashed before its Saga started', () => {
+  /**
+   * `repository.start` commits the row and publishes `transaction.initiated.v1`
+   * before `saga.execute` ever orders the debit — three steps that used to be
+   * three separate moments with nothing guaranteeing the process stayed alive
+   * between them. This reproduces the crash directly: the row exists, in
+   * `PENDING`, with no debit ever ordered — exactly what a process death right
+   * after `start` leaves behind.
+   */
+  const stuck = () =>
+    openTransaction({
+      transactionId: TRANSACTION,
+      sourceAccount: SOURCE,
+      targetAccount: TARGET,
+      amount: quetzales(15_000),
+      correlationId: CORRELATION,
+      idempotencyKey: 'transfer-key-1',
+      customerId: OWNER.customerId,
+      reference: null,
+      paymentScenario: null,
+      now: NOW,
+    });
+
+  it('resumes the debit on the next delivery, and orders it exactly once', async () => {
+    const { request, repository, publisher } = world();
+
+    await repository.start({ transaction: stuck() });
+    expect(repository.transactions.get(TRANSACTION)!.status).toBe('PENDING');
+
+    // The broker redelivers the request that crashed.
+    const outcome = await request.execute(transferRequest(), envelope());
+
+    expect(outcome.kind).toBe('DUPLICATE');
+    expect(repository.transactions.get(TRANSACTION)!.status).toBe('DEBITING');
+    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
+  });
+
+  /** T-5 still holds for the resume: a second identical redelivery is a no-op. */
+  it('does not order a second debit for a further redelivery of the same message', async () => {
+    const { request, repository, publisher } = world();
+
+    await repository.start({ transaction: stuck() });
+
+    await request.execute(transferRequest(), envelope());
+    await request.execute(transferRequest(), envelope()); // same messageId again
+
+    expect(repository.transactions.get(TRANSACTION)!.status).toBe('DEBITING');
+    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
+  });
+
+  /**
+   * The other half of the fix: a transfer that already moved on must not be
+   * resumed. This is T-3's existing guarantee, restated here so the two
+   * branches of `#existing` are each demonstrated on their own.
+   */
+  it('does nothing extra when the redelivery finds a transfer that already moved on', async () => {
+    const { request, publisher } = world();
+
+    await request.execute(transferRequest(), envelope());
+    await request.execute(
+      transferRequest({ transactionId: '88888888-8888-4888-8888-888888888888' }),
+      envelope({ messageId: '66666666-6666-4666-8666-666666666699' }),
+    );
+
+    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
   });
 });
 
@@ -461,6 +552,49 @@ describe('events that must change nothing', () => {
   });
 });
 
+describe('recording one rung of the retry ladder', () => {
+  /** Never a transition: the status the Saga sees is untouched either way. */
+  it('records the attempt without moving the Saga', async () => {
+    const { request, deliver, deliverAttempt, repository } = world();
+
+    await request.execute(transferRequest(), envelope());
+    await deliver('account.debited.v1', { kind: 'DEBITED' });
+
+    const outcome = await deliverAttempt({ attempt: 1 }, 'attempt-1');
+
+    expect(outcome).toEqual({ kind: 'RECORDED' });
+    expect(repository.transactions.get(TRANSACTION)!.status).toBe('PAYMENT_PENDING');
+  });
+
+  /** T-5: a redelivered attempt is not a second rung. */
+  it('claims a redelivered attempt exactly once (T-5)', async () => {
+    const { request, deliver, deliverAttempt } = world();
+
+    await request.execute(transferRequest(), envelope());
+    await deliver('account.debited.v1', { kind: 'DEBITED' });
+
+    const first = await deliverAttempt({ attempt: 1 }, 'the-same-attempt');
+    const second = await deliverAttempt({ attempt: 1 }, 'the-same-attempt');
+
+    expect(first).toEqual({ kind: 'RECORDED' });
+    expect(second).toEqual({ kind: 'DUPLICATE' });
+  });
+
+  /**
+   * The same race `applyEvent` already handles for every other Saga event: an
+   * attempt for a transaction this replica has not committed yet is a race,
+   * not a fault, and must record nothing rather than orphan a trail entry.
+   */
+  it('claims nothing for an attempt about a transaction it does not hold', async () => {
+    const { deliverAttempt, repository } = world();
+
+    const outcome = await deliverAttempt({ transactionId: '99999999-9999-4999-8999-999999999999' }, 'orphan-attempt');
+
+    expect(outcome).toEqual({ kind: 'UNKNOWN_TRANSACTION' });
+    expect(repository.events).toEqual([]);
+  });
+});
+
 describe('the status query', () => {
   /** Criterion 7: the answer carries the correlation the transfer was born in. */
   it("answers with the original correlation, not the question's", async () => {
@@ -520,6 +654,59 @@ describe('the status query', () => {
         reason: 'PAYMENT_DECLINED',
         decidedAt: '2026-08-26T12:00:30.000Z',
       },
+    });
+  });
+
+  /**
+   * The gap `payment.attempt.failed.v1` closes: before a verdict arrives, the
+   * status query used to be able to say only "ordered and undecided" — it could
+   * not tell a payment about to be tried for the first time apart from one on
+   * its third rung with the money still debited. `attempt` and `errorType` now
+   * climb while the payment is still `PENDING`.
+   */
+  it('shows the ladder being climbed before any verdict arrives', async () => {
+    const { request, deliver, deliverAttempt, status, publisher } = world();
+
+    await request.execute(transferRequest(), envelope());
+    await deliver('account.debited.v1', { kind: 'DEBITED' });
+
+    await deliverAttempt({ attempt: 1, errorType: 'TRANSIENT' }, 'attempt-1');
+    await status.execute({ transactionId: TRANSACTION }, OWNER);
+
+    expect(publisher.replies.at(-1)!.payload).toMatchObject({
+      status: 'PAYMENT_PENDING', // unaffected: this is a trail entry, not a transition
+      payment: { paymentId: PAYMENT, status: 'PENDING', attempt: 1, errorType: 'TRANSIENT' },
+    });
+
+    await deliverAttempt({ attempt: 2, errorType: 'TRANSIENT' }, 'attempt-2');
+    await status.execute({ transactionId: TRANSACTION }, OWNER);
+
+    const reply = publisher.replies.at(-1)!;
+
+    expect(transactionStatusRepliedV1.schema.safeParse(reply.payload).success).toBe(true);
+    expect(reply.payload).toMatchObject({
+      payment: { paymentId: PAYMENT, status: 'PENDING', attempt: 2, errorType: 'TRANSIENT' },
+    });
+  });
+
+  it('does not let a late attempt row regress a payment that already has a verdict', async () => {
+    const { request, deliver, deliverAttempt, status, publisher } = world();
+
+    await request.execute(transferRequest(), envelope());
+    await deliver('account.debited.v1', { kind: 'DEBITED' });
+    await deliver(
+      'payment.succeeded.v1',
+      { kind: 'PAYMENT_SUCCEEDED' },
+      { paymentId: PAYMENT, attempt: 1, succeededAt: '2026-08-26T12:00:03.000Z' },
+    );
+
+    // A stray, out-of-order redelivery of an earlier rung's attempt row.
+    await deliverAttempt({ attempt: 1, errorType: 'TRANSIENT' }, 'late-attempt-1');
+
+    await status.execute({ transactionId: TRANSACTION }, OWNER);
+
+    expect(publisher.replies.at(-1)!.payload).toMatchObject({
+      payment: { paymentId: PAYMENT, status: 'SUCCEEDED' },
     });
   });
 

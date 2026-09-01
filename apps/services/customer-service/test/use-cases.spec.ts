@@ -4,6 +4,7 @@ import type { CustomerRegisterV1 } from '@bank/contracts';
 
 import { AuthenticateCustomerUseCase } from '../src/application/authenticate-customer.use-case';
 import { GetCustomerUseCase } from '../src/application/get-customer.use-case';
+import { GetIdentityDocumentUseCase } from '../src/application/get-identity-document.use-case';
 import { GetPendingValidationUseCase } from '../src/application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from '../src/application/register-customer.use-case';
 import { SetIdentityVerdictUseCase } from '../src/application/set-identity-verdict.use-case';
@@ -17,6 +18,7 @@ import {
   PredictableTokens,
   RecordingPublisher,
   StubDocumentReader,
+  StubDocumentStager,
 } from './support/in-memory';
 
 /**
@@ -53,6 +55,7 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
   const repository = new InMemoryCustomerRepository();
   const publisher = new RecordingPublisher();
   const documents = new StubDocumentReader(bytes);
+  const stager = new StubDocumentStager();
   const clock = new FixedClock(NOW);
   const tokens = new PredictableTokens();
   const hasher = new FakeHasher();
@@ -61,6 +64,7 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
     repository,
     publisher,
     documents,
+    stager,
     clock,
     tokens,
     hasher,
@@ -74,6 +78,7 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
     }),
     update: new UpdateCustomerUseCase({ repository, publisher, clock }),
     getCustomer: new GetCustomerUseCase({ repository, publisher }),
+    getIdentityDocument: new GetIdentityDocumentUseCase({ repository, publisher, stager }),
     setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock }),
     pending: new GetPendingValidationUseCase({ repository, publisher }),
     authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
@@ -397,6 +402,94 @@ describe('reading a customer (US6)', () => {
   });
 });
 
+describe('viewing the identity-document photo (the cajero half of US6)', () => {
+  it('stages the stored bytes and replies with a reference, never the bytes themselves', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getIdentityDocument.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+    );
+
+    expect(context.stager.staged).toHaveLength(1);
+    expect(context.stager.staged[0]).toMatchObject({
+      content: PHOTO_BYTES,
+      mimeType: 'image/jpeg',
+      sha256: PHOTO_DIGEST,
+    });
+
+    const reply = context.publisher.replies.at(-1);
+    expect(reply?.messageType).toBe('customer.identity-document.replied.v1');
+    expect(reply?.payload).toMatchObject({
+      outcome: 'FOUND',
+      photo: { contentType: 'image/jpeg', sha256: PHOTO_DIGEST },
+    });
+
+    // Never the bytes, whatever shape they might have travelled in.
+    const serialised = JSON.stringify(reply?.payload);
+    expect(serialised).not.toContain(PHOTO_BYTES.toString('base64'));
+  });
+
+  it('lets an administrator view it too', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getIdentityDocument.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'ADMINISTRADOR', customerId: '33333333-3333-4333-8333-333333333333' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ outcome: 'FOUND' });
+  });
+
+  it('answers NOT_FOUND/CUSTOMER_NOT_FOUND for a CLIENTE, indistinguishable from unknown', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.getIdentityDocument.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CLIENTE', customerId: REGISTER.customerId },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toEqual({
+      outcome: 'NOT_FOUND',
+      reason: 'CUSTOMER_NOT_FOUND',
+    });
+    expect(context.stager.staged).toHaveLength(0);
+  });
+
+  it('answers NOT_FOUND/CUSTOMER_NOT_FOUND for an unknown id', async () => {
+    const context = build();
+
+    await context.getIdentityDocument.execute(
+      { customerId: '00000000-0000-4000-8000-000000000000' },
+      { role: 'ADMINISTRADOR', customerId: '33333333-3333-4333-8333-333333333333' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toEqual({
+      outcome: 'NOT_FOUND',
+      reason: 'CUSTOMER_NOT_FOUND',
+    });
+  });
+
+  it('answers NOT_FOUND/IDENTITY_OBJECT_NOT_FOUND for a customer who registered with no photo', async () => {
+    const context = build();
+    await context.register.execute({ ...REGISTER, photo: null }, 'key-1');
+
+    await context.getIdentityDocument.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+    );
+
+    expect(context.publisher.replies.at(-1)?.payload).toEqual({
+      outcome: 'NOT_FOUND',
+      reason: 'IDENTITY_OBJECT_NOT_FOUND',
+    });
+    expect(context.stager.staged).toHaveLength(0);
+  });
+});
+
 describe('updating a customer', () => {
   it('publishes the names of the fields that changed, never their values', async () => {
     const context = build();
@@ -566,10 +659,13 @@ describe('signing in (criterion 11)', () => {
     await context.register.execute(REGISTER, 'key-1');
     await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
 
-    await context.authenticate.execute({
-      email: REGISTER.email,
-      credential: REGISTER.credential,
-    });
+    await context.authenticate.execute(
+      {
+        email: REGISTER.email,
+        credential: REGISTER.credential,
+      },
+      'login-1',
+    );
 
     expect(context.publisher.replies.at(-1)?.payload).toMatchObject({
       outcome: 'APPROVED',
@@ -584,10 +680,16 @@ describe('signing in (criterion 11)', () => {
     await context.register.execute(REGISTER, 'key-1');
     await context.verifyEmail.execute({ activationToken: 'token-1' }, 'key-verify');
 
-    await context.authenticate.execute({ email: REGISTER.email, credential: 'wrong-password' });
+    await context.authenticate.execute(
+      { email: REGISTER.email, credential: 'wrong-password' },
+      'login-1',
+    );
     const wrongPassword = context.publisher.replies.at(-1)?.payload;
 
-    await context.authenticate.execute({ email: 'nobody@correo.com', credential: 'whatever' });
+    await context.authenticate.execute(
+      { email: 'nobody@correo.com', credential: 'whatever' },
+      'login-2',
+    );
     const unknownAddress = context.publisher.replies.at(-1)?.payload;
 
     // Distinguishing them would turn the login route into an enumeration oracle.
@@ -599,10 +701,13 @@ describe('signing in (criterion 11)', () => {
     const context = build();
     await context.register.execute(REGISTER, 'key-1');
 
-    await context.authenticate.execute({
-      email: REGISTER.email,
-      credential: REGISTER.credential,
-    });
+    await context.authenticate.execute(
+      {
+        email: REGISTER.email,
+        credential: REGISTER.credential,
+      },
+      'login-1',
+    );
 
     // The claims are correct and `activationPending` is what refuses the
     // session — the Gateway turns it into the same 401 as a wrong password.
@@ -612,6 +717,63 @@ describe('signing in (criterion 11)', () => {
         (message) => message.messageType === 'customer.activation.requested.v1',
       ),
     ).toHaveLength(2);
+  });
+
+  it('re-sends the reply on a broker redelivery, but does not invalidate the token it just issued', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    // The first delivery of the authenticate command legitimately re-issues a
+    // link, exactly as the "re-sends the activation email" test above shows —
+    // registration's own link, plus this one.
+    await context.authenticate.execute(
+      { email: REGISTER.email, credential: REGISTER.credential },
+      'login-1',
+    );
+
+    const afterFirstDelivery = context.publisher.published.filter(
+      (message) => message.messageType === 'customer.activation.requested.v1',
+    );
+    expect(afterFirstDelivery).toHaveLength(2);
+
+    // A broker redelivery of that *same* command — same idempotencyKey,
+    // exactly as the broker replays the identical envelope.
+    await context.authenticate.execute(
+      { email: REGISTER.email, credential: REGISTER.credential },
+      'login-1',
+    );
+
+    // Both deliveries still get a fresh reply — the reply itself is unguarded.
+    expect(context.publisher.replies).toHaveLength(2);
+    expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ activationPending: true });
+
+    // The redelivery must not have issued a third link, which would have
+    // invalidated the one the first delivery just handed the customer.
+    const afterRedelivery = context.publisher.published.filter(
+      (message) => message.messageType === 'customer.activation.requested.v1',
+    );
+    expect(afterRedelivery).toEqual(afterFirstDelivery);
+  });
+
+  it('does re-issue the link for a genuinely new sign-in attempt', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.authenticate.execute(
+      { email: REGISTER.email, credential: REGISTER.credential },
+      'login-1',
+    );
+    await context.authenticate.execute(
+      { email: REGISTER.email, credential: REGISTER.credential },
+      'login-2',
+    );
+
+    // Registration's link, plus one per distinct login attempt.
+    expect(
+      context.publisher.published.filter(
+        (message) => message.messageType === 'customer.activation.requested.v1',
+      ),
+    ).toHaveLength(3);
   });
 });
 

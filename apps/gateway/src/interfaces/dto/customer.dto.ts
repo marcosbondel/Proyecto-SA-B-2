@@ -16,7 +16,7 @@ const IDENTITY_VERDICTS = ['VALIDATED', 'REJECTED'] as const;
 /** A teller's manual verdict on an identity document. */
 export class SetIdentityVerdictDto {
   @IsIn(IDENTITY_VERDICTS, {
-    message: `verdict debe ser uno de: ${IDENTITY_VERDICTS.join(', ')}`,
+    message: `El veredicto debe ser uno de: ${IDENTITY_VERDICTS.join(', ')}.`,
   })
   public verdict!: (typeof IDENTITY_VERDICTS)[number];
 }
@@ -29,28 +29,31 @@ export class SetIdentityVerdictDto {
  * message that is refused somewhere the caller cannot see.
  */
 export class RegisterCustomerDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
+  @IsString({ message: 'El nombre completo debe ser un texto.' })
+  @MinLength(1, { message: 'El nombre completo es obligatorio.' })
+  @MaxLength(200, { message: 'El nombre completo no puede superar los 200 caracteres.' })
   public fullName!: string;
 
-  @IsString()
-  @MinLength(1)
-  @MaxLength(50)
+  @IsString({ message: 'El documento de identidad debe ser un texto.' })
+  @MinLength(1, { message: 'El documento de identidad es obligatorio.' })
+  @MaxLength(50, { message: 'El documento de identidad no puede superar los 50 caracteres.' })
   public identityDocument!: string;
 
-  @IsEmail({}, { message: 'email debe ser una dirección de correo válida' })
+  @IsEmail({}, { message: 'El correo no tiene un formato válido.' })
   public email!: string;
 
-  @IsDateString({ strict: true }, { message: 'dateOfBirth debe tener el formato YYYY-MM-DD' })
+  @IsDateString(
+    { strict: true },
+    { message: 'La fecha de nacimiento debe tener el formato AAAA-MM-DD.' },
+  )
   public dateOfBirth!: string;
 
-  @IsString()
-  @MinLength(1)
-  @MaxLength(300)
+  @IsString({ message: 'La dirección debe ser un texto.' })
+  @MinLength(1, { message: 'La dirección es obligatoria.' })
+  @MaxLength(300, { message: 'La dirección no puede superar los 300 caracteres.' })
   public address!: string;
 
-  @IsIn(ROLES, { message: `role debe ser uno de: ${ROLES.join(', ')}` })
+  @IsIn(ROLES, { message: `El rol debe ser uno de: ${ROLES.join(', ')}.` })
   public role!: (typeof ROLES)[number];
 
   /**
@@ -60,37 +63,40 @@ export class RegisterCustomerDto {
    * password when someone is *choosing* one tells an attacker nothing, while
    * refusing one when someone is *proving* it would.
    */
-  @IsString()
-  @MinLength(8)
-  @MaxLength(256)
+  @IsString({ message: 'La contraseña debe ser un texto.' })
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres.' })
+  @MaxLength(256, { message: 'La contraseña es demasiado larga.' })
   public credential!: string;
 }
 
 /** At least one field must change; the empty update is refused by the contract. */
 export class UpdateCustomerDto {
   @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
+  @IsString({ message: 'El nombre completo debe ser un texto.' })
+  @MinLength(1, { message: 'El nombre completo es obligatorio.' })
+  @MaxLength(200, { message: 'El nombre completo no puede superar los 200 caracteres.' })
   public fullName?: string;
 
   @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(300)
+  @IsString({ message: 'La dirección debe ser un texto.' })
+  @MinLength(1, { message: 'La dirección es obligatoria.' })
+  @MaxLength(300, { message: 'La dirección no puede superar los 300 caracteres.' })
   public address?: string;
 
   @IsOptional()
-  @IsDateString({ strict: true }, { message: 'dateOfBirth debe tener el formato YYYY-MM-DD' })
+  @IsDateString(
+    { strict: true },
+    { message: 'La fecha de nacimiento debe tener el formato AAAA-MM-DD.' },
+  )
   public dateOfBirth?: string;
 }
 
 /** The activation token from the emailed link. Opaque, and never logged. */
 export class VerifyEmailDto {
   @Type(() => String)
-  @IsString()
-  @MinLength(16)
-  @MaxLength(512)
+  @IsString({ message: 'El token de activación debe ser un texto.' })
+  @MinLength(16, { message: 'El token de activación no es válido.' })
+  @MaxLength(512, { message: 'El token de activación no es válido.' })
   public token!: string;
 }
 
@@ -104,13 +110,13 @@ export class VerifyEmailDto {
  * bounds, so a password set here and one set at sign-up are equally acceptable.
  */
 export class ChangePasswordDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(256)
+  @IsString({ message: 'La contraseña actual debe ser un texto.' })
+  @MinLength(1, { message: 'La contraseña actual es obligatoria.' })
+  @MaxLength(256, { message: 'La contraseña actual es demasiado larga.' })
   public currentCredential!: string;
 
-  @IsString()
-  @MinLength(8)
-  @MaxLength(256)
+  @IsString({ message: 'La contraseña nueva debe ser un texto.' })
+  @MinLength(8, { message: 'La contraseña nueva debe tener al menos 8 caracteres.' })
+  @MaxLength(256, { message: 'La contraseña nueva es demasiado larga.' })
   public newCredential!: string;
 }

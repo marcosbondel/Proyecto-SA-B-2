@@ -18,7 +18,7 @@ C4Context
         System(bankusac, "Núcleo Bancario Bank USAC", "Sistema bancario distribuido. Gestiona clientes,<br>cuentas, transferencias, pagos y auditoría.<br>No es accesible desde fuera: solo responde<br>a mensajes.")
     }
 
-    System_Ext(correo, "Servicio de Correo Electrónico", "Entrega al cliente el enlace<br>de activación de cuenta.")
+    System_Ext(correo, "Servicio de Correo Electrónico<br>(Resend)", "Entrega al cliente el enlace<br>de activación de cuenta.<br>Solo interviene con<br>NOTIFICATION_CHANNEL<br>= resend, por defecto el<br>canal es simulado y no<br>sale correo.")
     System_Ext(proveedorPagos, "Proveedor de Pagos", "Procesa pagos externos que<br>el banco no resuelve internamente.")
 
     Rel(cliente, gateway, "Consulta y gestiona sus cuentas", "HTTPS/REST · síncrono")
@@ -28,7 +28,7 @@ C4Context
     Rel(gateway, bankusac, "Publica comandos y consultas con correlationId", "AMQP 0-9-1 · asíncrono")
     Rel(bankusac, gateway, "Responde por cola de respuesta", "AMQP 0-9-1 · request/reply")
 
-    Rel(bankusac, correo, "Solicita el correo de activación", "SMTP · asíncrono")
+    Rel(bankusac, correo, "Envía el correo de activación", "HTTPS/REST (API de Resend) · síncrono · canal simulado por defecto")
     Rel(correo, cliente, "Entrega el enlace de activación", "Correo electrónico · asíncrono")
     Rel(bankusac, proveedorPagos, "Solicita la autorización del pago", "API del proveedor · síncrono")
 

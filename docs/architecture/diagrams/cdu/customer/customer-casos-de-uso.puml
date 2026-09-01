@@ -30,6 +30,10 @@ rectangle "CDU001 - Gestionar clientes e identidad" as system_customer {
     usecase "CDU001.8:\nValidar token de activación" as uc_customer_token
     usecase "CDU001.9:\nValidar credenciales" as uc_customer_credentials
     usecase "CDU001.10:\nRevisar foto y datos" as uc_customer_review
+    usecase "CDU001.11:\nSolicitar restablecimiento de contraseña" as uc_customer_reset_request
+    usecase "CDU001.12:\nRestablecer contraseña con el enlace" as uc_customer_reset_confirm
+    usecase "CDU001.13:\nCambiar contraseña propia" as uc_customer_password
+    usecase "CDU001.14:\nValidar token de restablecimiento" as uc_customer_reset_token
 }
 
 actor_customer -- uc_customer_register
@@ -37,21 +41,28 @@ actor_customer -- uc_customer_activate
 actor_customer -- uc_customer_login
 actor_customer -- uc_customer_update
 actor_customer -- uc_customer_upload
+actor_customer -- uc_customer_reset_request
+actor_customer -- uc_customer_reset_confirm
+actor_customer -- uc_customer_password
 
 actor_teller -- uc_customer_register
 actor_teller -- uc_customer_login
 actor_teller -- uc_customer_update
 actor_teller -- uc_customer_identity
+actor_teller -- uc_customer_password
 
 actor_admin -- uc_customer_register
 actor_admin -- uc_customer_login
 actor_admin -- uc_customer_update
 actor_admin -- uc_customer_identity
+actor_admin -- uc_customer_password
 
 uc_customer_register .> uc_customer_username : <<include>>
 uc_customer_activate .> uc_customer_token : <<include>>
 uc_customer_login .> uc_customer_credentials : <<include>>
 uc_customer_identity .> uc_customer_review : <<include>>
+uc_customer_reset_confirm .> uc_customer_reset_token : <<include>>
+uc_customer_password .> uc_customer_credentials : <<include>>
 
 note right of uc_customer_activate
     Customer Service genera y valida el token.
@@ -61,5 +72,8 @@ end note
 legend right
     La validación de identidad es distinta de la activación por correo.
     La foto queda bajo responsabilidad de Customer Service.
+    Recuperar la contraseña es anónimo y responde igual exista o no
+    el correo. Cambiarla desde la sesión exige la contraseña actual
+    y es "solo la propia", incluso para un administrador.
 endlegend
 @enduml

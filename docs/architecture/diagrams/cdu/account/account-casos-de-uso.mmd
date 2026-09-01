@@ -14,6 +14,8 @@ flowchart LR
         access(("CDU002.6: Verificar acceso a la cuenta"))
         funds(("CDU002.7: Validar fondos y estado"))
         automatic(("CDU002.8: Desactivar cuentas inactivas"))
+        deposit(("CDU002.9: Registrar depósito en ventanilla"))
+        reactivate(("CDU002.10: Reactivar cuenta al acreditar"))
     end
 
     client --- open
@@ -23,14 +25,21 @@ flowchart LR
     admin --- open
     admin --- balance
     admin --- status
+    teller --- deposit
+    admin --- deposit
     transactionService --- movement
     scheduler --- automatic
 
     open -. "«include»" .-> eligibility
     balance -. "«include»" .-> access
     movement -. "«include»" .-> funds
+    reactivate -. "«extend»" .-> deposit
+    reactivate -. "«extend»" .-> movement
 
     note["Transaction Service solicita el movimiento; Account Service valida fondos y modifica balances"]:::note
     movement -.-> note
+
+    depositNote["El depósito es solo de personal y responde de forma síncrona: no hay Saga que esperar. Acreditar una cuenta inactiva la reactiva (A-3)"]:::note
+    deposit -.-> depositNote
 
     classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

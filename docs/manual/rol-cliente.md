@@ -14,22 +14,30 @@ primera vez, léelo antes que esta guía.
 | Módulo | Qué puedes hacer |
 | --- | --- |
 | **Inicio** | Ver tu saldo total y tus movimientos recientes. |
-| **Clientes** | Registrarte, actualizar tus datos, cambiar tu contraseña desde *Mi perfil*. |
 | **Cuentas** | Abrir cuentas a tu nombre, consultar tu saldo, ver tus movimientos. |
 | **Transferencias** | Enviar dinero, seguir cada envío y ver tu historial. |
 | **Pagos** | Pagar luz, agua o teléfono, y ver los pagos que ya hiciste. |
 
-Además, la campana de la barra superior lleva a tus **notificaciones**: lo que el
-banco te ha comunicado, con un punto rojo en las que no has leído.
+Arriba a la derecha, el menú de tu nombre lleva a otras dos pantallas que no
+están en el menú lateral:
 
-**Lo que no puedes hacer:** abrir cuentas a nombre de otra persona, activar o
-desactivar cuentas, registrar depósitos en ventanilla, ver el monitoreo de pagos
-ni consultar la auditoría. Todo eso es trabajo del personal del banco. Tampoco
-puedes cambiar tu correo electrónico: es tu identificador de acceso, y cambiarlo
-exige verificar la dirección nueva antes de reemplazar la vieja — un flujo que
-todavía no está construido.
+- **Mi perfil** — tus datos, tu contraseña y el estado de la validación de tu
+  documento.
+- **Notificaciones** — lo que el banco te ha comunicado. También se llega con la
+  campana de la barra superior, que muestra un punto rojo en lo que no has
+  leído.
 
-Tu menú lateral tiene cinco entradas: **Inicio**, **Clientes**, **Cuentas**,
+**Lo que no puedes hacer:** abrir cuentas a nombre de otra persona, registrar a
+otros clientes, activar o desactivar cuentas, registrar depósitos en ventanilla,
+ver el monitoreo de pagos ni consultar la auditoría. Todo eso es trabajo del
+personal del banco. Tampoco puedes cambiar tu correo electrónico: es tu
+identificador de acceso, y cambiarlo exige verificar la dirección nueva antes de
+reemplazar la vieja — un flujo que todavía no está construido.
+
+Y no hay forma de **retirar efectivo**: el dinero sale de tus cuentas
+únicamente por una transferencia.
+
+Tu menú lateral tiene cuatro entradas: **Inicio**, **Cuentas**,
 **Transferencias** y **Pagos**.
 
 ---
@@ -203,20 +211,24 @@ insuficiente, cuenta inactiva, cuenta no encontrada, pago rechazado, y así.
 Si la pantalla deja de actualizarse a los dos minutos, no quiere decir que
 falló: quiere decir que dejó de preguntar. Vuelve a consultar más tarde.
 
-> **Guarda el identificador de la transferencia.** Es la única forma de volver a
-> ella: no existe un listado de transferencias. Se pega en *Transferencias →
-> Consultar una transferencia*.
+> **Guarda el identificador de la transferencia.** Es la forma más directa de
+> volver a ella: se pega en *Transferencias → Consultar una transferencia*. Aun
+> si lo pierdes, la pantalla de **Transferencias** lista tus envíos más
+> recientes.
 
 ## 7. Actualizar tus datos personales
 
-Menú **Clientes** → **Abrir mi ficha**.
+Menú de tu nombre, arriba a la derecha → **Mi perfil**.
 
-Puedes cambiar tu **nombre completo**, tu **dirección** y tu **fecha de
-nacimiento**. Escribe solo lo que quieras cambiar; lo que dejes vacío se queda
-como está. Hay que cambiar al menos un dato para poder guardar.
+Arriba verás tus datos tal como los tiene el banco. Debajo puedes cambiar tu
+**nombre completo**, tu **dirección** y tu **fecha de nacimiento**. Escribe solo
+lo que quieras cambiar; lo que dejes vacío se queda como está. Hay que cambiar al
+menos un dato para poder guardar.
 
-**El correo, el username y la contraseña no se pueden cambiar** desde la
-aplicación todavía.
+En esa misma pantalla está el cambio de **contraseña**, que te pide la actual
+antes de aceptar la nueva.
+
+**El correo y el username no se pueden cambiar** desde la aplicación.
 
 Al guardar verás *«solicitud aceptada»*. Tu sesión de cliente no puede consultar
 el rastro de auditoría, así que la pantalla no podrá confirmarte el resultado:
@@ -240,18 +252,18 @@ La apertura es asíncrona. Espera unos segundos y pulsa **Actualizar**.
 No perdiste el dinero: salió y volvió. Revisa el estado de cuenta y verás los
 dos movimientos.
 
-**No encuentro el módulo de Pagos.**
-Tu rol no lo tiene. Puedes ver el resultado del pago dentro de la transferencia
-que lo originó.
+**No encuentro el módulo de Auditoría.**
+Tu rol no lo tiene: es solo para administradores. Si necesitas rastrear una
+operación, dale a un administrador su identificador de correlación.
 
 **Perdí el número de mi cuenta.**
 Está en *Cuentas*, en la columna «Número de cuenta», y en el detalle de la
 cuenta con un botón para copiarlo.
 
 **Perdí el identificador de una transferencia.**
-No hay forma de recuperarlo desde la aplicación: no existe un listado. Un
-administrador puede encontrarlo en la auditoría si tienes el identificador de
-correlación.
+Búscala en el historial de *Transferencias*, que lista tus envíos más recientes.
+Si es antigua y ya no aparece ahí, un administrador puede encontrarla en la
+auditoría con el identificador de correlación.
 
 ---
 

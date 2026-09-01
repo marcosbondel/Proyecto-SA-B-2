@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { ageOn, photoRejection, usernameFrom, validateRegistration } from '../../lib/customer';
-import type { FieldErrors } from '../../lib/customer';
+import {
+  ageOn,
+  photoRejection,
+  registrationHeading,
+  usernameFrom,
+  validateRegistration,
+} from '../../lib/customer';
+import type { FieldErrors, RegistrationOutcome } from '../../lib/customer';
 import { labelForRole } from '../../lib/navigation';
 import type { Role } from '../../lib/navigation';
 
@@ -72,6 +78,21 @@ const age = computed(() => (fields.dateOfBirth === '' ? null : ageOn(fields.date
 
 /** The command was accepted; the form is behind us and only the wait remains. */
 const isAccepted = computed(() => acceptedCommand.value !== null);
+
+/**
+ * `outcomeState` widened to what `registrationHeading` actually decides on.
+ * Everything that is not a settled `SUCCESS` or `BUSINESS_REJECTION` — still
+ * `PENDING`, or a session that watched and gave up — reads as "not yet
+ * confirmed", because none of them license the screen to claim the email went
+ * out.
+ */
+const registrationOutcome = computed<RegistrationOutcome>(() =>
+  outcomeState.value === 'SUCCESS' || outcomeState.value === 'BUSINESS_REJECTION'
+    ? outcomeState.value
+    : 'PENDING',
+);
+
+const registrationCopy = computed(() => registrationHeading(registrationOutcome.value));
 
 const roleOptions = (['CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR'] as const).map((value) => ({
   value,
@@ -197,14 +218,31 @@ function startOver(): void {
       >✓</div>
 
       <div>
-        <h2 class="text-[22px] font-bold leading-[30px]">Registro enviado</h2>
-        <p class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
-          Enviamos un correo a
+        <h2 class="text-[22px] font-bold leading-[30px]">{{ registrationCopy.heading }}</h2>
+
+        <!-- Only a confirmed SUCCESS may claim the email went out. -->
+        <p v-if="registrationCopy.confirmed" class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
+          Verificamos tu registro y enviamos un correo a
           <strong class="text-[#23242A]">{{ fields.email }}</strong>
           con un enlace de activación. La cuenta queda activa cuando se abra ese enlace, y no
           antes: sin activación no se puede iniciar sesión.
         </p>
-        <p class="mt-2 text-[13px] leading-[18px] text-[#75767F]">
+        <p
+          v-else-if="registrationOutcome === 'BUSINESS_REJECTION'"
+          class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]"
+        >
+          No pudimos completarlo con estos datos. Revisa el motivo abajo.
+        </p>
+        <p v-else class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
+          Recibimos tu solicitud y la estamos procesando. Si se completa, te llegará un correo a
+          <strong class="text-[#23242A]">{{ fields.email }}</strong>
+          con un enlace de activación; la cuenta queda activa solo cuando se abre ese enlace.
+        </p>
+
+        <p
+          v-if="registrationOutcome !== 'BUSINESS_REJECTION'"
+          class="mt-2 text-[13px] leading-[18px] text-[#75767F]"
+        >
           El usuario será
           <span
             class="font-semibold text-[#23242A]"
@@ -223,9 +261,9 @@ function startOver(): void {
         <SharedCorrelationIdBadge
           v-if="acceptedCommand?.customerId"
           :correlation-id="acceptedCommand.customerId"
-          label="customerId"
+          label="Número de cliente"
         />
-        <SharedCorrelationIdBadge :correlation-id="username" label="usuario (previsualización)" />
+        <SharedCorrelationIdBadge :correlation-id="username" label="Usuario (previsualización)" />
       </div>
 
       <SharedAsyncStateAlert
@@ -269,7 +307,7 @@ function startOver(): void {
       <section v-if="step === 1" class="flex flex-col gap-4">
         <header>
           <h2 class="text-[22px] font-bold leading-[30px]">Datos personales</h2>
-          <p class="mt-1 text-[14px] leading-5 text-[#5A5B63]">Paso 1 de 3 · Customer Service</p>
+          <p class="mt-1 text-[14px] leading-5 text-[#5A5B63]">Paso 1 de 3 · Tus datos</p>
         </header>
 
         <UFormField label="Nombre completo" name="fullName" :error="errors.fullName">
@@ -371,9 +409,9 @@ function startOver(): void {
         </div>
 
         <UFormField
-          label="Username generado"
+          label="Usuario que te crearemos"
           name="username"
-          help="Se genera del nombre. Es una previsualización: si ya existe, Customer Service le añade un sufijo."
+          help="Se genera a partir de tu nombre. Si ya existe, le añadimos un número al final."
         >
           <UInput
             :model-value="username"

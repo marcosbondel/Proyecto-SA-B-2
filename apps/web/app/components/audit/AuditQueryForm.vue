@@ -53,7 +53,7 @@ function submit(): void {
     <label
       for="audit-correlation"
       class="text-[13px] font-medium leading-5 text-[#5A5B63]"
-    >Identificador de correlación</label>
+    >Código de seguimiento</label>
 
     <div class="flex flex-wrap items-start gap-2">
       <div class="flex min-w-[320px] flex-1 flex-col gap-1">

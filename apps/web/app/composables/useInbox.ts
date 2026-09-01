@@ -1,5 +1,5 @@
 import { asyncStateFor } from '../lib/gateway-error';
-import type { AsyncState } from '../lib/gateway-error';
+import type { ScreenState } from '../lib/gateway-error';
 import type { InboxNotification } from '../lib/audit';
 
 /**
@@ -21,7 +21,7 @@ export function useInbox() {
 
   const notifications = useState<readonly InboxNotification[]>('bank-inbox', () => []);
   const unread = useState<number>('bank-inbox-unread', () => 0);
-  const state = useState<AsyncState | 'IDLE'>('bank-inbox-state', () => 'IDLE');
+  const state = useState<ScreenState>('bank-inbox-state', () => 'IDLE');
   const failure = useState<string | null>('bank-inbox-failure', () => null);
 
   async function load(limit = 30): Promise<void> {

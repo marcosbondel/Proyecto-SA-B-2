@@ -109,7 +109,7 @@ flowchart TB
             end
         end
 
-        portforward["kubectl port-forward<br/>«executionEnvironment»"]:::runtime
+        portforward["kubectl port-forward<br/>«executionEnvironment»<br/>localhost:3000 -&gt; svc/gateway<br/>localhost:3010 -&gt; svc/frontend"]:::runtime
         helm_chart["Helm chart<br/>«artifact»<br/>infra/k8s/helm/bank-usac"]:::artifact
     end
 
@@ -129,8 +129,8 @@ flowchart TB
     secret -.-> pod_payment
     secret -.-> pod_notification
 
-    portforward -->|HTTP · localhost:3000| svc_frontend
-    portforward -->|HTTP · localhost:3001| svc_gateway
+    portforward -->|HTTP · localhost:3000| svc_gateway
+    portforward -->|HTTP · localhost:3010| svc_frontend
 
     pod_gateway <-->|AMQP/TCP 5672<br/>host.docker.internal| rabbitmq
     pod_customer <-->|AMQP/TCP 5672<br/>host.docker.internal| rabbitmq

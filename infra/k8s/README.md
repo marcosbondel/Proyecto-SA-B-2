@@ -46,6 +46,8 @@ it must be created):
 
 ```bash
 infra/k8s/kind/scripts/discover-external-ips.sh   # dockerNetwork mode only
+./infra/docker/scripts/build-images.sh --kind <cluster-name>   # prints <short-commit>
+
 helm upgrade --install bank-usac infra/k8s/helm/bank-usac \
   --namespace bank-usac --create-namespace \
   -f infra/k8s/kind/generated-external.values.yaml \
@@ -56,8 +58,21 @@ helm upgrade --install bank-usac infra/k8s/helm/bank-usac \
   --set secrets.databases.account.password=... \
   --set secrets.databases.transaction.password=... \
   --set secrets.databases.payment.password=... \
-  --set secrets.databases.notificationAudit.password=...
+  --set secrets.databases.notificationAudit.password=... \
+  --set services.customer.image.tag=<short-commit> \
+  --set services.account.image.tag=<short-commit> \
+  --set services.transaction.image.tag=<short-commit> \
+  --set services.payment.image.tag=<short-commit> \
+  --set services.notificationAudit.image.tag=<short-commit> \
+  --set gateway.image.tag=<short-commit> \
+  --set web.image.tag=<short-commit>
 ```
+
+The seven `image.tag` flags are not optional. Every component defaults to
+`dev` in `values.yaml`, and `build-images.sh --kind <cluster-name>` loads only
+the short-commit tag onto the node — never `dev` — so an install that omits
+them leaves every pod in `ImagePullBackOff`. See the comment above `services:`
+in `values.yaml` for why the default is `dev` rather than a hardcoded commit.
 
 `helm lint infra/k8s/helm/bank-usac` and
 `helm template bank-usac infra/k8s/helm/bank-usac` (with the same `--set`

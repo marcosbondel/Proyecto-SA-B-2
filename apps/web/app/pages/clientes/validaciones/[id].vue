@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import { IDENTITY_PRESENTATION, isMissingDocumentPhoto } from '../../../lib/customer';
+import type { IdentityStatus } from '../../../lib/customer';
+
 /**
  * One identity under review — the prototype's `show.validationDetail`.
  *
  * The declared data is loaded from `GET /api/customers/{id}` and the teller's
  * verdict is published through `POST /api/customers/{id}/identity-verdict`
- * (VALIDATED or REJECTED). Both are staff-only; the owning service re-checks.
- * The document image itself still has no read route, so that panel stays a
- * placeholder — a separate, deferred piece.
+ * (VALIDATED or REJECTED). The photo itself comes from
+ * `GET /api/customers/{id}/identity-document`, which answers with the image's
+ * own bytes rather than JSON — the response is turned into an object URL and
+ * released when this screen is left. All three are staff-only; the owning
+ * service re-checks each one.
  */
 interface CustomerRecord {
   readonly fullName: string;
@@ -15,8 +20,10 @@ interface CustomerRecord {
   readonly dateOfBirth: string;
   readonly address: string;
   readonly username: string;
-  readonly identityStatus: string;
+  readonly identityStatus: IdentityStatus;
 }
+
+type DocumentPhotoState = 'LOADING' | 'READY' | 'MISSING' | 'ERROR';
 
 const route = useRoute();
 const { role } = useSession();
@@ -29,6 +36,10 @@ const record = ref<CustomerRecord | null>(null);
 const loadError = ref<string | null>(null);
 const sending = ref(false);
 const sent = ref<'VALIDATED' | 'REJECTED' | null>(null);
+
+const documentPhotoState = ref<DocumentPhotoState>('LOADING');
+const documentPhotoUrl = ref<string | null>(null);
+const documentPhotoError = ref<string | null>(null);
 
 const mayReview = computed(
   () => role.value === 'CAJERO_RECEPTOR' || role.value === 'ADMINISTRADOR',
@@ -49,6 +60,34 @@ onMounted(async () => {
     record.value = result.data;
   } else {
     loadError.value = result.error.message;
+  }
+});
+
+/**
+ * The photo, fetched independently of the declared data above: whichever of
+ * the two fails, the other still has something to show.
+ */
+onMounted(async () => {
+  const result = await api.call<Blob>(`/api/customers/${customerId.value}/identity-document`);
+
+  if (result.ok) {
+    documentPhotoUrl.value = URL.createObjectURL(result.data);
+    documentPhotoState.value = 'READY';
+    return;
+  }
+
+  if (isMissingDocumentPhoto(result.error.failureCode)) {
+    documentPhotoState.value = 'MISSING';
+    return;
+  }
+
+  documentPhotoError.value = result.error.message;
+  documentPhotoState.value = 'ERROR';
+});
+
+onBeforeUnmount(() => {
+  if (documentPhotoUrl.value !== null) {
+    URL.revokeObjectURL(documentPhotoUrl.value);
   }
 });
 
@@ -102,16 +141,34 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
     <div class="grid items-start gap-4 lg:grid-cols-2">
       <UCard>
         <h2 class="text-[16px] font-semibold">Documento cargado</h2>
-        <div
-          class="mt-4 grid h-[340px] place-items-center rounded-2xl bg-[#DCDCE0] px-6 text-center text-[13px] font-medium text-[#75767F]"
-          data-testid="document-viewer-empty"
+        <img
+          v-if="documentPhotoState === 'READY' && documentPhotoUrl"
+          :src="documentPhotoUrl"
+          alt="Foto del documento de identidad"
+          class="mt-4 h-[340px] w-full rounded-2xl bg-[#DCDCE0] object-contain"
+          data-testid="document-viewer-image"
         >
-          <span>
-            La foto no puede mostrarse todavía
+        <div
+          v-else
+          class="mt-4 grid h-[340px] place-items-center rounded-2xl bg-[#DCDCE0] px-6 text-center text-[13px] font-medium text-[#75767F]"
+          :data-testid="
+            documentPhotoState === 'MISSING'
+              ? 'document-viewer-empty'
+              : documentPhotoState === 'ERROR'
+                ? 'document-viewer-error'
+                : 'document-viewer-loading'
+          "
+        >
+          <span v-if="documentPhotoState === 'LOADING'">Cargando la foto…</span>
+          <span v-else-if="documentPhotoState === 'MISSING'">
+            Este cliente no adjuntó una foto de su documento
             <span class="mt-1 block text-[12px] font-normal">
-              El Gateway deposita la imagen en el almacenamiento de objetos y aún no expone una ruta
-              para leerla.
+              Puedes revisar los datos declarados y decidir con esa información.
             </span>
+          </span>
+          <span v-else>
+            No pudimos mostrar la foto
+            <span class="mt-1 block text-[12px] font-normal">{{ documentPhotoError }}</span>
           </span>
         </div>
       </UCard>
@@ -137,12 +194,14 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
               <span class="text-[13px] font-medium">{{ record.address }}</span>
             </div>
             <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
-              <span class="text-[13px] text-[#75767F]">Username</span>
+              <span class="text-[13px] text-[#75767F]">Usuario</span>
               <span class="text-[13px] font-medium">{{ record.username }}</span>
             </div>
             <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
               <span class="text-[13px] text-[#75767F]">Estado de identidad</span>
-              <span class="text-[13px] font-medium">{{ record.identityStatus }}</span>
+              <span class="text-[13px] font-medium">
+                {{ IDENTITY_PRESENTATION[record.identityStatus].label }}
+              </span>
             </div>
           </div>
           <p v-else class="mt-4 text-[13px] text-[#75767F]">Cargando la ficha…</p>
