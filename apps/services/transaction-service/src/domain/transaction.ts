@@ -100,6 +100,20 @@ export function isTerminal(status: TransactionStatus): boolean {
 }
 
 /**
+ * Whether a transaction is still exactly where `openTransaction` left it:
+ * accepted, but with no `DEBIT_ORDERED` ever applied to it.
+ *
+ * The one place outside this file allowed to ask is `RequestTransferUseCase`,
+ * to tell an ordinary redelivery apart from a transfer whose Saga never
+ * started — a crash between the row committing and the debit being ordered
+ * leaves exactly this shape, and a redelivery that finds it has to resume the
+ * Saga rather than treat the row's mere existence as proof it already did.
+ */
+export function isPending(transaction: { readonly status: TransactionStatus }): boolean {
+  return transaction.status === 'PENDING';
+}
+
+/**
  * What happened, in the domain's own words rather than the broker's.
  *
  * The names are not the message names on purpose. A domain that spoke in
