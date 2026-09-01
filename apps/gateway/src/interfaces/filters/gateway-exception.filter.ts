@@ -142,10 +142,11 @@ export class GatewayExceptionFilter implements ExceptionFilter {
 /**
  * Pulls the readable complaint out of a `ValidationPipe` rejection.
  *
- * Nest reports every failed constraint as a sentence beginning with the
- * property name. The first one is quoted verbatim and its property becomes
- * `field`, so a caller is told *which* input to fix rather than that something,
- * somewhere, was wrong.
+ * `validated()` shapes that rejection itself — `{ message, field }`, both
+ * already correct — so this only has to read the two properties back out.
+ * The fallback below exists for an `HttpException` that never went through
+ * `validated()` at all (Nest's own body-size or JSON-parsing failures, which
+ * carry a plain string `message` and no field to name).
  */
 function validationDetailOf(exception: HttpException): {
   message: string;
@@ -155,10 +156,10 @@ function validationDetailOf(exception: HttpException): {
 
   if (typeof body === 'object' && body !== null && 'message' in body) {
     const reported = (body as { message: unknown }).message;
-    const first = Array.isArray(reported) ? reported[0] : reported;
+    const field = 'field' in body ? (body as { field: unknown }).field : undefined;
 
-    if (typeof first === 'string') {
-      return { message: first, field: first.split(' ')[0] };
+    if (typeof reported === 'string') {
+      return { message: reported, field: typeof field === 'string' ? field : undefined };
     }
   }
 

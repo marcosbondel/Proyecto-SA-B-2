@@ -29,20 +29,22 @@ const TRANSACTION_STATUSES = [
 
 /** Money on the wire: an integer of minor units, never a float. */
 export class MoneyDto {
-  @IsInt({ message: 'amount.amountMinor debe ser un entero en centavos' })
-  @Min(1, { message: 'amount.amountMinor debe ser mayor que cero' })
+  @IsInt({ message: 'El monto debe ser un número entero.' })
+  @Min(1, { message: 'El monto debe ser mayor que cero.' })
   public amountMinor!: number;
 
-  @IsString()
-  @Matches(/^[A-Z]{3}$/, { message: 'amount.currency debe ser un código ISO-4217 en mayúsculas' })
+  @IsString({ message: 'La moneda debe ser un texto.' })
+  @Matches(/^[A-Z]{3}$/, {
+    message: 'La moneda debe ser un código de tres letras en mayúsculas, por ejemplo GTQ.',
+  })
   public currency!: string;
 }
 
 export class TransferDto {
-  @IsUUID('4', { message: 'sourceAccount debe ser un UUID v4' })
+  @IsUUID('4', { message: 'La cuenta de origen no tiene un formato válido.' })
   public sourceAccount!: string;
 
-  @IsUUID('4', { message: 'targetAccount debe ser un UUID v4' })
+  @IsUUID('4', { message: 'La cuenta de destino no tiene un formato válido.' })
   public targetAccount!: string;
 
   /**
@@ -53,8 +55,8 @@ export class TransferDto {
    * `amount.amountMinor` and dies with a `500` — a validation failure reported
    * as an internal error, which is both wrong and unhelpful.
    */
-  @IsDefined({ message: 'amount es obligatorio' })
-  @IsObject({ message: 'amount debe ser un objeto con amountMinor y currency' })
+  @IsDefined({ message: 'El monto es obligatorio.' })
+  @IsObject({ message: 'El monto debe incluir la cantidad y la moneda.' })
   @ValidateNested()
   @Type(() => MoneyDto)
   public amount!: MoneyDto;
@@ -67,8 +69,8 @@ export class TransferDto {
    * biller changed theirs. The Gateway carries it and passes it on.
    */
   @IsOptional()
-  @IsString()
-  @MaxLength(60, { message: 'reference no puede exceder 60 caracteres' })
+  @IsString({ message: 'La referencia debe ser un texto.' })
+  @MaxLength(60, { message: 'La referencia no puede superar los 60 caracteres.' })
   public reference?: string;
 
   /**
@@ -80,7 +82,7 @@ export class TransferDto {
    * the entry point.
    */
   @IsOptional()
-  @IsIn(SCENARIOS, { message: `paymentScenario debe ser uno de: ${SCENARIOS.join(', ')}` })
+  @IsIn(SCENARIOS, { message: `El escenario de pago debe ser uno de: ${SCENARIOS.join(', ')}.` })
   public paymentScenario?: (typeof SCENARIOS)[number];
 }
 
@@ -95,16 +97,16 @@ export class TransferDto {
  */
 export class ListTransfersQueryDto {
   @IsOptional()
-  @IsUUID('4', { message: 'customerId debe ser un UUID v4' })
+  @IsUUID('4', { message: 'El identificador del cliente no tiene un formato válido.' })
   public customerId?: string;
 
   @IsOptional()
-  @IsUUID('4', { message: 'accountId debe ser un UUID v4' })
+  @IsUUID('4', { message: 'El identificador de la cuenta no tiene un formato válido.' })
   public accountId?: string;
 
   @IsOptional()
   @IsIn(TRANSACTION_STATUSES, {
-    message: `status debe ser uno de: ${TRANSACTION_STATUSES.join(', ')}`,
+    message: `El estado debe ser uno de: ${TRANSACTION_STATUSES.join(', ')}.`,
   })
   public status?: (typeof TRANSACTION_STATUSES)[number];
 
@@ -115,8 +117,10 @@ export class ListTransfersQueryDto {
    */
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'limit debe ser un entero' })
-  @Min(1, { message: 'limit debe ser mayor que cero' })
-  @Max(MAX_TRANSACTION_ROWS, { message: `limit no puede exceder ${String(MAX_TRANSACTION_ROWS)}` })
+  @IsInt({ message: 'El límite debe ser un número entero.' })
+  @Min(1, { message: 'El límite debe ser mayor que cero.' })
+  @Max(MAX_TRANSACTION_ROWS, {
+    message: `El límite no puede superar ${String(MAX_TRANSACTION_ROWS)}.`,
+  })
   public limit?: number;
 }

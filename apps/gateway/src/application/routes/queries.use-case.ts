@@ -303,8 +303,17 @@ export class QueriesUseCase {
     }
 
     if (parsed.data.outcome === 'NOT_FOUND') {
-      // The reply carries no code for this case, so the gateway supplies the
-      // nearest one from the catalogue rather than inventing a new vocabulary.
+      /*
+       * A borrowed code, and an imperfect one. The catalogue has no
+       * `TRANSACTION_NOT_FOUND` — only `ACCOUNT_NOT_FOUND`, `CUSTOMER_NOT_FOUND`
+       * and `IDENTITY_OBJECT_NOT_FOUND` name a missing subject, and none of them
+       * is true of a transaction. `ILLEGAL_TRANSITION` is the nearest existing
+       * code rather than a fourth kept honest, which is why it carries `409`
+       * here instead of the `404` this outcome actually is (see
+       * `FAILURE_CODE_STATUS`). The message is accurate; the code and the
+       * status it drives are not. Adding a real not-found code is `@bank/contracts`
+       * work, not the gateway's to do unilaterally.
+       */
       throw GatewayError.businessRejection(
         'ILLEGAL_TRANSITION',
         'No existe una transacción con ese identificador.',
@@ -359,6 +368,10 @@ export class QueriesUseCase {
     }
 
     if (parsed.data.outcome === 'NOT_FOUND') {
+      // Same borrowed code as `transactionStatus` above, for the same reason:
+      // no `PAYMENT_NOT_FOUND` exists in the catalogue, so this reuses the
+      // nearest one rather than inventing a fifth. `409`, not the `404` this
+      // actually is — see the longer note on the transaction case.
       throw GatewayError.businessRejection(
         'ILLEGAL_TRANSITION',
         'No existe un pago con ese identificador.',
@@ -421,6 +434,7 @@ export class QueriesUseCase {
       this.#publisher,
       this.#replies,
       envelopeForRequest(payload, messageType, context.actor, context.correlationId),
+      'read',
     );
 
     return reply.payload;

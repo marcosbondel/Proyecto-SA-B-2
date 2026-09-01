@@ -10,7 +10,7 @@ import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
  */
 export class LoginDto {
   /** Email is the login identifier (decision D-05), not the username. */
-  @IsEmail({}, { message: 'email debe ser una dirección de correo válida' })
+  @IsEmail({}, { message: 'El correo no tiene un formato válido.' })
   public email!: string;
 
   /**
@@ -20,8 +20,8 @@ export class LoginDto {
    * would tell the caller something about what a valid password looks like, and
    * the answer to every bad credential must be identical.
    */
-  @IsString()
-  @MinLength(1)
-  @MaxLength(256)
+  @IsString({ message: 'La contraseña debe ser un texto.' })
+  @MinLength(1, { message: 'La contraseña es obligatoria.' })
+  @MaxLength(256, { message: 'La contraseña es demasiado larga.' })
   public credential!: string;
 }

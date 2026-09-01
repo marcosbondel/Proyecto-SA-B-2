@@ -4,6 +4,7 @@ import { ReplyRegistry, ReplyTimeoutError } from '@bank/messaging';
 import type { MessageBroker } from '@bank/messaging';
 
 import { GatewayError } from '../../application/errors/gateway-error';
+import type { ReplyKind } from '../../application/errors/gateway-error';
 import type { ReplyWaiterPort } from '../../application/ports';
 
 /**
@@ -55,12 +56,12 @@ export class ReplyQueueAdapter implements ReplyWaiterPort {
     );
   }
 
-  public async waitFor(correlationId: string): Promise<MessageEnvelope<unknown>> {
+  public async waitFor(correlationId: string, kind?: ReplyKind): Promise<MessageEnvelope<unknown>> {
     try {
       return await this.#registry.waitFor(correlationId);
     } catch (error) {
       if (error instanceof ReplyTimeoutError) {
-        throw GatewayError.replyTimeout();
+        throw GatewayError.replyTimeout(kind);
       }
 
       throw GatewayError.internal();

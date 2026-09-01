@@ -178,15 +178,17 @@ describe('the error contract', () => {
   });
 
   /**
-   * These two are the pair a caller is most likely to confuse, and confusing
-   * them costs money: one means "it is still running", the other means "nothing
-   * happened".
+   * `provoke.REPLY_TIMEOUT` is a read (a balance lookup), so its message must
+   * never borrow the command wording about an "operation" that was not
+   * cancelled — that would assert something false about a request that never
+   * changed anything to begin with.
    */
-  it('keeps timeout and broker-unavailable saying opposite things', async () => {
+  it('keeps a read timeout and broker-unavailable both honest, and distinct', async () => {
     const timedOut = await provoke.REPLY_TIMEOUT();
     const unavailable = await provoke.BROKER_UNAVAILABLE();
 
-    expect(timedOut.body.message).toMatch(/NO fue cancelada/);
+    expect(timedOut.body.message).not.toMatch(/NO fue cancelada/);
+    expect(timedOut.body.message).toMatch(/no se modificó ningún dato/);
     expect(unavailable.body.message).toMatch(/No se realizó ningún cambio/);
   });
 });

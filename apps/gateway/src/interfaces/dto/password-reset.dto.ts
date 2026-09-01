@@ -9,7 +9,7 @@ import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
  * give, and the route returns the same `202` either way.
  */
 export class RequestPasswordResetDto {
-  @IsEmail({}, { message: 'email debe ser una dirección de correo válida' })
+  @IsEmail({}, { message: 'El correo no tiene un formato válido.' })
   public email!: string;
 }
 
@@ -23,13 +23,13 @@ export class RequestPasswordResetDto {
  */
 export class ConfirmPasswordResetDto {
   /** A bearer credential. Never logged, never echoed. */
-  @IsString()
-  @MinLength(16)
-  @MaxLength(512)
+  @IsString({ message: 'El enlace de recuperación debe ser un texto.' })
+  @MinLength(16, { message: 'El enlace de recuperación no es válido.' })
+  @MaxLength(512, { message: 'El enlace de recuperación no es válido.' })
   public resetToken!: string;
 
-  @IsString()
-  @MinLength(8)
-  @MaxLength(256)
+  @IsString({ message: 'La contraseña debe ser un texto.' })
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres.' })
+  @MaxLength(256, { message: 'La contraseña es demasiado larga.' })
   public credential!: string;
 }

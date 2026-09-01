@@ -46,6 +46,18 @@ export const ASYNC_FAILURE_TYPES = [
   'INTERNAL_ERROR',
 ] as const satisfies readonly GatewayErrorType[];
 
+/**
+ * Whether the question that timed out changes state or only reads it.
+ *
+ * `replyTimeout` is the only place this matters: a command left the Saga in
+ * flight, so the honest thing to say is "we don't know yet, and it may still
+ * land." A read started nothing — there is no operation to be uncertain
+ * about, only a question nobody answered — so telling a caller their balance
+ * lookup "was not cancelled" is not wrong so much as it is an answer to a
+ * question they never asked.
+ */
+export type ReplyKind = 'command' | 'read';
+
 export interface GatewayErrorDetails {
   /** Which field the caller got wrong. Only meaningful for a validation error. */
   readonly field?: string;
@@ -100,15 +112,25 @@ export class GatewayError extends Error {
   /**
    * Nobody answered within the ceiling.
    *
-   * The wording is load-bearing. The caller must not read this as a failure:
-   * the Saga carries on, the audit record is being written, and the result is
-   * still knowable. Saying "it failed" here would be a lie that costs money.
+   * The wording is load-bearing, and it forks on `kind` because a command and
+   * a read are not the same kind of silence. For a command, the Saga carries
+   * on, the audit record is being written, and the result is still knowable —
+   * saying "it failed" would be a lie that costs money. For a read, nothing
+   * was ever in flight to begin with: there is no operation to reassure
+   * anyone about, only a question worth asking again.
    */
-  static replyTimeout(): GatewayError {
+  static replyTimeout(kind: ReplyKind = 'command'): GatewayError {
+    if (kind === 'read') {
+      return new GatewayError(
+        'REPLY_TIMEOUT',
+        'No pudimos completar la consulta a tiempo. Vuelve a intentarlo: no se modificó ningún dato.',
+      );
+    }
+
     return new GatewayError(
       'REPLY_TIMEOUT',
       'No recibimos confirmación en el tiempo esperado. La operación NO fue cancelada: ' +
-        'consulta su resultado con el identificador de correlación.',
+        'consulta su resultado con el código de seguimiento.',
     );
   }
 

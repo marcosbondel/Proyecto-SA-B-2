@@ -12,8 +12,8 @@ export const ALLOWED_ROLES = 'bank:allowed-roles';
  * route breaks it loudly the first time anyone tries, while forgetting to
  * protect a private one breaks nothing visible and everything that matters.
  *
- * There are exactly five: sign in, register, verify an email, and the two
- * probes (FR-014).
+ * There are exactly seven: sign in, register, verify an email, the two
+ * password-recovery endpoints, and the two probes (FR-014).
  */
 export const Public = (): MethodDecorator & ClassDecorator => SetMetadata(PUBLIC_ROUTE, true);
 

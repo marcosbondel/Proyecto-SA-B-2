@@ -29,18 +29,18 @@ const NOTIFICATION_STATUSES = ['PENDING', 'SENT', 'FAILED'] as const;
  */
 export class ListNotificationsQueryDto {
   @IsOptional()
-  @IsUUID('4', { message: 'correlationId debe ser un UUID v4' })
+  @IsUUID('4', { message: 'El código de seguimiento no tiene un formato válido.' })
   public correlationId?: string;
 
   @IsOptional()
   @IsIn(NOTIFICATION_STATUSES, {
-    message: `status debe ser uno de: ${NOTIFICATION_STATUSES.join(', ')}`,
+    message: `El estado debe ser uno de: ${NOTIFICATION_STATUSES.join(', ')}.`,
   })
   public status?: (typeof NOTIFICATION_STATUSES)[number];
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50, { message: 'type admite a lo sumo 50 caracteres' })
+  @IsString({ message: 'El tipo debe ser un texto.' })
+  @MaxLength(50, { message: 'El tipo no puede superar los 50 caracteres.' })
   public type?: string;
 
   /**
@@ -51,9 +51,9 @@ export class ListNotificationsQueryDto {
    */
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? Number(value) : (value as unknown)))
-  @IsInt({ message: 'limit debe ser un entero' })
-  @Min(1, { message: 'limit debe ser al menos 1' })
-  @Max(200, { message: 'limit admite a lo sumo 200' })
+  @IsInt({ message: 'El límite debe ser un número entero.' })
+  @Min(1, { message: 'El límite debe ser al menos 1.' })
+  @Max(200, { message: 'El límite no puede superar 200.' })
   public limit?: number;
 }
 
@@ -67,10 +67,10 @@ export class ListNotificationsQueryDto {
  */
 export class MarkNotificationsReadDto {
   @IsOptional()
-  @IsArray()
+  @IsArray({ message: 'Debes enviar una lista de notificaciones.' })
   @ArrayMaxSize(MAX_INBOX_ROWS, {
-    message: `notificationIds no puede tener más de ${String(MAX_INBOX_ROWS)} elementos`,
+    message: `No puedes marcar más de ${String(MAX_INBOX_ROWS)} notificaciones a la vez.`,
   })
-  @IsUUID('4', { each: true, message: 'cada notificationId debe ser un UUID v4' })
+  @IsUUID('4', { each: true, message: 'Cada notificación debe tener un identificador válido.' })
   public notificationIds?: string[];
 }
