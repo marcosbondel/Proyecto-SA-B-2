@@ -26,6 +26,8 @@ import {
   customerEmailVerifiedV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerIdentityDocumentQueryV1,
+  customerIdentityDocumentRepliedV1,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
   customerChangePasswordV1,
@@ -120,6 +122,10 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   },
   'POST /api/customers/{customerId}/identity-verdict': {
     publishes: customerSetIdentityVerdictV1.name,
+  },
+  'GET /api/customers/{customerId}/identity-document': {
+    publishes: customerIdentityDocumentQueryV1.name,
+    awaits: [customerIdentityDocumentRepliedV1.name],
   },
   'GET /api/customers/{customerId}': {
     publishes: customerGetQueryV1.name,

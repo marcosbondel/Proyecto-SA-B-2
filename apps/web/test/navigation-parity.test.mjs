@@ -173,16 +173,19 @@ describe('the frontend matrix agrees with the Gateway', () => {
     assert.equal(mayTakeDeposits('CLIENTE'), false);
     assert.equal(mayTakeDeposits(null), false);
 
-    // The customers controller restricts exactly two routes to staff, both added
-    // by the audit remediation (US6): the teller's pending-validation queue and
-    // the teller's manual identity verdict. These are screens inside the Clientes
-    // module, not new navigation entries, so the module matrix below is unchanged.
+    // The customers controller restricts exactly three routes to staff. Two came
+    // from the audit remediation (US6): the teller's pending-validation queue and
+    // the teller's manual identity verdict. The third reads the identity document
+    // itself, so the teller can see the photo they are being asked to compare —
+    // the same permission as the verdict, because seeing the document and ruling
+    // on it are one job. All three are screens inside the Clientes module rather
+    // than new navigation entries, so the module matrix below is unchanged.
     const customers = await readFile(
       new URL('../../gateway/src/interfaces/customers.controller.ts', import.meta.url),
       'utf8',
     );
 
-    assert.equal((customers.match(/@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)/g) ?? []).length, 2);
+    assert.equal((customers.match(/@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)/g) ?? []).length, 3);
 
     // One module is restricted: Auditoría, by D-06 outright. Pagos was the
     // second until the service-payment product moved the unscoped listing

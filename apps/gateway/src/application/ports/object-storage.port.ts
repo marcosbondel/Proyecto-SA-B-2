@@ -28,6 +28,18 @@ export interface ObjectStoragePort {
    * endpoint. The caller gets a failure, not a map of the infrastructure.
    */
   put(upload: PhotoUpload): Promise<PhotoReference>;
+
+  /**
+   * Reads back an object a service staged here for the Gateway to serve —
+   * the read half of the same transfer-buffer trip, run for a customer's own
+   * identity-document photo rather than for a new upload. Never used to
+   * decide anything: what it returns is served to a browser exactly as the
+   * owning service handed it over.
+   *
+   * @throws an `INTERNAL_ERROR` GatewayError, naming neither bucket nor
+   * endpoint, when the object cannot be read.
+   */
+  get(objectKey: string): Promise<Buffer>;
 }
 
 export const OBJECT_STORAGE = Symbol('ObjectStoragePort');

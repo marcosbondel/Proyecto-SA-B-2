@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { PhotoReference } from '@bank/contracts';
 
 import { GatewayError } from '../../application/errors/gateway-error';
@@ -74,5 +74,23 @@ export class S3ObjectStorageAdapter implements ObjectStoragePort {
       sizeBytes: upload.bytes.byteLength,
       sha256,
     };
+  }
+
+  public async get(objectKey: string): Promise<Buffer> {
+    try {
+      const response = await this.#client.send(
+        new GetObjectCommand({ Bucket: this.#bucket, Key: objectKey }),
+      );
+
+      if (response.Body === undefined) {
+        throw new Error(`Object ${objectKey} has no body.`);
+      }
+
+      return Buffer.from(await response.Body.transformToByteArray());
+    } catch {
+      // Same reasoning as `put`: the SDK's error names the bucket and the
+      // endpoint, and neither belongs in a response a browser renders.
+      throw GatewayError.internal('No se pudo leer la imagen del documento.');
+    }
   }
 }
