@@ -145,7 +145,7 @@ export function debit(account: Account, amount: Money, now: Date): Movement {
     throw new DomainRejection('INSUFFICIENT_FUNDS', 'El saldo disponible no alcanza.');
   }
 
-  return moved(account, -amount.amountMinor, amount, false, now);
+  return moved(account, -amount.amountMinor, amount, false, now, true);
 }
 
 /**
@@ -162,7 +162,7 @@ export function credit(account: Account, amount: Money, now: Date): Movement {
     throw new DomainRejection(problem, 'El monto no cumple la precisión del contrato.');
   }
 
-  return moved(account, amount.amountMinor, amount, account.status === 'INACTIVE', now);
+  return moved(account, amount.amountMinor, amount, account.status === 'INACTIVE', now, true);
 }
 
 /**
@@ -172,7 +172,14 @@ export function credit(account: Account, amount: Money, now: Date): Movement {
  * restores a specific debit and must succeed even for an account that has since
  * been deactivated — refusing it would strand the money outside every account
  * in the system, which is the one outcome a Saga exists to prevent. It also
- * does not reactivate: the account was not woken by activity, it was corrected.
+ * does not reactivate and does not refresh `lastActivityAt`: the account was
+ * not woken by activity, it was corrected. The customer's own request was the
+ * debit that already moved the clock (`debit` runs `moved` at the moment it is
+ * decided); the compensation that undoes it moments later, because a payment
+ * downstream was refused, is the bank fixing its own process, not the customer
+ * coming back to use the account. Letting it also count as activity would give
+ * a dormant account with no genuine engagement six more months of life every
+ * time one of its stale transfers finally failed.
  */
 export function compensate(account: Account, amount: Money, now: Date): Movement {
   const problem = amountProblem(amount);
@@ -181,7 +188,7 @@ export function compensate(account: Account, amount: Money, now: Date): Movement
     throw new DomainRejection(problem, 'El monto no cumple la precisión del contrato.');
   }
 
-  return moved(account, amount.amountMinor, amount, false, now);
+  return moved(account, amount.amountMinor, amount, false, now, false);
 }
 
 /**
@@ -211,6 +218,14 @@ function moved(
   amount: Money,
   reactivated: boolean,
   now: Date,
+  /**
+   * Whether this movement counts as the customer using the account, for the
+   * deactivation clock (A-4's own principle, applied to a third case: a status
+   * change is not activity, and neither is a correction). `true` for `debit`
+   * and `credit` — both are the customer moving money — and `false` for
+   * `compensate`, which is the bank undoing its own failed attempt.
+   */
+  countsAsActivity: boolean,
 ): Movement {
   const balanceMinor = account.balanceMinor + deltaMinor;
 
@@ -225,7 +240,7 @@ function moved(
       ...account,
       balanceMinor,
       status: reactivated ? 'ACTIVE' : account.status,
-      lastActivityAt: now,
+      lastActivityAt: countsAsActivity ? now : account.lastActivityAt,
       version: account.version + 1,
     },
     amount,

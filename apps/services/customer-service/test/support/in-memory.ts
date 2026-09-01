@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import type { PhotoReference } from '@bank/contracts';
+
 import { DomainRejection, registerCustomer } from '../../src/domain/customer';
 import type { Customer, IdentityStatus, RegistrationRequest } from '../../src/domain/customer';
 import type {
@@ -8,6 +10,7 @@ import type {
   CustomerRepository,
   EventPublisher,
   IdentityDocumentReader,
+  IdentityDocumentStager,
   OutboundMessage,
   PasswordHasher,
   ProcessedMessage,
@@ -322,6 +325,29 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     );
   }
 
+  public async findLatestIdentityDocument(customerId: string): Promise<{
+    readonly mimeType: string;
+    readonly sizeBytes: number;
+    readonly sha256: string;
+    readonly content: Buffer;
+  } | null> {
+    // Last pushed is newest: both `registerCustomer` and `saveIdentityVerdict`
+    // append, never insert out of order, so this mirrors the real repository's
+    // `ORDER BY created_at DESC LIMIT 1` without needing a timestamp of its own.
+    const found = this.documents.findLast((document) => document.customerId === customerId);
+
+    return await Promise.resolve(
+      found === undefined
+        ? null
+        : {
+            mimeType: found.mimeType,
+            sizeBytes: found.sizeBytes,
+            sha256: found.sha256,
+            content: found.content,
+          },
+    );
+  }
+
   public async stats(): Promise<{
     readonly registered: number;
     readonly pendingValidation: number;
@@ -427,6 +453,28 @@ export class StubDocumentReader implements IdentityDocumentReader {
     }
 
     return await Promise.resolve(this.#bytes);
+  }
+}
+
+/** Records what it was asked to stage, and hands back a fake reference. */
+export class StubDocumentStager implements IdentityDocumentStager {
+  public readonly staged: { content: Buffer; mimeType: string; sha256: string; sizeBytes: number }[] =
+    [];
+
+  public async stage(document: {
+    readonly content: Buffer;
+    readonly mimeType: 'image/jpeg' | 'image/png';
+    readonly sha256: string;
+    readonly sizeBytes: number;
+  }): Promise<PhotoReference> {
+    this.staged.push({ ...document });
+
+    return await Promise.resolve({
+      objectKey: `staged/${String(this.staged.length)}`,
+      contentType: document.mimeType,
+      sizeBytes: document.sizeBytes,
+      sha256: document.sha256,
+    });
   }
 }
 

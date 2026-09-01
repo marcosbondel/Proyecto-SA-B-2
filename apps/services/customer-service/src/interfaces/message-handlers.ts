@@ -2,6 +2,7 @@ import {
   customerAuthenticateV1,
   customerChangePasswordV1,
   customerGetQueryV1,
+  customerIdentityDocumentQueryV1,
   customerPasswordResetConfirmV1,
   customerPasswordResetRequestedV1,
   customerNamesQueryV1,
@@ -21,6 +22,7 @@ import type { ConfirmPasswordResetUseCase } from '../application/confirm-passwor
 import type { GetCustomerNamesUseCase } from '../application/get-customer-names.use-case';
 import type { GetCustomerStatsUseCase } from '../application/get-customer-stats.use-case';
 import type { GetCustomerUseCase } from '../application/get-customer.use-case';
+import type { GetIdentityDocumentUseCase } from '../application/get-identity-document.use-case';
 import type { GetPendingValidationUseCase } from '../application/get-pending-validation.use-case';
 import type { RegisterCustomerUseCase } from '../application/register-customer.use-case';
 import type { RequestPasswordResetUseCase } from '../application/request-password-reset.use-case';
@@ -129,8 +131,9 @@ export class AuthenticateCustomerHandler extends ContractHandler<
 
   protected async run(
     payload: ReturnType<typeof customerAuthenticateV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
-    await this.#useCase.execute(payload);
+    await this.#useCase.execute(payload, envelope.idempotencyKey);
   }
 }
 
@@ -317,6 +320,35 @@ export class GetCustomerHandler extends ContractHandler<
 
   protected async run(
     payload: ReturnType<typeof customerGetQueryV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity);
+  }
+}
+
+/**
+ * The photo behind a pending identity, for the teller reviewing it. Staff
+ * only; the owning service re-checks. Not idempotency-guarded, for the same
+ * reason `GetCustomerHandler` is not: a query changes nothing, and a
+ * redelivery must produce a fresh reply.
+ */
+export class GetIdentityDocumentHandler extends ContractHandler<
+  ReturnType<typeof customerIdentityDocumentQueryV1.schema.parse>
+> {
+  public readonly messageType = customerIdentityDocumentQueryV1.name;
+  readonly #useCase: GetIdentityDocumentUseCase;
+
+  constructor(useCase: GetIdentityDocumentUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerIdentityDocumentQueryV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerIdentityDocumentQueryV1.schema.parse>,
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.identity);

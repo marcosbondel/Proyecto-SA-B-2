@@ -298,10 +298,25 @@ export class PostgresAccountRepository implements AccountRepository {
     readonly depositedToday: { readonly amountMinor: number; readonly currency: string };
   }> {
     const [accounts, deposits] = await Promise.all([
+      /**
+       * "Today" means Guatemala's calendar day, not the container's.
+       *
+       * `CURRENT_DATE` and a bare `::date` cast both resolve against the
+       * session's timezone, which is UTC here. Between 18:00 and midnight
+       * local time (UTC-6, no DST) that is already tomorrow in Guatemala, so
+       * this would count the wrong day's rows — informational only, never a
+       * balance, but exactly the numbers a demo run in the evening would show
+       * as zero for no reason anyone could see. `AT TIME ZONE` converts the
+       * `TIMESTAMPTZ` to Guatemala's wall clock before the date is taken, on
+       * both sides, so the answer stops depending on the container's clock.
+       */
       this.#pool.query<{ active: string; inactive: string; opened_today: string }>(
         `SELECT COUNT(*) FILTER (WHERE status = 'ACTIVE')::TEXT   AS active,
                 COUNT(*) FILTER (WHERE status = 'INACTIVE')::TEXT AS inactive,
-                COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)::TEXT AS opened_today
+                COUNT(*) FILTER (
+                  WHERE (created_at AT TIME ZONE 'America/Guatemala')::date
+                      = (now() AT TIME ZONE 'America/Guatemala')::date
+                )::TEXT AS opened_today
            FROM accounts
           WHERE biller_code IS NULL`,
       ),
@@ -315,7 +330,8 @@ export class PostgresAccountRepository implements AccountRepository {
                 COALESCE(SUM(amount), 0)::TEXT AS total
            FROM account_operations
           WHERE type = 'CREDIT' AND transaction_id IS NULL
-            AND created_at::date = CURRENT_DATE`,
+            AND (created_at AT TIME ZONE 'America/Guatemala')::date
+              = (now() AT TIME ZONE 'America/Guatemala')::date`,
       ),
     ]);
 

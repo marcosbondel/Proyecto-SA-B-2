@@ -97,6 +97,81 @@ describe('the deactivation job, driven by a clock a test owns', () => {
 
     expect(repository.accounts.get(ACCOUNT)?.status).toBe('ACTIVE');
   });
+
+  /**
+   * TD-055: there is no outbox here, so the `UPDATE` and the publish loop are
+   * not one atomic step. What *is* guaranteed is that one account's publish
+   * failure does not also silence every account queued behind it, and that a
+   * failing run names exactly which accounts it could not tell anybody about.
+   */
+  describe('when publishing a deactivation fails partway through the batch', () => {
+    const OTHER_ACCOUNT = '5c8e2f31-7a4d-4b91-8c02-9f6b3e1a5d70';
+
+    function twoAccountFixture() {
+      const repository = new InMemoryAccountRepository();
+      const clock = new FixedClock(OPENED);
+
+      repository.accounts.set(ACCOUNT, {
+        ...openAccount({ accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'AHORRO', now: OPENED }),
+        balanceMinor: 1_000,
+      });
+      repository.accounts.set(OTHER_ACCOUNT, {
+        ...openAccount({
+          accountId: OTHER_ACCOUNT,
+          customerId: CUSTOMER,
+          accountType: 'MONETARIA',
+          now: OPENED,
+        }),
+        balanceMinor: 500,
+      });
+
+      const publisher = new RecordingPublisher();
+      const failing = {
+        publish: jest.fn(async (message: Parameters<RecordingPublisher['publish']>[0]) => {
+          const payload = message.payload as { accountId: string };
+          if (payload.accountId === ACCOUNT) {
+            throw new Error('broker unreachable');
+          }
+          await publisher.publish(message);
+        }),
+        reply: publisher.reply.bind(publisher),
+      };
+
+      const job = new DeactivateInactiveAccountsUseCase({
+        repository,
+        publisher: failing,
+        clock,
+      });
+
+      return { repository, publisher, clock, job };
+    }
+
+    it('still deactivates and attempts to publish every account in the batch', async () => {
+      const { repository, publisher, clock, job } = twoAccountFixture();
+      clock.advanceTo(SIX_MONTHS_LATER);
+
+      await expect(job.execute('run-1')).rejects.toThrow();
+
+      // Both accounts reached INACTIVE — the DB write does not depend on the
+      // publish that follows it.
+      expect(repository.accounts.get(ACCOUNT)?.status).toBe('INACTIVE');
+      expect(repository.accounts.get(OTHER_ACCOUNT)?.status).toBe('INACTIVE');
+
+      // The one that did not throw still got its event — the failure of its
+      // sibling did not stop the loop from reaching it.
+      expect(publisher.events).toHaveLength(1);
+      expect(publisher.events[0]?.payload).toMatchObject({ accountId: OTHER_ACCOUNT });
+    });
+
+    it('names the failed account in the error it raises', async () => {
+      const { clock, job } = twoAccountFixture();
+      clock.advanceTo(SIX_MONTHS_LATER);
+
+      await expect(job.execute('run-1')).rejects.toThrow(
+        new RegExp(`1 of 2.*${ACCOUNT}.*broker unreachable`, 's'),
+      );
+    });
+  });
 });
 
 describe('the scheduler around it', () => {

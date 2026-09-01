@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 
-import { EXCHANGES, QUEUES } from '@bank/contracts';
+import { EXCHANGES, QUEUES, validateMessage } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
 import { NestFactory } from '@nestjs/core';
@@ -12,6 +12,7 @@ import { ConfirmPasswordResetUseCase } from './application/confirm-password-rese
 import { GetCustomerNamesUseCase } from './application/get-customer-names.use-case';
 import { GetCustomerStatsUseCase } from './application/get-customer-stats.use-case';
 import { GetCustomerUseCase } from './application/get-customer.use-case';
+import { GetIdentityDocumentUseCase } from './application/get-identity-document.use-case';
 import { GetPendingValidationUseCase } from './application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from './application/register-customer.use-case';
 import { RequestPasswordResetUseCase } from './application/request-password-reset.use-case';
@@ -30,6 +31,7 @@ import {
   ScryptPasswordHasher,
 } from './infrastructure/security/scrypt-password-hasher';
 import { S3IdentityDocumentReader } from './infrastructure/storage/s3-identity-document.reader';
+import { S3IdentityDocumentStager } from './infrastructure/storage/s3-identity-document.stager';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
@@ -41,6 +43,7 @@ import {
   GetCustomerHandler,
   GetCustomerNamesHandler,
   GetCustomerStatsHandler,
+  GetIdentityDocumentHandler,
   GetPendingValidationHandler,
   SetIdentityVerdictHandler,
   UpdateCustomerHandler,
@@ -93,6 +96,18 @@ async function bootstrap(): Promise<void> {
     region: environment.OBJECT_STORAGE_REGION,
   });
 
+  /**
+   * The same bucket, written to instead of read from: how a teller's request
+   * for a photo gets an answer without the broker ever carrying one.
+   */
+  const documentStager = new S3IdentityDocumentStager({
+    endpoint: environment.OBJECT_STORAGE_ENDPOINT,
+    accessKey: environment.OBJECT_STORAGE_ACCESS_KEY,
+    secretKey: environment.OBJECT_STORAGE_SECRET_KEY,
+    bucket: environment.OBJECT_STORAGE_BUCKET,
+    region: environment.OBJECT_STORAGE_REGION,
+  });
+
   const hasher = new ScryptPasswordHasher();
   const tokens = new RandomActivationTokenFactory();
   const clock = { now: (): Date => new Date() };
@@ -113,6 +128,9 @@ async function bootstrap(): Promise<void> {
       ),
       new UpdateCustomerHandler(new UpdateCustomerUseCase({ repository, publisher, clock })),
       new GetCustomerHandler(new GetCustomerUseCase({ repository, publisher })),
+      new GetIdentityDocumentHandler(
+        new GetIdentityDocumentUseCase({ repository, publisher, stager: documentStager }),
+      ),
       new GetCustomerNamesHandler(new GetCustomerNamesUseCase({ repository, publisher })),
       new GetCustomerStatsHandler(new GetCustomerStatsUseCase({ repository, publisher })),
       new GetPendingValidationHandler(
@@ -228,7 +246,21 @@ async function bootstrap(): Promise<void> {
         }
 
         await broker.start();
-        await broker.subscribe({ queue: QUEUE.name, bindings: QUEUE.bindings }, onDelivery);
+        await broker.subscribe(
+          { queue: QUEUE.name, bindings: QUEUE.bindings },
+          onDelivery,
+          /**
+           * TD-046, closed for this service: every producer that can reach
+           * `customer.commands` builds its envelope through `createEnvelope` /
+           * `followUpEnvelope` and checks the payload against this same
+           * `@bank/contracts` schema before publishing (the Gateway's
+           * `CommandsUseCase#publish` and every service's `BrokerEventPublisher`
+           * both `safeParse` first) — so a message that fails this check is not
+           * a producer this system trusts, and three redeliveries could never
+           * have made it parse.
+           */
+          validateMessage,
+        );
         consuming = true;
 
         logger.info('consuming', { outcome: QUEUE.name });
