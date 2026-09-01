@@ -9,9 +9,9 @@ description: >-
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
-home: https://github.com/bank-usac/Proyecto-SA-B-2
+home: https://github.com/marcosbondel/Proyecto-SA-B-2
 sources:
-  - https://github.com/bank-usac/Proyecto-SA-B-2
+  - https://github.com/marcosbondel/Proyecto-SA-B-2
 keywords:
   - bank-usac
   - kind
