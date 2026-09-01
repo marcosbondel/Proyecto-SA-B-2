@@ -4,7 +4,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 ---
 
-## 🏛️ Matriz de Actores y Credenciales de Demostración
+## Matriz de Actores y Credenciales de Demostración
 
 | Actor / Rol | Credenciales | Propósito en el Flujo | Privilegios y Restricciones (ADR D-06) |
 | :--- | :--- | :--- | :--- |
@@ -15,7 +15,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 ---
 
-## 📑 Índice de Módulos Evaluados
+## Índice de Módulos Evaluados
 
 1. [Módulo 1: Autenticación y Control de Acceso](#módulo-1-autenticación-y-control-de-acceso)
 2. [Módulo 2: Registro Público de Cliente (Validaciones en 3 Pasos)](#módulo-2-registro-público-de-cliente-validaciones-en-3-pasos)
@@ -269,7 +269,7 @@ sequenceDiagram
     TX->>ACC: account.credit.requested.v1
     ACC-->>TX: account.credited.v1
     TX->>AUD: transaction.completed.v1
-    Note over TX: Estado Final: COMPLETED ✅
+    Note over TX: Estado Final: COMPLETED
 ```
 
 #### B. Fallo por Fondos Insuficientes (`DEBIT_REJECTED` ➔ `FAILED`)
@@ -384,7 +384,7 @@ sequenceDiagram
 
 ---
 
-## 🔍 Diagnóstico de Casos Borde y Pruebas no Superadas
+## Diagnóstico de Casos Borde y Pruebas no Superadas
 
 De la batería total de **68 pruebas automatizadas**, **66 resultaron totalmente exitosas (97%)** y **2 pruebas reportaron un comportamiento diferenciado**:
 
@@ -395,7 +395,7 @@ De la batería total de **68 pruebas automatizadas**, **66 resultaron totalmente
 
 ---
 
-## 🏁 Conclusiones del Reporte de Pruebas
+## Conclusiones del Reporte de Pruebas
 
 1. **Robustez Frontend y Backend**: Toda validación de negocio se aplica primero en la interfaz de usuario para una experiencia fluida (campos requeridos, máscaras de DPI, comprobación de mayoría de edad), y se valida estrictamente en el Gateway y los microservicios para garantizar que ninguna petición maliciosa o malformada afecte las bases de datos.
 2. **Resiliencia ante Fallos**: La Saga maneja de forma determinista el éxito (`COMPLETED`), el rechazo sin débito (`FAILED`) y la compensación con reversión contable (`COMPENSATED`) sin dejar registros en limbo ni saldos inconsistentes.
