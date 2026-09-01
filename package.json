@@ -13,6 +13,8 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:contract": "turbo run test --filter=@bank/contracts",
+    "test:e2e": "node test/e2e/qa-suite.e2e.mjs",
+    "test:e2e:happypath": "node test/e2e/happypath.e2e.mjs",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "@bank/tooling": "workspace:*",
+    "playwright": "^1.62.1",
     "prettier": "catalog:",
     "turbo": "catalog:"
   }

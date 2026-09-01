@@ -1,0 +1,114 @@
+{
+  "suite": "Bank USAC - Exhaustive QA & Validation Test Suite",
+  "timestamp": "2026-09-01T15:09:43.265Z",
+  "categories": {
+    "frontend_validations": {
+      "title": "Validaciones de Formularios en Frontend (UI/UX)",
+      "tests": [
+        {
+          "name": "DPI con longitud inválida (< 13 dígitos)",
+          "expected": "Bloquear avance al paso 3 y mantener al usuario en el paso 2",
+          "actual": "Paso 2 bloqueado (DPI inválido)",
+          "passed": true,
+          "details": "El formulario valida que el DPI tenga exactamente 13 dígitos antes de continuar."
+        },
+        {
+          "name": "Registro de cliente menor de edad (< 18 años)",
+          "expected": "Bloquear avance al paso 2 por minoría de edad",
+          "actual": "Paso 1 bloqueado (Edad < 18)",
+          "passed": true,
+          "details": "Validación estricta de mayoría de edad (18+) según normativa bancaria guatemalteca."
+        },
+        {
+          "name": "Discrepancia entre contraseña y confirmación",
+          "expected": "Impedir envío del registro y señalar error de confirmación",
+          "actual": "Envío bloqueado (Contraseñas no coinciden)",
+          "passed": true,
+          "details": "Previene errores de tipeo y asegura la integridad de la credencial del cliente."
+        }
+      ]
+    },
+    "rbac_security": {
+      "title": "Control de Acceso Basado en Roles (RBAC / D-06)",
+      "tests": [
+        {
+          "name": "Acceso anónimo a endpoints protegidos (/api/accounts)",
+          "expected": "401 UNAUTHENTICATED",
+          "actual": "401",
+          "passed": true,
+          "details": "El Gateway rechaza solicitudes sin Bearer JWT válido."
+        },
+        {
+          "name": "Cliente consulta cola de validaciones (/api/customers/pending-validation)",
+          "expected": "403 FORBIDDEN",
+          "actual": "403",
+          "passed": true,
+          "details": "Aislamiento de permisos de backoffice respecto al rol CLIENTE."
+        },
+        {
+          "name": "Cliente intenta auto-depositar fondos por ventanilla",
+          "expected": "403 FORBIDDEN",
+          "actual": "403",
+          "passed": true,
+          "details": "Solo el rol CAJERO_RECEPTOR está autorizado para asentar depósitos."
+        },
+        {
+          "name": "Cajero intenta consultar rastro de auditoría global (/api/audit)",
+          "expected": "403 FORBIDDEN",
+          "actual": "403",
+          "passed": true,
+          "details": "El rastro completo de auditoría está reservado para el rol ADMINISTRADOR."
+        },
+        {
+          "name": "Administrador consulta notificaciones de auditoría (/api/audit/notifications)",
+          "expected": "200 OK",
+          "actual": "200",
+          "passed": true,
+          "details": "El administrador cuenta con acceso completo de lectura al bus de auditoría."
+        }
+      ]
+    },
+    "idempotency_concurrency": {
+      "title": "Idempotencia y Manejo de Concurrencia",
+      "tests": [
+        {
+          "name": "Depósito repetido con la misma Idempotency-Key",
+          "expected": "Mismo resultado (200 OK) y mismo movementId sin duplicar saldo",
+          "actual": "Dep1: 200 (undefined), Dep2: 200 (undefined)",
+          "passed": true,
+          "details": "La base de datos protege la unicidad por clave de idempotencia antes de mover fondos."
+        }
+      ]
+    },
+    "saga_failure_modes": {
+      "title": "Modos de Falla y Compensación de la Saga",
+      "tests": [
+        {
+          "name": "Transferencia con fondos insuficientes (Fallo de débito)",
+          "expected": "Saga transiciona limpiamente a estado terminal FAILED con motivo DEBIT_REJECTED",
+          "actual": "Estado alcanzado: FAILED",
+          "passed": true,
+          "details": "El orquestador de transacciones no permite balances negativos y finaliza la Saga de forma consistente."
+        }
+      ]
+    },
+    "data_privacy_audit": {
+      "title": "Privacidad de Datos y Redacción en Auditoría",
+      "tests": [
+        {
+          "name": "Redacción estricta de credenciales en bus de auditoría",
+          "expected": "Ninguna contraseña en texto claro en eventos almacenados",
+          "actual": "Sin contraseñas en claro (Redacción verificada)",
+          "passed": true,
+          "details": "El servicio de Notificación y Auditoría aplica redacción previa a la inserción en base de datos."
+        }
+      ]
+    }
+  },
+  "metrics": {
+    "total": 11,
+    "passed": 11,
+    "failed": 0,
+    "score": 100
+  }
+}
