@@ -214,6 +214,12 @@ export class AdvanceSagaUseCase {
    * The timestamp comes from the transaction the repository just updated: for a
    * terminal transition `completedAt` was stamped in that same write, so it is
    * the moment the ending actually happened rather than a clock read here.
+   *
+   * All three carry `customerId` from the row rather than leaving the subject
+   * to the envelope. This service is the only one that still knows who asked by
+   * the time a transfer ends: the identity is lost when Payment Service's retry
+   * sweeper republishes on a timer, so a transfer that exhausts the ladder used
+   * to compensate the money and tell nobody. The contracts explain the rest.
    */
   #eventFor(transaction: Transaction, transition: Transition): OutboundMessage | null {
     const at = (transaction.completedAt ?? transaction.updatedAt).toISOString();
@@ -224,6 +230,7 @@ export class AdvanceSagaUseCase {
           messageType: transactionCompletedV1.name,
           payload: {
             transactionId: transaction.transactionId,
+            customerId: transaction.customerId,
             sourceAccount: transaction.sourceAccount,
             targetAccount: transaction.targetAccount,
             amount: transaction.amount,
@@ -237,6 +244,7 @@ export class AdvanceSagaUseCase {
           messageType: transactionFailedV1.name,
           payload: {
             transactionId: transaction.transactionId,
+            customerId: transaction.customerId,
             status: 'FAILED',
             reason: transition.failureReason,
             failedAt: at,
@@ -248,6 +256,7 @@ export class AdvanceSagaUseCase {
           messageType: transactionCompensatedV1.name,
           payload: {
             transactionId: transaction.transactionId,
+            customerId: transaction.customerId,
             status: 'COMPENSATED',
             reason: transition.failureReason,
             compensatedAt: at,

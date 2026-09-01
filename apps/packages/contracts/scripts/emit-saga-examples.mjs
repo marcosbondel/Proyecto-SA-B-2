@@ -139,6 +139,7 @@ const happyPath = flow([
     'transaction-service',
     {
       transactionId: TRANSACTION,
+      customerId: CUSTOMER,
       sourceAccount: SOURCE,
       targetAccount: TARGET,
       amount: AMOUNT,
@@ -161,6 +162,7 @@ const rejected = flow([
     'transaction-service',
     {
       transactionId: TRANSACTION,
+      customerId: CUSTOMER,
       status: 'FAILED',
       reason: 'INSUFFICIENT_FUNDS',
       failedAt: '2026-08-19T14:32:08.200Z',
@@ -225,6 +227,7 @@ const compensated = flow([
     'transaction-service',
     {
       transactionId: TRANSACTION,
+      customerId: CUSTOMER,
       status: 'COMPENSATED',
       reason: 'PAYMENT_RETRIES_EXHAUSTED',
       compensatedAt: '2026-08-19T14:32:39.700Z',
