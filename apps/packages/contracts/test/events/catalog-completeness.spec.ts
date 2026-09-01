@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(91);
+    expect(catalog).toHaveLength(93);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -143,6 +143,19 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       // update form is not filled in blind.
       'customer.get.query.v1',
       'customer.get.replied.v1',
+      /*
+       * The document itself, which `customer.pending-validation.replied.v1`
+       * already promised was "read separately" — until now nothing kept that
+       * promise, and the teller's validation screen showed the declared data
+       * next to a photo it had no way to fetch. `FOUND` carries a
+       * `PhotoReference`, never bytes: Customer Service stages its own stored
+       * document back into the object store for this one answer, the same
+       * transfer buffer ADR-012 already uses for the write path, run in
+       * reverse — so this reply stays under the 64 KB every other message in
+       * the catalogue does.
+       */
+      'customer.identity-document.query.v1',
+      'customer.identity-document.replied.v1',
       /*
        * The five added for the prototype's `P-07`, the password recovery the
        * assignment's flow needs and T-05 had no message for. They repeat the
