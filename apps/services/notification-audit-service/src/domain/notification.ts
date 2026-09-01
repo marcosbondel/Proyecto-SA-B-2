@@ -245,21 +245,29 @@ export function simulatedRecipientFor(customerId: string | null): string | null 
  * Whom a notification is *about*, when the envelope cannot say.
  *
  * The envelope's identity is the right source for anything a signed-in person
- * caused, and it is `null` for exactly one flow — **public registration**,
- * which has no session by design. That made the activation notification
- * undeliverable for the only actor that ever needs it: no recipient, so the
- * channel reported `FAILED` and the link was never written anywhere. Sign-up
- * could not be completed by anybody, in any environment (TD-044).
+ * caused, and there are two flows where it is `null`.
  *
- * So for the customer family the subject is read from the payload, where
- * `customerId` is a declared field of every one of these contracts. It is not a
- * weakening of anything: the address is still *derived* from the identifier and
- * never copied from the payload's `email`, so nothing here turns the audit
- * database into a mailing list — which is the rule `redaction.ts` exists to
- * keep.
+ * The first is **public registration**, which has no session by design. That
+ * made the activation notification undeliverable for the only actor that ever
+ * needs it: no recipient, so the channel reported `FAILED` and the link was
+ * never written anywhere. Sign-up could not be completed by anybody, in any
+ * environment (TD-044).
+ *
+ * The second is a **transfer that went through Payment Service's retry
+ * sweeper**. The sweeper republishes on a timer, and a timer has no session to
+ * inherit an identity from, so every terminal event downstream of a retried
+ * payment arrived here with nobody to tell. The notification that went missing
+ * is the worst one to lose: a transfer that exhausts the ladder compensates —
+ * the money goes back — and the customer was never told it had.
+ *
+ * So for both families the subject is read from the payload, where `customerId`
+ * is a declared field of every one of these contracts. It is not a weakening of
+ * anything: the address is still *derived* from the identifier and never copied
+ * from the payload's `email`, so nothing here turns the audit database into a
+ * mailing list — which is the rule `redaction.ts` exists to keep.
  */
 export function subjectCustomerIdFrom(messageType: string, payload: unknown): string | null {
-  if (!messageType.startsWith('customer.')) {
+  if (!messageType.startsWith('customer.') && !messageType.startsWith('transaction.')) {
     return null;
   }
 
