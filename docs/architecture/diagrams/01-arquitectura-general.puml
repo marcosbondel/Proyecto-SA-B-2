@@ -1,109 +1,77 @@
 @startuml 01-arquitectura-general
 
-title Bank USAC - Arquitectura general
+title Bank USAC – Arquitectura general
 
 left to right direction
 skinparam shadowing false
-skinparam linetype ortho
-skinparam nodesep 45
-skinparam ranksep 65
 skinparam defaultTextAlignment center
-skinparam packageStyle rectangle
 skinparam ArrowColor #555555
 skinparam ArrowThickness 1.2
 
-skinparam actor {
+skinparam rectangle {
     BackgroundColor #FFFFFF
-    BorderColor #398819
-    FontColor #398819
-}
-skinparam cloud {
-    BackgroundColor #FFF0F0
-    BorderColor #C11926
-    FontColor #C11926
-}
-skinparam node {
-    BackgroundColor #FFFFFF
-    BorderColor #1168BD
-    FontColor #1168BD
+    BorderColor #333333
+    FontColor #222222
 }
 skinparam database {
-    BackgroundColor #FFFFFF
-    BorderColor #1168BD
-    FontColor #1168BD
+    BackgroundColor #E7F7EA
+    BorderColor #2E8B45
+    FontColor #0B3D19
 }
-skinparam rectangle {
-    BackgroundColor #F7F9FC
-    BorderColor #777777
+skinparam actor {
+    BackgroundColor #FFFFFF
+    BorderColor #555555
     FontColor #333333
 }
 
 actor "Cliente / Cajero /\nAdministrador" as users
-cloud "Servicio de correo" as email
-cloud "Proveedor de pagos" as provider
+rectangle "Servicio de correo" as email #F2F2F2
+rectangle "Proveedor de pagos" as provider #F2F2F2
 
-rectangle "Bank USAC" as system {
-    rectangle "Entorno de aplicaciones" as applications {
-        node "Frontend" as frontend
-        node "API Gateway" as gateway
+rectangle "Límite del clúster – kind" as cluster #EAF2FF {
+    rectangle "Frontend" as frontend #DCEBFF
+    rectangle "API Gateway" as gateway #FFE8CC
 
-        together {
-            node "Customer Service" as customer
-            node "Account Service" as account
-            node "Transaction Service" as transaction
-        }
-
-        together {
-            node "Payment Service" as payment
-            node "Notification & Audit" as notification
-        }
-    }
-
-    rectangle "Infraestructura de soporte" as support {
-        node "Bus de mensajería\n(colas y eventos)" as broker
-
-        together {
-            database "Customer" as customerDb
-            database "Account" as accountDb
-            database "Transaction" as transactionDb
-            database "Payment" as paymentDb
-            database "Notification & Audit" as notificationDb
-        }
-
-        node "Almacenamiento\nde objetos" as objectStore
+    rectangle "Microservicios" as micro {
+        rectangle "Customer Service" as customer #DCEBFF
+        rectangle "Account Service" as account #DCEBFF
+        rectangle "Transaction Service" as transaction #DCEBFF
+        rectangle "Payment Service" as payment #DCEBFF
+        rectangle "Notification & Audit Service" as notification #DCEBFF
     }
 }
 
-users --> frontend : interactúa
-frontend --> gateway : solicita
-gateway <--> broker : publica / recibe mensajes
-broker <--> customer : distribuye mensajes
-broker <--> account : distribuye mensajes
-broker <--> transaction : distribuye mensajes
-broker <--> payment : distribuye mensajes
-broker --> notification : distribuye eventos
+rectangle "Infraestructura externa (fuera del clúster)" as external #FFF7E6 {
+    rectangle "Broker de mensajería" as broker #FFE8CC
+    database "Almacenamiento de objetos" as minio
 
-customer --> customerDb : persiste datos
-account --> accountDb : persiste datos
-transaction --> transactionDb : persiste datos
-payment --> paymentDb : persiste datos
-notification --> notificationDb : persiste datos
+    rectangle "Datos" as datos {
+        database "Datos de Customer" as customerDb
+        database "Datos de Account" as accountDb
+        database "Datos de Transaction" as transactionDb
+        database "Datos de Payment" as paymentDb
+        database "Datos de Notification & Audit" as notificationDb
+    }
+}
 
-gateway --> objectStore : transfiere archivos
-customer --> objectStore : consulta archivos
-notification --> email : envía notificaciones
-payment --> provider : solicita pagos
+users --> frontend
+frontend --> gateway : Síncrono
+gateway <--> broker : Asíncrono
+broker <--> customer : Asíncrono
+broker <--> account : Asíncrono
+broker <--> transaction : Asíncrono
+broker <--> payment : Asíncrono
+broker <--> notification : Asíncrono
 
-note right of broker
-    Canal lógico compartido para la comunicación
-    entre el Gateway y los servicios.
-    Las colas y los eventos se detallan en
-    los diagramas de contenedores y mensajería.
-end note
+customer --> customerDb
+account --> accountDb
+transaction --> transactionDb
+payment --> paymentDb
+notification --> notificationDb
 
-note bottom of support
-    La infraestructura de soporte permanece separada
-    del entorno donde se ejecutan las aplicaciones.
-end note
+gateway --> minio : Síncrono
+customer --> minio : Síncrono
+notification --> email
+payment --> provider
 
 @enduml
