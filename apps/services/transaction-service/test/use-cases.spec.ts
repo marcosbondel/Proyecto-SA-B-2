@@ -393,6 +393,7 @@ describe('the rejected path', () => {
       messageType: 'transaction.failed.v1',
       payload: {
         transactionId: TRANSACTION,
+        customerId: OWNER.customerId,
         status: 'FAILED',
         reason: 'INSUFFICIENT_FUNDS',
         failedAt: NOW.toISOString(),
@@ -414,7 +415,19 @@ describe('the rejected path', () => {
 });
 
 describe('the compensated path', () => {
-  /** Criterion 5: a payment rejected after the debit ends in COMPENSATED. */
+  /**
+   * Criterion 5: a payment rejected after the debit ends in COMPENSATED.
+   *
+   * The `customerId` in the final assertion is load-bearing and comes from the
+   * **row**: nothing delivered here carries it, and `saga.execute` never sees
+   * an envelope. That is the point. `PAYMENT_RETRIES_EXHAUSTED` is reached only
+   * through Payment Service's retry sweeper, which republishes on a timer and
+   * so has no session to inherit an identity from — so the event announcing
+   * that the money came back used to reach Notification & Audit with nobody to
+   * tell, and the one message a customer is actively waiting for was recorded
+   * `FAILED`. This service is the last one that still knows whose transfer it
+   * was.
+   */
   it('orders the compensation and closes in COMPENSATED once it is confirmed', async () => {
     const { request, deliver, publisher, repository } = world();
 
@@ -454,6 +467,7 @@ describe('the compensated path', () => {
       messageType: 'transaction.compensated.v1',
       payload: {
         transactionId: TRANSACTION,
+        customerId: OWNER.customerId,
         status: 'COMPENSATED',
         reason: 'PAYMENT_RETRIES_EXHAUSTED',
         compensatedAt: NOW.toISOString(),
