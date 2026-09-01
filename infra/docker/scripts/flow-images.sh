@@ -7,18 +7,32 @@ set -uo pipefail
 # contenedores".
 #
 #   ./infra/docker/scripts/build-images.sh
-#   BANK_GATEWAY_PORT=3100 docker compose -f infra/docker/docker-compose.images.yml up -d
+#   SEED_DEMO_DATA=true BANK_GATEWAY_PORT=3100 \
+#     docker compose -f infra/docker/docker-compose.images.yml up -d
 #   BANK_GATEWAY_PORT=3100 ./infra/docker/scripts/flow-images.sh
 #
-# Every request enters through the Gateway, which is the only door the system
-# has (§4.1). Nothing here talks to a service directly, and nothing here reads a
-# service's database — except the two seeds below, which are labelled where they
-# happen and are not features.
+# `SEED_DEMO_DATA=true` matters here and nowhere else in these three lines:
+# step 5 below needs a staff session to put money into an account, and
+# self-service registration can only ever create a `CLIENTE`
+# (`customers.controller.ts`, `#requireAdministrator`) — there is no route
+# through which an anonymous caller, or this script, can mint the very first
+# `CAJERO_RECEPTOR`. The seeded demo teller is the documented bootstrap for
+# exactly that case. Leave it off and step 5 fails with a message that says
+# so, rather than falling back to something else.
 #
-# What this proves is containerization: seven images, one network, a business
-# flow that crosses six of them and is visible in the seventh's audit trail.
-# What it does not prove is that the transfer completes — it cannot, and the
-# reason is printed at the end.
+# Every request enters through the Gateway, which is the only door the system
+# has (§4.1). Nothing here talks to a service directly, and nothing here reads
+# or writes a service's database.
+#
+# What this proves: seven images, one network, and the assignment's flow start
+# to finish — register, activate, sign in, open two accounts, fund one through
+# the real teller-deposit route, then the Saga in all three of its shapes. One
+# transfer COMPLETES; one payment is refused on the first attempt and the Saga
+# COMPENSATES; one climbs the retry ladder to its end and COMPENSATES the same
+# way. The source balance is read before and after each, so the compensation
+# is a fact about the money, not a status somebody wrote down — and the
+# seventh image, the audit trail, is read at the end to show it recorded all
+# three.
 
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(CDPATH="" cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -38,13 +52,6 @@ set +a
 step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 note() { printf '   \033[33m%s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31mFAILED: %s\033[0m\n' "$1"; exit 1; }
-
-# Runs SQL inside a service's own database container. Used twice, both times to
-# stand in for something the system does not model — never to read or write on
-# a service's behalf during the flow itself.
-seed_sql() {
-  docker exec -i "$1" psql -U "$2" -d "$3" -qtAc "$4"
-}
 
 step "0. the stack answers"
 curl -fsS "${GATEWAY}/ready" || fail "the Gateway is not ready at ${GATEWAY}"
@@ -126,15 +133,36 @@ for slot in source target; do
 done
 sleep 3
 
-step "5. give the source account a balance"
-# The second and last seed. Nothing in this system can put money into an
-# account: a credit only ever happens as step 3 of a transfer Saga, and cash
-# deposit is not modelled at all (TD-018). So a transfer needs a balance that
-# no route can create.
-note "seeded: no operation exists that deposits money (TD-018)"
-seed_sql postgres-account "$ACCOUNT_POSTGRES_USER" "$ACCOUNT_POSTGRES_DB" \
-  "UPDATE accounts SET balance = 1500.00 WHERE account_id = '${source_account}';" \
-  || fail "could not seed the balance"
+step "5. give the source account a balance  →  a teller's deposit, POST /api/accounts/{id}/deposit"
+# The front door for money entering an account (A-05) — the route TD-018
+# names as half-closed: a CAJERO_RECEPTOR or ADMINISTRADOR session credits the
+# account and the response carries the resulting balance. No SQL, and no
+# service is touched directly.
+#
+# Getting that session is the one thing a fresh registration cannot do:
+# self-service registration only ever creates a CLIENTE (see the header
+# above), so there is no route through which this script could mint its own
+# CAJERO_RECEPTOR. The seeded demo teller is the documented way around
+# exactly that — using it here is that mechanism doing its job, not a
+# shortcut around the system.
+note "signing in as the seeded demo teller — requires SEED_DEMO_DATA=true (see the header)"
+teller_password="${SEED_PASSWORD:-BankUsac#2026}"
+teller_session="$(curl -fsS -X POST "${GATEWAY}/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"cajero@bankusac.gt\",\"credential\":\"${teller_password}\"}")" \
+  || fail "the demo teller could not sign in — set SEED_DEMO_DATA=true for customer-service in infra/docker/.env, recreate the images stack, and re-run"
+
+teller_token="$(echo "$teller_session" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+[[ -n "$teller_token" ]] || fail "no token in the teller's login response: ${teller_session}"
+echo "   signed in as cajero@bankusac.gt, JWT issued (${#teller_token} characters)"
+
+deposited="$(curl -fsS -X POST "${GATEWAY}/api/accounts/${source_account}/deposit" \
+  -H "Authorization: Bearer ${teller_token}" \
+  -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"amount":{"amountMinor":150000,"currency":"GTQ"},"description":"Deposito inicial - flow-images.sh"}')" \
+  || fail "the deposit was refused"
+echo "   200 OK — ${deposited}"
 
 balance="$(curl -fsS "${GATEWAY}/api/accounts/${source_account}/balance" "${auth[@]}")"
 echo "   GET /api/accounts/{id}/balance → ${balance}"
@@ -286,7 +314,9 @@ echo " COMPENSATED — a refusal, and the money given back"
 echo " COMPENSATED — a retry ladder climbed to its end, then the same"
 echo
 echo " Every request entered through the Gateway; no service was called"
-echo " directly and no service read another's database. The balances were"
-echo " checked before and after each one, so the compensation is a fact"
-echo " about the money rather than a status somebody wrote down."
+echo " directly and no service read another's database — not even the source"
+echo " balance, which arrived through a teller's deposit (A-05), not SQL."
+echo " The balances were checked before and after each transfer, so the"
+echo " compensation is a fact about the money rather than a status somebody"
+echo " wrote down."
 echo "════════════════════════════════════════════════════════════════"

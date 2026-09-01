@@ -119,19 +119,48 @@ databases:
 # The five internal domain services. One Deployment + one ClusterIP Service
 # each, under templates/<key>/. Ports and required/optional env match the
 # matrix in docs/operations/CONTAINERS.md exactly.
+#
+# `dev` stays the default `image.tag` for every component below — every
+# service, the Gateway and web — on purpose, not by oversight. The immutable
+# alternative (`build-images.sh`'s short-commit tag) cannot be a static
+# default in a committed file: it names a specific commit and goes stale the
+# moment another one lands, so hardcoding today's would silently break
+# tomorrow's install. And `dev` is not a safe fallback either — read the next
+# paragraph before assuming a bare `helm install` works.
+#
+# `build-images.sh --kind <cluster>` loads only the short-commit tag onto the
+# kind node (`kind load docker-image`, see the script); it never loads `dev`.
+# So on the one cluster this chart targets, a release that leaves `image.tag`
+# at its default has nothing to pull and every pod sits in
+# `ImagePullBackOff`/`ErrImageNeverPull` — this is true today, unrelated to
+# which string is written here. There is no default that installs without
+# `--set`; the fix is passing the tag `build-images.sh` printed, every time:
+#
+#   helm upgrade --install bank-usac infra/k8s/helm/bank-usac ... \
+#     --set services.customer.image.tag=<short-commit> \
+#     --set services.account.image.tag=<short-commit> \
+#     --set services.transaction.image.tag=<short-commit> \
+#     --set services.payment.image.tag=<short-commit> \
+#     --set services.notificationAudit.image.tag=<short-commit> \
+#     --set gateway.image.tag=<short-commit> \
+#     --set web.image.tag=<short-commit>
+#
+# (see infra/k8s/README.md for the full command, alongside the required
+# secrets). `dev` remains useful for `helm template`/`helm lint`, which never
+# touch a cluster and so never hit the pull.
 services:
   customer:
     component: customer-service
     port: 3001
     image:
       repository: bank-usac/customer-service
-      tag: dev # overridden with the short commit build-images.sh tagged
+      tag: dev # always --set at install time — see the note above `services:`
   account:
     component: account-service
     port: 3002
     image:
       repository: bank-usac/account-service
-      tag: dev
+      tag: dev # always --set at install time — see the note above `services:`
     deactivation:
       enabled: "true"
       intervalMs: "86400000"
@@ -142,13 +171,13 @@ services:
     port: 3003
     image:
       repository: bank-usac/transaction-service
-      tag: dev
+      tag: dev # always --set at install time — see the note above `services:`
   payment:
     component: payment-service
     port: 3004
     image:
       repository: bank-usac/payment-service
-      tag: dev
+      tag: dev # always --set at install time — see the note above `services:`
     # The ladder docs/events/topology.md fixes: 1 s / 5 s / 30 s. Unlike
     # docker-compose.images.yml this chart does not shorten it for a demo —
     # shorten it explicitly with --set if a live walkthrough needs to.
@@ -159,7 +188,7 @@ services:
     port: 3005
     image:
       repository: bank-usac/notification-audit-service
-      tag: dev
+      tag: dev # always --set at install time — see the note above `services:`
     # On here, as in docker-compose.images.yml, because this chart's job is
     # to demonstrate the assignment's own flow (register, activate, sign
     # in) against a real cluster. Set to "false" for anything reachable by
@@ -177,7 +206,7 @@ gateway:
   port: 3000
   image:
     repository: bank-usac/gateway
-    tag: dev
+    tag: dev # always --set at install time — see the note above `services:`
   jwtExpiresIn: "3600"
   gatewayInstanceId: gateway-k8s
   replyTimeoutMs: "5000"
@@ -195,7 +224,7 @@ web:
   port: 3010
   image:
     repository: bank-usac/web
-    tag: dev
+    tag: dev # always --set at install time — see the note above `services:`
   apiBaseUrl: "http://localhost:3000"
 
 # ---------------------------------------------------------------------------
