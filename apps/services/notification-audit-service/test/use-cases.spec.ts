@@ -1,4 +1,5 @@
 import { auditQueryRepliedV1, notificationListRepliedV1 } from '@bank/contracts';
+import type { Identity } from '@bank/contracts';
 
 import { ListNotificationsUseCase } from '../src/application/list-notifications.use-case';
 import { QueryAuditUseCase } from '../src/application/query-audit.use-case';
@@ -24,6 +25,9 @@ import {
 const CORRELATION = '7d41e8b2-9a3f-4c15-8ee0-1b2f9a4c7d10';
 const TRANSACTION = '9f2a41c7-4d7b-4f0e-9c1e-0242ac120002';
 const CUSTOMER = '3f2a1c04-9c2e-4a71-b8f5-2d6e7c0a1b93';
+
+const ADMIN: Identity = { customerId: 'a1c2e3f4-4d7b-4f0e-9c1e-0242ac120099', role: 'ADMINISTRADOR' };
+const TELLER: Identity = { customerId: CUSTOMER, role: 'CAJERO_RECEPTOR' };
 
 interface Harness {
   readonly repository: InMemoryAuditRepository;
@@ -305,9 +309,10 @@ describe('criterion 5 — the query by correlationId', () => {
       customerId: CUSTOMER,
     });
 
-    await new QueryAuditUseCase({ repository, publisher }).execute({
-      correlationId: CORRELATION,
-    });
+    await new QueryAuditUseCase({ repository, publisher }).execute(
+      { correlationId: CORRELATION },
+      ADMIN,
+    );
 
     return publisher.last?.payload as Record<string, unknown>;
   }
@@ -356,9 +361,43 @@ describe('criterion 5 — the query by correlationId', () => {
   it('answers an unknown correlation emptily rather than refusing', async () => {
     const { repository, publisher } = harness();
 
-    await new QueryAuditUseCase({ repository, publisher }).execute({
+    await new QueryAuditUseCase({ repository, publisher }).execute(
+      { correlationId: CORRELATION },
+      ADMIN,
+    );
+
+    expect(publisher.last?.payload).toMatchObject({ events: [], notifications: [] });
+  });
+
+  /**
+   * D-06, enforced here rather than trusted from the Gateway alone: this
+   * service hears every event in the bank, and a flow's trail is as much a
+   * fact about everybody as `GetAuditStatsUseCase`'s volume is.
+   */
+  it('answers a non-administrator emptily too, rather than the trail it asked for', async () => {
+    const { record, repository, publisher } = harness();
+    await record.execute({ event: event(), customerId: CUSTOMER });
+
+    await new QueryAuditUseCase({ repository, publisher }).execute(
+      { correlationId: CORRELATION },
+      TELLER,
+    );
+
+    expect(publisher.last?.payload).toMatchObject({
       correlationId: CORRELATION,
+      events: [],
+      notifications: [],
     });
+  });
+
+  it('answers an envelope with no identity emptily as well', async () => {
+    const { record, repository, publisher } = harness();
+    await record.execute({ event: event(), customerId: CUSTOMER });
+
+    await new QueryAuditUseCase({ repository, publisher }).execute(
+      { correlationId: CORRELATION },
+      null,
+    );
 
     expect(publisher.last?.payload).toMatchObject({ events: [], notifications: [] });
   });
@@ -373,9 +412,10 @@ describe('criterion 5 — the query by correlationId', () => {
     sender.failNext();
 
     await record.execute({ event: event(), customerId: CUSTOMER });
-    await new QueryAuditUseCase({ repository, publisher }).execute({
-      correlationId: CORRELATION,
-    });
+    await new QueryAuditUseCase({ repository, publisher }).execute(
+      { correlationId: CORRELATION },
+      ADMIN,
+    );
 
     const payload = publisher.last?.payload as { notifications: { sentAt: string | null }[] };
 
@@ -403,7 +443,7 @@ describe('the notifications console', () => {
   it('returns the page and counts what it left out', async () => {
     const { repository, publisher } = await fill(5);
 
-    await new ListNotificationsUseCase({ repository, publisher }).execute({ limit: 2 });
+    await new ListNotificationsUseCase({ repository, publisher }).execute({ limit: 2 }, ADMIN);
 
     const payload = publisher.last?.payload as { notifications: unknown[]; omitted: number };
 
@@ -414,7 +454,10 @@ describe('the notifications console', () => {
   it('narrows by status without pretending it is a permission', async () => {
     const { repository, publisher } = await fill(3);
 
-    await new ListNotificationsUseCase({ repository, publisher }).execute({ status: 'FAILED' });
+    await new ListNotificationsUseCase({ repository, publisher }).execute(
+      { status: 'FAILED' },
+      ADMIN,
+    );
 
     expect(publisher.last?.payload).toMatchObject({ notifications: [], omitted: 0 });
   });
@@ -422,8 +465,29 @@ describe('the notifications console', () => {
   it('satisfies the contract it answers', async () => {
     const { repository, publisher } = await fill(2);
 
-    await new ListNotificationsUseCase({ repository, publisher }).execute({});
+    await new ListNotificationsUseCase({ repository, publisher }).execute({}, ADMIN);
 
     expect(notificationListRepliedV1.schema.safeParse(publisher.last?.payload).success).toBe(true);
+  });
+
+  /**
+   * D-06, enforced here rather than trusted from the Gateway alone: this
+   * console carries the simulated recipient of every delivery in the system,
+   * the same field `ReadInboxUseCase` refuses to show anybody but its owner.
+   */
+  it('answers a non-administrator emptily rather than the console it asked for', async () => {
+    const { repository, publisher } = await fill(3);
+
+    await new ListNotificationsUseCase({ repository, publisher }).execute({}, TELLER);
+
+    expect(publisher.last?.payload).toMatchObject({ notifications: [], omitted: 0 });
+  });
+
+  it('answers an envelope with no identity emptily as well', async () => {
+    const { repository, publisher } = await fill(3);
+
+    await new ListNotificationsUseCase({ repository, publisher }).execute({}, null);
+
+    expect(publisher.last?.payload).toMatchObject({ notifications: [], omitted: 0 });
   });
 });

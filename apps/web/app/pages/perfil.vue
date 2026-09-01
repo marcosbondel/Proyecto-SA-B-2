@@ -58,7 +58,7 @@ useHead({ title: 'Mi perfil · bonking' });
     <header>
       <h1 class="text-[32px] font-bold leading-10 tracking-tight">Mi perfil</h1>
       <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-        Datos administrados por Customer Service.
+        Tus datos personales y tu contraseña.
       </p>
     </header>
 
@@ -83,7 +83,7 @@ useHead({ title: 'Mi perfil · bonking' });
 
           <dl class="mt-4 flex flex-col gap-4">
             <div>
-              <dt class="text-[12px] text-[#75767F]">Username</dt>
+              <dt class="text-[12px] text-[#75767F]">Usuario</dt>
               <dd
                 class="text-[13px] font-semibold text-[#23242A]"
                 style="font-variant-numeric: tabular-nums lining-nums"
@@ -110,7 +110,7 @@ useHead({ title: 'Mi perfil · bonking' });
             </div>
 
             <div>
-              <dt class="text-[12px] text-[#75767F]">customerId</dt>
+              <dt class="text-[12px] text-[#75767F]">Número de cliente</dt>
               <dd
                 class="break-all font-mono text-[12px] font-medium text-[#23242A]"
                 style="font-variant-numeric: tabular-nums lining-nums"
@@ -123,7 +123,7 @@ useHead({ title: 'Mi perfil · bonking' });
           <h2 class="text-[14px] font-semibold">Validación de identidad</h2>
 
           <div class="mt-4">
-            <IdentityStatusBadge
+            <CustomerIdentityStatusBadge
               v-if="record"
               :status="record.identityStatus"
               explain

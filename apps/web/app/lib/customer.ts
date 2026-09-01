@@ -105,7 +105,12 @@ export function birthDateRejection(birthDate: string, today: Date): string | nul
   const parsed = parseIsoDate(birthDate);
 
   if (parsed === null) {
-    return 'Escribe una fecha válida en formato día/mes/año.';
+    // The field is a native `type="date"` input, which reads and writes
+    // `YYYY-MM-DD` regardless of how the browser displays it — never
+    // `día/mes/año`. This message almost never shows (the picker itself keeps
+    // most typos out), and when it does it must not describe a format the
+    // field never asked for.
+    return 'Escribe una fecha válida en formato año-mes-día.';
   }
 
   if (parsed.getTime() > today.getTime()) {
@@ -322,9 +327,36 @@ export const IDENTITY_PRESENTATION: Readonly<Record<IdentityStatus, IdentityPres
   },
 };
 
-/** The shape `GET /api/audit` returns: metadata, never payloads. */
+/**
+ * Whether a failed fetch of the identity-document photo means "nothing was
+ * ever uploaded" rather than a real failure.
+ *
+ * A registration may legally carry no photo (`photoRejection` above only
+ * refuses one locally chosen and offered; the Gateway itself accepts a
+ * registration with none), so a cajero opening the validation screen for that
+ * customer sees an ordinary empty state, never the same alert a broker outage
+ * would show. Anything else the Gateway's `failureCode` could be — including
+ * `null`, a network failure with no code at all — falls through to the real
+ * error path.
+ */
+export function isMissingDocumentPhoto(failureCode: string | null): boolean {
+  return failureCode === 'IDENTITY_OBJECT_NOT_FOUND';
+}
+
+/**
+ * The shape `GET /api/audit` returns: metadata, plus whatever survived
+ * redaction.
+ *
+ * `payload` is optional for two reasons: an older reply predating T-20 never
+ * carried one, and a message whose whole payload was sensitive redacts down to
+ * nothing. When it is present, though, a field the audit service's deny-list
+ * does not recognise — `reason` on a rejection, for instance — travels
+ * unredacted, which is what makes `explainCustomerRejection` possible without
+ * this module ever touching the Gateway.
+ */
 export interface AuditEvent {
   readonly messageType: string;
+  readonly payload?: Record<string, unknown>;
 }
 
 export type CommandOutcome = 'SUCCESS' | 'BUSINESS_REJECTION';
@@ -356,6 +388,88 @@ export function outcomeFromAudit(events: readonly AuditEvent[]): CommandOutcome 
   }
 
   return null;
+}
+
+/**
+ * What a rejection's `reason` means, in Spanish, to the person it happened to.
+ *
+ * The two codes that actually reach a person through this screen are the two
+ * that matter most: a duplicated email or a duplicated document, and both are
+ * actionable rather than merely apologetic — the point is to tell somebody
+ * what to do next, not just that something went wrong. `ROLE_NOT_ELIGIBLE` and
+ * `INVALID_BIRTH_DATE` belong to the staff form (`mode: 'staff'`), where the
+ * caller who reads this is the one who chose the role or typed the date.
+ *
+ * A code this map does not recognise falls back rather than being shown raw —
+ * `explainCustomerRejection` returns `null` for it, exactly as `explainReason`
+ * does in `transaction.ts`, and the caller supplies the honest, role-aware
+ * fallback.
+ */
+export const CUSTOMER_REJECTION_TEXT: Readonly<Record<string, string>> = {
+  EMAIL_ALREADY_REGISTERED:
+    'Ya existe una cuenta con este correo electrónico. Si es tuya, inicia sesión en lugar de ' +
+    'registrarte de nuevo, o recupera tu contraseña si no la recuerdas.',
+  DOCUMENT_ALREADY_REGISTERED:
+    'Ya existe un cliente registrado con este número de DPI. Si crees que se trata de un error, ' +
+    'contacta al banco.',
+  ROLE_NOT_ELIGIBLE: 'El rol elegido no se puede crear desde este formulario.',
+  INVALID_BIRTH_DATE: 'La fecha de nacimiento no es válida para abrir una cuenta.',
+  IDENTITY_DOCUMENT_UNREADABLE: 'La foto del documento no se pudo leer. Vuelve a cargarla con mejor calidad.',
+  IDENTITY_OBJECT_NOT_FOUND: 'La foto del documento no llegó a guardarse. Vuelve a cargarla.',
+  IDENTITY_DIGEST_MISMATCH: 'La foto del documento no coincide con la que se envió. Vuelve a cargarla.',
+};
+
+/**
+ * Why a registration or an identity check was refused, read from the trail.
+ *
+ * Only reachable while the outcome can actually be observed — an
+ * `ADMINISTRADOR` session, per D-06 (TD-021) — because it is `useCommandOutcome`
+ * that decides whether the trail is ever polled. `null` here means either
+ * "nothing rejected" or "the reason is not one this map knows yet"; the caller
+ * cannot tell which and does not need to, because both get the same honest,
+ * role-aware fallback.
+ */
+export function explainCustomerRejection(events: readonly AuditEvent[]): string | null {
+  const rejection = events.find(
+    (event) =>
+      event.messageType === 'customer.register.rejected.v1' ||
+      event.messageType === 'customer.identity.rejected.v1',
+  );
+
+  const reason = rejection?.payload?.reason;
+
+  return typeof reason === 'string' ? (CUSTOMER_REJECTION_TEXT[reason] ?? null) : null;
+}
+
+export type RegistrationOutcome = CommandOutcome | 'PENDING';
+
+export interface RegistrationHeading {
+  readonly heading: string;
+  /** Whether the body may claim the activation email was sent. */
+  readonly confirmed: boolean;
+}
+
+/**
+ * What the "accepted" screen may claim, before or after the outcome resolves.
+ *
+ * Self-service registration happens with no session, so D-06 keeps the trail
+ * from ever being read (TD-021) and this stays `PENDING` forever for that
+ * caller — the screen must never promise the activation email went out,
+ * because it may never have. A staff-driven registration *can* resolve, and
+ * only once it resolves to `SUCCESS` may the screen say the email was sent. A
+ * `BUSINESS_REJECTION` gets its own heading rather than sharing one with
+ * either: `SharedAsyncStateAlert` is where the specific reason lives.
+ */
+export function registrationHeading(outcome: RegistrationOutcome): RegistrationHeading {
+  if (outcome === 'SUCCESS') {
+    return { heading: 'Registro completado', confirmed: true };
+  }
+
+  if (outcome === 'BUSINESS_REJECTION') {
+    return { heading: 'No pudimos completar el registro', confirmed: false };
+  }
+
+  return { heading: 'Registro recibido', confirmed: false };
 }
 
 /** A size as the upload card writes it. */

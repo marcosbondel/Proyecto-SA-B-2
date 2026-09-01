@@ -40,20 +40,20 @@ describe('when nobody answers', () => {
   });
 
   /**
-   * The wording is load-bearing. A caller who reads "it failed" may reissue a
-   * transfer that in fact succeeded. The Saga carries on either way — there is
-   * no cancellation message in the catalogue — so the only honest statement is
-   * "we stopped waiting, go and ask".
+   * The wording is load-bearing, but in the opposite direction from a command:
+   * a balance lookup started nothing, so there is no "operation" to reassure
+   * anyone about. The only honest statement for a read is that nothing changed
+   * and it is safe to ask again.
    */
-  it('says the operation was not cancelled, and how to find out', async () => {
+  it('says nothing changed, and that it is safe to ask again', async () => {
     harness.replier.staySilent();
 
     const response = await request(app.getHttpServer())
       .get(`/api/accounts/${ACCOUNT}/balance`)
       .set('Authorization', auth);
 
-    expect(response.body.message).toMatch(/NO fue cancelada/);
-    expect(response.body.message).toMatch(/correlación/);
+    expect(response.body.message).not.toMatch(/NO fue cancelada/);
+    expect(response.body.message).toMatch(/no se modificó ningún dato/);
   });
 
   it('is a different answer from a business rejection', async () => {

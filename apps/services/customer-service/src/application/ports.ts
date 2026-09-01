@@ -186,11 +186,30 @@ export interface CustomerRepository {
   }>;
 
   /**
+   * The most recently stored identity document for a customer, or `null` when
+   * none was ever uploaded — legal, since `customer.register.v1` accepts
+   * `photo: null` (`docs/domain/entities.md`).
+   *
+   * "Most recent" rather than "the one", because the table has no uniqueness
+   * on `customer_id`: a rejected photo is kept alongside whatever replaces it,
+   * so a teller asked why an identity was refused can still see what was
+   * uploaded.
+   */
+  findLatestIdentityDocument(customerId: string): Promise<{
+    readonly mimeType: string;
+    readonly sizeBytes: number;
+    readonly sha256: string;
+    readonly content: Buffer;
+  } | null>;
+
+  /**
    * The dashboard's counts, computed in SQL rather than by loading the table.
    *
-   * "Today" is the database's day, not Node's: the query compares against
-   * `CURRENT_DATE`, so the number does not shift when a replica runs in a
-   * different timezone from the one before it.
+   * "Today" is computed once, in SQL, against Guatemala's calendar day —
+   * `AT TIME ZONE 'America/Guatemala'` on both sides of the comparison — so the
+   * number does not shift with Node's clock and does not silently become
+   * tomorrow's the moment the container's own timezone (UTC) crosses local
+   * midnight, which for Guatemala (UTC-6) starts at 18:00.
    */
   stats(): Promise<{
     readonly registered: number;
@@ -247,6 +266,27 @@ export interface ActivationTokenFactory {
 /** Fetches the bytes the Gateway parked in object storage. */
 export interface IdentityDocumentReader {
   read(photo: PhotoReference): Promise<Buffer>;
+}
+
+/**
+ * Parks this service's own stored bytes back in the object store, so the
+ * Gateway can fetch them without either the broker carrying image bytes or
+ * Customer Service exposing HTTP.
+ *
+ * The same transfer buffer ADR-012 defines for the write path, used in
+ * reverse: there the Gateway writes and this service reads once to persist;
+ * here this service writes a short-lived copy of what it already persisted,
+ * and the Gateway reads it once to answer one request. Nothing about the
+ * object store's role changes — it still holds no business state, and the
+ * document's owner remains this service's own database.
+ */
+export interface IdentityDocumentStager {
+  stage(document: {
+    readonly content: Buffer;
+    readonly mimeType: 'image/jpeg' | 'image/png';
+    readonly sha256: string;
+    readonly sizeBytes: number;
+  }): Promise<PhotoReference>;
 }
 
 /** Injected so a test can decide what "now" is. */

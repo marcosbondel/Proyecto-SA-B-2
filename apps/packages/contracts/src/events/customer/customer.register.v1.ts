@@ -23,12 +23,19 @@ export const customerRegisterV1 = defineContract({
     // Trimmed before the length check so a whitespace-only value collapses to
     // empty and is refused, rather than being stored blank — a blank document
     // would take the UNIQUE slot and block every later registration (FR-014).
-    fullName: z.string().trim().min(1).max(200),
-    identityDocument: z.string().trim().min(1).max(50),
+    /*
+     * The `min(1)` messages are in Spanish because they are reachable from a
+     * browser: the DTO's `@MinLength(1)` counts the raw string, so three spaces
+     * pass the edge and fail here, after `.trim()` — and the Gateway hands the
+     * first message straight to the person, who was getting Zod's English
+     * default ("Too small: expected string to have >=1 characters").
+     */
+    fullName: z.string().trim().min(1, 'Escribe el nombre completo.').max(200),
+    identityDocument: z.string().trim().min(1, 'Escribe el número de documento.').max(50),
     email: z.email(),
     /** Validated for coherence by the service, not by the wire format (C-5). */
     dateOfBirth: z.iso.date(),
-    address: z.string().trim().min(1).max(300),
+    address: z.string().trim().min(1, 'Escribe la dirección.').max(300),
     role,
     /** Never logged. See the note above. */
     credential: z.string().min(8).max(256),

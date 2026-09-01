@@ -154,7 +154,7 @@ node "Developer Host" as host <<device>> #F7F7F7 {
         }
     }
 
-    node "kubectl port-forward\nlocalhost:3000 -> svc/frontend\nlocalhost:3001 -> svc/gateway" as portforward <<executionEnvironment>> #EAF2FF
+    node "kubectl port-forward\nlocalhost:3000 -> svc/gateway\nlocalhost:3010 -> svc/frontend" as portforward <<executionEnvironment>> #EAF2FF
     artifact "Helm chart\ninfra/k8s/helm/bank-usac" as helm_chart
 }
 
@@ -196,8 +196,8 @@ svc_account --> pod_account : selects / forwards
 svc_transaction --> pod_transaction : selects / forwards
 svc_payment --> pod_payment : selects / forwards
 svc_notification --> pod_notification : selects / forwards
-portforward --> svc_frontend : HTTP\nlocalhost:3000
-portforward --> svc_gateway : HTTP\nlocalhost:3001
+portforward --> svc_gateway : HTTP\nlocalhost:3000
+portforward --> svc_frontend : HTTP\nlocalhost:3010
 
 ' All application-service broker traffic is asynchronous AMQP over the explicit host gateway.
 ' The communication path is bidirectional because services publish and consume messages.

@@ -53,28 +53,28 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
         # --- GATEWAY <-> RABBITMQ ---
         # Detalle de mensajes por canal en message-catalog.md; aquí se agrupan por dirección
         # para que el diagrama de contenedores no repita una flecha por cada tipo de mensaje.
-        bankusac.gateway -> bankusac.rabbitmq "Publica comandos y requests: Customer, Account, Transaction y Audit (incluye audit.query.requested)" "AMQP | comando/request | correlationId"
-        bankusac.rabbitmq -> bankusac.gateway "Entrega respuestas request/reply: customer.authenticate, account.balance.query y audit.query.replied" "AMQP | respuesta | correlationId"
+        bankusac.gateway -> bankusac.rabbitmq "Publica comandos y requests: Customer, Account, Transaction, Payment y Audit (incluye audit.query.requested)" "AMQP | comando/request | correlationId"
+        bankusac.rabbitmq -> bankusac.gateway "Entrega las respuestas request/reply de los cinco servicios: customer.*.replied, account.*.replied, transaction.*.replied, payment.*.replied y, de Notification & Audit, audit.*.replied y notification.*.replied" "AMQP | respuesta | correlationId"
 
         # --- RABBITMQ <-> CUSTOMER ---
-        bankusac.rabbitmq -> bankusac.customer "Entrega comandos: customer.register, customer.authenticate, customer.verify-email, customer.update, customer.validate-identity" "AMQP | comando/request-reply | correlationId"
+        bankusac.rabbitmq -> bankusac.customer "Entrega toda la familia customer.# : register, authenticate, verify-email, update, set-identity-verdict, change-password, password-reset.* y las consultas get/names" "AMQP | comando/request-reply | correlationId"
         bankusac.customer -> bankusac.rabbitmq "Publica respuestas y eventos: registered, activation.requested, email.verified, identity.*, login.*" "AMQP | evento/respuesta | correlationId"
 
         # --- RABBITMQ <-> ACCOUNT ---
-        bankusac.rabbitmq -> bankusac.account "Entrega comandos: account.create, account.balance.query, account.set-status, y comandos de Saga (debit/credit/compensation)" "AMQP | comando/request-reply | correlationId"
-        bankusac.account -> bankusac.rabbitmq "Publica respuesta de balance y eventos de Saga/auditoría: account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated" "AMQP | evento/respuesta | correlationId"
+        bankusac.rabbitmq -> bankusac.account "Entrega toda la familia account.# : create, deposit, set-status, los comandos de Saga (debit/credit/compensation) y las consultas balance, list, operations, billers y stats" "AMQP | comando/request-reply | correlationId"
+        bankusac.account -> bankusac.rabbitmq "Publica las respuestas de consulta y los eventos de Saga/auditoría: account.opened, account.deposited, account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated y account.deactivated (job automático)" "AMQP | evento/respuesta | correlationId"
 
         # --- RABBITMQ <-> TRANSACTION ---
-        bankusac.rabbitmq -> bankusac.transaction "Entrega transfer.requested y eventos de Saga de Account/Payment" "AMQP | comando/evento | correlationId"
-        bankusac.transaction -> bankusac.rabbitmq "Publica comandos de Saga (debit/credit/compensation), payment.requested y eventos de auditoría" "AMQP | comando/evento | correlationId"
+        bankusac.rabbitmq -> bankusac.transaction "Entrega transfer.requested, las consultas transaction.status.requested, transaction.list.query y transaction.stats.query, y los eventos de Saga de Account/Payment" "AMQP | comando/evento | correlationId"
+        bankusac.transaction -> bankusac.rabbitmq "Publica comandos de Saga (debit/credit/compensation), payment.requested, las respuestas transaction.status.replied, transaction.list.replied y transaction.stats.replied, y eventos de auditoría" "AMQP | comando/evento/respuesta | correlationId"
 
         # --- RABBITMQ <-> PAYMENT ---
-        bankusac.rabbitmq -> bankusac.payment "Entrega payment.requested" "AMQP | comando | correlationId"
-        bankusac.payment -> bankusac.rabbitmq "Publica payment.succeeded, payment.failed y eventos de auditoría" "AMQP | evento | correlationId"
+        bankusac.rabbitmq -> bankusac.payment "Entrega payment.requested y las consultas payment.status.query, payment.list.query y payment.stats.query" "AMQP | comando | correlationId"
+        bankusac.payment -> bankusac.rabbitmq "Publica payment.attempt.failed (uno por intento fallido, no terminal), payment.succeeded, payment.failed, las respuestas payment.*.replied y eventos de auditoría" "AMQP | evento/respuesta | correlationId"
 
         # --- AUDITORÍA: DESTINO FINAL ---
-        bankusac.rabbitmq -> bankusac.notification "Entrega eventos de bank.events y audit.query.requested para auditoría y consultas" "AMQP | evento/comando | correlationId"
-        bankusac.notification -> bankusac.rabbitmq "Publica audit.query.replied" "AMQP | respuesta | correlationId"
+        bankusac.rabbitmq -> bankusac.notification "Entrega los eventos de bank.events en cuatro colas por familia (customer.#, account.#, transaction.#, payment.#) y, en una quinta, las consultas: audit.query.requested, audit.stats.query, notification.list.query, notification.inbox.query y notification.mark-read" "AMQP | evento/comando | correlationId"
+        bankusac.notification -> bankusac.rabbitmq "Publica solo respuestas: audit.query.replied, audit.stats.replied, notification.list.replied, notification.inbox.replied y notification.read.replied" "AMQP | respuesta | correlationId"
 
         # --- ACTIVACIÓN DE CORREO ---
         bankusac.notification -> correo "Entrega correo de activación" "Email delivery | efecto externo | sistema simulado"

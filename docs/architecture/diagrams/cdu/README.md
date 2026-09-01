@@ -34,9 +34,10 @@ microservicio.
 ## Funcionalidades principales
 
 - `CDU001`: registrar cliente, activar cliente por correo, iniciar sesión,
-  actualizar datos, cargar fotografía y validar identidad.
-- `CDU002`: abrir cuenta, consultar saldo, aplicar movimiento de Saga y
-  gestionar estado de cuenta.
+  actualizar datos, cargar fotografía, validar identidad, recuperar la
+  contraseña por correo y cambiar la contraseña propia.
+- `CDU002`: abrir cuenta, consultar saldo, aplicar movimiento de Saga,
+  gestionar estado de cuenta y registrar un depósito en ventanilla.
 - `CDU003`: transferir fondos y consultar el estado de una transferencia.
 - `CDU004`: procesar pagos y consultar el historial de pagos.
 - `CDU005`: registrar auditoría, enviar notificaciones y consultar auditoría o
@@ -66,9 +67,18 @@ Los casos se derivan de:
 - `docs/design-docs/PROMPT_MOCKUP.MD` — superficies funcionales del frontend,
   solamente cuando no contradicen el modelo de dominio.
 
-No se modelan depósitos ni retiros de efectivo: el modelo del proyecto los deja
-fuera de alcance. La validación de fondos pertenece a Account Service;
-Transaction Service solicita el movimiento y conserva el estado de la Saga.
+El **depósito en ventanilla sí se modela** (`CDU002.9`): existe en el código
+como `POST /api/accounts/{accountId}/deposit`, restringido a `CAJERO_RECEPTOR` y
+`ADMINISTRADOR`, y `docs/domain/actors.md` le da su propia fila de permisos. El
+**retiro de efectivo no**: no existe en el sistema. La validación de fondos
+pertenece a Account Service; Transaction Service solicita el movimiento y
+conserva el estado de la Saga.
+
+El **pago de servicios no tiene caso propio a propósito**. En el código es
+`CDU003.1 Transferir fondos` con una `reference`: el prestador tiene su cuenta
+recaudadora en este banco, así que pagar la luz es una transferencia a esa
+cuenta con el número de contrato. Un caso separado describiría un mecanismo que
+no existe.
 
 ## Estructura
 
@@ -84,8 +94,11 @@ cdu/
 │       ├── CDU001.3-iniciar-sesion.{puml,mmd,png}
 │       ├── CDU001.4-actualizar-datos.{puml,mmd,png}
 │       ├── CDU001.5-cargar-fotografia.{puml,mmd,png}
-│       └── CDU001.6-validar-identidad.{puml,mmd,png}
-├── account/flujos/ (CDU002.1 a CDU002.4)
+│       ├── CDU001.6-validar-identidad.{puml,mmd,png}
+│       ├── CDU001.11-solicitar-restablecimiento.{puml,mmd,png}
+│       ├── CDU001.12-restablecer-contrasena.{puml,mmd,png}
+│       └── CDU001.13-cambiar-contrasena.{puml,mmd,png}
+├── account/flujos/ (CDU002.1 a CDU002.4 y CDU002.9)
 ├── transaction/flujos/ (CDU003.1 y CDU003.2)
 ├── payment/flujos/ (CDU004.1 y CDU004.2)
 └── notification-audit/flujos/ (CDU005.1 a CDU005.4)

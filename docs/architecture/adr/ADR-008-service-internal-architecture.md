@@ -1,6 +1,6 @@
 # ADR-008: Structure every service with Clean Architecture
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-15
 - **Deciders**: Bank USAC team (approved in the `feature/T-03` pull request)
 - **Assignment reference**: Not constrained by the assignment; team decision.

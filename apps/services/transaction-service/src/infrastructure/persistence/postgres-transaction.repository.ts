@@ -14,6 +14,7 @@ import type {
   AppliedEffects,
   EventOutcome,
   OutboxMessage,
+  PaymentAttemptOutcome,
   PaymentOutcome,
   StartOutcome,
   TransactionRepository,
@@ -49,7 +50,10 @@ export class PostgresTransactionRepository implements TransactionRepository {
     this.#pool = pool;
   }
 
-  public async start(input: { readonly transaction: Transaction }): Promise<StartOutcome> {
+  public async start(input: {
+    readonly transaction: Transaction;
+    readonly outbound?: (transaction: Transaction) => OutboxMessage;
+  }): Promise<StartOutcome> {
     const { transaction } = input;
 
     return await this.#inTransaction(async (client) => {
@@ -77,7 +81,22 @@ export class PostgresTransactionRepository implements TransactionRepository {
       );
 
       if (inserted.rowCount === 1) {
-        return { kind: 'CREATED', transaction: transactionFrom(inserted.rows[0]!) };
+        const created = transactionFrom(inserted.rows[0]!);
+
+        /**
+         * The outbox, written in the same transaction as the insert (TD-031's
+         * gap, closed for the one publish that used to skip it). A crash
+         * between this commit and the broker publish now leaves
+         * `transaction.initiated.v1` `PENDING` in the outbox rather than lost:
+         * the relay sweeps it on the next tick, and the redelivery that would
+         * otherwise land here again is deduplicated by `idempotency_key`
+         * before this branch is even reached.
+         */
+        if (input.outbound !== undefined) {
+          await this.#writeOutbox(client, created.transactionId, input.outbound(created));
+        }
+
+        return { kind: 'CREATED', transaction: created };
       }
 
       /**
@@ -85,6 +104,10 @@ export class PostgresTransactionRepository implements TransactionRepository {
        * conflict to refuse is a domain judgement about the *content*, and it is
        * made by the caller — the two fields it compares never change after the
        * insert, so reading them outside the lock is safe.
+       *
+       * No outbox row here, deliberately: the delivery that lost the race did
+       * not create anything, and enqueuing `transaction.initiated.v1` again
+       * would announce a transfer's start twice for one transfer.
        */
       const existing = await client.query<TransactionRow>(
         `SELECT ${COLUMNS} FROM transactions WHERE idempotency_key = $1`,
@@ -362,12 +385,14 @@ export class PostgresTransactionRepository implements TransactionRepository {
       const applied = transactionFrom(updated.rows[0]);
 
       /**
-       * The outbox, written here and nowhere else. Whatever this transition
-       * implies — the command it orders, the ending it announces, the extra
-       * trail row a payment leaves — commits in this transaction with the state
-       * change that decided it, or not at all. This is the atomicity TD-031 was
-       * missing: there is no moment where the status advanced but the message it
-       * demands was lost to a crash.
+       * The outbox, written here alongside the state change that decided it —
+       * `start` is the only other writer, and it writes only the one event
+       * (`transaction.initiated.v1`) that exists before any transition has run.
+       * Whatever this transition implies — the command it orders, the ending it
+       * announces, the extra trail row a payment leaves — commits in this
+       * transaction with the state change, or not at all. This is the
+       * atomicity TD-031 was missing: there is no moment where the status
+       * advanced but the message it demands was lost to a crash.
        */
       if (input.outbound !== undefined) {
         const effects = input.outbound(applied, transition);
@@ -377,16 +402,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
         }
 
         for (const message of effects.dispatch) {
-          await client.query(
-            `INSERT INTO outbox_messages (transaction_id, exchange, routing_key, envelope)
-             VALUES ($1, $2, $3, $4::JSONB)`,
-            [
-              input.transactionId,
-              message.exchange,
-              message.routingKey,
-              JSON.stringify(message.envelope),
-            ],
-          );
+          await this.#writeOutbox(client, input.transactionId, message);
         }
       }
 
@@ -412,6 +428,63 @@ export class PostgresTransactionRepository implements TransactionRepository {
     readonly payload: unknown;
   }): Promise<void> {
     await recordEvent(this.#pool, input.transactionId, input.messageType, input.payload);
+  }
+
+  public async recordPaymentAttempt(input: {
+    readonly transactionId: string;
+    readonly messageId: string;
+    readonly messageType: string;
+    readonly payload: unknown;
+  }): Promise<PaymentAttemptOutcome> {
+    const client = await this.#pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      /**
+       * No `FOR UPDATE` here, unlike `applyEvent`: nothing about this write
+       * depends on the row not changing between the check and the insert. The
+       * check exists only so an attempt for a transaction this replica has not
+       * committed yet fails closed as `UNKNOWN_TRANSACTION`, exactly as
+       * `applyEvent` does for every other Saga event, rather than tripping the
+       * foreign key on `transaction_events`.
+       */
+      const found = await client.query('SELECT 1 FROM transactions WHERE transaction_id = $1', [
+        input.transactionId,
+      ]);
+
+      if (found.rowCount === 0) {
+        await client.query('ROLLBACK');
+
+        return { kind: 'UNKNOWN_TRANSACTION' };
+      }
+
+      const claimed = await client.query(
+        `INSERT INTO processed_messages (message_id, message_type, transaction_id, outcome)
+         VALUES ($1, $2, $3, 'RECORDED')
+         ON CONFLICT (message_id) DO NOTHING`,
+        [input.messageId, input.messageType, input.transactionId],
+      );
+
+      if (claimed.rowCount === 0) {
+        await client.query('ROLLBACK');
+
+        // T-5: seen before. No second row for the same rung of the ladder.
+        return { kind: 'DUPLICATE' };
+      }
+
+      await recordEvent(client, input.transactionId, input.messageType, input.payload);
+
+      await client.query('COMMIT');
+
+      return { kind: 'RECORDED' };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   public async dispatchPendingOutbox(
@@ -483,13 +556,21 @@ export class PostgresTransactionRepository implements TransactionRepository {
    * The last decision wins, which matters when Payment Service reports several
    * attempts: `attempt: 3, FAILED` is the outcome, and the two attempts before
    * it are history rather than contradictions.
+   *
+   * `payment.attempt.failed.v1` folds in the same way but never *closes* the
+   * outcome — a redelivery quirk that let one arrive after the terminal event
+   * must not un-decide a payment that already has a verdict, so a row that
+   * would regress a settled outcome back to `PENDING` is skipped rather than
+   * applied. Ordinary ordering never triggers this guard: the ladder's own
+   * attempts always precede the terminal event that follows them.
    */
   public async paymentOutcomeOf(transactionId: string): Promise<PaymentOutcome | null> {
     const result = await this.#pool.query<{ event_type: string; payload: PaymentEventPayload }>(
       `SELECT event_type, payload
          FROM transaction_events
         WHERE transaction_id = $1
-          AND event_type IN ('payment.requested.v1', 'payment.succeeded.v1', 'payment.failed.v1')
+          AND event_type IN ('payment.requested.v1', 'payment.attempt.failed.v1',
+                              'payment.succeeded.v1', 'payment.failed.v1')
         ORDER BY id`,
       [transactionId],
     );
@@ -503,6 +584,24 @@ export class PostgresTransactionRepository implements TransactionRepository {
           status: 'PENDING',
           attempt: null,
           reason: null,
+          errorType: null,
+          decidedAt: null,
+        };
+
+        continue;
+      }
+
+      if (row.event_type === 'payment.attempt.failed.v1') {
+        if (outcome !== null && outcome.status !== 'PENDING') {
+          continue;
+        }
+
+        outcome = {
+          paymentId: row.payload.paymentId,
+          status: 'PENDING',
+          attempt: row.payload.attempt ?? null,
+          reason: row.payload.failureReason ?? null,
+          errorType: row.payload.errorType ?? null,
           decidedAt: null,
         };
 
@@ -517,6 +616,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
         status: succeeded ? 'SUCCEEDED' : 'FAILED',
         attempt: row.payload.attempt ?? null,
         reason: succeeded ? null : (row.payload.failureReason ?? null),
+        errorType: null,
         decidedAt: decided === undefined ? null : new Date(decided),
       };
     }
@@ -532,6 +632,19 @@ export class PostgresTransactionRepository implements TransactionRepository {
     } catch {
       return false;
     }
+  }
+
+  /** The one insert both `start` and `applyEvent` make into the outbox — kept in one place. */
+  async #writeOutbox(
+    client: PoolClient,
+    transactionId: string,
+    message: OutboxMessage,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO outbox_messages (transaction_id, exchange, routing_key, envelope)
+       VALUES ($1, $2, $3, $4::JSONB)`,
+      [transactionId, message.exchange, message.routingKey, JSON.stringify(message.envelope)],
+    );
   }
 
   async #inTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -594,6 +707,8 @@ interface PaymentEventPayload {
   paymentId: string;
   attempt?: number;
   failureReason?: 'PAYMENT_DECLINED' | 'PAYMENT_RETRIES_EXHAUSTED';
+  /** Only `payment.attempt.failed.v1` carries this. */
+  errorType?: 'TRANSIENT' | 'PERMANENT';
   succeededAt?: string;
   failedAt?: string;
 }

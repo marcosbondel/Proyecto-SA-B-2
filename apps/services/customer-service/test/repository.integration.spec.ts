@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { Pool } from 'pg';
 
-import { DomainRejection, applyChanges } from '../src/domain/customer';
+import { DomainRejection, applyChanges, recordIdentityVerdict } from '../src/domain/customer';
 import { usernameCandidates } from '../src/domain/username';
 import { migrate } from '../src/infrastructure/persistence/migrations';
 import { PostgresCustomerRepository } from '../src/infrastructure/persistence/postgres-customer.repository';
@@ -204,6 +204,50 @@ describeIntegration('PostgresCustomerRepository', () => {
 
     const after = await repository.findById(stored.customerId);
     expect(after?.version).toBe(1);
+  });
+
+  it('refuses a concurrent identity verdict instead of letting the last write win (optimistic version)', async () => {
+    const stored = await repository.registerCustomer(inputFor(registration()));
+    const base = await repository.findById(stored.customerId);
+    expect(base?.identityStatus).toBe('PENDING');
+    expect(base?.version).toBe(0);
+
+    // Two verdicts decided from the *same* read (both at version 0): the
+    // automatic check and a teller's manual call racing it. Without the
+    // version guard both would land and both would publish — two
+    // contradictory identity events for the same customer.
+    const validated = recordIdentityVerdict(base!, 'VALIDATED', NOW);
+    const rejected = recordIdentityVerdict(base!, 'REJECTED', NOW);
+
+    const settled = await Promise.allSettled([
+      repository.saveIdentityVerdict({
+        customer: validated,
+        document: null,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'customer.validate-identity.v1',
+          resultSummary: { outcome: 'VALIDATED' },
+        },
+      }),
+      repository.saveIdentityVerdict({
+        customer: rejected,
+        document: null,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'customer.set-identity-verdict.v1',
+          resultSummary: { outcome: 'REJECTED' },
+        },
+      }),
+    ]);
+
+    const fulfilled = settled.filter((s) => s.status === 'fulfilled');
+    const rejectedSettlements = settled.filter((s) => s.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejectedSettlements).toHaveLength(1);
+
+    const after = await repository.findById(stored.customerId);
+    expect(after?.version).toBe(1);
+    expect(['VALIDATED', 'REJECTED']).toContain(after?.identityStatus);
   });
 
   it('records a processed message once, and reports it thereafter', async () => {

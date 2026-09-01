@@ -15,10 +15,13 @@ flowchart LR
     visitor --- account
     visitor --- transaction
     visitor --- payment
+    visitor --- audit
 
     teller --- customer
     teller --- account
     teller --- transaction
+    teller --- payment
+    teller --- audit
 
     admin --- customer
     admin --- account
@@ -28,5 +31,8 @@ flowchart LR
 
     note["Cada CDU representa la función principal de un microservicio; el detalle está en su carpeta"]:::note
     bank -.-> note
+
+    scopeNote["Cliente y Cajero llegan a CDU005 solo por su propio buzón de notificaciones; la consulta de auditoría es del Administrador"]:::note
+    audit -.-> scopeNote
 
     classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

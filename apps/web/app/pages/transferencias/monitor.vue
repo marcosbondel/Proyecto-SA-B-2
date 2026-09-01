@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { asyncStateFor } from '../../lib/gateway-error';
-import type { AsyncState } from '../../lib/gateway-error';
+import type { LoadState } from '../../lib/gateway-error';
 import { isInFlight, statusFilterOptions } from '../../lib/transaction';
 import type { TransactionStatus, TransferRow } from '../../lib/transaction';
 import { formatQuetzales } from '../../lib/money';
@@ -37,10 +37,17 @@ watchEffect(() => {
 
 const rows = ref<readonly TransferRow[]>([]);
 const total = ref(0);
-const state = ref<AsyncState>('LOADING');
+const state = ref<LoadState>('LOADING');
 const failure = ref<string | null>(null);
 const correlationId = ref<string | null>(null);
-const status = ref<TransactionStatus | ''>('');
+/**
+ * `'TODOS'` and not `''`: a `USelect` item whose value is the empty string
+ * never opens, because Reka reserves the empty string for "no selection" and
+ * refuses it as an item value — silently, with `aria-expanded` flipping to
+ * `true` over a list that never mounts. The filter on this screen had it, so it
+ * could not be changed. The sibling monitors already used this sentinel.
+ */
+const status = ref<TransactionStatus | 'TODOS'>('TODOS');
 
 async function load(): Promise<void> {
   state.value = 'LOADING';
@@ -53,7 +60,7 @@ async function load(): Promise<void> {
   }>('/api/transfers', {
     query: {
       limit: '100',
-      ...(status.value === '' ? {} : { status: status.value }),
+      ...(status.value === 'TODOS' ? {} : { status: status.value }),
     },
   });
 
@@ -97,7 +104,7 @@ useHead({ title: 'Monitoreo de transferencias · bonking' });
       <div>
         <h1 class="text-[32px] font-bold leading-10 tracking-tight">Monitoreo de transferencias</h1>
         <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-          El estado de la Saga en las transferencias más recientes.
+          El avance, paso a paso, de las transferencias más recientes.
         </p>
       </div>
       <UButton to="/transferencias" variant="outline" color="neutral">Volver al módulo</UButton>
@@ -144,7 +151,7 @@ useHead({ title: 'Monitoreo de transferencias · bonking' });
               v-model="status"
               class="w-[200px]"
               :items="[
-                { value: '', label: 'Todos los estados' },
+                { value: 'TODOS', label: 'Todos los estados' },
                 ...statusFilterOptions(),
               ]"
               value-key="value"

@@ -202,8 +202,11 @@ const ENDING: Readonly<
   },
 };
 
+/** The four nodes the line draws: three fixed steps and whichever ending. */
+type TimelineNode = 'PENDING' | 'DEBITING' | 'PAYMENT_PENDING' | 'CLOSING';
+
 /** Where each node stands, per status. A table, because a chain of `if` drifts. */
-const REACHED: Readonly<Record<string, Readonly<Record<TransactionStatus, StepState>>>> = {
+const REACHED: Readonly<Record<TimelineNode, Readonly<Record<TransactionStatus, StepState>>>> = {
   PENDING: {
     PENDING: 'current',
     DEBITING: 'done',
@@ -263,15 +266,25 @@ export const FAILURE_REASON_TEXT: Readonly<Record<string, string>> = {
     'El pago no se pudo procesar tras varios intentos. El dinero se devolvió a la cuenta de origen.',
 };
 
-export function explainReason(reason: string | null): string | null {
+/**
+ * `mayQueryAudit` decides whether the advice at the end of the fallback is
+ * something the reader can actually do. `GET /api/audit` is `ADMINISTRADOR`
+ * only (D-06): telling a `CLIENTE` to "consult the audit trail" points them at
+ * a `403`, so a caller who cannot query it is told what they *can* do instead
+ * — keep the tracking code and report it.
+ */
+export function explainReason(reason: string | null, mayQueryAudit: boolean): string | null {
   if (reason === null) {
     return null;
   }
 
-  return (
-    FAILURE_REASON_TEXT[reason] ??
-    'La transferencia no se completó. Consulta el rastro de auditoría con el identificador de correlación.'
-  );
+  if (FAILURE_REASON_TEXT[reason] !== undefined) {
+    return FAILURE_REASON_TEXT[reason];
+  }
+
+  return mayQueryAudit
+    ? 'La transferencia no se completó. Consulta el rastro de auditoría con el código de seguimiento.'
+    : 'La transferencia no se completó. Guarda el código de seguimiento y repórtalo si necesitas más detalle.';
 }
 
 export interface ScenarioPresentation {
@@ -294,21 +307,21 @@ export const PAYMENT_SCENARIOS: readonly ScenarioPresentation[] = [
   {
     value: 'APPROVE',
     label: 'Aprobar el pago',
-    description: 'La transferencia llega hasta COMPLETED. Es el camino normal.',
+    description: 'La transferencia se completa. Es el camino normal.',
   },
   {
     value: 'REJECT',
     label: 'Rechazar el pago',
     description:
-      'El pago se rechaza después del débito, se dispara la compensación y la transferencia ' +
-      'termina en COMPENSATED.',
+      'El pago se rechaza después del débito, el dinero se devuelve solo y la transferencia ' +
+      'queda como compensada.',
   },
   {
     value: 'TRANSIENT_FAILURE',
     label: 'Fallo transitorio',
     description:
-      'El pago falla y se reintenta. Termina en COMPLETED o, si se agotan los intentos, ' +
-      'en COMPENSATED.',
+      'El pago falla y el sistema lo reintenta. Termina completada o, si se agotan los ' +
+      'intentos, compensada con el dinero de vuelta.',
   },
 ];
 
@@ -344,13 +357,11 @@ export function transferProblems(draft: TransferDraft): Readonly<Record<string, 
   const target = draft.targetAccount.trim();
 
   if (!isUuidV4(source)) {
-    problems.sourceAccount =
-      'Escribe el accountId de la cuenta de origen. Es un UUID de 36 caracteres.';
+    problems.sourceAccount = 'Elige la cuenta de la que va a salir el dinero.';
   }
 
   if (!isUuidV4(target)) {
-    problems.targetAccount =
-      'Escribe el accountId de la cuenta de destino. Es un UUID de 36 caracteres.';
+    problems.targetAccount = 'Indica la cuenta que va a recibir el dinero.';
   }
 
   /**

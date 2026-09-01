@@ -108,7 +108,7 @@ export class RecordEventHandler {
   }
 }
 
-/** "What happened in this flow?" */
+/** "What happened in this flow?" Administrator only — the use case enforces it. */
 export class AuditQueryHandler implements InboundMessageHandler {
   public readonly messageType = auditQueryRequestedV1.name;
   readonly #useCase: QueryAuditUseCase;
@@ -120,11 +120,11 @@ export class AuditQueryHandler implements InboundMessageHandler {
   public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
     const query = auditQueryRequestedV1.schema.parse(envelope.payload);
 
-    await this.#useCase.execute({ correlationId: query.correlationId });
+    await this.#useCase.execute({ correlationId: query.correlationId }, envelope.identity);
   }
 }
 
-/** "What has the bank told people?" */
+/** "What has the bank told people?" Administrator only — the use case enforces it. */
 export class NotificationListHandler implements InboundMessageHandler {
   public readonly messageType = notificationListQueryV1.name;
   readonly #useCase: ListNotificationsUseCase;
@@ -136,7 +136,7 @@ export class NotificationListHandler implements InboundMessageHandler {
   public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
     const query = notificationListQueryV1.schema.parse(envelope.payload);
 
-    await this.#useCase.execute(query);
+    await this.#useCase.execute(query, envelope.identity);
   }
 }
 

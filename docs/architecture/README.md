@@ -40,6 +40,17 @@ this directory holds the decisions behind it and the diagrams that show it.
   assignment lists it separately from the C4 + UML block (§4.2 bullet
   "Diagramas de arquitectura"; §4.4 "Diagramas arquitectónicos").
 
+- The mapping from each constitution principle to where it is enforced.
+  **Not written.** Individual ADRs name the principles their decision rests on —
+  ADR-005 and ADR-007 on III, ADR-009 on VI, ADR-010 and ADR-012 on IV and V —
+  but nothing takes the eight principles of
+  [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md) in
+  order and says, for each, where it is enforced and by what. Some are enforced
+  executably and would be the easy half to record: `pnpm lint` rejects a
+  cross-service import and a cross-layer one, and every service's
+  `test/isolation.spec.ts` fails the build if it reads another service's
+  database or opens an HTTP call.
+
 ## Delivery format — two required sources and generated exports
 
 Every diagram ships **two required, versioned text sources that must agree**.
@@ -76,7 +87,6 @@ exception**: Mermaid has no UML use-case diagram, so that one uses a
 use cases (`usecase`, `<<include>>`/`<<extend>>`) and C4 notation via the
 `C4-PlantUML` library, so **for the use-case diagram, PlantUML is the
 authoritative artefact** — it replaces Lucid in that role.
-- The mapping from each constitution principle to where it is enforced.
 
 The written use-case records that accompany diagram 7 — actor, preconditions,
 postconditions, main and alternate flows, published events and errors — are

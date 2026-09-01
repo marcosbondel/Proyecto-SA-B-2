@@ -143,7 +143,7 @@ useHead({ title: 'Cuenta · bonking' });
     <SharedAsyncStateAlert
       v-if="malformed"
       state="VALIDATION_ERROR"
-      message="Ese identificador no es un UUID v4, así que no se envió ninguna consulta. Abre la cuenta desde la lista o pega el accountId completo."
+      message="Ese número no tiene el formato correcto, así que no se envió ninguna consulta. Abre la cuenta desde la lista o pega el número de cuenta completo."
     />
 
     <template v-else>
@@ -152,7 +152,14 @@ useHead({ title: 'Cuenta · bonking' });
         <USkeleton class="h-40 w-full rounded-2xl" />
       </div>
 
-      <BalanceCard
+      <!--
+        `AccountBalanceCard` and not `BalanceCard`: Nuxt registers a component
+        under its directory prefix, so the file `components/account/BalanceCard.vue`
+        is `AccountBalanceCard`. Written without the prefix, Vue resolved nothing
+        and rendered nothing — silently, with no console error and no type error —
+        so this screen showed a movements table with no balance above it, ever.
+      -->
+      <AccountBalanceCard
         v-else-if="account !== null"
         :account="account"
         :refreshing="balanceState === 'LOADING'"

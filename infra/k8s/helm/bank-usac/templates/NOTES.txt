@@ -20,6 +20,15 @@ External mode: {{ .Values.external.mode }}
   network with the Compose stack.
 {{- end }}
 
+0. If any pod shows `ImagePullBackOff` or `ErrImageNeverPull` instead of
+   Running, this is not a dependency problem — it never got as far as
+   starting. `image.tag` defaults to `dev` in every component's values, and
+   `build-images.sh --kind <cluster>` only loads the short-commit tag onto
+   the node, never `dev` (see the comment above `services:` in values.yaml).
+   Re-run `helm upgrade --install` with `--set <component>.image.tag=` set to
+   the tag `build-images.sh` printed, for every component this release
+   touched.
+
 1. Check that every workload is Ready before touching anything else — a pod
    stuck at Running/0-1 Ready is reachable but its dependencies are not:
 

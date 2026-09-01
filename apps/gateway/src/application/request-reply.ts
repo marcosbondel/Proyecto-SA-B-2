@@ -1,5 +1,6 @@
 import type { MessageEnvelope } from '@bank/contracts';
 
+import type { ReplyKind } from './errors/gateway-error';
 import type { MessagePublisherPort, ReplyWaiterPort } from './ports';
 
 /**
@@ -11,13 +12,19 @@ import type { MessagePublisherPort, ReplyWaiterPort } from './ports';
  * listening, and the caller then waits the full five seconds for a reply that
  * already came and went. That race is rare, load-dependent, and miserable to
  * diagnose after the fact.
+ *
+ * `kind` only decides which of the two honest `REPLY_TIMEOUT` messages a
+ * caller gets if nobody answers (`GatewayError.replyTimeout`); it changes
+ * nothing about the asking. It defaults to `'command'` so every existing call
+ * site keeps its current wording without having to say so.
  */
 export async function askAndWait(
   publisher: MessagePublisherPort,
   replies: ReplyWaiterPort,
   envelope: MessageEnvelope<unknown>,
+  kind?: ReplyKind,
 ): Promise<MessageEnvelope<unknown>> {
-  const waiting = replies.waitFor(envelope.correlationId);
+  const waiting = replies.waitFor(envelope.correlationId, kind);
 
   try {
     await publisher.publish(envelope);

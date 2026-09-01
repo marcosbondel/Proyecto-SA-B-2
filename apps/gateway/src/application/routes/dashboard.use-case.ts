@@ -95,11 +95,6 @@ export class DashboardUseCase {
    * A timeout, a broker that is away, a reply that does not match its contract
    * — all three mean the same thing to this screen: that tile has no number
    * right now. Distinguishing them here would put five error states on a
-   * dashboard.
-   *
-   * A timeout, a broker that is away, a reply that does not match its contract
-   * — all three mean the same thing to this screen: that tile has no number
-   * right now. Distinguishing them here would put five error states on a
    * dashboard, and the correlation id in the response is what an operator
    * actually follows when a tile is blank.
    */
@@ -113,6 +108,7 @@ export class DashboardUseCase {
         this.#publisher,
         this.#replies,
         envelopeForRequest({}, messageType, input.actor),
+        'read',
       );
 
       if (answer.messageType !== reply.name) {

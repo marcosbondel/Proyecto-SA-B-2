@@ -16,7 +16,7 @@ const ACCOUNT_TYPES = ['MONETARIA', 'AHORRO'] as const;
 const ACCOUNT_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
 
 export class OpenAccountDto {
-  @IsIn(ACCOUNT_TYPES, { message: `accountType debe ser uno de: ${ACCOUNT_TYPES.join(', ')}` })
+  @IsIn(ACCOUNT_TYPES, { message: `El tipo de cuenta debe ser uno de: ${ACCOUNT_TYPES.join(', ')}.` })
   public accountType!: (typeof ACCOUNT_TYPES)[number];
 
   /**
@@ -29,7 +29,7 @@ export class OpenAccountDto {
    * constitution V keeps out.
    */
   @IsOptional()
-  @IsUUID('4', { message: 'customerId debe ser un UUID v4' })
+  @IsUUID('4', { message: 'El identificador del cliente no tiene un formato válido.' })
   public customerId?: string;
 }
 
@@ -44,15 +44,15 @@ export class OpenAccountDto {
  */
 export class ListAccountsQueryDto {
   @IsOptional()
-  @IsUUID('4', { message: 'customerId debe ser un UUID v4' })
+  @IsUUID('4', { message: 'El identificador del cliente no tiene un formato válido.' })
   public customerId?: string;
 
   @IsOptional()
-  @IsIn(ACCOUNT_STATUSES, { message: `status debe ser uno de: ${ACCOUNT_STATUSES.join(', ')}` })
+  @IsIn(ACCOUNT_STATUSES, { message: `El estado debe ser uno de: ${ACCOUNT_STATUSES.join(', ')}.` })
   public status?: (typeof ACCOUNT_STATUSES)[number];
 
   @IsOptional()
-  @IsIn(ACCOUNT_TYPES, { message: `accountType debe ser uno de: ${ACCOUNT_TYPES.join(', ')}` })
+  @IsIn(ACCOUNT_TYPES, { message: `El tipo de cuenta debe ser uno de: ${ACCOUNT_TYPES.join(', ')}.` })
   public accountType?: (typeof ACCOUNT_TYPES)[number];
 }
 
@@ -66,11 +66,11 @@ export class ListAccountsQueryDto {
  * a field name rather than as a contract failure inside the broker.
  */
 export class SetAccountStatusDto {
-  @IsIn(ACCOUNT_STATUSES, { message: `status debe ser uno de: ${ACCOUNT_STATUSES.join(', ')}` })
+  @IsIn(ACCOUNT_STATUSES, { message: `El estado debe ser uno de: ${ACCOUNT_STATUSES.join(', ')}.` })
   public status!: (typeof ACCOUNT_STATUSES)[number];
 
-  @IsString()
-  @Length(1, 300, { message: 'reason debe tener entre 1 y 300 caracteres' })
+  @IsString({ message: 'El motivo debe ser un texto.' })
+  @Length(1, 300, { message: 'El motivo debe tener entre 1 y 300 caracteres.' })
   public reason!: string;
 }
 
@@ -88,15 +88,15 @@ export class DepositDto {
    * reason `TransferDto` spells out: handed `undefined`, the nested validator
    * finds nothing to complain about and the route dies with a `500`.
    */
-  @IsDefined({ message: 'amount es obligatorio' })
-  @IsObject({ message: 'amount debe ser un objeto con amountMinor y currency' })
+  @IsDefined({ message: 'El monto es obligatorio.' })
+  @IsObject({ message: 'El monto debe incluir la cantidad y la moneda.' })
   @ValidateNested()
   @Type(() => MoneyDto)
   public amount!: MoneyDto;
 
   /** What the teller wrote on the slip. Stored as written — the screen says so. */
   @IsOptional()
-  @IsString()
-  @Length(1, 140, { message: 'description debe tener entre 1 y 140 caracteres' })
+  @IsString({ message: 'La descripción debe ser un texto.' })
+  @Length(1, 140, { message: 'La descripción debe tener entre 1 y 140 caracteres.' })
   public description?: string;
 }

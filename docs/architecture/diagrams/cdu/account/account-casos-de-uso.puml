@@ -30,6 +30,8 @@ rectangle "CDU002 - Gestionar cuentas y saldos" as system_account {
     usecase "CDU002.6:\nVerificar acceso a la cuenta" as uc_account_access
     usecase "CDU002.7:\nValidar fondos y estado" as uc_account_funds
     usecase "CDU002.8:\nDesactivar cuentas inactivas" as uc_account_automatic
+    usecase "CDU002.9:\nRegistrar depósito en ventanilla" as uc_account_deposit
+    usecase "CDU002.10:\nReactivar cuenta al acreditar" as uc_account_reactivate
 }
 
 actor_account_customer -- uc_account_open
@@ -39,12 +41,16 @@ actor_account_teller -- uc_account_balance
 actor_account_admin -- uc_account_open
 actor_account_admin -- uc_account_balance
 actor_account_admin -- uc_account_status
+actor_account_teller -- uc_account_deposit
+actor_account_admin -- uc_account_deposit
 actor_account_transaction -- uc_account_movement
 actor_account_scheduler -- uc_account_automatic
 
 uc_account_open .> uc_account_eligibility : <<include>>
 uc_account_balance .> uc_account_access : <<include>>
 uc_account_movement .> uc_account_funds : <<include>>
+uc_account_reactivate .> uc_account_deposit : <<extend>>
+uc_account_reactivate .> uc_account_movement : <<extend>>
 
 note right of uc_account_movement
     Account Service es dueño de balance,
@@ -52,8 +58,17 @@ note right of uc_account_movement
     Transaction Service solo solicita el movimiento.
 end note
 
+note bottom of uc_account_deposit
+    Solo CAJERO_RECEPTOR o ADMINISTRADOR; un cliente no deposita.
+    Es la única ruta de dinero que responde de forma síncrona:
+    no hay Saga que esperar. Reutiliza la misma regla de crédito
+    que el movimiento de la Saga.
+end note
+
 legend right
     La desactivación automática requiere cuenta inactiva
     y balance menor que Q50.00 durante seis meses.
+    Acreditar una cuenta inactiva la reactiva (A-3); compensar
+    un débito no lo hace.
 endlegend
 @enduml

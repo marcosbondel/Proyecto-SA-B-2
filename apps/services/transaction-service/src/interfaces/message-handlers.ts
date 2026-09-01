@@ -4,6 +4,7 @@ import {
   accountDebitCompensatedV1,
   accountDebitRejectedV1,
   accountDebitedV1,
+  paymentAttemptFailedV1,
   paymentFailedV1,
   paymentSucceededV1,
   transactionListQueryV1,
@@ -17,20 +18,21 @@ import type { AdvanceSagaUseCase } from '../application/advance-saga.use-case';
 import type { GetTransactionStatusUseCase } from '../application/get-transaction-status.use-case';
 import type { GetTransactionStatsUseCase } from '../application/get-transaction-stats.use-case';
 import type { ListTransactionsUseCase } from '../application/list-transactions.use-case';
+import type { RecordPaymentAttemptUseCase } from '../application/record-payment-attempt.use-case';
 import type { RequestTransferUseCase } from '../application/request-transfer.use-case';
 import type { SagaEvent } from '../domain/transaction';
 import type { InboundMessageHandler } from './inbound-message.handler';
 import type { StructuredLogger } from './logging';
 
 /**
- * The nine messages this service answers, each parsed before it is believed.
+ * The eleven messages this service answers, each parsed before it is believed.
  *
  * Parsing at the edge is not ceremony. The broker hands over whatever was
  * published, and a payload that does not match its contract is a message this
  * service cannot act on — failing here names the contract and the field, while
  * failing three layers down names a property of `undefined`.
  *
- * **Seven of the nine are the same handler.** Every Saga event does exactly one
+ * **Seven of the eleven are the same handler.** Every Saga event does exactly one
  * thing: name itself in the domain's vocabulary and hand the transaction id to
  * the state machine. Writing them as seven classes would be seven places to
  * forget the deduplication or the lock, so there is one class and seven
@@ -220,6 +222,65 @@ export function sagaHandlers(
       }),
     }),
   ];
+}
+
+/**
+ * `payment.attempt.failed.v1` — one rung of the retry ladder, recorded.
+ *
+ * Not a `SagaEventHandler` for the same reason `RequestTransferHandler` below
+ * is not one: there is no transition here, so there is nothing for
+ * `domain/transaction.ts` to decide and no `Transition` to log. `PAYMENT_PENDING`
+ * stays `PAYMENT_PENDING` — only `payment.succeeded.v1` and `payment.failed.v1`
+ * ever close the payment step, exactly as `routing/topology.ts` documents on
+ * this binding.
+ */
+export class PaymentAttemptFailedHandler implements InboundMessageHandler {
+  public readonly messageType = paymentAttemptFailedV1.name;
+  readonly #useCase: RecordPaymentAttemptUseCase;
+  readonly #logger: StructuredLogger;
+
+  constructor(useCase: RecordPaymentAttemptUseCase, logger: StructuredLogger) {
+    this.#useCase = useCase;
+    this.#logger = logger;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const payload = paymentAttemptFailedV1.schema.parse(envelope.payload);
+
+    const outcome = await this.#useCase.execute(payload, {
+      messageId: envelope.messageId,
+      messageType: envelope.messageType,
+    });
+
+    const fields = {
+      correlationId: envelope.correlationId,
+      messageType: envelope.messageType,
+      transactionId: payload.transactionId,
+    };
+
+    switch (outcome.kind) {
+      case 'RECORDED':
+        this.#logger.info('payment attempt recorded', {
+          ...fields,
+          outcome: `attempt ${String(payload.attempt)}, ${payload.willRetry ? 'retrying' : 'exhausted'}`,
+        });
+
+        return;
+
+      case 'DUPLICATE':
+        this.#logger.info('payment attempt already recorded', { ...fields, outcome: 'duplicate' });
+
+        return;
+
+      case 'UNKNOWN_TRANSACTION':
+        this.#logger.warn('payment attempt for an unknown transaction', {
+          ...fields,
+          outcome: 'ignored',
+        });
+
+        return;
+    }
+  }
 }
 
 /**

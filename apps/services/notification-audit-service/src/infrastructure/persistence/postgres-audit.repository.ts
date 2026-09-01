@@ -213,16 +213,35 @@ export class PostgresAuditRepository implements AuditRepository {
     readonly lastEventType: string | null;
     readonly lastEventAt: string | null;
   }> {
+    /**
+     * "Today" means Guatemala's calendar day, not the container's.
+     *
+     * A bare `::date` cast resolves against the session's timezone, which is
+     * UTC here. Between 18:00 and midnight local time (UTC-6, no DST) that is
+     * already tomorrow in Guatemala, so this would count the wrong day's
+     * events — informational only, but exactly the number a demo run in the
+     * evening would show as zero for no reason anyone could see. `AT TIME
+     * ZONE` converts to Guatemala's wall clock before the date is taken, on
+     * both sides, so the answer stops depending on the container's clock —
+     * see also `account-service`'s `postgres-account.repository.ts#stats`.
+     */
     const [events, notifications, last] = await Promise.all([
       this.#pool.query<{ events_today: string; invalid_today: string }>(
-        `SELECT COUNT(*) FILTER (WHERE occurred_at::date = CURRENT_DATE)::TEXT AS events_today,
-                COUNT(*) FILTER (WHERE occurred_at::date = CURRENT_DATE
-                                  AND processing_status = 'INVALID')::TEXT AS invalid_today
+        `SELECT COUNT(*) FILTER (
+                  WHERE (occurred_at AT TIME ZONE 'America/Guatemala')::date
+                      = (now() AT TIME ZONE 'America/Guatemala')::date
+                )::TEXT AS events_today,
+                COUNT(*) FILTER (
+                  WHERE (occurred_at AT TIME ZONE 'America/Guatemala')::date
+                      = (now() AT TIME ZONE 'America/Guatemala')::date
+                    AND processing_status = 'INVALID'
+                )::TEXT AS invalid_today
            FROM audit_events`,
       ),
       this.#pool.query<{ total: string }>(
         `SELECT COUNT(*)::TEXT AS total FROM notifications
-          WHERE created_at::date = CURRENT_DATE`,
+          WHERE (created_at AT TIME ZONE 'America/Guatemala')::date
+              = (now() AT TIME ZONE 'America/Guatemala')::date`,
       ),
       /* A message name and a timestamp. Never a payload: this says the system
          is alive and what it was last doing, and carries nothing about anyone. */

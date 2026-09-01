@@ -12,6 +12,7 @@ import {
   formatSpan,
   isCorrelationId,
   mayQueryAudit,
+  messageTypeLabel,
   messageTypesIn,
   notificationLabel,
   notificationLink,
@@ -349,6 +350,42 @@ describe('what a notification is called', () => {
    */
   test('an unknown kind falls back to its own name', () => {
     assert.equal(notificationLabel('payment.settled'), 'payment.settled');
+  });
+});
+
+/**
+ * The trail table's "Qué pasó" column. It sits *next to* `event.messageType`,
+ * never instead of it — the technical name is itself part of the record — so
+ * this only has to be legible, not exhaustive.
+ */
+describe('what a message type means to an administrator reading the trail', () => {
+  test('translates a message from every family the trail can actually show', () => {
+    const known = {
+      'account.opened.v1': 'Cuenta abierta',
+      'transaction.completed.v1': 'Transferencia completada',
+      'payment.attempt.failed.v1': 'Intento de pago fallido',
+      'customer.registered.v1': 'Cliente registrado',
+      'notification.mark-read.v1': 'Notificación marcada como leída',
+      'audit.query.requested.v1': 'Consulta de auditoría solicitada',
+    };
+
+    for (const [type, label] of Object.entries(known)) {
+      assert.equal(messageTypeLabel(type), label);
+    }
+  });
+
+  /**
+   * Every type `notification-audit-service` actually consumes is in the map
+   * above; nothing else can reach `audit_events`. This is the safety net for
+   * the day the catalogue grows and this file has not caught up yet.
+   */
+  test('falls back to the family rather than the raw enum for an unlisted type', () => {
+    assert.equal(messageTypeLabel('account.something-new.v1'), 'Evento de cuenta');
+    assert.equal(messageTypeLabel('payment.something-new.v1'), 'Evento de pago');
+  });
+
+  test('falls back once more when even the family is not recognised', () => {
+    assert.equal(messageTypeLabel('unicorn.something.v1'), 'Evento del sistema');
   });
 });
 

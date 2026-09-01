@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { asyncStateFor } from '../lib/gateway-error';
+import type { AsyncState } from '../lib/gateway-error';
+
 definePageMeta({ layout: 'public' });
 
 /**
@@ -16,7 +19,7 @@ definePageMeta({ layout: 'public' });
 const api = useGatewayApi();
 const route = useRoute();
 
-const state = ref<'PENDING' | 'SUCCESS' | 'BUSINESS_REJECTION' | 'REPLY_TIMEOUT' | 'BROKER_UNAVAILABLE' | 'VALIDATION_ERROR' | 'INTERNAL_ERROR'>('PENDING');
+const state = ref<AsyncState>('PENDING');
 const message = ref<string | undefined>(undefined);
 const correlationId = ref<string | null>(null);
 
@@ -43,7 +46,11 @@ onMounted(async () => {
     return;
   }
 
-  state.value = result.error.type === 'FORBIDDEN' ? 'INTERNAL_ERROR' : result.error.type;
+  // The shared mapping, not a second copy of it: `asyncStateFor` folds
+  // UNAUTHENTICATED into `INTERNAL_ERROR` (the session boundary is
+  // intercepted before this runs) and gives FORBIDDEN its own honest state —
+  // this hand-rolled version used to fold both.
+  state.value = asyncStateFor(result.error);
   correlationId.value = result.error.correlationId;
   message.value =
     result.error.type === 'BUSINESS_REJECTION'

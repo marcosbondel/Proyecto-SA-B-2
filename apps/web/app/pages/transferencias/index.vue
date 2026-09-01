@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { isUuidV4 } from '../../lib/account';
 import { asyncStateFor } from '../../lib/gateway-error';
-import type { AsyncState } from '../../lib/gateway-error';
+import type { LoadState } from '../../lib/gateway-error';
 import type { TransferRow } from '../../lib/transaction';
 
 /**
@@ -29,7 +29,7 @@ const { role } = useSession();
 
 const rows = ref<readonly TransferRow[]>([]);
 const total = ref(0);
-const state = ref<AsyncState>('LOADING');
+const state = ref<LoadState>('LOADING');
 const failure = ref<string | null>(null);
 const correlationId = ref<string | null>(null);
 
@@ -66,7 +66,7 @@ const touched = ref(false);
 const problem = computed(() =>
   !touched.value || isUuidV4(lookup.value)
     ? undefined
-    : 'Ese identificador no es un UUID v4. Pega el transactionId completo que devolvió el envío.',
+    : 'Ese número no tiene el formato correcto. Pega el número de operación completo que te dio el envío.',
 );
 
 async function open(): Promise<void> {
@@ -155,10 +155,10 @@ useHead({ title: 'Transferencias · bonking' });
 
       <form class="flex flex-col gap-3" @submit.prevent="open">
         <UFormField
-          label="transactionId"
+          label="Número de operación"
           name="transactionId"
           :error="problem"
-          help="El identificador que devolvió el envío. Sirve para una transferencia que aún no aparece en el historial."
+          help="El número que te dio el sistema al enviar. Sirve para una transferencia que aún no aparece en el historial."
         >
           <UInput
             v-model="lookup"

@@ -68,6 +68,14 @@ while read -r svc port pgport prefix; do
   [ "$svc" = "customer-service" ] && extra="$SEED
 SEED_PASSWORD=${SEED_PASSWORD:-BankUsac#2026}"
   [ "$svc" = "account-service" ] && extra="$SEED"
+  if [ "$svc" = "notification-audit-service" ]; then
+    extra="NOTIFICATION_CHANNEL=${NOTIFICATION_CHANNEL:-simulated}
+RESEND_API_KEY=${RESEND_API_KEY:-}
+EMAIL_FROM="${EMAIL_FROM:-}"
+APP_BASE_URL=${APP_BASE_URL:-http://localhost:3010}
+RESEND_API_URL=${RESEND_API_URL:-https://api.resend.com/emails}
+REVEAL_ACTIVATION_LINKS=${REVEAL_ACTIVATION_LINKS:-false}"
+  fi
 
   write "apps/services/$svc/.env" <<EOF
 NODE_ENV=development

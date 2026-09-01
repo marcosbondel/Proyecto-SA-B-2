@@ -342,6 +342,8 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3010}
+      RESEND_API_URL: ${RESEND_API_URL:-https://api.resend.com/emails}
+      REVEAL_ACTIVATION_LINKS: ${REVEAL_ACTIVATION_LINKS:-false}
     ports:
       - '3005:3005'
     depends_on:

@@ -167,6 +167,7 @@ body {
  * Proportional digits make a column of amounts impossible to scan, and scanning
  * is the only thing anyone does with a list of balances.
  */
+.tab,
 .tabular,
 [style*="tabular-nums"],
 code {

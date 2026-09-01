@@ -10,6 +10,7 @@ import {
 } from '../../lib/payment';
 import type { PaymentAttempt, PaymentRow } from '../../lib/payment';
 import { PAYMENT_SCENARIOS, explainReason } from '../../lib/transaction';
+import { mayQueryAudit } from '../../lib/audit';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
 import { formatDate, formatQuetzales } from '../../lib/money';
@@ -39,6 +40,7 @@ import { formatDate, formatQuetzales } from '../../lib/money';
  */
 const route = useRoute();
 const api = useGatewayApi();
+const { role } = useSession();
 
 const paymentId = computed(() => String(route.params.id ?? ''));
 const malformed = computed(() => !isUuidV4(paymentId.value));
@@ -59,7 +61,9 @@ const presentation = computed(() =>
 );
 
 /** The catalogue code in plain words, when there is one. Beats the generic sentence. */
-const reason = computed(() => explainReason(payment.value?.failureReason ?? null));
+const reason = computed(() =>
+  explainReason(payment.value?.failureReason ?? null, mayQueryAudit(role.value)),
+);
 
 const scenario = computed(() =>
   PAYMENT_SCENARIOS.find((entry) => entry.value === payment.value?.scenario) ?? null,
@@ -165,7 +169,7 @@ useHead({ title: 'Pago · bonking' });
     <SharedAsyncStateAlert
       v-if="malformed"
       state="VALIDATION_ERROR"
-      message="Ese identificador no es un UUID v4, así que no se envió ninguna consulta. Abre el pago desde el monitoreo o desde la transferencia a la que pertenece."
+      message="Ese número no tiene el formato correcto, así que no se envió ninguna consulta. Abre el pago desde el monitoreo o desde la transferencia a la que pertenece."
     />
 
     <template v-else>

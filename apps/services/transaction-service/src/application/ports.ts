@@ -1,4 +1,4 @@
-import type { MessageEnvelope } from '@bank/contracts';
+import type { MessageEnvelope, PaymentErrorType } from '@bank/contracts';
 
 import type {
   PaymentRejection,
@@ -59,17 +59,40 @@ export type EventOutcome =
     };
 
 /**
+ * What became of one `payment.attempt.failed.v1`.
+ *
+ * Three outcomes, not four: this is a trail entry, never a transition, so
+ * there is no `ILLEGAL` to report — `domain/transaction.ts` is not consulted
+ * and the Saga's status is never touched.
+ */
+export type PaymentAttemptOutcome =
+  | { readonly kind: 'RECORDED' }
+  /** Seen before, by `messageId`. No second row for the same rung (T-5). */
+  | { readonly kind: 'DUPLICATE' }
+  /** An attempt for a transaction this service has no row for. Not an error. */
+  | { readonly kind: 'UNKNOWN_TRANSACTION' };
+
+/**
  * What the payment step of this transfer did, folded out of the local trail.
  *
  * It is **not** a read of Payment Service's database — this service has no
  * access to one and must not have (§8.2, 2.3). It is the events this service
  * itself received, written down as they arrived and read back.
+ *
+ * `status` stays `'PENDING'` while `attempt` and `errorType` climb: a
+ * `payment.attempt.failed.v1` mid-ladder never carries a verdict, only which
+ * rung was just tried and what kind of failure it was. `transaction.status.replied.v1`
+ * already reserves `errorType` for exactly this — "the kind of the last failure
+ * … is the only thing that tells a screen a retry is under way" — so filling
+ * it in here is completing a wire contract that was already designed for it,
+ * not inventing one.
  */
 export interface PaymentOutcome {
   readonly paymentId: string;
   readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
   readonly attempt: number | null;
   readonly reason: PaymentRejection | null;
+  readonly errorType: PaymentErrorType | null;
   readonly decidedAt: Date | null;
 }
 
@@ -91,8 +114,18 @@ export interface TransactionRepository {
    * The unique constraint on `idempotency_key` is the whole of invariant T-3:
    * two deliveries of one intention race to insert and exactly one wins, which
    * is a fact about the database rather than a hope about timing.
+   *
+   * `outbound`, when given, is built and written to the outbox **in the same
+   * insert transaction** — and called only for the delivery that actually wins
+   * the race (`kind: 'CREATED'`), mirroring `applyEvent`'s own `outbound`. A
+   * delivery that loses it and reads the row back (`kind: 'EXISTS'`) never
+   * calls it, so a retry of the request never builds, let alone announces,
+   * `transaction.initiated.v1` a second time.
    */
-  start(input: { readonly transaction: Transaction }): Promise<StartOutcome>;
+  start(input: {
+    readonly transaction: Transaction;
+    readonly outbound?: (transaction: Transaction) => OutboxMessage;
+  }): Promise<StartOutcome>;
 
   /**
    * Points a second identifier at a transfer that already exists.
@@ -184,6 +217,24 @@ export interface TransactionRepository {
     readonly outbound?: (transaction: Transaction, transition: Transition) => AppliedEffects;
     readonly now: Date;
   }): Promise<EventOutcome>;
+
+  /**
+   * Writes one rung of the payment's retry ladder into the local trail.
+   *
+   * Deliberately **not** `applyEvent`: a `payment.attempt.failed.v1` is not a
+   * transition — `PAYMENT_PENDING` stays `PAYMENT_PENDING` — so there is no
+   * row to lock and no `decide` to call. What has to hold is only T-5 (no
+   * second row for a redelivered attempt) and the same existence check every
+   * Saga event gets, so a race with the transaction's own row being written
+   * lands on `UNKNOWN_TRANSACTION` rather than an orphaned trail entry.
+   */
+  recordPaymentAttempt(input: {
+    readonly transactionId: string;
+    /** The envelope's `messageId`: this system's `eventId` for T-5. */
+    readonly messageId: string;
+    readonly messageType: string;
+    readonly payload: unknown;
+  }): Promise<PaymentAttemptOutcome>;
 
   /**
    * Publishes the outbox rows that are still `PENDING` and marks them dispatched

@@ -6,6 +6,7 @@ import type {
   EventPublisher,
   OutboundMessage,
   OutboxMessage,
+  PaymentAttemptOutcome,
   PaymentOutcome,
   StartOutcome,
   TransactionRepository,
@@ -36,7 +37,10 @@ export class InMemoryTransactionRepository implements TransactionRepository {
   public readonly outbox: OutboxMessage[] = [];
   readonly #byKey = new Map<string, string>();
 
-  public async start(input: { readonly transaction: Transaction }): Promise<StartOutcome> {
+  public async start(input: {
+    readonly transaction: Transaction;
+    readonly outbound?: (transaction: Transaction) => OutboxMessage;
+  }): Promise<StartOutcome> {
     const existingId = this.#byKey.get(input.transaction.idempotencyKey);
 
     if (existingId !== undefined) {
@@ -45,6 +49,12 @@ export class InMemoryTransactionRepository implements TransactionRepository {
 
     this.transactions.set(input.transaction.transactionId, input.transaction);
     this.#byKey.set(input.transaction.idempotencyKey, input.transaction.transactionId);
+
+    // Called only for the delivery that actually created the row — same rule
+    // the real repository follows, so a test can trust `outbox` either way.
+    if (input.outbound !== undefined) {
+      this.outbox.push(input.outbound(input.transaction));
+    }
 
     return { kind: 'CREATED', transaction: input.transaction };
   }
@@ -217,6 +227,30 @@ export class InMemoryTransactionRepository implements TransactionRepository {
     this.events.push(input);
   }
 
+  public async recordPaymentAttempt(input: {
+    readonly transactionId: string;
+    readonly messageId: string;
+    readonly messageType: string;
+    readonly payload: unknown;
+  }): Promise<PaymentAttemptOutcome> {
+    if (!this.transactions.has(input.transactionId)) {
+      return { kind: 'UNKNOWN_TRANSACTION' };
+    }
+
+    if (this.processed.has(input.messageId)) {
+      return { kind: 'DUPLICATE' };
+    }
+
+    this.processed.add(input.messageId);
+    this.events.push({
+      transactionId: input.transactionId,
+      messageType: input.messageType,
+      payload: input.payload,
+    });
+
+    return { kind: 'RECORDED' };
+  }
+
   public async paymentOutcomeOf(transactionId: string): Promise<PaymentOutcome | null> {
     let outcome: PaymentOutcome | null = null;
 
@@ -229,6 +263,7 @@ export class InMemoryTransactionRepository implements TransactionRepository {
         paymentId?: string;
         attempt?: number;
         failureReason?: 'PAYMENT_DECLINED' | 'PAYMENT_RETRIES_EXHAUSTED';
+        errorType?: 'TRANSIENT' | 'PERMANENT';
         succeededAt?: string;
         failedAt?: string;
       };
@@ -239,8 +274,24 @@ export class InMemoryTransactionRepository implements TransactionRepository {
           status: 'PENDING',
           attempt: null,
           reason: null,
+          errorType: null,
           decidedAt: null,
         };
+      }
+
+      if (event.messageType === 'payment.attempt.failed.v1') {
+        // Mirrors the guard in `PostgresTransactionRepository`: an
+        // out-of-order attempt row must not un-decide a settled outcome.
+        if (outcome === null || outcome.status === 'PENDING') {
+          outcome = {
+            paymentId: payload.paymentId!,
+            status: 'PENDING',
+            attempt: payload.attempt ?? null,
+            reason: payload.failureReason ?? null,
+            errorType: payload.errorType ?? null,
+            decidedAt: null,
+          };
+        }
       }
 
       if (event.messageType === 'payment.succeeded.v1') {
@@ -249,6 +300,7 @@ export class InMemoryTransactionRepository implements TransactionRepository {
           status: 'SUCCEEDED',
           attempt: payload.attempt ?? null,
           reason: null,
+          errorType: null,
           decidedAt: payload.succeededAt === undefined ? null : new Date(payload.succeededAt),
         };
       }
@@ -259,6 +311,7 @@ export class InMemoryTransactionRepository implements TransactionRepository {
           status: 'FAILED',
           attempt: payload.attempt ?? null,
           reason: payload.failureReason ?? null,
+          errorType: null,
           decidedAt: payload.failedAt === undefined ? null : new Date(payload.failedAt),
         };
       }

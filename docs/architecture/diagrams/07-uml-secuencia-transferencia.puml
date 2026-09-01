@@ -42,7 +42,9 @@ legend right
     | `[ … ]` | Tecnología · protocolo · tipo de interacción del mensaje |
     | `alt` / `else` | Flujo alternativo (fallo esperado / final distinto) |
     | `opt` | Compensación — se ejecuta solo si un disparador la activó |
-    | `loop` | Reintentos del pago (cuenta `attempt`) |
+    | `loop` | Escalera de reintentos del pago: cada vuelta es un intento independiente, separado en el tiempo y disparado por el barrido |
+    | Flecha a la propia línea de vida | Barrido periódico del propio servicio (scheduler); no es un mensaje de red |
+    | `...` | Pasa el tiempo entre un intento y el siguiente: el vencimiento vive en una columna, no en un temporizador |
     | Barra sólida sobre la línea de vida | Casilla de activación |
 endlegend
 
@@ -143,14 +145,39 @@ else datos válidos, idempotencyKey nueva
         ' ---- Paso 4 ----
         Broker ->> Payment : Entregar payment.requested (correlationId)\n[AMQP 0-9-1 · entrega de comando · asíncrono]
         activate Payment
-        loop reintentos — cuenta el número de intento (attempt)
+        note over Payment
+          Registra el pago en PENDING y ejecuta el intento 1.
+          El momento del siguiente intento se guarda como
+          columna (next_attempt_at, con índice parcial):
+          NO es un temporizador en memoria
+        end note
+
+        ' ---- Paso 4b: la escalera de reintentos, un intento por barrido ----
+        loop por cada intento fallido transitorio que aún tenga peldaño (1 s / 5 s / 30 s)
+            Payment ->> Broker : Publicar evento "intento de pago fallido" — payment.attempt.failed (attempt, errorType, willRetry = true, nextAttemptAt)\n[AMQP 0-9-1 · evento · asíncrono]
+            deactivate Payment
+
+            Broker ->> Txn : Entregar payment.attempt.failed (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
+            activate Txn
+            note over Txn
+              Evento observable, NO terminal:
+              la Saga sigue en PAYMENT_PENDING
+            end note
+            deactivate Txn
+
+            ... el siguiente intento no ocurre dentro de esta entrega: vence en next_attempt_at ...
+
+            Payment ->> Payment : Barrer los pagos vencidos — SELECT ... WHERE next_attempt_at <= now() ... FOR UPDATE SKIP LOCKED\n[RetryScheduler · barrido periódico sobre la propia base · asíncrono]
+            activate Payment
             note over Payment
-              Procesando el pago
+              El vencimiento es una columna, así que un pod
+              reprogramado no olvida el reintento
             end note
         end
 
-        alt reintentos agotados — dispara compensación
-            Payment ->> Broker : Publicar evento "pago fallido" — payment.failed (failureReason, ack)\n[AMQP 0-9-1 · evento · asíncrono]
+        alt escalera agotada o pago rechazado — dispara compensación
+            Payment ->> Broker : Publicar evento "intento de pago fallido" — payment.attempt.failed (attempt, errorType, willRetry = false)\n[AMQP 0-9-1 · evento · asíncrono]
+            Payment ->> Broker : Publicar evento "pago fallido" — payment.failed (failureReason, ack)\n[AMQP 0-9-1 · evento terminal, el único que cierra la Saga · asíncrono]
             deactivate Payment
 
             Broker ->> Txn : Entregar payment.failed (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
@@ -161,8 +188,8 @@ else datos válidos, idempotencyKey nueva
             end note
             deactivate Txn
 
-        else pago exitoso
-            Payment ->> Broker : Publicar evento "pago exitoso" — payment.succeeded (ack)\n[AMQP 0-9-1 · evento · asíncrono]
+        else algún intento tiene éxito
+            Payment ->> Broker : Publicar evento "pago exitoso" — payment.succeeded (attempt, ack)\n[AMQP 0-9-1 · evento terminal, el único que cierra la Saga · asíncrono]
             deactivate Payment
 
             ' ---- Paso 5 ----
@@ -263,7 +290,7 @@ note over Txn, Account
 end note
 
 note over Txn
-  Evento repetido se descarta por eventId (T-5)
+  Evento repetido se descarta por el messageId del envelope (T-5)
   Transición fuera de orden se descarta como ILLEGAL_TRANSITION (T-6)
 end note
 

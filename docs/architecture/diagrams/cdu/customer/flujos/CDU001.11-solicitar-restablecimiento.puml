@@ -1,0 +1,35 @@
+@startuml CDU001.11-solicitar-restablecimiento
+title CDU001.11 - Solicitar restablecimiento de contraseña
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Visitante|
+start
+:Escribir el correo en /recuperar;
+|Gateway|
+:Publicar customer.password-reset.requested;
+:Responder 202 sin esperar nada;
+|Customer Service|
+:Buscar el correo normalizado;
+if (¿Existe ese correo?) then (No)
+    :Registrar IGNORED sin correo ni customerId;
+    :No publicar nada;
+else (Sí)
+    :Emitir token y guardar solo su digest con vencimiento;
+    :Publicar customer.password-reset.issued;
+    |Notification & Audit|
+    :Entregar el enlace al correo del cliente;
+endif
+stop
+
+legend right
+    El 202 es idéntico exista o no la dirección: responder distinto
+    convertiría esta ruta en una lista de quién tiene cuenta aquí.
+    El registro de idempotencia no guarda la dirección consultada.
+endlegend
+@enduml

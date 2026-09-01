@@ -2,13 +2,17 @@ import { strict as assert } from 'node:assert';
 import { test, describe } from 'node:test';
 
 import {
+  CUSTOMER_REJECTION_TEXT,
   IDENTITY_PRESENTATION,
   MAX_PHOTO_BYTES,
   ageOn,
   birthDateRejection,
+  explainCustomerRejection,
   formatDocument,
+  isMissingDocumentPhoto,
   outcomeFromAudit,
   photoRejection,
+  registrationHeading,
   usernameFrom,
   updatePayload,
   validateRegistration,
@@ -52,6 +56,17 @@ describe('the birth date', () => {
     // `new Date('2026-02-31')` is the 3rd of March; accepting it would store a
     // different day than the one that was typed.
     assert.match(birthDateRejection('1996-02-31', TODAY), /fecha válida/);
+  });
+
+  /**
+   * The field is a native `type="date"` input: it reads and writes
+   * `YYYY-MM-DD` no matter how the browser displays it, never `día/mes/año`.
+   */
+  test('describes the format the field actually uses, not the one it never asked for', () => {
+    const rejection = birthDateRejection('1996-02-31', TODAY);
+
+    assert.match(rejection, /año-mes-día/);
+    assert.doesNotMatch(rejection, /día\/mes\/año/);
   });
 
   test('a future date is refused', () => {
@@ -231,5 +246,104 @@ describe('how things are written for a person', () => {
 
   test('anything that is not a DPI is left alone', () => {
     assert.equal(formatDocument('AB-123'), 'AB-123');
+  });
+});
+
+/**
+ * The reason a registration or an identity check was refused, which
+ * `outcomeFromAudit` alone reduces to a bare `BUSINESS_REJECTION` — the whole
+ * problem this function exists to fix.
+ */
+describe('why a registration or an identity check was refused', () => {
+  test('names a duplicated email, and points at what to do about it', () => {
+    const reason = explainCustomerRejection([
+      { messageType: 'customer.register.rejected.v1', payload: { reason: 'EMAIL_ALREADY_REGISTERED' } },
+    ]);
+
+    assert.equal(reason, CUSTOMER_REJECTION_TEXT.EMAIL_ALREADY_REGISTERED);
+    assert.match(reason, /correo/);
+    assert.match(reason, /inicia sesión|recupera/);
+  });
+
+  test('names a duplicated document', () => {
+    const reason = explainCustomerRejection([
+      { messageType: 'customer.register.rejected.v1', payload: { reason: 'DOCUMENT_ALREADY_REGISTERED' } },
+    ]);
+
+    assert.equal(reason, CUSTOMER_REJECTION_TEXT.DOCUMENT_ALREADY_REGISTERED);
+    assert.match(reason, /DPI/);
+  });
+
+  test('also reads the reason off an identity rejection, not only a registration one', () => {
+    const reason = explainCustomerRejection([
+      {
+        messageType: 'customer.identity.rejected.v1',
+        payload: { customerId: 'c-1', reason: 'IDENTITY_DOCUMENT_UNREADABLE' },
+      },
+    ]);
+
+    assert.equal(reason, CUSTOMER_REJECTION_TEXT.IDENTITY_DOCUMENT_UNREADABLE);
+  });
+
+  test('says nothing when there is no rejection to explain', () => {
+    assert.equal(explainCustomerRejection([{ messageType: 'customer.registered.v1' }]), null);
+    assert.equal(explainCustomerRejection([]), null);
+  });
+
+  /**
+   * A reply from before T-20 added the payload, or a reason this map has not
+   * caught up with — both leave the caller with nothing more specific to say
+   * than its own generic fallback, rather than crash or print a raw code.
+   */
+  test('falls back to null rather than a code nobody can read', () => {
+    assert.equal(explainCustomerRejection([{ messageType: 'customer.register.rejected.v1' }]), null);
+    assert.equal(
+      explainCustomerRejection([
+        { messageType: 'customer.register.rejected.v1', payload: { reason: 'SOMETHING_NEW' } },
+      ]),
+      null,
+    );
+  });
+});
+
+/**
+ * What the "accepted" screen may claim. Self-service registration happens
+ * with no session, so D-06 keeps this at `PENDING` forever for that caller
+ * (TD-021) — the copy must stay honest about that rather than assume success.
+ */
+describe('what the accepted registration screen may say', () => {
+  test('only a confirmed success may claim the email went out', () => {
+    const copy = registrationHeading('SUCCESS');
+
+    assert.equal(copy.confirmed, true);
+    assert.equal(copy.heading, 'Registro completado');
+  });
+
+  test('a rejection gets its own heading, not the success one', () => {
+    const copy = registrationHeading('BUSINESS_REJECTION');
+
+    assert.equal(copy.confirmed, false);
+    assert.notEqual(copy.heading, registrationHeading('SUCCESS').heading);
+  });
+
+  test('an outcome that has not resolved yet may not claim anything either', () => {
+    const copy = registrationHeading('PENDING');
+
+    assert.equal(copy.confirmed, false);
+  });
+});
+
+describe('the validation screen\'s identity-document photo', () => {
+  test('a customer with no photo on file is not the same news as a real failure', () => {
+    assert.equal(isMissingDocumentPhoto('IDENTITY_OBJECT_NOT_FOUND'), true);
+  });
+
+  test('any other failure code is a real failure, not an empty state', () => {
+    assert.equal(isMissingDocumentPhoto('CUSTOMER_NOT_FOUND'), false);
+    assert.equal(isMissingDocumentPhoto('BROKER_UNAVAILABLE'), false);
+  });
+
+  test('no failure code at all — a network failure — is a real failure too', () => {
+    assert.equal(isMissingDocumentPhoto(null), false);
   });
 });
