@@ -371,6 +371,7 @@ describeIntegration('PostgresTransactionRepository', () => {
         status: 'FAILED',
         attempt: 3,
         reason: 'PAYMENT_RETRIES_EXHAUSTED',
+        errorType: null,
         decidedAt: new Date('2026-08-26T12:00:30.000Z'),
       });
     });
@@ -539,6 +540,251 @@ describeIntegration('PostgresTransactionRepository', () => {
       expect(count).toBe(1);
       expect(delivered).toHaveLength(1);
       expect(await pendingCount()).toBe(0);
+    });
+
+    /**
+     * `start`'s own outbox write — `transaction.initiated.v1`, moved off the
+     * direct-publish path it used to take. Same guarantee as `applyEvent`'s:
+     * the row exists in the same transaction as the insert that created it, or
+     * not at all.
+     */
+    it('writes the outbox row in the same transaction as the insert', async () => {
+      const opened = candidate();
+
+      await repository.start({
+        transaction: opened,
+        outbound: (created) => ({
+          exchange: EXCHANGES.events,
+          routingKey: routingKeyFor('transaction.initiated.v1'),
+          envelope: createEnvelope(
+            { transactionId: created.transactionId, status: 'PENDING' },
+            { messageType: 'transaction.initiated.v1', producer: 'transaction-service', identity: null },
+          ),
+        }),
+      });
+
+      const rows = await pool.query<{ routing_key: string }>(
+        'SELECT routing_key FROM outbox_messages WHERE transaction_id = $1',
+        [opened.transactionId],
+      );
+
+      expect(rows.rows).toHaveLength(1);
+      expect(rows.rows[0]!.routing_key).toBe(routingKeyFor('transaction.initiated.v1'));
+    });
+
+    /**
+     * The delivery that loses the idempotency race never calls `outbound`, so
+     * `transaction.initiated.v1` is never announced twice for one transfer.
+     */
+    it('writes no outbox row for the delivery that finds the key already used', async () => {
+      const key = randomUUID();
+      let calls = 0;
+
+      const outbound = (created: Transaction): OutboxMessage => {
+        calls += 1;
+
+        return {
+          exchange: EXCHANGES.events,
+          routingKey: routingKeyFor('transaction.initiated.v1'),
+          envelope: createEnvelope(
+            { transactionId: created.transactionId, status: 'PENDING' },
+            { messageType: 'transaction.initiated.v1', producer: 'transaction-service', identity: null },
+          ),
+        };
+      };
+
+      const first = await repository.start({
+        transaction: candidate({ idempotencyKey: key }),
+        outbound,
+      });
+      const second = await repository.start({
+        transaction: candidate({ idempotencyKey: key }),
+        outbound,
+      });
+
+      expect(first.kind).toBe('CREATED');
+      expect(second.kind).toBe('EXISTS');
+      expect(calls).toBe(1);
+
+      const rows = await pool.query<{ n: number }>(
+        'SELECT count(*)::INT AS n FROM outbox_messages WHERE transaction_id = $1',
+        [first.transaction.transactionId],
+      );
+
+      expect(rows.rows[0]!.n).toBe(1);
+    });
+  });
+
+  describe('recording one rung of the retry ladder', () => {
+    it('writes the attempt into the local trail', async () => {
+      const transaction = await seedDebiting();
+
+      const outcome = await repository.recordPaymentAttempt({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'payment.attempt.failed.v1',
+        payload: { paymentId: randomUUID(), attempt: 1, errorType: 'TRANSIENT' },
+      });
+
+      expect(outcome).toEqual({ kind: 'RECORDED' });
+
+      const rows = await pool.query(
+        `SELECT payload FROM transaction_events
+          WHERE transaction_id = $1 AND event_type = 'payment.attempt.failed.v1'`,
+        [transaction.transactionId],
+      );
+
+      expect(rows.rows).toHaveLength(1);
+      expect(rows.rows[0]!.payload).toMatchObject({ attempt: 1, errorType: 'TRANSIENT' });
+
+      // Never a transition: recording an attempt leaves the Saga untouched.
+      const stored = await repository.findById(transaction.transactionId);
+
+      expect(stored!.status).toBe('DEBITING');
+    });
+
+    /** T-5: a redelivered attempt writes no second row. */
+    it('claims a redelivered attempt exactly once', async () => {
+      const transaction = await seedDebiting();
+      const messageId = randomUUID();
+
+      const first = await repository.recordPaymentAttempt({
+        transactionId: transaction.transactionId,
+        messageId,
+        messageType: 'payment.attempt.failed.v1',
+        payload: { paymentId: randomUUID(), attempt: 1 },
+      });
+      const second = await repository.recordPaymentAttempt({
+        transactionId: transaction.transactionId,
+        messageId,
+        messageType: 'payment.attempt.failed.v1',
+        payload: { paymentId: randomUUID(), attempt: 1 },
+      });
+
+      expect(first).toEqual({ kind: 'RECORDED' });
+      expect(second).toEqual({ kind: 'DUPLICATE' });
+
+      const rows = await pool.query<{ n: number }>(
+        `SELECT count(*)::INT AS n FROM transaction_events
+          WHERE transaction_id = $1 AND event_type = 'payment.attempt.failed.v1'`,
+        [transaction.transactionId],
+      );
+
+      expect(rows.rows[0]!.n).toBe(1);
+    });
+
+    it('claims nothing for an attempt about a transaction it does not hold', async () => {
+      const outcome = await repository.recordPaymentAttempt({
+        transactionId: randomUUID(),
+        messageId: randomUUID(),
+        messageType: 'payment.attempt.failed.v1',
+        payload: { paymentId: randomUUID(), attempt: 1 },
+      });
+
+      expect(outcome).toEqual({ kind: 'UNKNOWN_TRANSACTION' });
+
+      const claimed = await pool.query('SELECT count(*)::INT AS n FROM processed_messages');
+
+      expect(claimed.rows[0].n).toBe(0);
+    });
+  });
+
+  describe('resuming a transfer that crashed before its Saga started', () => {
+    /**
+     * Reproduces the crash directly against a real lock: `start` committed the
+     * row, and nothing ever called `applyEvent` for `DEBIT_ORDERED` — exactly
+     * what a process death between the two leaves behind.
+     */
+    async function crashed(): Promise<Transaction> {
+      const { transaction } = await repository.start({ transaction: candidate() });
+
+      return transaction;
+    }
+
+    it('lets the first resume order the debit', async () => {
+      const transaction = await crashed();
+
+      const outcome = await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'transfer.requested.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+        now: NOW,
+      });
+
+      expect(outcome.kind).toBe('APPLIED');
+
+      const stored = await repository.findById(transaction.transactionId);
+
+      expect(stored!.status).toBe('DEBITING');
+    });
+
+    /**
+     * The common case: the broker redelivers the exact same message. Proves
+     * the claim `RequestTransferUseCase` relies on — that `messageId`
+     * deduplication alone makes the resume safe against an ordinary retry.
+     */
+    it('makes a same-messageId redelivery of the resume a no-op', async () => {
+      const transaction = await crashed();
+      const messageId = randomUUID();
+
+      const resume = (): Promise<unknown> =>
+        repository.applyEvent({
+          transactionId: transaction.transactionId,
+          messageId,
+          messageType: 'transfer.requested.v1',
+          payload: {},
+          decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+          now: NOW,
+        });
+
+      const first = await resume();
+      const second = await resume();
+
+      expect((first as { kind: string }).kind).toBe('APPLIED');
+      expect((second as { kind: string }).kind).toBe('DUPLICATE');
+    });
+
+    /**
+     * The edge case this fix's safety argument rests on: two *different*
+     * deliveries (different `messageId`s, as two genuinely concurrent
+     * redeliveries would be) racing to resume the same transfer. The row lock
+     * serialises them, and the domain's own `PENDING`-only guard on
+     * `DEBIT_ORDERED` — not the `messageId` dedup — is what stops the second
+     * one from ordering a second debit: it finds the row already `DEBITING`
+     * and is refused as `ILLEGAL`, discarded and recorded, never applied.
+     */
+    it('refuses a second debit even when two different deliveries race the resume', async () => {
+      const transaction = await crashed();
+
+      const [first, second] = await Promise.all([
+        repository.applyEvent({
+          transactionId: transaction.transactionId,
+          messageId: randomUUID(),
+          messageType: 'transfer.requested.v1',
+          payload: {},
+          decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+          now: NOW,
+        }),
+        repository.applyEvent({
+          transactionId: transaction.transactionId,
+          messageId: randomUUID(),
+          messageType: 'transfer.requested.v1',
+          payload: {},
+          decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+          now: NOW,
+        }),
+      ]);
+
+      const kinds = [first.kind, second.kind].sort();
+
+      expect(kinds).toEqual(['APPLIED', 'ILLEGAL']);
+
+      const stored = await repository.findById(transaction.transactionId);
+
+      // Exactly one debit ordered, whichever delivery won the race.
+      expect(stored!.status).toBe('DEBITING');
     });
   });
 });

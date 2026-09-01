@@ -169,11 +169,31 @@ async function bootstrap(): Promise<void> {
     let attempted = 0;
 
     for (const payment of due) {
+      /**
+       * The column is populated unconditionally when a payment opens, from
+       * the command envelope's own `correlationId` (`ProcessPaymentHandler`) —
+       * so a `NULL` here is not a variant this service ever writes, it is a
+       * row that should not exist. Minting a fresh correlation for it would
+       * file this attempt under an identifier nothing else in the trail
+       * carries, which is exactly what constitution VIII forbids ("never
+       * regenerated"): the attempt, and the terminal event it may produce,
+       * would be unreachable from the correlation everyone else is watching.
+       * Failing loudly and skipping is the safer choice — the payment stays
+       * `PENDING` and due, so it is retried, and this same branch logged
+       * again, on every sweep until a human repairs the row, instead of
+       * silently forking the audit trail.
+       */
+      if (payment.originCorrelationId === null) {
+        logger.error('payment has no origin correlation; refusing to invent one', {
+          paymentId: payment.paymentId,
+          transactionId: payment.transactionId,
+        });
+
+        continue;
+      }
+
       try {
-        await processPayment.retry(
-          payment,
-          publisherFactory.forRetry(payment.originCorrelationId ?? randomUUID()),
-        );
+        await processPayment.retry(payment, publisherFactory.forRetry(payment.originCorrelationId));
         attempted += 1;
       } catch (error) {
         logger.error('retry attempt failed', {
