@@ -80,7 +80,7 @@ export class RequestTransferUseCase {
     const refusal = requestRefusal(payload);
 
     if (refusal !== null) {
-      await this.#refuse(payload.transactionId, refusal);
+      await this.#refuse(payload.transactionId, refusal, envelope.identity?.customerId ?? null);
 
       return { kind: 'REFUSED', reason: refusal };
     }
@@ -160,7 +160,7 @@ export class RequestTransferUseCase {
     envelope: { readonly messageId: string },
   ): Promise<RequestOutcome> {
     if (conflictsWithOriginal(original, payload)) {
-      await this.#refuse(payload.transactionId, 'IDEMPOTENCY_KEY_CONFLICT');
+      await this.#refuse(payload.transactionId, 'IDEMPOTENCY_KEY_CONFLICT', original.customerId);
 
       return { kind: 'REFUSED', reason: 'IDEMPOTENCY_KEY_CONFLICT' };
     }
@@ -218,12 +218,24 @@ export class RequestTransferUseCase {
    * explicit that these refusals happen "before the transaction is created" —
    * so the status query will answer `NOT_FOUND`, and the trail is where the
    * reason lives. Recorded as TD-032.
+   *
+   * `customerId` comes from the caller because there is no row to read it from:
+   * a refusal happens before the transaction exists. The two callers each know
+   * it from a different place — the request's own identity, or the original
+   * transaction a conflicting retry collided with — and the contract asks the
+   * producer to say which person this is about rather than leave it to the
+   * envelope.
    */
-  async #refuse(transactionId: string, reason: RequestRejection): Promise<void> {
+  async #refuse(
+    transactionId: string,
+    reason: RequestRejection,
+    customerId: string | null,
+  ): Promise<void> {
     await this.#publisher.publish({
       messageType: transactionFailedV1.name,
       payload: {
         transactionId,
+        customerId,
         status: 'FAILED',
         reason,
         failedAt: this.#clock.now().toISOString(),
