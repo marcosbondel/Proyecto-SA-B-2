@@ -1743,6 +1743,7 @@ The payload is an empty object.
 | Field | Type | Required |
 | --- | --- | --- |
 | `transactionId` | UUID v4 | yes |
+| `customerId` | UUID v4 \| `null` | yes |
 | `sourceAccount` | UUID v4 | yes |
 | `targetAccount` | UUID v4 | yes |
 | `amount` | object | yes |
@@ -1769,6 +1770,7 @@ The payload is an empty object.
 | Field | Type | Required |
 | --- | --- | --- |
 | `transactionId` | UUID v4 | yes |
+| `customerId` | UUID v4 \| `null` | yes |
 | `status` | `FAILED` | yes |
 | `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT` \| `INVALID_AMOUNT_PRECISION` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` | yes |
 | `failedAt` | ISO-8601 UTC | yes |
@@ -1793,6 +1795,7 @@ The payload is an empty object.
 | Field | Type | Required |
 | --- | --- | --- |
 | `transactionId` | UUID v4 | yes |
+| `customerId` | UUID v4 \| `null` | yes |
 | `status` | `COMPENSATED` | yes |
 | `reason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT_PRECISION` | yes |
 | `compensatedAt` | ISO-8601 UTC | yes |

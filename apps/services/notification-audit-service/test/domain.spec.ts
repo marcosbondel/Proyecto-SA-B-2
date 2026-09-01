@@ -296,18 +296,43 @@ describe('whom a notification is about when nobody is signed in', () => {
   });
 
   /**
-   * And only for that family. An `account.*` or `transaction.*` payload carries
-   * account and transaction references, not people, and reading a `customerId`
-   * out of one would be inventing a subject.
+   * The terminal transfer events read the same way, and for a second flow with
+   * the same shape as the first.
+   *
+   * A transfer that exhausts the payment retry ladder is compensated by the
+   * sweeper, which republishes on a timer and therefore carries no identity —
+   * so the event announcing that the money came back arrived with nobody to
+   * tell, and the notification was recorded `FAILED`. Transaction Service is
+   * the last component that still knows whose transfer it was, so `customerId`
+   * is now a declared field of all three terminal contracts and this reads it.
+   *
+   * The compensation is the case worth naming: of everything this service
+   * sends, "your money is back" is the one a customer is actively waiting for.
    */
   it.each([
-    'account.debited.v1',
+    'transaction.compensated.v1',
     'transaction.completed.v1',
-    'payment.failed.v1',
-    'notification.sent.v1',
-  ])('reads nothing from %s', (messageType) => {
-    expect(subjectCustomerIdFrom(messageType, { customerId: 'anything' })).toBeNull();
+    'transaction.failed.v1',
+  ])('reads the subject from the payload of %s', (messageType) => {
+    expect(
+      subjectCustomerIdFrom(messageType, {
+        transactionId: 'a1c0f6a8-1f3c-4a1f-9a10-2f4e6b8d0c11',
+        customerId: '964b1516-0e35-4ad4-89dd-17997424d291',
+      }),
+    ).toBe('964b1516-0e35-4ad4-89dd-17997424d291');
   });
+
+  /**
+   * And only for those two families. An `account.*` or `payment.*` payload
+   * carries account and payment references, not people, and reading a
+   * `customerId` out of one would be inventing a subject.
+   */
+  it.each(['account.debited.v1', 'payment.failed.v1', 'notification.sent.v1'])(
+    'reads nothing from %s',
+    (messageType) => {
+      expect(subjectCustomerIdFrom(messageType, { customerId: 'anything' })).toBeNull();
+    },
+  );
 
   it('reads nothing from a payload that has no subject', () => {
     expect(subjectCustomerIdFrom('customer.registered.v1', { email: 'a@b.gt' })).toBeNull();
