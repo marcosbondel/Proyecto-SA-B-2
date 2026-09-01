@@ -164,7 +164,7 @@ operational situations and the audit record has to be able to tell them apart.
 | T-2 | `sourceAccount` and `targetAccount` differ | `SAME_ACCOUNT_TRANSFER` — rejected |
 | T-3 | The same `idempotencyKey` with the same content returns the original transaction without moving balances | No failure; idempotent response |
 | T-4 | The same `idempotencyKey` with different content is rejected | `IDEMPOTENCY_KEY_CONFLICT` |
-| T-5 | A repeated event produces no second transition and no second compensation | Silently discarded; the `eventId` was already processed |
+| T-5 | A repeated event produces no second transition and no second compensation | Silently discarded; the envelope's `messageId` was already processed |
 | T-6 | An event requesting a transition not in the diagram is discarded and recorded | `ILLEGAL_TRANSITION` in the audit record, no state change |
 | T-7 | Any transaction that left `DEBITING` with the debit applied ends in `COMPLETED` or `COMPENSATED`, never in `FAILED` | Saga guarantee |
 

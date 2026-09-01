@@ -3,93 +3,102 @@
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 
 title Diagrama de Componentes - Transaction Service (C4 Nivel 3)
-' Microservicio descompuesto: Transaction Service (orquesta la Saga de transferencia)
+' Microservicio descompuesto: Transaction Service (participa en la Saga de transferencia)
+' Cada componente lleva el nombre de la clase o del módulo que existe en
+' apps/services/transaction-service/src. El cliente AMQP no vive aquí: es
+' MessageBroker, del paquete compartido @bank/messaging.
+' Debe coincidir con el .mmd equivalente en TODAS las etiquetas.
 
 LAYOUT_TOP_DOWN()
 UpdateElementStyle("container", $bgColor="#FFFFFF", $fontColor="#1168BD", $borderColor="#1168BD")
 UpdateElementStyle("component", $bgColor="#FFFFFF", $fontColor="#1168BD", $borderColor="#1168BD")
 
 Container_Ext(rabbitmq, "RabbitMQ", "RabbitMQ 4.3.4-management / AMQP", "Broker central de mensajería asíncrona.")
-ContainerDb_Ext(transaction_db, "Transaction DB", "PostgreSQL", "Base exclusiva de Transaction Service.")
-    
+ContainerDb_Ext(transaction_db, "Transaction DB", "PostgreSQL", "Base exclusiva de Transaction Service: transactions, transaction_events, processed_messages, transaction_aliases, outbox_messages.")
+
+Boundary(messaging, "apps/packages/messaging - @bank/messaging (paquete compartido)") {
+    Component(broker, "MessageBroker", "Cliente AMQP compartido", "Conexión y reconexión, suscripción por cola, ack manual, escalera de reintentos y DLQ | AMQP")
+}
+
 Container_Boundary(transactionService, "Transaction Service (NestJS)") {
 
     Boundary(interfaces, "interfaces/") {
-        Component(h_transfer, "TransferRequestedHandler", "Consumer AMQP", "Consume transfer.requested | AMQP | comando")
-        Component(h_status, "TransactionStatusRequestedHandler", "Consumer AMQP", "Consume transaction.status.requested | AMQP | comando")
-        Component(h_debited, "AccountDebitedHandler", "Consumer AMQP", "Consume account.debited | AMQP | evento")
-        Component(h_debit_rejected, "AccountDebitRejectedHandler", "Consumer AMQP", "Consume account.debit.rejected | AMQP | evento")
-        Component(h_paid, "PaymentSucceededHandler", "Consumer AMQP", "Consume payment.succeeded | AMQP | evento")
-        Component(h_pay_failed, "PaymentFailedHandler", "Consumer AMQP", "Consume payment.failed | AMQP | evento")
-        Component(h_credited, "AccountCreditedHandler", "Consumer AMQP", "Consume account.credited | AMQP | evento")
-        Component(h_credit_rejected, "AccountCreditRejectedHandler", "Consumer AMQP", "Consume account.credit.rejected | AMQP | evento")
-        Component(h_compensated, "AccountDebitCompensatedHandler", "Consumer AMQP", "Consume account.debit.compensated | AMQP | evento")
-        Component(health, "HealthController", "HTTP Controller", "Health/readiness checks | HTTP | síncrono")
+        Component(router, "InboundMessageRouter", "Router de mensajes", "Entrega cada envelope al handler que reclama su messageType | llamada interna | síncrono")
+        Component(h_transfer, "RequestTransferHandler", "Handler AMQP", "Consume transfer.requested | AMQP | comando")
+        Component(h_saga, "SagaEventHandler (x7, fábrica sagaHandlers)", "Handler AMQP", "Consume account.debited, account.debit.rejected, payment.succeeded, payment.failed, account.credited, account.credit.rejected, account.debit.compensated | AMQP | eventos")
+        Component(h_status, "TransactionStatusHandler", "Handler AMQP", "Consume transaction.status.requested | AMQP | comando (request/reply)")
+        Component(h_list, "TransactionListHandler", "Handler AMQP", "Consume transaction.list.query | AMQP | comando (request/reply)")
+        Component(h_stats, "TransactionStatsHandler", "Handler AMQP", "Consume transaction.stats.query | AMQP | comando (request/reply)")
+        Component(health, "HealthController", "Controlador HTTP", "/health y /ready responden preguntas distintas | HTTP | síncrono")
     }
 
     Boundary(application, "application/") {
-        Component(uc_request_transfer, "RequestTransferUseCase", "Caso de uso", "Abre la Saga: crea Transaction en PENDING")
+        Component(uc_request_transfer, "RequestTransferUseCase", "Caso de uso", "Abre la Saga: crea la Transaction en PENDING; invariantes T-1 a T-4")
+        Component(saga, "AdvanceSagaUseCase", "Caso de uso", "Un paso de la Saga, sea cual sea: aplica el evento y arma el comando/evento que la transición implica")
         Component(uc_get_status, "GetTransactionStatusUseCase", "Caso de uso", "Responde transaction.status.replied")
-        Component(saga, "SagaCoordinator", "Handlers de la Saga", "Reacciona a eventos de Account y Payment; decide siguiente paso o compensación")
-        Component(port_repo, "TransactionRepositoryPort", "Puerto (interfaz)", "Contrato de persistencia de Transaction")
-        Component(port_publisher, "EventPublisherPort", "Puerto (interfaz)", "Contrato de publicación de comandos/eventos")
+        Component(uc_list, "ListTransactionsUseCase", "Caso de uso", "Responde transaction.list.replied; el alcance se decide desde la identidad del envelope")
+        Component(uc_stats, "GetTransactionStatsUseCase", "Caso de uso", "Responde transaction.stats.replied con los conteos de los dashboards")
+        Component(port_repo, "TransactionRepository", "Puerto (interfaz, application/ports.ts)", "Contrato de persistencia: start, applyEvent, dispatchPendingOutbox, list, stats")
+        Component(port_publisher, "EventPublisher", "Puerto (interfaz, application/ports.ts)", "Contrato de publicación: send, publish, reply y envelopeFor (arma sin enviar)")
     }
 
     Boundary(domain, "domain/") {
-        Component(transaction, "Transaction", "Entidad + Máquina de Estados", "PENDING/DEBITING/PAYMENT_PENDING/COMPLETED/FAILED/COMPENSATED; invariantes T-1 a T-7")
+        Component(transaction, "Transaction + applyEvent", "Entidad + máquina de estados", "PENDING/DEBITING/PAYMENT_PENDING/COMPLETED/FAILED/COMPENSATED; invariantes T-1 a T-7")
+        Component(money, "Money", "Objeto de valor", "Monto en unidades menores de GTQ; nunca un float")
     }
 
     Boundary(infrastructure, "infrastructure/") {
-        Component(repo_impl, "TransactionPostgresRepository", "Adaptador de persistencia", "Implementa TransactionRepositoryPort sobre PostgreSQL")
-        Component(pub_adapter, "RabbitMqPublisherAdapter", "Adaptador de publicación", "Implementa EventPublisherPort")
-        Component(sub_adapter, "RabbitMqConsumerAdapter", "Adaptador de consumo", "Enruta deliveries a los handlers de interfaces/")
-        Component(amqp, "AmqpConnectionManager", "Integración con el broker", "Conexión AMQP, ack manual, DLQ")
+        Component(repo_impl, "PostgresTransactionRepository", "Adaptador de persistencia", "Implementa TransactionRepository sobre PostgreSQL: deduplica por messageId, decide bajo lock de fila y escribe el outbox en la misma transacción")
+        Component(pub_adapter, "BrokerEventPublisher", "Adaptador de publicación", "Implementa EventPublisher: valida contra @bank/contracts y arma el envelope de seguimiento (correlationId e identidad)")
+        Component(outbox, "OutboxRelay", "Relay del outbox (infrastructure/scheduler/outbox.scheduler.ts)", "Barre outbox_messages PENDING con FOR UPDATE SKIP LOCKED y publica el envelope guardado tal cual")
     }
 }
 
+Rel(rabbitmq, broker, "entrega transfer.requested, transaction.status.requested, transaction.list.query, transaction.stats.query, account.debited, account.debit.rejected, payment.succeeded, payment.failed, account.credited, account.credit.rejected, account.debit.compensated | AMQP | comandos/eventos | correlationId")
+Rel(broker, rabbitmq, "conexión AMQP, ack manual, reintentos y DLQ | AMQP | conexión")
+Rel(broker, rabbitmq, "publica account.debit.requested, payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.initiated, transaction.completed, transaction.failed, transaction.compensated, transaction.status.replied, transaction.list.replied, transaction.stats.replied | AMQP | comandos/eventos/respuestas | correlationId")
+
+Rel(broker, router, "entrega el envelope ya parseado | llamada interna | síncrono")
+Rel(router, h_transfer, "enruta por messageType | llamada interna | síncrono")
+Rel(router, h_saga, "enruta por messageType | llamada interna | síncrono")
+Rel(router, h_status, "enruta por messageType | llamada interna | síncrono")
+Rel(router, h_list, "enruta por messageType | llamada interna | síncrono")
+Rel(router, h_stats, "enruta por messageType | llamada interna | síncrono")
+
 Rel(h_transfer, uc_request_transfer, "invoca | llamada interna | síncrono")
+Rel(h_saga, saga, "invoca | llamada interna | síncrono")
 Rel(h_status, uc_get_status, "invoca | llamada interna | síncrono")
-Rel(h_debited, saga, "invoca | llamada interna | síncrono")
-Rel(h_debit_rejected, saga, "invoca | llamada interna | síncrono")
-Rel(h_paid, saga, "invoca | llamada interna | síncrono")
-Rel(h_pay_failed, saga, "invoca | llamada interna | síncrono")
-Rel(h_credited, saga, "invoca | llamada interna | síncrono")
-Rel(h_credit_rejected, saga, "invoca | llamada interna | síncrono")
-Rel(h_compensated, saga, "invoca | llamada interna | síncrono")
+Rel(h_list, uc_list, "invoca | llamada interna | síncrono")
+Rel(h_stats, uc_stats, "invoca | llamada interna | síncrono")
 
-Rel(uc_request_transfer, transaction, "crea/valida T-1, T-2 | llamada interna | síncrono")
-Rel(saga, transaction, "aplica transición válida T-5, T-6, T-7 | llamada interna | síncrono")
+Rel(uc_request_transfer, transaction, "crea/valida T-1 a T-4 | llamada interna | síncrono")
+Rel(uc_request_transfer, saga, "ordena el primer paso (DEBIT_ORDERED) por el mismo camino que los demás | llamada interna | síncrono")
+Rel(saga, transaction, "aplica la transición válida T-5, T-6, T-7 | llamada interna | síncrono")
+Rel(transaction, money, "valida monto y precisión | llamada interna | síncrono")
 
-Rel(uc_request_transfer, port_repo, "persiste transacción | llamada interna | síncrono")
-Rel(uc_request_transfer, port_publisher, "publica account.debit.requested | llamada interna | síncrono")
-Rel(uc_get_status, port_repo, "lee transacción | llamada interna | síncrono")
-Rel(uc_get_status, port_publisher, "publica transaction.status.replied | llamada interna | síncrono")
-Rel(saga, port_repo, "persiste transición | llamada interna | síncrono")
-Rel(saga, port_publisher, "publica payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.completed, transaction.failed, transaction.compensated | llamada interna | síncrono")
+Rel(uc_request_transfer, port_repo, "persiste la transacción y registra el alias de un reintento | llamada interna | síncrono")
+Rel(uc_request_transfer, port_publisher, "publica transaction.initiated | llamada interna | síncrono")
+Rel(uc_get_status, port_repo, "lee la transacción y su rastro de pago | llamada interna | síncrono")
+Rel(uc_get_status, port_publisher, "responde transaction.status.replied | llamada interna | síncrono")
+Rel(uc_list, port_repo, "lee una página de transacciones ya acotada | llamada interna | síncrono")
+Rel(uc_list, port_publisher, "responde transaction.list.replied | llamada interna | síncrono")
+Rel(uc_stats, port_repo, "lee los conteos | llamada interna | síncrono")
+Rel(uc_stats, port_publisher, "responde transaction.stats.replied | llamada interna | síncrono")
+Rel(saga, port_repo, "persiste la transición y su outbox en una sola transacción | llamada interna | síncrono")
+Rel(saga, port_publisher, "envelopeFor: arma payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.completed, transaction.failed, transaction.compensated para el outbox | llamada interna | síncrono")
 
 Rel(repo_impl, port_repo, "implementa | interfaz")
 Rel(pub_adapter, port_publisher, "implementa | interfaz")
 
-Rel(repo_impl, transaction_db, "lee/escribe tabla transactions | TCP/IP | acceso a datos")
-Rel(pub_adapter, amqp, "usa conexión | llamada interna")
-Rel(sub_adapter, amqp, "usa conexión | llamada interna")
-Rel(amqp, rabbitmq, "conexión AMQP, ack manual, DLQ | AMQP | conexión")
-Rel(pub_adapter, rabbitmq, "publica account.debit.requested, payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.initiated, transaction.completed, transaction.failed, transaction.compensated, transaction.status.replied | AMQP | comandos/eventos | correlationId")
-Rel(rabbitmq, sub_adapter, "entrega transfer.requested, transaction.status.requested, account.debited, account.debit.rejected, payment.succeeded, payment.failed, account.credited, account.credit.rejected, account.debit.compensated | AMQP | comandos/eventos | correlationId")
-
-Rel(sub_adapter, h_transfer, "enruta por messageType | llamada interna | síncrono")
-Rel(sub_adapter, h_status, "enruta por messageType | llamada interna | síncrono")
-Rel(sub_adapter, h_debited, "enruta por messageType | llamada interna | síncrono")
-Rel(sub_adapter, h_debit_rejected, "enruta por messageType | llamada interna | síncrono")
-Rel(sub_adapter, h_paid, "enruta por messageType | llamada interna | síncrono")
-Rel(sub_adapter, h_pay_failed, "enruta por messageType | llamada interna | síncrono")
-Rel(sub_adapter, h_credited, "enruta por messageType | llamada interna | síncrono")
-Rel(sub_adapter, h_credit_rejected, "enruta por messageType | llamada interna | síncrono")
-Rel(sub_adapter, h_compensated, "enruta por messageType | llamada interna | síncrono")
+Rel(repo_impl, transaction_db, "lee/escribe transactions, transaction_events, processed_messages, transaction_aliases y outbox_messages | TCP/IP | acceso a datos")
+Rel(outbox, port_repo, "dispatchPendingOutbox: toma un lote PENDING y lo marca despachado | llamada interna | síncrono")
+Rel(outbox, broker, "publica cada envelope guardado, sin reconstruirlo | llamada interna | síncrono")
+Rel(pub_adapter, broker, "publica lo que no pasa por el outbox: transaction.initiated y las respuestas | llamada interna | síncrono")
 
 UpdateElementStyle(rabbitmq, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
 UpdateElementStyle(transaction_db, $bgColor="white", $borderColor="#1168BD", $fontColor="#1168BD")
 UpdateElementStyle(transaction, $bgColor="white", $borderColor="#398819", $fontColor="#398819")
+UpdateElementStyle(money, $bgColor="white", $borderColor="#398819", $fontColor="#398819")
 
 SHOW_LEGEND()
 @enduml

@@ -21,7 +21,7 @@ System_Boundary(limite, "Bank USAC") {
     System(bankusac, "Núcleo Bancario Bank USAC", "Sistema bancario distribuido. Gestiona clientes, cuentas, transferencias, pagos y auditoría. No es accesible desde fuera: solo responde a mensajes.")
 }
 
-System_Ext(correo, "Servicio de Correo Electrónico", "Entrega al cliente el enlace de activación de cuenta.")
+System_Ext(correo, "Servicio de Correo Electrónico (Resend)", "Entrega al cliente el enlace de activación de cuenta. Solo interviene con NOTIFICATION_CHANNEL = resend, por defecto el canal es simulado y no sale correo.")
 System_Ext(proveedorPagos, "Proveedor de Pagos", "Procesa pagos externos que el banco no resuelve internamente.")
 
 Rel(cliente, gateway, "Consulta y gestiona sus cuentas", "HTTPS/REST · síncrono")
@@ -31,7 +31,7 @@ Rel(admin, gateway, "Supervisa cuentas y auditoría", "HTTPS/REST · síncrono")
 Rel(gateway, bankusac, "Publica comandos y consultas con correlationId", "AMQP 0-9-1 · asíncrono")
 Rel(bankusac, gateway, "Responde por cola de respuesta", "AMQP 0-9-1 · request/reply")
 
-Rel(bankusac, correo, "Solicita el correo de activación", "SMTP · asíncrono")
+Rel(bankusac, correo, "Envía el correo de activación", "HTTPS/REST (API de Resend) · síncrono · canal simulado por defecto")
 Rel(correo, cliente, "Entrega el enlace de activación", "Correo electrónico · asíncrono")
 Rel(bankusac, proveedorPagos, "Solicita la autorización del pago", "API del proveedor · síncrono")
 

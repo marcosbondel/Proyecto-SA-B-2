@@ -1,0 +1,13 @@
+flowchart TD
+    actor["Cajero o Administrador: registrar depósito"] --> role{"¿El rol puede depositar?"}
+    role -->|No| forbidden["Rechazar FORBIDDEN_ACCOUNT_ACCESS"]
+    role -->|Sí| seen{"¿Clave de idempotencia ya procesada?"}
+    seen -->|Sí| replay["Reenviar el resultado guardado"]
+    seen -->|No| exists{"¿Existe la cuenta?"}
+    exists -->|No| missing["Rechazar ACCOUNT_NOT_FOUND"]
+    exists -->|Sí| credit["Account Service: acreditar con la regla de crédito de la Saga"]
+    credit --> inactive{"¿La cuenta estaba INACTIVE?"}
+    inactive -->|Sí| reactivate["Reactivar y publicar account.reactivated"]
+    inactive -->|No| publish["Publicar account.deposited y responder el saldo"]
+    reactivate --> publish
+    publish --> audit["Notification & Audit: registrar el depósito"]

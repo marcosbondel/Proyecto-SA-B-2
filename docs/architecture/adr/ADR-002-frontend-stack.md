@@ -1,6 +1,6 @@
 # ADR-002: Build the frontend in Vue with Nuxt 4
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-15
 - **Deciders**: Bank USAC team (approved in the `feature/T-03` pull request)
 - **Assignment reference**: Not constrained by the assignment; team decision.

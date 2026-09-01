@@ -14,6 +14,10 @@ flowchart LR
         token(("CDU001.8: Validar token de activación"))
         credentials(("CDU001.9: Validar credenciales"))
         review(("CDU001.10: Revisar foto y datos"))
+        resetRequest(("CDU001.11: Solicitar restablecimiento de contraseña"))
+        resetConfirm(("CDU001.12: Restablecer contraseña con el enlace"))
+        password(("CDU001.13: Cambiar contraseña propia"))
+        resetToken(("CDU001.14: Validar token de restablecimiento"))
     end
 
     client --- register
@@ -21,21 +25,31 @@ flowchart LR
     client --- login
     client --- update
     client --- upload
+    client --- resetRequest
+    client --- resetConfirm
+    client --- password
     teller --- register
     teller --- login
     teller --- update
     teller --- identity
+    teller --- password
     admin --- register
     admin --- login
     admin --- update
     admin --- identity
+    admin --- password
 
     register -. "«include»" .-> username
     activate -. "«include»" .-> token
     login -. "«include»" .-> credentials
     identity -. "«include»" .-> review
+    resetConfirm -. "«include»" .-> resetToken
+    password -. "«include»" .-> credentials
 
     note["La activación por correo y la validación de identidad son flujos independientes"]:::note
     activate -.-> note
+
+    passwordNote["Recuperar la contraseña es anónimo; cambiarla desde la sesión exige la contraseña actual y es solo la propia, incluso para un administrador"]:::note
+    password -.-> passwordNote
 
     classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

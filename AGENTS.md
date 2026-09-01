@@ -204,6 +204,55 @@ Two consequences worth knowing:
   compiler actually work. The cache lives in `.turbo/`, is git-ignored, and is
   local only — no remote cache is configured.
 
+**A green `pnpm test` on a clean clone does not run the suites that matter
+most for this assignment's rubric.** Each service's
+`test/repository.integration.spec.ts` is gated `describe.skip` when
+`DATABASE_URL` is unset, and `apps/packages/messaging/test/broker.integration.spec.ts`
+is gated the same way on `RABBITMQ_URL`. Skipped, not failed — so the run
+still reports green while never touching the row lock a concurrent debit
+relies on, the optimistic `version` that rejects a stale write, the balance
+`CHECK`, deduplication by `(idempotency_key, type)` or by the envelope's
+`messageId`, or the outbox that survives a crash between commit and publish.
+Those are exactly the idempotency and failure-handling claims this project is
+judged on, so a passing `pnpm test` alone is not evidence for them.
+
+To run them for real, bring up the infrastructure and point each suite at its
+own database:
+
+```bash
+pnpm dev:infra   # the five PostgreSQL instances, RabbitMQ and MinIO, detached
+
+DATABASE_URL=postgresql://customer_app:changeme@localhost:5433/customer \
+  turbo run test --filter=customer-service
+
+DATABASE_URL=postgresql://account_app:changeme@localhost:5434/account \
+  turbo run test --filter=account-service
+
+DATABASE_URL=postgresql://transaction_app:changeme@localhost:5435/transaction \
+  turbo run test --filter=transaction-service
+
+DATABASE_URL=postgresql://payment_app:changeme@localhost:5436/payment \
+  turbo run test --filter=payment-service
+
+DATABASE_URL=postgresql://notification_audit_app:changeme@localhost:5437/notification_audit \
+  turbo run test --filter=notification-audit-service
+
+RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
+  turbo run test --filter=@bank/messaging
+```
+
+**Check the ports before trusting them**, with `docker ps --format '{{.Names}}\t{{.Ports}}'`.
+The five databases land on 5433–5437, but the broker and MinIO are shifted off
+their defaults — 5673 and 9002 rather than 5672 and 9000 — because the defaults
+collide with whatever else the machine is running, and `infra/docker/.env.example`
+still records the unshifted pair. This is not a cosmetic difference: on a machine
+with another project's RabbitMQ on 5672, pointing the suite at the default does
+not fail, it **connects to the wrong broker** and reports something that is not
+about this system at all. Substitute whatever `infra/docker/.env` actually holds.
+
+`turbo` is used rather than `pnpm --filter` so the dependency build runs first,
+per the consequence above.
+
 `apps/web` has **no component-level test framework**; that needs a Nuxt-native
 runner and is recorded as TD-010. Do not claim component coverage.
 

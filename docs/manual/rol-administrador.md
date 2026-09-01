@@ -47,7 +47,8 @@ de una cuenta**. También eres el único que puede confirmar en pantalla cómo
 terminó un registro o una apertura de cuenta: las demás sesiones se quedan en
 «solicitud aceptada».
 
-Tu menú lateral tiene los cinco módulos.
+Tu menú lateral tiene seis entradas: **Inicio**, **Clientes**, **Cuentas**,
+**Transferencias**, **Pagos** y **Auditoría**.
 
 ---
 
@@ -82,15 +83,18 @@ Es la vista de todas las cuentas del sistema, no solo las tuyas.
 | Columna | Qué contiene |
 | --- | --- |
 | Número | El identificador de la cuenta. |
-| Titular | El **identificador del cliente**, no su nombre. |
+| Titular | El **nombre del titular**, con su identificador debajo en letra pequeña. |
 | Tipo | Monetaria o Ahorro. |
 | Estado | Activa o Inactiva. |
 | Última actividad | Cuándo se movió por última vez, o `—` si nunca. |
 | Saldo | El saldo actual. |
 
-> La columna **Titular** muestra un identificador y no un nombre porque el
-> servicio de cuentas no tiene acceso a los nombres de los clientes. Son dos
-> servicios separados a propósito, y ninguno lee la base del otro.
+> La columna **Titular** muestra el nombre porque esta pantalla pregunta a dos
+> servicios: el de cuentas da las cuentas y el de clientes da los nombres. Son
+> dos servicios separados a propósito y ninguno lee la base del otro, así que si
+> el de clientes no alcanza a responder, la columna cae al identificador. Un
+> identificador donde esperabas un nombre no es un error de datos: es esa
+> segunda consulta que no llegó.
 
 ### Filtros
 
@@ -240,9 +244,9 @@ No se puede. La auditoría se consulta por identificador de correlación; no hay
 navegación general ni filtro de fechas.
 
 **Necesito saber el nombre del titular de una cuenta.**
-La gestión de cuentas solo muestra su identificador. Con ese identificador
-puedes abrir su ficha desde *Clientes → Abrir una ficha*, aunque la ficha
-todavía no muestra los datos guardados.
+La gestión de cuentas lo muestra en la columna *Titular*. Si en esa fila aparece
+un identificador en vez de un nombre, copia ese identificador y abre la ficha
+desde *Clientes → Abrir una ficha*: ahí están los datos completos del cliente.
 
 **Necesito crear otro administrador.**
 Desde *Clientes → Nuevo cliente*, eligiendo el rol **Administrador** en el

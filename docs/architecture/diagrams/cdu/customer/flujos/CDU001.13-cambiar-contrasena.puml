@@ -1,0 +1,38 @@
+@startuml CDU001.13-cambiar-contrasena
+title CDU001.13 - Cambiar contraseña propia
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Cliente, Cajero o Administrador|
+start
+:Escribir la contraseña actual y la nueva en Mi perfil;
+|Gateway|
+:Publicar customer.change-password;
+|Customer Service|
+if (¿La contraseña es la del propio solicitante?) then (No)
+    :Rechazar FORBIDDEN_ACCOUNT_ACCESS;
+else (Sí)
+    :Verificar la contraseña actual con el mismo hasher;
+    if (¿Coincide?) then (No)
+        :Rechazar INVALID_CREDENTIALS;
+    else (Sí)
+        :Guardar el nuevo hash junto al registro de idempotencia;
+        :Publicar customer.password-changed;
+        |Notification & Audit|
+        :Registrar el cambio;
+    endif
+endif
+stop
+
+legend right
+    Pedir la contraseña actual no es un trámite: una sesión no es
+    autorización para reemplazar la credencial que crea sesiones.
+    Es "solo la propia" incluso para un administrador; quien ayuda a
+    alguien bloqueado usa el flujo de recuperación (CDU001.11).
+endlegend
+@enduml

@@ -77,10 +77,14 @@ demonstration; anything a stranger can reach must not.
 ready-to-use users — one per role, `admin@bankusac.gt`, `cajero@bankusac.gt` and
 `cliente@bankusac.gt`, all sharing `SEED_PASSWORD` (default `BankUsac#2026`) —
 and, in `account-service`, two accounts for the client with one funded. It is
-**off by default in code**, on in `docker-compose.dev.yml`, and off in the
-images stack so `pnpm images:flow` runs clean. It is the standard way to
-bootstrap a first administrator, which anonymous registration can no longer
-create. Idempotent: fixed ids and an UPSERT, so a restart refreshes the same
+**off by default in code**, and on in both `docker-compose.dev.yml` and the
+images stack. It is the standard way to bootstrap a first administrator, which
+anonymous registration can no longer create — and that is also why
+`pnpm images:flow` needs it: the flow funds its source account through the
+deposit window instead of writing to the database, a deposit needs a
+`CAJERO_RECEPTOR`, and the Gateway will not mint one for a caller who is not
+already an administrator. The seeded users do not pollute the run, which
+registers its own customer and asserts only against the accounts it opens. Idempotent: fixed ids and an UPSERT, so a restart refreshes the same
 rows. Each service seeds only its own database against the shared demo client
 id — neither reads the other's table (constitution II).
 

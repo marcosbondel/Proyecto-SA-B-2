@@ -1,0 +1,48 @@
+@startuml CDU002.9-registrar-deposito
+title CDU002.9 - Registrar depósito en ventanilla
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Cajero Receptor o Administrador|
+start
+:Registrar el depósito con cuenta y monto;
+|Gateway|
+:Exigir rol de personal;
+if (¿El rol puede depositar?) then (No)
+    :Rechazar FORBIDDEN_ACCOUNT_ACCESS;
+    stop
+else (Sí)
+endif
+|Account Service|
+:Buscar la clave de idempotencia;
+if (¿Ya procesado?) then (Sí)
+    :Reenviar el resultado guardado;
+else (No)
+    if (¿Existe la cuenta?) then (No)
+        :Rechazar ACCOUNT_NOT_FOUND;
+    else (Sí)
+        :Acreditar con la misma regla que el crédito de la Saga;
+        if (¿La cuenta estaba INACTIVE?) then (Sí)
+            :Reactivarla y publicar account.reactivated;
+        else (No)
+        endif
+        :Publicar account.deposited;
+        :Responder el saldo resultante;
+        |Notification & Audit|
+        :Registrar el depósito;
+    endif
+endif
+stop
+
+legend right
+    Es la única ruta de dinero síncrona: no hay Saga que esperar,
+    así que el saldo viaja en la misma respuesta.
+    Un depósito no lleva transactionId; su deduplicación descansa
+    en la restricción (idempotency_key, tipo).
+endlegend
+@enduml

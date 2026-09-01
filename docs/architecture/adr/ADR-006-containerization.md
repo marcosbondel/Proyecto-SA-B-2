@@ -1,6 +1,6 @@
 # ADR-006: Package every workload as a Docker container
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-15
 - **Deciders**: Bank USAC team (approved in the `feature/T-03` pull request)
 - **Assignment reference**: §4.3 "Recursos y herramientas a utilizar", page 14; §4.2 "Alcance

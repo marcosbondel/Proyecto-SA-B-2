@@ -19,7 +19,7 @@ A pnpm workspace with all code under `apps/`: Gateway and the Nuxt frontend at
 the top level, the five domain services under `apps/services/`, and
 `@bank/contracts`, `@bank/messaging`, `@bank/tooling` under `apps/packages/`.
 Seven applications, all of them building, linting and testing. The Gateway
-carries twenty-four paths, JWT authentication, D-06 role authorization,
+carries twenty-five paths, JWT authentication, D-06 role authorization,
 request/reply with a five-second ceiling, seven error codes and a versioned
 OpenAPI contract; it has no `domain/` layer and never will.
 
@@ -64,11 +64,14 @@ queues instead of one (`audit.customer`, `audit.account`, `audit.transaction`,
 `audit.payment`, and `audit.query` for the two questions), deduplication as the
 primary key `(event_id, consumer)`, the payload redacted **before** the insert
 so the one database that hears every event stores no document, address or
-amount, and a simulated delivery channel that never throws. It is the only
-service that takes no validator from the broker — a message it cannot parse is
-recorded `INVALID` rather than parked, because the service whose job is to
-record what arrived must not be the one that never sees it. It publishes replies
-and nothing else, and `test/isolation.spec.ts` fails the build if that changes.
+amount, and a simulated delivery channel that never throws. It takes no
+validator from the broker **on purpose** — a message it cannot parse is recorded
+`INVALID` rather than parked, because the service whose job is to record what
+arrived must not be the one that never sees it. It is the only service where the
+omission is deliberate, not the only one where it happens: `payment-service` is
+the sole caller that passes `validateMessage`, and customer, account and
+transaction simply never did (TD-046). It publishes replies and nothing else, and
+`test/isolation.spec.ts` fails the build if that changes.
 Its concurrency and constraint tests need a real PostgreSQL and skip without
 `DATABASE_URL`.
 
@@ -106,9 +109,19 @@ evidence `docs/DESIGN.md` asks for.
 TD-020 and TD-023 (the Clientes read path and the
 teller identity-validation flow) are **closed** by the audit-remediation feature
 (`specs/008-audit-remediation`), which also added the Kubernetes deployment: a
-Helm chart at `infra/k8s/helm/bank-usac` plus a kind cluster config, verified
-with `helm lint` and `helm template`; the live `helm upgrade --install` on a real
-kind cluster (T014/T015) still needs a machine with kind.
+Helm chart at `infra/k8s/helm/bank-usac` plus a kind cluster config. The live
+`helm upgrade --install` **has happened** (T014/T015, commit `57dd88d`,
+2026-08-28): on kind v0.33.0 the seven pods reached `1/1 Ready` against the
+PostgreSQL, RabbitMQ and MinIO outside the cluster, the port-forwarded Gateway
+answered, and a transfer ran the Saga end to end to a terminal state. Two
+caveats belong with that sentence. The transfer ended `FAILED` via
+`DEBIT_REJECTED` on a zero-balance account — the failure-handling shape, not
+`COMPLETED` — so the cluster has demonstrated the Saga's error path and not its
+happy one. And **no evidence of the run was captured in the repository**:
+`specs/008-audit-remediation/quickstart.md` holds expectations, not output. The
+run also found two real defects that `helm lint` and `helm template` could not:
+a bash 4 associative array that broke on macOS's bash 3.2, and `values.yaml`
+database defaults that pointed every pod at the wrong role and database.
 
 **Every component is containerised** (T-21): seven multi-stage images, one
 Dockerfile each and no generic one, all running as `node` (uid 1000), with
