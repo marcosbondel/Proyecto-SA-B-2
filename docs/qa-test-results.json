@@ -1,114 +1,624 @@
 {
-  "suite": "Bank USAC - Exhaustive QA & Validation Test Suite",
-  "timestamp": "2026-09-01T15:09:43.265Z",
-  "categories": {
-    "frontend_validations": {
-      "title": "Validaciones de Formularios en Frontend (UI/UX)",
-      "tests": [
-        {
-          "name": "DPI con longitud inválida (< 13 dígitos)",
-          "expected": "Bloquear avance al paso 3 y mantener al usuario en el paso 2",
-          "actual": "Paso 2 bloqueado (DPI inválido)",
-          "passed": true,
-          "details": "El formulario valida que el DPI tenga exactamente 13 dígitos antes de continuar."
-        },
-        {
-          "name": "Registro de cliente menor de edad (< 18 años)",
-          "expected": "Bloquear avance al paso 2 por minoría de edad",
-          "actual": "Paso 1 bloqueado (Edad < 18)",
-          "passed": true,
-          "details": "Validación estricta de mayoría de edad (18+) según normativa bancaria guatemalteca."
-        },
-        {
-          "name": "Discrepancia entre contraseña y confirmación",
-          "expected": "Impedir envío del registro y señalar error de confirmación",
-          "actual": "Envío bloqueado (Contraseñas no coinciden)",
-          "passed": true,
-          "details": "Previene errores de tipeo y asegura la integridad de la credencial del cliente."
-        }
-      ]
-    },
-    "rbac_security": {
-      "title": "Control de Acceso Basado en Roles (RBAC / D-06)",
-      "tests": [
-        {
-          "name": "Acceso anónimo a endpoints protegidos (/api/accounts)",
-          "expected": "401 UNAUTHENTICATED",
-          "actual": "401",
-          "passed": true,
-          "details": "El Gateway rechaza solicitudes sin Bearer JWT válido."
-        },
-        {
-          "name": "Cliente consulta cola de validaciones (/api/customers/pending-validation)",
-          "expected": "403 FORBIDDEN",
-          "actual": "403",
-          "passed": true,
-          "details": "Aislamiento de permisos de backoffice respecto al rol CLIENTE."
-        },
-        {
-          "name": "Cliente intenta auto-depositar fondos por ventanilla",
-          "expected": "403 FORBIDDEN",
-          "actual": "403",
-          "passed": true,
-          "details": "Solo el rol CAJERO_RECEPTOR está autorizado para asentar depósitos."
-        },
-        {
-          "name": "Cajero intenta consultar rastro de auditoría global (/api/audit)",
-          "expected": "403 FORBIDDEN",
-          "actual": "403",
-          "passed": true,
-          "details": "El rastro completo de auditoría está reservado para el rol ADMINISTRADOR."
-        },
-        {
-          "name": "Administrador consulta notificaciones de auditoría (/api/audit/notifications)",
-          "expected": "200 OK",
-          "actual": "200",
-          "passed": true,
-          "details": "El administrador cuenta con acceso completo de lectura al bus de auditoría."
-        }
-      ]
-    },
-    "idempotency_concurrency": {
-      "title": "Idempotencia y Manejo de Concurrencia",
-      "tests": [
-        {
-          "name": "Depósito repetido con la misma Idempotency-Key",
-          "expected": "Mismo resultado (200 OK) y mismo movementId sin duplicar saldo",
-          "actual": "Dep1: 200 (undefined), Dep2: 200 (undefined)",
-          "passed": true,
-          "details": "La base de datos protege la unicidad por clave de idempotencia antes de mover fondos."
-        }
-      ]
-    },
-    "saga_failure_modes": {
-      "title": "Modos de Falla y Compensación de la Saga",
-      "tests": [
-        {
-          "name": "Transferencia con fondos insuficientes (Fallo de débito)",
-          "expected": "Saga transiciona limpiamente a estado terminal FAILED con motivo DEBIT_REJECTED",
-          "actual": "Estado alcanzado: FAILED",
-          "passed": true,
-          "details": "El orquestador de transacciones no permite balances negativos y finaliza la Saga de forma consistente."
-        }
-      ]
-    },
-    "data_privacy_audit": {
-      "title": "Privacidad de Datos y Redacción en Auditoría",
-      "tests": [
-        {
-          "name": "Redacción estricta de credenciales en bus de auditoría",
-          "expected": "Ninguna contraseña en texto claro en eventos almacenados",
-          "actual": "Sin contraseñas en claro (Redacción verificada)",
-          "passed": true,
-          "details": "El servicio de Notificación y Auditoría aplica redacción previa a la inserción en base de datos."
-        }
-      ]
-    }
-  },
+  "suite": "Bank USAC — Exhaustive E2E QA Suite",
+  "timestamp": "2026-09-01T16:22:55.151Z",
   "metrics": {
-    "total": 11,
-    "passed": 11,
-    "failed": 0,
-    "score": 100
-  }
+    "total": 68,
+    "passed": 66,
+    "failed": 2,
+    "score": 97
+  },
+  "tests": [
+    {
+      "id": "SEC-01",
+      "category": "Autenticación",
+      "name": "Login con credenciales inválidas",
+      "expected": "401 con mensaje genérico (D-04)",
+      "actual": "Mensaje de error mostrado",
+      "pass": true,
+      "detail": "Evita enumeración de cuentas"
+    },
+    {
+      "id": "SEC-02",
+      "category": "Autenticación",
+      "name": "Login con campos vacíos",
+      "expected": "Formulario bloquea envío",
+      "actual": "Campos requeridos señalados",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "SEC-03",
+      "category": "Autenticación",
+      "name": "Login exitoso con JWT emitido",
+      "expected": "200 OK con sesión",
+      "actual": "Dashboard cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-01",
+      "category": "Registro",
+      "name": "Paso 1: envío con campos vacíos",
+      "expected": "Bloquear avance",
+      "actual": "Formulario bloqueado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-02",
+      "category": "Registro",
+      "name": "Paso 1: menor de edad (15 años)",
+      "expected": "Bloquear avance al Paso 2",
+      "actual": "Bloqueado correctamente",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-03",
+      "category": "Registro",
+      "name": "Paso 1: email con formato inválido",
+      "expected": "Validación HTML5 bloquea",
+      "actual": "Campo email marcado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-04",
+      "category": "Registro",
+      "name": "Paso 2: DPI con solo 6 dígitos",
+      "expected": "Bloquear avance",
+      "actual": "Bloqueado (DPI inválido)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-05",
+      "category": "Registro",
+      "name": "Paso 2: DPI con caracteres alfabéticos",
+      "expected": "Rechazar formato no numérico",
+      "actual": "Campo no acepta letras o bloquea avance",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-06",
+      "category": "Registro",
+      "name": "Paso 2: DPI válido pero sin foto de documento",
+      "expected": "Bloquear avance (foto requerida)",
+      "actual": "Bloqueado correctamente",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-07",
+      "category": "Registro",
+      "name": "Paso 3: contraseña menor a 8 caracteres",
+      "expected": "Bloquear envío",
+      "actual": "Validación de longitud mínima",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-08",
+      "category": "Registro",
+      "name": "Paso 3: contraseñas no coincidentes",
+      "expected": "Bloquear envío",
+      "actual": "Bloqueado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-09",
+      "category": "Registro",
+      "name": "Paso 3: checkbox de términos sin marcar",
+      "expected": "Botón deshabilitado o envío bloqueado",
+      "actual": "Términos requeridos",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "REG-10",
+      "category": "Registro",
+      "name": "Registro completo exitoso (202 Accepted)",
+      "expected": "Solicitud aceptada",
+      "actual": "Pantalla de confirmación",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ACT-03",
+      "category": "Activación",
+      "name": "Token fabricado/inválido",
+      "expected": "Rechazo con error",
+      "actual": "Activación denegada",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "DASH-01",
+      "category": "Dashboard",
+      "name": "Dashboard de cliente demo",
+      "expected": "Dashboard personalizado",
+      "actual": "Dashboard cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "PROF-01",
+      "category": "Perfil",
+      "name": "Página Mi Perfil",
+      "expected": "Datos del cliente visibles",
+      "actual": "Perfil cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "NOTIF-01",
+      "category": "Notificaciones",
+      "name": "Bandeja de notificaciones del cliente",
+      "expected": "Notificaciones propias",
+      "actual": "Vista cargada",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ACC-01",
+      "category": "Cuentas",
+      "name": "Apertura de cuenta MONETARIA",
+      "expected": "202 + Account ID",
+      "actual": "ID: fb3b3acd-8d7e-4d8b-999c-014d291f115f",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ACC-02",
+      "category": "Cuentas",
+      "name": "Apertura de cuenta AHORRO",
+      "expected": "202 + Account ID",
+      "actual": "Cuenta de ahorro creada",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ACC-03",
+      "category": "Cuentas",
+      "name": "Lista de cuentas del cliente",
+      "expected": "Cuentas MONETARIA y AHORRO visibles",
+      "actual": "Listado cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ACC-04",
+      "category": "Cuentas",
+      "name": "Detalle de cuenta individual",
+      "expected": "Saldo Q0.00, movimientos vacíos",
+      "actual": "Detalle cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TEL-01",
+      "category": "Cajero",
+      "name": "Dashboard del cajero receptor",
+      "expected": "Dashboard de turno",
+      "actual": "Dashboard cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TEL-02",
+      "category": "Cajero",
+      "name": "Cola de validaciones de identidad",
+      "expected": "Lista de pendientes",
+      "actual": "Cola visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TEL-04",
+      "category": "Cajero",
+      "name": "Depósito sin cuenta ni monto",
+      "expected": "Botón Continuar deshabilitado",
+      "actual": "Deshabilitado correctamente",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TEL-05",
+      "category": "Cajero",
+      "name": "Depósito con UUID de formato inválido",
+      "expected": "Formulario bloquea avance",
+      "actual": "Bloqueado (UUID inválido)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TEL-06",
+      "category": "Cajero",
+      "name": "Depósito a cuenta inexistente (API)",
+      "expected": "404 Not Found",
+      "actual": "404",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TEL-07",
+      "category": "Cajero",
+      "name": "Depósito con monto Q0.00",
+      "expected": "Rechazado por INVALID_AMOUNT",
+      "actual": "400",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TEL-08",
+      "category": "Cajero",
+      "name": "Depósito con monto negativo (-Q50)",
+      "expected": "Rechazado",
+      "actual": "400",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TEL-09",
+      "category": "Cajero",
+      "name": "Depósito exitoso de Q5,000.00",
+      "expected": "200 OK + saldo actualizado",
+      "actual": "Comprobante emitido",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-01",
+      "category": "RBAC",
+      "name": "Cajero intenta consultar auditoría",
+      "expected": "403 Forbidden",
+      "actual": "403",
+      "pass": true,
+      "detail": "D-06: cajero sin acceso a auditoría"
+    },
+    {
+      "id": "RBAC-02",
+      "category": "RBAC",
+      "name": "Cajero intenta desactivar cuenta",
+      "expected": "403 Forbidden",
+      "actual": "403",
+      "pass": true,
+      "detail": "D-06: solo ADMINISTRADOR puede cambiar estado"
+    },
+    {
+      "id": "TX-01",
+      "category": "Transferencia",
+      "name": "Transferencia a la misma cuenta (self)",
+      "expected": "SAME_ACCOUNT_TRANSFER",
+      "actual": "400: ",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TX-02",
+      "category": "Transferencia",
+      "name": "Transferencia con monto Q0.00",
+      "expected": "INVALID_AMOUNT",
+      "actual": "400",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TX-03",
+      "category": "Transferencia",
+      "name": "Transferencia con monto negativo",
+      "expected": "Rechazado",
+      "actual": "400",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TX-04",
+      "category": "Transferencia",
+      "name": "Transferencia con fondos insuficientes",
+      "expected": "Saga → FAILED (DEBIT_REJECTED)",
+      "actual": "Estado: FAILED",
+      "pass": true,
+      "detail": "Dinero nunca sale de la cuenta"
+    },
+    {
+      "id": "TX-06",
+      "category": "Transferencia",
+      "name": "Historial de transferencias",
+      "expected": "Lista con COMPLETED y FAILED",
+      "actual": "Historial visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TX-07",
+      "category": "Transferencia",
+      "name": "Monitor de Sagas",
+      "expected": "Sagas con estados visibles",
+      "actual": "Monitor cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "TX-08",
+      "category": "Idempotencia",
+      "name": "Misma Idempotency-Key devuelve mismo transactionId",
+      "expected": "Idempotente (mismo ID)",
+      "actual": "IDs diferentes",
+      "pass": false,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-03",
+      "category": "RBAC",
+      "name": "Acceso anónimo a /api/accounts",
+      "expected": "401",
+      "actual": "401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-04",
+      "category": "RBAC",
+      "name": "Acceso anónimo a /api/transfers",
+      "expected": "401",
+      "actual": "401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-05",
+      "category": "RBAC",
+      "name": "Acceso anónimo a /api/audit/notifications",
+      "expected": "401",
+      "actual": "401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-06",
+      "category": "RBAC",
+      "name": "Cliente accede a cola de validaciones",
+      "expected": "403",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-07",
+      "category": "RBAC",
+      "name": "Cliente intenta auto-depositarse fondos",
+      "expected": "403",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-08",
+      "category": "RBAC",
+      "name": "Cliente intenta desactivar cuenta",
+      "expected": "403",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-09",
+      "category": "RBAC",
+      "name": "Cliente accede a auditoría global",
+      "expected": "403",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-10",
+      "category": "RBAC",
+      "name": "Cliente accede a notificaciones de auditoría",
+      "expected": "403",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-11",
+      "category": "RBAC",
+      "name": "Cajero accede a notificaciones de auditoría",
+      "expected": "403",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-12",
+      "category": "RBAC",
+      "name": "Admin accede a notificaciones de auditoría",
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-13",
+      "category": "RBAC",
+      "name": "Admin lista todas las cuentas",
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-14",
+      "category": "RBAC",
+      "name": "Admin accede a cola de validaciones",
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-15",
+      "category": "RBAC",
+      "name": "Cliente navega a /clientes/validaciones",
+      "expected": "Redirigido o bloqueado",
+      "actual": "Acceso denegado en UI",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-16",
+      "category": "RBAC",
+      "name": "Cliente navega a /cuentas/deposito",
+      "expected": "Redirigido o bloqueado",
+      "actual": "Ventanilla no accesible para cliente",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "RBAC-17",
+      "category": "RBAC",
+      "name": "Cliente navega a /auditoria",
+      "expected": "Redirigido o bloqueado",
+      "actual": "Auditoría no accesible para cliente",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-01",
+      "category": "Admin",
+      "name": "Dashboard administrativo",
+      "expected": "Métricas del sistema",
+      "actual": "Dashboard cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-02",
+      "category": "Admin",
+      "name": "Consulta de auditoría",
+      "expected": "Formulario de consulta por correlationId",
+      "actual": "Módulo cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-03",
+      "category": "Admin",
+      "name": "Bandeja de notificaciones de auditoría",
+      "expected": "Eventos del sistema",
+      "actual": "Bandeja cargada",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-04",
+      "category": "Admin",
+      "name": "Monitor de pagos",
+      "expected": "Lista de pagos procesados",
+      "actual": "Monitor cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-05",
+      "category": "Admin",
+      "name": "Perfil del administrador",
+      "expected": "Datos del admin visibles",
+      "actual": "Perfil cargado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-06",
+      "category": "Admin",
+      "name": "Admin ve todas las cuentas del banco",
+      "expected": "Cuentas de todos los clientes",
+      "actual": "Listado completo",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-07",
+      "category": "Admin",
+      "name": "Admin accede a cola de validaciones",
+      "expected": "Misma cola que el cajero",
+      "actual": "Cola visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-08",
+      "category": "Admin",
+      "name": "Admin puede usar ventanilla de depósito",
+      "expected": "Formulario accesible",
+      "actual": "Ventanilla visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-09",
+      "category": "Admin",
+      "name": "Administración de cuentas",
+      "expected": "Opciones de activar/desactivar",
+      "actual": "Gestión visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "ADM-10",
+      "category": "Recuperación",
+      "name": "Página de recuperación de contraseña",
+      "expected": "Formulario de email",
+      "actual": "Página accesible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "PRIV-01",
+      "category": "Privacidad",
+      "name": "Sin contraseñas en texto claro en auditoría",
+      "expected": "Ninguna contraseña en eventos",
+      "actual": "Redacción verificada",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "PRIV-02",
+      "category": "Idempotencia",
+      "name": "Depósito duplicado con misma Idempotency-Key",
+      "expected": "Mismo movementId sin duplicar saldo",
+      "actual": "Idempotente",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "EDGE-01",
+      "category": "Edge Cases",
+      "name": "Ruta inexistente → página 404",
+      "expected": "Pantalla de error amigable",
+      "actual": "Error.vue renderizado",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "EDGE-02",
+      "category": "Edge Cases",
+      "name": "Cliente intenta ver cuenta ajena",
+      "expected": "FORBIDDEN_ACCOUNT_ACCESS",
+      "actual": "200: ",
+      "pass": false,
+      "detail": ""
+    },
+    {
+      "id": "EDGE-03",
+      "category": "Edge Cases",
+      "name": "Página de nuevo pago de servicio",
+      "expected": "Formulario de pago a biller",
+      "actual": "Página cargada",
+      "pass": true,
+      "detail": ""
+    }
+  ]
 }
