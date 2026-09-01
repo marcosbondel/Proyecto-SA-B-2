@@ -3,21 +3,32 @@
  * The entry point of the Clientes module.
  *
  * It is a set of doors rather than a list, and the reason is worth stating: the
- * Gateway exposes no route that lists or reads customers, so a table here would
- * either be empty forever or be invented. What it can offer is the two commands
- * that do exist — register, update — and a way to reach a specific customer by
- * the identifier a registration hands back.
+ * Gateway reads a customer by id but **lists** none, so a table here would
+ * either be empty forever or be invented. What it can offer is the commands
+ * that do exist — register, update, review an identity — and a way to reach a
+ * specific customer by the number a registration hands back.
+ *
+ * **The doors depend on who is at them.** The module is open to every role,
+ * because the Gateway restricts these routes by *scope* and not by role: a
+ * client may read their own record, which is the whole of what this module is
+ * for them. It used to offer that client "Registrar un cliente" and a lookup
+ * box explaining which route the Gateway does not expose — a teller's task and
+ * a developer's note, on a screen a cuentahabiente opens by accident. So the
+ * cards are filtered here, in the page, which is `docs/FRONTEND.md`'s rule for
+ * exactly this case and leaves the navigation matrix — and its parity with the
+ * Gateway — untouched.
  */
 const { session, role } = useSession();
 
 const customerId = ref('');
 
-/** The Gateway refuses anything that is not a UUID with a `400`. */
-const isValidId = computed(() => /^[0-9a-f-]{36}$/i.test(customerId.value.trim()));
-
-const canValidate = computed(
+/** Staff register other people and open anybody's file; a client does neither. */
+const isStaff = computed(
   () => role.value === 'CAJERO_RECEPTOR' || role.value === 'ADMINISTRADOR',
 );
+
+/** The Gateway refuses anything that is not a UUID with a `400`. */
+const isValidId = computed(() => /^[0-9a-f-]{36}$/i.test(customerId.value.trim()));
 
 async function open(): Promise<void> {
   if (isValidId.value) {
@@ -33,13 +44,16 @@ useHead({ title: 'Clientes · bonking' });
     <header>
       <h1 class="text-[32px] font-bold leading-10 tracking-tight">Clientes</h1>
       <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-        Registro con foto del documento, actualización de datos y estado de la validación de
-        identidad.
+        {{
+          isStaff
+            ? 'Registro con foto del documento, actualización de datos y revisión de identidad.'
+            : 'Tus datos personales y el estado de la revisión de tu documento.'
+        }}
       </p>
     </header>
 
     <div class="grid gap-4 sm:grid-cols-2">
-      <UCard>
+      <UCard v-if="isStaff">
         <h2 class="text-[16px] font-semibold">Registrar un cliente</h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
           Alta en tres pasos con la foto del DPI. El registro dispara el correo de activación:
@@ -53,8 +67,8 @@ useHead({ title: 'Clientes · bonking' });
       <UCard v-if="session">
         <h2 class="text-[16px] font-semibold">Mis datos</h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Actualiza nombre, dirección o fecha de nacimiento. El correo y el username no se
-          modifican.
+          Actualiza tu nombre, tu dirección o tu fecha de nacimiento. El correo y el usuario no
+          se modifican.
         </p>
         <template #footer>
           <UButton :to="`/clientes/${session.customerId}`" variant="outline" color="neutral">
@@ -63,7 +77,7 @@ useHead({ title: 'Clientes · bonking' });
         </template>
       </UCard>
 
-      <UCard v-if="canValidate">
+      <UCard v-if="isStaff">
         <h2 class="text-[16px] font-semibold">Validación de identidad</h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
           Clientes registrados que esperan revisión de su documento.
@@ -75,16 +89,16 @@ useHead({ title: 'Clientes · bonking' });
         </template>
       </UCard>
 
-      <UCard>
-        <h2 class="text-[16px] font-semibold">Abrir una ficha</h2>
+      <UCard v-if="isStaff">
+        <h2 class="text-[16px] font-semibold">Abrir la ficha de un cliente</h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Con el <code class="font-mono">customerId</code> que devolvió un registro. No hay
-          búsqueda: el Gateway no expone una ruta que liste clientes.
+          Con el número de cliente que devolvió su registro. Todavía no hay búsqueda por nombre,
+          así que hay que pedírselo o tomarlo de la cola de validación.
         </p>
         <form class="mt-3 flex gap-2" @submit.prevent="open">
           <UInput
             v-model="customerId"
-            placeholder="00000000-0000-4000-8000-000000000000"
+            placeholder="Pega aquí el número de cliente"
             class="flex-1"
             style="font-variant-numeric: tabular-nums lining-nums"
           />

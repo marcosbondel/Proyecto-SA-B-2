@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AccountSummary } from '../../lib/account';
 import { asyncStateFor } from '../../lib/gateway-error';
-import type { AsyncState } from '../../lib/gateway-error';
+import type { LoadState } from '../../lib/gateway-error';
 import { formatQuetzales, MIN_AMOUNT_MINOR } from '../../lib/money';
 import type { Biller, PaymentKind } from '../../lib/payment';
 
@@ -27,17 +27,28 @@ import type { Biller, PaymentKind } from '../../lib/payment';
  */
 const api = useGatewayApi();
 
+/**
+ * `null` is "nothing chosen yet", and it cannot be `''`.
+ *
+ * A `USelect` item whose value is the empty string never opens: Reka reserves
+ * the empty string for "no selection" and refuses it as an item value. The
+ * failure is silent — the trigger flips `aria-expanded` to `true`, the list
+ * never mounts, and nothing is logged where a form would show it. Both selects
+ * on this screen had it, so **this form has never been usable in a browser**:
+ * neither the account nor the biller could be picked. Found by opening it
+ * (TD-054); `PaymentScenarioSelect` had the right shape all along.
+ */
 const kind = ref<PaymentKind>('EXTERNAL');
-const sourceAccount = ref('');
-const billerCode = ref('');
-const internalTarget = ref('');
+const sourceAccount = ref<string | null>(null);
+const billerCode = ref<string | null>(null);
+const internalTarget = ref<string | null>(null);
 const amountMinor = ref<number | null>(null);
 const reference = ref('');
 const idempotencyKey = ref('');
 
 const accounts = ref<readonly AccountSummary[]>([]);
 const billers = ref<readonly Biller[]>([]);
-const state = ref<AsyncState>('LOADING');
+const state = ref<LoadState>('LOADING');
 const loadFailure = ref<string | null>(null);
 
 const sending = ref(false);
@@ -74,7 +85,7 @@ const source = computed(
 
 const targetAccount = computed(() => {
   if (kind.value === 'INTERNAL') {
-    return internalTarget.value;
+    return internalTarget.value ?? '';
   }
 
   return billers.value.find((biller) => biller.code === billerCode.value)?.accountId ?? '';
@@ -104,7 +115,7 @@ const localProblem = computed(() => {
     return 'El monto es mayor que el saldo disponible de la cuenta de origen.';
   }
 
-  if (kind.value === 'EXTERNAL' && billerCode.value !== '' && reference.value.trim() === '') {
+  if (kind.value === 'EXTERNAL' && billerCode.value !== null && reference.value.trim() === '') {
     return 'El servicio necesita un número de contrato o referencia.';
   }
 
@@ -113,7 +124,7 @@ const localProblem = computed(() => {
 
 const canSend = computed(
   () =>
-    sourceAccount.value !== '' &&
+    sourceAccount.value !== null &&
     targetAccount.value !== '' &&
     targetAccount.value !== sourceAccount.value &&
     amountMinor.value !== null &&
@@ -124,7 +135,7 @@ const canSend = computed(
 );
 
 async function send(): Promise<void> {
-  if (amountMinor.value === null) {
+  if (amountMinor.value === null || sourceAccount.value === null) {
     return;
   }
 
@@ -219,7 +230,7 @@ useHead({ title: 'Nuevo pago · bonking' });
               v-model="sourceAccount"
               class="w-full"
               :items="[
-                { value: '', label: 'Elige una cuenta' },
+                { value: null, label: 'Elige una cuenta' },
                 ...accounts.map((account) => ({
                   value: account.accountId,
                   label: `${account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro'} · ${account.accountId.slice(-10)}`,
@@ -244,7 +255,7 @@ useHead({ title: 'Nuevo pago · bonking' });
               v-model="billerCode"
               class="w-full"
               :items="[
-                { value: '', label: 'Elige un servicio' },
+                { value: null, label: 'Elige un servicio' },
                 ...billers.map((biller) => ({ value: biller.code, label: biller.name })),
               ]"
               value-key="value"
@@ -256,7 +267,7 @@ useHead({ title: 'Nuevo pago · bonking' });
               v-model="internalTarget"
               class="w-full"
               :items="[
-                { value: '', label: 'Elige una cuenta' },
+                { value: null, label: 'Elige una cuenta' },
                 ...internalTargets.map((account) => ({
                   value: account.accountId,
                   label: `${account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro'} · ${account.accountId.slice(-10)}`,
@@ -303,7 +314,8 @@ useHead({ title: 'Nuevo pago · bonking' });
         <ul class="mt-3 flex list-disc flex-col gap-2 pl-4 text-[13px] leading-5 text-[#5A5B63]">
           <li>
             Un pago de servicio es una <strong class="font-semibold">transferencia</strong> a la
-            cuenta recaudadora del prestador. Sigue la misma Saga: débito, pago y acreditación.
+            cuenta recaudadora del prestador, y pasa por los mismos pasos: se descuenta de tu
+            cuenta, se procesa el pago y se acredita al prestador.
           </li>
           <li>
             Si algo falla después del débito, el dinero
@@ -311,8 +323,8 @@ useHead({ title: 'Nuevo pago · bonking' });
             movimientos en el estado de cuenta.
           </li>
           <li>
-            El saldo que se muestra arriba es el de la última consulta. Quien decide si alcanza es
-            Account Service, bajo bloqueo de fila, en el momento del débito.
+            El saldo que se muestra arriba es el de la última consulta. Si alcanza o no se decide
+            en el momento del cobro, no ahora.
           </li>
         </ul>
 

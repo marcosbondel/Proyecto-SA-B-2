@@ -43,7 +43,7 @@ async function copy(value: string, key: string): Promise<void> {
 
     <div class="mt-4 flex flex-col gap-4">
       <div>
-        <p class="text-[11px] uppercase tracking-[0.06em] text-[#75767F]">paymentId</p>
+        <p class="text-[11px] uppercase tracking-[0.06em] text-[#75767F]">Número del pago</p>
         <div class="mt-1 flex items-start gap-2">
           <code
             class="break-all font-mono text-[13px] font-semibold text-[#23242A]"
@@ -54,7 +54,7 @@ async function copy(value: string, key: string): Promise<void> {
             variant="outline"
             color="neutral"
             class="flex-none"
-            :aria-label="copied === 'payment' ? 'Copiado' : 'Copiar paymentId'"
+            :aria-label="copied === 'payment' ? 'Copiado' : 'Copiar el número del pago'"
             @click="copy(paymentId, 'payment')"
           >{{ copied === 'payment' ? 'Copiado' : 'Copiar' }}</UButton>
         </div>
@@ -72,7 +72,7 @@ async function copy(value: string, key: string): Promise<void> {
             variant="outline"
             color="neutral"
             class="flex-none"
-            :aria-label="copied === 'transaction' ? 'Copiado' : 'Copiar transactionId'"
+            :aria-label="copied === 'transaction' ? 'Copiado' : 'Copiar el número de la transferencia'"
             @click="copy(transactionId, 'transaction')"
           >{{ copied === 'transaction' ? 'Copiado' : 'Copiar' }}</UButton>
         </div>
@@ -81,7 +81,7 @@ async function copy(value: string, key: string): Promise<void> {
       <div v-if="correlationId">
         <SharedCorrelationIdBadge
           :correlation-id="correlationId"
-          label="correlationId de origen"
+          label="Código de seguimiento de origen"
         />
       </div>
 

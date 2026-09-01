@@ -77,7 +77,7 @@ useHead({ title: 'Ficha de cliente · bonking' });
         {{ isMe ? 'Mi perfil' : 'Ficha de cliente' }}
       </h1>
       <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-        Datos administrados por Customer Service.
+        Datos personales, estado de la cuenta y revisión del documento.
       </p>
     </header>
 
@@ -89,7 +89,7 @@ useHead({ title: 'Ficha de cliente · bonking' });
           <h2 class="text-[14px] font-semibold">Validación de identidad</h2>
 
           <div class="mt-4">
-            <IdentityStatusBadge v-if="identityStatus" :status="identityStatus" explain />
+            <CustomerIdentityStatusBadge v-if="identityStatus" :status="identityStatus" explain />
 
             <p v-else class="text-[13px] leading-5 text-[#5A5B63]" data-testid="identity-unknown">
               {{
@@ -101,7 +101,7 @@ useHead({ title: 'Ficha de cliente · bonking' });
           </div>
 
           <div class="mt-5 border-t border-[#E9E9EC] pt-5">
-            <div class="text-[12px] text-[#75767F]">customerId</div>
+            <div class="text-[12px] text-[#75767F]">Número de cliente</div>
             <div
               class="break-all font-mono text-[12px] font-medium text-[#23242A]"
               style="font-variant-numeric: tabular-nums lining-nums"
@@ -109,7 +109,7 @@ useHead({ title: 'Ficha de cliente · bonking' });
           </div>
 
           <div v-if="username" class="mt-4">
-            <div class="text-[12px] text-[#75767F]">Username</div>
+            <div class="text-[12px] text-[#75767F]">Usuario</div>
             <div
               class="text-[13px] font-semibold text-[#23242A]"
               style="font-variant-numeric: tabular-nums lining-nums"

@@ -188,7 +188,7 @@ useHead({ title: 'Gestión de cuentas · bonking' });
     >
       <template #description>
         <p class="text-[13px] leading-5">
-          El proceso automático de Account Service desactiva las cuentas que llevan seis meses
+          El proceso automático del banco desactiva las cuentas que llevan seis meses
           sin movimientos con saldo menor a Q 50.00. Estas cumplen ya la condición de saldo; se
           desactivarán al cumplir también la de tiempo.
         </p>

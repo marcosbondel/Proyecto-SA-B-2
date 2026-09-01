@@ -96,12 +96,13 @@ describe('which failures the session layer swallows', () => {
 });
 
 describe('which state the alert draws', () => {
-  test('maps the five asynchronous outcomes to themselves', () => {
+  test('maps six asynchronous outcomes to themselves', () => {
     for (const type of [
       'VALIDATION_ERROR',
       'BUSINESS_REJECTION',
       'REPLY_TIMEOUT',
       'BROKER_UNAVAILABLE',
+      'FORBIDDEN',
       'INTERNAL_ERROR',
     ]) {
       assert.equal(asyncStateFor(normaliseError({ data: { type } })), type, type);
@@ -109,9 +110,18 @@ describe('which state the alert draws', () => {
   });
 
   test('never asks the alert to draw a session failure', () => {
-    // The session layer intercepts these: "your session ended" and "the bank
-    // refused this" are not the same news and must not look alike.
+    // UNAUTHENTICATED alone is the session boundary: `useGatewayApi`
+    // intercepts it and ends the session before any screen sees it, so
+    // "your session ended" and "the bank refused this" never look alike.
     assert.equal(asyncStateFor(normaliseError({ data: { type: 'UNAUTHENTICATED' } })), 'INTERNAL_ERROR');
-    assert.equal(asyncStateFor(normaliseError({ data: { type: 'FORBIDDEN' } })), 'INTERNAL_ERROR');
+  });
+
+  /**
+   * A 403 is a role rule the system enforced correctly, not a system failure —
+   * folding it into INTERNAL_ERROR would title it "Ocurrió un error
+   * inesperado", which is false. It draws its own honest state instead.
+   */
+  test('gives a role rejection its own state, distinct from an unexpected failure', () => {
+    assert.equal(asyncStateFor(normaliseError({ data: { type: 'FORBIDDEN' } })), 'FORBIDDEN');
   });
 });

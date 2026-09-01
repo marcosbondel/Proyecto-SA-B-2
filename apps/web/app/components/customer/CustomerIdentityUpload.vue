@@ -38,8 +38,8 @@ function showPreview(candidate: File | null): void {
 }
 
 /** What the person actually picked, kept out of the model until it is valid. */
-function onChange(chosen: File | File[] | null): void {
-  const candidate = Array.isArray(chosen) ? (chosen[0] ?? null) : chosen;
+function onChange(chosen: File | File[] | null | undefined): void {
+  const candidate = Array.isArray(chosen) ? (chosen[0] ?? null) : (chosen ?? null);
 
   if (candidate === null) {
     file.value = null;

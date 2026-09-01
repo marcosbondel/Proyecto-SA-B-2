@@ -44,7 +44,7 @@ const remaining = computed(() => {
         <strong style="font-variant-numeric: tabular-nums lining-nums">
           {{ formatQuetzales(account.balance.amountMinor) }}</strong>. Al cumplir
         {{ INACTIVITY_MONTHS }} meses inactiva con saldo menor a
-        <strong>Q 50.00</strong>, el proceso automático de Account Service la desactivará.
+        <strong>Q 50.00</strong>, el banco la desactivará automáticamente.
         {{ remaining }}
       </p>
       <p class="mt-2 text-[13px] leading-5">

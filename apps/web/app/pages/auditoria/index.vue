@@ -141,8 +141,7 @@ useHead({ title: 'Auditoría · bonking' });
       <div>
         <h1 class="text-[32px] font-bold leading-10 tracking-tight">Auditoría de eventos</h1>
         <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-          Notification &amp; Audit Service · el rastro completo de una operación, por su
-          identificador de correlación.
+          El rastro completo de una operación, por su código de seguimiento.
         </p>
       </div>
       <UButton to="/auditoria/notificaciones" variant="outline" color="neutral">
@@ -166,7 +165,7 @@ useHead({ title: 'Auditoría · bonking' });
       class="rounded-2xl border border-dashed border-[#C6C6CC] bg-white px-8 py-14 text-center"
       data-testid="audit-idle"
     >
-      <h2 class="text-[20px] font-semibold leading-7">Ingresá un identificador de correlación</h2>
+      <h2 class="text-[20px] font-semibold leading-7">Ingresa un código de seguimiento</h2>
       <p class="mx-auto mt-2 max-w-[520px] text-[14px] leading-5 text-[#5A5B63]">
         Cada operación del sistema —un registro, una transferencia, un pago— lleva un
         identificador que la acompaña por los cinco servicios. Con él, esta pantalla arma la
@@ -212,7 +211,7 @@ useHead({ title: 'Auditoría · bonking' });
             v-if="asked"
             class="ml-auto"
             :correlation-id="asked"
-            label="correlationId consultado"
+            label="Código de seguimiento consultado"
           />
         </div>
 
@@ -269,7 +268,7 @@ useHead({ title: 'Auditoría · bonking' });
         <p class="mx-auto mt-2 max-w-[520px] text-[14px] leading-5 text-[#5A5B63]">
           Puede significar tres cosas y el sistema no las distingue: que la operación nunca
           existió, que todavía está en curso, o que el servicio de auditoría estaba caído
-          cuando pasó. Si acabás de enviar la operación, esperá unos segundos y volvé a
+          cuando pasó. Si acabas de enviar la operación, espera unos segundos y vuelve a
           consultar.
         </p>
         <UButton

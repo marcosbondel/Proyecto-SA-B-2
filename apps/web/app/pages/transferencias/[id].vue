@@ -61,8 +61,6 @@ const shownCorrelation = computed(
   () => transfer.value?.originCorrelationId ?? correlationId.value,
 );
 
-const reason = computed(() => explainReason(transfer.value?.reason ?? null));
-
 /**
  * Whether to offer the audit trail of this transfer.
  *
@@ -72,8 +70,14 @@ const reason = computed(() => explainReason(transfer.value?.reason ?? null));
  * The identifier is on screen for everybody either way (`SharedCorrelationIdBadge`),
  * which is what makes the restriction a difference in convenience rather than
  * in what somebody is told. Added by T-20.
+ *
+ * The same boolean also decides what `explainReason`'s fallback tells somebody
+ * to do next: a `CLIENTE` cannot follow "consulta la auditoría" any more than
+ * they can follow this button.
  */
 const mayAudit = computed(() => mayQueryAudit(role.value));
+
+const reason = computed(() => explainReason(transfer.value?.reason ?? null, mayAudit.value));
 
 const finished = computed(
   () => transfer.value !== null && isTerminal(transfer.value.status),
@@ -199,7 +203,7 @@ useHead({ title: 'Transferencia · bonking' });
     <SharedAsyncStateAlert
       v-if="malformed"
       state="VALIDATION_ERROR"
-      message="Ese identificador no es un UUID v4, así que no se envió ninguna consulta. Abre la transferencia desde el enlace que te dio el envío."
+      message="Ese número no tiene el formato correcto, así que no se envió ninguna consulta. Abre la transferencia desde el enlace que te dio el envío."
     />
 
     <template v-else>
@@ -260,6 +264,7 @@ useHead({ title: 'Transferencia · bonking' });
         <PaymentResultPanel
           :payment="transfer.payment ?? null"
           :detail-to="paymentDetailTo"
+          :may-query-audit="mayAudit"
         />
       </template>
 
@@ -308,7 +313,7 @@ useHead({ title: 'Transferencia · bonking' });
       <SharedCorrelationIdBadge
         v-if="shownCorrelation"
         :correlation-id="shownCorrelation"
-        label="correlationId de la transferencia"
+        label="Código de seguimiento de la transferencia"
       />
     </template>
   </section>

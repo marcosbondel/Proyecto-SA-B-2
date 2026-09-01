@@ -91,7 +91,7 @@ describe('what a transfer must satisfy before anything is sent', () => {
   test('does not report equality when neither account is an identifier yet', () => {
     const problems = transferProblems({ sourceAccount: '', targetAccount: '', amountMinor: 1 });
 
-    assert.equal(problems.targetAccount, 'Escribe el accountId de la cuenta de destino. Es un UUID de 36 caracteres.');
+    assert.equal(problems.targetAccount, 'Indica la cuenta que va a recibir el dinero.');
   });
 });
 
@@ -253,7 +253,7 @@ describe('what a person is told', () => {
     assert.match(STATUS_PRESENTATION.FAILED.explanation, /nunca salió/i);
   });
 
-  test('translates every failure code a transfer can carry', () => {
+  test('translates every failure code a transfer can carry, for a reader who may consult the trail', () => {
     const codes = [
       'INSUFFICIENT_FUNDS',
       'ACCOUNT_INACTIVE',
@@ -268,7 +268,10 @@ describe('what a person is told', () => {
 
     for (const code of codes) {
       assert.equal(typeof FAILURE_REASON_TEXT[code], 'string');
-      assert.equal(explainReason(code), FAILURE_REASON_TEXT[code]);
+      // A known code says the same thing regardless of who is reading it —
+      // only the *fallback* for an unknown one depends on that.
+      assert.equal(explainReason(code, true), FAILURE_REASON_TEXT[code]);
+      assert.equal(explainReason(code, false), FAILURE_REASON_TEXT[code]);
     }
   });
 
@@ -277,14 +280,30 @@ describe('what a person is told', () => {
    * raw code to a customer teaches them nothing.
    */
   test('falls back rather than showing a code nobody can read', () => {
-    const fallback = explainReason('SOMETHING_NOBODY_HAS_WRITTEN_YET');
+    const fallback = explainReason('SOMETHING_NOBODY_HAS_WRITTEN_YET', true);
 
     assert.equal(fallback.includes('SOMETHING_NOBODY'), false);
-    assert.match(fallback, /correlación/);
+    // It has to point somewhere, and the pointer is the tracking code — named
+    // in the words the screens use, not as "identificador de correlación".
+    assert.match(fallback, /código de seguimiento/);
   });
 
-  test('says nothing when there is nothing to explain', () => {
-    assert.equal(explainReason(null), null);
+  /**
+   * `GET /api/audit` is `ADMINISTRADOR` only (D-06). Telling a `CLIENTE` to
+   * "consulta el rastro de auditoría" points them at a route that answers
+   * `403`, so the fallback's advice has to change with who can act on it.
+   */
+  test('does not send someone who cannot query the audit trail toward it', () => {
+    const fallback = explainReason('SOMETHING_NOBODY_HAS_WRITTEN_YET', false);
+
+    assert.doesNotMatch(fallback, /rastro de auditoría/);
+    assert.match(fallback, /código de seguimiento/);
+    assert.match(fallback, /reportarlo|repórtalo/);
+  });
+
+  test('says nothing when there is nothing to explain, whoever is asking', () => {
+    assert.equal(explainReason(null, true), null);
+    assert.equal(explainReason(null, false), null);
   });
 });
 
@@ -296,12 +315,21 @@ describe('the demonstration scenarios', () => {
     );
   });
 
-  test('explains what each one does to the saga', () => {
+  test('explains what each one does to the saga, without the enum', () => {
     for (const scenario of PAYMENT_SCENARIOS) {
       assert.equal(scenario.description.length > 20, true);
+
+      /*
+       * The same states this control describes are rendered two cards away as
+       * "Completada" and "Compensada", so naming them here as `COMPLETED` and
+       * `COMPENSATED` made one screen say it both ways — to a customer, in a
+       * language they do not read.
+       */
+      assert.doesNotMatch(scenario.description, /COMPLETED|COMPENSATED|PAYMENT_PENDING/);
     }
 
-    assert.match(PAYMENT_SCENARIOS[1].description, /COMPENSATED/);
+    // The rejection still has to say the money comes back.
+    assert.match(PAYMENT_SCENARIOS[1].description, /compensada/);
   });
 });
 
