@@ -13,6 +13,7 @@ import { CommandsUseCase } from './application/routes/commands.use-case';
 import { ChangePasswordUseCase } from './application/routes/change-password.use-case';
 import { DepositUseCase } from './application/routes/deposit.use-case';
 import { DashboardUseCase } from './application/routes/dashboard.use-case';
+import { IdentityDocumentUseCase } from './application/routes/identity-document.use-case';
 import { LoginUseCase } from './application/routes/login.use-case';
 import { MarkNotificationsReadUseCase } from './application/routes/mark-read.use-case';
 import { PasswordResetUseCase } from './application/routes/password-reset.use-case';
@@ -38,6 +39,7 @@ import { JwtGuard, SESSION_VERIFIER } from './interfaces/guards/jwt.guard';
 import { RolesGuard } from './interfaces/guards/roles.guard';
 import { BROKER_HEALTH, HealthController } from './interfaces/health.controller';
 import { CorrelationMiddleware } from './interfaces/middleware/correlation.middleware';
+import { validationExceptionFactory } from './interfaces/validation';
 
 /** Everything with a lifecycle, so `main.ts` can start and stop it in order. */
 export interface GatewayRuntime {
@@ -111,6 +113,7 @@ export class AppModule implements NestModule {
         ChangePasswordUseCase,
         DepositUseCase,
         DashboardUseCase,
+        IdentityDocumentUseCase,
         LoginUseCase,
         MarkNotificationsReadUseCase,
         PasswordResetUseCase,
@@ -131,6 +134,7 @@ export class AppModule implements NestModule {
             whitelist: true,
             forbidNonWhitelisted: true,
             transform: true,
+            exceptionFactory: validationExceptionFactory,
           }),
         },
         { provide: BROKER_HEALTH, useValue: { isConnected: () => broker.isConnected() } },

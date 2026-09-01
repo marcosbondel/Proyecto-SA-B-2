@@ -19,10 +19,12 @@ import type {
   ReplyWaiterPort,
 } from '../../src/application/ports';
 import { GatewayError } from '../../src/application/errors/gateway-error';
+import type { ReplyKind } from '../../src/application/errors/gateway-error';
 import { CommandsUseCase } from '../../src/application/routes/commands.use-case';
 import { ChangePasswordUseCase } from '../../src/application/routes/change-password.use-case';
 import { DepositUseCase } from '../../src/application/routes/deposit.use-case';
 import { DashboardUseCase } from '../../src/application/routes/dashboard.use-case';
+import { IdentityDocumentUseCase } from '../../src/application/routes/identity-document.use-case';
 import { LoginUseCase } from '../../src/application/routes/login.use-case';
 import { MarkNotificationsReadUseCase } from '../../src/application/routes/mark-read.use-case';
 import { PasswordResetUseCase } from '../../src/application/routes/password-reset.use-case';
@@ -35,6 +37,7 @@ import { JwtGuard, SESSION_VERIFIER } from '../../src/interfaces/guards/jwt.guar
 import { RolesGuard } from '../../src/interfaces/guards/roles.guard';
 import { BROKER_HEALTH } from '../../src/interfaces/health.controller';
 import { CorrelationMiddleware } from '../../src/interfaces/middleware/correlation.middleware';
+import { validationExceptionFactory } from '../../src/interfaces/validation';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 
@@ -110,9 +113,9 @@ export class ScriptedReplier implements ReplyWaiterPort {
     this.#timeout = true;
   }
 
-  public waitFor(correlationId: string): Promise<MessageEnvelope<unknown>> {
+  public waitFor(correlationId: string, kind?: ReplyKind): Promise<MessageEnvelope<unknown>> {
     if (this.#timeout) {
-      return Promise.reject(GatewayError.replyTimeout());
+      return Promise.reject(GatewayError.replyTimeout(kind));
     }
 
     const scripted = this.#queue.shift();
@@ -140,6 +143,8 @@ export class ScriptedReplier implements ReplyWaiterPort {
 export class FakeObjectStorage implements ObjectStoragePort {
   public readonly stored: PhotoUpload[] = [];
   public fail = false;
+  /** What `get` hands back for a given key, so a test can script a document. */
+  public readonly objects = new Map<string, Buffer>();
 
   public put(upload: PhotoUpload): Promise<PhotoReference> {
     if (this.fail) {
@@ -154,6 +159,18 @@ export class FakeObjectStorage implements ObjectStoragePort {
       sizeBytes: upload.bytes.byteLength,
       sha256: 'a'.repeat(64),
     });
+  }
+
+  public get(objectKey: string): Promise<Buffer> {
+    if (this.fail) {
+      return Promise.reject(GatewayError.internal('No se pudo leer la imagen del documento.'));
+    }
+
+    const content = this.objects.get(objectKey);
+
+    return content === undefined
+      ? Promise.reject(GatewayError.internal('No se pudo leer la imagen del documento.'))
+      : Promise.resolve(content);
   }
 }
 
@@ -194,6 +211,7 @@ export async function buildHarness(
       ChangePasswordUseCase,
       DepositUseCase,
       DashboardUseCase,
+      IdentityDocumentUseCase,
       LoginUseCase,
       MarkNotificationsReadUseCase,
       PasswordResetUseCase,
@@ -216,6 +234,7 @@ export async function buildHarness(
           whitelist: true,
           forbidNonWhitelisted: true,
           transform: true,
+          exceptionFactory: validationExceptionFactory,
         }),
       },
     ],
