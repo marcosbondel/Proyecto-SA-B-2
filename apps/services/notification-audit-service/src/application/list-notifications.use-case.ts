@@ -1,4 +1,5 @@
 import { notificationListRepliedV1 } from '@bank/contracts';
+import type { Identity } from '@bank/contracts';
 
 import type { AuditRepository, NotificationFilter, ReplyPublisher } from './ports';
 
@@ -7,6 +8,13 @@ const DEFAULT_LIMIT = 50;
 
 /**
  * "What has the bank told people?" — the operational listing.
+ *
+ * `ADMINISTRADOR` only, matching D-06 and `GetAuditStatsUseCase`: this console
+ * carries the simulated recipient of every delivery in the system, which is
+ * exactly the field `ReadInboxUseCase` refuses to show anybody but its owner.
+ * Checked here rather than left to the Gateway alone, for the same reason
+ * `GetAuditStatsUseCase` checks it — a message on `audit.query` answers
+ * whoever put it on the queue.
  *
  * Separate from the audit trail rather than a filter on it, because the two
  * answer different questions and the difference shows up in what they carry.
@@ -29,7 +37,15 @@ export class ListNotificationsUseCase {
     this.#publisher = dependencies.publisher;
   }
 
-  public async execute(filter: NotificationFilter): Promise<void> {
+  public async execute(filter: NotificationFilter, identity: Identity | null): Promise<void> {
+    if (identity?.role !== 'ADMINISTRADOR') {
+      await this.#publisher.reply({
+        messageType: notificationListRepliedV1.name,
+        payload: { notifications: [], omitted: 0 },
+      });
+      return;
+    }
+
     const page = await this.#repository.listNotifications({
       ...filter,
       limit: filter.limit ?? DEFAULT_LIMIT,
