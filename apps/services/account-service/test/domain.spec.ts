@@ -163,6 +163,19 @@ describe('compensating', () => {
     expect(moved.reactivated).toBe(false);
     expect(moved.account.status).toBe('INACTIVE');
   });
+
+  /**
+   * The debit this compensation reverses already moved the clock, at the
+   * moment the customer asked for the transfer. The compensation itself is the
+   * bank undoing its own failed payment attempt, not the customer coming back
+   * — so it must not extend the inactivity deadline a second time.
+   */
+  it('does not refresh the inactivity clock — a correction is not activity', () => {
+    const EARLIER = new Date('2026-01-15T09:00:00.000Z');
+    const moved = compensate(account({ lastActivityAt: EARLIER }), quetzales(2_500), NOW);
+
+    expect(moved.account.lastActivityAt).toEqual(EARLIER);
+  });
 });
 
 /**

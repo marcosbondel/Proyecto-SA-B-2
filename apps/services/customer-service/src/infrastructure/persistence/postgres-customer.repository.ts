@@ -271,10 +271,33 @@ export class PostgresCustomerRepository implements CustomerRepository {
     readonly idempotency: ProcessedMessage;
   }): Promise<void> {
     await this.#inTransaction(async (client) => {
-      await client.query(
-        'UPDATE customers SET identity_status = $2, updated_at = $3 WHERE customer_id = $1',
-        [input.customer.customerId, input.customer.identityStatus, input.customer.updatedAt],
+      /**
+       * The same optimistic guard `saveUpdate` uses, and for the same reason:
+       * this verdict was decided against `input.customer.version`, and two
+       * verdicts read from that same version — a teller's manual call racing
+       * the automatic re-check, or two redeliveries — must not both land. The
+       * loser matches no row here, the whole transaction (idempotency record
+       * included) rolls back, and the broker's redelivery re-reads fresh: it
+       * either applies cleanly or finds the identity already terminal and is
+       * ignored by the domain, never both writing and both publishing.
+       */
+      const written = await client.query(
+        `UPDATE customers
+            SET identity_status = $2, updated_at = $3, version = version + 1
+          WHERE customer_id = $1 AND version = $4`,
+        [
+          input.customer.customerId,
+          input.customer.identityStatus,
+          input.customer.updatedAt,
+          input.customer.version,
+        ],
       );
+
+      if (written.rowCount === 0) {
+        throw new Error(
+          `concurrent identity verdict on customer ${input.customer.customerId} at version ${input.customer.version}`,
+        );
+      }
 
       if (input.document !== null) {
         await this.#insertDocument(client, input.customer.customerId, input.document);
@@ -499,6 +522,32 @@ export class PostgresCustomerRepository implements CustomerRepository {
     return (found.rowCount ?? 0) > 0;
   }
 
+  public async findLatestIdentityDocument(customerId: string): Promise<{
+    readonly mimeType: string;
+    readonly sizeBytes: number;
+    readonly sha256: string;
+    readonly content: Buffer;
+  } | null> {
+    const found = await this.#pool.query<{
+      mime_type: string;
+      size_bytes: number;
+      sha256: string;
+      content: Buffer;
+    }>(
+      `SELECT mime_type, size_bytes, sha256, content FROM identity_documents
+        WHERE customer_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [customerId],
+    );
+
+    const row = found.rows[0];
+
+    return row === undefined
+      ? null
+      : { mimeType: row.mime_type, sizeBytes: row.size_bytes, sha256: row.sha256, content: row.content };
+  }
+
   public async stats(): Promise<{
     readonly registered: number;
     readonly pendingValidation: number;
@@ -509,9 +558,24 @@ export class PostgresCustomerRepository implements CustomerRepository {
       pending_validation: string;
       activated_today: string;
     }>(
+      /**
+       * "Today" means Guatemala's calendar day, not the container's.
+       *
+       * A bare `::date` cast resolves against the session's timezone, which is
+       * UTC here. Between 18:00 and midnight local time (UTC-6, no DST) that is
+       * already tomorrow in Guatemala, so this would count the wrong day's
+       * activations — informational only, but exactly the number a demo run in
+       * the evening would show as zero for no reason anyone could see.
+       * `AT TIME ZONE` converts to Guatemala's wall clock before the date is
+       * taken, on both sides, so the answer stops depending on the container's
+       * clock — see also `postgres-account.repository.ts#stats`.
+       */
       `SELECT COUNT(*)::TEXT AS registered,
               COUNT(*) FILTER (WHERE identity_status = 'PENDING')::TEXT AS pending_validation,
-              COUNT(*) FILTER (WHERE email_verified_at::date = CURRENT_DATE)::TEXT AS activated_today
+              COUNT(*) FILTER (
+                WHERE (email_verified_at AT TIME ZONE 'America/Guatemala')::date
+                    = (now() AT TIME ZONE 'America/Guatemala')::date
+              )::TEXT AS activated_today
          FROM customers`,
     );
 
