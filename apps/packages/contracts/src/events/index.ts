@@ -20,6 +20,8 @@ import { customerEmailVerificationRejectedV1 } from './customer/customer.email.v
 import { customerEmailVerifiedV1 } from './customer/customer.email.verified.v1';
 import { customerGetQueryV1 } from './customer/customer.get.query.v1';
 import { customerGetRepliedV1 } from './customer/customer.get.replied.v1';
+import { customerIdentityDocumentQueryV1 } from './customer/customer.identity-document.query.v1';
+import { customerIdentityDocumentRepliedV1 } from './customer/customer.identity-document.replied.v1';
 import { customerPasswordResetCompletedV1 } from './customer/customer.password-reset.completed.v1';
 import { customerPasswordResetConfirmV1 } from './customer/customer.password-reset.confirm.v1';
 import { customerPasswordResetIssuedV1 } from './customer/customer.password-reset.issued.v1';
@@ -105,6 +107,8 @@ export * from './customer/customer.email.verification.rejected.v1';
 export * from './customer/customer.email.verified.v1';
 export * from './customer/customer.get.query.v1';
 export * from './customer/customer.get.replied.v1';
+export * from './customer/customer.identity-document.query.v1';
+export * from './customer/customer.identity-document.replied.v1';
 export * from './customer/customer.password-reset.completed.v1';
 export * from './customer/customer.password-reset.confirm.v1';
 export * from './customer/customer.password-reset.issued.v1';
@@ -214,6 +218,8 @@ export const catalog: readonly MessageContract[] = [
   customerValidateIdentityV1,
   customerGetQueryV1,
   customerGetRepliedV1,
+  customerIdentityDocumentQueryV1,
+  customerIdentityDocumentRepliedV1,
   customerChangePasswordV1,
   customerPasswordChangedV1,
   customerPasswordChangeRejectedV1,

@@ -70,12 +70,22 @@ export const transferRequestedV1 = defineContract({
        */
       reference: z.string().trim().min(1).max(60).optional(),
     })
+    /*
+     * These two messages are in Spanish, and they are the only strings in this
+     * package that have to be: the Gateway revalidates the payload against this
+     * schema before publishing and passes the first message straight to the
+     * browser, so `T-2` was reaching customers as "source and target accounts
+     * must differ (T-2)". The criterion each one enforces stays here, in the
+     * comment, where it traces without being read aloud to a person.
+     */
+    // T-1: the amount must be positive.
     .refine((value) => value.amount.amountMinor > 0, {
-      message: 'amount must be greater than zero (T-1)',
+      message: 'El monto debe ser mayor que cero.',
       path: ['amount', 'amountMinor'],
     })
+    // T-2: a transfer must move money between two different accounts.
     .refine((value) => value.sourceAccount !== value.targetAccount, {
-      message: 'source and target accounts must differ (T-2)',
+      message: 'La cuenta de destino debe ser distinta de la de origen.',
       path: ['targetAccount'],
     }),
 });

@@ -34,7 +34,14 @@ export const accountDepositV1 = defineContract({
      * and this field is not on that list, so anything typed here is stored as
      * written. The interface says so.
      */
-    description: z.string().trim().min(1).max(140).optional(),
+    // Spanish for the same reason as `customer.register.v1`: a description of
+    // only spaces passes the DTO and fails here, and the message is shown.
+    description: z
+      .string()
+      .trim()
+      .min(1, 'La descripción no puede quedar en blanco.')
+      .max(140)
+      .optional(),
   }),
 });
 
