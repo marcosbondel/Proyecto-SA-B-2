@@ -9,8 +9,8 @@
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#F6F6F7] text-[#23242A] antialiased">
-    <div class="mx-auto flex min-h-screen max-w-[440px] flex-col justify-center px-4 py-12">
+  <div class="flex min-h-screen w-full items-center justify-center bg-[#F6F6F7] text-[#23242A] antialiased">
+    <div class="flex w-full max-w-[440px] flex-col justify-center px-4 py-12">
       <header class="mb-8 flex items-center gap-3">
         <!-- Lacquered obsidian: the one lit object against a matte field. -->
         <SharedBrandMark :size="36" />

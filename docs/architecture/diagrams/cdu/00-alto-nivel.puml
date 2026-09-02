@@ -15,6 +15,7 @@ skinparam actor {
     FontColor #398819
 }
 
+' Actores primarios (iniciadores humanos del negocio)
 actor "Visitante / Cliente" as cliente
 actor "Cajero Receptor" as cajero
 actor "Administrador" as admin
@@ -23,9 +24,16 @@ rectangle "Bank USAC\nSistema bancario" as bank {
     usecase "CDU000:\nGestionar operaciones bancarias" as core
 }
 
+' Actores secundarios (sistemas externos de soporte)
+actor "Proveedor de Pagos" as proveedorPagos
+actor "Servicio de Correo" as correo
+
 cliente -- core
 cajero -- core
 admin -- core
+
+core -- proveedorPagos
+core -- correo
 
 note right of core
     Núcleo funcional del sistema.
@@ -35,7 +43,8 @@ end note
 
 legend right
     |= Elemento |= Significado |
-    | Actor | Rol que persigue un objetivo del sistema |
+    | Actor (Izquierda) | Actor primario: rol humano que inicia operaciones |
+    | Actor (Derecha) | Actor secundario: sistema externo de apoyo/notificación |
     | Caso de uso | Objetivo observable en el nivel de negocio |
     | Rectángulo | Límite del sistema Bank USAC |
 endlegend
