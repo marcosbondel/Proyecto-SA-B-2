@@ -18,17 +18,16 @@ Fuentes de diagramación versionadas (ADR-013):
 
 La Saga se ejecuta a través de RabbitMQ mediante intercambio de comandos y eventos entre `Transaction Service`, `Account Service` y `Payment Service`:
 
+```mermaid
+flowchart TD
+    GW["API Gateway"] -->|POST /api/transfers| TS["Transaction Service<br/>(Inicia Saga: PENDING)"]
+    TS -->|Publica comandos y eventos| RMQ{{"Message Broker<br/>(RabbitMQ: bank.commands)"}}
+
+    RMQ -->|account.debit.requested.v1| AS["Account Service<br/>(Débito / Crédito / Compensación)"]
+    RMQ -->|payment.requested.v1| PS["Payment Service<br/>(Cobro / Reintentos escalonados)"]
+    RMQ -->|Eventos de auditoría| NAS["Notification & Audit Service<br/>(Auditoría inmutable y buzón)"]
 ```
-[Gateway] ── POST /transfers ──> [Transaction Service]
-                                      │ (Inicia Saga: PENDING)
-                                      ▼
-                                 [RabbitMQ]
-                                      │
-              ┌───────────────────────┼───────────────────────┐
-              ▼                       ▼                       ▼
-      [Account Service]      [Payment Service]    [Notification & Audit]
-     (Débito / Crédito)      (Cobro / Reintentos)   (Auditoría inmutable)
-```
+
 
 ### Camino 1: Transferencia Exitosa (Happy Path)
 1. **Inicio**: El cliente ordena transferir fondos. El Gateway responde `202 Accepted` de inmediato.

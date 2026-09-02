@@ -19,18 +19,22 @@ Fuentes de diagramación versionadas (ADR-013):
 
 Cada servicio de dominio está estructurado internamente en cuatro capas estrictas con control de dependencias unidireccional hacia el núcleo:
 
+```mermaid
+flowchart TD
+    subgraph Microservicio ["Arquitectura Hexagonal / Clean Architecture"]
+        direction TB
+        INT["Interfaces<br/>(Controllers / Consumers / Handlers)"]
+        APP["Application<br/>(Use Cases / Sagas / Orchestrators)"]
+        DOM["Domain (Núcleo Puro de Negocio)<br/>(Entities / Value Objects / Domain Events)"]
+        INF["Infrastructure<br/>(Repositories / Broker Adapters / Schedulers)"]
+
+        INT -->|Llama casos de uso| APP
+        APP -->|Ejecuta lógica pura| DOM
+        INF -.->|Implementa puertos de| DOM
+        INF -.->|Inyectado como dependencias en| APP
+    end
 ```
-Interfaces (Controllers / Consumers)
-    │
-    ▼
-Application (Use Cases / Sagas)
-    │
-    ▼
-Domain (Entities / Value Objects / Domain Events)
-    ▲
-    │
-Infrastructure (Repositories / Broker Adapters / Schedulers)
-```
+
 
 1. **Domain (`domain/`)**:
    * Núcleo puro de negocio, independiente de frameworks, bases de datos o transporte.
