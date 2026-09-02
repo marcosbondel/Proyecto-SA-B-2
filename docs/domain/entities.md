@@ -142,12 +142,19 @@ case, a transfer failing at the last step for a reason the sender can neither kn
 
 ### States
 
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING
+    PENDING --> DEBITING
+    DEBITING --> FAILED: Debit rejected (nothing to undo)
+    DEBITING --> PAYMENT_PENDING: Debit applied
+    PAYMENT_PENDING --> COMPLETED: Credit applied
+    PAYMENT_PENDING --> COMPENSATED: Payment failed or credit rejected
+    COMPLETED --> [*]
+    FAILED --> [*]
+    COMPENSATED --> [*]
 ```
-PENDING ──► DEBITING ──► PAYMENT_PENDING ──► COMPLETED
-               │                │
-               │                └──► COMPENSATED   (payment failed, or credit rejected)
-               └──► FAILED                          (debit rejected: nothing to undo)
-```
+
 
 `COMPLETED`, `FAILED` and `COMPENSATED` are terminal. Any transition not drawn above is illegal
 and is discarded.
