@@ -1,0 +1,52 @@
+erDiagram
+    transactions ||--o{ transaction_events : "registra"
+    transactions ||--o{ transaction_aliases : "asocia"
+    transactions ||--o{ outbox_messages : "encola"
+
+    transactions {
+        uuid transaction_id PK
+        uuid source_account
+        uuid target_account
+        numeric amount
+        varchar status
+        uuid correlation_id
+        varchar idempotency_key UK
+        text failure_reason
+        varchar payment_scenario
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz completed_at
+    }
+
+    transaction_events {
+        bigserial id PK
+        uuid transaction_id FK
+        varchar event_type
+        jsonb payload
+        timestamptz received_at
+    }
+
+    transaction_aliases {
+        uuid requested_transaction_id PK
+        uuid transaction_id FK
+        timestamptz created_at
+    }
+
+    outbox_messages {
+        bigserial id PK
+        uuid transaction_id FK
+        varchar exchange
+        varchar routing_key
+        jsonb envelope
+        varchar dispatch_status
+        timestamptz created_at
+        timestamptz published_at
+    }
+
+    processed_messages {
+        uuid message_id PK
+        varchar message_type
+        uuid transaction_id
+        varchar outcome
+        timestamptz processed_at
+    }

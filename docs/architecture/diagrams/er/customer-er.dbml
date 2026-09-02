@@ -1,0 +1,71 @@
+// Customer Service - Entity-Relationship Diagram (DBML)
+// Database: customer_db (PostgreSQL 18.4)
+
+Table customers {
+  customer_id uuid [pk]
+  full_name varchar(200) [not null]
+  document_number varchar(50) [unique, not null]
+  email varchar(320) [unique, not null]
+  birth_date date [not null]
+  address varchar(300)
+  username varchar(60) [unique, not null]
+  identity_status varchar(20) [not null, default: 'PENDING', note: 'PENDING, VALIDATED, REJECTED']
+  role varchar(20) [not null, default: 'CLIENTE', note: 'CLIENTE, CAJERO_RECEPTOR, ADMINISTRADOR']
+  status varchar(20) [not null, default: 'PENDING_ACTIVATION', note: 'PENDING_ACTIVATION, ACTIVE']
+  password_hash varchar(255) [not null]
+  email_verified_at timestamptz
+  version integer [not null, default: 0, note: 'Optimistic lock counter']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: 'Entidad principal de identidad y credenciales del cliente'
+}
+
+Table identity_documents {
+  document_id uuid [pk]
+  customer_id uuid [not null, ref: > customers.customer_id]
+  original_filename varchar(255)
+  mime_type varchar(100) [not null]
+  size_bytes integer [not null]
+  sha256 char(64) [unique, not null, note: 'Hash SHA-256 de la fotografía']
+  content bytea [not null]
+  validation_status varchar(20) [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: 'Fotografía y documento de identificación para mesa de control'
+}
+
+Table email_activation_tokens {
+  token_id uuid [pk]
+  customer_id uuid [not null, ref: > customers.customer_id]
+  token_hash char(64) [unique, not null, note: 'Hash SHA-256 del token de activación']
+  expires_at timestamptz [not null]
+  used_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: 'Tokens hashed de activación de cuenta por correo electrónico'
+}
+
+Table password_reset_tokens {
+  token_id uuid [pk]
+  customer_id uuid [not null, ref: > customers.customer_id]
+  token_hash char(64) [unique, not null, note: 'Hash SHA-256 del token de recuperación']
+  expires_at timestamptz [not null]
+  used_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: 'Tokens de recuperación de contraseña de vida corta'
+}
+
+Table processed_messages {
+  message_id uuid [pk]
+  idempotency_key varchar(200) [not null]
+  message_type varchar(120) [not null]
+  result_summary jsonb [not null]
+  processed_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (idempotency_key, message_type) [unique]
+  }
+  Note: 'Tabla de deduplicación e idempotencia de comandos RabbitMQ'
+}

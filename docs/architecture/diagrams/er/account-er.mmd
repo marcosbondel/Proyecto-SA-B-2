@@ -1,0 +1,43 @@
+erDiagram
+    accounts ||--o{ account_operations : "registra"
+
+    accounts {
+        uuid account_id PK
+        uuid customer_id
+        varchar account_type
+        numeric balance
+        varchar status
+        timestamptz last_activity_at
+        integer version
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    account_operations {
+        uuid operation_id PK
+        uuid account_id FK
+        varchar type
+        numeric amount
+        numeric balance_after
+        uuid transaction_id
+        varchar status
+        varchar idempotency_key UK
+        timestamptz created_at
+    }
+
+    deactivation_runs {
+        uuid run_id PK
+        timestamptz executed_at
+        timestamptz threshold_at
+        bigint min_balance_minor
+        integer deactivated_count
+        timestamptz created_at
+    }
+
+    processed_messages {
+        uuid message_id PK
+        varchar idempotency_key
+        varchar message_type
+        jsonb result_summary
+        timestamptz processed_at
+    }

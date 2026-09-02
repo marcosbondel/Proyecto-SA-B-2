@@ -1,0 +1,40 @@
+erDiagram
+    audit_events {
+        uuid event_id PK
+        varchar consumer PK
+        varchar message_type
+        integer message_version
+        varchar producer
+        timestamptz occurred_at
+        timestamptz received_at
+        uuid correlation_id
+        uuid causation_id
+        jsonb payload
+        varchar processing_status
+    }
+
+    notifications {
+        uuid notification_id PK
+        uuid customer_id
+        varchar type
+        varchar channel
+        varchar recipient
+        uuid reference_id
+        varchar subject
+        varchar status
+        uuid correlation_id
+        uuid caused_by
+        timestamptz read_at
+        timestamptz created_at
+        timestamptz processed_at
+    }
+
+    processed_messages {
+        uuid message_id PK
+        varchar consumer PK
+        varchar message_type
+        varchar outcome
+        integer deliveries
+        timestamptz first_seen_at
+        timestamptz last_seen_at
+    }
