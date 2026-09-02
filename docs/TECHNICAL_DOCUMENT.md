@@ -20,16 +20,18 @@ de texto versionadas (`.mmd` y `.puml`) y como imagen exportada.
 
 | Entregable (§4.4) | Dónde vive | Estado |
 | --- | --- | --- |
-| **Documento técnico completo del sistema** | Este documento, más [`ARCHITECTURE.md`](../ARCHITECTURE.md) (la arquitectura vigente) y [`README.md`](../README.md) (cómo se levanta y se verifica) | Completo |
+| **Documento técnico completo del sistema** | Este documento, más [`docs/architecture.md`](architecture.md) (arquitectura integral en español), [`ARCHITECTURE.md`](../ARCHITECTURE.md) (especificación técnica en inglés) y [`README.md`](../README.md) (puesta en marcha y verificación) | Completo |
 | **Diagramas arquitectónicos** | [`docs/architecture/diagrams/`](architecture/diagrams/) — ocho diagramas, cada uno con sus dos fuentes de texto y su exportación. Ver [§3](#3-diagramas-arquitectónicos) | Completo |
 | **Definición de SLI, SLO y SLA** | [`docs/RELIABILITY.md`](RELIABILITY.md) — ver [§4](#4-sli-slo-y-sla) | Completo |
 | **Casos de uso detallados** | [`docs/domain/use-cases.md`](domain/use-cases.md) (los seis flujos, en prosa) y [`docs/architecture/diagrams/cdu/`](architecture/diagrams/cdu/README.md) (la jerarquía de diagramas UML). Ver [§5](#5-casos-de-uso) | Completo |
-| **Justificación de decisiones arquitectónicas** | [`docs/architecture/adr/`](architecture/adr/README.md) — trece ADR, más la [matriz de decisiones](architecture/decision-matrix.md). Ver [§6](#6-justificación-de-las-decisiones-arquitectónicas) | Completo |
+| **Justificación de decisiones arquitectónicas** | [`docs/adr.md`](adr.md) (registro unificado en español) y [`docs/architecture/adr/`](architecture/adr/README.md) (trece ADRs detallados más la [matriz de decisiones](architecture/decision-matrix.md)). Ver [§6](#6-justificación-de-las-decisiones-arquitectónicas) | Completo |
 | **En formato markdown** | Todo el árbol `docs/`. El inventario y la propiedad de cada documento están en [`docs/DOC_INVENTORY.md`](DOC_INVENTORY.md) | Completo |
 | **Manual de usuario** | [`docs/manual/README.md`](manual/README.md), con una guía por rol. Ver [§7](#7-manual-de-usuario) | Completo |
 | **Repositorio con estrategia de monorepo** | Un solo repositorio, un `pnpm-workspace.yaml`, un lockfile y Turborepo como task runner. Ver [§8](#8-código-fuente-y-monorepo) | Completo |
 | **Código fuente separado por microservicio** | [`apps/services/`](../apps/services/) — cinco servicios, uno por carpeta, más `apps/gateway` y `apps/web`. Ver [§8](#8-código-fuente-y-monorepo) | Completo |
 | **Archivos de configuración para despliegue en Kubernetes** | [`infra/k8s/`](../infra/k8s/README.md) — chart de Helm en `infra/k8s/helm/bank-usac` y el clúster kind en `infra/k8s/kind`. Ver [§9](#9-contenedores-y-despliegue) | Ver §9 |
+| **Documento de Decisión y Diseño de Arquitectura (DDA)** | [`docs/dda.md`](dda.md) — análisis de caso de negocio, CDU, especificaciones, atributos de calidad y matrices de trazabilidad | Completo |
+| **Guía Integral de Pruebas y Happy Path** | [`docs/happypath.md`](happypath.md) — recorrido visual exhaustivo de los 3 actores con 60+ capturas | Completo |
 | **Frontend** | [`apps/web/`](../apps/web/README.md), con su guía de diseño en [`docs/DESIGN.md`](DESIGN.md). Ver [§10](#10-frontend) | Completo |
 
 ---

@@ -72,6 +72,10 @@ not require a new row for every generated link or vendor file.
 | `docs/design-docs/index.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/references/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `apps/web/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `docs/dda.md` | project | Marcos Bonifasi | current | 2026-09-01 |
+| `docs/adr.md` | project | Marcos Bonifasi | current | 2026-09-01 |
+| `docs/architecture.md` | project | Marcos Bonifasi | current | 2026-09-01 |
+| `docs/happypath.md` | project | Marcos Bonifasi | current | 2026-09-01 |
 
 Blocked project documents are still current as documents: their `blocked`
 state records an explicit missing decision, owner, and arrival ticket in the
