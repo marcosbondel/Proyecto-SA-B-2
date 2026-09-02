@@ -1,0 +1,63 @@
+// Account Service - Entity-Relationship Diagram (DBML)
+// Database: account_db (PostgreSQL 18.4)
+
+Table accounts {
+  account_id uuid [pk]
+  customer_id uuid [not null, note: 'Referencia opaca al cliente en Customer Service']
+  account_type varchar(10) [not null, note: 'MONETARIA, AHORRO']
+  balance numeric(14,2) [not null, default: 0.00, note: 'Restricción CHECK (balance >= 0)']
+  status varchar(10) [not null, default: 'ACTIVE', note: 'ACTIVE, INACTIVE']
+  last_activity_at timestamptz [not null, default: `now()`, note: 'Fecha del último movimiento contable']
+  version integer [not null, default: 0, note: 'Bloqueo optimista para concurrencia']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    customer_id [name: 'accounts_customer_idx']
+    (status, last_activity_at) [name: 'accounts_inactivity_idx']
+  }
+  Note: 'Cuentas bancarias de clientes y cuentas colectoras de servicios'
+}
+
+Table account_operations {
+  operation_id uuid [pk]
+  account_id uuid [not null, ref: > accounts.account_id]
+  type varchar(20) [not null, note: 'DEBIT, CREDIT, COMPENSATION']
+  amount numeric(14,2) [not null, note: 'Monto en Quetzales (> 0)']
+  balance_after numeric(14,2) [not null, note: 'Saldo resultante tras el movimiento']
+  transaction_id uuid [note: 'ID de la transferencia o pago de la Saga']
+  status varchar(20) [not null, default: 'APPLIED', note: 'APPLIED, COMPENSATED']
+  idempotency_key varchar(200) [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (idempotency_key, type) [unique, name: 'account_operations_once']
+    (account_id, created_at) [name: 'account_operations_account_idx']
+    transaction_id [name: 'account_operations_transaction_idx']
+  }
+  Note: 'Libro contable inmutable de débitos, créditos y compensaciones'
+}
+
+Table deactivation_runs {
+  run_id uuid [pk]
+  executed_at timestamptz [not null]
+  threshold_at timestamptz [not null, note: 'Límite temporal de 6 meses']
+  min_balance_minor bigint [not null, note: 'Saldo menor a Q50.00 en centavos']
+  deactivated_count integer [not null, note: 'Cuentas desactivadas en la corrida']
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: 'Bitácora de ejecuciones del job automático de desactivación de cuentas'
+}
+
+Table processed_messages {
+  message_id uuid [pk]
+  idempotency_key varchar(200) [not null]
+  message_type varchar(120) [not null]
+  result_summary jsonb [not null]
+  processed_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (idempotency_key, message_type) [unique, name: 'processed_messages_once']
+  }
+  Note: 'Deduplicación de mensajes y comandos procesados en el broker'
+}

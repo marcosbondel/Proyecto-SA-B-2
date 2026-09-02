@@ -1,0 +1,60 @@
+erDiagram
+    customers ||--o{ identity_documents : "tiene"
+    customers ||--o{ email_activation_tokens : "recibe"
+    customers ||--o{ password_reset_tokens : "solicita"
+
+    customers {
+        uuid customer_id PK
+        varchar full_name
+        varchar document_number UK
+        varchar email UK
+        date birth_date
+        varchar address
+        varchar username UK
+        varchar identity_status
+        varchar role
+        varchar status
+        varchar password_hash
+        timestamptz email_verified_at
+        integer version
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    identity_documents {
+        uuid document_id PK
+        uuid customer_id FK
+        varchar original_filename
+        varchar mime_type
+        integer size_bytes
+        char sha256 UK
+        bytea content
+        varchar validation_status
+        timestamptz created_at
+    }
+
+    email_activation_tokens {
+        uuid token_id PK
+        uuid customer_id FK
+        char token_hash UK
+        timestamptz expires_at
+        timestamptz used_at
+        timestamptz created_at
+    }
+
+    password_reset_tokens {
+        uuid token_id PK
+        uuid customer_id FK
+        char token_hash UK
+        timestamptz expires_at
+        timestamptz used_at
+        timestamptz created_at
+    }
+
+    processed_messages {
+        uuid message_id PK
+        varchar idempotency_key
+        varchar message_type
+        jsonb result_summary
+        timestamptz processed_at
+    }
