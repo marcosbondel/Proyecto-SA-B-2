@@ -4,6 +4,7 @@ services:
   postgres-customer:
     image: postgres:18.4
     container_name: postgres-customer
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${CUSTOMER_POSTGRES_DB}
       POSTGRES_USER: ${CUSTOMER_POSTGRES_USER}
@@ -24,6 +25,7 @@ services:
   postgres-account:
     image: postgres:18.4
     container_name: postgres-account
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${ACCOUNT_POSTGRES_DB}
       POSTGRES_USER: ${ACCOUNT_POSTGRES_USER}
@@ -44,6 +46,7 @@ services:
   postgres-transaction:
     image: postgres:18.4
     container_name: postgres-transaction
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${TRANSACTION_POSTGRES_DB}
       POSTGRES_USER: ${TRANSACTION_POSTGRES_USER}
@@ -64,6 +67,7 @@ services:
   postgres-payment:
     image: postgres:18.4
     container_name: postgres-payment
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${PAYMENT_POSTGRES_DB}
       POSTGRES_USER: ${PAYMENT_POSTGRES_USER}
@@ -84,6 +88,7 @@ services:
   postgres-notification-audit:
     image: postgres:18.4
     container_name: postgres-notification-audit
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${NOTIFICATION_AUDIT_POSTGRES_DB}
       POSTGRES_USER: ${NOTIFICATION_AUDIT_POSTGRES_USER}
@@ -104,6 +109,7 @@ services:
   rabbitmq:
     image: rabbitmq:4.3.4-management
     container_name: rabbitmq
+    restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
@@ -149,6 +155,7 @@ services:
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     container_name: minio
+    restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
