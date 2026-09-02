@@ -11,6 +11,9 @@ flowchart LR
         audit(("CDU005: Gestionar notificaciones y auditoría"))
     end
 
+    provider["🏢 Proveedor de Pagos"]
+    emailService["✉️ Servicio de Correo"]
+
     visitor --- customer
     visitor --- account
     visitor --- transaction
@@ -29,10 +32,14 @@ flowchart LR
     admin --- payment
     admin --- audit
 
+    payment --- provider
+    audit --- emailService
+    customer --- emailService
+
     note["Cada CDU representa la función principal de un microservicio; el detalle está en su carpeta"]:::note
     bank -.-> note
 
-    scopeNote["Cliente y Cajero llegan a CDU005 solo por su propio buzón de notificaciones; la consulta de auditoría es del Administrador"]:::note
+    scopeNote["Cliente y Cajero llegan a CDU005 solo por su propio buzón de notificaciones; la consulta de auditoría es del Administrador. Proveedor de Pagos liquida en CDU004 y Correo entrega en CDU001/CDU005."]:::note
     audit -.-> scopeNote
 
     classDef note fill:#FFF8DC,stroke:#D6B656,color:#555555;

@@ -7,9 +7,15 @@ flowchart LR
         core(("CDU000: Gestionar operaciones bancarias"))
     end
 
+    provider["🏢 Proveedor de Pagos"]
+    emailService["✉️ Servicio de Correo"]
+
     visitor --- core
     teller --- core
     admin --- core
+
+    core --- provider
+    core --- emailService
 
     note["CDU000 representa el objetivo general; CDU001-CDU005 son sus funciones principales"]:::note
     core -.-> note
