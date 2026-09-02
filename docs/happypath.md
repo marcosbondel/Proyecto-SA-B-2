@@ -78,7 +78,9 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 | **Nombre Completo** | `Carlos Eduardo Morales Méndez` | Campo alfabético requerido |
 | **Fecha de Nacimiento** | `1995-06-20` | Mayoría de edad comprobada ($\ge 18$ años) |
 | **Dirección** | `10ma Avenida 4-50 Zona 14, Ciudad de Guatemala` | Dirección física válida |
-| **Correo Electrónico** | `carlos.morales.<rnd>@example.com` | Formato RFC 5322 válido y único |
+| **Correo Electrónico** | `ventanilla@bankusac.gt` | Formato RFC 5322 válido y único |
+| **DPI** | `1111111111111` | 11 digitos |
+| **Contraseña** | `juanitoSeMurio!7` | Longitud $\ge 8$ caracteres, alta entropía y caracteres especiales |
 
 ![Registro Paso 1 - Datos Válidos](screenshots/hp-09-registro-paso1-datos-validos.png)
 
