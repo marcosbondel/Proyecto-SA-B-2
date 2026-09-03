@@ -112,9 +112,14 @@ step "2. activate the account  →  GET /api/customers/verify-email"
 # TD-043 for what it costs. It is the same thing every local mail catcher does.
 token=""
 for _ in $(seq 1 20); do
+  # The field is `deliveryLink`, not `activationLink`. It was renamed on
+  # purpose — see the comment in notification-audit-service's
+  # interfaces/logging.ts — and this grep was not updated with it, which broke
+  # this script at step 2 for every caller, Compose included. Both spellings
+  # are accepted so an older container's log still parses.
   token="$($BANK_LOGS_CMD 2>&1 \
     | grep "$correlation" \
-    | sed -n 's/.*"activationLink":"[^"]*token=\([^"&]*\)".*/\1/p' | tail -1)"
+    | sed -nE 's/.*"(deliveryLink|activationLink)":"[^"]*token=([^"&]*)".*/\2/p' | tail -1)"
   [[ -n "$token" ]] && break
   sleep 1
 done
