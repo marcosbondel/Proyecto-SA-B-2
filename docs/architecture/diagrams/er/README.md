@@ -4,8 +4,7 @@ Este directorio contiene los diagramas Entidad-Relación (ER) de cada una de las
 
 Cada microservicio cuenta con:
 1. **Código fuente DBML** (`.dbml`): Especificación declarativa en Database Markup Language.
-2. **Código fuente Mermaid** (`.mmd`): Especificación nativa en Mermaid para renderizado en GitHub.
-3. **Exportación gráfica PNG** (`.png`): Generada con alta resolución a través de [databasediagram.com](https://databasediagram.com/app).
+2. **Exportación gráfica PNG** (`.png`): Generada con alta resolución a través de [databasediagram.com](https://databasediagram.com/app).
 
 ---
 
@@ -13,11 +12,11 @@ Cada microservicio cuenta con:
 
 | # | Microservicio | Base de Datos | Tablas Principales | Fuentes | Diagrama |
 |---|---------------|---------------|-------------------|---------|----------|
-| 1 | **Customer Service** | `customer_db` | `customers`, `identity_documents`, `email_activation_tokens`, `password_reset_tokens`, `processed_messages` | [`.dbml`](customer-er.dbml) · [`.mmd`](customer-er.mmd) | [Ver](#1-customer-service-customer_db) |
-| 2 | **Account Service** | `account_db` | `accounts`, `account_operations`, `deactivation_runs`, `processed_messages` | [`.dbml`](account-er.dbml) · [`.mmd`](account-er.mmd) | [Ver](#2-account-service-account_db) |
-| 3 | **Transaction Service** | `transaction_db` | `transactions`, `transaction_events`, `transaction_aliases`, `outbox_messages`, `processed_messages` | [`.dbml`](transaction-er.dbml) · [`.mmd`](transaction-er.mmd) | [Ver](#3-transaction-service-transaction_db) |
-| 4 | **Payment Service** | `payment_db` | `payments`, `payment_attempts`, `outbox_messages` | [`.dbml`](payment-er.dbml) · [`.mmd`](payment-er.mmd) | [Ver](#4-payment-service-payment_db) |
-| 5 | **Notification & Audit Service** | `notification_audit_db` | `audit_events`, `notifications`, `processed_messages` | [`.dbml`](notification-audit-er.dbml) · [`.mmd`](notification-audit-er.mmd) | [Ver](#5-notification--audit-service-notification_audit_db) |
+| 1 | **Customer Service** | `customer_db` | `customers`, `identity_documents`, `email_activation_tokens`, `password_reset_tokens`, `processed_messages` | [`.dbml`](customer-er.dbml) | [Ver](#1-customer-service-customer_db) |
+| 2 | **Account Service** | `account_db` | `accounts`, `account_operations`, `deactivation_runs`, `processed_messages` | [`.dbml`](account-er.dbml) | [Ver](#2-account-service-account_db) |
+| 3 | **Transaction Service** | `transaction_db` | `transactions`, `transaction_events`, `transaction_aliases`, `outbox_messages`, `processed_messages` | [`.dbml`](transaction-er.dbml) | [Ver](#3-transaction-service-transaction_db) |
+| 4 | **Payment Service** | `payment_db` | `payments`, `payment_attempts`, `outbox_messages` | [`.dbml`](payment-er.dbml) | [Ver](#4-payment-service-payment_db) |
+| 5 | **Notification & Audit Service** | `notification_audit_db` | `audit_events`, `notifications`, `processed_messages` | [`.dbml`](notification-audit-er.dbml) | [Ver](#5-notification--audit-service-notification_audit_db) |
 
 ---
 

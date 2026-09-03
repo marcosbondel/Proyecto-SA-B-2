@@ -134,12 +134,12 @@ Este documento define de forma exhaustiva las **entidades principales del negoci
 
 En cumplimiento con el requisito del auxiliar, cada base de datos independiente cuenta con su modelado físico completo:
 
-| Base de Datos | Microservicio Responsable | Especificación DBML | Especificación Mermaid | Diagrama Gráfico |
-|---|---|---|---|---|
-| `customer_db` | Customer Service | [`customer-er.dbml`](../architecture/diagrams/er/customer-er.dbml) | [`customer-er.mmd`](../architecture/diagrams/er/customer-er.mmd) | ![ER Customer](../architecture/diagrams/er/customer-er.png) |
-| `account_db` | Account Service | [`account-er.dbml`](../architecture/diagrams/er/account-er.dbml) | [`account-er.mmd`](../architecture/diagrams/er/account-er.mmd) | ![ER Account](../architecture/diagrams/er/account-er.png) |
-| `transaction_db` | Transaction Service | [`transaction-er.dbml`](../architecture/diagrams/er/transaction-er.dbml) | [`transaction-er.mmd`](../architecture/diagrams/er/transaction-er.mmd) | ![ER Transaction](../architecture/diagrams/er/transaction-er.png) |
-| `payment_db` | Payment Service | [`payment-er.dbml`](../architecture/diagrams/er/payment-er.dbml) | [`payment-er.mmd`](../architecture/diagrams/er/payment-er.mmd) | ![ER Payment](../architecture/diagrams/er/payment-er.png) |
-| `notification_audit_db` | Notification & Audit Service | [`notification-audit-er.dbml`](../architecture/diagrams/er/notification-audit-er.dbml) | [`notification-audit-er.mmd`](../architecture/diagrams/er/notification-audit-er.mmd) | ![ER Notification Audit](../architecture/diagrams/er/notification-audit-er.png) |
+| Base de Datos | Microservicio Responsable | Especificación DBML | Diagrama Gráfico |
+|---|---|---|---|
+| `customer_db` | Customer Service | [`customer-er.dbml`](../architecture/diagrams/er/customer-er.dbml) | ![ER Customer](../architecture/diagrams/er/customer-er.png) |
+| `account_db` | Account Service | [`account-er.dbml`](../architecture/diagrams/er/account-er.dbml) | ![ER Account](../architecture/diagrams/er/account-er.png) |
+| `transaction_db` | Transaction Service | [`transaction-er.dbml`](../architecture/diagrams/er/transaction-er.dbml) | ![ER Transaction](../architecture/diagrams/er/transaction-er.png) |
+| `payment_db` | Payment Service | [`payment-er.dbml`](../architecture/diagrams/er/payment-er.dbml) | ![ER Payment](../architecture/diagrams/er/payment-er.png) |
+| `notification_audit_db` | Notification & Audit Service | [`notification-audit-er.dbml`](../architecture/diagrams/er/notification-audit-er.dbml) | ![ER Notification Audit](../architecture/diagrams/er/notification-audit-er.png) |
 
 Para detalles de índices, llaves foráneas y tipos de datos SQL de cada tabla, consultar [`docs/architecture/diagrams/er/README.md`](../architecture/diagrams/er/README.md).

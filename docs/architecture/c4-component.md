@@ -8,9 +8,8 @@ Este documento describe el **Nivel 3 (Componentes)** de la arquitectura C4 para 
 
 ![C4 Componentes — Bank USAC](diagrams/04-c4-componentes.png)
 
-Fuentes de diagramación versionadas (ADR-013):
+Fuentes de diagramación versionadas:
 * [PlantUML (`.puml`)](diagrams/04-c4-componentes.puml)
-* [Mermaid (`.mmd`)](diagrams/04-c4-componentes.mmd)
 * [Structurizr DSL (`.dsl`)](diagrams/04-c4-componentes.dsl)
 
 ---

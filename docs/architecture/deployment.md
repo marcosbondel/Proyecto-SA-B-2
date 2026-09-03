@@ -8,9 +8,8 @@ Este documento describe el despliegue del sistema bancario **Bank USAC**, especi
 
 ![Diagrama de Despliegue — Bank USAC](diagrams/05-uml-despliegue.png)
 
-Fuentes de diagramación versionadas (ADR-013):
+Fuentes de diagramación versionadas:
 * [PlantUML (`.puml`)](diagrams/05-uml-despliegue.puml)
-* [Mermaid (`.mmd`)](diagrams/05-uml-despliegue.mmd)
 
 ---
 

@@ -8,9 +8,8 @@ Este documento describe la secuencia de eventos, comandos y compensaciones del p
 
 ![Secuencia — Transferencia con Saga](../architecture/diagrams/07-uml-secuencia-transferencia.png)
 
-Fuentes de diagramación versionadas (ADR-013):
+Fuentes de diagramación versionadas:
 * [PlantUML (`.puml`)](../architecture/diagrams/07-uml-secuencia-transferencia.puml)
-* [Mermaid (`.mmd`)](../architecture/diagrams/07-uml-secuencia-transferencia.mmd)
 
 ---
 
