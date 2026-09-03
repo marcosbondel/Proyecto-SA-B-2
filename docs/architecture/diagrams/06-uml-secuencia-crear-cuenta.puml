@@ -1,135 +1,132 @@
-@startuml
-' Bank USAC - UML 2 Sequence Diagram - Crear cuenta
-' Caso de uso 2 (docs/domain/use-cases.md). Misma estructura y convenciones que el
-' Mermaid equivalente (06-uml-secuencia-crear-cuenta.mmd); ambos deben coincidir.
-' Las casillas de activacion (activate/deactivate) muestran cuanto tiempo mantiene
-' cada participante una tarea en curso.
-' Cada mensaje declara la accion de negocio y, entre corchetes, su tecnologia,
-' protocolo y tipo de interaccion (sincrona o asincrona; comando, evento o
-' request/reply), como exige el enunciado (§4.2, "Tipo de comunicacion").
+  @startuml
+  ' Bank USAC - UML 2 Sequence Diagram - Crear cuenta
+  ' Caso de uso 2 (docs/domain/use-cases.md).
+  ' Notacion UML 2 nativa (OMG, Sequence Diagram §17.4.4 / §17.11 Message): la
+  ' etiqueta de cada mensaje lleva unicamente el nombre de la operacion/senal
+  ' invocada (y sus argumentos), nunca el protocolo ni la sincronia. Esas dos
+  ' cosas se leen en la firma grafica de la flecha:
+  '   ->   cabeza rellena, linea solida  -> llamada sincrona (Synchronous Call)
+  '   ->>  cabeza abierta,  linea solida  -> envio de senal/mensaje asincrono
+  '                                          (Asynchronous Signal)
+  '   -->> cabeza abierta,  linea discontinua -> mensaje de retorno (Reply Message)
+  ' Cada mensaje trae ademas un titulo para stakeholders (la accion de negocio
+  ' que representa) seguido, tras un guion, del nombre real de la funcion que la
+  ' realiza en el codigo — verificado contra el repositorio, no inventado.
+  ' Las casillas de activacion (activate/deactivate) muestran cuanto tiempo
+  ' mantiene cada participante una tarea en curso.
 
-title UML 2 - Diagrama de Secuencia\nCrear cuenta (Bank USAC)
+  title UML 2 - Diagrama de Secuencia\nCrear cuenta (Bank USAC)
 
-skinparam shadowing false
-skinparam defaultFontName "Segoe UI"
-skinparam ArrowColor #555555
-skinparam ArrowThickness 1.2
-skinparam sequenceMessageAlign center
-skinparam maxMessageSize 260
-skinparam wrapWidth 260
-skinparam noteBackgroundColor #FFF8DC
-skinparam noteBorderColor #D6B656
-skinparam ParticipantBorderColor #1168BD
-skinparam ParticipantBackgroundColor #EAF2FF
-skinparam ParticipantFontColor #1168BD
-skinparam ActorBorderColor #1168BD
-skinparam ActorBackgroundColor #EAF2FF
-skinparam QueueBorderColor #C11926
-skinparam QueueBackgroundColor #FFF0F0
-skinparam DatabaseBorderColor #398819
-skinparam DatabaseBackgroundColor #F2FAEF
-skinparam LifeLineBorderColor #1168BD
-skinparam ActivationBorderColor #1168BD
-skinparam ActivationBackgroundColor #C6DBF7
+  skinparam shadowing false
+  skinparam defaultFontName "Segoe UI"
+  skinparam ArrowColor #555555
+  skinparam ArrowThickness 1.2
+  skinparam sequenceMessageAlign center
+  skinparam maxMessageSize 260
+  skinparam wrapWidth 260
+  skinparam noteBackgroundColor #FFF8DC
+  skinparam noteBorderColor #D6B656
+  skinparam ParticipantBorderColor #1168BD
+  skinparam ParticipantBackgroundColor #EAF2FF
+  skinparam ParticipantFontColor #1168BD
+  skinparam ActorBorderColor #1168BD
+  skinparam ActorBackgroundColor #EAF2FF
+  skinparam QueueBorderColor #C11926
+  skinparam QueueBackgroundColor #FFF0F0
+  skinparam DatabaseBorderColor #398819
+  skinparam DatabaseBackgroundColor #F2FAEF
+  skinparam LifeLineBorderColor #1168BD
+  skinparam ActivationBorderColor #1168BD
+  skinparam ActivationBackgroundColor #C6DBF7
 
-legend right
-    |= Elemento | Notación |
-    | <color:#1168BD>Azul</color> | Actor, Frontend, Gateway, Account Service, Notification & Audit |
-    | <color:#C11926>Rojo</color> | RabbitMQ (broker) |
-    | <color:#398819>Verde</color> | Bases de datos PostgreSQL |
-    | `->>` | Mensaje asíncrono sobre AMQP 0-9-1 (comando o evento) |
-    | `-->>` | Respuesta asíncrona: reply de AMQP o respuesta HTTP a una petición en curso |
-    | `->` | Llamada síncrona (HTTPS/REST del navegador, SQL sobre PostgreSQL) |
-    | `[ … ]` | Tecnología · protocolo · tipo de interacción del mensaje |
-    | `alt` / `else` | Flujo alternativo (fallo esperado) |
-    | Barra sólida sobre la línea de vida | Casilla de activación: tiempo que el participante tarda en completar la tarea |
-endlegend
+  legend right
+      |= Elemento | Notación |
+      | <color:#1168BD>Azul</color> | Actor, Frontend, Gateway, Account Service, Notification & Audit |
+      | <color:#C11926>Rojo</color> | RabbitMQ (broker) |
+      | <color:#398819>Verde</color> | Bases de datos PostgreSQL |
+      | `->` (cabeza rellena, sólida) | Llamada síncrona — Synchronous Call (OMG) |
+      | `->>` (cabeza abierta, sólida) | Señal/mensaje asíncrono — Asynchronous Signal (OMG) |
+      | `-->>` (cabeza abierta, discontinua) | Mensaje de retorno — Reply Message (OMG) |
+      | Título — operación(args) | Título de negocio y, tras el guion, la función real invocada |
+      | `alt` / `else` | Flujo alternativo (fallo esperado) |
+      | Barra sólida sobre la línea de vida | Casilla de activación: tiempo que el participante tarda en completar la tarea |
+  endlegend
 
-actor "Actor\n(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)" as Actor
-participant "Frontend" as Frontend
-participant "API Gateway" as Gateway
-queue "Message Broker\n(RabbitMQ)" as Broker
-participant "Account Service" as Account
-database "Account Database" as AccountDB
-participant "Notification & Audit" as Notif
-database "Audit Database" as AuditDB
+  actor "Actor\n(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)" as Actor
+  participant "Frontend" as Frontend
+  participant "API Gateway" as Gateway
+  queue "Message Broker\n(RabbitMQ)" as Broker
+  participant "Account Service" as Account
+  database "Account Database" as AccountDB
+  participant "Notification & Audit" as Notif
+  database "Audit Database" as AuditDB
 
-autonumber
+  autonumber
 
-Actor -> Frontend : Solicitar apertura de cuenta\n[interacción de usuario · navegador · síncrono]
-activate Frontend
-Frontend -> Gateway : Enviar la solicitud de apertura\n[HTTPS/REST · POST /api/accounts · síncrono]
-activate Gateway
-note over Gateway
-  Genera un identificador
-  de seguimiento (correlationId)
-end note
+  Actor -> Frontend : Solicitar apertura de cuenta - submit()
+  activate Frontend
+  Frontend -> Gateway : Enviar la solicitud de apertura - open(OpenAccountDto)
+  activate Gateway
+  note over Gateway
+    Genera el identificador de seguimiento
+    y arma el sobre del comando
+    - envelopeForRequest(payload, "account.create.v1", actor, correlationId)
+  end note
 
-Gateway ->> Broker : Publicar comando "crear cuenta" — account.create (correlationId)\n[AMQP 0-9-1 · comando · asíncrono]
-Gateway -->> Frontend : Confirmar recepción — 202 Accepted (correlationId)\n[HTTPS/REST · respuesta síncrona]
-deactivate Gateway
-Frontend -->> Actor : "Solicitud recibida" (NO "cuenta creada")\n202 no es éxito
-deactivate Frontend
+  Gateway ->> Broker : Publicar comando "crear cuenta" - publisher.publish(account.create.v1)
+  Gateway -->> Frontend : Confirmar recepción - 202 Accepted : { accountId, correlationId }
+  deactivate Gateway
+  Frontend -->> Actor : "Solicitud recibida" (NO "cuenta creada")\n202 no es éxito
+  deactivate Frontend
 
-Broker ->> Account : Entregar comando "crear cuenta" — account.create (correlationId)\n[AMQP 0-9-1 · entrega de comando · asíncrono]
-activate Account
+  Broker ->> Account : Entregar comando "crear cuenta" - CreateAccountHandler.handle(envelope)
+  activate Account
 
-alt tipo de cuenta válido (MONETARIA | AHORRO)
-    note over Account
-      Validando los datos recibidos,
-      aún sin guardar
-    end note
-    Account -> AccountDB : Guardar la cuenta nueva\nestado inicial: ACTIVA, saldo Q0.00\n[SQL sobre PostgreSQL · síncrono]
-    activate AccountDB
-    AccountDB -->> Account : Confirmar guardado\n[SQL sobre PostgreSQL · síncrono]
-    deactivate AccountDB
-    note over Account
-      Cuenta creada — activa,
-      con saldo inicial de Q0.00
-    end note
-    Account ->> Broker : Publicar evento "cuenta abierta" — account.opened (correlationId)\n[AMQP 0-9-1 · evento · asíncrono]
-    Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nDESPUÉS de guardar [AMQP basic.ack]
-else tipo de cuenta ausente o no reconocido
-    note over Account
-      Rechazar la solicitud, sin guardar
-      el tipo de cuenta es obligatorio
-    end note
-    Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nrechazo registrado [AMQP basic.ack]
-end
-deactivate Account
+  alt tipo de cuenta válido (MONETARIA | AHORRO)
+      Account -> Account : Validar la solicitud, aún sin guardar\n- openingRefusal(identity, customerId) devuelve null
+      Account -> AccountDB : Guardar la cuenta nueva\nestado inicial: ACTIVA, saldo Q0.00\n- repository.openAccount({ account, idempotency })
+      activate AccountDB
+      AccountDB -->> Account : Confirmar guardado - { account, created }
+      deactivate AccountDB
+      note over Account
+        Cuenta creada — activa,
+        con saldo inicial de Q0.00
+      end note
+      Account ->> Broker : Publicar evento "cuenta abierta" - publisher.publish(account.opened.v1)
+      Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nDESPUÉS de guardar - channel.ack(message)
+  else tipo de cuenta ausente o no reconocido
+      Account -> Account : Rechazar la solicitud, sin guardar\n- openingRefusal(identity, customerId) devuelve el motivo
+      Account ->> Broker : Publicar evento "apertura rechazada" - publisher.publish(account.open-rejected.v1)
+      Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nrechazo registrado - channel.ack(message)
+  end
+  deactivate Account
 
-note over Account, AccountDB
-  Regla de diseño: el Servicio de Cuentas NUNCA consulta al Servicio de Clientes.
-  "El cliente no existe" o "el cliente no es elegible" se detectan más
-  adelante en el proceso, no en este paso.
-end note
+  Broker ->> Notif : Entregar evento "cuenta abierta" - RecordEventHandler.handle(envelope)
+  activate Notif
+  Notif -> AuditDB : Registrar el evento para auditoría - repository.record({ event, notification, now })
+  activate AuditDB
+  AuditDB -->> Notif : Confirmar registro guardado - RecordOutcome
+  deactivate AuditDB
+  Notif ->> Broker : Confirmar al broker que el evento fue procesado\nDESPUÉS de registrar - channel.ack(message)
+  deactivate Notif
 
-Broker ->> Notif : Entregar evento "cuenta abierta" — account.opened (correlationId)\n[AMQP 0-9-1 · entrega de evento · asíncrono]
-activate Notif
-Notif -> AuditDB : Registrar el evento para auditoría (correlationId)\n[SQL sobre PostgreSQL · síncrono]
-activate AuditDB
-AuditDB -->> Notif : Confirmar registro guardado\n[SQL sobre PostgreSQL · síncrono]
-deactivate AuditDB
-Notif ->> Broker : Confirmar al broker que el evento fue procesado\nDESPUÉS de registrar [AMQP basic.ack]
-deactivate Notif
+  note over Account
+    El 202 solo confirma que la solicitud se recibió.
+    El resultado real se consulta después por correlationId.
+  end note
 
-note over Account
-  El 202 solo confirma que la solicitud se recibió.
-  El resultado real se consulta después por correlationId.
-end note
-
-Actor -> Frontend : Consultar el estado de la solicitud\n[interacción de usuario · navegador · síncrono]
-activate Frontend
-Frontend -> Gateway : Solicitar el estado real de la cuenta (correlationId)\n[HTTPS/REST · GET /api/accounts/:id · síncrono]
-activate Gateway
-Gateway ->> Broker : Preguntar por el estado actual de la cuenta (correlationId)\n[AMQP 0-9-1 · request/reply · asíncrono · ceiling 5 s]
-Broker ->> Account : Entregar la consulta (correlationId)\n[AMQP 0-9-1 · entrega de consulta · asíncrono]
-activate Account
-Account -->> Broker : Responder con el estado real de la cuenta\n[AMQP 0-9-1 · reply a replyTo · asíncrono]
-deactivate Account
-Broker -->> Gateway : Entregar la respuesta (correlationId)\n[AMQP 0-9-1 · reply · asíncrono]
-Gateway -->> Frontend : Responder con el resultado real\n[HTTPS/REST · 200 OK · síncrono]
-deactivate Gateway
-Frontend -->> Actor : Mostrar el resultado real de la creación de cuenta
-deactivate Frontend
-@enduml
+  Actor -> Frontend : Consultar el estado de la solicitud - loadBalance()
+  activate Frontend
+  Frontend -> Gateway : Solicitar el estado real de la cuenta - balance(accountId)
+  activate Gateway
+  Gateway ->> Broker : Preguntar por el estado actual de la cuenta\nceiling 5 s - askAndWait(envelope) invoca publisher.publish(account.balance.query.v1)
+  Broker ->> Account : Entregar la consulta - GetBalanceHandler.handle(envelope)
+  activate Account
+  Account -->> Broker : Responder con el estado real de la cuenta - publisher.reply(account.balance.replied.v1)
+  deactivate Account
+  Broker -->> Gateway : Entregar la respuesta - waitFor(correlationId) resuelto
+  Gateway -->> Frontend : Responder con el resultado real - 200 OK : BalanceReply
+  deactivate Gateway
+  Frontend -->> Actor : Mostrar el resultado real de la creación de cuenta
+  deactivate Frontend
+  @enduml
