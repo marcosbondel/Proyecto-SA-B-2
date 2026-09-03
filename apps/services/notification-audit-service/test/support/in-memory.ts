@@ -201,6 +201,18 @@ export class InMemoryAuditRepository implements AuditRepository {
     return await Promise.resolve({ notifications: page, omitted: matched.length - page.length });
   }
 
+  public async listRecentEvents(input: {
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<{ readonly events: readonly AuditEvent[]; readonly total: number }> {
+    const sorted = [...this.events].sort(
+      (left, right) => right.occurredAt.getTime() - left.occurredAt.getTime(),
+    );
+    const page = sorted.slice(input.offset, input.offset + input.limit);
+
+    return await Promise.resolve({ events: page, total: this.events.length });
+  }
+
   public async isReachable(): Promise<boolean> {
     return await Promise.resolve(true);
   }

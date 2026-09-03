@@ -191,6 +191,27 @@ export class PostgresCustomerRepository implements CustomerRepository {
     };
   }
 
+  public async listCustomers(limit: number): Promise<{
+    readonly customers: readonly Customer[];
+    readonly total: number;
+  }> {
+    const [rows, count] = await Promise.all([
+      this.#pool.query<CustomerRow>(
+        `SELECT * FROM customers
+          ORDER BY created_at DESC LIMIT $1`,
+        [limit],
+      ),
+      this.#pool.query<{ total: string }>(
+        `SELECT COUNT(*)::TEXT AS total FROM customers`,
+      ),
+    ]);
+
+    return {
+      customers: rows.rows.map(toCustomer),
+      total: Number(count.rows[0]?.total ?? '0'),
+    };
+  }
+
   public async saveUpdate(input: {
     readonly customer: Customer;
     readonly idempotency: ProcessedMessage;

@@ -14,11 +14,12 @@ import type { ParkedMessage } from '@bank/messaging';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
+import { GetAuditStatsUseCase } from './application/get-audit-stats.use-case';
+import { ListAuditEventsUseCase } from './application/list-audit-events.use-case';
 import { ListNotificationsUseCase } from './application/list-notifications.use-case';
 import { MarkNotificationsReadUseCase } from './application/mark-notifications-read.use-case';
-import { ReadInboxUseCase } from './application/read-inbox.use-case';
-import { GetAuditStatsUseCase } from './application/get-audit-stats.use-case';
 import { QueryAuditUseCase } from './application/query-audit.use-case';
+import { ReadInboxUseCase } from './application/read-inbox.use-case';
 import { RecordEventUseCase } from './application/record-event.use-case';
 import { AppModule } from './app.module';
 import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environment';
@@ -31,6 +32,7 @@ import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   AuditQueryHandler,
+  AuditEventsListHandler,
   AuditStatsHandler,
   NotificationInboxHandler,
   NotificationListHandler,
@@ -168,6 +170,7 @@ async function bootstrap(): Promise<void> {
 
     return new InboundMessageRouter([
       new AuditQueryHandler(new QueryAuditUseCase({ repository, publisher })),
+      new AuditEventsListHandler(new ListAuditEventsUseCase({ repository, publisher })),
       new AuditStatsHandler(new GetAuditStatsUseCase({ repository, publisher })),
       new NotificationListHandler(new ListNotificationsUseCase({ repository, publisher })),
       new NotificationInboxHandler(new ReadInboxUseCase({ repository, publisher })),

@@ -10,6 +10,7 @@ import {
 import type { AuditEventRow, AuditNotification } from '../../lib/audit';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
+import { formatDate } from '../../lib/money';
 
 /**
  * "Auditoría de eventos" — the prototype's `show.audit` (N-02), with its
@@ -122,6 +123,47 @@ async function query(correlationId: string): Promise<void> {
   state.value = 'READY';
 }
 
+interface RecentAuditEvent {
+  eventId: string;
+  messageType: string;
+  producer: string;
+  occurredAt: string;
+  correlationId: string;
+  processingStatus: string;
+  consumer: string;
+  payload: Record<string, unknown>;
+}
+
+const recentEvents = ref<RecentAuditEvent[]>([]);
+const recentTotal = ref(0);
+const recentPage = ref(1);
+const recentLimit = 10;
+const recentLoading = ref(false);
+
+async function loadRecentEvents(page = 1): Promise<void> {
+  if (!mayQuery.value) return;
+  recentLoading.value = true;
+  const result = await api.call<{
+    events: RecentAuditEvent[];
+    total: number;
+    page: number;
+    limit: number;
+  }>(`/api/audit/recent?page=${page}&limit=${recentLimit}`);
+  recentLoading.value = false;
+
+  if (result.ok) {
+    recentEvents.value = result.data.events;
+    recentTotal.value = result.data.total;
+    recentPage.value = result.data.page;
+  }
+}
+
+function inspectRecent(targetCorrelationId: string): void {
+  correlationInput.value = targetCorrelationId;
+  query(targetCorrelationId);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 /** A correlation in the URL is asked immediately: that is what the link is for. */
 onMounted(async () => {
   const fromUrl = route.query.correlationId;
@@ -130,6 +172,8 @@ onMounted(async () => {
     correlationInput.value = fromUrl;
     await query(fromUrl);
   }
+
+  await loadRecentEvents(1);
 });
 
 useHead({ title: 'Auditoría · bonking' });
@@ -155,6 +199,117 @@ useHead({ title: 'Auditoría · bonking' });
         :busy="state === 'LOADING'"
         @submit="query"
       />
+    </UCard>
+
+    <!-- Últimos 10 eventos del sistema paginados -->
+    <UCard>
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-[18px] font-bold text-[#23242A]">Últimos eventos del sistema</h2>
+            <p class="text-[13px] text-[#5A5B63]">
+              Registro cronológico global con navegación paginada (10 eventos por página).
+            </p>
+          </div>
+          <UButton
+            icon="i-lucide-refresh-cw"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            :loading="recentLoading"
+            @click="loadRecentEvents(recentPage)"
+          >
+            Actualizar
+          </UButton>
+        </div>
+      </template>
+
+      <div v-if="recentLoading && recentEvents.length === 0" class="py-8 text-center text-[#5A5B63]">
+        Cargando eventos recientes…
+      </div>
+      <div v-else-if="recentEvents.length === 0" class="py-8 text-center text-[#75767F]">
+        No hay eventos registrados en la base de auditoría.
+      </div>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-left text-[13px]">
+          <thead class="border-b border-[#E9E9EC] text-[#75767F]">
+            <tr>
+              <th class="pb-2 font-medium">Fecha y hora</th>
+              <th class="pb-2 font-medium">Tipo de evento</th>
+              <th class="pb-2 font-medium">Servicio</th>
+              <th class="pb-2 font-medium">Código de seguimiento</th>
+              <th class="pb-2 font-medium">Estado</th>
+              <th class="pb-2 text-right font-medium">Acción</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#E9E9EC]">
+            <tr v-for="evt in recentEvents" :key="evt.eventId" class="hover:bg-neutral-50">
+              <td class="py-3 font-mono text-[12px] text-[#5A5B63]">
+                {{ formatDate(evt.occurredAt) }}
+              </td>
+              <td class="py-3 font-medium text-[#23242A]">
+                <code class="rounded bg-[#F0F0F3] px-1.5 py-0.5 text-[11px] font-mono text-[#23242A]">
+                  {{ evt.messageType }}
+                </code>
+              </td>
+              <td class="py-3 text-[#5A5B63]">
+                <UBadge variant="subtle" color="neutral" size="sm">{{ evt.producer }}</UBadge>
+              </td>
+              <td class="py-3 font-mono text-[11px] text-[#75767F]">
+                {{ evt.correlationId }}
+              </td>
+              <td class="py-3">
+                <UBadge
+                  :color="evt.processingStatus === 'INVALID' ? 'error' : 'success'"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ evt.processingStatus }}
+                </UBadge>
+              </td>
+              <td class="py-3 text-right">
+                <UButton
+                  variant="outline"
+                  color="primary"
+                  size="xs"
+                  @click="inspectRecent(evt.correlationId)"
+                >
+                  Ver rastro
+                </UButton>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <template #footer>
+        <div class="flex flex-wrap items-center justify-between gap-3 text-[13px] text-[#5A5B63]">
+          <div>
+            Página <strong>{{ recentPage }}</strong> de <strong>{{ Math.max(1, Math.ceil(recentTotal / recentLimit)) }}</strong>
+            ({{ recentTotal }} eventos registrados)
+          </div>
+          <div class="flex gap-2">
+            <UButton
+              variant="outline"
+              color="neutral"
+              size="xs"
+              :disabled="recentPage <= 1 || recentLoading"
+              @click="loadRecentEvents(recentPage - 1)"
+            >
+              ← Anterior
+            </UButton>
+            <UButton
+              variant="outline"
+              color="neutral"
+              size="xs"
+              :disabled="recentPage * recentLimit >= recentTotal || recentLoading"
+              @click="loadRecentEvents(recentPage + 1)"
+            >
+              Siguiente →
+            </UButton>
+          </div>
+        </div>
+      </template>
     </UCard>
 
     <!-- Nothing asked yet. The prototype has no such state; a screen keyed by

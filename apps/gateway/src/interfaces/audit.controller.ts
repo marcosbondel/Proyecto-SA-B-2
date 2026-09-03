@@ -60,6 +60,29 @@ export class AuditController {
     });
   }
 
+  @ApiOperation({
+    summary: 'Consulta los eventos de auditoría más recientes paginados',
+    description: 'Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación.',
+  })
+  @Roles('ADMINISTRADOR')
+  @Get('recent')
+  public async recent(
+    @Query('page') pageRaw: string | undefined,
+    @Query('limit') limitRaw: string | undefined,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const limit = Math.min(100, Math.max(1, Number(limitRaw) || 10));
+
+    return await this.#queries.auditEventsList(
+      { page, limit },
+      {
+        actor: actorOf(request),
+        correlationId: request.correlationId,
+      },
+    );
+  }
+
   /**
    * What the bank has told people, newest first.
    *

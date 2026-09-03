@@ -10,6 +10,8 @@ import {
   accountOperationsRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
+  auditEventsListQueryV1,
+  auditEventsListRepliedV1,
   customerGetQueryV1,
   customerGetRepliedV1,
   customerNamesQueryV1,
@@ -17,6 +19,8 @@ import {
   MAX_NAME_LOOKUPS,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
+  customerListQueryV1,
+  customerListRepliedV1,
   notificationInboxQueryV1,
   notificationInboxRepliedV1,
   notificationListQueryV1,
@@ -149,6 +153,23 @@ export class QueriesUseCase {
   public async pendingValidation(context: QueryContext): Promise<Record<string, unknown>> {
     const raw = await this.#ask(customerPendingValidationQueryV1.name, {}, context);
     const parsed = customerPendingValidationRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * The list of registered customers. Staff only.
+   */
+  public async customerList(
+    limit: number,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(customerListQueryV1.name, { limit }, context);
+    const parsed = customerListRepliedV1.schema.safeParse(raw);
 
     if (!parsed.success) {
       throw GatewayError.internal();
@@ -391,6 +412,23 @@ export class QueriesUseCase {
   ): Promise<Record<string, unknown>> {
     const raw = await this.#ask(auditQueryRequestedV1.name, { correlationId }, context);
     const parsed = auditQueryRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * The paginated list of recent audit events across flows. ADMINISTRADOR only.
+   */
+  public async auditEventsList(
+    params: { page: number; limit: number },
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(auditEventsListQueryV1.name, params, context);
+    const parsed = auditEventsListRepliedV1.schema.safeParse(raw);
 
     if (!parsed.success) {
       throw GatewayError.internal();

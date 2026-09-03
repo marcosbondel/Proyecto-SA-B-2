@@ -14,6 +14,7 @@ import { GetCustomerStatsUseCase } from './application/get-customer-stats.use-ca
 import { GetCustomerUseCase } from './application/get-customer.use-case';
 import { GetIdentityDocumentUseCase } from './application/get-identity-document.use-case';
 import { GetPendingValidationUseCase } from './application/get-pending-validation.use-case';
+import { GetCustomerListUseCase } from './application/get-customer-list.use-case';
 import { RegisterCustomerUseCase } from './application/register-customer.use-case';
 import { RequestPasswordResetUseCase } from './application/request-password-reset.use-case';
 import { SetIdentityVerdictUseCase } from './application/set-identity-verdict.use-case';
@@ -45,6 +46,7 @@ import {
   GetCustomerStatsHandler,
   GetIdentityDocumentHandler,
   GetPendingValidationHandler,
+  CustomerListHandler,
   SetIdentityVerdictHandler,
   UpdateCustomerHandler,
   ValidateIdentityHandler,
@@ -135,6 +137,9 @@ async function bootstrap(): Promise<void> {
       new GetCustomerStatsHandler(new GetCustomerStatsUseCase({ repository, publisher })),
       new GetPendingValidationHandler(
         new GetPendingValidationUseCase({ repository, publisher }),
+      ),
+      new CustomerListHandler(
+        new GetCustomerListUseCase({ repository, publisher }),
       ),
       new SetIdentityVerdictHandler(
         new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),

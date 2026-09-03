@@ -9,8 +9,8 @@ Bienvenido al manual de usuario de **Bank USAC**. Esta guía detalla la operaci�
 * **URL de Acceso Local**: `http://localhost:3010/`
 * **Punto de Entrada API Gateway**: `http://localhost:3000/`
 * **Credenciales Demo Rápidas**:
-  * **Cliente Principal (Enner Esaí Mendizabal)**: `ventanilla@bankusac.gt` / `DemoClave#03`
-  * **Cliente Tercero (Marco Tulio López)**: `marco.lopez@bankusac.gt` / `BankUsac#2026`
+  * **Cliente Principal (Marco Tulio López)**: `marco.lopez@bankusac.gt` / `BankUsac#2026`
+  * **Cliente Tercero (Clara Cliente)**: `cliente@bankusac.gt` / `BankUsac#2026`
   * **Cajero Receptor**: `cajero@bankusac.gt` / `BankUsac#2026`
   * **Administrador**: `admin@bankusac.gt` / `BankUsac#2026`
 

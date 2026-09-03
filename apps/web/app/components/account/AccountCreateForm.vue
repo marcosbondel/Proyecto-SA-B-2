@@ -23,6 +23,7 @@ import type { AccountType } from '../../lib/account';
  * `customerId` produces a real account belonging to the wrong person, and
  * nothing in this system deletes one.
  */
+const route = useRoute();
 const { session, role } = useSession();
 
 const api = useGatewayApi();
@@ -40,15 +41,23 @@ const {
 
 type Step = 'FORM' | 'CONFIRM' | 'DONE';
 
+const isStaff = computed(() => role.value !== 'CLIENTE');
+
 const step = ref<Step>('FORM');
 const accountType = ref<AccountType | null>(null);
-const forSomebodyElse = ref(false);
-const customerId = ref('');
+const forSomebodyElse = ref(isStaff.value);
+const customerId = ref(
+  typeof route.query.customerId === 'string' ? route.query.customerId.trim() : '',
+);
 const idempotencyKey = ref('');
 const errors = ref<Record<string, string>>({});
 const copied = ref(false);
 
-const isStaff = computed(() => role.value !== 'CLIENTE');
+watch(isStaff, (val) => {
+  if (val) {
+    forSomebodyElse.value = true;
+  }
+});
 
 interface CustomerIdentityRecord {
   readonly customerId: string;
@@ -58,6 +67,13 @@ interface CustomerIdentityRecord {
 const customerRecord = ref<CustomerIdentityRecord | null>(null);
 
 onMounted(async () => {
+  if (typeof route.query.customerId === 'string' && route.query.customerId.trim().length > 0) {
+    customerId.value = route.query.customerId.trim();
+  }
+  if (isStaff.value) {
+    forSomebodyElse.value = true;
+  }
+
   if (role.value === 'CLIENTE' && session.value?.customerId) {
     const res = await api.call<CustomerIdentityRecord>(`/api/customers/${session.value.customerId}`);
     if (res.ok) {
@@ -74,7 +90,7 @@ const isIdentityPending = computed(
 );
 
 const subject = computed(() =>
-  forSomebodyElse.value ? customerId.value.trim() : (session.value?.customerId ?? ''),
+  isStaff.value || forSomebodyElse.value ? customerId.value.trim() : (session.value?.customerId ?? ''),
 );
 
 /**
@@ -98,7 +114,12 @@ function validate(): boolean {
     found.accountType = 'Elige el tipo de cuenta.';
   }
 
-  if (forSomebodyElse.value && !isUuidV4(customerId.value)) {
+  if (isStaff.value) {
+    if (!isUuidV4(customerId.value)) {
+      found.customerId =
+        'Como personal bancario debes indicar el identificador (UUID) de 36 caracteres del cliente titular.';
+    }
+  } else if (forSomebodyElse.value && !isUuidV4(customerId.value)) {
     found.customerId =
       'Escribe el número de cliente que devolvió el registro. Son 36 caracteres.';
   }
@@ -120,7 +141,7 @@ async function submit(): Promise<void> {
       method: 'POST',
       body: {
         accountType: accountType.value,
-        ...(forSomebodyElse.value ? { customerId: customerId.value.trim() } : {}),
+        ...(isStaff.value || forSomebodyElse.value ? { customerId: customerId.value.trim() } : {}),
       },
       idempotencyKey: idempotencyKey.value,
     }),
@@ -141,7 +162,7 @@ function openAnother(): void {
   step.value = 'FORM';
   accountType.value = null;
   customerId.value = '';
-  forSomebodyElse.value = false;
+  forSomebodyElse.value = isStaff.value;
   errors.value = {};
 }
 
@@ -184,20 +205,24 @@ async function copyAccountId(): Promise<void> {
         </p>
       </div>
 
-      <div v-if="isStaff" class="flex flex-col gap-3">
-        <UCheckbox v-model="forSomebodyElse" label="La cuenta es para otro cliente" />
+      <div v-if="isStaff" class="flex flex-col gap-3 rounded-2xl bg-[#F6F6F8] p-4 border border-[#E9E9EC]">
+        <div>
+          <h3 class="text-[14px] font-semibold text-[#23242A]">Titular de la cuenta</h3>
+          <p class="text-[12px] text-[#5A5B63]">
+            El personal bancario (cajeros y administradores) solo puede abrir cuentas para clientes registrados.
+          </p>
+        </div>
 
         <UFormField
-          v-if="forSomebodyElse"
-          label="Número de cliente del titular"
+          label="Número de cliente del titular (UUID)"
           name="customerId"
           :error="errors.customerId"
-          help="El identificador de cliente (UUID) a quien pertenecerá la cuenta."
+          help="El identificador de cliente (UUID) de 36 caracteres a quien pertenecerá la cuenta."
         >
           <UInput
             v-model="customerId"
             placeholder="00000000-0000-4000-8000-000000000000"
-            class="w-full"
+            class="w-full font-mono"
             style="font-variant-numeric: tabular-nums lining-nums"
           />
         </UFormField>
@@ -233,7 +258,7 @@ async function copyAccountId(): Promise<void> {
           <dd
             class="break-all text-right font-mono text-[13px] font-medium"
             style="font-variant-numeric: tabular-nums lining-nums"
-          >{{ subject || 'tu propia cuenta' }}</dd>
+          >{{ isStaff ? customerId.trim() : (subject || 'tu propia cuenta') }}</dd>
         </div>
         <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
           <dt class="text-[13px] text-[#75767F]">Tipo de cuenta</dt>
@@ -267,9 +292,18 @@ async function copyAccountId(): Promise<void> {
     <!-- Step 3: the outcome, whatever it turned out to be -->
     <div v-else class="flex flex-col gap-4">
       <SharedAsyncStateAlert
+        v-if="!accepted?.accountId"
         :state="outcomeState === 'IDLE' ? 'PENDING' : outcomeState"
         :message="outcomeMessage"
         :correlation-id="correlationId"
+      />
+
+      <UAlert
+        v-else
+        color="success"
+        variant="subtle"
+        title="¡Cuenta bancaria creada exitosamente!"
+        description="La cuenta ha sido procesada y registrada en el sistema bancario con saldo inicial de Q 0.00."
       />
 
       <div
@@ -293,9 +327,6 @@ async function copyAccountId(): Promise<void> {
         </div>
         <p class="mt-3 border-t border-[#DCDCE0] pt-3 text-[13px] leading-5 text-[#5A5B63]">
           Guarda este identificador: es con lo que se consulta el saldo, se reciben depósitos en ventanilla y se realizan transferencias.
-        </p>
-        <p class="mt-2 text-[13px] font-medium text-emerald-700">
-          Tu cuenta bancaria ha sido creada exitosamente con saldo inicial de Q 0.00.
         </p>
       </div>
 

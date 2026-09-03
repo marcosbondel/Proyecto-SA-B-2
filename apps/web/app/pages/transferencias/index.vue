@@ -86,9 +86,15 @@ useHead({ title: 'Transferencias · bonking' });
   <section class="flex flex-col gap-6">
     <header class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-[32px] font-bold leading-10 tracking-tight">Transferencias</h1>
+        <h1 class="text-[32px] font-bold leading-10 tracking-tight">
+          {{ isStaff ? 'Transferencias entre cuentas' : 'Transferencias' }}
+        </h1>
         <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-          Envía dinero entre cuentas y sigue el estado de cada transferencia.
+          {{
+            isStaff
+              ? 'Consulta y monitoreo de transferencias entre cuentas de clientes.'
+              : 'Envía dinero entre cuentas y sigue el estado de cada transferencia.'
+          }}
         </p>
       </div>
       <div class="flex gap-3">
@@ -102,7 +108,9 @@ useHead({ title: 'Transferencias · bonking' });
     <UCard>
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <h2 class="text-[20px] font-semibold leading-7">Historial</h2>
+          <h2 class="text-[20px] font-semibold leading-7">
+            {{ isStaff ? 'Historial de operaciones de clientes' : 'Historial' }}
+          </h2>
           <!-- Says what it is not showing, rather than implying that 25 is all
                there is. -->
           <p v-if="state === 'READY' && total > rows.length" class="tab text-[13px] text-[#75767F]">
@@ -123,13 +131,18 @@ useHead({ title: 'Transferencias · bonking' });
       />
 
       <div v-else-if="rows.length === 0" class="py-10 text-center" data-testid="transfers-empty">
-        <p class="text-[20px] font-semibold leading-7">Todavía no hay transferencias</p>
+        <p class="text-[20px] font-semibold leading-7">
+          {{ isStaff ? 'No hay transferencias registradas' : 'Todavía no hay transferencias' }}
+        </p>
         <p class="mx-auto mt-2 max-w-[46ch] text-[14px] leading-[22px] text-[#5A5B63]">
-          Cuando envíes dinero, cada transferencia aparecerá aquí con su estado. Si acabas de
-          enviar una, puede tardar unos segundos en completarse.
+          {{
+            isStaff
+              ? 'Aún no se han procesado movimientos de transferencia entre cuentahabientes en el sistema.'
+              : 'Cuando envíes dinero, cada transferencia aparecerá aquí con su estado. Si acabas de enviar una, puede tardar unos segundos en completarse.'
+          }}
         </p>
         <UButton to="/transferencias/nueva" color="primary" class="mt-6">
-          Hacer la primera transferencia
+          {{ isStaff ? 'Registrar transferencia' : 'Hacer la primera transferencia' }}
         </UButton>
       </div>
 
