@@ -241,6 +241,23 @@ Como alternativa documentada existe `external.mode=hostFallback`, que usa
 **Error de CORS en el navegador.** Los puertos reenviados no coinciden con
 `web.apiBaseUrl` / `gateway.corsAllowedOrigins`. Usa `pnpm k8s:forward`.
 
+**`kubectl` responde `couldn't get current server API group list`.** No es el
+clúster: es que `kubectl` no tiene ninguno al que preguntar. Borrar un clúster
+—con `kind delete cluster`, o el `gcloud` de otro proyecto— se lleva su contexto,
+y si era el activo no deja ninguno en su lugar. Los comandos `pnpm k8s:*` fijan
+el suyo y no se ven afectados; los `kubectl` a mano sí. Se arregla con:
+
+```bash
+kubectl config use-context kind-bank-usac
+```
+
+**Un `helm upgrade` que se queda colgado en `rollout status`.** Casi siempre son
+imágenes que el nodo no tiene: los pods nuevos quedan en `ImagePullBackOff`, los
+viejos no pueden terminar, y el backoff de kubelet crece hasta pasar cualquier
+timeout razonable. `pnpm k8s:install` lo comprueba antes de tocar el clúster, así
+que si llegaste aquí es porque se lanzó `helm` a mano. Reconstruye y vuelve a
+lanzar con el script.
+
 ## Desmontaje
 
 ```bash
