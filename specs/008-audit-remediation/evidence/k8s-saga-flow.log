@@ -1,0 +1,93 @@
+# Saga end to end sobre Kubernetes — evidencia T-015
+#
+# Generado por:
+#   BANK_GATEWAY_PORT=3000 \
+#   BANK_LOGS_CMD="kubectl logs --context kind-bank-usac -n bank-usac \
+#     deploy/bank-usac-notification-audit-service --tail 600" \
+#     ./infra/docker/scripts/flow-images.sh
+#
+# Las tres formas de la Saga, con los saldos leidos antes y despues de
+# cada una a traves del Gateway. Las imagenes son bank-usac/*:a0fbf19f7af8,
+# el mismo commit que este arbol.
+# ---------------------------------------------------------------------
+
+
+── 0. the stack answers
+{"status":"ready","application":"gateway","broker":"connected"}
+
+── 1. register a customer  →  POST /api/customers
+   202 Accepted — customerId 04780604-7085-4698-809d-da7a3b6e1400
+   correlationId d20d17c7-ef0b-45f5-bc05-b502ed03d7c6
+
+── 2. activate the account  →  GET /api/customers/verify-email
+   {"status":"ACTIVE","correlationId":"84b86233-810c-436d-b375-a39b9d529d9e"}
+
+── 3. sign in  →  POST /api/auth/login
+   signed in, JWT issued (244 characters)
+
+── 4. open two accounts  →  POST /api/accounts
+   202 Accepted — source account e2eacc1a-90bf-4262-ab90-0128f5ebb1f2
+   202 Accepted — target account 7b1b4f7f-bfb6-402b-b8d6-e1e142d32a02
+
+── 5. give the source account a balance  →  a teller's deposit, POST /api/accounts/{id}/deposit
+   signing in as the seeded demo teller — requires SEED_DEMO_DATA=true (see the header)
+   signed in as cajero@bankusac.gt, JWT issued (248 characters)
+   200 OK — {"depositId":"424e37f0-52a5-40b0-bb7d-d13eadb1c99e","operationId":"116d039e-c8d5-4483-a50a-ad4003d4546f","balanceAfter":{"amountMinor":150000,"currency":"GTQ"},"reactivated":false,"correlationId":"eeaf3093-3435-4420-aa13-3a07a379d3f0"}
+   GET /api/accounts/{id}/balance → {"outcome":"FOUND","accountId":"e2eacc1a-90bf-4262-ab90-0128f5ebb1f2","balance":{"amountMinor":150000,"currency":"GTQ"},"status":"ACTIVE","lastActivityAt":"2026-09-03T21:16:10.059Z","correlationId":"6e040455-4e04-477e-8872-fef89508f735"}
+
+── 6. a transfer that works  →  POST /api/transfers
+   202 Accepted — transactionId a6df4a76-2c60-4957-9ed4-8613d2439fe8
+   settled: COMPLETED
+   {"outcome":"FOUND","transactionId":"a6df4a76-2c60-4957-9ed4-8613d2439fe8","status":"COMPLETED","amount":{"amountMinor":25000,"currency":"GTQ"},"reason":null,"createdAt":"2026-09-03T21:16:10.199Z","updatedAt":"2026-09-03T21:16:10.877Z","originCorrelationId":"c730bb67-28e7-4c0c-8804-8a5a5e07ddfe","payment":{"paymentId":"9be659a5-24e4-4890-9152-828d6fbad6a5","status":"SUCCEEDED","attempt":1,"reason":null,"errorType":null,"decidedAt":"2026-09-03T21:16:10.485Z"},"correlationId":"193d0ce4-7b15-4d4a-8123-4de01d577862"}
+   source balance 150000 → 125000 minor units
+
+── 7. a payment the provider refuses  →  the Saga compensates
+   202 Accepted — transactionId 7f4d933d-8d99-455e-9354-207e270d363c
+   settled: COMPENSATED
+   {"outcome":"FOUND","transactionId":"7f4d933d-8d99-455e-9354-207e270d363c","status":"COMPENSATED","amount":{"amountMinor":25000,"currency":"GTQ"},"reason":"PAYMENT_DECLINED","createdAt":"2026-09-03T21:16:11.417Z","updatedAt":"2026-09-03T21:16:11.887Z","originCorrelationId":"9eb03c7a-6392-47d8-9ff5-f5bbecc66200","payment":{"paymentId":"b8cede55-686a-466d-8f36-ad08c39d51ad","status":"FAILED","attempt":1,"reason":"PAYMENT_DECLINED","errorType":null,"decidedAt":"2026-09-03T21:16:11.684Z"},"correlationId":"fd638dbf-1b7f-490b-ae6f-39b72c0338de"}
+   source balance 125000 → 125000 minor units
+   the money came back — the compensation is real, not a status
+
+── 8. a payment that keeps timing out  →  the ladder, then the compensation
+   202 Accepted — transactionId 7d33b4e9-6e18-4d42-84b8-70155f87134a
+   settled: COMPENSATED
+   {"outcome":"FOUND","transactionId":"7d33b4e9-6e18-4d42-84b8-70155f87134a","status":"COMPENSATED","amount":{"amountMinor":25000,"currency":"GTQ"},"reason":"PAYMENT_RETRIES_EXHAUSTED","createdAt":"2026-09-03T21:16:12.607Z","updatedAt":"2026-09-03T21:16:49.711Z","originCorrelationId":"873ddc66-5187-4c3c-8074-1fd249ab5ad9","payment":{"paymentId":"f37a8b59-ede2-4394-92cf-e6d09ea6af7e","status":"FAILED","attempt":4,"reason":"PAYMENT_RETRIES_EXHAUSTED","errorType":null,"decidedAt":"2026-09-03T21:16:49.487Z"},"correlationId":"fe6bb908-e03e-4034-b835-10916ec1b62d"}
+   source balance 125000 → 125000 minor units
+   the provider was asked 4 times before the Saga gave up
+
+── 9. the audit trail  →  the seventh image
+   the transfer that worked
+     account.credited.v1 → RECORDED
+     account.debited.v1 → RECORDED
+     payment.succeeded.v1 → RECORDED
+     transaction.completed.v1 → RECORDED
+     transaction.initiated.v1 → RECORDED
+   the payment that was refused
+     account.debit.compensated.v1 → RECORDED
+     account.debited.v1 → RECORDED
+     payment.attempt.failed.v1 → RECORDED
+     payment.failed.v1 → RECORDED
+     transaction.compensated.v1 → RECORDED
+     transaction.initiated.v1 → RECORDED
+   the payment that timed out
+     account.debit.compensated.v1 → RECORDED
+     account.debited.v1 → RECORDED
+     payment.attempt.failed.v1 → RECORDED
+     payment.failed.v1 → RECORDED
+     transaction.compensated.v1 → RECORDED
+     transaction.initiated.v1 → RECORDED
+
+════════════════════════════════════════════════════════════════
+ Three Sagas, seven images, one network.
+
+ COMPLETED   — debit, payment, credit
+ COMPENSATED — a refusal, and the money given back
+ COMPENSATED — a retry ladder climbed to its end, then the same
+
+ Every request entered through the Gateway; no service was called
+ directly and no service read another's database — not even the source
+ balance, which arrived through a teller's deposit (A-05), not SQL.
+ The balances were checked before and after each transfer, so the
+ compensation is a fact about the money rather than a status somebody
+ wrote down.
+════════════════════════════════════════════════════════════════
