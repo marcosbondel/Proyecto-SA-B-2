@@ -13,7 +13,8 @@ data:
   NODE_ENV: production
   CORS_ALLOWED_ORIGINS: {{ .Values.gateway.corsAllowedOrigins | quote }}
   JWT_EXPIRES_IN: {{ .Values.gateway.jwtExpiresIn | quote }}
-  GATEWAY_INSTANCE_ID: {{ .Values.gateway.gatewayInstanceId | quote }}
+  # GATEWAY_INSTANCE_ID is deliberately absent: it must differ per replica, so
+  # it comes from the downward API in gateway/deployment.yaml, not from here.
   REPLY_TIMEOUT_MS: {{ .Values.gateway.replyTimeoutMs | quote }}
   # Resolved by the browser, not by the web pod — see the comment on
   # `web.apiBaseUrl` in values.yaml.

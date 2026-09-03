@@ -25,6 +25,15 @@ them.
 and the headers a parked message carries. It lives in
 [`../events/topology.md`](../events/topology.md) and is not restated here.
 
-> **Blocked**: The runbooks are not written. Owner: Marcos Bonifasi. Arrives
-> with: T-06 for bringing the local stack up, and T-23 for the stalled-Saga
-> procedure.
+## The runbooks
+
+- [DEPLOYMENT.md](DEPLOYMENT.md) — taking the system to the local Kubernetes
+  cluster from a clean machine: prerequisites, the four commands, how to verify
+  it, how to run the Saga against it, and what each failure mode looks like.
+- [CONTAINERS.md](CONTAINERS.md) — the image inventory: one row per component
+  with its Dockerfile, port, health checks and required runtime variables.
+- [EMAIL_RESEND.md](EMAIL_RESEND.md) — sending real activation email instead of
+  the simulated channel.
+
+> **Still open**: the stalled-Saga procedure — what to do when a compensation
+> does not arrive — is not written. Owner: Marcos Bonifasi. Arrives with T-23.

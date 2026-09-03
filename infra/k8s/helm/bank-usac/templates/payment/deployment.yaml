@@ -4,6 +4,7 @@
 # the retry ladder is explicit rather than left to the code's own default.
 {{- $component := .Values.services.payment.component }}
 {{- $ctx := dict "root" $ "component" $component }}
+{{- $cfg := .Values.services.payment }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,7 +13,7 @@ metadata:
   labels:
     {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ $cfg.replicaCount | default .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
@@ -69,4 +70,4 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml ($cfg.resources | default .Values.resources) | nindent 12 }}

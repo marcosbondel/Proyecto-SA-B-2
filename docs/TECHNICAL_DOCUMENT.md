@@ -29,7 +29,7 @@ de texto versionadas (`.mmd` y `.puml`) y como imagen exportada.
 | **Manual de usuario** | [`docs/manual/README.md`](manual/README.md), con una guía por rol. Ver [§7](#7-manual-de-usuario) | Completo |
 | **Repositorio con estrategia de monorepo** | Un solo repositorio, un `pnpm-workspace.yaml`, un lockfile y Turborepo como task runner. Ver [§8](#8-código-fuente-y-monorepo) | Completo |
 | **Código fuente separado por microservicio** | [`apps/services/`](../apps/services/) — cinco servicios, uno por carpeta, más `apps/gateway` y `apps/web`. Ver [§8](#8-código-fuente-y-monorepo) | Completo |
-| **Archivos de configuración para despliegue en Kubernetes** | [`infra/k8s/`](../infra/k8s/README.md) — chart de Helm en `infra/k8s/helm/bank-usac` y el clúster kind en `infra/k8s/kind`. Ver [§9](#9-contenedores-y-despliegue) | Ver §9 |
+| **Archivos de configuración para despliegue en Kubernetes** | [`infra/k8s/`](../infra/k8s/README.md) — chart de Helm en `infra/k8s/helm/bank-usac`, el clúster kind en `infra/k8s/kind` y el procedimiento completo en [`docs/operations/DEPLOYMENT.md`](operations/DEPLOYMENT.md). Ver [§9](#9-contenedores-y-despliegue) | Completo |
 | **Documento de Decisión y Diseño de Arquitectura (DDA)** | [`docs/dda.md`](dda.md) — análisis de caso de negocio, CDU, especificaciones, atributos de calidad y matrices de trazabilidad | Completo |
 | **Guía Integral de Pruebas y Happy Path** | [`docs/happypath.md`](happypath.md) — recorrido visual exhaustivo de los 3 actores con 60+ capturas | Completo |
 | **Frontend** | [`apps/web/`](../apps/web/README.md), con su guía de diseño en [`docs/DESIGN.md`](DESIGN.md). Ver [§10](#10-frontend) | Completo |
@@ -291,19 +291,30 @@ Las bases de datos, el broker y el almacén de objetos corren fuera del clúster
 propósito: es el principio III de la constitución del proyecto, y es lo que
 dibuja el [diagrama de despliegue](architecture/diagrams/05-uml-despliegue.puml).
 
-El chart **se instaló en un clúster kind real** (v0.33.0) el 2026-08-28, y no
-solo pasó `helm lint` y `helm template`: los siete pods llegaron a `1/1 Ready`
-contra el PostgreSQL, el RabbitMQ y el MinIO de fuera del clúster, el Gateway
-respondió por `port-forward` y una transferencia recorrió la Saga hasta un
-estado terminal. Esa instalación encontró dos defectos que un chequeo de
-renderizado no podía ver —un arreglo asociativo de bash 4 que rompía en el bash
-3.2 de macOS, y unos valores por defecto de usuario y base de datos que
+El chart **se instala en un clúster kind real** (v0.33.0), y no solo pasa
+`helm lint` y `helm template`: los siete pods llegan a `1/1 Ready` contra el
+PostgreSQL, el RabbitMQ y el MinIO de fuera del clúster, y el Gateway responde
+por `port-forward`. La primera instalación encontró dos defectos que un chequeo
+de renderizado no podía ver —un arreglo asociativo de bash 4 que rompía en el
+bash 3.2 de macOS, y unos valores por defecto de usuario y base de datos que
 apuntaban cada pod al rol equivocado—, que es exactamente la razón por la que
-`helm template` no basta. Dos matices honestos acompañan a ese párrafo: la
-transferencia terminó en `FAILED` por `DEBIT_REJECTED` sobre una cuenta en cero
-—la forma de manejo de fallos, no la que se completa—, y **de esa ejecución no
-quedó evidencia capturada en el repositorio**: `specs/008-audit-remediation/quickstart.md`
-guarda lo que se esperaba, no lo que salió.
+`helm template` no basta.
+
+El procedimiento completo —prerrequisitos con versiones, los cuatro comandos,
+la verificación, el escalado y cada modo de fallo— está en
+[`docs/operations/DEPLOYMENT.md`](operations/DEPLOYMENT.md).
+
+**La evidencia de la ejecución está capturada**, y por un guion en vez de un
+pegado, de modo que se puede volver a producir en cualquier momento:
+
+```bash
+pnpm k8s:evidence   # solo lee: helm list, get pods/svc/nodes, docker ps, /ready ×7
+```
+
+Escribe en [`specs/008-audit-remediation/evidence/`](../specs/008-audit-remediation/evidence/)
+la salida real de cada comando, incluida la respuesta `/ready` de los siete
+componentes y el `docker ps` que demuestra el requisito del enunciado §4.2: las
+cinco bases, el broker y el almacén de objetos corriendo **fuera** del clúster.
 
 ---
 
