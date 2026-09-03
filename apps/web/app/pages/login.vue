@@ -109,6 +109,10 @@ async function submit(): Promise<void> {
         data-testid="login-failure"
       />
 
+      <p v-if="failure" class="text-[13px] text-[#75767F]">
+        Si te acabas de registrar, recuerda que primero debes activar tu cuenta abriendo el enlace que enviamos a tu correo electrónico.
+      </p>
+
       <UButton type="submit" :loading="pending" block>Entrar</UButton>
     </form>
 
