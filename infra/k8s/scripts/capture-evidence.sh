@@ -22,11 +22,15 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 OUT_DIR="${REPO_ROOT}/specs/008-audit-remediation/evidence"
 NAMESPACE="bank-usac"
 RELEASE="bank-usac"
+# Pinned, not inherited: evidence captured from the wrong cluster is worse than
+# no evidence, because it looks exactly like the real thing.
+KUBE_CONTEXT="${BANK_KUBE_CONTEXT:-kind-bank-usac}"
 
 label=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --label) label="-${2:?--label needs a value}"; shift 2 ;;
+    --context) KUBE_CONTEXT="${2:?--context needs a value}"; shift 2 ;;
     -h|--help) sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift ;;
     *) echo "ERROR: unknown flag $1" >&2; exit 2 ;;
@@ -37,9 +41,13 @@ mkdir -p "$OUT_DIR"
 OUT="${OUT_DIR}/cluster-state${label}.log"
 
 command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl not installed." >&2; exit 1; }
-kubectl cluster-info --request-timeout=5s >/dev/null 2>&1 || {
-  echo "ERROR: no reachable cluster. Is the kind cluster up?" >&2
-  echo "  kind get clusters && kubectl config current-context" >&2
+kubectl config get-contexts -o name 2>/dev/null | grep -qx "$KUBE_CONTEXT" || {
+  echo "ERROR: kube context '${KUBE_CONTEXT}' does not exist." >&2
+  echo "  Create the cluster first:  pnpm k8s:cluster" >&2
+  exit 1
+}
+kubectl cluster-info --context "$KUBE_CONTEXT" --request-timeout=5s >/dev/null 2>&1 || {
+  echo "ERROR: context '${KUBE_CONTEXT}' exists but is not reachable." >&2
   exit 1
 }
 
@@ -56,24 +64,23 @@ run() {
   echo "Captured: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "Commit:   $(git -C "$REPO_ROOT" rev-parse --short=12 HEAD) on $(git -C "$REPO_ROOT" branch --show-current)"
   echo "Tooling:  $(kind version 2>/dev/null | head -1) · helm $(helm version --short 2>/dev/null) · kubectl $(kubectl version --client -o yaml 2>/dev/null | awk '/gitVersion/ {print $2; exit}')"
+  echo "Context:  ${KUBE_CONTEXT}   (pinned by the script, not the active one)"
   echo "=========================================================================="
   echo
 } >"$OUT"
-
-run kubectl config current-context
-run kubectl get nodes -o wide
-run helm list --namespace "$NAMESPACE"
-run helm status "$RELEASE" --namespace "$NAMESPACE" --show-desc
-run kubectl get pods -n "$NAMESPACE" -o wide
-run kubectl get deployments -n "$NAMESPACE"
-run kubectl get svc -n "$NAMESPACE"
-run kubectl get endpoints -n "$NAMESPACE"
-run kubectl get configmap,secret -n "$NAMESPACE"
+run kubectl --context "$KUBE_CONTEXT" get nodes -o wide
+run helm list --kube-context "$KUBE_CONTEXT" --namespace "$NAMESPACE"
+run helm status "$RELEASE" --kube-context "$KUBE_CONTEXT" --namespace "$NAMESPACE" --show-desc
+run kubectl --context "$KUBE_CONTEXT" get pods -n "$NAMESPACE" -o wide
+run kubectl --context "$KUBE_CONTEXT" get deployments -n "$NAMESPACE"
+run kubectl --context "$KUBE_CONTEXT" get svc -n "$NAMESPACE"
+run kubectl --context "$KUBE_CONTEXT" get endpoints -n "$NAMESPACE"
+run kubectl --context "$KUBE_CONTEXT" get configmap,secret -n "$NAMESPACE"
 
 # The images actually running, which is how a reader confirms the cluster is on
 # the commit the repository claims.
 echo "\$ kubectl get pods -n ${NAMESPACE} -o custom-columns=POD,IMAGE" >>"$OUT"
-kubectl get pods -n "$NAMESPACE" \
+kubectl get pods --context "$KUBE_CONTEXT" -n "$NAMESPACE" \
   -o custom-columns='POD:.metadata.name,IMAGE:.spec.containers[0].image' >>"$OUT" 2>&1
 echo >>"$OUT"
 
@@ -95,7 +102,7 @@ for row in \
   port="${row##*:}"
   deploy="${RELEASE}-${component}"
   echo "\$ kubectl exec deploy/${deploy} -- wget -qO- http://127.0.0.1:${port}/ready" >>"$OUT"
-  kubectl exec -n "$NAMESPACE" "deploy/${deploy}" --request-timeout=10s \
+  kubectl exec --context "$KUBE_CONTEXT" -n "$NAMESPACE" "deploy/${deploy}" --request-timeout=10s \
     -- wget -qO- "http://127.0.0.1:${port}/ready" >>"$OUT" 2>&1
   echo >>"$OUT"
 done
