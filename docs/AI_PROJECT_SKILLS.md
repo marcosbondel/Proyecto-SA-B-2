@@ -330,6 +330,7 @@ surfaces exist and their owners request them.
 | `frontend-design` | `anthropics/skills` | Production-grade UI direction. |
 | `web-design-guidelines` | `vercel-labs/agent-skills` | Spacing, typography, interaction, accessibility. |
 | `run` | project-local | Bank USAC local stack startup for Claude Code and OpenCode. |
+| `run-k8s-local` | project-local | Bank USAC on the local kind cluster, repairing infrastructure failures rather than stopping at them. |
 | `codex-run` | project-local | Generic Codex workflow for starting and verifying local projects. |
 
 Deferred until the stack exists: `webapp-testing`, `mobile-responsiveness`,
@@ -419,6 +420,7 @@ Phrasing that reliably reaches each installed skill:
 | "review my UI", "check accessibility" (+ a path) | `web-design-guidelines` |
 | "add pre-commit hooks", "set up Husky" | `setup-pre-commit` |
 | "run the app", "start the local stack" | `run` for Bank USAC, or `codex-run` as the generic Codex fallback |
+| "run it on Kubernetes", "deploy to kind", "the cluster is broken" | `run-k8s-local` — it repairs the infrastructure failure it finds instead of reporting and stopping |
 | "is there a skill for X?" | `find-skills` |
 
 ### Which Skill Serves Which Phase
