@@ -1,6 +1,0 @@
-flowchart TD
-    actor["Cliente, Cajero o Administrador: solicitar estado"] --> gateway["Gateway: publicar transaction.status.requested"]
-    gateway --> search["Transaction Service: buscar transacción"]
-    search --> found{"¿Transacción encontrada?"}
-    found -->|No| notFound["Responder NOT_FOUND"]
-    found -->|Sí| reply["Responder estado y resultado actual"]

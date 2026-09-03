@@ -1,0 +1,61 @@
+// Notification & Audit Service - Entity-Relationship Diagram (DBML)
+// Database: notification_audit_db (PostgreSQL 18.4)
+
+Table audit_events {
+  event_id uuid [note: 'Identificador del mensaje o evento original (eventId)']
+  consumer varchar(60) [note: 'Cola familiar de auditoría (audit.customer, etc.)']
+  message_type varchar(100) [not null]
+  message_version integer [not null]
+  producer varchar(100) [not null]
+  occurred_at timestamptz [not null, note: 'Reloj del productor']
+  received_at timestamptz [not null, default: `now()`, note: 'Reloj local de auditoría']
+  correlation_id uuid [not null, note: 'Trazabilidad transversal']
+  causation_id uuid
+  payload jsonb [not null, note: 'Payload previamente redactado sin credenciales']
+  processing_status varchar(20) [not null, note: 'PROCESSED, INVALID, ERROR']
+
+  indexes {
+    (event_id, consumer) [pk]
+    (correlation_id, occurred_at) [name: 'audit_events_correlation_idx']
+    (message_type, occurred_at) [name: 'audit_events_type_idx']
+  }
+  Note: 'Bitácora global inmutable de todos los eventos del sistema bancario'
+}
+
+Table notifications {
+  notification_id uuid [pk]
+  customer_id uuid [note: 'Cliente dueño de la notificación en su buzón personal']
+  type varchar(50) [not null]
+  channel varchar(20) [not null, default: 'EMAIL']
+  recipient varchar(200) [note: 'Destinatario de correo o canal simulado']
+  reference_id uuid [note: 'Referencia a cuenta, cliente o transacción']
+  subject varchar(200) [not null, note: 'Asunto de la notificación']
+  status varchar(20) [not null, default: 'PENDING', note: 'PENDING, SENT, FAILED']
+  correlation_id uuid [not null]
+  caused_by uuid [note: 'ID del evento que causó la notificación']
+  read_at timestamptz [note: 'Fecha/hora de lectura por el cliente en buzón']
+  created_at timestamptz [not null, default: `now()`]
+  processed_at timestamptz
+
+  indexes {
+    (correlation_id, created_at) [name: 'notifications_correlation_idx']
+    created_at [name: 'notifications_recent_idx']
+    (caused_by, type) [unique, name: 'notifications_one_per_event_idx', note: 'WHERE caused_by IS NOT NULL']
+  }
+  Note: 'Buzón de notificaciones del cliente e historial de despachos'
+}
+
+Table processed_messages {
+  message_id uuid [note: 'ID del mensaje en RabbitMQ']
+  consumer varchar(60) [note: 'Consumidor familiar']
+  message_type varchar(120) [not null]
+  outcome varchar(30) [not null]
+  deliveries integer [not null, default: 1]
+  first_seen_at timestamptz [not null, default: `now()`]
+  last_seen_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (message_id, consumer) [pk]
+  }
+  Note: 'Registro operacional de consumo para observar la escalera de reintentos'
+}

@@ -1,9 +1,0 @@
-flowchart TD
-    actor["Visitante: abrir el enlace y escribir la contraseña nueva"] --> gateway["Gateway: publicar customer.password-reset.confirm y esperar hasta 5 s"]
-    gateway --> lookup["Customer Service: buscar el token por su digest"]
-    lookup --> valid{"¿Token válido, sin usar y vigente?"}
-    valid -->|No| reject["Rechazar con el mismo motivo en los tres casos"]
-    valid -->|Sí| hash["Hashear la contraseña con el hasher del registro"]
-    hash --> burn["Quemar todos los tokens vivos del cliente"]
-    burn --> publish["Publicar customer.password-reset.completed"]
-    publish --> audit["Notification & Audit: registrar el restablecimiento"]

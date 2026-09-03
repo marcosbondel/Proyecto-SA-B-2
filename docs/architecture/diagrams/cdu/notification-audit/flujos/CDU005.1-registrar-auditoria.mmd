@@ -1,6 +1,0 @@
-flowchart TD
-    source["Servicio emisor: publicar evento"] --> validate["Notification & Audit: validar correlationId"]
-    validate --> dedupe["Comprobar eventId para deduplicación"]
-    dedupe --> decision{"¿Evento repetido o inválido?"}
-    decision -->|Sí| discard["Descartar o registrar error"]
-    decision -->|No| persist["Persistir AuditEvent inmutable"]

@@ -8,7 +8,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Actor / Rol | Credenciales | Propósito en el Flujo | Privilegios y Restricciones (ADR D-06) |
 | :--- | :--- | :--- | :--- |
-| **Nuevo Cliente (Carlos Morales)** | `carlos.morales.<id>@example.com` / `StrongQA#2026!` | Registro, activación por correo, apertura de cuenta bancaria. | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
+| **Nuevo Cliente (Carlos Morales)** | `deennerparaprobar@gmail.com` / `StrongQA#2026!` | Registro, activación por correo, apertura de cuenta bancaria. | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
 | **Cliente Demo (Existente)** | `cliente@bankusac.gt` / `BankUsac#2026` | Ejecución de transferencias con Saga coreografiada y pagos. | No puede autorizar depósitos ni ver datos de otros clientes (`403`). |
 | **Cajero Receptor (Ventanilla)** | `cajero@bankusac.gt` / `BankUsac#2026` | Validación de documentos DPI y abono de depósitos en efectivo. | No puede ordenar transferencias entre clientes ni auditar el sistema (`403`). |
 | **Administrador del Sistema** | `admin@bankusac.gt` / `BankUsac#2026` | Auditoría distribuida, monitoreo de pagos, gestión de estado. | Acceso de lectura global al bus de eventos y métricas de servicios. |
@@ -78,7 +78,9 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 | **Nombre Completo** | `Carlos Eduardo Morales Méndez` | Campo alfabético requerido |
 | **Fecha de Nacimiento** | `1995-06-20` | Mayoría de edad comprobada ($\ge 18$ años) |
 | **Dirección** | `10ma Avenida 4-50 Zona 14, Ciudad de Guatemala` | Dirección física válida |
-| **Correo Electrónico** | `carlos.morales.<rnd>@example.com` | Formato RFC 5322 válido y único |
+| **Correo Electrónico** | `deennerparaprobar@gmail.com` | Formato RFC 5322 válido y único |
+| **DPI** | `1111111111111` | 11 digitos |
+| **Contraseña** | `juanitoSeMurio!7` | Longitud $\ge 8$ caracteres, alta entropía y caracteres especiales |
 
 ![Registro Paso 1 - Datos Válidos](screenshots/hp-09-registro-paso1-datos-validos.png)
 
