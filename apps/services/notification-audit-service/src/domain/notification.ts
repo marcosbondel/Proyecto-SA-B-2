@@ -272,7 +272,11 @@ export function simulatedRecipientFor(customerId: string | null): string | null 
  * mailing list — which is the rule `redaction.ts` exists to keep.
  */
 export function subjectCustomerIdFrom(messageType: string, payload: unknown): string | null {
-  if (!messageType.startsWith('customer.') && !messageType.startsWith('transaction.')) {
+  if (
+    !messageType.startsWith('customer.') &&
+    !messageType.startsWith('transaction.') &&
+    messageType !== 'account.opened.v1'
+  ) {
     return null;
   }
 

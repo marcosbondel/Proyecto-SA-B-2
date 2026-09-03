@@ -95,6 +95,7 @@ export class RecordEventHandler {
         consumer: this.#consumer,
       },
       customerId: envelope.identity?.customerId ?? null,
+      role: envelope.identity?.role ?? null,
     });
 
     this.#logger.info('event recorded', {

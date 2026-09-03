@@ -49,6 +49,20 @@ import { formatQuetzales } from '../../lib/money';
  * money from needs to see it; it is not consulted to block the send.
  */
 const api = useGatewayApi();
+const { role } = useSession();
+const isStaff = computed(() => role.value !== null && role.value !== 'CLIENTE');
+
+/**
+ * Format holder name to show first name and primary surname (e.g. 'Marco López').
+ */
+function formatDisplayName(name?: string): string {
+  if (!name || name.trim().length === 0) return '';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0]!;
+  const first = parts[0]!;
+  const surname = parts.length >= 3 ? parts[2]! : parts[1]!;
+  return `${first} ${surname}`;
+}
 
 /**
  * `null` is "nothing chosen yet", and it has to be `null` rather than `''`.
@@ -59,10 +73,10 @@ const api = useGatewayApi();
  * never mounts. `PaymentScenarioSelect` had it right with `value: null`;
  * `pagos/nuevo` had it wrong, which is why its two selects had never opened.
  */
-const sourceAccount = ref<string | null>(null);
+const sourceAccount = ref<string | undefined>(undefined);
 const destination = ref<'MINE' | 'SOMEONE_ELSE'>('MINE');
-const ownTarget = ref<string | null>(null);
-const otherTarget = ref('');
+const ownTarget = ref<string | undefined>(undefined);
+const otherTarget = ref<string | undefined>(undefined);
 const amountMinor = ref<number | null>(null);
 const amount = ref<number | null>(null);
 const paymentScenario = ref<PaymentScenario | null>(null);
@@ -107,13 +121,68 @@ const source = computed(
   () => accounts.value.find((account) => account.accountId === sourceAccount.value) ?? null,
 );
 
-/** The accounts a transfer of mine may land in: mine, except the one paying. */
-const ownTargets = computed(() =>
-  accounts.value.filter((account) => account.accountId !== sourceAccount.value),
+/** The accounts a transfer of mine may land in: accounts of the SAME holder, except the one paying. */
+const ownTargets = computed(() => {
+  if (!source.value) return [];
+  return accounts.value.filter(
+    (account) =>
+      account.accountId !== sourceAccount.value &&
+      account.customerId === source.value!.customerId,
+  );
+});
+
+/** Other accounts in the system (other clients). */
+const someoneElseTargets = computed(() => {
+  return accounts.value.filter(
+    (account) =>
+      account.accountId !== sourceAccount.value &&
+      (!source.value || account.customerId !== source.value.customerId),
+  );
+});
+
+watch(sourceAccount, (newSource) => {
+  if (ownTarget.value && !ownTargets.value.some((a) => a.accountId === ownTarget.value)) {
+    ownTarget.value = undefined;
+  }
+  if (otherTarget.value && otherTarget.value === newSource) {
+    otherTarget.value = undefined;
+  }
+  if (destination.value === 'MINE' && ownTargets.value.length === 0) {
+    destination.value = 'SOMEONE_ELSE';
+  }
+});
+
+/** How an account reads in a list: what kind it is, which one, and what is in it. */
+function describe(account: AccountSummary): string {
+  const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
+  const namePart = account.holderName ? `${formatDisplayName(account.holderName)} · ` : '';
+
+  return `${namePart}${kind} · ···${account.accountId.slice(-6)} · ${formatQuetzales(account.balance.amountMinor)}`;
+}
+
+const sourceItems = computed(() =>
+  accounts.value.map((account) => ({
+    value: account.accountId,
+    label: describe(account),
+  })),
+);
+
+const ownTargetItems = computed(() =>
+  ownTargets.value.map((account) => ({
+    value: account.accountId,
+    label: describe(account),
+  })),
+);
+
+const someoneElseItems = computed(() =>
+  someoneElseTargets.value.map((account) => ({
+    value: account.accountId,
+    label: describe(account),
+  })),
 );
 
 const targetAccount = computed(() =>
-  destination.value === 'MINE' ? (ownTarget.value ?? '') : otherTarget.value.trim(),
+  destination.value === 'MINE' ? (ownTarget.value ?? '') : (otherTarget.value?.trim() ?? ''),
 );
 
 const target = computed(
@@ -140,20 +209,13 @@ const canRetry = computed(
   () => state.value === 'REPLY_TIMEOUT' || state.value === 'BROKER_UNAVAILABLE',
 );
 
-/** How an account reads in a list: what kind it is, which one, and what is in it. */
-function describe(account: AccountSummary): string {
-  const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
-
-  return `${kind} · ···${account.accountId.slice(-6)} · ${formatQuetzales(account.balance.amountMinor)}`;
-}
-
 /** What the review step calls the account that receives the money. */
 const targetLabel = computed(() => {
   if (target.value !== null) {
     return describe(target.value);
   }
 
-  return `Cuenta de otra persona · ···${targetAccount.value.slice(-6)}`;
+  return `Cuenta externa · ···${targetAccount.value.slice(-6)}`;
 });
 
 function review(): void {
@@ -262,18 +324,14 @@ async function submit(): Promise<void> {
         :error="shown.sourceAccount"
         help="De aquí sale el dinero."
       >
-        <USelect
+        <USelectMenu
           v-model="sourceAccount"
           class="w-full"
           value-key="value"
           data-testid="source-account"
-          :items="[
-            { value: null, label: 'Elige una cuenta' },
-            ...accounts.map((account) => ({
-              value: account.accountId,
-              label: describe(account),
-            })),
-          ]"
+          :items="sourceItems"
+          placeholder="Elige o busca una cuenta de origen..."
+          :search-input="{ placeholder: 'Buscar por titular o número de cuenta...' }"
         />
       </UFormField>
 
@@ -282,13 +340,16 @@ async function submit(): Promise<void> {
           v-model="destination"
           :disabled="ownTargets.length === 0"
           :items="[
-            { value: 'MINE', label: 'A otra de mis cuentas' },
-            { value: 'SOMEONE_ELSE', label: 'A la cuenta de otra persona' },
+            { value: 'MINE', label: isStaff ? 'A otra cuenta del mismo cliente' : 'A otra de mis cuentas' },
+            { value: 'SOMEONE_ELSE', label: isStaff ? 'A cuenta de otro cliente' : 'A la cuenta de otra persona' },
           ]"
         />
         <p v-if="ownTargets.length === 0" class="mt-1 text-[13px] text-[#5A5B63]">
-          Solo tienes una cuenta activa, así que el dinero tiene que ir a la cuenta de otra
-          persona.
+          {{
+            isStaff
+              ? 'El titular seleccionado solo tiene una cuenta activa, por lo que el destino debe ser otro cliente.'
+              : 'Solo tienes una cuenta activa, así que el dinero tiene que ir a la cuenta de otra persona.'
+          }}
         </p>
       </UFormField>
 
@@ -299,36 +360,48 @@ async function submit(): Promise<void> {
         :error="shown.targetAccount"
         help="Aquí entra el dinero."
       >
-        <USelect
+        <USelectMenu
           v-model="ownTarget"
           class="w-full"
           value-key="value"
           data-testid="own-target-account"
-          :items="[
-            { value: null, label: 'Elige una cuenta' },
-            ...ownTargets.map((account) => ({
-              value: account.accountId,
-              label: describe(account),
-            })),
-          ]"
+          :items="ownTargetItems"
+          placeholder="Elige o busca una cuenta del mismo titular..."
+          :search-input="{ placeholder: 'Buscar cuenta...' }"
         />
       </UFormField>
 
       <UFormField
         v-else
-        label="Número de cuenta de destino"
+        label="Cuenta de destino"
         name="targetAccount"
         :error="shown.targetAccount"
-        help="Pídeselo a la persona que va a recibir el dinero. Son 36 caracteres."
+        help="Selecciona una cuenta registrada o escribe el identificador (UUID)."
       >
-        <UInput
-          v-model="otherTarget"
-          placeholder="Pega aquí el número de cuenta"
-          class="w-full"
-          autocomplete="off"
-          style="font-variant-numeric: tabular-nums lining-nums"
-          data-testid="target-account"
-        />
+        <div class="flex flex-col gap-2">
+          <USelectMenu
+            v-if="someoneElseTargets.length > 0"
+            v-model="otherTarget"
+            class="w-full"
+            value-key="value"
+            data-testid="other-target-select"
+            :items="someoneElseItems"
+            placeholder="Buscar y seleccionar cuenta de destino..."
+            :search-input="{ placeholder: 'Buscar por titular o número de cuenta...' }"
+          />
+          <UInput
+            :model-value="otherTarget ?? ''"
+            placeholder="O escribe/pega el número de cuenta (UUID)"
+            class="w-full font-mono text-[13px]"
+            autocomplete="off"
+            style="font-variant-numeric: tabular-nums lining-nums"
+            data-testid="target-account"
+            @update:model-value="otherTarget = $event && $event.trim().length > 0 ? $event.trim() : undefined"
+          />
+          <p v-if="target" class="text-[13px] text-[#186A32] font-medium">
+            ✓ Cuenta destino: <strong>{{ describe(target) }}</strong>
+          </p>
+        </div>
       </UFormField>
 
       <div>

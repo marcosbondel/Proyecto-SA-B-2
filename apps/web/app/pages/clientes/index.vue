@@ -171,7 +171,6 @@ useHead({ title: 'Clientes · bonking' });
             <tr>
               <th class="pb-2 font-medium">Cliente / Nombre</th>
               <th class="pb-2 font-medium">No. Cliente (UUID)</th>
-              <th class="pb-2 font-medium">DPI / Documento</th>
               <th class="pb-2 font-medium">Correo electrónico</th>
               <th class="pb-2 font-medium">Rol</th>
               <th class="pb-2 font-medium">Identidad</th>
@@ -200,7 +199,6 @@ useHead({ title: 'Clientes · bonking' });
                   />
                 </div>
               </td>
-              <td class="py-3 font-mono text-[#5A5B63]">{{ c.documentNumber }}</td>
               <td class="py-3 text-[#5A5B63]">{{ c.email }}</td>
               <td class="py-3">
                 <UBadge variant="subtle" color="neutral" size="sm">{{ c.role }}</UBadge>
@@ -215,12 +213,13 @@ useHead({ title: 'Clientes · bonking' });
                 </UBadge>
               </td>
               <td class="py-3 text-right">
-                <div class="flex justify-end gap-1.5">
+                <div class="flex flex-col items-end gap-1">
                   <UButton
                     :to="`/clientes/${c.customerId}`"
                     variant="outline"
                     color="neutral"
                     size="xs"
+                    class="w-[85px] justify-center"
                   >
                     Ficha
                   </UButton>
@@ -230,6 +229,7 @@ useHead({ title: 'Clientes · bonking' });
                     variant="outline"
                     color="primary"
                     size="xs"
+                    class="w-[85px] justify-center"
                   >
                     Abrir cuenta
                   </UButton>

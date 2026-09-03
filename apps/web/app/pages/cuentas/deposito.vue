@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatQuetzales, MIN_AMOUNT_MINOR } from '../../lib/money';
 import { mayTakeDeposits } from '../../lib/account';
+import type { AccountSummary } from '../../lib/account';
 
 /**
  * `A-05` — the deposit window, in the four states the prototype draws: the
@@ -26,6 +27,44 @@ const allowed = computed(() => mayTakeDeposits(role.value));
 const accountId = ref('');
 const amountMinor = ref<number | null>(null);
 const description = ref('');
+
+const accounts = ref<readonly AccountSummary[]>([]);
+const accountsLoading = ref(false);
+
+function formatDisplayName(name?: string): string {
+  if (!name || name.trim().length === 0) return '';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0]!;
+  const first = parts[0]!;
+  const surname = parts.length >= 3 ? parts[2]! : parts[1]!;
+  return `${first} ${surname}`;
+}
+
+function describeAccount(account: AccountSummary): string {
+  const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
+  const namePart = account.holderName ? `${formatDisplayName(account.holderName)} · ` : '';
+  return `${namePart}${kind} · ···${account.accountId.slice(-6)} · ${formatQuetzales(account.balance.amountMinor)}`;
+}
+
+const accountItems = computed(() =>
+  accounts.value.map((account) => ({
+    value: account.accountId,
+    label: describeAccount(account),
+  })),
+);
+
+const selectedAccount = computed(() =>
+  accounts.value.find((a) => a.accountId === accountId.value.trim()) ?? null,
+);
+
+onMounted(async () => {
+  accountsLoading.value = true;
+  const res = await api.call<{ accounts: AccountSummary[] }>('/api/accounts');
+  if (res.ok) {
+    accounts.value = res.data.accounts.filter((a) => a.status === 'ACTIVE');
+  }
+  accountsLoading.value = false;
+});
 
 type Step = 'FORM' | 'CONFIRM' | 'DONE';
 
@@ -161,14 +200,34 @@ useHead({ title: 'Depósito en ventanilla · bonking' });
         </template>
 
         <form class="flex flex-col gap-4" @submit.prevent="review">
-          <UFormField label="Cuenta destino" name="accountId">
+          <UFormField
+            label="Buscar cuenta destino por titular o número"
+            name="accountSelect"
+            help="Selecciona de la lista o escribe/pega el UUID directamente abajo."
+          >
+            <USelectMenu
+              v-model="accountId"
+              class="w-full"
+              value-key="value"
+              :items="accountItems"
+              :loading="accountsLoading"
+              placeholder="Buscar o seleccionar cuenta destino..."
+              :search-input="{ placeholder: 'Buscar por titular o número de cuenta...' }"
+            />
+          </UFormField>
+
+          <UFormField label="Número de cuenta destino (UUID)" name="accountId">
             <UInput
               v-model="accountId"
-              class="w-full tab"
-              placeholder="Pega aquí el número de cuenta"
+              class="w-full tab font-mono text-[13px]"
+              placeholder="00000000-0000-4000-8000-000000000000"
               required
             />
           </UFormField>
+
+          <p v-if="selectedAccount" class="text-[13px] text-[#186A32] font-medium">
+            ✓ Cuenta destino: <strong>{{ describeAccount(selectedAccount) }}</strong>
+          </p>
 
           <SharedMoneyInput label="Monto" name="amount" @update:amount-minor="amountMinor = $event" />
 
@@ -218,7 +277,7 @@ useHead({ title: 'Depósito en ventanilla · bonking' });
           <div>
             <dt class="text-[12px] text-[#75767F]">Cuenta destino</dt>
             <dd class="tab break-all text-[14px] font-semibold text-[#23242A]">
-              {{ accountId.trim() }}
+              {{ selectedAccount ? describeAccount(selectedAccount) : accountId.trim() }}
             </dd>
           </div>
           <div>
