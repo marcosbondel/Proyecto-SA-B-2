@@ -119,7 +119,7 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
           Compara la foto del documento con los datos declarados.
         </p>
       </div>
-      <UButton to="/clientes/validaciones" variant="ghost" color="neutral">Volver a la cola</UButton>
+      <UButton to="/clientes/validaciones" variant="ghost" color="neutral">Volver a validaciones</UButton>
     </header>
 
     <UAlert
@@ -127,7 +127,7 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
       color="success"
       variant="subtle"
       :title="sent === 'VALIDATED' ? 'Identidad aprobada' : 'Identidad rechazada'"
-      description="El veredicto se envió. El cliente saldrá de la cola cuando se procese."
+      description="El veredicto de validación ha sido procesado exitosamente."
       data-testid="verdict-sent"
     />
     <UAlert
