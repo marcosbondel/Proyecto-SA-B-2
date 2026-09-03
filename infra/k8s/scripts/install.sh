@@ -99,44 +99,84 @@ if [[ -z "$tag" ]]; then
   fi
 fi
 
-# Refuse to release a tag whose images are not on the node yet.
+# Resolve the tag against what the node actually has.
 #
-# Without this the failure is slow and confusing rather than immediate: helm
-# accepts the release, the new pods sit in ImagePullBackOff (there is no
-# registry — `bank-usac/*` resolves to docker.io and 401s), the old replicas
-# cannot terminate, and `rollout status` hangs until it gives up. Worse,
-# kubelet's pull backoff grows past any sensible timeout, so even fixing the
-# images afterwards looks like it did not work for several minutes.
+# HEAD is the right default — a release should name the commit it runs — but
+# HEAD moves with every commit, including the ones that cannot change an image:
+# documentation, evidence, this script. Demanding a four-minute rebuild after a
+# docs commit is not correctness, it is friction, and the failure it produces is
+# the worst kind: helm accepts the release, the new pods sit in ImagePullBackOff
+# (there is no registry — `bank-usac/*` resolves to docker.io and 401s), the old
+# replicas cannot terminate, and kubelet's pull backoff then grows past any
+# sensible timeout.
 #
-# It is easy to walk into: the default tag is HEAD, so any commit made after a
-# build — a docs commit, a script fix — moves the tag past the images that
-# exist. One second of checking here replaces ten minutes of confusion.
-if [[ "$dry_run" != "true" && "$print_only" != "true" && "$KUBE_CONTEXT" == kind-* ]]; then
-  node="${KUBE_CONTEXT#kind-}-control-plane"
-  if docker exec "$node" crictl images >/tmp/.bank-node-images 2>/dev/null; then
-    missing=""
-    for component in \
-      customer-service account-service transaction-service payment-service \
-      notification-audit-service gateway web; do
-      grep -q "bank-usac/${component}[[:space:]]\+${tag}[[:space:]]" /tmp/.bank-node-images \
-        || missing="${missing} ${component}"
-    done
-    if [[ -n "$missing" ]]; then
-      echo "ERROR: the node '${node}' has no images tagged '${tag}'." >&2
-      echo "  Missing:${missing}" >&2
-      echo >&2
-      echo "  The tag defaults to HEAD, and HEAD moves with every commit — so a" >&2
-      echo "  commit made after the last build leaves the images behind." >&2
-      echo >&2
-      echo "  Build and load them:" >&2
-      echo "    pnpm images:build -- --kind ${KUBE_CONTEXT#kind-}" >&2
-      echo "  or release a tag that is already on the node:" >&2
-      awk '$1 ~ /bank-usac\/gateway$/ && $2 != "dev" {print "    pnpm k8s:install -- --tag " $2}' \
-        /tmp/.bank-node-images >&2
-      rm -f /tmp/.bank-node-images
-      exit 1
+# So: prefer HEAD, load it if it was built but never loaded, and otherwise fall
+# back to the newest tag on the node that is an ancestor of HEAD — saying so
+# out loud, and saying whether any application code actually differs. A tag two
+# docs commits behind runs byte-identical images; a tag behind a change under
+# apps/ does not, and that distinction is the one worth printing.
+# Resolution runs even for --print and --dry-run: a printed command that names a
+# tag the run would not use is worse than no command at all.
+if [[ "$KUBE_CONTEXT" == kind-* ]]; then
+  kind_cluster="${KUBE_CONTEXT#kind-}"
+  node="${kind_cluster}-control-plane"
+  node_images="$(docker exec "$node" crictl images 2>/dev/null || true)"
+
+  if [[ -n "$node_images" ]]; then
+    node_has_tag() {
+      echo "$node_images" | grep -q "bank-usac/gateway[[:space:]]\+$1[[:space:]]"
+    }
+
+    if ! node_has_tag "$tag" && [[ "$dry_run" != "true" && "$print_only" != "true" ]]; then
+      # Built locally but never loaded? That is one `kind load` away.
+      if docker image inspect "bank-usac/gateway:${tag}" >/dev/null 2>&1; then
+        echo "Images for ${tag} are built but not on the node — loading…"
+        for component in \
+          customer-service account-service transaction-service payment-service \
+          notification-audit-service gateway web; do
+          kind load docker-image --name "$kind_cluster" "bank-usac/${component}:${tag}" >/dev/null 2>&1
+        done
+      fi
     fi
-    rm -f /tmp/.bank-node-images
+
+    if ! node_has_tag "$tag"; then
+      # Newest tag on the node that is a real ancestor of HEAD, by commit date.
+      fallback=""
+      fallback_date=0
+      while read -r candidate; do
+        [[ -z "$candidate" || "$candidate" == "dev" ]] && continue
+        git -C "$REPO_ROOT" cat-file -e "${candidate}^{commit}" 2>/dev/null || continue
+        git -C "$REPO_ROOT" merge-base --is-ancestor "$candidate" HEAD 2>/dev/null || continue
+        candidate_date="$(git -C "$REPO_ROOT" log -1 --format=%ct "$candidate" 2>/dev/null || echo 0)"
+        if [[ "$candidate_date" -gt "$fallback_date" ]]; then
+          fallback="$candidate"; fallback_date="$candidate_date"
+        fi
+      done <<EOF
+$(echo "$node_images" | awk '$1 ~ /bank-usac\/gateway$/ {print $2}')
+EOF
+
+      if [[ -z "$fallback" ]]; then
+        echo "ERROR: the node '${node}' has no usable bank-usac images." >&2
+        echo "  Build and load them:" >&2
+        echo "    pnpm images:build -- --kind ${kind_cluster}" >&2
+        exit 1
+      fi
+
+      behind="$(git -C "$REPO_ROOT" rev-list --count "${fallback}..HEAD" 2>/dev/null || echo '?')"
+      echo "NOTE: no images for ${tag} (HEAD); releasing ${fallback} instead." >&2
+      echo "      It is ${behind} commit(s) behind HEAD." >&2
+      if git -C "$REPO_ROOT" diff --quiet "$fallback" HEAD -- apps/ 2>/dev/null; then
+        echo "      No application code differs between them, so the images are" >&2
+        echo "      byte-identical to what HEAD would build." >&2
+      else
+        echo "      WARNING: apps/ HAS changed since ${fallback}:" >&2
+        git -C "$REPO_ROOT" diff --stat "$fallback" HEAD -- apps/ 2>/dev/null \
+          | sed 's/^/        /' | tail -8 >&2
+        echo "      Rebuild to release those changes:" >&2
+        echo "        pnpm images:build -- --kind ${kind_cluster}" >&2
+      fi
+      tag="$fallback"
+    fi
   fi
 fi
 
