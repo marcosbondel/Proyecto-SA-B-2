@@ -67,6 +67,8 @@ describe('the gateway reply queue', () => {
         'customer.password-reset.rejected.v1',
         'customer.password-changed.v1',
         'customer.password-change.rejected.v1',
+        'customer.registered.v1',
+        'customer.register.rejected.v1',
         'account.deposited.v1',
         'account.deposit.rejected.v1',
       ]);

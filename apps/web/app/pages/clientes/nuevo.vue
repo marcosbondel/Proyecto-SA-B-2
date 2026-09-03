@@ -20,8 +20,7 @@ useHead({ title: 'Nuevo cliente · bonking' });
     <header>
       <h1 class="text-[32px] font-bold leading-10 tracking-tight">Nuevo cliente</h1>
       <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-        Registro con foto del documento. El alta es asíncrona: al enviarla el sistema la acepta,
-        todavía no la completa.
+        Registro de nuevo cliente con fotografía del documento de identidad.
       </p>
     </header>
 

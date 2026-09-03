@@ -57,39 +57,32 @@ interface Presentation {
 const PRESENTATION: Record<string, Presentation> = {
   PENDING: {
     label: 'En proceso',
-    title: 'Solicitud aceptada, aún no completada',
-    body:
-      'El sistema recibió tu solicitud y la está procesando de forma asíncrona. ' +
-      'No cierres esta pantalla para ver el resultado, o consúltalo después con el código de seguimiento.',
+    title: 'Solicitud en proceso',
+    body: 'Tu solicitud ha sido recibida y está siendo procesada por el sistema.',
     color: 'warning',
   },
   SUCCESS: {
     label: 'Completada',
     title: 'Operación completada',
-    body: 'El sistema confirmó el resultado de la operación.',
+    body: 'El sistema confirmó el resultado de la operación exitosamente.',
     color: 'success',
   },
   BUSINESS_REJECTION: {
     label: 'Rechazada',
     title: 'La operación fue rechazada',
-    body: 'Un servicio del sistema no pudo completar la operación con los datos enviados.',
+    body: 'No se pudo completar la operación con los datos enviados.',
     color: 'error',
   },
   REPLY_TIMEOUT: {
-    label: 'Sin confirmación',
-    title: 'No pudimos confirmar el resultado',
-    body:
-      'La operación sigue en el sistema pero no recibimos confirmación en el tiempo esperado. ' +
-      'No asumas que falló: guarda el código de seguimiento y actualiza el estado. ' +
-      'Reintentar es seguro, la operación es idempotente y no se duplica.',
+    label: 'En proceso',
+    title: 'Solicitud en curso',
+    body: 'La operación sigue procesándose en el sistema. Puedes consultar su estado con tu código de seguimiento.',
     color: 'warning',
   },
   BROKER_UNAVAILABLE: {
     label: 'No disponible',
-    title: 'El sistema no pudo aceptar la solicitud',
-    body:
-      'No se realizó ningún cambio: la solicitud nunca llegó a procesarse. ' +
-      'Puedes intentarlo de nuevo en unos momentos, sin riesgo de duplicar nada.',
+    title: 'Servicio temporalmente no disponible',
+    body: 'No se pudo conectar con el servicio en este momento. Por favor, intenta de nuevo en unos momentos.',
     color: 'warning',
   },
   VALIDATION_ERROR: {

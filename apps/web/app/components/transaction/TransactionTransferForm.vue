@@ -227,8 +227,7 @@ async function submit(): Promise<void> {
     <template #header>
       <h2 class="text-[20px] font-semibold leading-7">Nueva transferencia</h2>
       <p class="mt-1 text-[13px] leading-5 text-[#5A5B63]">
-        La transferencia es asíncrona: al enviarla el sistema la acepta, todavía no la completa.
-        En la pantalla siguiente verás avanzar su estado.
+        Transfiere fondos entre tus cuentas o a cuentas de terceros de forma inmediata y segura.
       </p>
     </template>
 

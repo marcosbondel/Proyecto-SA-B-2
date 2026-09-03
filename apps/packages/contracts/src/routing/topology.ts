@@ -200,6 +200,11 @@ export const GATEWAY_REPLY_BINDINGS: readonly {
   { exchange: EXCHANGES.events, pattern: 'customer.password-changed.v1' },
   { exchange: EXCHANGES.events, pattern: 'customer.password-change.rejected.v1' },
   /*
+   * The verdict of registration: immediate confirmation or business rejection (duplicate DPI/email).
+   */
+  { exchange: EXCHANGES.events, pattern: 'customer.registered.v1' },
+  { exchange: EXCHANGES.events, pattern: 'customer.register.rejected.v1' },
+  /*
    * And of a deposit at a window. A teller is standing in front of somebody
    * who just handed over cash; "202, check the audit trail" is not an answer
    * either of them can act on.

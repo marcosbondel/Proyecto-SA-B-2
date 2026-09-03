@@ -126,7 +126,7 @@ export function registerCustomer(
   return {
     customerId: request.customerId,
     fullName: request.fullName.trim(),
-    identityDocument: request.identityDocument.trim(),
+    identityDocument: request.identityDocument.replace(/\s+/g, '').trim(),
     email: normaliseEmail(request.email),
     dateOfBirth: request.dateOfBirth,
     address: request.address.trim(),

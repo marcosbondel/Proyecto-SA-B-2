@@ -163,8 +163,7 @@ async function copyAccountId(): Promise<void> {
     <template #header>
       <h2 class="text-[20px] font-semibold leading-7">Abrir una cuenta</h2>
       <p class="mt-1 text-[13px] leading-5 text-[#5A5B63]">
-        La cuenta se abre con saldo <strong>Q 0.00</strong>. La apertura es asíncrona: al
-        enviarla el sistema la acepta, todavía no la completa.
+        La cuenta se abre con saldo inicial de <strong>Q 0.00</strong>.
       </p>
     </template>
 
@@ -193,7 +192,7 @@ async function copyAccountId(): Promise<void> {
           label="Número de cliente del titular"
           name="customerId"
           :error="errors.customerId"
-          help="El número que devolvió el registro del cliente. Todavía no hay búsqueda por nombre, así que hay que pedírselo o tomarlo de la cola de validación."
+          help="El identificador de cliente (UUID) a quien pertenecerá la cuenta."
         >
           <UInput
             v-model="customerId"
@@ -296,7 +295,7 @@ async function copyAccountId(): Promise<void> {
           Guarda este identificador: es con lo que se consulta el saldo, se reciben depósitos en ventanilla y se realizan transferencias.
         </p>
         <p class="mt-2 text-[13px] font-medium text-emerald-700">
-          ✓ Tu cuenta bancaria ha sido creada exitosamente con saldo inicial de Q 0.00.
+          Tu cuenta bancaria ha sido creada exitosamente con saldo inicial de Q 0.00.
         </p>
       </div>
 

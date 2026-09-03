@@ -92,8 +92,7 @@ useHead({ title: 'Clientes · bonking' });
       <UCard v-if="isStaff">
         <h2 class="text-[16px] font-semibold">Abrir la ficha de un cliente</h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Con el número de cliente que devolvió su registro. Todavía no hay búsqueda por nombre,
-          así que hay que pedírselo o tomarlo de la cola de validación.
+          Ingresa el identificador único del cliente (UUID) para consultar o gestionar su expediente bancario.
         </p>
         <form class="mt-3 flex gap-2" @submit.prevent="open">
           <UInput
