@@ -8,6 +8,10 @@ esto es lo mismo, pero mirable de un vistazo en la defensa.
 El procedimiento que las produce está en
 [`docs/operations/DEPLOYMENT.md`](../../operations/DEPLOYMENT.md).
 
+**Están todas.** Se muestran, con su lectura, en
+[`docs/TECHNICAL_DOCUMENT.md` §9](../../TECHNICAL_DOCUMENT.md#9-contenedores-y-despliegue).
+Tomadas el 2026-09-03 contra el clúster kind, release `bank-usac`.
+
 ## Qué debe haber aquí
 
 Nombres en minúsculas, numerados, con guiones — igual que `docs/images/happypath/`.
@@ -20,7 +24,8 @@ Nombres en minúsculas, numerados, con guiones — igual que `docs/images/happyp
 | `04-dependencias-fuera-del-cluster.png` | `docker ps --filter network=bank-usac-local`: las cinco PostgreSQL, RabbitMQ y MinIO corriendo **fuera** del clúster. | **Bases de datos externas (§8.1)** — es el requisito que se comprueba con `docker ps` y no con `kubectl` |
 | `05-ready-por-componente.png` | El `/ready` de los siete componentes: `broker connected`, `database reachable`, `queues consuming`. | Uso de broker · Independencia de datos |
 | `06-saga-completed.png` | El resumen final del flujo: una transferencia `COMPLETED` y dos `COMPENSATED`, con los saldos antes/después. | 2.7 Flujo distribuido · 2.8 Manejo de fallos · Código funcional |
-| `07-degradado-not-ready.png` | Con una base detenida: su pod `0/1 Running` — **no** `CrashLoopBackOff`. | 2.8 Manejo de fallos (escenarios de fallo, no solo happy path) |
+| `07-degradado-not-ready.png` | Con una base detenida: su pod `0/1 Running` — **no** `CrashLoopBackOff`. Muestra `RESTARTS 2`, del defecto que esta misma prueba destapó y que `921426f` corrigió; ver la nota en §9. | 2.8 Manejo de fallos (escenarios de fallo, no solo happy path) |
+| `07b-health-ok-ready-503.png` | Con la base caída: `/health` responde `ok` y `/ready` devuelve `503`. La diferencia entre vivo y listo, que es la razón de que liveness no reinicie el pod. | 2.8 Manejo de fallos · SRE |
 | `08-frontend-desde-el-cluster.png` | El navegador en `localhost:3010` con sesión iniciada, servido por el pod `web` vía `port-forward`. | Frontend (§4.4) · Despliegue funcional |
 
 ## Por qué la 04 importa más de lo que parece

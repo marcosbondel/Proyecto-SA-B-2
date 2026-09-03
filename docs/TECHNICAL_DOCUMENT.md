@@ -316,6 +316,34 @@ la salida real de cada comando, incluida la respuesta `/ready` de los siete
 componentes y el `docker ps` que demuestra el requisito del enunciado §4.2: las
 cinco bases, el broker y el almacén de objetos corriendo **fuera** del clúster.
 
+### El despliegue, en imágenes
+
+| | |
+| --- | --- |
+| ![Construcción de las siete imágenes](images/kubernetes/01-build-imagenes.png) | **Las siete imágenes**, etiquetadas con el commit que llevan dentro y cargadas en el nodo kind. No hay registro: nunca salen de la máquina. |
+| ![helm upgrade --install](images/kubernetes/02-helm-install.png) | **El release**, con los siete Deployments completando su rollout. |
+| ![Los siete pods en ejecución](images/kubernetes/03-pods-running.png) | **Los siete pods `1/1 Running`** en el namespace `bank-usac`, más sus Services `ClusterIP`. |
+| ![Las dependencias fuera del clúster](images/kubernetes/04-dependencias-fuera-del-cluster.png) | **Las cinco PostgreSQL, RabbitMQ y MinIO corriendo fuera del clúster**, en la red `bank-usac-local`. Es el requisito del §4.2, y solo `docker ps` puede demostrarlo: una foto de los pods enseña lo que está dentro, no lo que quedó fuera deliberadamente. |
+| ![/ready por componente](images/kubernetes/05-ready-por-componente.png) | **Cada componente responde por sí mismo**: `broker connected`, `database reachable`, `queues consuming`. |
+| ![La Saga en sus tres formas](images/kubernetes/06-saga-completed.png) | **Las tres formas de la Saga sobre el clúster**, con los saldos leídos antes y después: `COMPLETED` (150000 → 125000), un pago rechazado que `COMPENSATED` y una escalera de reintentos agotada que `COMPENSATED` igual. La compensación es un hecho sobre el dinero, no un estado escrito. |
+| ![Caso degradado](images/kubernetes/07-degradado-not-ready.png) | **Con `postgres-customer` detenido**, su pod queda `0/1 Running` —no `CrashLoopBackOff`—, y los otros seis siguen sirviendo. Sobre los reinicios que muestra la captura, ver la nota de abajo. |
+| ![/health responde, /ready no](images/kubernetes/07b-health-ok-ready-503.png) | **Vivo no es listo**: con la base caída, `/health` responde `ok` mientras `/ready` devuelve `503`. Por eso la sonda de liveness no reinicia el pod, y por eso el 503 nombra la dependencia que falta en vez de esconderla tras un reinicio. |
+| ![El frontend servido por el clúster](images/kubernetes/08-frontend-desde-el-cluster.png) | **El frontend servido por el pod `web`** a través de `kubectl port-forward`, con sesión de cliente iniciada. |
+
+> **Sobre los reinicios de la penúltima captura.** Muestra `RESTARTS 2`, y esa
+> cifra es la razón por la que vale la pena mirarla. Ejecutar el caso degradado
+> destapó un defecto que ningún test tenía: los cinco servicios creaban un
+> `pg.Pool` sin escuchar su evento `'error'`. Una base *ausente* estaba bien
+> resuelta —el servicio sigue vivo y no-listo—, pero una base que tumbaba una
+> conexión **ya establecida** emitía `terminating connection due to
+> administrator command`, y un `'error'` sin oyente es excepción fatal en Node:
+> el proceso moría y kubelet lo reiniciaba, camino del `CrashLoopBackOff` que
+> este documento promete que no ocurre. Corregido en `921426f`; repetida la
+> misma prueba con la base detenida noventa segundos, el pod aguanta
+> `0/1 Running` con **cero reinicios** y vuelve solo a `1/1` al levantarla. La
+> captura conserva el estado anterior a propósito: es la prueba de que el
+> escenario de fallo se ejecutó de verdad, y de que encontró algo.
+
 ---
 
 ## 10. Frontend
