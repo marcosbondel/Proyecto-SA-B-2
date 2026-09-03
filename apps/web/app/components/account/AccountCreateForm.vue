@@ -211,15 +211,17 @@ async function copyAccountId(): Promise<void> {
 
       <SharedIdempotencyKeyField ref="keyField" v-model="idempotencyKey" />
 
-      <UButton
-        type="submit"
-        color="primary"
-        size="lg"
-        block
-        :disabled="isIdentityPending"
-      >
-        {{ isIdentityPending ? 'Apertura bloqueada (requiere validación de cajero)' : 'Continuar' }}
-      </UButton>
+      <ClientOnly>
+        <UButton
+          type="submit"
+          color="primary"
+          size="lg"
+          block
+          :disabled="isIdentityPending"
+        >
+          {{ isIdentityPending ? 'Apertura bloqueada (requiere validación de cajero)' : 'Continuar' }}
+        </UButton>
+      </ClientOnly>
     </form>
 
     <!-- Step 2: the confirmation, because nothing here deletes an account -->

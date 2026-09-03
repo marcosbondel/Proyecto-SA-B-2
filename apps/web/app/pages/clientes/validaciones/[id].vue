@@ -207,25 +207,27 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
           <p v-else class="mt-4 text-[13px] text-[#75767F]">Cargando la ficha…</p>
         </UCard>
 
-        <div class="flex gap-2">
-          <UButton
-            color="primary"
-            size="lg"
-            class="flex-1 justify-center"
-            :loading="sending"
-            :disabled="!mayReview || sent !== null"
-            @click="decide('VALIDATED')"
-          >
-            Aprobar identidad
-          </UButton>
-          <UButton
-            variant="outline"
-            color="error"
-            size="lg"
-            :disabled="!mayReview || sent !== null"
-            @click="rejectOpen = true"
-          >Rechazar</UButton>
-        </div>
+        <ClientOnly>
+          <div class="flex gap-2">
+            <UButton
+              color="primary"
+              size="lg"
+              class="flex-1 justify-center"
+              :loading="sending"
+              :disabled="!mayReview || sent !== null"
+              @click="decide('VALIDATED')"
+            >
+              Aprobar identidad
+            </UButton>
+            <UButton
+              variant="outline"
+              color="error"
+              size="lg"
+              :disabled="!mayReview || sent !== null"
+              @click="rejectOpen = true"
+            >Rechazar</UButton>
+          </div>
+        </ClientOnly>
       </div>
     </div>
 
