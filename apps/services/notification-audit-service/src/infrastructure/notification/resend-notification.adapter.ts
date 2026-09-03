@@ -101,8 +101,8 @@ export class ResendNotificationAdapter implements NotificationSender {
           from: this.#config.from,
           to: [to],
           subject: notification.subject,
-          html: htmlBody(notification.subject, link),
-          text: textBody(notification.subject, link),
+          html: htmlBody(notification.subject, link, notification.type),
+          text: textBody(notification.subject, link, notification.type),
         }),
       });
 
@@ -149,22 +149,33 @@ export class ResendNotificationAdapter implements NotificationSender {
   }
 }
 
-function htmlBody(subject: string, link: string | undefined): string {
+function htmlBody(subject: string, link: string | undefined, type?: string): string {
   const safeSubject = escapeHtml(subject);
-  const action =
-    link === undefined
-      ? ''
-      : `<p style="margin:24px 0"><a href="${escapeHtml(link)}" ` +
-        `style="background:#111;color:#fff;padding:12px 20px;border-radius:8px;` +
-        `text-decoration:none;display:inline-block">Activar mi cuenta</a></p>` +
-        `<p style="color:#5A5B63;font-size:13px">Si el botón no funciona, copia este enlace:<br>` +
-        `<span style="word-break:break-all">${escapeHtml(link)}</span></p>`;
+  let content = '';
+
+  if (type === 'identity.rejected') {
+    content =
+      `<p style="color:#5A5B63;font-size:14px;line-height:1.5">` +
+      `Tu solicitud de registro en Bank USAC fue revisada pero no pudo ser aprobada ` +
+      `debido a que la fotografía de tu documento de identificación no era legible o no cumplía con los requisitos.` +
+      `</p>` +
+      `<p style="color:#5A5B63;font-size:14px;line-height:1.5">` +
+      `Puedes ingresar nuevamente a registrarte asegurándote de subir una fotografía clara y nítida de tu DPI.` +
+      `</p>`;
+  } else if (link !== undefined) {
+    content =
+      `<p style="margin:24px 0"><a href="${escapeHtml(link)}" ` +
+      `style="background:#111;color:#fff;padding:12px 20px;border-radius:8px;` +
+      `text-decoration:none;display:inline-block">Continuar</a></p>` +
+      `<p style="color:#5A5B63;font-size:13px">Si el botón no funciona, copia este enlace:<br>` +
+      `<span style="word-break:break-all">${escapeHtml(link)}</span></p>`;
+  }
 
   return (
     `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto">` +
     `<h1 style="font-size:20px">bonking · Bank USAC</h1>` +
     `<h2 style="font-size:16px;font-weight:600">${safeSubject}</h2>` +
-    action +
+    content +
     `<hr style="border:none;border-top:1px solid #eee;margin:24px 0">` +
     `<p style="color:#9095a0;font-size:12px">Este correo se envió de forma automática. ` +
     `Si no reconoces esta solicitud, puedes ignorarlo.</p>` +
@@ -172,8 +183,11 @@ function htmlBody(subject: string, link: string | undefined): string {
   );
 }
 
-function textBody(subject: string, link: string | undefined): string {
-  return link === undefined ? subject : `${subject}\n\nActiva tu cuenta: ${link}`;
+function textBody(subject: string, link: string | undefined, type?: string): string {
+  if (type === 'identity.rejected') {
+    return `${subject}\n\nTu solicitud de registro en Bank USAC fue revisada pero no pudo ser aprobada debido a que la fotografía de tu documento de identificación no era legible o no cumplía con los requisitos.\n\nPuedes ingresar nuevamente a registrarte asegurándote de subir una fotografía clara y nítida de tu DPI.`;
+  }
+  return link === undefined ? subject : `${subject}\n\nEnlace: ${link}`;
 }
 
 function escapeHtml(value: string): string {

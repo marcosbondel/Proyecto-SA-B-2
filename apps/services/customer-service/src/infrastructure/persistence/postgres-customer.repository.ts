@@ -281,17 +281,35 @@ export class PostgresCustomerRepository implements CustomerRepository {
        * either applies cleanly or finds the identity already terminal and is
        * ignored by the domain, never both writing and both publishing.
        */
-      const written = await client.query(
-        `UPDATE customers
-            SET identity_status = $2, updated_at = $3, version = version + 1
-          WHERE customer_id = $1 AND version = $4`,
-        [
-          input.customer.customerId,
-          input.customer.identityStatus,
-          input.customer.updatedAt,
-          input.customer.version,
-        ],
-      );
+      const isRejected = input.customer.identityStatus === 'REJECTED';
+      const written = isRejected
+        ? await client.query(
+            `UPDATE customers
+                SET identity_status = $2,
+                    document_number = document_number || '#rejected#' || customer_id,
+                    email = email || '#rejected#' || customer_id,
+                    username = username || '#rejected#' || customer_id,
+                    updated_at = $3,
+                    version = version + 1
+              WHERE customer_id = $1 AND version = $4`,
+            [
+              input.customer.customerId,
+              input.customer.identityStatus,
+              input.customer.updatedAt,
+              input.customer.version,
+            ],
+          )
+        : await client.query(
+            `UPDATE customers
+                SET identity_status = $2, updated_at = $3, version = version + 1
+              WHERE customer_id = $1 AND version = $4`,
+            [
+              input.customer.customerId,
+              input.customer.identityStatus,
+              input.customer.updatedAt,
+              input.customer.version,
+            ],
+          );
 
       if (written.rowCount === 0) {
         throw new Error(

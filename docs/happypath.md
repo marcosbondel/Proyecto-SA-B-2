@@ -6,12 +6,13 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 ## 🏛️ Matriz de Actores y Credenciales de Demostración
 
-| Actor / Rol | Credenciales | Propósito  | Privilegios y Restricciones (ADR D-06) |
+| Actor / Rol | Credenciales | Propósito | Privilegios y Restricciones (ADR D-06) |
 | :--- | :--- | :--- | :--- |
-| **Cliente Principal (Enner Mendizabal)** | `ventanilla@bankusac.gt` / `DemoClave#03` | Origen de transferencias con Saga, pagos de servicios, cuentas pre-fondeadas (Q5,000). | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
+| **Cliente Pre-sembrado (Clara Cliente)** | `cliente@bankusac.gt` / `BankUsac#2026` | Cuentas pre-fondeadas para pruebas inmediatas de transferencias, estado de cuenta y pagos. | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
 | **Cliente Tercero (Marco Tulio López)** | `marco.lopez@bankusac.gt` / `BankUsac#2026` | Destinatario para pruebas de transferencias interbancarias y depósitos en ventanilla. | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
-| **Cajero Receptor (Ventanilla)** | `cajero@bankusac.gt` / `BankUsac#2026` | Validación de documentos DPI y abono de depósitos en efectivo. | No puede ordenar transferencias entre clientes ni auditar el sistema (`403`). |
-| **Administrador del Sistema** | `admin@bankusac.gt` / `BankUsac#2026` | Auditoría distribuida, monitoreo de pagos, gestión de estado. | Acceso de lectura global al bus de eventos y métricas de servicios. |
+| **Cliente para Demostración en Vivo** | `ventanilla@bankusac.gt` | Correo real libre de siembra predeterminada, reservado para demostrar el alta por el cajero en ventanilla o el auto-registro web, y la recepción en vivo de correos de activación y rechazo. | Alta viva en tiempo real sin colisión de unicidad. |
+| **Cajero Receptor (Ventanilla)** | `cajero@bankusac.gt` / `BankUsac#2026` | Registro de clientes en ventanilla, validación/rechazo de documentos DPI y abono de depósitos. | No puede ordenar transferencias entre clientes ni auditar el sistema (`403`). |
+| **Administrador del Sistema** | `admin@bankusac.gt` / `BankUsac#2026` | Auditoría distribuida, monitoreo de pagos, gestión de estado y creación de personal staff. | Acceso de lectura global al bus de eventos y métricas de servicios. |
 
 ---
 

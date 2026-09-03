@@ -166,7 +166,17 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     readonly document: Omit<StoredIdentityDocument, 'documentId' | 'customerId'> | null;
     readonly idempotency: ProcessedMessage;
   }): Promise<void> {
-    this.customers.set(input.customer.customerId, input.customer);
+    if (input.customer.identityStatus === 'REJECTED') {
+      const freed = {
+        ...input.customer,
+        email: `${input.customer.email}#rejected#${input.customer.customerId}`,
+        identityDocument: `${input.customer.identityDocument}#rejected#${input.customer.customerId}`,
+        username: `${input.customer.username}#rejected#${input.customer.customerId}`,
+      };
+      this.customers.set(input.customer.customerId, freed);
+    } else {
+      this.customers.set(input.customer.customerId, input.customer);
+    }
 
     if (input.document !== null) {
       this.documents.push({

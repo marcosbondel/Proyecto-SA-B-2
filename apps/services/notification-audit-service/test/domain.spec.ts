@@ -153,8 +153,8 @@ describe('which events are worth telling somebody about', () => {
     }
   });
 
-  it('notifies on fourteen message types and no more', () => {
-    expect(notifyingMessageTypes()).toHaveLength(14);
+  it('notifies on fifteen message types and no more', () => {
+    expect(notifyingMessageTypes()).toHaveLength(15);
   });
 
   /**

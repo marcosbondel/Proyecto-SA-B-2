@@ -36,6 +36,10 @@ async function open(): Promise<void> {
   }
 }
 
+if (role.value === 'CLIENTE') {
+  await navigateTo('/perfil');
+}
+
 useHead({ title: 'Clientes · bonking' });
 </script>
 
@@ -44,11 +48,7 @@ useHead({ title: 'Clientes · bonking' });
     <header>
       <h1 class="text-[32px] font-bold leading-10 tracking-tight">Clientes</h1>
       <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-        {{
-          isStaff
-            ? 'Registro con foto del documento, actualización de datos y revisión de identidad.'
-            : 'Tus datos personales y el estado de la revisión de tu documento.'
-        }}
+        Registro con foto del documento, actualización de datos y revisión de identidad.
       </p>
     </header>
 
@@ -61,19 +61,6 @@ useHead({ title: 'Clientes · bonking' });
         </p>
         <template #footer>
           <UButton to="/clientes/nuevo" color="primary">Nuevo cliente</UButton>
-        </template>
-      </UCard>
-
-      <UCard v-if="session">
-        <h2 class="text-[16px] font-semibold">Mis datos</h2>
-        <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Actualiza tu nombre, tu dirección o tu fecha de nacimiento. El correo y el usuario no
-          se modifican.
-        </p>
-        <template #footer>
-          <UButton :to="`/clientes/${session.customerId}`" variant="outline" color="neutral">
-            Abrir mi ficha
-          </UButton>
         </template>
       </UCard>
 
