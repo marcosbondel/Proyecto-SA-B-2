@@ -99,6 +99,47 @@ if [[ -z "$tag" ]]; then
   fi
 fi
 
+# Refuse to release a tag whose images are not on the node yet.
+#
+# Without this the failure is slow and confusing rather than immediate: helm
+# accepts the release, the new pods sit in ImagePullBackOff (there is no
+# registry — `bank-usac/*` resolves to docker.io and 401s), the old replicas
+# cannot terminate, and `rollout status` hangs until it gives up. Worse,
+# kubelet's pull backoff grows past any sensible timeout, so even fixing the
+# images afterwards looks like it did not work for several minutes.
+#
+# It is easy to walk into: the default tag is HEAD, so any commit made after a
+# build — a docs commit, a script fix — moves the tag past the images that
+# exist. One second of checking here replaces ten minutes of confusion.
+if [[ "$dry_run" != "true" && "$print_only" != "true" && "$KUBE_CONTEXT" == kind-* ]]; then
+  node="${KUBE_CONTEXT#kind-}-control-plane"
+  if docker exec "$node" crictl images >/tmp/.bank-node-images 2>/dev/null; then
+    missing=""
+    for component in \
+      customer-service account-service transaction-service payment-service \
+      notification-audit-service gateway web; do
+      grep -q "bank-usac/${component}[[:space:]]\+${tag}[[:space:]]" /tmp/.bank-node-images \
+        || missing="${missing} ${component}"
+    done
+    if [[ -n "$missing" ]]; then
+      echo "ERROR: the node '${node}' has no images tagged '${tag}'." >&2
+      echo "  Missing:${missing}" >&2
+      echo >&2
+      echo "  The tag defaults to HEAD, and HEAD moves with every commit — so a" >&2
+      echo "  commit made after the last build leaves the images behind." >&2
+      echo >&2
+      echo "  Build and load them:" >&2
+      echo "    pnpm images:build -- --kind ${KUBE_CONTEXT#kind-}" >&2
+      echo "  or release a tag that is already on the node:" >&2
+      awk '$1 ~ /bank-usac\/gateway$/ && $2 != "dev" {print "    pnpm k8s:install -- --tag " $2}' \
+        /tmp/.bank-node-images >&2
+      rm -f /tmp/.bank-node-images
+      exit 1
+    fi
+    rm -f /tmp/.bank-node-images
+  fi
+fi
+
 if [[ "$skip_discover" != "true" && "$dry_run" != "true" && "$print_only" != "true" ]]; then
   echo "Discovering the external containers' IPs on bank-usac-local…"
   "$DISCOVER"
