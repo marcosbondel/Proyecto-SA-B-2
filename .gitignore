@@ -70,6 +70,12 @@ node_modules/
 dist/
 build/
 *.log
+
+# …except a spec's evidence, where the captured output IS the deliverable.
+# The existing logs under specs/006-local-dev-infra/evidence/ are tracked only
+# because someone remembered `git add -f`; this makes that unnecessary, and
+# stops a capture from being silently dropped by the rule above.
+!specs/*/evidence/*.log
 coverage/
 .output/
 .nuxt/

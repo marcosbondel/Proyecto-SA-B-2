@@ -221,19 +221,22 @@ note right of docker
     RabbitMQ, MinIO and all five PostgreSQL databases run as Docker containers
     on the developer host, outside the kind cluster.
 
-    Deployment properties (not node identities):
-    RabbitMQ container: rabbitmq | AMQP: 5672 | management: 15672
-    Customer DB: customer-db | database: bankusac_customer
-        user: customer_user | host mapping: 5433
-    Account DB: account-db | database: bankusac_account
-        user: account_user | host mapping: 5434
-    Transaction DB: transaction-db | database: bankusac_transaction
-        user: transaction_user | host mapping: 5435
-    Payment DB: payment-db | database: bankusac_payment
-        user: payment_user | host mapping: 5436
-    Notification DB: notification-db | database: bankusac_notification
-        user: notification_user | host mapping: 5437
-    MinIO: minio | S3 API: 9000 | console: 9001
+    Deployment properties (not node identities). Container names, database
+    names and roles match infra/docker/docker-compose.yml and the chart's
+    values.yaml; the host mappings are the ports Compose publishes, which
+    only the external.mode=hostFallback route uses.
+    RabbitMQ container: rabbitmq | AMQP: 5672 | host mapping: 5673
+    Customer DB: postgres-customer | database: customer
+        user: customer_app | host mapping: 5433
+    Account DB: postgres-account | database: account
+        user: account_app | host mapping: 5434
+    Transaction DB: postgres-transaction | database: transaction
+        user: transaction_app | host mapping: 5435
+    Payment DB: postgres-payment | database: payment
+        user: payment_app | host mapping: 5436
+    Notification DB: postgres-notification-audit | database: notification_audit
+        user: notification_audit_app | host mapping: 5437
+    MinIO: minio | S3 API: 9000 | host mapping: 9002
 
     The preferred route is a shared Docker network plus selectorless
     Kubernetes Services with stable in-cluster DNS. The host.docker.internal
@@ -242,7 +245,10 @@ end note
 
 note bottom of kind
     Local deployment uses one kind worker node. This is not a production
-    high-availability topology; replicaCount starts at 1 for the project.
+    high-availability topology; replicaCount starts at 1 for every component.
+    It is overridable per component (gateway.replicaCount, web.replicaCount,
+    services.<name>.replicaCount) — except account-service, which also runs
+    the inactive-account sweep on an interval and has no leader election.
 end note
 
 note right of namespace

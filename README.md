@@ -31,6 +31,8 @@ single primary owner of every component.
     [What you can see](#what-you-can-actually-see) · [Stopping](#stopping)
 - [What This Is](#what-this-is)
 - [Repository Layout](#repository-layout)
+- [**Kubernetes deployment**](docs/operations/DEPLOYMENT.md) — the runbook:
+  four commands from a clean machine to a running cluster
 - [Documentation](#documentation)
 - [Development](#development) —
   [prerequisites](#prerequisites) · [commands](#commands) ·
@@ -137,8 +139,14 @@ as one pure function that refuses every transition outside the diagram.
 **The Saga runs end to end, in all three shapes**: a transfer that completes, a
 refused payment that compensates on the first attempt, and one that climbs the
 retry ladder to its end and then compensates — each asserted as a fact about the
-money by `pnpm images:flow`. What is **not** built yet is the Kubernetes
-deployment (T-22); the databases stay outside the cluster by design.
+money by `pnpm images:flow`.
+
+**The system is deployed to Kubernetes**: one Helm chart over a local kind
+cluster, all seven workloads reaching `1/1 Ready`, and the five PostgreSQL
+databases, RabbitMQ and MinIO running *outside* the cluster by design. Bring it
+up with `pnpm k8s:cluster && pnpm k8s:install`; the full procedure, the
+prerequisites and the troubleshooting are in
+[docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md).
 
 ## Repository Layout
 
@@ -163,8 +171,11 @@ infra/docker/                        # local stack: PostgreSQL, RabbitMQ, MinIO 
                                      #   + docker-compose.dev.yml, the whole app in watch mode
                                      #   + docker-compose.images.yml, the whole app from
                                      #     its built images (T-21)
-infra/k8s/                           # placeholder — the chart and the kind
-                                     #   cluster belong to T-22, not built yet
+infra/k8s/                           # the local Kubernetes deployment
+                                     #   + helm/bank-usac, one chart for all seven
+                                     #     workloads and the out-of-cluster deps
+                                     #   + kind/, the single-node cluster config
+                                     #   + scripts/, create · install · evidence
 docs/                                # durable project documentation
 specs/                               # Spec Kit artifacts for feature work
 ```
@@ -185,6 +196,10 @@ assignment material.
   dependency rules.
 - [Design system](docs/DESIGN.md) - visual tokens, components, states, and
   domain formats.
+- [Kubernetes deployment](docs/operations/DEPLOYMENT.md) - the runbook: from a
+  clean machine to a running cluster, and what each failure looks like.
+- [Containers](docs/operations/CONTAINERS.md) - the seven images, their ports,
+  health checks and runtime variables.
 - [Ownership](docs/OWNERSHIP.md) - primary owners and shared work.
 - [Methodology](docs/METHODOLOGY.md) - sprints, milestones, evidence, and
   blockers.

@@ -6,6 +6,7 @@
 # one.
 {{- $component := .Values.gateway.component }}
 {{- $ctx := dict "root" $ "component" $component }}
+{{- $cfg := .Values.gateway }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,7 +15,7 @@ metadata:
   labels:
     {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ $cfg.replicaCount | default .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
@@ -53,11 +54,21 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: JWT_EXPIRES_IN
+            # Names this replica's private reply queue, which the broker
+            # declares `exclusive` (apps/packages/messaging/src/broker.ts) so
+            # that two replicas cannot share one — a shared queue would have
+            # replies delivered round-robin, and the answer to one instance's
+            # question would land on an instance with nobody waiting for it.
+            #
+            # It therefore has to differ per pod. A ConfigMap value cannot:
+            # every replica would read the same string, the second one's
+            # `assertQueue` would fail RESOURCE_LOCKED, and the Gateway could
+            # never scale past one. The downward API gives each pod its own
+            # name, which is unique per replica and per restart.
             - name: GATEWAY_INSTANCE_ID
               valueFrom:
-                configMapKeyRef:
-                  name: {{ include "bank-usac.fullname" . }}-config
-                  key: GATEWAY_INSTANCE_ID
+                fieldRef:
+                  fieldPath: metadata.name
             - name: REPLY_TIMEOUT_MS
               valueFrom:
                 configMapKeyRef:
@@ -109,4 +120,4 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml ($cfg.resources | default .Values.resources) | nindent 12 }}
