@@ -31,6 +31,8 @@ import { customerNamesQueryV1 } from './customer/customer.names.query.v1';
 import { customerNamesRepliedV1 } from './customer/customer.names.replied.v1';
 import { customerPendingValidationQueryV1 } from './customer/customer.pending-validation.query.v1';
 import { customerPendingValidationRepliedV1 } from './customer/customer.pending-validation.replied.v1';
+import { customerListQueryV1 } from './customer/customer.list.query.v1';
+import { customerListRepliedV1 } from './customer/customer.list.replied.v1';
 import { customerSetIdentityVerdictV1 } from './customer/customer.set-identity-verdict.v1';
 import { customerIdentityRejectedV1 } from './customer/customer.identity.rejected.v1';
 import { customerIdentityValidatedV1 } from './customer/customer.identity.validated.v1';
@@ -93,6 +95,8 @@ import { notificationListQueryV1 } from './notification/notification.list.query.
 import { notificationListRepliedV1 } from './notification/notification.list.replied.v1';
 import { auditQueryRepliedV1 } from './audit/audit.query.replied.v1';
 import { auditQueryRequestedV1 } from './audit/audit.query.requested.v1';
+import { auditEventsListQueryV1 } from './audit/audit.events.list.query.v1';
+import { auditEventsListRepliedV1 } from './audit/audit.events.list.replied.v1';
 
 export type { Category, MessageContract } from './contract';
 export { defineContract } from './contract';
@@ -118,6 +122,8 @@ export * from './customer/customer.names.query.v1';
 export * from './customer/customer.names.replied.v1';
 export * from './customer/customer.pending-validation.query.v1';
 export * from './customer/customer.pending-validation.replied.v1';
+export * from './customer/customer.list.query.v1';
+export * from './customer/customer.list.replied.v1';
 export * from './customer/customer.set-identity-verdict.v1';
 export * from './customer/customer.identity.rejected.v1';
 export * from './customer/customer.identity.validated.v1';
@@ -192,6 +198,8 @@ export * from './notification/notification.list.query.v1';
 export * from './notification/notification.list.replied.v1';
 export * from './audit/audit.query.replied.v1';
 export * from './audit/audit.query.requested.v1';
+export * from './audit/audit.events.list.query.v1';
+export * from './audit/audit.events.list.replied.v1';
 
 /**
  * Every message the system can put on the broker.
@@ -232,6 +240,8 @@ export const catalog: readonly MessageContract[] = [
   customerNamesRepliedV1,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
+  customerListQueryV1,
+  customerListRepliedV1,
   customerSetIdentityVerdictV1,
   customerVerifyEmailV1,
   accountBalanceQueryV1,
@@ -294,6 +304,8 @@ export const catalog: readonly MessageContract[] = [
   notificationListRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
+  auditEventsListQueryV1,
+  auditEventsListRepliedV1,
 ];
 
 /**

@@ -36,6 +36,50 @@ async function open(): Promise<void> {
   }
 }
 
+interface CustomerSummary {
+  customerId: string;
+  fullName: string;
+  email: string;
+  username: string;
+  documentNumber: string;
+  identityStatus: 'PENDING' | 'VALIDATED' | 'REJECTED';
+  role: string;
+  status: string;
+  registeredAt: string;
+}
+
+const api = useGatewayApi();
+const customers = ref<CustomerSummary[]>([]);
+const loading = ref(false);
+const error = ref<string | null>(null);
+
+async function loadCustomers(): Promise<void> {
+  if (!isStaff.value) return;
+  loading.value = true;
+  error.value = null;
+  const result = await api.call<{ customers: CustomerSummary[]; omitted: number }>('/api/customers?limit=50');
+  loading.value = false;
+  if (result.ok) {
+    customers.value = result.data.customers;
+  } else {
+    error.value = result.error.message;
+  }
+}
+
+const copiedId = ref<string | null>(null);
+
+async function copyId(id: string): Promise<void> {
+  await navigator.clipboard.writeText(id);
+  copiedId.value = id;
+  setTimeout(() => {
+    copiedId.value = null;
+  }, 1500);
+}
+
+onMounted(() => {
+  loadCustomers();
+});
+
 if (role.value === 'CLIENTE') {
   await navigateTo('/perfil');
 }
@@ -94,5 +138,107 @@ useHead({ title: 'Clientes · bonking' });
         </form>
       </UCard>
     </div>
+
+    <UCard v-if="isStaff" class="mt-2">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-[18px] font-bold text-[#23242A]">Clientes registrados</h2>
+            <p class="text-[13px] text-[#5A5B63]">Directorio bancario de expedientes para consulta y operaciones de ventanilla.</p>
+          </div>
+          <UButton
+            icon="i-lucide-refresh-cw"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            :loading="loading"
+            @click="loadCustomers"
+          >
+            Actualizar
+          </UButton>
+        </div>
+      </template>
+
+      <div v-if="loading && customers.length === 0" class="py-8 text-center text-[#5A5B63]">
+        Cargando listado de clientes…
+      </div>
+      <div v-else-if="customers.length === 0" class="py-8 text-center text-[#75767F]">
+        No hay clientes registrados en el sistema.
+      </div>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-left text-[13px]">
+          <thead class="border-b border-[#E9E9EC] text-[#75767F]">
+            <tr>
+              <th class="pb-2 font-medium">Cliente / Nombre</th>
+              <th class="pb-2 font-medium">No. Cliente (UUID)</th>
+              <th class="pb-2 font-medium">DPI / Documento</th>
+              <th class="pb-2 font-medium">Correo electrónico</th>
+              <th class="pb-2 font-medium">Rol</th>
+              <th class="pb-2 font-medium">Identidad</th>
+              <th class="pb-2 text-right font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#E9E9EC]">
+            <tr v-for="c in customers" :key="c.customerId" class="hover:bg-neutral-50">
+              <td class="py-3 font-medium text-[#23242A]">
+                {{ c.fullName }}
+                <span class="block text-[11px] text-[#75767F]">@{{ c.username }}</span>
+              </td>
+              <td class="py-3">
+                <div class="flex items-center gap-1.5">
+                  <span
+                    class="font-mono text-[11px] text-[#5A5B63] select-all"
+                    style="font-variant-numeric: tabular-nums lining-nums"
+                  >{{ c.customerId }}</span>
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :icon="copiedId === c.customerId ? 'i-lucide-check' : 'i-lucide-copy'"
+                    :title="copiedId === c.customerId ? 'Copiado' : 'Copiar UUID'"
+                    @click="copyId(c.customerId)"
+                  />
+                </div>
+              </td>
+              <td class="py-3 font-mono text-[#5A5B63]">{{ c.documentNumber }}</td>
+              <td class="py-3 text-[#5A5B63]">{{ c.email }}</td>
+              <td class="py-3">
+                <UBadge variant="subtle" color="neutral" size="sm">{{ c.role }}</UBadge>
+              </td>
+              <td class="py-3">
+                <UBadge
+                  :color="c.identityStatus === 'VALIDATED' ? 'success' : c.identityStatus === 'REJECTED' ? 'error' : 'warning'"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ c.identityStatus === 'VALIDATED' ? 'Verificada' : c.identityStatus === 'REJECTED' ? 'Rechazada' : 'Pendiente' }}
+                </UBadge>
+              </td>
+              <td class="py-3 text-right">
+                <div class="flex justify-end gap-1.5">
+                  <UButton
+                    :to="`/clientes/${c.customerId}`"
+                    variant="outline"
+                    color="neutral"
+                    size="xs"
+                  >
+                    Ficha
+                  </UButton>
+                  <UButton
+                    v-if="c.role === 'CLIENTE'"
+                    :to="`/cuentas/nueva?customerId=${c.customerId}`"
+                    variant="outline"
+                    color="primary"
+                    size="xs"
+                  >
+                    Abrir cuenta
+                  </UButton>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </UCard>
   </section>
 </template>

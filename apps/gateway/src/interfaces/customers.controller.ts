@@ -225,6 +225,24 @@ export class CustomersController {
   }
 
   /**
+   * The list of registered customers for staff. Declared before :customerId.
+   */
+  @ApiOperation({ summary: 'Lista de clientes registrados' })
+  @ApiBearerAuth('session')
+  @Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')
+  @Get()
+  public async list(
+    @Query('limit') limitRaw: string | undefined,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    const limit = limitRaw ? Math.min(100, Math.max(1, Number(limitRaw) || 50)) : 50;
+    return await this.#queries.customerList(limit, {
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+  }
+
+  /**
    * The customers awaiting an identity verdict — the teller's queue. Declared
    * before the parametric `:customerId` GET so this specific path keeps
    * precedence. Staff only, guarded here and re-checked by the owning service.

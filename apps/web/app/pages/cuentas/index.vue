@@ -30,6 +30,9 @@ const correlationId = ref<string | null>(null);
 const total = computed(() => totalBalanceMinor(accounts.value));
 
 const canManage = computed(() => role.value === 'ADMINISTRADOR');
+const isStaff = computed(
+  () => role.value === 'CAJERO_RECEPTOR' || role.value === 'ADMINISTRADOR',
+);
 
 /**
  * The deposit window is a screen inside this module rather than a navigation
@@ -69,15 +72,17 @@ useHead({ title: 'Cuentas · bonking' });
   <section class="flex flex-col gap-6">
     <header class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-[32px] font-bold leading-10 tracking-tight">Mis cuentas</h1>
+        <h1 class="text-[32px] font-bold leading-10 tracking-tight">
+          {{ isStaff ? 'Cuentas de clientes' : 'Mis cuentas' }}
+        </h1>
         <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-          Cuentas monetarias y de ahorro asociadas a tu identidad.
+          {{ isStaff ? 'Cuentas monetarias y de ahorro de los clientes del banco.' : 'Cuentas monetarias y de ahorro asociadas a tu identidad.' }}
         </p>
       </div>
 
       <div class="flex items-end gap-4">
         <div class="text-right">
-          <p class="text-[12px] text-[#75767F]">Total consolidado</p>
+          <p class="text-[12px] text-[#75767F]">{{ isStaff ? 'Saldo total custodiado' : 'Total consolidado' }}</p>
           <p
             class="text-[24px] font-bold"
             style="font-variant-numeric: tabular-nums lining-nums"
@@ -112,12 +117,19 @@ useHead({ title: 'Cuentas · bonking' });
       class="rounded-2xl border border-dashed border-[#C6C6CC] bg-white px-8 py-14 text-center"
       data-testid="accounts-empty"
     >
-      <h2 class="text-[20px] font-semibold leading-7">No hay cuentas registradas a tu nombre</h2>
+      <h2 class="text-[20px] font-semibold leading-7">
+        {{ isStaff ? 'No hay cuentas registradas en el banco' : 'No hay cuentas registradas a tu nombre' }}
+      </h2>
       <p class="mx-auto mt-2 max-w-[460px] text-[14px] leading-5 text-[#5A5B63]">
-        Cuando abras tu primera cuenta aparecerá aquí con su número y su saldo. Un cajero
-        receptor también puede abrirla por ti en ventanilla.
+        {{
+          isStaff
+            ? 'Aún no se han abierto cuentas para clientes en el sistema. Puedes realizar una apertura desde el botón superior.'
+            : 'Cuando abras tu primera cuenta aparecerá aquí con su número y su saldo. Un cajero receptor también puede abrirla por ti en ventanilla.'
+        }}
       </p>
-      <UButton to="/cuentas/nueva" color="primary" class="mt-6">Abrir la primera cuenta</UButton>
+      <UButton to="/cuentas/nueva" color="primary" class="mt-6">
+        {{ isStaff ? 'Abrir una cuenta de cliente' : 'Abrir la primera cuenta' }}
+      </UButton>
     </div>
 
     <div class="flex flex-wrap items-center gap-3">
