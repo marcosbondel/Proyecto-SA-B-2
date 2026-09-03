@@ -132,6 +132,11 @@ const POLICY: Readonly<
     subject: 'Tu cuenta quedó activa',
     reference: 'customerId',
   },
+  'customer.updated.v1': {
+    type: 'customer.updated',
+    subject: 'Tus datos personales fueron actualizados',
+    reference: 'customerId',
+  },
   'customer.identity.validated.v1': {
     type: 'identity.validated',
     subject: 'Tu identidad fue verificada',

@@ -278,9 +278,16 @@ function startOver(): void {
         correlación: con él, un administrador puede decir exactamente qué ocurrió.
       </p>
 
+      <div v-if="props.mode === 'self'" class="rounded-xl border border-[#F5D9A6] bg-[#FFFBEB] p-3.5 text-left">
+        <p class="text-[13px] font-medium text-[#92400E]">
+          ⚠️ <strong>Paso obligatorio:</strong> Revisa la bandeja de entrada de tu correo (o spam).
+          Debes hacer clic en el enlace de activación antes de poder iniciar sesión.
+        </p>
+      </div>
+
       <div class="flex flex-col gap-2 sm:flex-row sm:justify-center">
         <UButton
-          v-if="acceptedCommand?.customerId"
+          v-if="props.mode === 'staff' && acceptedCommand?.customerId"
           variant="outline"
           color="neutral"
           :to="`/clientes/${acceptedCommand.customerId}`"
@@ -288,7 +295,7 @@ function startOver(): void {
         <UButton v-if="props.mode === 'staff'" color="primary" @click="startOver">
           Registrar otro
         </UButton>
-        <UButton v-else color="primary" to="/login">Ir a iniciar sesión</UButton>
+        <UButton v-else color="primary" to="/login">Ir a iniciar sesión (tras activar)</UButton>
       </div>
     </div>
 

@@ -123,8 +123,10 @@ export class RegisterCustomerUseCase {
                 },
           );
 
+    // An uploaded document that passes basic structure remains PENDING until a
+    // teller or administrator manually reviews and approves it in the validation queue.
     const identityStatus: IdentityStatus =
-      verdict === null ? 'PENDING' : verdict.outcome === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
+      verdict !== null && verdict.outcome === 'REJECTED' ? 'REJECTED' : 'PENDING';
 
     const activation = this.#tokens.issue();
     const expiresAt = new Date(now.getTime() + ACTIVATION_TTL_MS).toISOString();
@@ -206,7 +208,7 @@ export class RegisterCustomerUseCase {
       },
     });
 
-    if (verdict !== null) {
+    if (verdict !== null && verdict.outcome === 'REJECTED') {
       await this.#publishVerdict(customer.customerId, verdict, now);
     }
   }

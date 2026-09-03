@@ -6,10 +6,10 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 ## 🏛️ Matriz de Actores y Credenciales de Demostración
 
-| Actor / Rol | Credenciales | Propósito en el Flujo | Privilegios y Restricciones (ADR D-06) |
+| Actor / Rol | Credenciales | Propósito  | Privilegios y Restricciones (ADR D-06) |
 | :--- | :--- | :--- | :--- |
-| **Nuevo Cliente (Carlos Morales)** | `ventanilla@bankusac.gt` / `StrongQA#2026!` | Registro, activación por correo, apertura de cuenta bancaria. | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
-| **Cliente Demo (Existente)** | `cliente@bankusac.gt` / `BankUsac#2026` | Ejecución de transferencias con Saga coreografiada y pagos. | No puede autorizar depósitos ni ver datos de otros clientes (`403`). |
+| **Cliente Principal (Enner Mendizabal)** | `ventanilla@bankusac.gt` / `DemoClave#03` | Origen de transferencias con Saga, pagos de servicios, cuentas pre-fondeadas (Q5,000). | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
+| **Cliente Tercero (Marco Tulio López)** | `marco.lopez@bankusac.gt` / `BankUsac#2026` | Destinatario para pruebas de transferencias interbancarias y depósitos en ventanilla. | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
 | **Cajero Receptor (Ventanilla)** | `cajero@bankusac.gt` / `BankUsac#2026` | Validación de documentos DPI y abono de depósitos en efectivo. | No puede ordenar transferencias entre clientes ni auditar el sistema (`403`). |
 | **Administrador del Sistema** | `admin@bankusac.gt` / `BankUsac#2026` | Auditoría distribuida, monitoreo de pagos, gestión de estado. | Acceso de lectura global al bus de eventos y métricas de servicios. |
 
@@ -75,70 +75,59 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Campo | Valor de Prueba | Regla Verificada |
 | :--- | :--- | :--- |
-| **Nombre Completo** | `Carlos Eduardo Morales Méndez` | Campo alfabético requerido |
-| **Fecha de Nacimiento** | `1995-06-20` | Mayoría de edad comprobada ($\ge 18$ años) |
-| **Dirección** | `10ma Avenida 4-50 Zona 14, Ciudad de Guatemala` | Dirección física válida |
-| **Correo Electrónico** | `ventanilla@bankusac.gt` | Formato RFC 5322 válido y único |
-| **DPI** | `1111111111111` | 11 digitos |
-| **Contraseña** | `juanitoSeMurio!7` | Longitud $\ge 8$ caracteres, alta entropía y caracteres especiales |
+| **Nombre Completo** | `Enner Esaí Mendizabal Castro` | Campo alfabético requerido |
+| **Fecha de Nacimiento** | `2002-08-08` | Mayoría de edad comprobada ($\ge 18$ años) |
+| **Dirección** | `mi corazon` | Dirección física requerida |
+| **Correo Electrónico** | `juanita@bankusac.gt` | Formato RFC 5322 válido y único |
+| **DPI** | `1111111111111` | Exactamente 13 dígitos numéricos |
+| **Contraseña** | `DemoClave#01` | Longitud $\ge 8$ caracteres |
 
-![Registro Paso 1 - Datos Válidos](screenshots/hp-09-registro-paso1-datos-validos.png)
+![Registro Paso 1 - Datos Válidos](images/happypath/06-registro-paso1-datos.png)
 
 #### B. Caminos de Error y Bloqueo en Paso 1
 1. **Campos Vacíos**: El formulario intercepta el envío y marca en rojo los campos obligatorios.
-2. **Minoría de Edad ($< 18$ años)**: Al ingresar una fecha con menos de 18 años (ej. 15 años), el sistema bloquea el avance exigiendo la mayoría de edad legal.
+2. **Minoría de Edad ($< 18$ años)**: Al ingresar una fecha con menos de 18 años, el sistema bloquea el avance exigiendo la mayoría de edad legal.
 3. **Formato de Email Inválido**: La validación de formato RFC 5322 impide el avance con correos malformados.
-
-| Error Detectado | Captura de Evidencia |
-| :--- | :--- |
-| **Campos Obligatorios Vacíos** | ![Error Campos Vacíos](screenshots/hp-06-registro-paso1-campos-vacios.png) |
-| **Restricción de Minoría de Edad** | ![Error Menor de Edad](screenshots/hp-07-registro-paso1-menor-edad.png) |
-| **Formato de Email Inválido** | ![Error Email](screenshots/hp-08-registro-paso1-email-invalido.png) |
 
 ---
 
 ### 2.2 Paso 2: Documento de Identificación (DPI) y Fotografía
 
 #### A. Camino Exitoso
-- **Valores Válidos**: `DPI: 2987118180101` (13 dígitos) y archivo `dpi_carlos_morales.png` ($\le 5\text{MB}$).
-- **Acción**: La imagen se transmite de forma segura y se deposita en el bucket de MinIO para validación biométrica/visual de ventanilla.
+- **Valores Válidos**: `DPI: 1111111111111` (13 dígitos) y archivo de fotografía adjunto.
+- **Acción**: La imagen se transmite de forma segura al API Gateway, que la deposita en el bucket de MinIO para la posterior validación visual del cajero.
 
-![Registro Paso 2 - Documento Válido](screenshots/hp-13-registro-paso2-completo.png)
-
-#### B. Caminos de Error en Paso 2
-1. **DPI Inválido ($< 13$ dígitos)**: Al ingresar menos de 13 caracteres (ej. `123456`), el sistema bloquea el paso indicando que el CUI guatemalteco debe tener exactamente 13 dígitos numéricos.
-2. **DPI con Caracteres Alfabéticos**: Rechazo de entradas no numéricas.
-3. **Falta de Fotografía del Documento**: Si no se adjunta archivo, el botón *Continuar* no permite avanzar.
-
-| Error en DPI Corto (< 13 dígitos) | Error por Caracteres Alfabéticos | Error por Ausencia de Foto |
-| :--- | :--- | :--- |
-| ![DPI Inválido](screenshots/hp-10-registro-paso2-dpi-invalido.png) | ![DPI Letras](screenshots/hp-11-registro-paso2-dpi-letras.png) | ![Sin Foto](screenshots/hp-12-registro-paso2-sin-foto.png) |
+![Registro Paso 2 - Documento Válido](images/happypath/07-registro-paso2-dpi.png)
 
 ---
 
-### 2.3 Paso 3: Contraseña y Términos
+### 2.3 Paso 3: Contraseña, Usuario Asignado y Términos
 
 #### A. Camino Exitoso
-- **Valores Válidos**: `StrongQA#2026!` en contraseña y confirmación ($\ge 8$ caracteres), con el checkbox de términos legales marcado.
+- **Usuario Propuesto**: `emendizabal` (generado automáticamente a partir del nombre).
+- **Contraseña y Confirmación**: `DemoClave#01` ($\ge 8$ caracteres).
+- **Consentimiento Legal**: Checkbox de términos y condiciones marcado.
+- **Acción**: Al presionar **Crear cuenta**, el API Gateway emite la respuesta asíncrona `202 Accepted` con el número de cliente `0e922a44-3d5e-4ef5-9441-f6ca4a31c9ff` y el `correlationId`.
 
 | Paso 3 Listo para Envío | Confirmación de Solicitud Aceptada (`202 Accepted`) |
 | :--- | :--- |
-| ![Registro Paso 3](screenshots/hp-17-registro-paso3-completo.png) | ![Solicitud Aceptada](screenshots/hp-18-registro-solicitud-aceptada.png) |
-
-#### B. Caminos de Error en Paso 3
-1. **Contraseña Demasiado Corta**: Menor a 8 caracteres (ej. `abc`), rechazada por validación de seguridad.
-2. **Discrepancia de Contraseñas**: `PasswordA#123` vs `PasswordB#999`. El sistema resalta el error impidiendo el registro.
-3. **Términos no Aceptados**: Sin marcar el consentimiento legal, el botón de envío se desactiva.
-
-| Contraseña < 8 Caracteres | Discrepancia de Contraseñas | Términos Sin Aceptar |
-| :--- | :--- | :--- |
-| ![Password Corta](screenshots/hp-14-registro-paso3-password-corta.png) | ![Password Mismatch](screenshots/hp-15-registro-paso3-password-mismatch.png) | ![Sin Términos](screenshots/hp-16-registro-paso3-sin-terminos.png) |
+| ![Registro Paso 3](images/happypath/08-registro-paso3-password.png) | ![Registro Recibido](images/happypath/09-registro-recibido.png) |
 
 ---
 
 ## Módulo 3: Activación Criptográfica de la Cuenta
 
-### 3.1 Activación Exitosa por Token
+### 3.1 Intento de Login Prematuro (Sin Activación por Correo)
+- **Escenario**: El usuario recién registrado intenta iniciar sesión en `/login` antes de hacer clic en el enlace de activación que llegó a su correo.
+- **Credenciales ingresadas**: `juanita@bankusac.gt` / `DemoClave#01`
+- **Comportamiento del Sistema (ADR D-04)**: El sistema **rechaza el login con 401 Unauthorized** mostrando: *"No pudimos iniciar sesión con esos datos"*.
+- **Mecanismo de Auto-Reenvío**: Al detectar una contraseña correcta en una cuenta no activada, `customer-service` reenvía automáticamente un nuevo enlace de activación a `juanita@bankusac.gt`.
+
+![Login Rechazado por Cuenta Inactiva](images/happypath/10-login-pendiente-activacion.png)
+
+### 3.2 Activación Exitosa por Token
+- **URL**: `http://localhost:3010/activar?token=<token_hash>`
+- **Flujo**: Notification Service genera el enlace con token temporal de 24 horas. Al ser visitado, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para que el usuario pueda iniciar sesión formalmente.
 - **URL**: `http://localhost:3010/activar?token=<token_hash>`
 - **Flujo**: Notification Service emite el enlace con token temporal de 24 horas. Al ser visitado, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para operar.
 
@@ -171,14 +160,11 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 ### 5.1 Apertura de Cuenta Monetaria y de Ahorro
 - **URL**: `http://localhost:3010/cuentas/nueva`
 - **Flujo**: Selección de tipo (`MONETARIA` o `AHORRO`), confirmación y emisión de identificador UUID inmutable generado por Account Service con saldo inicial `Q0.00`.
+- **Regla de Negocio (Validación de Identidad)**: Un cliente solo puede aperturar cuentas si su documento de identidad ha sido validado previamente por un cajero receptor o administrador.
 
-| Formulario de Apertura | Selección de Tipo Monetaria | Confirmación de Apertura | Cuenta Creada (UUID Inmutable) |
-| :--- | :--- | :--- | :--- |
-| ![Formulario Cuenta](screenshots/hp-25-cuenta-nueva-formulario.png) | ![Tipo Monetaria](screenshots/hp-26-cuenta-nueva-tipo-monetaria.png) | ![Confirmación](screenshots/hp-27-cuenta-nueva-confirmacion.png) | ![Cuenta Creada](screenshots/hp-28-cuenta-nueva-creada.png) |
-
-| Selección de Tipo Ahorro | Cuenta Ahorro Creada |
-| :--- | :--- |
-| ![Tipo Ahorro](screenshots/hp-29-cuenta-nueva-tipo-ahorro.png) | ![Ahorro Creada](screenshots/hp-30-cuenta-ahorro-creada.png) |
+| Selección de Tipo Ahorro | Confirmación de Apertura | Cuenta Creada Exitosamente (`accountId`) |
+| :--- | :--- | :--- |
+| ![Tipo Ahorro](images/happypath/19-abrir-cuenta-tipo.png) | ![Confirmación](images/happypath/20-abrir-cuenta-confirmar.png) | ![Cuenta Creada](images/happypath/21-cuenta-creada-resultado.png) |
 
 ### 5.2 Listado y Detalle Individual de Cuentas
 
