@@ -314,6 +314,7 @@ export function deliverableEmailFrom(messageType: string, payload: unknown): str
 const DELIVERABLE = new Set([
   'customer.activation.requested.v1',
   'customer.password-reset.issued.v1',
+  'customer.identity.rejected.v1',
 ]);
 
 function readString(payload: unknown, field: string): string | null {

@@ -201,32 +201,33 @@ export class RegisterCustomerUseCase {
       },
     });
 
-    /**
-     * The activation email is triggered by an event, not by an SMTP call. This
-     * service owns customers; delivering mail is Notification & Audit's job,
-     * and the clear token travels in this one message and nowhere else.
-     */
-    await this.#publisher.publish({
-      messageType: customerActivationRequestedV1.name,
-      payload: {
-        customerId: customer.customerId,
-        email: customer.email,
-        expiresAt,
-        // The clear value travels here and nowhere else; the database holds
-        // only its digest.
-        activationToken: activation.token,
-      },
-    });
-
-    if (registeredByStaff && identityStatus === 'VALIDATED') {
+    if (registeredByStaff) {
+      /**
+       * In-person registration at the counter by bank staff:
+       * Identity is physically verified, so the activation email is sent immediately.
+       */
       await this.#publisher.publish({
-        messageType: customerIdentityValidatedV1.name,
+        messageType: customerActivationRequestedV1.name,
         payload: {
           customerId: customer.customerId,
-          identityStatus: 'VALIDATED',
-          validatedAt: now.toISOString(),
+          email: customer.email,
+          expiresAt,
+          // The clear value travels here and nowhere else; the database holds
+          // only its digest.
+          activationToken: activation.token,
         },
       });
+
+      if (identityStatus === 'VALIDATED') {
+        await this.#publisher.publish({
+          messageType: customerIdentityValidatedV1.name,
+          payload: {
+            customerId: customer.customerId,
+            identityStatus: 'VALIDATED',
+            validatedAt: now.toISOString(),
+          },
+        });
+      }
     } else if (verdict !== null && verdict.outcome === 'REJECTED') {
       await this.#publishVerdict(customer.customerId, verdict, now);
     }

@@ -233,12 +233,18 @@ function startOver(): void {
       </div>
 
       <div>
-        <h2 class="text-[22px] font-bold leading-[30px]">Registro completado</h2>
+        <h2 class="text-[22px] font-bold leading-[30px]">
+          {{ props.mode === 'staff' ? 'Cliente registrado' : 'Solicitud de registro recibida' }}
+        </h2>
 
-        <p class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
-          Recibimos tu solicitud y enviamos un correo a
-          <strong class="text-[#23242A]">{{ fields.email }}</strong>
-          con un enlace de activación. La cuenta queda activa solo cuando se abre ese enlace.
+        <p v-if="props.mode === 'staff'" class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
+          El cliente fue registrado y validado exitosamente. Se envió el enlace de activación a
+          <strong class="text-[#23242A]">{{ fields.email }}</strong>.
+        </p>
+        <p v-else class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
+          Recibimos tu solicitud y documento de identidad. Un cajero revisará tu información.
+          Una vez aprobada tu identidad, recibirás un correo electrónico en
+          <strong class="text-[#23242A]">{{ fields.email }}</strong> con el enlace para activar tu cuenta.
         </p>
 
         <p class="mt-2 text-[13px] leading-[18px] text-[#75767F]">
@@ -264,10 +270,9 @@ function startOver(): void {
         />
       </div>
 
-      <div v-if="props.mode === 'self'" class="rounded-xl border border-[#F5D9A6] bg-[#FFFBEB] p-3.5 text-left">
-        <p class="text-[13px] font-medium text-[#92400E]">
-          <strong>Paso obligatorio:</strong> Revisa la bandeja de entrada de tu correo (o spam).
-          Debes hacer clic en el enlace de activación antes de poder iniciar sesión.
+      <div v-if="props.mode === 'self'" class="rounded-xl border border-[#DCDCE0] bg-[#F9FAFB] p-3.5 text-left">
+        <p class="text-[13px] font-medium text-[#374151]">
+          <strong>Siguiente paso:</strong> Un cajero verificará tu documento en breve. Cuando tu solicitud sea aprobada, recibirás un correo para activar tu cuenta.
         </p>
       </div>
 
@@ -281,7 +286,7 @@ function startOver(): void {
         <UButton v-if="props.mode === 'staff'" color="primary" @click="startOver">
           Registrar otro
         </UButton>
-        <UButton v-else color="primary" to="/login">Ir a iniciar sesión (tras activar)</UButton>
+        <UButton v-else color="primary" to="/login">Volver a inicio de sesión</UButton>
       </div>
     </div>
 

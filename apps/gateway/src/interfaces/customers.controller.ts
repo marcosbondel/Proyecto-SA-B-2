@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { MAX_PHOTO_BYTES } from '@bank/contracts';
+import type { Identity } from '@bank/contracts';
 import type { Response } from 'express';
 
 import { ChangePasswordUseCase } from '../application/routes/change-password.use-case';

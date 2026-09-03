@@ -137,7 +137,7 @@ async function bootstrap(): Promise<void> {
         new GetPendingValidationUseCase({ repository, publisher }),
       ),
       new SetIdentityVerdictHandler(
-        new SetIdentityVerdictUseCase({ repository, publisher, clock }),
+        new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
       ),
       new AuthenticateCustomerHandler(
         new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),

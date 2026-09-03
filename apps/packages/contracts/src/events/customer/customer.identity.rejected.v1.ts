@@ -24,6 +24,8 @@ export const customerIdentityRejectedV1 = defineContract({
       'IDENTITY_DIGEST_MISMATCH',
     ]),
     rejectedAt: isoTimestamp,
+    email: z.string().email().optional(),
+    fullName: z.string().optional(),
   }),
 });
 

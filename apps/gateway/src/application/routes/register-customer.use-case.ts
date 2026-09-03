@@ -7,7 +7,7 @@ import {
   customerRegisteredV1,
   customerRegisterRejectedV1,
 } from '@bank/contracts';
-import type { PhotoReference, Role } from '@bank/contracts';
+import type { Identity, PhotoReference, Role } from '@bank/contracts';
 
 import { GatewayError } from '../errors/gateway-error';
 import {
@@ -35,7 +35,7 @@ export interface RegisterCustomerRequest {
   readonly photo?: { readonly bytes: Buffer; readonly mimetype: string };
   readonly correlationId: string;
   readonly idempotencyKey: string;
-  readonly actor?: { readonly customerId: string; readonly role: string; readonly username?: string } | null;
+  readonly actor?: Identity | null;
 }
 
 export interface AcceptedCommand {
