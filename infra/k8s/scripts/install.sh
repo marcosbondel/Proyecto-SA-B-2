@@ -162,17 +162,32 @@ helm "$@"
 
 if [[ "$dry_run" != "true" ]]; then
   echo
-  echo "Waiting for all seven workloads to become Ready (up to 3 minutes)…"
-  kubectl wait --context "$KUBE_CONTEXT" --for=condition=available --timeout=180s \
-    deployment --all -n "$NAMESPACE" || {
-      echo >&2
-      echo "Not everything became Ready. This is usually a stale external IP" >&2
-      echo "or an image the node does not have. Diagnose with:" >&2
-      echo "  kubectl --context ${KUBE_CONTEXT} get pods -n ${NAMESPACE}" >&2
-      echo "  kubectl --context ${KUBE_CONTEXT} describe pod -n ${NAMESPACE} <pod>" >&2
-      echo "See docs/operations/DEPLOYMENT.md, 'Cuando algo falla'." >&2
-      exit 1
-    }
+  # `kubectl wait --for=condition=available` is the wrong check on an upgrade:
+  # during a rolling update the OLD replicas still satisfy availability, so it
+  # returns "condition met" while the new pods are still starting — and the
+  # summary below then shows a mix of both. `rollout status` waits for the new
+  # ReplicaSet specifically, which is what "the release is live" actually means.
+  echo "Waiting for all seven workloads to roll out (up to 3 minutes each)…"
+  rollout_failed=false
+  for component in \
+    customer-service account-service transaction-service payment-service \
+    notification-audit-service gateway web; do
+    kubectl rollout status --context "$KUBE_CONTEXT" -n "$NAMESPACE" \
+      "deploy/${RELEASE}-${component}" --timeout=180s || rollout_failed=true
+  done
+  if [[ "$rollout_failed" == "true" ]]; then
+    echo >&2
+    echo "Not everything rolled out. The usual causes, in order of likelihood:" >&2
+    echo "  · an image the node does not have — rebuild and reload:" >&2
+    echo "      pnpm images:build -- --kind bank-usac" >&2
+    echo "  · a stale external IP in the Endpoints — rediscover and reinstall:" >&2
+    echo "      pnpm k8s:ips && pnpm k8s:install" >&2
+    echo "Diagnose with:" >&2
+    echo "  kubectl --context ${KUBE_CONTEXT} get pods -n ${NAMESPACE}" >&2
+    echo "  kubectl --context ${KUBE_CONTEXT} describe pod -n ${NAMESPACE} <pod>" >&2
+    echo "See docs/operations/DEPLOYMENT.md, 'Cuando algo falla'." >&2
+    exit 1
+  fi
   echo
   kubectl get pods --context "$KUBE_CONTEXT" -n "$NAMESPACE" -o wide
 fi
