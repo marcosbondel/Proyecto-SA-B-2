@@ -14,26 +14,31 @@ import type { Pool } from 'pg';
  * two accounts instead of opening more each time. One is funded so a transfer
  * is testable the moment the stack is up.
  */
-const DEMO_CLIENT_ID = 'a0000000-0000-4000-8000-000000000003';
+export const DEMO_CLIENT_ID = 'a0000000-0000-4000-8000-000000000003';
+export const DEMO_CLIENT_2_ID = 'a0000000-0000-4000-8000-000000000005';
 
 const MONETARIA_ID = 'b0000000-0000-4000-8000-000000000001';
 const AHORRO_ID = 'b0000000-0000-4000-8000-000000000002';
-
-/** In quetzales; the funded account gets Q5000 so a transfer works at once. */
-const FUNDED_BALANCE = '5000.00';
+const MARCO_MONETARIA_ID = 'b0000000-0000-4000-8000-000000000003';
+const MARCO_AHORRO_ID = 'b0000000-0000-4000-8000-000000000004';
 
 interface SeedAccount {
   readonly id: string;
+  readonly customerId: string;
   readonly type: 'MONETARIA' | 'AHORRO';
   readonly balance: string;
 }
 
 const ACCOUNTS: readonly SeedAccount[] = [
-  { id: MONETARIA_ID, type: 'MONETARIA', balance: FUNDED_BALANCE },
-  { id: AHORRO_ID, type: 'AHORRO', balance: '0.00' },
+  // Cuentas de Enner Esaí Mendizabal Castro
+  { id: MONETARIA_ID, customerId: DEMO_CLIENT_ID, type: 'MONETARIA', balance: '5000.00' },
+  { id: AHORRO_ID, customerId: DEMO_CLIENT_ID, type: 'AHORRO', balance: '1500.00' },
+  // Cuentas de Marco Tulio Lopez Medina (tercero para transferencias y depósitos)
+  { id: MARCO_MONETARIA_ID, customerId: DEMO_CLIENT_2_ID, type: 'MONETARIA', balance: '2500.00' },
+  { id: MARCO_AHORRO_ID, customerId: DEMO_CLIENT_2_ID, type: 'AHORRO', balance: '800.00' },
 ];
 
-/** Seeds the demo client's two accounts, returning their ids for the boot log. */
+/** Seeds the demo clients' accounts, returning their ids for the boot log. */
 export async function seedDemoAccounts(pool: Pool): Promise<readonly string[]> {
   for (const account of ACCOUNTS) {
     await pool.query(
@@ -41,12 +46,14 @@ export async function seedDemoAccounts(pool: Pool): Promise<readonly string[]> {
          (account_id, customer_id, account_type, balance, status, last_activity_at, version)
        VALUES ($1, $2, $3, $4, 'ACTIVE', now(), 0)
        ON CONFLICT (account_id) DO UPDATE SET
+         customer_id      = EXCLUDED.customer_id,
          balance          = EXCLUDED.balance,
          status           = 'ACTIVE',
          last_activity_at = now()`,
-      [account.id, DEMO_CLIENT_ID, account.type, account.balance],
+      [account.id, account.customerId, account.type, account.balance],
     );
   }
 
   return ACCOUNTS.map((account) => account.id);
 }
+
