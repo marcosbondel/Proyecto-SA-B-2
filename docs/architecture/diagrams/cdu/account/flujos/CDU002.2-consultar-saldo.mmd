@@ -1,6 +1,0 @@
-flowchart TD
-    actor["Cliente, Cajero o Administrador: solicitar saldo"] --> validate["Account Service: validar existencia y autorización"]
-    validate --> decision{"¿Acceso permitido?"}
-    decision -->|No| reject["Responder FORBIDDEN_ACCOUNT_ACCESS o ACCOUNT_NOT_FOUND"]
-    decision -->|Sí| read["Leer saldo vigente"]
-    read --> reply["Responder saldo al Gateway"]

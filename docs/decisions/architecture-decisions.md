@@ -18,9 +18,9 @@ Este documento consolida las decisiones de arquitectura de software y diseño de
 | **ADR-008** | Arquitectura Interna | **Clean Architecture / Hexagonal** | Capas acopladas tradicionales | Independencia del framework y lógica de negocio testeable de forma aislada. |
 | **ADR-009** | Transacciones Distribuidas | **Saga Coreografiada con Compensación Contable** | Two-Phase Commit (2PC) / Saga Orquestada | Ausencia de bloqueos globales distribuidos y consistencia eventual garantizada. |
 | **ADR-010** | Autenticación y RBAC | **JWT Bearer + Hasheo `scrypt` + Gateway `RolesGuard`** | Sesiones Stateful con Redis / OAuth2 | Autenticación stateless perimetral y matriz de permisos por rol (D-06). |
-| **ADR-011** | Toolchain de Diagramación | **Mermaid (`.mmd`) + PlantUML (`.puml`) + DBML (`.dbml`)** | Herramientas propietarias binarias | Control de versiones, revisión de cambios en Git y renderizado en PRs. |
+| **ADR-011** | Toolchain de Diagramación | **PlantUML (`.puml`) + DBML (`.dbml`) + PNG** | Herramientas propietarias binarias | Control de versiones, revisión de cambios en Git y renderizado en PRs. |
 | **ADR-012** | Almacenamiento de Objetos | **MinIO (S3-Compatible) + Hash SHA-256 en BD** | Guardar archivos en PostgreSQL | No saturar el broker con binarios pesados y verificación criptográfica de DPI. |
-| **ADR-013** | Paridad de Fuentes | **Requerir PlantUML junto a Mermaid en paridad 1:1** | Solo un formato | Formalismo UML estándar y visualización nativa en GitHub sin drift. |
+| **ADR-013** | Paridad de Fuentes | **PlantUML para UML formal y DBML para esquemas ER** | Solo un formato | Formalismo UML estándar y modelado declarativo de base de datos. |
 | **ADR-014** | Transactional Outbox | **Tabla `outbox_messages` + Scheduler Relay** | Publicación directa tras commit | Elimina la ventana de inconsistencia entre commit de base de datos y fallo de red en broker. |
 
 ---

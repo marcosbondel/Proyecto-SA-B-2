@@ -8,9 +8,8 @@ Este documento describe la secuencia de interacción asíncrona y orquestación 
 
 ![Secuencia — Crear Cuenta](../architecture/diagrams/06-uml-secuencia-crear-cuenta.png)
 
-Fuentes de diagramación versionadas (ADR-013):
+Fuentes de diagramación versionadas:
 * [PlantUML (`.puml`)](../architecture/diagrams/06-uml-secuencia-crear-cuenta.puml)
-* [Mermaid (`.mmd`)](../architecture/diagrams/06-uml-secuencia-crear-cuenta.mmd)
 
 ---
 

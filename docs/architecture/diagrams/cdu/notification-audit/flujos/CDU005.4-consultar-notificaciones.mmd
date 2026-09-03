@@ -1,5 +1,0 @@
-flowchart TD
-    admin["Administrador: solicitar notificaciones"] --> gateway["Gateway: publicar consulta"]
-    gateway --> validate["Notification & Audit: validar filtros y permisos"]
-    validate --> read["Consultar estados de entrega"]
-    read --> reply["Responder la consulta"]

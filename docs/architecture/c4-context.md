@@ -8,9 +8,8 @@ Este documento describe el **Nivel 1 (Contexto)** de la arquitectura C4 para **B
 
 ![C4 Contexto — Bank USAC](diagrams/02-c4-contexto.png)
 
-Fuentes de diagramación versionadas (ADR-013):
+Fuentes de diagramación versionadas:
 * [PlantUML (`.puml`)](diagrams/02-c4-contexto.puml)
-* [Mermaid (`.mmd`)](diagrams/02-c4-contexto.mmd)
 
 ---
 

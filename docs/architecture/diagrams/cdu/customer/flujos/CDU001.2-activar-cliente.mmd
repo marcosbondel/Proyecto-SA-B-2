@@ -1,8 +1,0 @@
-flowchart TD
-    client["Cliente: abrir enlace"] --> gateway["Gateway: publicar customer.verify-email"]
-    gateway --> validate["Customer Service: validar token"]
-    validate --> decision{"¿Token válido y vigente?"}
-    decision -->|No| reject["Rechazar ACTIVATION_TOKEN_INVALID"]
-    decision -->|Sí| active["Marcar email verificado y estado ACTIVE"]
-    active --> publish["Publicar customer.email.verified"]
-    publish --> audit["Notification & Audit: registrar activación"]
