@@ -97,7 +97,7 @@ describe('this service speaks to the system only through the broker', () => {
   it('exposes HTTP for health and readiness only', () => {
     const controllers = SOURCES.filter((source) => /@Controller/.test(source.text));
 
-    expect(controllers.map((source) => source.path)).toEqual(['src/interfaces/health.controller.ts']);
+    expect(controllers.map((source) => source.path.replace(/\\/g, '/'))).toEqual(['src/interfaces/health.controller.ts']);
 
     for (const source of controllers) {
       const routes = source.text.match(/@(Get|Post|Patch|Put|Delete)\('([^']*)'\)/g) ?? [];

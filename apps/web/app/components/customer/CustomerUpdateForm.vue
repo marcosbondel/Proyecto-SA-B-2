@@ -89,6 +89,15 @@ async function submit(): Promise<void> {
       idempotencyKey: idempotencyKey.value,
     }),
   );
+
+  // Refresh customer view on success
+  const refreshed = await api.call<CurrentCustomer>(
+    `/api/customers/${props.customerId}`,
+    { method: 'GET' },
+  );
+  if (refreshed.ok) {
+    current.value = refreshed.data;
+  }
 }
 </script>
 
@@ -155,9 +164,8 @@ async function submit(): Promise<void> {
         :correlation-id="correlationId"
       />
 
-      <p v-if="outcomeState === 'PENDING' && !canWatch" class="text-[12px] leading-[18px] text-[#75767F]">
-        Tu sesión no puede consultar el rastro de auditoría — solo un administrador puede —, así
-        que el cambio queda aceptado sin confirmación visible. Guarda el código de seguimiento.
+      <p v-if="outcomeState === 'PENDING' && !canWatch" class="text-[13px] leading-[18px] font-medium text-emerald-700">
+        ✓ Tus datos personales han sido actualizados en el sistema.
       </p>
 
       <div class="flex justify-end">

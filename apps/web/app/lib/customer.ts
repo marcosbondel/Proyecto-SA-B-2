@@ -318,7 +318,7 @@ export const IDENTITY_PRESENTATION: Readonly<Record<IdentityStatus, IdentityPres
   VALIDATED: {
     label: 'Identidad verificada',
     color: 'success',
-    explanation: 'Un cajero receptor confirmó que la foto corresponde a los datos declarados.',
+    explanation: 'El documento de identificación ha sido verificado satisfactoriamente.',
   },
   REJECTED: {
     label: 'Identidad rechazada',
