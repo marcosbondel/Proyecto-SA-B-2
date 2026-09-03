@@ -31,13 +31,24 @@ DISCOVER="${REPO_ROOT}/infra/k8s/kind/scripts/discover-external-ips.sh"
 RELEASE="bank-usac"
 NAMESPACE="bank-usac"
 
+# The target cluster is PINNED, never inherited from whatever context happens to
+# be active. This chart's images are local — loaded into a kind node with
+# `kind load docker-image` and pullable from nowhere else — and its Secret is
+# built from infra/docker/.env, so releasing it into a remote cluster both fails
+# (ImagePullBackOff on every pod) and puts local development credentials
+# somewhere they were never meant to go. That is not hypothetical: it happened.
+KUBE_CONTEXT="${BANK_KUBE_CONTEXT:-kind-bank-usac}"
+
 tag=""
 dry_run=false
 print_only=false
 skip_discover=false
+allow_remote=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tag) tag="${2:?--tag needs a value}"; shift 2 ;;
+    --context) KUBE_CONTEXT="${2:?--context needs a value}"; shift 2 ;;
+    --allow-remote-context) allow_remote=true; shift ;;
     --dry-run) dry_run=true; shift ;;
     --print) print_only=true; shift ;;
     --skip-discover) skip_discover=true; shift ;;
@@ -46,6 +57,29 @@ while [[ $# -gt 0 ]]; do
     *) echo "ERROR: unknown flag $1" >&2; exit 2 ;;
   esac
 done
+
+if ! kubectl config get-contexts -o name 2>/dev/null | grep -qx "$KUBE_CONTEXT"; then
+  echo "ERROR: kube context '${KUBE_CONTEXT}' does not exist." >&2
+  echo "  Create the cluster first:  pnpm k8s:cluster" >&2
+  echo "  Available contexts:" >&2
+  kubectl config get-contexts -o name 2>/dev/null | sed 's/^/    /' >&2
+  exit 1
+fi
+
+# A context that is not a kind cluster cannot be the intended target of this
+# chart. Refuse rather than warn: a warning scrolls past, and the failure mode
+# is a namespace full of unpullable pods holding real credentials.
+if [[ "$KUBE_CONTEXT" != kind-* && "$allow_remote" != "true" ]]; then
+  echo "ERROR: '${KUBE_CONTEXT}' is not a kind context, and this chart only" >&2
+  echo "  makes sense against the local kind cluster:" >&2
+  echo "    · its images exist only on the kind node (no registry)" >&2
+  echo "    · its Secret is built from your local infra/docker/.env" >&2
+  echo "    · its databases are Docker containers on bank-usac-local" >&2
+  echo >&2
+  echo "  Use --context kind-bank-usac, or --allow-remote-context if you" >&2
+  echo "  genuinely mean to release into '${KUBE_CONTEXT}'." >&2
+  exit 1
+fi
 
 [[ -f "$ENV_FILE" ]] || {
   echo "ERROR: ${ENV_FILE} not found." >&2
@@ -72,6 +106,7 @@ fi
 
 set -- \
   upgrade --install "$RELEASE" "$CHART" \
+  --kube-context "$KUBE_CONTEXT" \
   --namespace "$NAMESPACE" --create-namespace
 
 [[ -f "$GENERATED" ]] && set -- "$@" -f "$GENERATED"
@@ -122,22 +157,22 @@ if [[ "$print_only" == "true" ]]; then
   exit 0
 fi
 
-echo "Releasing ${RELEASE} into namespace ${NAMESPACE} at tag ${tag}…"
+echo "Releasing ${RELEASE} into ${KUBE_CONTEXT}, namespace ${NAMESPACE}, at tag ${tag}…"
 helm "$@"
 
 if [[ "$dry_run" != "true" ]]; then
   echo
   echo "Waiting for all seven workloads to become Ready (up to 3 minutes)…"
-  kubectl wait --for=condition=available --timeout=180s \
+  kubectl wait --context "$KUBE_CONTEXT" --for=condition=available --timeout=180s \
     deployment --all -n "$NAMESPACE" || {
       echo >&2
       echo "Not everything became Ready. This is usually a stale external IP" >&2
       echo "or an image the node does not have. Diagnose with:" >&2
-      echo "  kubectl get pods -n ${NAMESPACE}" >&2
-      echo "  kubectl describe pod -n ${NAMESPACE} <pod>" >&2
+      echo "  kubectl --context ${KUBE_CONTEXT} get pods -n ${NAMESPACE}" >&2
+      echo "  kubectl --context ${KUBE_CONTEXT} describe pod -n ${NAMESPACE} <pod>" >&2
       echo "See docs/operations/DEPLOYMENT.md, 'Cuando algo falla'." >&2
       exit 1
     }
   echo
-  kubectl get pods -n "$NAMESPACE" -o wide
+  kubectl get pods --context "$KUBE_CONTEXT" -n "$NAMESPACE" -o wide
 fi

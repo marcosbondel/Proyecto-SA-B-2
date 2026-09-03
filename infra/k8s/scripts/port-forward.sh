@@ -19,16 +19,18 @@ set -uo pipefail
 
 NAMESPACE="bank-usac"
 RELEASE="bank-usac"
+KUBE_CONTEXT="${BANK_KUBE_CONTEXT:-kind-bank-usac}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --context) KUBE_CONTEXT="${2:?--context needs a value}"; shift 2 ;;
     -h|--help) sed -n '3,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift ;;
     *) echo "ERROR: unknown flag $1" >&2; exit 2 ;;
   esac
 done
 
-kubectl get ns "$NAMESPACE" >/dev/null 2>&1 || {
+kubectl get ns --context "$KUBE_CONTEXT" "$NAMESPACE" >/dev/null 2>&1 || {
   echo "ERROR: namespace '${NAMESPACE}' not found — is the release installed?" >&2
   echo "  pnpm k8s:install" >&2
   exit 1
@@ -41,8 +43,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-kubectl port-forward -n "$NAMESPACE" "svc/${RELEASE}-gateway" 3000:3000 &
-kubectl port-forward -n "$NAMESPACE" "svc/${RELEASE}-web" 3010:3010 &
+kubectl port-forward --context "$KUBE_CONTEXT" -n "$NAMESPACE" "svc/${RELEASE}-gateway" 3000:3000 &
+kubectl port-forward --context "$KUBE_CONTEXT" -n "$NAMESPACE" "svc/${RELEASE}-web" 3010:3010 &
 
 sleep 2
 echo "──────────────────────────────────────────────────────────────"
