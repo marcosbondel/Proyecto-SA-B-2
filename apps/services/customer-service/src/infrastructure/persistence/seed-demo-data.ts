@@ -53,12 +53,11 @@ const USERS: readonly SeedUser[] = [
   },
   {
     id: DEMO_CLIENT_ID,
-    fullName: 'Enner Esaí Mendizabal Castro',
+    fullName: 'Clara Cliente',
     document: 'SEED-CLIENTE-001',
-    email: 'deennerparaprobar@gmail.com',
-    username: 'enner',
+    email: 'cliente@bankusac.gt',
+    username: 'cliente',
     role: 'CLIENTE',
-    password: 'ennero777',
   },
   {
     id: DEMO_CLIENT_2_ID,
@@ -68,14 +67,6 @@ const USERS: readonly SeedUser[] = [
     username: 'marcotulio',
     role: 'CLIENTE',
     password: 'BankUsac#2026',
-  },
-  {
-    id: 'a0000000-0000-4000-8000-000000000004',
-    fullName: 'Cliente Demo',
-    document: 'SEED-CLIENTE-003',
-    email: 'cliente@bankusac.gt',
-    username: 'cliente',
-    role: 'CLIENTE',
   },
 ];
 

@@ -65,6 +65,7 @@ const fields = reactive({
   terms: false,
 });
 
+const { role: sessionRole } = useSession();
 const role = ref<Role>('CLIENTE');
 const photo = ref<File | null>(null);
 const idempotencyKey = ref('');
@@ -195,6 +196,7 @@ async function submit(): Promise<void> {
       errors.value = { ...errors.value, email: outcomeMessage.value };
       step.value = 1;
     }
+    keyField.value?.renew();
   }
 }
 
@@ -295,6 +297,13 @@ function startOver(): void {
         </li>
       </ol>
 
+      <UAlert
+        v-if="outcomeState === 'BUSINESS_REJECTION' && outcomeMessage"
+        color="error"
+        variant="subtle"
+        :title="outcomeMessage"
+      />
+
       <section v-if="step === 1" class="flex flex-col gap-4">
         <header>
           <h2 class="text-[22px] font-bold leading-[30px]">Datos personales</h2>
@@ -329,10 +338,10 @@ function startOver(): void {
         </UFormField>
 
         <UFormField
-          v-if="props.mode === 'staff'"
+          v-if="props.mode === 'staff' && sessionRole === 'ADMINISTRADOR'"
           label="Rol"
           name="role"
-          help="Quién será esta persona en el sistema. Un registro público siempre es un cliente."
+          help="Quién será esta persona en el sistema. Un cajero o registro público siempre es un cliente."
         >
           <USelect v-model="role" :items="roleOptions" value-key="value" class="w-full" />
         </UFormField>

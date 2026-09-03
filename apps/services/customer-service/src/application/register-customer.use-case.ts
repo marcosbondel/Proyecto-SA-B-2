@@ -123,10 +123,20 @@ export class RegisterCustomerUseCase {
                 },
           );
 
+    const registeredByStaff =
+      identity !== null &&
+      (identity.role === 'CAJERO_RECEPTOR' || identity.role === 'ADMINISTRADOR');
+
     // An uploaded document that passes basic structure remains PENDING until a
     // teller or administrator manually reviews and approves it in the validation queue.
+    // However, if the registration is performed directly by a teller or administrator
+    // at the counter, the identity is physically verified at creation.
     const identityStatus: IdentityStatus =
-      verdict !== null && verdict.outcome === 'REJECTED' ? 'REJECTED' : 'PENDING';
+      verdict !== null && verdict.outcome === 'REJECTED'
+        ? 'REJECTED'
+        : registeredByStaff
+          ? 'VALIDATED'
+          : 'PENDING';
 
     const activation = this.#tokens.issue();
     const expiresAt = new Date(now.getTime() + ACTIVATION_TTL_MS).toISOString();
@@ -208,7 +218,16 @@ export class RegisterCustomerUseCase {
       },
     });
 
-    if (verdict !== null && verdict.outcome === 'REJECTED') {
+    if (registeredByStaff && identityStatus === 'VALIDATED') {
+      await this.#publisher.publish({
+        messageType: customerIdentityValidatedV1.name,
+        payload: {
+          customerId: customer.customerId,
+          identityStatus: 'VALIDATED',
+          validatedAt: now.toISOString(),
+        },
+      });
+    } else if (verdict !== null && verdict.outcome === 'REJECTED') {
       await this.#publishVerdict(customer.customerId, verdict, now);
     }
   }

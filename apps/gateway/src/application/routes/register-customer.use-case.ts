@@ -35,6 +35,7 @@ export interface RegisterCustomerRequest {
   readonly photo?: { readonly bytes: Buffer; readonly mimetype: string };
   readonly correlationId: string;
   readonly idempotencyKey: string;
+  readonly actor?: { readonly customerId: string; readonly role: string; readonly username?: string } | null;
 }
 
 export interface AcceptedCommand {
@@ -99,8 +100,7 @@ export class RegisterCustomerUseCase {
     const envelope = envelopeForRequest(
       parsed.data,
       customerRegisterV1.name,
-      // Registration is self-service: nobody is authenticated yet.
-      null,
+      request.actor ?? null,
       request.correlationId,
       /**
        * The caller's key, carried untouched.
@@ -153,7 +153,9 @@ export class RegisterCustomerUseCase {
     } catch (error) {
       if (
         error instanceof GatewayError &&
-        (error.type === 'BUSINESS_REJECTION' || error.type === 'FORBIDDEN')
+        (error.type === 'BUSINESS_REJECTION' ||
+          error.type === 'FORBIDDEN' ||
+          error.type === 'BROKER_UNAVAILABLE')
       ) {
         throw error;
       }
