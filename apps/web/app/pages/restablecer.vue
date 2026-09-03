@@ -118,6 +118,16 @@ async function submit(): Promise<void> {
         description="Ya puedes iniciar sesión con la contraseña nueva."
         data-testid="reset-done"
       />
+
+      <UButton
+        to="/login"
+        color="primary"
+        size="lg"
+        block
+        data-testid="reset-go-to-login"
+      >
+        Ir a iniciar sesión
+      </UButton>
     </div>
 
     <!--
@@ -134,6 +144,16 @@ async function submit(): Promise<void> {
           antes de pedir otro enlace."
         data-testid="reset-timeout"
       />
+
+      <UButton
+        to="/login"
+        color="neutral"
+        variant="outline"
+        block
+        data-testid="reset-timeout-go-to-login"
+      >
+        Ir a iniciar sesión
+      </UButton>
     </div>
 
     <form v-else class="flex flex-col gap-4" @submit.prevent="submit">
@@ -177,9 +197,10 @@ async function submit(): Promise<void> {
 
     <template #footer>
       <div class="flex items-center justify-between">
-        <NuxtLink to="/login" class="text-[14px] font-semibold text-[#17191F]">
-          {{ done ? 'Ir a iniciar sesión' : 'Volver' }}
+        <NuxtLink v-if="!done" to="/login" class="text-[14px] font-semibold text-[#17191F]">
+          Volver
         </NuxtLink>
+        <span v-else class="text-[13px] text-[#5A5B63]">Contraseña actualizada</span>
         <SharedCorrelationIdBadge :correlation-id="correlationId" />
       </div>
     </template>

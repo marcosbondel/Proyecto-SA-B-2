@@ -184,6 +184,7 @@ export class CustomersController {
       ...(photo === undefined ? {} : { photo: { bytes: photo.buffer, mimetype: photo.mimetype } }),
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,
+      actor: this.#optionalActor(request),
     });
   }
 
@@ -370,6 +371,19 @@ export class CustomersController {
       throw GatewayError.forbidden(
         'Solo un administrador puede asignar un rol distinto de CLIENTE.',
       );
+    }
+  }
+
+  #optionalActor(request: GatewayRequest): Identity | null {
+    const token = bearerTokenOf(request);
+    if (token === undefined) {
+      return null;
+    }
+    try {
+      const verified = this.#sessions.verify(token);
+      return { customerId: verified.customerId, role: verified.role };
+    } catch {
+      return null;
     }
   }
 }
