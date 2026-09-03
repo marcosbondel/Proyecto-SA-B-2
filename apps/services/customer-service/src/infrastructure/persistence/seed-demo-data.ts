@@ -22,6 +22,7 @@ import type { PasswordHasher } from '../../application/ports';
 export const DEMO_ADMIN_ID = 'a0000000-0000-4000-8000-000000000001';
 export const DEMO_TELLER_ID = 'a0000000-0000-4000-8000-000000000002';
 export const DEMO_CLIENT_ID = 'a0000000-0000-4000-8000-000000000003';
+export const DEMO_CLIENT_2_ID = 'a0000000-0000-4000-8000-000000000005';
 
 interface SeedUser {
   readonly id: string;
@@ -30,6 +31,7 @@ interface SeedUser {
   readonly email: string;
   readonly username: string;
   readonly role: 'CLIENTE' | 'CAJERO_RECEPTOR' | 'ADMINISTRADOR';
+  readonly password?: string;
 }
 
 const USERS: readonly SeedUser[] = [
@@ -51,8 +53,26 @@ const USERS: readonly SeedUser[] = [
   },
   {
     id: DEMO_CLIENT_ID,
-    fullName: 'Clara Cliente',
+    fullName: 'Enner Esaí Mendizabal Castro',
     document: 'SEED-CLIENTE-001',
+    email: 'deennerparaprobar@gmail.com',
+    username: 'enner',
+    role: 'CLIENTE',
+    password: 'ennero777',
+  },
+  {
+    id: DEMO_CLIENT_2_ID,
+    fullName: 'Marco Tulio Lopez Medina',
+    document: 'SEED-CLIENTE-002',
+    email: '2895884051401@ingenieria.usac.edu.gt',
+    username: 'marcotulio',
+    role: 'CLIENTE',
+    password: 'BankUsac#2026',
+  },
+  {
+    id: 'a0000000-0000-4000-8000-000000000004',
+    fullName: 'Cliente Demo',
+    document: 'SEED-CLIENTE-003',
     email: 'cliente@bankusac.gt',
     username: 'cliente',
     role: 'CLIENTE',
@@ -60,7 +80,7 @@ const USERS: readonly SeedUser[] = [
 ];
 
 /**
- * Seeds the three demo users, returning their emails for the boot log.
+ * Seeds the demo users, returning their emails for the boot log.
  *
  * `identity_status = VALIDATED` and `status = ACTIVE` with a verified timestamp
  * (constraint C-4: ACTIVE iff verified), so each can sign in immediately.
@@ -68,10 +88,10 @@ const USERS: readonly SeedUser[] = [
 export async function seedDemoUsers(
   pool: Pool,
   hasher: PasswordHasher,
-  password: string,
+  defaultPassword: string,
 ): Promise<readonly string[]> {
   for (const user of USERS) {
-    const passwordHash = await hasher.hash(password);
+    const passwordHash = await hasher.hash(user.password ?? defaultPassword);
 
     await pool.query(
       `INSERT INTO customers
@@ -80,6 +100,9 @@ export async function seedDemoUsers(
        VALUES ($1, $2, $3, $4, '1990-01-01', 'Zona 1, Guatemala',
                $5, 'VALIDATED', $6, 'ACTIVE', $7, now())
        ON CONFLICT (customer_id) DO UPDATE SET
+         full_name         = EXCLUDED.full_name,
+         email             = EXCLUDED.email,
+         username          = EXCLUDED.username,
          password_hash     = EXCLUDED.password_hash,
          status            = 'ACTIVE',
          identity_status   = 'VALIDATED',
@@ -92,3 +115,4 @@ export async function seedDemoUsers(
 
   return USERS.map((user) => user.email);
 }
+

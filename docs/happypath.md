@@ -8,8 +8,8 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Actor / Rol | Credenciales | Propósito en el Flujo | Privilegios y Restricciones (ADR D-06) |
 | :--- | :--- | :--- | :--- |
-| **Nuevo Cliente (Carlos Morales)** | `deennerparaprobar@gmail.com` / `StrongQA#2026!` | Registro, activación por correo, apertura de cuenta bancaria. | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
-| **Cliente Demo (Existente)** | `cliente@bankusac.gt` / `BankUsac#2026` | Ejecución de transferencias con Saga coreografiada y pagos. | No puede autorizar depósitos ni ver datos de otros clientes (`403`). |
+| **Cliente Principal (Enner Mendizabal)** | `deennerparaprobar@gmail.com` / `ennero777` | Origen de transferencias con Saga, pagos de servicios, cuentas pre-fondeadas (Q5,000). | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
+| **Cliente Tercero (Marco Tulio López)** | `2895884051401@ingenieria.usac.edu.gt` / `BankUsac#2026` | Destinatario para pruebas de transferencias interbancarias y depósitos en ventanilla. | Puede ver únicamente sus cuentas, movimientos y notificaciones. |
 | **Cajero Receptor (Ventanilla)** | `cajero@bankusac.gt` / `BankUsac#2026` | Validación de documentos DPI y abono de depósitos en efectivo. | No puede ordenar transferencias entre clientes ni auditar el sistema (`403`). |
 | **Administrador del Sistema** | `admin@bankusac.gt` / `BankUsac#2026` | Auditoría distribuida, monitoreo de pagos, gestión de estado. | Acceso de lectura global al bus de eventos y métricas de servicios. |
 
