@@ -2,28 +2,9 @@
 import { isUuidV4 } from '../../lib/account';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { LoadState } from '../../lib/gateway-error';
+import type { Biller } from '../../lib/payment';
 import type { TransferRow } from '../../lib/transaction';
 
-/**
- * `T-04` — the history, and the question this module could not answer until
- * now.
- *
- * For two tickets this screen was a lookup box and an explanation: the Gateway
- * exposed no route that listed transfers, because Transaction Service held two
- * opaque account references and could not resolve either to a person without
- * reading Account Service's database (§8.2, 2.3). That was TD-033, and it is
- * closed — the transfer now records who asked for it, and the listing is
- * scoped by the owning service against that column.
- *
- * **The scope is not this screen's.** A `CLIENTE` sees their own transfers
- * because Transaction Service narrowed the answer, not because this page asked
- * politely; filtering in the browser would be a permission a devtools console
- * can turn off. The lookup box stays, because a `transactionId` from a receipt
- * is still the fastest way to one transfer.
- *
- * An empty list is an empty state and never an error. It means the same thing
- * whether nothing exists or nothing is visible, which is the point.
- */
 const api = useGatewayApi();
 const { role } = useSession();
 
@@ -39,23 +20,32 @@ async function load(): Promise<void> {
   state.value = 'LOADING';
   failure.value = null;
 
-  const result = await api.call<{
-    transactions: TransferRow[];
-    total: number;
-    correlationId: string;
-  }>('/api/transfers', { query: { limit: '25' } });
+  const [transfers, catalogue] = await Promise.all([
+    api.call<{
+      transactions: TransferRow[];
+      total: number;
+      correlationId: string;
+    }>('/api/transfers', { query: { limit: '50' } }),
+    api.call<{ billers: Biller[] }>('/api/accounts/billers'),
+  ]);
 
-  if (result.ok) {
-    rows.value = result.data.transactions;
-    total.value = result.data.total;
-    correlationId.value = result.data.correlationId;
-    state.value = 'READY';
+  if (!transfers.ok) {
+    correlationId.value = transfers.error.correlationId;
+    failure.value = transfers.error.message;
+    state.value = asyncStateFor(transfers.error);
     return;
   }
 
-  correlationId.value = result.error.correlationId;
-  failure.value = result.error.message;
-  state.value = asyncStateFor(result.error);
+  const billerAccountIds = new Set(
+    catalogue.ok ? catalogue.data.billers.map((b) => b.accountId) : [],
+  );
+
+  rows.value = transfers.data.transactions.filter(
+    (row) => !billerAccountIds.has(row.targetAccount),
+  );
+  total.value = rows.value.length;
+  correlationId.value = transfers.data.correlationId;
+  state.value = 'READY';
 }
 
 onMounted(load);

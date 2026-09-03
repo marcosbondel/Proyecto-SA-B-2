@@ -66,12 +66,41 @@ interface CustomerIdentityRecord {
 
 const customerRecord = ref<CustomerIdentityRecord | null>(null);
 
+interface CustomerSummary {
+  readonly customerId: string;
+  readonly fullName: string;
+  readonly documentNumber: string;
+  readonly username: string;
+  readonly role: string;
+  readonly email: string;
+}
+
+const customerList = ref<readonly CustomerSummary[]>([]);
+const customerSearchLoading = ref(false);
+
+const customerSelectItems = computed(() =>
+  customerList.value.map((c) => ({
+    value: c.customerId,
+    label: `${c.fullName} · DPI: ${c.documentNumber} · (${c.customerId.slice(-6)})`,
+  })),
+);
+
+const selectedCustomer = computed(() =>
+  customerList.value.find((c) => c.customerId === customerId.value.trim()) ?? null,
+);
+
 onMounted(async () => {
   if (typeof route.query.customerId === 'string' && route.query.customerId.trim().length > 0) {
     customerId.value = route.query.customerId.trim();
   }
   if (isStaff.value) {
     forSomebodyElse.value = true;
+    customerSearchLoading.value = true;
+    const res = await api.call<{ customers: CustomerSummary[] }>('/api/customers');
+    if (res.ok) {
+      customerList.value = res.data.customers.filter((c) => c.role === 'CLIENTE');
+    }
+    customerSearchLoading.value = false;
   }
 
   if (role.value === 'CLIENTE' && session.value?.customerId) {
@@ -214,10 +243,26 @@ async function copyAccountId(): Promise<void> {
         </div>
 
         <UFormField
+          label="Buscar cliente por Nombre o DPI"
+          name="customerSearch"
+          help="Selecciona de la lista o escribe/pega el UUID abajo."
+        >
+          <USelectMenu
+            v-model="customerId"
+            class="w-full"
+            value-key="value"
+            :items="customerSelectItems"
+            :loading="customerSearchLoading"
+            placeholder="Selecciona o busca un cliente registrado..."
+            :search-input="{ placeholder: 'Buscar por nombre o DPI del cliente...' }"
+          />
+        </UFormField>
+
+        <UFormField
           label="Número de cliente del titular (UUID)"
           name="customerId"
           :error="errors.customerId"
-          help="El identificador de cliente (UUID) de 36 caracteres a quien pertenecerá la cuenta."
+          help="El identificador único (UUID) de 36 caracteres a quien pertenecerá la cuenta."
         >
           <UInput
             v-model="customerId"
@@ -226,6 +271,10 @@ async function copyAccountId(): Promise<void> {
             style="font-variant-numeric: tabular-nums lining-nums"
           />
         </UFormField>
+
+        <p v-if="selectedCustomer" class="text-[13px] text-[#186A32] font-medium">
+          ✓ Cliente: <strong>{{ selectedCustomer.fullName }}</strong> (DPI: {{ selectedCustomer.documentNumber }})
+        </p>
       </div>
 
       <p v-else class="text-[13px] leading-5 text-[#5A5B63]">
@@ -258,7 +307,7 @@ async function copyAccountId(): Promise<void> {
           <dd
             class="break-all text-right font-mono text-[13px] font-medium"
             style="font-variant-numeric: tabular-nums lining-nums"
-          >{{ isStaff ? customerId.trim() : (subject || 'tu propia cuenta') }}</dd>
+          >{{ isStaff ? (selectedCustomer ? `${selectedCustomer.fullName} · DPI: ${selectedCustomer.documentNumber} (${customerId.trim()})` : customerId.trim()) : (subject || 'tu propia cuenta') }}</dd>
         </div>
         <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
           <dt class="text-[13px] text-[#75767F]">Tipo de cuenta</dt>
