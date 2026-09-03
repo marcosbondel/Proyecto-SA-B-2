@@ -20,7 +20,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 CONFIG="${REPO_ROOT}/infra/k8s/kind/cluster.yaml"
 NETWORK="bank-usac-local"
-CLUSTER="bank-usac"
+# Overridable so the creation path can be exercised against a throwaway cluster
+# without touching the real one. Everything else about the run is identical.
+CLUSTER="${BANK_KIND_CLUSTER:-bank-usac}"
 
 recreate=false
 while [[ $# -gt 0 ]]; do
@@ -61,7 +63,7 @@ fi
 
 echo "Creating kind cluster '${CLUSTER}' on the '${NETWORK}' Docker network…"
 KIND_EXPERIMENTAL_DOCKER_NETWORK="$NETWORK" \
-  kind create cluster --config "$CONFIG"
+  kind create cluster --name "$CLUSTER" --config "$CONFIG"
 
 echo
 echo "──────────────────────────────────────────────────────────────"
