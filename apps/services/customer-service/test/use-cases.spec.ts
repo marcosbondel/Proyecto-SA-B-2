@@ -98,7 +98,6 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
     expect(context.publisher.typesPublished()).toEqual([
       'customer.registered.v1',
       'customer.activation.requested.v1',
-      'customer.identity.validated.v1',
     ]);
   });
 
@@ -132,7 +131,7 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
     await context.register.execute(REGISTER, 'key-1');
 
     expect(context.repository.customers.size).toBe(1);
-    expect(context.publisher.published).toHaveLength(3);
+    expect(context.publisher.published).toHaveLength(2);
   });
 
   it('refuses a duplicated document with a safe reason and no success event', async () => {
@@ -813,10 +812,10 @@ describe('validating an identity again', () => {
     };
 
     await context.validateIdentity.execute(command, 'key-identity');
-    await context.validateIdentity.execute(command, 'key-identity');
+    const afterFirst = context.publisher.published.length;
+    expect(afterFirst).toBe(before + 1);
 
-    // The first one is refused anyway — the identity was validated at
-    // registration — so what this proves is that the second changed nothing.
-    expect(context.publisher.published.length).toBe(before);
+    await context.validateIdentity.execute(command, 'key-identity');
+    expect(context.publisher.published.length).toBe(afterFirst);
   });
 });

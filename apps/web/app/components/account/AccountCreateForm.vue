@@ -48,8 +48,30 @@ const idempotencyKey = ref('');
 const errors = ref<Record<string, string>>({});
 const copied = ref(false);
 
-/** A client may only open their own; anyone else has to name the subject. */
 const isStaff = computed(() => role.value !== 'CLIENTE');
+
+interface CustomerIdentityRecord {
+  readonly customerId: string;
+  readonly identityStatus: 'PENDING' | 'VALIDATED' | 'REJECTED';
+}
+
+const customerRecord = ref<CustomerIdentityRecord | null>(null);
+
+onMounted(async () => {
+  if (role.value === 'CLIENTE' && session.value?.customerId) {
+    const res = await api.call<CustomerIdentityRecord>(`/api/customers/${session.value.customerId}`);
+    if (res.ok) {
+      customerRecord.value = res.data;
+    }
+  }
+});
+
+const isIdentityPending = computed(
+  () =>
+    role.value === 'CLIENTE' &&
+    customerRecord.value !== null &&
+    customerRecord.value.identityStatus !== 'VALIDATED',
+);
 
 const subject = computed(() =>
   forSomebodyElse.value ? customerId.value.trim() : (session.value?.customerId ?? ''),
@@ -64,6 +86,13 @@ const subject = computed(() =>
  */
 function validate(): boolean {
   const found: Record<string, string> = {};
+
+  if (isIdentityPending.value) {
+    found.accountType =
+      'Tu documento de identidad está pendiente de validación por un cajero o administrador.';
+    errors.value = found;
+    return false;
+  }
 
   if (accountType.value === null) {
     found.accountType = 'Elige el tipo de cuenta.';
@@ -141,6 +170,14 @@ async function copyAccountId(): Promise<void> {
 
     <!-- Step 1 -->
     <form v-if="step === 'FORM'" class="flex flex-col gap-5" @submit.prevent="review">
+      <UAlert
+        v-if="isIdentityPending"
+        color="warning"
+        variant="subtle"
+        title="Validación de identidad requerida"
+        description="Tu documento de identificación aún no ha sido aprobado por un cajero receptor o administrador. Debes esperar a que el personal bancario valide tu documento en ventanilla antes de poder abrir cuentas bancarias."
+      />
+
       <div>
         <AccountTypeSelector v-model="accountType" />
         <p v-if="errors.accountType" class="mt-2 text-[13px] text-[#B01B1B]">
@@ -174,7 +211,15 @@ async function copyAccountId(): Promise<void> {
 
       <SharedIdempotencyKeyField ref="keyField" v-model="idempotencyKey" />
 
-      <UButton type="submit" color="primary" size="lg" block>Continuar</UButton>
+      <UButton
+        type="submit"
+        color="primary"
+        size="lg"
+        block
+        :disabled="isIdentityPending"
+      >
+        {{ isIdentityPending ? 'Apertura bloqueada (requiere validación de cajero)' : 'Continuar' }}
+      </UButton>
     </form>
 
     <!-- Step 2: the confirmation, because nothing here deletes an account -->
@@ -246,12 +291,10 @@ async function copyAccountId(): Promise<void> {
           >{{ copied ? 'Copiado' : 'Copiar' }}</UButton>
         </div>
         <p class="mt-3 border-t border-[#DCDCE0] pt-3 text-[13px] leading-5 text-[#5A5B63]">
-          Guarda este identificador: es con lo que se consulta el saldo y se envían
-          transferencias.
-          <template v-if="!canWatch">
-            Tu sesión no puede leer el rastro de auditoría, así que la pantalla no confirmará el
-            resultado — ábrelo abajo para verlo.
-          </template>
+          Guarda este identificador: es con lo que se consulta el saldo, se reciben depósitos en ventanilla y se realizan transferencias.
+        </p>
+        <p class="mt-2 text-[13px] font-medium text-emerald-700">
+          ✓ Tu cuenta bancaria ha sido creada exitosamente con saldo inicial de Q 0.00.
         </p>
       </div>
 
