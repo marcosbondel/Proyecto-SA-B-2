@@ -1,6 +1,0 @@
-flowchart TD
-    event["Notification & Audit: consumir evento notificable"] --> pending["Crear Notification PENDING"]
-    pending --> send["Enviar mensaje al servicio de correo"]
-    send --> decision{"¿Entrega exitosa?"}
-    decision -->|Sí| sent["Registrar estado SENT"]
-    decision -->|No| failed["Registrar FAILED y programar reintento"]

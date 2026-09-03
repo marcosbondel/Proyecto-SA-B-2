@@ -1,0 +1,74 @@
+// Transaction Service - Entity-Relationship Diagram (DBML)
+// Database: transaction_db (PostgreSQL 18.4)
+
+Table transactions {
+  transaction_id uuid [pk]
+  source_account uuid [not null, note: 'Cuenta origen (Account Service)']
+  target_account uuid [not null, note: 'Cuenta destino (Account Service)']
+  amount numeric(14,2) [not null, note: 'Monto a transferir (> 0)']
+  status varchar(20) [not null, default: 'PENDING', note: 'PENDING, DEBITING, PAYMENT_PENDING, COMPLETED, FAILED, COMPENSATED']
+  correlation_id uuid [not null, note: 'Trazabilidad distribuida']
+  idempotency_key varchar(200) [unique, not null]
+  failure_reason text
+  payment_scenario varchar(20) [note: 'APPROVE, REJECT, TRANSIENT_FAILURE']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+
+  indexes {
+    correlation_id [name: 'transactions_correlation_idx']
+    (source_account, created_at) [name: 'transactions_source_idx']
+    (target_account, created_at) [name: 'transactions_target_idx']
+  }
+  Note: 'Orquestación y máquina de estados de transferencias con Saga'
+}
+
+Table transaction_events {
+  id bigserial [pk]
+  transaction_id uuid [not null, ref: > transactions.transaction_id]
+  event_type varchar(100) [not null, note: 'Tipo de evento de dominio procesado']
+  payload jsonb [not null, note: 'Cuerpo del evento recibido']
+  received_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (transaction_id, id) [name: 'transaction_events_transaction_idx']
+  }
+  Note: 'Bitácora local inmutable de eventos recibidos por la transacción'
+}
+
+Table transaction_aliases {
+  requested_transaction_id uuid [pk, note: 'ID temporal retornado en la respuesta HTTP 202']
+  transaction_id uuid [not null, ref: > transactions.transaction_id]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    transaction_id [name: 'transaction_aliases_target_idx']
+  }
+  Note: 'Mapeo de reintentos idempotentes hacia la transacción canónica'
+}
+
+Table outbox_messages {
+  id bigserial [pk]
+  transaction_id uuid [not null, ref: > transactions.transaction_id]
+  exchange varchar(120) [not null]
+  routing_key varchar(200) [not null]
+  envelope jsonb [not null, note: 'Envolvente completa lista para el broker']
+  dispatch_status varchar(20) [not null, default: 'PENDING', note: 'PENDING, DISPATCHED']
+  created_at timestamptz [not null, default: `now()`]
+  published_at timestamptz
+
+  indexes {
+    id [name: 'outbox_messages_pending_idx', note: 'WHERE dispatch_status = PENDING']
+  }
+  Note: 'Patrón Transactional Outbox para publicación confiable en RabbitMQ'
+}
+
+Table processed_messages {
+  message_id uuid [pk]
+  message_type varchar(120) [not null]
+  transaction_id uuid [not null]
+  outcome varchar(30) [not null]
+  processed_at timestamptz [not null, default: `now()`]
+
+  Note: 'Deduplicación de mensajes procesados por Transaction Service'
+}

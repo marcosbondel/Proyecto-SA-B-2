@@ -1,6 +1,0 @@
-flowchart TD
-    actor["Cliente o Administrador: solicitar historial"] --> validate["Payment Service: validar autorización y filtros"]
-    validate --> decision{"¿Solicitud autorizada?"}
-    decision -->|No| reject["Rechazar consulta"]
-    decision -->|Sí| read["Leer pagos del solicitante"]
-    read --> reply["Responder historial"]
