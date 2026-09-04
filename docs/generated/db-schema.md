@@ -1,6 +1,6 @@
 # Esquema Integral de Bases de Datos — Bank USAC
 
-Este documento consolida el catálogo técnico completo, fidedigno y sincronizado de las **cinco bases de datos relacionales independientes** (PostgreSQL 18.4) que implementan el principio de arquitectura **Database-per-Service** ([ADR-005](../architecture/adr/ADR-005-database-engine.md)).
+Este documento consolida el catálogo técnico completo, fidedigno y sincronizado de las **cinco bases de datos relacionales independientes** (PostgreSQL 18.4) que implementan el principio de arquitectura **Database-per-Service** ([ADR-005](../architecture/adr/ADR-005-persistence.md)).
 
 Ningún microservicio puede acceder, leer ni modificar las tablas de otro microservicio de forma directa. La consistencia inter-servicios se garantiza exclusivamente mediante el bus de mensajería asíncrono RabbitMQ y el patrón Saga Coreografiada ([ADR-004](../architecture/adr/ADR-004-message-broker.md), [ADR-009](../architecture/adr/ADR-009-distributed-transactions.md)).
 

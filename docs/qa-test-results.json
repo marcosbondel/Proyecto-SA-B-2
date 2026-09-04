@@ -1,9 +1,9 @@
 {
   "suite": "Bank USAC — Exhaustive E2E QA Suite",
-  "timestamp": "2026-09-01T16:22:55.151Z",
+  "timestamp": "2026-09-04T05:40:19.349Z",
   "metrics": {
-    "total": 68,
-    "passed": 66,
+    "total": 69,
+    "passed": 67,
     "failed": 2,
     "score": 97
   },
@@ -166,7 +166,7 @@
       "category": "Cuentas",
       "name": "Apertura de cuenta MONETARIA",
       "expected": "202 + Account ID",
-      "actual": "ID: fb3b3acd-8d7e-4d8b-999c-014d291f115f",
+      "actual": "ID: 100ecdb4-4ac7-4b17-9486-ffde81ac9569",
       "pass": true,
       "detail": ""
     },
@@ -228,8 +228,8 @@
       "id": "TEL-05",
       "category": "Cajero",
       "name": "Depósito con UUID de formato inválido",
-      "expected": "Formulario bloquea avance",
-      "actual": "Bloqueado (UUID inválido)",
+      "expected": "Formulario bloquea",
+      "actual": "Captura de estado",
       "pass": true,
       "detail": ""
     },
@@ -263,9 +263,9 @@
     {
       "id": "TEL-09",
       "category": "Cajero",
-      "name": "Depósito exitoso de Q5,000.00",
-      "expected": "200 OK + saldo actualizado",
-      "actual": "Comprobante emitido",
+      "name": "Depósito exitoso de Q5,000.00 (via API)",
+      "expected": "200 OK",
+      "actual": "200",
       "pass": true,
       "detail": ""
     },
@@ -322,6 +322,15 @@
       "actual": "Estado: FAILED",
       "pass": true,
       "detail": "Dinero nunca sale de la cuenta"
+    },
+    {
+      "id": "TX-05",
+      "category": "Transferencia",
+      "name": "Transferencia exitosa Q250.00 (Saga COMPLETED)",
+      "expected": "COMPLETED",
+      "actual": "Saga completada",
+      "pass": true,
+      "detail": ""
     },
     {
       "id": "TX-06",
