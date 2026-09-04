@@ -104,13 +104,17 @@ Todas las operaciones a lo largo de los tres módulos se ejecutan sobre el **mis
   * **Dirección declarada**: `chayanne`
   * **Correo electrónico**: `juanita@bankusac.gt`
   * **Usuario asignado**: `emendizabal`
-  * **Contraseña inicial**: `DemoClave#02` (actualizada a nueva clave en Paso 17)
-  * **Datos Actualizados desde Mi Perfil (Paso 15)**: Nombre para mostrar: `Ennercito`, Dirección: `mi casa`, Fecha de nacimiento: `04/11/2003`
+  * **Contraseña inicial**: `DemoClave#02` (actualizada a nueva clave en Paso 35)
+  * **Datos Actualizados desde Mi Perfil (Pasos 32 y 33)**: Nombre para mostrar: `Ennercito`, Dirección: `mi casa`, Fecha de nacimiento: `04/11/2003`
   * **Identificador de Cliente (`customerId`)**: `b165d73d-a709-4dd4-9620-688ea75219a3`
-  * **Cuenta Monetaria Aperturada y Fondeada**: `e80bd8e9-930a-4f5a-9f34-229cc6d6e822`
+  * **Cuenta Monetaria Aperturada y Fondeada (en Ventanilla)**: `e80bd8e9-930a-4f5a-9f34-229cc6d6e822`
+  * **Cuenta de Ahorro Aperturada en Línea (en Autoservicio)**: `afd97145-831e-40f7-92b6-a167b28c511a` (Saldo inicial: `Q 0.00`)
   * **Saldo Inicial Fondeado en Ventanilla**: `Q 1,500.00`
   * **Transferencia Recibida (de Clara Cliente)**: `+ Q 400.00` (Saldo acumulado: `Q 1,900.00`, Transferencia ID: `2cc63338-833f-4871-b47f-d297e268de91`)
   * **Pago de Servicio Claro Realizado**: `- Q 500.00` (Saldo disponible resultante: `Q 1,400.00`, Transacción ID: `b0089530-7bd6-471b-9745-d1c0e65bde85`, Pago ID: `194f659d-55a1-4b40-afcc-a02c80a90572`)
+  * **Transferencia entre Cuentas Propias (Monetaria a Ahorro)**: `Q 700.00` (Monetaria: `Q 700.00`, Ahorro: `Q 700.00`, Total: `Q 1,400.00`, Transacción ID: `5ab64918-8ae0-47fb-abe5-f0a8110fce64`)
+  * **Simulación de Falla y Compensación Saga (Paso 25)**: Intento de traslado de `Q 200.00` de Ahorro a Monetaria rechazado por el procesador externo (Transacción ID: `73abad28-05c7-420a-9273-f3f92facbad3`, Pago ID: `cd266092-23df-428b-bc26-082f15b4bc03`). Estado final: `COMPENSADA` con restitución íntegra de los Q 200.00 (Saldos inalterados: Ahorro `Q 700.00`, Monetaria `Q 700.00`).
+  * **Pago de Servicio Eléctrico EEGSA Realizado (Pasos 29 al 31)**: `- Q 300.00` debitados en autoservicio de la cuenta Monetaria `...d6e822` (referencia: *"Esta cara la luz"*). Transacción ID: `983b187b-38c9-4738-8789-8775b2862293`, Pago ID: `627f542a-8133-4900-8d13-36547c85cc76`. Estado de la Saga: `COMPLETADA` (Aprobado). Saldos resultantes: Monetaria `Q 400.00`, Ahorro `Q 700.00`, Saldo Consolidado: `Q 1,100.00`.
   * **Código de Seguimiento Inicial (`correlationId`)**: `975be732-5808-47c6-8394-c6e39502255a`
 * **Cliente Secundario (Enrolamiento Directo en Ventanilla)**:
   * **Nombre**: `luisito comunica`
@@ -254,7 +258,7 @@ Una vez enviada la solicitud, el sistema presenta la confirmación del registro 
 
 #### Paso 7: Recepción del Correo de Activación de Cuenta (`juanita@bankusac.gt`)
 
-Una vez que el cajero receptor aprueba la identidad del cliente (como se detalla en el Paso 21 en la mesa de revisión), el microservicio de notificaciones despacha automáticamente un correo real a la bandeja del solicitante con un token criptográfico de un solo uso.
+Una vez que el cajero receptor aprueba la identidad del cliente (como se detalla en el Paso 39 en la mesa de revisión), el microservicio de notificaciones despacha automáticamente un correo real a la bandeja del solicitante con un token criptográfico de un solo uso.
 
 ![Correo de activación del cliente](images/user-manual/06b-correo-activacion-cliente.png)
 
@@ -394,8 +398,387 @@ Al navegar a la sección de **Cuentas** desde el menú lateral (`http://localhos
    * **CÓDIGO DE SEGUIMIENTO**: `1eefa78d-cb54-421c-a5e4-8ce73c7296b0` [Copiar].
 
 ---
+#### Paso 14: Solicitud de Apertura de Nueva Cuenta Bancaria — Selección de Cuenta de Ahorro (`/cuentas/nueva`)
 
-#### Paso 14: Perfil de Usuario — Consulta y Edición de Datos Personales (`/perfil`)
+Desde la vista de sus cuentas (`/cuentas`), el cliente hace clic en el botón superior **"Abrir cuenta"** (`http://localhost:3010/cuentas/nueva`) para solicitar un nuevo producto financiero de ahorro sin acudir a ventanilla.
+
+![Selección de tipo de cuenta Ahorro](images/user-manual/cliente-18-abrir-cuenta-ahorro-seleccion.png)
+
+##### Opciones y Reglas Bancarias del Formulario:
+1. **Tipos de Cuenta Disponibles**:
+   * **Monetaria**: *"Uso diario, transferencias y pagos sin límite de movimientos."*
+   * **Ahorro (Seleccionada)**: *"Para guardar dinero y acumular fondos."* (Se resalta con borde activo).
+2. **Regla de Negocio y Ciclo de Vida**:
+   * *"Toda cuenta bancaria (Monetaria o Ahorro) se desactiva automáticamente si permanece inactiva por 6 meses con saldo menor a Q 50.00."*
+   * *"La cuenta se abrirá a tu nombre. Solo el personal del banco puede abrir cuentas para otras personas."*
+3. **Idempotencia Técnica**:
+   * `CÓDIGO DE ESTA OPERACIÓN`: `cb9cb120-e071-4dd1-a14f-d9501ca1025b` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación."*).
+4. **Acción**:
+   * Botón: **"Continuar"**.
+
+---
+
+#### Paso 15: Confirmación de Apertura de Cuenta de Ahorro (`/cuentas/nueva`)
+
+El asistente presenta la pantalla de resumen y confirmación para que el cliente verifique los datos antes de emitir la orden a `account-service`.
+
+![Confirmación de apertura de cuenta de ahorro](images/user-manual/cliente-19-abrir-cuenta-ahorro-confirmar.png)
+
+##### Datos de la Confirmación:
+* **Titular**: `b165d73d-8f09-44d6-9620-688ea75219a3` (Identificador único de Enner Mendizabal).
+* **Tipo de cuenta**: `Ahorro`.
+* **Saldo inicial**: `Q 0.00`.
+* **Navegación**: Botón **"Volver"** para cambiar el tipo y botón principal **"Crear la cuenta"**.
+
+---
+
+#### Paso 16: Emisión Exitosa de Cuenta de Ahorro e Identificador Asignado (`/cuentas/nueva`)
+
+Al confirmar, el sistema registra la cuenta en estado activo (`status = ACTIVE`) con saldo contable inicial de `Q 0.00` y emite el nuevo UUID bancario.
+
+![Cuenta de ahorro creada exitosamente](images/user-manual/cliente-20-abrir-cuenta-ahorro-exitosa.png)
+
+##### Elementos del Comprobante:
+1. **Alerta de Éxito (Verde)**:
+   * Título: **"¡Cuenta bancaria creada exitosamente!"**
+   * Detalle: *"La cuenta ha sido procesada y registrada en el sistema bancario con saldo inicial de Q 0.00."*
+2. **Identificador del Producto**:
+   * **ACCOUNTID**: `afd97145-831e-40f7-92b6-a167b28c511a` [Copiar].
+   * Nota: *"Guarda este identificador: es con lo que se consulta el saldo, se reciben depósitos en ventanilla y se realizan transferencias."*
+3. **Acciones Disponibles**:
+   * **"Ver la cuenta"** (botón principal para acceder a la ficha técnica).
+   * **"Abrir otra cuenta"** y **"Volver a Cuentas"**.
+
+---
+
+#### Paso 17: Ficha de Cuenta de Ahorro y Regla de Desactivación Automática (`/cuentas/[id]`)
+
+Al pulsar en **"Ver la cuenta"**, el cliente visualiza la cartola individual de su nueva cuenta de ahorro (`http://localhost:3010/cuentas/afd97145-831e-40f7-92b6-a167b28c511a`).
+
+![Detalle de cuenta de ahorro con advertencia de desactivación](images/user-manual/cliente-21-cuenta-ahorro-detalle-regla-desactivacion.png)
+
+##### Elementos y Alerta Proactiva del Sistema:
+1. **Tarjeta Principal del Producto**:
+   * Encabezado: `Cuenta Ahorro` [Badge verde: `ACTIVA`].
+   * **Saldo disponible**: **Q 0.00**.
+   * Identificador: `afd97145-831e-40f7-92b6-a167b28c511a` [Copiar].
+   * Marca temporal: `Último movimiento: 3/09/2026, 9:41 p. m.`.
+   * Botones: **"Actualizar"** y **"Volver"**.
+2. **Alerta Preventiva de Desactivación Automática (Tarjeta Ámbar)**:
+   * **Título**: *"Esta cuenta está en riesgo de desactivación automática"*
+   * **Explicación del Algoritmo del Demonio**: *"Lleva sin movimientos con un saldo de Q 0.00. Al cumplir 6 meses inactiva con saldo menor a Q 50.00, el banco la desactivará automáticamente. Faltan 181 días (3/03/2027, 9:41 p. m.)."*
+   * **Recomendación Operativa**: *"Registra un movimiento —una transferencia recibida basta— para conservarla activa."*
+3. **Historial de Movimientos**:
+   * *"Esta cuenta todavía no tiene movimientos. Aparecerán aquí en cuanto reciba o envíe una transferencia."*
+4. **Trazabilidad**:
+   * **CÓDIGO DE SEGUIMIENTO**: `5a2c8a22-3c1b-4f31-aa46-c9702a1658b9` [Copiar].
+
+---
+
+#### Paso 18: Directorio "Mis Cuentas" con Portafolio Multiproducto Consolidado (`/cuentas`)
+
+Al volver a la vista general de cuentas (`http://localhost:3010/cuentas`), el cliente visualiza su portafolio multiproducto ampliado, compuesto ahora por dos cuentas bancarias activas bajo un mismo titular.
+
+![Directorio con portafolio de ahorro y monetaria](images/user-manual/cliente-22-mis-cuentas-portafolio-completo.png)
+
+##### Tabla de Portafolio Consolidado:
+| TIPO | NÚMERO DE CUENTA | ESTADO | SALDO | ACCIÓN |
+| :--- | :--- | :---: | :---: | :--- |
+| **`AH` Ahorro** | `afd97145-831e-40f7-92b6-a167b28c511a` | `ACTIVA` | **Q 0.00** | [Ver detalle] |
+| **`MO` Monetaria** | `e80bd8e9-930a-4f5a-9f14-229cc6d6e822` | `ACTIVA` | **Q 1,400.00** | [Ver detalle] |
+
+##### Resumen de la Posición Financiera:
+* **Total Consolidado del Titular**: **Q 1,400.00** (`Q 1,400.00 + Q 0.00`).
+* **CÓDIGO DE SEGUIMIENTO**: `f9d484fc-cefc-43c6-9645-dd21b72bbe4c` [Copiar].
+
+---
+#### Paso 19: Transferencia entre Cuentas Propias — Formulario de Traslado (`/transferencias/nueva`)
+
+Para fondear su cuenta de ahorro recién abierta y protegerla de la regla de desactivación automática por inactividad, el cliente pulsa el botón **"Transferir"** e inicia un traslado de fondos entre sus propias cuentas bancarias (`http://localhost:3010/transferencias/nueva`).
+
+![Formulario de transferencia propia](images/user-manual/cliente-23-transferencia-propia-formulario.png)
+
+##### Datos y Campos del Formulario:
+1. **Cuenta de origen**: `Monetaria ···d6e822 · Q 1,400.00` (*"De aquí sale el dinero."*).
+2. **Destino de los fondos**: Opción seleccionada: **`(*) A otra de mis cuentas`**.
+3. **Cuenta de destino**: Selector desplegable con la cuenta recién aperturada: `Ahorro ···8c511a · Q 0.00` (*"Aquí entra el dinero."*).
+4. **Monto**: **Q 700.00** (ajustado mediante los botones `-` / `+`).
+5. **Panel de Pruebas y Simulación (Sandbox)**:
+   * Badge: `SOLO PARA DEMOSTRACIÓN` (*"Fuerza cómo termina el pago. No existe en un banco real."*).
+   * **Escenario de pago**: `Aprobar el pago` (*"La transferencia se completa. Es el camino normal."*).
+6. **Navegación**:
+   * Botón principal: **"Continuar"**.
+   * Enlace lateral: **"Ver mis cuentas"**.
+
+---
+
+#### Paso 20: Transferencia entre Cuentas Propias — Revisión y Confirmación (`/transferencias/nueva`)
+
+El sistema despliega la tarjeta de validación para corroborar los saldos y cuentas involucradas antes de disparar la orquestación distribuida.
+
+![Confirmación de transferencia entre cuentas propias](images/user-manual/cliente-24-transferencia-propia-confirmacion.png)
+
+##### Datos en Pantalla:
+* **Sale de**: `Monetaria ···d6e822 · Q 1,400.00`.
+* **Entra a**: `Ahorro ···8c511a · Q 0.00`.
+* **Monto a transferir**: **Q 700.00**.
+* **CÓDIGO DE ESTA OPERACIÓN (Idempotencia)**: `0096180f-f4b8-40e1-919f-9cff9c0cfcc3` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación."*).
+* **Acciones**: Botón **"Confirmar y enviar"** y enlace **"Corregir"**.
+
+---
+
+#### Paso 21: Monitor de la Saga — Transferencia Propia Completada (`/transferencias/[id]`)
+
+Al confirmar, el API Gateway somete la transferencia al broker RabbitMQ y redirige al monitor transaccional (`http://localhost:3010/transferencias/5ab64918-8ae0-47fb-abe5-f0a8110fce64`), donde la Saga coreografiada avanza y finaliza de forma exitosa.
+
+![Monitor de la Saga completada entre cuentas propias](images/user-manual/cliente-25-transferencia-propia-saga-completada.png)
+
+##### Resumen de la Operación y Hitos de la Saga:
+* **Identificador de Transferencia**: `5ab64918-8ae0-47fb-abe5-f0a8110fce64`.
+* **MONTO**: **Q 700.00**.
+* **Marca Temporal**: Solicitada y completada el `3/09/2026, 9:42 p. m.`.
+* **Avance de la Transferencia (Badge Verde: `COMPLETADA`)**:
+  * `(✓) Solicitada`: El sistema aceptó la solicitud.
+  * `(✓) Débito`: Se descuentan Q 700.00 de la cuenta monetaria.
+  * `(✓) Pago`: Se procesa la compensación interna entre cuentas.
+  * `(✓) Completada`: Se acreditan Q 700.00 en la cuenta de ahorro.
+* **Tarjeta Resultado del Pago (Badge Verde: `APROBADO`)**:
+  * *"El pago se aprobó — Se ordenó el crédito a la cuenta de destino."*
+  * **Número del pago**: `92344795-df2c-4ec0-bb5b-b4a2b48d7d2b`.
+  * Resuelto: `3/09/2026, 9:42 p. m.`.
+* Enlace inferior: **"Ver mis cuentas"**.
+
+---
+
+#### Paso 22: Directorio "Mis Cuentas" con Balances Distribuidos (`/cuentas`)
+
+Al regresar a la pantalla general de cuentas (`http://localhost:3010/cuentas`), el cliente corrobora la distribución contable inmediata de sus fondos entre sus dos productos.
+
+![Mis cuentas con saldos distribuidos](images/user-manual/cliente-26-mis-cuentas-saldos-distribuidos.png)
+
+##### Nueva Composición Contable del Titular:
+| TIPO | NÚMERO DE CUENTA | ESTADO | SALDO | ACCIÓN |
+| :--- | :--- | :---: | :---: | :--- |
+| **`AH` Ahorro** | `afd97145-831e-40f7-92b6-a167b28c511a` | `ACTIVA` | **Q 700.00** | [Ver detalle] |
+| **`MO` Monetaria** | `e80bd8e9-930a-4f5a-9f14-229cc6d6e822` | `ACTIVA` | **Q 700.00** | [Ver detalle] |
+
+##### Invariantes Financieros:
+* **Total Consolidado Inalterado**: **Q 1,400.00** (`Q 700.00 + Q 700.00`). La transferencia interna reubica fondos sin alterar la custodia total del titular.
+* **Mitigación de Inactividad**: Al tener un saldo de **Q 700.00** (mayor al umbral de Q 50.00) y registrar actividad contable reciente, la cuenta de ahorro queda blindada frente a la desactivación automática del demonio de fondo.
+* **Trazabilidad**: **CÓDIGO DE SEGUIMIENTO**: `aa374974-1dfa-4aaf-88bb-be1b57cf7c2a` [Copiar].
+
+---
+
+#### Paso 23: Historial de Transferencias del Cliente (`/transferencias`)
+
+En la sección de **Transferencias** (`http://localhost:3010/transferencias`), la bitácora histórica personal del cliente documenta la operación propia liquidada.
+
+![Historial de transferencias del cliente](images/user-manual/cliente-27-transferencias-historial-cliente.png)
+
+##### Fila Liquidada en el Historial:
+| FECHA | ORIGEN → DESTINO | ESTADO | MONTO | ACCIÓN |
+| :--- | :--- | :---: | :---: | :--- |
+| `3/09/2026, 9:42 p. m.` | `229cc6d6e822 → a167b28c511a` | `Completada` | **Q 700.00** | [Ver →] |
+
+##### Metadatos de la Operación:
+* **CÓDIGO DE SEGUIMIENTO**: `6f6bcef4-1d9b-4331-b2da-afd0f52c9c5a` [Copiar].
+
+---
+#### Paso 24: Demostración de Resiliencia — Transferencia con Simulación de Rechazo de Pago (`/transferencias/nueva`)
+
+Para evidenciar el cumplimiento del requerimiento de consistencia eventual y manejo de fallos distributed de la arquitectura bancaria, el cliente inicia una transferencia forzando el rechazo en la liquidación externa (`http://localhost:3010/transferencias/nueva`).
+
+![Simulación de rechazo de pago en transferencia](images/user-manual/cliente-28-transferencia-fallida-simulacion-rechazo.png)
+
+##### Justificación Técnica de la Simulación (Requerimiento del Enunciado):
+> [!IMPORTANT]
+> **¿Por qué se simula el rechazo del pago?**  
+> En una arquitectura bancaria orientada a microservicios, las transferencias no pueden usar bloqueos globales ACID de dos fases (2PC) sin degradar la disponibilidad del sistema. La liquidación con cámaras externas (ACH / procesadores de tarjetas) puede fallar por problemas de red, indisponibilidad del servicio externo o rechazo del banco receptor.  
+> Debido a que en entornos de evaluación o pruebas locales no es viable provocar caídas aleatorias en pasarelas reales, el sistema implementa la caja de sandbox **`SOLO PARA DEMOSTRACIÓN`** (*"Fuerza cómo termina el pago. No existe en un banco real"*), permitiendo evaluar la ejecución automática del **mecanismo de compensación de la Saga** ante un fallo en el cobro.
+
+##### Datos Registrados en el Formulario:
+1. **Cuenta de origen**: `Ahorro ···8c511a · Q 700.00` (*"De aquí sale el dinero."*).
+2. **Destino**: **`(*) A otra de mis cuentas`**.
+3. **Cuenta de destino**: `Monetaria ···d6e822 · Q 700.00` (*"Aquí entra el dinero."*).
+4. **Monto**: **Q 200.00**.
+5. **Selector de Escenario de Pago**: **`Rechazar el pago`** (*"El pago se rechaza después del débito, el dinero se devuelve solo y la transferencia queda como compensada."*).
+6. Botón: **"Continuar"**.
+
+---
+
+#### Paso 25: Monitor de la Saga — Transacción Fallida y Devolución por Compensación (`/transferencias/[id]`)
+
+Al procesar la solicitud, el sistema efectúa el débito inicial pero, al ser rechazado el pago por el procesador externo, la Saga dispara inmediatamente la acción compensatoria para salvaguardar el dinero del cliente (`http://localhost:3010/transferencias/73abad28-05c7-420a-9273-f3f92facbad3`).
+
+![Monitor de la Saga compensada](images/user-manual/cliente-29-saga-compensada-devolucion-fondos.png)
+
+##### Análisis del Flujo de Compensación en Pantalla:
+* **Identificador de Transferencia**: `73abad28-05c7-420a-9273-f3f92facbad3`.
+* **MONTO**: **Q 200.00**.
+* **Estado de la Transferencia (Badge Rosa: `COMPENSADA`)**:
+  * Explicación al usuario: *"La transferencia no se completó. El dinero había salido de tu cuenta y fue devuelto automáticamente, así que verás dos movimientos en el estado de cuenta."*
+  * **Hitos Auditables de la Saga**:
+    1. `(✓) Solicitada`: La solicitud fue aceptada formalmente.
+    2. `(✓) Débito`: `account-service` debitó inicialmente los Q 200.00 de la cuenta de ahorro.
+    3. `(✕ Rojo) Pago`: `payment-service` emitió `payment.rejected.v1` simulando el rechazo de la red externa.
+    4. `(✕ Rojo) Compensada`: `transaction-service` ordenó la compensación y `account-service` acreditó de vuelta los Q 200.00 a la cuenta de ahorro.
+* **Tarjeta de Diagnóstico ("Por qué no se completó")**:
+  * *"El pago fue rechazado. El dinero se devolvió a la cuenta de origen."*
+* **Resultado del Pago (Badge Rojo: `RECHAZADO`)**:
+  * *"El pago fue rechazado. El dinero se devolvió a la cuenta de origen."*
+  * **Número del pago**: `cd266092-23df-428b-bc26-082f15b4bc03`.
+  * Resuelto: `3/09/2026, 9:43 p. m.`.
+
+---
+
+#### Paso 26: Directorio "Mis Cuentas" — Verificación de Saldos Intactos (`/cuentas`)
+
+El cliente regresa a **Mis Cuentas** (`http://localhost:3010/cuentas`) para constatar que, gracias a la compensación automática, sus fondos no sufrieron ninguna merma contable.
+
+![Mis cuentas con saldo intacto post compensación](images/user-manual/cliente-30-mis-cuentas-saldo-intacto-post-compensacion.png)
+
+##### Integridad de la Posición Financiera:
+* **`AH` Ahorro** (`afd97145...`): **`Q 700.00`** (Intacto: se debitaron Q 200.00 y se acreditaron de vuelta Q 200.00 en la misma Saga).
+* **`MO` Monetaria** (`e80bd8e9...`): **`Q 700.00`** (Intacto).
+* **Total Consolidado**: **`Q 1,400.00`** (Conservación total de los activos en custodia).
+* **CÓDIGO DE SEGUIMIENTO**: `9efc3bf3-c8b6-44f8-ac71-83dd9d717b7f` [Copiar].
+
+---
+
+#### Paso 27: Historial de Transferencias — Registro Auditable de la Compensación (`/transferencias`)
+
+En la bitácora histórica de transferencias (`http://localhost:3010/transferencias`), el sistema preserva la traza inmutable del intento fallido y compensado para fines de auditoría y conciliación.
+
+![Historial de transferencias con fila compensada](images/user-manual/cliente-31-historial-transferencia-compensada.png)
+
+##### Registro en la Bitácora de Transferencias:
+| FECHA | ORIGEN → DESTINO | ESTADO | MONTO | ACCIÓN |
+| :--- | :--- | :---: | :---: | :--- |
+| `3/09/2026, 9:43 p. m.` | `a167b28c511a → 229cc6d6e822` | `Compensada` (Badge Rosa) | **Q 200.00** | [Ver →] |
+| `3/09/2026, 9:42 p. m.` | `229cc6d6e822 → a167b28c511a` | `Completada` (Badge Verde) | **Q 700.00** | [Ver →] |
+
+##### Metadatos de la Bitácora:
+* **CÓDIGO DE SEGUIMIENTO**: `b8ea55bc-3bcc-48ca-a5b8-080cffcd4c20` [Copiar].
+
+---
+
+#### Paso 28: Módulo de Pago de Servicios Públicos del Cliente (`/pagos`)
+
+El cliente accede a la sección de **Pagos** (`http://localhost:3010/pagos`) desde su propio menú lateral para consultar el estado de facturas y servicios públicos asociados a sus productos.
+
+![Módulo de pagos en el portal del cliente](images/user-manual/cliente-32-modulo-pagos-cliente.png)
+
+##### Elementos y Arquitectura de la Pantalla:
+1. **Encabezado y Acciones**:
+   * **Título**: *"Pagos"* (*"Paga servicios y consulta los pagos que ya hiciste."*).
+   * Botón superior: **"Nuevo pago"**.
+2. **Historial de Pagos del Cliente (Estado Vacío Inicial)**:
+   * Mensaje: *"Todavía no has pagado ningún servicio. Cuando pagues luz, agua o teléfono, cada pago aparecerá aquí con su referencia y su estado."*
+   * Botón de acción: **"Pagar un servicio"**.
+3. **Nota Conceptual de Arquitectura ("Por qué un pago aparece como transferencia")**:
+   * *"Cada prestador tiene una cuenta recaudadora en este banco, así que pagar un servicio es transferirle dinero. Por eso el detalle de un pago se ve en la pantalla de la transferencia: es la misma operación, con los mismos pasos y con la misma devolución automática si el pago falla."*
+4. **Trazabilidad**:
+   * **CÓDIGO DE SEGUIMIENTO**: `bbe76772-e85c-4d64-9602-887a3b5d5ee9` [Copiar].
+
+---
+
+
+
+
+#### Paso 29: Formulario de Pago de Servicios en Autoservicio — Factura de Electricidad EEGSA (`/pagos/nuevo`)
+
+Desde el módulo de pagos (`/pagos`), el cliente pulsa el botón **"Nuevo pago"** (o **"Pagar un servicio"**) para liquidar una factura de servicios públicos mediante débito directo a sus cuentas bancarias. En este flujo, el titular programa el pago de su factura de energía eléctrica a favor de **EEGSA**.
+
+![Formulario de pago de servicios EEGSA](images/user-manual/cliente-33-pago-eegsa-formulario.png)
+
+##### Elementos y Valores del Formulario en Pantalla:
+1. **Selección de Cuenta de Origen**:
+   * **Cuenta origen**: Selector desplegable donde se selecciona la cuenta Monetaria `Monetaria · ****d6e822 · Q 700.00`.
+   * **Saldo disponible**: Indicador reactivo que confirma `Q 700.00` disponibles (tras la distribución de fondos realizada en transferencias anteriores).
+2. **Parámetros de la Factura**:
+   * **Servicio público o factura**: Selector desplegable con el catálogo de entidades recaudadoras; se selecciona **`EEGSA · Energía eléctrica`**.
+   * **Monto**: Selector numérico con controles de incremento y decremento (`- / +`), fijado en **`Q 300.00`**.
+   * **Número de contrato o referencia**: Campo de texto libre donde el cliente ingresa la referencia de cobro: **`Esta cara la luz`** (descripción institucional: *"Número de contrato, de medidor o de línea. Es lo que le dice al prestador de quién es el pago"*).
+3. **Idempotencia y Trazabilidad Transaccional**:
+   * `CÓDIGO DE ESTA OPERACIÓN`: `21d5b01d-0103-427c-a902-3cc402cbb40f` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación"*). Previene que clics duplicados en la red generen dobles cobros de la misma factura.
+4. **Tarjeta Informativa Lateral ("Qué pasa al pagar")**:
+   * *"Un pago de servicio es una transferencia a la cuenta recaudadora del prestador (luz, agua, teléfono), y pasa por los mismos pasos: se descuenta de tu cuenta, se procesa el pago y se acredita al prestador."*
+   * *"Si algo falla después del débito, el dinero se devuelve automáticamente mediante la compensación de la Saga."*
+   * *"El saldo mostrado es el de la última consulta. Si alcanza o no se decide en el momento del cobro."*
+   * *"Al terminar te llevamos al seguimiento de la transferencia, que es donde se ve cada paso."*
+5. **Fundamento del Enunciado y Arquitectura de Resiliencia**:
+   * **Especificación de Payment Service en el Enunciado**: El enunciado del proyecto define para `Payment Service` la responsabilidad de:
+     * *Procesamiento de pagos externos o internos.*
+     * *Validar operaciones financieras e integración con sistemas externos.*
+     * *Notas SRE: Separación de la lógica de pagos, manejo de fallos externos y **simulación de sistemas bancarios reales**.*
+   * **Diferenciación Fundamental respecto al Flujo de Compensación (Paso 25)**:
+     * En los Pasos 24 y 25 se utilizó expresamente el sandbox de demostración (*"Rechazar el pago"*) para simular una caída catastrófica de la pasarela y verificar la ejecución de la **compensación contable de la Saga** (devolución íntegra de fondos).
+     * En este pago de EEGSA, se procesa el **camino feliz (*Happy Path*) de liquidación real**: el procesador financiero aprueba la operación (`APROBADO`). Por consiguiente, la compensación **no** entra en ejecución; el débito se consolida legítimamente y los fondos pasan a la cuenta recaudadora de EEGSA sin reversiones.
+6. **Acción**:
+   * Botón principal: **"Pagar servicio"**.
+
+---
+
+#### Paso 30: Monitor de la Saga del Pago de Electricidad — Liquidación Exitosa y Aprobación (`/transferencias/[id]`)
+
+Al ordenar el pago, el frontend redirige automáticamente al monitor en tiempo real de la transferencia distribuida (`http://localhost:3010/transferencias/983b187b-38c9-4738-8789-8775b2862293`), permitiendo auditar la ejecución de cada fase de la Saga coreografiada.
+
+![Monitor de la Saga del pago de electricidad completado](images/user-manual/cliente-34-pago-eegsa-saga-completada.png)
+
+##### Análisis del Flujo y Métricas en Pantalla:
+1. **Encabezado y Metadatos de la Operación**:
+   * **Identificador de Transacción**: `983b187b-38c9-4738-8789-8775b2862293`.
+   * Botón de acción rápida: **"Nueva transferencia"**.
+   * **MONTO**: **`Q 300.00`**.
+   * **Solicitada**: `3/09/2026, 9:44 p. m.` | **Última actualización**: `3/09/2026, 9:44 p. m.`.
+2. **Tarjeta "Avance de la transferencia" (Orquestación Saga)**:
+   * Badge superior derecho: en color verde **`COMPLETADA`**.
+   * Leyenda de éxito: *"El dinero llegó a la cuenta de destino."*
+   * **Línea de tiempo secuencial (Stepper con checks negros)**:
+     * `(✓) Solicitada`: *El sistema aceptó la solicitud.* `transaction-service` verificó parámetros e inició la Saga.
+     * `(✓) Débito`: *Se descuenta de la cuenta de origen.* `account-service` debitó `Q 300.00` bajo `SELECT ... FOR UPDATE` de la cuenta monetaria `...d6e822`.
+     * `(✓) Pago`: *Se procesa el pago entre cuentas.* `payment-service` validó la transacción con el proveedor externo de energía.
+     * `(✓) Completada`: *El dinero llegó al destino.* Se acreditó el monto a la cuenta recaudadora del facturador EEGSA.
+3. **Tarjeta "RESULTADO DEL PAGO" (Resolución Externa)**:
+   * Badge verde: **`APROBADO`**.
+   * Título y detalle: **"El pago se aprobó"** (*"Se ordenó el crédito a la cuenta de destino."*).
+   * **Número del pago (`paymentId`)**: `627f542a-8133-4900-8d13-36547c85cc76`.
+   * **Resuelto**: `3/09/2026, 9:44 p. m.`.
+4. **Trazabilidad y Enlaces**:
+   * Enlace: **"Ver mis cuentas"**.
+   * **CÓDIGO DE SEGUIMIENTO DE LA TRANSFERENCIA**: `17925a72-913c-4cb4-96e8-08febcebea7e` [Copiar].
+
+---
+
+#### Paso 31: Historial de Pagos de Servicios del Cliente con Factura Liquidada (`/pagos`)
+
+El cliente regresa a la vista principal de **Pagos** (`http://localhost:3010/pagos`) para constatar que su factura ha sido formalmente registrada en el historial histórico de servicios.
+
+![Historial de pagos del cliente con servicio completado](images/user-manual/cliente-35-pago-eegsa-historial.png)
+
+##### Elementos y Registros Observados en Pantalla:
+1. **Encabezado y Acciones**:
+   * Título: **Pagos** (*"Paga servicios y consulta los pagos que ya hiciste."*).
+   * Botón superior: **"Nuevo pago"**.
+2. **Tabla "Historial de pagos"**:
+   * **FECHA**: `3/09/2026, 9:44 p. m.`
+   * **SERVICIO**: `EEGSA · Energía eléctrica` acompañado del badge amarillo **`Externo`**, certificando que la liquidación se ejecutó hacia una empresa prestadora externa de servicios.
+   * **ESTADO**: Badge verde **`Completada`**.
+   * **MONTO**: **`Q 300.00`**.
+   * **Acción**: Enlace **`Ver →`** que permite abrir en cualquier momento el monitor y comprobante de la transferencia.
+3. **Controles de Trazabilidad**:
+   * Botón **"Actualizar"** para refrescar la lista reactivamente sin recargar la página.
+   * **CÓDIGO DE SEGUIMIENTO**: `0bc550dc-3ce8-4d9b-a228-158a5c80840a` [Copiar].
+4. **Tarjeta Explicativa ("Por qué un pago aparece como transferencia")**:
+   * *"Cada prestador tiene una cuenta recaudadora en este banco, así que pagar un servicio es transferirle dinero. Por eso el detalle de un pago se ve en la pantalla de la transferencia: es la misma operación, con los mismos pasos y con la misma devolución automática si el pago falla."*
+5. **Efecto Neto en el Balance del Cliente**:
+   * **Cuenta Monetaria (`...d6e822`)**: Saldo previo `Q 700.00` - `Q 300.00` = **`Q 400.00`**.
+   * **Cuenta de Ahorro (`afd97145...`)**: Saldo intacto en **`Q 700.00`** (sin afectación por tratarse de cuentas bancarias aisladas).
+   * **Patrimonio Consolidado**: **`Q 1,100.00`** en custodia institucional.
+
+---
+
+#### Paso 32: Perfil de Usuario — Consulta y Edición de Datos Personales (`/perfil`)
 
 El cliente accede a su módulo de autogestión de perfil (`http://localhost:3010/perfil`) para consultar su expediente personal, verificar el estado de su identidad y actualizar datos de contacto.
 
@@ -427,7 +810,7 @@ El cliente accede a su módulo de autogestión de perfil (`http://localhost:3010
 
 ---
 
-#### Paso 15: Perfil de Usuario — Confirmación de Datos Actualizados (`/perfil`)
+#### Paso 33: Perfil de Usuario — Confirmación de Datos Actualizados (`/perfil`)
 
 Al presionar el botón **"Guardar cambios"**, el microservicio `customer-service` procesa la actualización atómica en PostgreSQL y devuelve la confirmación inmediata en pantalla.
 
@@ -445,7 +828,7 @@ Al presionar el botón **"Guardar cambios"**, el microservicio `customer-service
 
 ---
 
-#### Paso 16: Seguridad de Acceso — Formulario de Cambio de Contraseña (`/perfil`)
+#### Paso 34: Seguridad de Acceso — Formulario de Cambio de Contraseña (`/perfil`)
 
 En la parte inferior de la pantalla de perfil, el cliente cuenta con un formulario de seguridad dedicado para rotar sus credenciales de acceso de forma autónoma.
 
@@ -463,7 +846,7 @@ En la parte inferior de la pantalla de perfil, el cliente cuenta con un formular
 
 ---
 
-#### Paso 17: Seguridad de Acceso — Confirmación de Contraseña Actualizada (`/perfil`)
+#### Paso 35: Seguridad de Acceso — Confirmación de Contraseña Actualizada (`/perfil`)
 
 Al enviar el formulario, el sistema valida la contraseña actual contra el hash `scrypt` almacenado en la base de datos, computa el nuevo hash criptográfico y actualiza el registro del cliente.
 
@@ -487,7 +870,7 @@ Este módulo cubre la operativa bancaria presencial realizada por el cajero rece
 
 ---
 
-#### Paso 18: Panel de Control del Cajero Receptor (`/`)
+#### Paso 36: Panel de Control del Cajero Receptor (`/`)
 
 Al iniciar sesión con las credenciales de cajero receptor, el sistema presenta el tablero de mando operativo con las métricas del día.
 
@@ -508,7 +891,7 @@ Al iniciar sesión con las credenciales de cajero receptor, el sistema presenta 
 
 ---
 
-#### Paso 19: Directorio Bancario de Clientes (`/clientes`)
+#### Paso 37: Directorio Bancario de Clientes (`/clientes`)
 
 Al ingresar a la sección de **Clientes**, el cajero visualiza tanto las herramientas de gestión de expedientes como el listado completo de clientes registrados.
 
@@ -533,7 +916,7 @@ Al ingresar a la sección de **Clientes**, el cajero visualiza tanto las herrami
 
 ---
 
-#### Paso 20: Cola de Clientes en Espera de Validación (`/clientes/validaciones`)
+#### Paso 38: Cola de Clientes en Espera de Validación (`/clientes/validaciones`)
 
 Al hacer clic en **"Revisar la cola"** o **"Ver la cola"**, el cajero ingresa a la bandeja de trabajo de verificación documental.
 
@@ -549,7 +932,7 @@ Al hacer clic en **"Revisar la cola"** o **"Ver la cola"**, el cajero ingresa a 
 
 ---
 
-#### Paso 21: Mesa de Revisión y Veredicto de Identidad (`/clientes/validaciones/[id]`)
+#### Paso 39: Mesa de Revisión y Veredicto de Identidad (`/clientes/validaciones/[id]`)
 
 En esta pantalla crítica de seguridad bancaria, el cajero realiza el cotejo entre la imagen del DPI almacenada en MinIO y los datos ingresados en el formulario.
 
@@ -572,7 +955,7 @@ En esta pantalla crítica de seguridad bancaria, el cajero realiza el cotejo ent
 
 ---
 
-#### Paso 22: Registro de Clientes en Ventanilla — Paso 1: Datos Personales (`/clientes/nuevo`)
+#### Paso 40: Registro de Clientes en Ventanilla — Paso 1: Datos Personales (`/clientes/nuevo`)
 
 Además de validar registros web, el cajero receptor tiene la facultad de enrolar nuevos clientes que acuden presencialmente a la agencia.
 
@@ -590,7 +973,7 @@ Además de validar registros web, el cajero receptor tiene la facultad de enrola
 
 ---
 
-#### Paso 23: Registro de Clientes en Ventanilla — Paso 2: Documento de Identidad (`/clientes/nuevo`)
+#### Paso 41: Registro de Clientes en Ventanilla — Paso 2: Documento de Identidad (`/clientes/nuevo`)
 
 En la segunda etapa del alta en ventanilla, el cajero solicita el DPI físico al cliente, lo digitaliza e ingresa el código numérico.
 
@@ -606,7 +989,7 @@ En la segunda etapa del alta en ventanilla, el cajero solicita el DPI físico al
 
 ---
 
-#### Paso 24: Registro de Clientes en Ventanilla — Paso 3: Confirmación y Credenciales (`/clientes/nuevo`)
+#### Paso 42: Registro de Clientes en Ventanilla — Paso 3: Confirmación y Credenciales (`/clientes/nuevo`)
 
 El cajero revisa el consolidado con el solicitante presente en ventanilla, genera su nombre de usuario institucional y define su contraseña de acceso temporal o definitiva.
 
@@ -626,7 +1009,7 @@ El cajero revisa el consolidado con el solicitante presente en ventanilla, gener
 
 ---
 
-#### Paso 25: Confirmación de Alta Exitosa en Ventanilla (`/clientes/nuevo`)
+#### Paso 43: Confirmación de Alta Exitosa en Ventanilla (`/clientes/nuevo`)
 
 Al presionar **"Crear cuenta"**, la operación se procesa de forma inmediata. Debido a que el trámite lo efectúa un cajero en persona, el cliente queda automáticamente **registrado y validado** sin requerir mesa de control posterior.
 
@@ -644,7 +1027,7 @@ Al presionar **"Crear cuenta"**, la operación se procesa de forma inmediata. De
 
 ---
 
-#### Paso 26: Notificación de Activación para el Cliente de Ventanilla (`ventanilla@bankusac.gt`)
+#### Paso 44: Notificación de Activación para el Cliente de Ventanilla (`ventanilla@bankusac.gt`)
 
 De manera sincronizada con el alta presencial, el sistema despacha el correo formal de bienvenida y activación a la dirección registrada por el cajero.
 
@@ -661,7 +1044,7 @@ Al ingresar al enlace, el cliente activa su cuenta y queda listo para iniciar se
 
 ---
 
-#### Paso 27: Ficha Técnica y Modificación de Datos del Cliente (`/clientes/[id]`)
+#### Paso 45: Ficha Técnica y Modificación de Datos del Cliente (`/clientes/[id]`)
 
 Tanto los cajeros como los administradores pueden consultar el expediente individual de cualquier cliente registrado para revisar su estado de validación o actualizar datos de contacto permitidos.
 
@@ -693,7 +1076,7 @@ Tanto los cajeros como los administradores pueden consultar el expediente indivi
 
 ---
 
-#### Paso 28: Directorio de Cuentas Bancarias y Saldo Custodiado (`/cuentas`)
+#### Paso 46: Directorio de Cuentas Bancarias y Saldo Custodiado (`/cuentas`)
 
 Al navegar a la sección de **Cuentas** en la barra lateral, el cajero receptor tiene acceso a la visión consolidada de las cuentas de clientes custodiadas por el banco.
 
@@ -720,7 +1103,7 @@ Al navegar a la sección de **Cuentas** en la barra lateral, el cajero receptor 
 
 ---
 
-#### Paso 29: Detalle de Cuenta Bancaria y Consulta de Movimientos (`/cuentas/[id]`)
+#### Paso 47: Detalle de Cuenta Bancaria y Consulta de Movimientos (`/cuentas/[id]`)
 
 Al pulsar el botón **"Ver detalle"** en cualquiera de las cuentas del directorio (en este ejemplo, la cuenta `b0000000-0000-4000-8000-000000000004`), se despliega la ficha financiera de la cuenta.
 
@@ -746,9 +1129,9 @@ Al pulsar el botón **"Ver detalle"** en cualquiera de las cuentas del directori
 
 ---
 
-#### Paso 30: Apertura de Cuenta en Ventanilla — Tipo de Cuenta y Selección de Titular (`/cuentas/nueva`)
+#### Paso 48: Apertura de Cuenta en Ventanilla — Tipo de Cuenta y Selección de Titular (`/cuentas/nueva`)
 
-El cajero hace clic en **"Abrir cuenta"** para crear una nueva cuenta bancaria. Siguiendo el hilo del ejemplo unificado, se abre una cuenta para el cliente principal **Enner Esai Mendizabal Castro** (quien fue registrado en el Módulo 1 y validado en el Paso 21).
+El cajero hace clic en **"Abrir cuenta"** para crear una nueva cuenta bancaria. Siguiendo el hilo del ejemplo unificado, se abre una cuenta para el cliente principal **Enner Esai Mendizabal Castro** (quien fue registrado en el Módulo 1 y validado en el Paso 39).
 
 ![Formulario de apertura de cuenta](images/user-manual/19-abrir-cuenta-formulario-enner.png)
 
@@ -770,7 +1153,7 @@ El cajero hace clic en **"Abrir cuenta"** para crear una nueva cuenta bancaria. 
 
 ---
 
-#### Paso 31: Confirmación y Emisión de la Cuenta Bancaria (`/cuentas/nueva`)
+#### Paso 49: Confirmación y Emisión de la Cuenta Bancaria (`/cuentas/nueva`)
 
 En el segundo paso de la apertura, el cajero corrobora los datos finales antes de efectuar el alta definitiva en el sistema bancario.
 
@@ -787,7 +1170,7 @@ En el segundo paso de la apertura, el cajero corrobora los datos finales antes d
 
 ---
 
-#### Paso 32: Depósito en Ventanilla — Datos y Fondeo Inicial de la Cuenta (`/cuentas/deposito`)
+#### Paso 50: Depósito en Ventanilla — Datos y Fondeo Inicial de la Cuenta (`/cuentas/deposito`)
 
 Una vez creada la cuenta monetaria de Enner, el cliente se acerca a la ventanilla para realizar su primer abono en efectivo y fondear sus fondos disponibles. El cajero pulsa el botón **"Depósito"** en la barra superior o en el directorio de cuentas.
 
@@ -813,7 +1196,7 @@ Una vez creada la cuenta monetaria de Enner, el cliente se acerca a la ventanill
 
 ---
 
-#### Paso 33: Confirmación de Depósito en Efectivo (`/cuentas/deposito`)
+#### Paso 51: Confirmación de Depósito en Efectivo (`/cuentas/deposito`)
 
 En la pantalla de validación previa al arqueo y asiento contable, el cajero corrobora los datos con el depositante en ventanilla.
 
@@ -831,7 +1214,7 @@ En la pantalla de validación previa al arqueo y asiento contable, el cajero cor
 
 ---
 
-#### Paso 34: Comprobante de Depósito Acreditado en Ventanilla (`/cuentas/deposito`)
+#### Paso 52: Comprobante de Depósito Acreditado en Ventanilla (`/cuentas/deposito`)
 
 Al procesar la transacción, el sistema confirma la acreditación del efectivo y emite el recibo digital de ventanilla.
 
@@ -850,7 +1233,7 @@ Al procesar la transacción, el sistema confirma la acreditación del efectivo y
 
 ---
 
-#### Paso 35: Directorio de Cuentas con Nueva Cuenta Fondeada y Saldo Custodiado (`/cuentas`)
+#### Paso 53: Directorio de Cuentas con Nueva Cuenta Fondeada y Saldo Custodiado (`/cuentas`)
 
 Tras concluir el depósito, el cajero regresa al directorio general de cuentas bancarias. La pantalla evidencia el impacto contable del nuevo saldo y la inclusión de la cuenta de Enner.
 
@@ -858,7 +1241,7 @@ Tras concluir el depósito, el cajero regresa al directorio general de cuentas b
 
 ##### Métricas y Cambios Globales Observados:
 1. **Incremento del Saldo Total Custodiado**:
-   * El saldo en custodia de la institución sube a **`Q 11,300.00`** (un incremento exacto de `Q 1,500.00` sobre los `Q 9,800.00` iniciales que se apreciaban en el Paso 28).
+   * El saldo en custodia de la institución sube a **`Q 11,300.00`** (un incremento exacto de `Q 1,500.00` sobre los `Q 9,800.00` iniciales que se apreciaban en el Paso 46).
 2. **Nueva Fila en la Tabla de Cuentas**:
    * **Fila 1 (Cuenta de Enner)**:
      * Tipo: `MO` Monetaria
@@ -872,7 +1255,7 @@ Tras concluir el depósito, el cajero regresa al directorio general de cuentas b
 
 ---
 
-#### Paso 36: Módulo de Transferencias entre Cuentas y Consulta de Operaciones (`/transferencias`)
+#### Paso 54: Módulo de Transferencias entre Cuentas y Consulta de Operaciones (`/transferencias`)
 
 El cajero accede a la sección de **Transferencias** en el menú lateral para consultar la actividad interbancaria o brindar soporte sobre operaciones en curso.
 
@@ -892,7 +1275,7 @@ El cajero accede a la sección de **Transferencias** en el menú lateral para co
 
 ---
 
-#### Paso 37: Formulario de Nueva Transferencia entre Clientes (`/transferencias/nueva`)
+#### Paso 55: Formulario de Nueva Transferencia entre Clientes (`/transferencias/nueva`)
 
 El cajero hace clic en **"Nueva transferencia"** para iniciar un traslado de fondos interbancario a solicitud de un usuario. Siguiendo el caso de uso transversal, la clienta **Clara Cliente** transfiere fondos a la cuenta de **Enner Mendizabal**.
 
@@ -918,7 +1301,7 @@ El cajero hace clic en **"Nueva transferencia"** para iniciar un traslado de fon
 
 ---
 
-#### Paso 38: Revisión y Confirmación de Transferencia (`/transferencias/nueva`)
+#### Paso 56: Revisión y Confirmación de Transferencia (`/transferencias/nueva`)
 
 Antes de someter la operación al orquestador distribuido de la Saga, el cajero corrobora los datos esenciales de la transferencia.
 
@@ -938,7 +1321,7 @@ Antes de someter la operación al orquestador distribuido de la Saga, el cajero 
 
 ---
 
-#### Paso 39: Recepción Asíncrona — Solicitud en Proceso (`/transferencias/[id]`)
+#### Paso 57: Recepción Asíncrona — Solicitud en Proceso (`/transferencias/[id]`)
 
 Al presionar **"Confirmar y enviar"**, el sistema acepta de inmediato la solicitud y redirige al monitor transaccional, asignando temporalmente el identificador de operación `25c5b09a-fb89-46cc-864c-9d72a6385bd3`.
 
@@ -951,7 +1334,7 @@ Al presionar **"Confirmar y enviar"**, el sistema acepta de inmediato la solicit
 
 ---
 
-#### Paso 40: Monitor de la Saga en Tiempo Real — Procesando Pago (`/transferencias/[id]`)
+#### Paso 58: Monitor de la Saga en Tiempo Real — Procesando Pago (`/transferencias/[id]`)
 
 En cuestión de milisegundos, el sistema transiciona al identificador definitivo de transferencia `2cc63338-833f-4871-b47f-d297e268de91` y despliega la máquina de estados coreografiada en tiempo real.
 
@@ -971,7 +1354,7 @@ En cuestión de milisegundos, el sistema transiciona al identificador definitivo
 
 ---
 
-#### Paso 41: Monitor de la Saga en Tiempo Real — Transferencia Completada (`/transferencias/[id]`)
+#### Paso 59: Monitor de la Saga en Tiempo Real — Transferencia Completada (`/transferencias/[id]`)
 
 Una vez validado el pago, `payment-service` emite `payment.completed.v1`, `account-service` acredita los fondos en la cuenta de Enner y `transaction-service` cierra la Saga de forma exitosa.
 
@@ -994,7 +1377,7 @@ Una vez validado el pago, `payment-service` emite `payment.completed.v1`, `accou
 
 ---
 
-#### Paso 42: Historial General de Transferencias Actualizado (`/transferencias`)
+#### Paso 60: Historial General de Transferencias Actualizado (`/transferencias`)
 
 Al volver al módulo principal de transferencias, la tabla histórica de clientes se actualiza automáticamente con la transacción registrada, inmutable y auditable.
 
@@ -1010,7 +1393,7 @@ Al volver al módulo principal de transferencias, la tabla histórica de cliente
 
 ---
 
-#### Paso 43: Módulo de Pago de Servicios (`/pagos`)
+#### Paso 61: Módulo de Pago de Servicios (`/pagos`)
 
 El cajero receptor ingresa a la sección de **Pagos** desde el menú lateral (`http://localhost:3010/pagos`) para gestionar pagos de facturas y servicios públicos en ventanilla (electricidad, agua, telecomunicaciones).
 
@@ -1031,7 +1414,7 @@ El cajero receptor ingresa a la sección de **Pagos** desde el menú lateral (`h
 
 ---
 
-#### Paso 44: Formulario de Pago de Servicios (`/pagos/nuevo`)
+#### Paso 62: Formulario de Pago de Servicios (`/pagos/nuevo`)
 
 Al presionar **"Nuevo pago"** o **"Pagar un servicio"**, el sistema despliega el formulario para seleccionar la cuenta a debitar, el prestador del servicio y el monto de la factura.
 
@@ -1057,7 +1440,7 @@ Al presionar el botón **"Pagar servicio"**, la orden ingresa al API Gateway e i
 
 ---
 
-#### Paso 45: Confirmación de la Saga del Pago Completado (`/transferencias/[id]`)
+#### Paso 63: Confirmación de la Saga del Pago Completado (`/transferencias/[id]`)
 
 El sistema redirige automáticamente al monitor de la transferencia (`http://localhost:3010/transferencias/b0089530-7bd6-471b-9745-d1c0e65bde85`), confirmando la finalización exitosa de todas las etapas distribuidas del pago.
 
@@ -1084,7 +1467,7 @@ El sistema redirige automáticamente al monitor de la transferencia (`http://loc
 
 ---
 
-#### Paso 46: Detalle y Trazabilidad Técnica del Pago (`/pagos/[id]`)
+#### Paso 64: Detalle y Trazabilidad Técnica del Pago (`/pagos/[id]`)
 
 Al hacer clic en **"Ver el detalle del pago"**, se accede a la ficha técnica del servicio (`http://localhost:3010/pagos/194f659d-55a1-4b40-afcc-a02c80a90572`), que reúne todos los identificadores de trazabilidad distribuida para auditoría y soporte bancario.
 
@@ -1111,7 +1494,7 @@ Al hacer clic en **"Ver el detalle del pago"**, se accede a la ficha técnica de
 
 ---
 
-#### Paso 47: Historial General de Pagos con Operación Liquidada (`/pagos`)
+#### Paso 65: Historial General de Pagos con Operación Liquidada (`/pagos`)
 
 Al regresar a la pantalla general de pagos (`http://localhost:3010/pagos`), la tabla de movimientos exhibe la transacción registrada con su estado final y enlace de consulta.
 
