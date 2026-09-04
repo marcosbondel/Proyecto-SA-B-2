@@ -16,19 +16,31 @@ lives in the phases defined in [plan.md](./plan.md) and the tasks in `tasks.md`.
 
 ```bash
 pnpm dev:infra                              # external deps on the bank-usac-local network
-kind create cluster --config infra/k8s/kind/cluster.yaml
+pnpm k8s:cluster                            # kind create, on that same Docker network
 pnpm images:build -- --kind bank-usac       # build 7 images, load into the kind node
-helm upgrade --install bank-usac infra/k8s/helm/bank-usac \
-  --set-file secrets=... --namespace bank-usac --create-namespace
-kubectl -n bank-usac get pods               # all 7 workloads Ready
-kubectl -n bank-usac port-forward svc/gateway 3000:3000 &
-kubectl -n bank-usac port-forward svc/web 3010:3010 &
+pnpm k8s:install                            # helm upgrade --install, waits for Ready
+pnpm k8s:status                             # all 7 workloads Ready
+pnpm k8s:forward                            # 3000 -> gateway, 3010 -> web
 ```
+
+The full procedure, with prerequisites and every failure mode, is
+[`docs/operations/DEPLOYMENT.md`](../../docs/operations/DEPLOYMENT.md).
+
+Three details this used to get wrong, kept here because each one costs an hour:
+the cluster must be created with `KIND_EXPERIMENTAL_DOCKER_NETWORK=bank-usac-local`
+or no pod can reach a database (`k8s:cluster` sets it); the release needs sixteen
+`--set` values, nine of them `required` secrets (`k8s:install` reads them from
+`infra/docker/.env`); and the Services are named `bank-usac-gateway` /
+`bank-usac-web`, not `gateway` / `web`.
 
 **Expected**: all seven pods reach `Ready`; the five Postgres, RabbitMQ, and MinIO
 run **outside** the cluster (`docker ps`, not `kubectl get pods`); a transfer
 completes end to end through the forwarded Gateway; stopping a database leaves its
 pod `Running` but not `Ready` (never `CrashLoopBackOff`).
+
+**Evidence**: `pnpm k8s:evidence` writes the real output of all of the above to
+[`evidence/`](./evidence/) — pods, services, nodes, the out-of-cluster containers
+and every component's `/ready` body. Re-runnable, so it is never stale.
 
 ### US2 — deliverables complete and consistent
 

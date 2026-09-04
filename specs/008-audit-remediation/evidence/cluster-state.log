@@ -1,0 +1,126 @@
+Bank USAC — Kubernetes deployment evidence
+Captured: 2026-09-03T23:20:31Z
+Commit:   921426f6fa7c on feature/k8s-deployment-evidence
+Tooling:  kind v0.33.0 go1.27.0 darwin/arm64 · helm v4.2.4+g3900f43 · kubectl v1.34.1
+Context:  kind-bank-usac   (pinned by the script, not the active one)
+==========================================================================
+
+$ kubectl --context kind-bank-usac get nodes -o wide
+NAME                      STATUS   ROLES           AGE    VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                       KERNEL-VERSION             CONTAINER-RUNTIME
+bank-usac-control-plane   Ready    control-plane   6d7h   v1.37.0   172.21.0.9    <none>        Debian GNU/Linux 13 (trixie)   6.12.76-linuxkit (arm64)   containerd://2.3.4
+
+$ helm list --kube-context kind-bank-usac --namespace bank-usac
+NAME     	NAMESPACE	REVISION	UPDATED                            	STATUS  	CHART          	APP VERSION
+bank-usac	bank-usac	9       	2026-09-03 17:17:28.44519 -0600 CST	deployed	bank-usac-0.2.0	1.0.0      
+
+$ helm status bank-usac --kube-context kind-bank-usac --namespace bank-usac --show-desc
+Error: unknown flag: --show-desc
+
+$ kubectl --context kind-bank-usac get pods -n bank-usac -o wide
+NAME                                                    READY   STATUS    RESTARTS   AGE    IP            NODE                      NOMINATED NODE   READINESS GATES
+bank-usac-account-service-67f4878b46-7ckzl              1/1     Running   0          3m3s   10.244.0.46   bank-usac-control-plane   <none>           <none>
+bank-usac-customer-service-5f7877b46f-gkz2x             1/1     Running   0          3m3s   10.244.0.43   bank-usac-control-plane   <none>           <none>
+bank-usac-gateway-bd985c9d8-scrft                       1/1     Running   0          3m3s   10.244.0.45   bank-usac-control-plane   <none>           <none>
+bank-usac-notification-audit-service-66f8b6f486-v5zlp   1/1     Running   0          3m3s   10.244.0.42   bank-usac-control-plane   <none>           <none>
+bank-usac-payment-service-9fd8f8d8c-bcw2c               1/1     Running   0          3m3s   10.244.0.44   bank-usac-control-plane   <none>           <none>
+bank-usac-transaction-service-c57cc9d47-sng4t           1/1     Running   0          3m3s   10.244.0.47   bank-usac-control-plane   <none>           <none>
+bank-usac-web-7b6644c4bc-j8hs9                          1/1     Running   0          3m3s   10.244.0.41   bank-usac-control-plane   <none>           <none>
+
+$ kubectl --context kind-bank-usac get deployments -n bank-usac
+NAME                                   READY   UP-TO-DATE   AVAILABLE   AGE
+bank-usac-account-service              1/1     1            1           6d7h
+bank-usac-customer-service             1/1     1            1           6d7h
+bank-usac-gateway                      1/1     1            1           6d7h
+bank-usac-notification-audit-service   1/1     1            1           6d7h
+bank-usac-payment-service              1/1     1            1           6d7h
+bank-usac-transaction-service          1/1     1            1           6d7h
+bank-usac-web                          1/1     1            1           6d7h
+
+$ kubectl --context kind-bank-usac get svc -n bank-usac
+NAME                                   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+bank-usac-account-service              ClusterIP   10.96.5.27      <none>        3002/TCP   6d7h
+bank-usac-customer-service             ClusterIP   10.96.143.224   <none>        3001/TCP   6d7h
+bank-usac-gateway                      ClusterIP   10.96.155.201   <none>        3000/TCP   6d7h
+bank-usac-notification-audit-service   ClusterIP   10.96.180.162   <none>        3005/TCP   6d7h
+bank-usac-payment-service              ClusterIP   10.96.225.163   <none>        3004/TCP   6d7h
+bank-usac-transaction-service          ClusterIP   10.96.92.175    <none>        3003/TCP   6d7h
+bank-usac-web                          ClusterIP   10.96.19.249    <none>        3010/TCP   6d7h
+minio                                  ClusterIP   10.96.79.6      <none>        9000/TCP   6d7h
+postgres-account                       ClusterIP   10.96.127.50    <none>        5432/TCP   6d7h
+postgres-customer                      ClusterIP   10.96.169.244   <none>        5432/TCP   6d7h
+postgres-notification-audit            ClusterIP   10.96.247.65    <none>        5432/TCP   6d7h
+postgres-payment                       ClusterIP   10.96.100.27    <none>        5432/TCP   6d7h
+postgres-transaction                   ClusterIP   10.96.214.147   <none>        5432/TCP   6d7h
+rabbitmq                               ClusterIP   10.96.86.58     <none>        5672/TCP   6d7h
+
+$ kubectl --context kind-bank-usac get endpoints -n bank-usac
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+NAME                                   ENDPOINTS          AGE
+bank-usac-account-service              10.244.0.46:3002   6d7h
+bank-usac-customer-service             10.244.0.43:3001   6d7h
+bank-usac-gateway                      10.244.0.45:3000   6d7h
+bank-usac-notification-audit-service   10.244.0.42:3005   6d7h
+bank-usac-payment-service              10.244.0.44:3004   6d7h
+bank-usac-transaction-service          10.244.0.47:3003   6d7h
+bank-usac-web                          10.244.0.41:3010   6d7h
+minio                                  172.21.0.2:9000    6d7h
+postgres-account                       172.21.0.5:5432    6d7h
+postgres-customer                      172.21.0.3:5432    6d7h
+postgres-notification-audit            172.21.0.7:5432    6d7h
+postgres-payment                       172.21.0.4:5432    6d7h
+postgres-transaction                   172.21.0.8:5432    6d7h
+rabbitmq                               172.21.0.6:5672    6d7h
+
+$ kubectl --context kind-bank-usac get configmap,secret -n bank-usac
+NAME                         DATA   AGE
+configmap/bank-usac-config   13     6d7h
+configmap/kube-root-ca.crt   1      6d7h
+
+NAME                                     TYPE                 DATA   AGE
+secret/bank-usac-secrets                 Opaque               12     6d7h
+secret/sh.helm.release.v1.bank-usac.v1   helm.sh/release.v1   1      6d7h
+secret/sh.helm.release.v1.bank-usac.v2   helm.sh/release.v1   1      5h28m
+secret/sh.helm.release.v1.bank-usac.v3   helm.sh/release.v1   1      128m
+secret/sh.helm.release.v1.bank-usac.v4   helm.sh/release.v1   1      91m
+secret/sh.helm.release.v1.bank-usac.v5   helm.sh/release.v1   1      76m
+secret/sh.helm.release.v1.bank-usac.v6   helm.sh/release.v1   1      71m
+secret/sh.helm.release.v1.bank-usac.v7   helm.sh/release.v1   1      67m
+secret/sh.helm.release.v1.bank-usac.v8   helm.sh/release.v1   1      8m57s
+secret/sh.helm.release.v1.bank-usac.v9   helm.sh/release.v1   1      3m3s
+
+$ kubectl get pods -n bank-usac -o custom-columns=POD,IMAGE
+POD                                                     IMAGE
+bank-usac-account-service-67f4878b46-7ckzl              bank-usac/account-service:921426f6fa7c
+bank-usac-customer-service-5f7877b46f-gkz2x             bank-usac/customer-service:921426f6fa7c
+bank-usac-gateway-bd985c9d8-scrft                       bank-usac/gateway:921426f6fa7c
+bank-usac-notification-audit-service-66f8b6f486-v5zlp   bank-usac/notification-audit-service:921426f6fa7c
+bank-usac-payment-service-9fd8f8d8c-bcw2c               bank-usac/payment-service:921426f6fa7c
+bank-usac-transaction-service-c57cc9d47-sng4t           bank-usac/transaction-service:921426f6fa7c
+bank-usac-web-7b6644c4bc-j8hs9                          bank-usac/web:921426f6fa7c
+
+$ docker ps --filter network=bank-usac-local  # the dependencies, outside the cluster
+NAMES                         IMAGE                                      STATUS
+rabbitmq                      rabbitmq:4.3.4-management                  Up 7 hours (healthy)
+postgres-notification-audit   postgres:18.4                              Up 7 hours (healthy)
+postgres-payment              postgres:18.4                              Up 7 hours (healthy)
+postgres-account              postgres:18.4                              Up 7 hours (healthy)
+postgres-transaction          postgres:18.4                              Up 7 hours (healthy)
+postgres-customer             postgres:18.4                              Up 44 seconds (healthy)
+minio                         minio/minio:RELEASE.2024-11-07T00-52-20Z   Up 7 hours (healthy)
+bank-usac-control-plane       kindest/node:v1.37.0                       Up 7 hours
+
+# Per-component /ready, asked from inside each pod
+$ kubectl exec deploy/bank-usac-customer-service -- wget -qO- http://127.0.0.1:3001/ready
+{"status":"ready","application":"customer-service","broker":"connected","database":"reachable","queues":"consuming"}
+$ kubectl exec deploy/bank-usac-account-service -- wget -qO- http://127.0.0.1:3002/ready
+{"status":"ready","application":"account-service","broker":"connected","database":"reachable","queues":"consuming"}
+$ kubectl exec deploy/bank-usac-transaction-service -- wget -qO- http://127.0.0.1:3003/ready
+{"status":"ready","application":"transaction-service","broker":"connected","database":"reachable","queues":"consuming"}
+$ kubectl exec deploy/bank-usac-payment-service -- wget -qO- http://127.0.0.1:3004/ready
+{"status":"ready","application":"payment-service","broker":"connected","database":"reachable","queues":"consuming"}
+$ kubectl exec deploy/bank-usac-notification-audit-service -- wget -qO- http://127.0.0.1:3005/ready
+{"status":"ready","application":"notification-audit-service","broker":"connected","database":"reachable","queues":"consuming"}
+$ kubectl exec deploy/bank-usac-gateway -- wget -qO- http://127.0.0.1:3000/ready
+{"status":"ready","application":"gateway","broker":"connected"}
+$ kubectl exec deploy/bank-usac-web -- wget -qO- http://127.0.0.1:3010/ready
+{"status":"ready","application":"web","gateway":"http://localhost:3000"}

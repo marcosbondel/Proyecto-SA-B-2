@@ -10,10 +10,32 @@
 # never committed."
 
 imagePullPolicy: IfNotPresent
-replicaCount: 1
 
 # Modest defaults so five services, a gateway and a frontend fit comfortably
-# on kind's single node. Override per component if a heavier test needs it.
+# on kind's single node.
+#
+# Both of these are per-component overridable: set `replicaCount` or
+# `resources` inside any component's block below (services.customer, gateway,
+# web, …) and that component uses it while the rest keep these defaults. The
+# templates resolve it as `(.Values.<component>.resources | default
+# .Values.resources)`, so an absent or empty override inherits rather than
+# blanking the block out.
+#
+# Which components are safe to scale past one replica:
+#   gateway, web           — yes. The Gateway's reply queue is named per pod
+#                            from the downward API, so replicas do not collide.
+#   customer, transaction,
+#   payment, notification  — yes. They consume shared durable queues, so the
+#                            broker round-robins work across replicas, which is
+#                            the intended behaviour.
+#   account                — NOT YET. It also runs the inactive-account
+#                            deactivation job on an interval
+#                            (services.account.deactivation), and nothing
+#                            elects a single runner. N replicas would run the
+#                            sweep N times concurrently. Scale it only after
+#                            that job is made leader-elected or idempotent
+#                            under concurrency (see docs/TECH_DEBT.md TD-055).
+replicaCount: 1
 resources:
   requests:
     cpu: 50m
@@ -128,13 +150,15 @@ databases:
 # tomorrow's install. And `dev` is not a safe fallback either — read the next
 # paragraph before assuming a bare `helm install` works.
 #
-# `build-images.sh --kind <cluster>` loads only the short-commit tag onto the
-# kind node (`kind load docker-image`, see the script); it never loads `dev`.
-# So on the one cluster this chart targets, a release that leaves `image.tag`
-# at its default has nothing to pull and every pod sits in
-# `ImagePullBackOff`/`ErrImageNeverPull` — this is true today, unrelated to
-# which string is written here. There is no default that installs without
-# `--set`; the fix is passing the tag `build-images.sh` printed, every time:
+# `build-images.sh --kind <cluster>` loads *both* names onto the kind node —
+# the short-commit tag and `dev` (see `built+=(...)` in the script). That is a
+# deliberate fix: loading only the commit tag left a defaulted `helm install`
+# failing on `ImagePullBackOff`/`ErrImageNeverPull`, because `dev` names no
+# registry and there is nothing on the node to satisfy it.
+#
+# So a defaulted install now resolves — but it resolves to *whatever was built
+# last*, which is not a property to rely on. Pass the tag `build-images.sh`
+# printed, every time, so the release names the commit it is running:
 #
 #   helm upgrade --install bank-usac infra/k8s/helm/bank-usac ... \
 #     --set services.customer.image.tag=<short-commit> \
@@ -208,7 +232,10 @@ gateway:
     repository: bank-usac/gateway
     tag: dev # always --set at install time — see the note above `services:`
   jwtExpiresIn: "3600"
-  gatewayInstanceId: gateway-k8s
+  # No gatewayInstanceId here on purpose. It names this replica's private,
+  # broker-exclusive reply queue, so it must differ per pod — it comes from the
+  # downward API (metadata.name) in gateway/deployment.yaml. A value pinned
+  # here would cap the Gateway at one replica.
   replyTimeoutMs: "5000"
   # The browser reaches web on localhost via kubectl port-forward (see
   # templates/NOTES.txt), so its origin is localhost:<forwarded web port>.

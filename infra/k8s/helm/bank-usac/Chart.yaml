@@ -7,7 +7,7 @@ description: >-
   databases, RabbitMQ and MinIO stay outside this chart, on the Compose
   network described in infra/docker/docker-compose.yml (ADR-005).
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "1.0.0"
 home: https://github.com/marcosbondel/Proyecto-SA-B-2
 sources:

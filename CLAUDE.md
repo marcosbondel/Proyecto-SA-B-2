@@ -109,19 +109,26 @@ evidence `docs/DESIGN.md` asks for.
 TD-020 and TD-023 (the Clientes read path and the
 teller identity-validation flow) are **closed** by the audit-remediation feature
 (`specs/008-audit-remediation`), which also added the Kubernetes deployment: a
-Helm chart at `infra/k8s/helm/bank-usac` plus a kind cluster config. The live
-`helm upgrade --install` **has happened** (T014/T015, commit `57dd88d`,
-2026-08-28): on kind v0.33.0 the seven pods reached `1/1 Ready` against the
-PostgreSQL, RabbitMQ and MinIO outside the cluster, the port-forwarded Gateway
-answered, and a transfer ran the Saga end to end to a terminal state. Two
-caveats belong with that sentence. The transfer ended `FAILED` via
-`DEBIT_REJECTED` on a zero-balance account — the failure-handling shape, not
-`COMPLETED` — so the cluster has demonstrated the Saga's error path and not its
-happy one. And **no evidence of the run was captured in the repository**:
-`specs/008-audit-remediation/quickstart.md` holds expectations, not output. The
-run also found two real defects that `helm lint` and `helm template` could not:
-a bash 4 associative array that broke on macOS's bash 3.2, and `values.yaml`
-database defaults that pointed every pod at the wrong role and database.
+Helm chart at `infra/k8s/helm/bank-usac` plus a kind cluster config.
+
+**The deployment runs and the repository proves it.** Seven pods at `1/1 Ready`
+against the PostgreSQL, RabbitMQ and MinIO outside the cluster, and a Gateway
+that answers through `port-forward`. The procedure is
+[docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) — four commands
+from a clean machine — and `pnpm k8s:evidence` re-captures the cluster's state
+into `specs/008-audit-remediation/evidence/` on demand, so the evidence is a
+script rather than a paste. The first live run found two defects `helm lint` and
+`helm template` could not: a bash 4 associative array that broke on macOS's bash
+3.2, and `values.yaml` database defaults that pointed every pod at the wrong
+role and database.
+
+The chart carries one deliberate scaling constraint. `GATEWAY_INSTANCE_ID` names
+the Gateway replica's **broker-exclusive** reply queue, so it comes from the
+downward API (`metadata.name`) rather than the ConfigMap — a pinned value would
+make the second replica fail `RESOURCE_LOCKED`. `replicaCount` and `resources`
+are overridable per component; `account-service` is the one that must stay at
+one replica, because it also runs the inactive-account sweep on an interval with
+no leader election.
 
 **Every component is containerised** (T-21): seven multi-stage images, one
 Dockerfile each and no generic one, all running as `node` (uid 1000), with
