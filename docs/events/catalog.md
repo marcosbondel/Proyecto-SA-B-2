@@ -1,14 +1,14 @@
 # Message catalogue
 
-The payload of every message the system can put on the broker. **Ninety-one contracts** — 37
-commands, 33 events and 21 replies: the thirty-five
+The payload of every message the system can put on the broker. **Ninety-seven contracts** — 40
+commands, 33 events and 24 replies: the thirty-five
 [`../domain/message-catalog.md`](../domain/message-catalog.md) fixed, the thirteen recorded
-there as an extension, and forty-three added by the features that followed — the
+there as an extension, and forty-nine added by the features that followed — the
 password-recovery flow, the deposit window, the biller catalogue, the read paths the screens
-needed, the customer's own inbox, and the five dashboard counters.
+needed, the customer's own inbox, the audit events listing, and the five dashboard counters.
 
-By family: 33 `customer.*`, 27 `account.*`, 11 `transaction.*` (`transfer.requested.v1`
-included), 10 `payment.*`, 6 `notification.*`, 4 `audit.*`.
+By family: 37 `customer.*`, 27 `account.*`, 11 `transaction.*` (`transfer.requested.v1`
+included), 10 `payment.*`, 6 `notification.*`, 6 `audit.*`.
 
 **The executable definition is the code.** Each entry links to its contract in
 [`../../apps/packages/contracts/src/events/`](../../apps/packages/contracts/src/events/), and
@@ -78,6 +78,10 @@ messages, nothing that reveals whether an account or an email exists.
 | `customer.get.replied.v1` | reply | customer-service | gateway |
 | `customer.names.query.v1` | command | gateway | customer-service |
 | `customer.names.replied.v1` | reply | customer-service | gateway |
+| `customer.list.query.v1` | command | gateway | customer-service |
+| `customer.list.replied.v1` | reply | customer-service | gateway |
+| `customer.identity-document.query.v1` | command | gateway | customer-service |
+| `customer.identity-document.replied.v1` | reply | customer-service | gateway |
 | `customer.validate-identity.v1` | command | gateway | customer-service |
 | `customer.identity.validated.v1` | event | customer-service | notification-audit-service |
 | `customer.identity.rejected.v1` | event | customer-service | notification-audit-service |
@@ -128,6 +132,8 @@ messages, nothing that reveals whether an account or an email exists.
 | `payment.list.replied.v1` | reply | payment-service | gateway |
 | `audit.query.requested.v1` | command | gateway | notification-audit-service |
 | `audit.query.replied.v1` | reply | notification-audit-service | gateway |
+| `audit.events.list.query.v1` | command | gateway | notification-audit-service |
+| `audit.events.list.replied.v1` | reply | notification-audit-service | gateway |
 | `notification.list.query.v1` | command | gateway | notification-audit-service |
 | `notification.list.replied.v1` | reply | notification-audit-service | gateway |
 | `notification.inbox.query.v1` | command | gateway | notification-audit-service |
@@ -778,6 +784,58 @@ messages, nothing that reveals whether an account or an email exists.
 
 **On error.** **Staff only, and an id nobody may see simply does not come back** — no `NOT_FOUND` entry, no count of what was withheld. An absent id is therefore ambiguous between "no such customer" and "not yours", the same refusal `customer.get.replied.v1` makes. A `CLIENTE` asking gets an empty list, whatever they asked about.
 
+### `customer.list.query.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | customer-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `customer.list.query.v1` |
+| **Contract** | [`customer.list.query.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.list.query.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `limit` | integer, 1–100 (default 50) | no |
+
+**Preconditions.** None. Restricted to staff (`CAJERO_RECEPTOR`, `ADMINISTRADOR`).
+
+**Effects.** Customer Service returns the summary listing of registered users across all roles, ordered newest first.
+
+**On error.** A non-staff caller receives an empty list.
+
+### `customer.list.replied.v1`
+
+| | |
+| --- | --- |
+| **Category** | reply |
+| **Producer** | customer-service |
+| **Consumers** | gateway |
+| **Exchange** | `bank.replies` |
+| **Routing key** | `customer.list.replied.v1` |
+| **Contract** | [`customer.list.replied.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.list.replied.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customers` | array of object | yes |
+| `customers[].customerId` | UUID v4 | yes |
+| `customers[].fullName` | string | yes |
+| `customers[].email` | string | yes |
+| `customers[].username` | string | yes |
+| `customers[].documentNumber` | string | yes |
+| `customers[].identityStatus` | string | yes |
+| `customers[].role` | string | yes |
+| `customers[].status` | string | yes |
+| `customers[].registeredAt` | ISO-8601 UTC | yes |
+| `omitted` | integer ≥ 0 | yes |
+
+**Preconditions.** A `customer.list.query.v1` was handled.
+
+**Effects.** The Gateway answers the staff caller.
+
+**On error.** On timeout the Gateway stops waiting. Nothing was changed.
+
 
 ---
 
@@ -897,6 +955,56 @@ The payload is an empty object. There is nothing to narrow: the question is the 
 **Effects.** The Gateway answers the caller. A bounded list — `omitted` says how many more were left out — so one very large queue cannot produce a reply that blows the request/reply ceiling. The summary carries only what a teller needs to pick the next case; the full record and the document are read separately.
 
 **On error.** On timeout the Gateway stops waiting. Nothing was changed.
+
+### `customer.identity-document.query.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | customer-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `customer.identity-document.query.v1` |
+| **Contract** | [`customer.identity-document.query.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.identity-document.query.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customerId` | UUID v4 | yes |
+
+**Preconditions.** Staff only (`CAJERO_RECEPTOR`, `ADMINISTRADOR`).
+
+**Effects.** Ask to view a customer's identity-document photo.
+
+**On error.** An unauthorized caller or nonexistent customer yields `NOT_FOUND`, indistinguishable.
+
+### `customer.identity-document.replied.v1`
+
+| | |
+| --- | --- |
+| **Category** | reply |
+| **Producer** | customer-service |
+| **Consumers** | gateway |
+| **Exchange** | `bank.replies` |
+| **Routing key** | `customer.identity-document.replied.v1` |
+| **Contract** | [`customer.identity-document.replied.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.identity-document.replied.v1.ts) |
+
+**When outcome = `FOUND`**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `outcome` | `FOUND` | yes |
+| `photo` | object (`PhotoReference`) | yes |
+
+**When outcome = `NOT_FOUND`**
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `outcome` | `NOT_FOUND` | yes |
+| `reason` | `CUSTOMER_NOT_FOUND` \| `IDENTITY_OBJECT_NOT_FOUND` | yes |
+
+**Preconditions.** A `customer.identity-document.query.v1` was handled.
+
+**Effects.** Carries a `PhotoReference` staged in MinIO, never raw image bytes over the broker.
 
 ### `customer.set-identity-verdict.v1`
 
@@ -2110,6 +2218,58 @@ Each entry has the same shape as `payment` on `payment.status.replied.v1`, shari
 The two optional fields were added by T-20 and are additive — a reply that omits them validates exactly as before (TD-039). `processingStatus` exists so that a message this service could not parse is visible rather than absent; `payload` exists because the interface has to show *something* of what happened, and the redaction is computed by the service that owns the record, never by the consumer. What survives redaction is decided in one place: `redactPayload` in the service's domain.
 
 **On error.** On timeout the Gateway stops waiting.
+
+### `audit.events.list.query.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `audit.events.list.query.v1` |
+| **Contract** | [`audit.events.list.query.v1.ts`](../../apps/packages/contracts/src/events/audit/audit.events.list.query.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `limit` | integer, 1–100 (default 10) | no |
+| `page` | integer ≥ 1 (default 1) | no |
+
+**Preconditions.** Restricted to `ADMINISTRADOR`.
+
+**Effects.** Paginated raw audit events query across all event families.
+
+**On error.** On timeout the Gateway stops waiting.
+
+### `audit.events.list.replied.v1`
+
+| | |
+| --- | --- |
+| **Category** | reply |
+| **Producer** | notification-audit-service |
+| **Consumers** | gateway |
+| **Exchange** | `bank.replies` |
+| **Routing key** | `audit.events.list.replied.v1` |
+| **Contract** | [`audit.events.list.replied.v1.ts`](../../apps/packages/contracts/src/events/audit/audit.events.list.replied.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `events` | array of object | yes |
+| `events[].eventId` | UUID v4 | yes |
+| `events[].messageType` | string | yes |
+| `events[].producer` | string | yes |
+| `events[].occurredAt` | ISO-8601 UTC | yes |
+| `events[].correlationId` | UUID v4 | yes |
+| `events[].processingStatus` | string | yes |
+| `events[].consumer` | string | yes |
+| `events[].payload` | object, redacted | yes |
+| `total` | integer ≥ 0 | yes |
+| `page` | integer ≥ 1 | yes |
+| `limit` | integer ≥ 1 | yes |
+
+**Preconditions.** An `audit.events.list.query.v1` was handled.
+
+**Effects.** Returns the paginated list of audited events with redacted payloads.
 
 ## Consult the notifications console
 

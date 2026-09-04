@@ -11,6 +11,8 @@ Table transactions {
   idempotency_key varchar(200) [unique, not null]
   failure_reason text
   payment_scenario varchar(20) [note: 'APPROVE, REJECT, TRANSIENT_FAILURE']
+  customer_id uuid [note: 'Identidad del usuario solicitante (claims JWT)']
+  reference varchar(60) [note: 'Referencia de factura o contrato en pago de servicios']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   completed_at timestamptz
@@ -19,6 +21,7 @@ Table transactions {
     correlation_id [name: 'transactions_correlation_idx']
     (source_account, created_at) [name: 'transactions_source_idx']
     (target_account, created_at) [name: 'transactions_target_idx']
+    (customer_id, created_at) [name: 'transactions_customer_idx']
   }
   Note: 'Orquestación y máquina de estados de transferencias con Saga'
 }
