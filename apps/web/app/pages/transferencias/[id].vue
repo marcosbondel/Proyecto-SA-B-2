@@ -193,7 +193,7 @@ useHead({ title: 'Transferencia · bonking' });
         <p
           class="mt-1 break-all font-mono text-[13px] text-[#5A5B63]"
           style="font-variant-numeric: tabular-nums lining-nums"
-        >{{ transactionId }}</p>
+        >{{ transfer?.transactionId ?? transactionId }}</p>
       </div>
       <UButton to="/transferencias/nueva" variant="outline" color="neutral">
         Nueva transferencia

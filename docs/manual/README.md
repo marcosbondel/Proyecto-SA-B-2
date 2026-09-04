@@ -85,19 +85,21 @@ dinero.
 
 ### 1.3 Usuarios de prueba
 
-> **Importante.** Bank USAC **no trae usuarios precargados**. No existe un
-> `admin@bankusac.gt`, ni un `cajero@bankusac.gt`, ni un `cliente@bankusac.gt`,
-> ni una contraseña por defecto. Una instalación recién levantada tiene la base
-> de datos vacía y la única forma de entrar es registrarse, como se explica en
-> la sección siguiente.
+> **Usuarios de demostración precargados.** Para facilitar pruebas y evaluaciones locales,
+> el script de inicialización (`pnpm seed:demo` o inicialización de base de datos)
+> precarga las credenciales de prueba para los tres roles del sistema con la contraseña `BankUsac#2026`:
+>
+> * **Administrador**: `admin@bankusac.gt` / `BankUsac#2026`
+> * **Cajero Receptor**: `cajero@bankusac.gt` / `BankUsac#2026`
+> * **Cliente Principal**: `2895884051401@ingenieria.usac.edu.gt` / `BankUsac#2026` (Marco Tulio López)
+> * **Cliente Secundario**: `cliente@bankusac.gt` / `BankUsac#2026` (Clara Cliente)
 
-Esto tiene una consecuencia práctica que conviene saber antes de una
-demostración:
+Reglas de registro en nuevas instalaciones:
 
 - El **registro público** (`/registro`) siempre crea un **Cliente**. Nunca un
   cajero ni un administrador; el sistema lo fuerza, para que nadie pueda
   nombrarse administrador a sí mismo.
-- Para crear un **Cajero receptor** o un **Administrador** hace falta que un
+- Para crear un **Cajero receptor** o un **Administrador** adicional hace falta que un
   **Administrador ya existente** los registre desde *Clientes → Nuevo cliente*,
   eligiendo el rol en el primer paso.
 - El **primer administrador** no puede crearse desde la aplicación. Lo prepara
@@ -591,11 +593,12 @@ permanente** no se reintenta, porque el resultado sería el mismo.
 
 **Quién lo ve:** solo el Administrador. **Ruta:** `/auditoria`.
 
-### 8.1 Consultar el rastro de una operación
+### 8.1 Explorador general de eventos y rastro por operación
 
-La pantalla pide un dato: el **identificador de correlación** de la operación
-que quieres investigar. Con él arma la historia completa: qué se publicó, qué
-servicio lo publicó, en qué orden, y qué se le avisó al cliente.
+El módulo de auditoría ofrece dos vistas fundamentales para el Administrador:
+
+1. **Bitácora general de eventos**: Permite paginar e inspeccionar los eventos registrados en el bus de mensajería (RabbitMQ) con sus metadatos (`eventId`, tipo de mensaje, productor, consumidor y estado de procesamiento) con cuerpo de payload redactado.
+2. **Rastro de una operación**: Permite ingresar el **identificador de correlación** (`correlationId`) de una transacción o flujo específico para armar la historia secuencial completa: qué se publicó, qué servicio lo procesó, en qué orden y qué notificaciones derivaron.
 
 Pega el identificador y pulsa **Consultar**. Arriba aparece el resumen —cuántos
 eventos, cuántos servicios participaron y cuánto duró la operación— y debajo la
@@ -647,14 +650,10 @@ pagos propio y marcar notificaciones como leídas. Lo que queda es esto.
 
 | Lo que no se puede | Detalle |
 | --- | --- |
-| **Buscar clientes por nombre** | No hay listado ni búsqueda de clientes. Para abrir una ficha hay que tener el customerId; el buscador de la barra superior salta a un identificador, no busca texto. La única lista de clientes que existe es la cola de validación de identidad, y solo trae a los que esperan revisión. |
-| **Retirar efectivo** | Se puede depositar en ventanilla, pero no existe la operación inversa. El dinero sale de una cuenta únicamente por una transferencia. |
-| **Cambiar tu correo electrónico** | El correo es tu identificador de acceso: cambiarlo cambia con qué entras. Hacerlo bien exige verificar la dirección nueva antes de reemplazar la vieja, y ese flujo no está construido. La pantalla lo muestra de solo lectura y lo explica. |
-| **Confirmar el resultado de un registro o de una apertura de cuenta** | Solo un Administrador puede consultar el rastro de auditoría. Las demás sesiones se quedan en «solicitud aceptada» con el identificador de correlación para preguntar. |
-| **Filtrar la auditoría por fecha** | La auditoría se consulta por identificador de correlación, no por rango de fechas ni por navegación general. |
-| **Agregar un servicio al catálogo de pagos** | Los prestadores (EEGSA, Empagua, Claro) están fijos. Agregar uno necesita decidir quién puede hacerlo y con qué cuenta recaudadora, y eso no está definido. |
-| **Ver la foto del documento de identidad** | La cola de validación y los botones de veredicto funcionan; la imagen todavía no se muestra. |
-| **Crear el primer administrador** | El registro público siempre crea un Cliente. El primer administrador lo prepara el equipo técnico al instalar. |
+| **Retirar efectivo** | Se puede depositar en ventanilla, pero no existe la operación inversa. El dinero sale de una cuenta únicamente mediante una transferencia o pago de servicios. |
+| **Cambiar tu correo electrónico** | El correo es tu identificador de acceso principal (D-05): cambiarlo cambia con qué inicias sesión. La pantalla lo muestra de solo lectura. |
+| **Confirmar el resultado de un registro o apertura en tiempo real por el cliente** | El cuentahabiente ve su estado en pantalla y en su buzón de notificaciones; el rastro forense detallado por correlación es exclusivo del Administrador. |
+| **Agregar un nuevo prestador al catálogo de pagos** | Los facturadores institucionales (EEGSA, Empagua, Claro) están fijos en base de datos. Agregar nuevos convenios requiere configuración administrativa. |
 
 El detalle técnico de cada una, con su decisión y su ticket, está en
 [docs/TECH_DEBT.md](../TECH_DEBT.md).
