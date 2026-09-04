@@ -30,10 +30,10 @@ interface SeedAccount {
 }
 
 const ACCOUNTS: readonly SeedAccount[] = [
-  // Cuentas de Enner Esaí Mendizabal Castro
+  // Cuentas de Marco Tulio López Medina (Cliente Principal - Q5,000 / Q1,500)
   { id: MONETARIA_ID, customerId: DEMO_CLIENT_ID, type: 'MONETARIA', balance: '5000.00' },
   { id: AHORRO_ID, customerId: DEMO_CLIENT_ID, type: 'AHORRO', balance: '1500.00' },
-  // Cuentas de Marco Tulio Lopez Medina (tercero para transferencias y depósitos)
+  // Cuentas de Clara Cliente (Cliente Tercero - Q2,500 / Q800)
   { id: MARCO_MONETARIA_ID, customerId: DEMO_CLIENT_2_ID, type: 'MONETARIA', balance: '2500.00' },
   { id: MARCO_AHORRO_ID, customerId: DEMO_CLIENT_2_ID, type: 'AHORRO', balance: '800.00' },
 ];

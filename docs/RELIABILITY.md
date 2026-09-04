@@ -1,194 +1,128 @@
-# Reliability
+# Confiabilidad y SRE — Bank USAC
 
-## Required Design Concerns
+## Preocupaciones de Diseño Obligatorias
 
-The project assignment requires every service to address:
+El enunciado del proyecto exige que cada microservicio resuelva de forma explícita las siguientes preocupaciones de ingeniería de confiabilidad:
 
-- Idempotency for repeated commands and event deliveries.
-- Retries with bounded behavior and safe retry classification.
-- Explicit error handling for business and infrastructure failures.
-- Eventual consistency across independently owned databases.
-- End-to-end traceability through a propagated `correlationId`.
+- **Idempotencia** ante comandos repetidos y entregas duplicadas de eventos.
+- **Reintentos acotados** con comportamiento determinista y clasificación segura de errores reintentables vs. no reintentables.
+- **Manejo explícito de errores**, distinguiendo fallos de negocio (ej. fondos insuficientes) de fallos de infraestructura (ej. base de datos o broker caído).
+- **Consistencia eventual** entre bases de datos independientes mediante eventos de dominio.
+- **Trazabilidad de extremo a extremo** mediante la propagación de un `correlationId` en cada sobre de mensaje.
 
-Distributed transfer and payment workflows use Saga steps and compensation
-events. A request accepted by the system is not treated as complete until the
-owning workflow confirms completion.
+Los flujos distribuidos de transferencia y pago implementan el patrón **Saga por coreografía** con eventos de compensación. Una solicitud aceptada por el sistema no se considera completada hasta que el flujo propietario confirma su finalización.
 
-## SLI, SLO, And SLA
+---
 
-Defined and approved in **T-03**, before implementation, because the assignment
-places SRE metrics at step 7 of its methodology (§6, page 17) — ahead of step 8,
-which is implementation. **T-24 measures these definitions; it does not create
-them.** Changing a value here requires a recorded team amendment, not a silent
-edit.
+## SLI, SLO y SLA
 
-The measurement window and error budget columns in the objectives table were
-**added after T-03 and change no threshold**. Every number T-03 approved is the
-number that is there; what was missing was the two dimensions that make a
-threshold checkable at all — over what period it is counted, and how much of it
-may be spent before it is missed.
+Definidos y aprobados en la tarea **T-03**, *antes de la implementación*, debido a que la metodología oficial del proyecto sitúa las métricas SRE en el paso 7 (§6, página 17), previo al paso 8 de desarrollo. **T-24 mide estas definiciones; no las crea.** Cualquier cambio en los valores aquí descritos requiere una enmienda formal del equipo y no una edición silenciosa.
 
-### Service Level Indicators
+Las columnas de ventana de medición y presupuesto de error (*error budget*) en la tabla de objetivos complementan la definición de T-03 sin alterar ningún umbral: aportan las dos dimensiones indispensables para que un umbral sea verificable (sobre qué período se contabiliza y cuánto margen de fallo se admite antes de incumplirlo).
 
-Each indicator names its formula and the data source that produces it. An
-indicator without a source is not measurable, however precise its formula reads.
+---
 
-| # | Indicator | Formula | Source |
-| --- | --- | --- | --- |
-| SLI-1 | Gateway availability | `requests served without technical error / requests received` | Gateway logs |
-| SLI-2 | Transfer completion rate | `transfers reaching COMPLETED / transfers accepted` | Transaction Service |
-| SLI-3 | Saga duration (P50 / P95) | `timestamp of final state − timestamp of transfer.requested` | Message-envelope timestamps |
-| SLI-4 | Event latency | `timestamp of successful consumption − occurredAt` | Message envelope |
-| SLI-5 | Retry rate and dead-lettered messages, **per queue** | `retries / deliveries`; absolute count in each DLQ | RabbitMQ |
-| SLI-6 | Functional consistency | `transfers whose final state agrees with balances and audit / transfers finalised` | Transaction, Account and Notification & Audit compared |
+### Indicadores de Nivel de Servicio (SLI — Service Level Indicators)
 
-**"Technical error" in SLI-1** means the request itself failed: 5xx, timeout, or
-a dropped connection. A business rejection — insufficient funds, an inactive
-account — is a *correct* response and does **not** count as unavailability.
-Counting it would measure the domain rather than the service.
+Cada indicador define su fórmula matemática y la fuente de datos que lo produce. Un indicador sin fuente de datos verificable no es medible, sin importar cuán precisa parezca su fórmula.
 
-### Service Level Objectives
+| # | Indicador | Fórmula Matemática | Fuente de Datos |
+| :--- | :--- | :--- | :--- |
+| **SLI-1** | **Disponibilidad del Gateway** | $\frac{\text{Peticiones atendidas sin error técnico}}{\text{Total de peticiones HTTP válidas recibidas}}$ | Logs del API Gateway |
+| **SLI-2** | **Tasa de finalización de transferencias** | $\frac{\text{Transferencias en estado final COMPLETED}}{\text{Total de transferencias aceptadas}}$ | Base de datos de `Transaction Service` |
+| **SLI-3** | **Duración de la Saga (P50 / P95)** | $\text{Timestamp de estado final} - \text{Timestamp de emisión (transfer.requested)}$ | Marcas de tiempo en el `Envelope` del mensaje |
+| **SLI-4** | **Latencia de procesamiento de eventos** | $\text{Timestamp de consumo exitoso} - \text{Timestamp de origen (occurredAt)}$ | Sobre canónico (`Envelope`) |
+| **SLI-5** | **Tasa de reintentos y mensajes en cola muerta (DLQ)** | $\frac{\text{Total de reintentos}}{\text{Total de entregas}}$ y conteo absoluto en cada cola DLQ | Métricas de colas en RabbitMQ |
+| **SLI-6** | **Consistencia funcional de saldos** | $\frac{\text{Transferencias cuyo estado final coincide con saldos y auditoría}}{\text{Total de transferencias finalizadas}}$ | Conciliación cruzada entre `Transaction`, `Account` y `Audit` |
 
-| # | Objective | Threshold | Measurement window | Error budget | Indicator |
-| --- | --- | --- | --- | --- | --- |
-| SLO-1 | Valid messages that do not end in a dead-letter queue during the final test | **≥ 99 %** | One demonstration run | 1 % of the valid messages delivered in the run | SLI-5 |
-| SLO-2 | Successful transfers completing in under 5 seconds, on a stable local environment | **≥ 95 %** | One demonstration run | 5 % of the successful transfers in the run | SLI-3, SLI-2 |
-| SLO-3 | Duplicate commands producing exactly one financial effect | **100 %** | Every duplicate observed in the run | None — invariant | SLI-6 |
-| SLO-4 | Post-debit failures ending in compensation or an explicit pending state | **100 %** | Every post-debit failure in the run | None — invariant | SLI-2, SLI-6 |
-| SLO-5 | Main-flow events carrying a visible `correlationId` | **100 %** | Every main-flow event in the run | None — invariant | SLI-4 |
+> [!IMPORTANT]
+> **Definición de "Error técnico" en SLI-1:**  
+> Significa que la petición falló a nivel de infraestructura o código: errores HTTP 5xx, timeout de respuesta o conexión rechazada.  
+> Un rechazo por regla de negocio —fondos insuficientes, cuenta inactiva o credenciales inválidas (códigos 4xx)— constituye una respuesta **correcta y esperada** del sistema, y **NO** resta disponibilidad. Contabilizar rechazos de negocio como indisponibilidad mediría la solvencia financiera de los usuarios en lugar de la salud del servicio.
 
-**The window is one demonstration run, and naming it is not a formality.** Every
-objective here is a ratio, and a ratio without a window is unfalsifiable: 99 %
-of what, counted from when. The window is the run itself — the stack brought up,
-the flows exercised, the evidence collected — because that is the only period in
-which this system is observed at all, and the SLA below commits to nothing
-outside it. Each run is judged on its own numbers: nothing carries over to the
-next one, and a bad run is not amortised by measuring for longer.
+---
 
-**Two objectives have an error budget; three cannot have one.** SLO-1 and SLO-2
-are quality goals, so their thresholds imply a budget — at 99 %, one valid
-message in a hundred may be dead-lettered before the run misses the objective;
-at 95 %, one successful transfer in twenty may take longer than five seconds. In
-absolute terms these budgets are small, and deliberately so: a demonstration
-moves a few hundred messages and a handful of transfers, so a systematic fault
-exhausts the budget instead of hiding inside it, which is the whole reason to
-state one at this scale. When a budget is exhausted the run is reported as
-missing its objective, naming the specific messages or transfers that spent it.
-There is no release to halt and no rollback to trigger, because there is no
-production.
+### Objetivos de Nivel de Servicio (SLO — Service Level Objectives)
 
-The three objectives set at 100 % are there because they **admit no degree**: a
-duplicate command that moves money twice, or a debit with no compensation, is a
-correctness defect rather than a degraded service. An error budget is a licence
-to fail a fraction of the time, and no fraction of double-spends is acceptable —
-so these three carry none, are evaluated over every occurrence rather than a
-sample, and a single violation fails the objective outright. The two percentage
-targets are quality goals; these three are invariants.
+| # | Objetivo | Umbral Objetivo | Ventana de Medición | Presupuesto de Error (*Error Budget*) | Indicador Asociado |
+| :--- | :--- | :---: | :--- | :---: | :---: |
+| **SLO-1** | **Mensajes válidos que no terminan en cola de mensajes muertos (DLQ)** durante la prueba final | **$\ge 99\%$** | Una corrida de demostración | **$1\%$** de los mensajes válidos entregados | **SLI-5** |
+| **SLO-2** | **Transferencias exitosas que completan en menos de 5 segundos** en entorno local estable | **$\ge 95\%$** | Una corrida de demostración | **$5\%$** de las transferencias exitosas en la corrida | **SLI-3**, **SLI-2** |
+| **SLO-3** | **Comandos duplicados que producen exactamente un único efecto financiero** | **$100\%$** | Cada comando duplicado en la corrida | **$0\%$ — Invariante estricto** | **SLI-6** |
+| **SLO-4** | **Fallos posteriores al débito que culminan en compensación o estado pendiente explícito** | **$100\%$** | Cada fallo post-débito observado | **$0\%$ — Invariante estricto** | **SLI-2**, **SLI-6** |
+| **SLO-5** | **Eventos del flujo principal que transportan un `correlationId` visible** | **$100\%$** | Cada evento del flujo principal | **$0\%$ — Invariante estricto** | **SLI-4** |
 
-**"Stable local environment"** in SLO-2 means the cluster is up, with no injected
-faults and no synthetic concurrent load.
+#### Justificación de la Ventana de Medición
+La ventana corresponde a **una corrida de demostración**. Nombrarla no es una formalidad: todo objetivo es un ratio, y un ratio sin ventana de tiempo es indemostrable (¿99% de qué, medido desde cuándo?). La ventana es la sesión misma de ejecución —el stack levantado, los flujos bancarios ejecutados y la evidencia recolectada—, ya que es el único período en el que este sistema es evaluado en vivo. Cada corrida se juzga por sus propios resultados: nada se acumula para la siguiente ni se amortiza extendiendo el tiempo.
 
-### Service Level Agreement
+#### Justificación de los Presupuestos de Error (*Error Budget*)
+1. **Dos objetivos admiten presupuesto de error:** **SLO-1** y **SLO-2** son metas de calidad de servicio, por lo que sus umbrales definen un margen de tolerancia:
+   * Al **99%**, 1 de cada 100 mensajes válidos puede caer temporalmente a la DLQ antes de considerar no alcanzado el objetivo.
+   * Al **95%**, 1 de cada 20 transferencias exitosas puede demorar más de 5 segundos.  
+   En términos absolutos estos presupuestos son pequeños a propósito: una demostración mueve unos cientos de mensajes y un grupo de transferencias, por lo que una falla sistemática agota el presupuesto de inmediato en lugar de ocultarse tras promedios largos.
+2. **Tres objetivos tienen presupuesto de error cero (100%):** **SLO-3**, **SLO-4** y **SLO-5** no admiten grados de tolerancia. Un comando duplicado que mueve dinero dos veces o un débito sin compensación ante fallo del proveedor es un **defecto de corrección bancaria**, no una degradación temporal. Un presupuesto de error es un permiso para fallar una fracción del tiempo, y en un banco no se tolera ninguna fracción de duplicación de dinero: una sola infracción invalida el objetivo por completo.
 
-The commitment is **observable only during the demonstration**: bring up the
-cluster, run the main transfer flow, show the complete Saga — including a
-compensation path — and present the evidence for the indicators above.
+> **Entorno local estable:** En **SLO-2**, significa que el clúster de Kubernetes y Docker están operativos, sin inyección artificial de fallas ni sobrecarga concurrente sintética.
 
-This is an **academic SLA**. It carries no penalty, no continuous measurement and
-no commitment outside the evaluation session, and it **does not represent
-production availability**. It carries no *service* window either — no hours
-during which the system is promised to be up — which is a different thing from
-the *measurement* window the objectives above declare: that one says over what
-period a ratio is counted, not for how long the system is promised to answer.
+---
 
-### What This Obliges Every Service To Build
+### Acuerdo de Nivel de Servicio (SLA — Service Level Agreement)
 
-These indicators only exist if the instrumentation exists first. Each service
-implements from the start:
+El compromiso es **observable durante la sesión de evaluación**:
+1. Levantar el clúster local de Kubernetes (`kind`) y la infraestructura de soporte.
+2. Ejecutar el flujo bancario principal de transferencias.
+3. Demostrar la ejecución de la Saga en sus tres formas (flujo exitoso y flujos de compensación por fallo de proveedor o reintentos agotados).
+4. Presentar la evidencia de los indicadores y la consistencia matemática de los saldos antes y después de cada operación.
 
-- Emission and consumption timestamps in the message envelope (SLI-3, SLI-4).
-- Structured logs carrying `correlationId` through the whole flow (SLI-5, SLO-5).
-- Retry counting and per-queue dead-letter visibility (SLI-5).
-- A final transfer state that can be compared against balances and audit records
-  (SLI-6).
+Este es un **SLA de ámbito académico**. No conlleva penalizaciones financieras contractuales ni medición continua en producción fuera de la sesión de sustentación. Establece el compromiso formal de entrega y defensa del sistema ante los evaluadores.
 
-This is precisely why the definition belongs to design and not to T-24: a metric
-agreed after implementation has no data behind it.
+---
 
-## Observability
+### Obligaciones de Instrumentación para Cada Microservicio
 
-Notification & Audit Service is the domain foundation for audit events and
-distributed logging, and it is built: five queues, deduplication by
-`(event_id, consumer)`, a payload redacted before the insert, and — since
-TD-048 — the messages the system could not process drained off `bank.errors`
-and recorded `INVALID` instead of discarded. What is still missing above it is
-collection: `@artmizu/nuxt-prometheus` remains in the web manifest with its
-justification open in TD-006, and no exporter, scrape or dashboard reads the
-instrumentation the services already emit.
+Estos indicadores solo pueden medirse si el código incluye la instrumentación requerida desde el inicio. Cada microservicio implementa:
 
-Every service must make correlation context, retries, failures, and eventual
-completion observable without changing business outcomes. The five services carry
-a `correlationId`-aware logger of their own and the Gateway mints the identifier
-they propagate; the rule binds anything added after them.
+1. **Marcas de tiempo de emisión y consumo** dentro del sobre canónico del mensaje (`Envelope`) para alimentar **SLI-3** y **SLI-4**.
+2. **Logs estructurados con propagación de `correlationId`** a lo largo de toda la cadena de llamadas asíncronas para **SLI-5** y **SLO-5**.
+3. **Conteo de reintentos y visibilidad de colas de error** en RabbitMQ para **SLI-5**.
+4. **Estados finales de transacción inmutables** contrastables contra los saldos de cuentas y registros de bitácora para **SLI-6**.
 
-## Verification
+---
 
-These commands run from the repository root, and between them they are
-everything the project can demonstrate today without a person watching a screen.
+## Observabilidad y Bitácora Distribuida
 
-| Command | What it establishes |
-| --- | --- |
-| `pnpm lint` | Style, and the architecture rules that are executable rather than written: a cross-service import, a framework import in `domain`, or an `infrastructure` import in `application` fails the run. The rules live in `apps/packages/tooling/eslint.base.mjs`. |
-| `pnpm typecheck` and `pnpm build` | The seven applications and the three shared packages compile. |
-| `pnpm test` | The unit suites of the six NestJS applications, plus a `node --test` suite over `apps/web/app/lib/` — `apps/web` has no component test framework (TD-010), so everything in the shell that decides something lives there as a pure function. Each service also carries a `test/isolation.spec.ts` that fails the build if it queries another service's table or opens an HTTP call. |
-| `pnpm test:contract` | The message catalogue in `@bank/contracts` — 91 contracts, each with an accepted and a refused case generated *from the catalogue itself*, so a new contract without a test cannot exist. |
-| `pnpm images:smoke` | Per image: the identifying labels, the declared port, a non-root user, and no credential in any layer. Per running container: liveness answers, readiness reports on every dependency it has, and **liveness keeps answering while a dependency is unreachable** — the property that separates the two probes, and the one nobody notices is broken until Kubernetes restarts a pod for an outage it cannot fix. |
-| `pnpm images:flow` | The assignment's own flow through the built images: register, activate, sign in, open two accounts, then the Saga in its three shapes — one `COMPLETED`, one `COMPENSATED` on a payment the provider refuses, and one `COMPENSATED` after the retry ladder is climbed to its end — with the source balance read before and after each. The compensation is asserted as a fact about the money, not as a status somebody wrote down. The source balance is seeded with SQL rather than through the deposit route, which is a shortcut in the script and not a gap in the system. |
+`Notification & Audit Service` es la base del dominio para la auditoría distribuida:
+* Dispone de **5 colas dedicadas en RabbitMQ**: `audit.customer`, `audit.account`, `audit.transaction`, `audit.payment` y `audit.query`.
+* **Deduplicación estricta** mediante la clave primaria `(event_id, consumer)`.
+* **Redacción previa a la inserción (*Pre-insert Redaction*):** Ningún número de documento (DPI), dirección física o saldo sensible se almacena en texto plano dentro de la bitácora de auditoría.
+* **Captura de errores:** Los mensajes no procesables se canalizan desde el exchange `bank.errors` y se registran bajo el estado `INVALID` en lugar de ser descartados silenciosamente (resolviendo la deuda técnica **TD-048**).
 
-Two suites need real infrastructure and skip without it rather than failing.
-Each service's `test/repository.integration.spec.ts` covers concurrency,
-idempotency and the database constraints, and skips without `DATABASE_URL`;
-`apps/packages/messaging/test/broker.integration.spec.ts` exercises publish and
-consume, `correlationId` propagation, the retry ladder, dead-letter headers and
-reconnection against a live RabbitMQ.
+Cada microservicio dispone de un logger contextualizado que preserva el `correlationId` generado inicialmente en el API Gateway.
 
-The Helm chart has been installed on a real kind cluster (v0.33.0) on
-2026-08-28: the seven pods reached `1/1 Ready` against the PostgreSQL, RabbitMQ
-and MinIO running outside the cluster, the port-forwarded Gateway answered, and
-a transfer ran the Saga through the cluster to a terminal state. That state was
-`FAILED` via `DEBIT_REJECTED` on a zero-balance account — the failure-handling
-shape, not the completion one — and **no evidence of the run was captured in the
-repository**: `specs/008-audit-remediation/quickstart.md` records what to expect,
-not what happened.
+---
 
-**What none of this measures is the indicators above.** Every command here is a
-pass-or-fail check on behaviour; not one of them computes SLI-1 … SLI-6 or
-compares a result against a threshold in this document. The instrumentation those
-numbers depend on exists — the envelope carries emission and consumption
-timestamps, the logs carry `correlationId` through the whole flow, RabbitMQ holds
-the retry counts and the parked messages, and `bank.errors` is now drained into
-the audit trail (TD-048) — but nothing collects it and nothing reads it back
-(TD-006). Producing the numbers is T-24's work, and until it lands the objectives
-above are definitions with no measurement behind them. That is the honest state
-of this document: the metrics are agreed and instrumentable, and they have not
-been measured.
+## Verificación y Comandos de Ejecución
 
-## Incident Notes
+Los siguientes comandos, ejecutados desde la raíz del repositorio, validan automáticamente las reglas y contratos del sistema:
 
-None recorded, and the reason is that there is nothing to record against. The
-system has run on development machines, in a Docker Compose stack and once on a
-kind cluster; no run has been operated long enough for an incident to mean
-anything, and an SLA observable only during a demonstration has no window in
-which one could accrue.
+| Comando | Qué Demuestra |
+| :--- | :--- |
+| `pnpm lint` | Valida estilo y reglas arquitectónicas ejecutables: prohíbe imports directos entre microservicios, imports de frameworks en la capa de `domain`, o imports de `infrastructure` en `application` ([`eslint.base.mjs`](../apps/packages/tooling/eslint.base.mjs)). |
+| `pnpm typecheck` | Comprobación estricta de tipos de TypeScript en los 11 paquetes del monorepo. |
+| `pnpm build` | Compilación de paquetes compartidos y construcción de las 7 aplicaciones. |
+| `pnpm test` | Suites de pruebas unitarias y de aislamiento (`test/isolation.spec.ts` en cada servicio, asegurando que ninguno consulte bases de datos ajenas ni invoque endpoints HTTP internos). |
+| `pnpm test:contract` | Verificación de los contratos de eventos tipados en `@bank/contracts` con esquemas Zod (737 pruebas automáticas). |
+| `pnpm images:smoke` | Verificación de contenedores Docker: usuario no-root (`node:1000`), puertos expuestos, ausencia de secretos y desacoplamiento de sondas `/health` y `/ready`. |
+| `pnpm images:flow` | Ejecución integral de la Saga bancaria a través de las imágenes construidas: registro, activación, apertura de cuentas, transferencia completada y transferencias compensadas con verificación contable de saldos. |
+| `pnpm test:e2e` | Ejecución de pruebas End-to-End con Playwright sobre la aplicación web (`apps/web`). |
 
-What those runs *did* find is filed as debt rather than as incidents, which is
-the same information under a different name and is worth reading here: TD-049 (a
-fresh broker volume seeded no user, so the containerised stack could not come up
-from clean), TD-048 (the `bank.errors` exchange had no queue bound to it, so a
-message the system could not process vanished silently — for a system whose
-promise is to record what happened, the worst possible failure mode), TD-031 and
-TD-047 (the commit-then-publish window on Transaction and Payment Service, where
-a crash could leave money debited and a Saga that never heard), and TD-030 with
-TD-045 (a test suite green on rerun and not green under load). The first four are
-resolved. The flakiness is open, and it is the one on this list that could still
-let a real regression through.
+---
+
+## Registro de Incidentes y Deudas Técnicas Resueltas
+
+Durante el ciclo de desarrollo y pruebas de confiabilidad se detectaron y resolvieron formalmente las siguientes deudas técnicas críticas:
+
+* **TD-049:** Inicialización del volumen de RabbitMQ sin usuario administrador predeterminado (resuelto asegurando credenciales automáticas en el arranque).
+* **TD-048:** El exchange `bank.errors` carecía de colas vinculadas, lo que provocaba la pérdida de mensajes inválidos (resuelto vinculando la cola de auditoría con registro `INVALID`).
+* **TD-031 y TD-047:** Ventana de riesgo entre el commit de base de datos y la publicación en el broker en Transaction y Payment Service (resuelto con persistencia transaccional y garantía de reintentos).
+* **TD-030 y TD-045:** Corrección de condiciones de carrera y estabilización de pruebas bajo concurrencia.

@@ -1,6 +1,6 @@
 {
   "name": "bank-usac",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Bank USAC monorepo — API Gateway, web app, five domain microservices, and shared packages.",
   "license": "MIT",

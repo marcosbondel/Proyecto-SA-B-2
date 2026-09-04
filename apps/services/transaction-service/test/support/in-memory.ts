@@ -119,8 +119,30 @@ export class InMemoryTransactionRepository implements TransactionRepository {
 
   public async findById(transactionId: string): Promise<Transaction | null> {
     const resolved = this.aliases.get(transactionId) ?? transactionId;
+    const direct = this.transactions.get(resolved);
+    if (direct !== undefined) {
+      return direct;
+    }
+    for (const transaction of this.transactions.values()) {
+      if (
+        transaction.idempotencyKey === transactionId ||
+        transaction.correlationId === transactionId
+      ) {
+        return transaction;
+      }
+    }
+    for (const event of this.events) {
+      if (
+        event.payload &&
+        typeof event.payload === 'object' &&
+        'paymentId' in event.payload &&
+        (event.payload as { paymentId: string }).paymentId === transactionId
+      ) {
+        return this.transactions.get(event.transactionId) ?? null;
+      }
+    }
 
-    return this.transactions.get(resolved) ?? null;
+    return null;
   }
 
   public async findByCorrelationId(correlationId: string): Promise<Transaction | null> {

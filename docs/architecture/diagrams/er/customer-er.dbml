@@ -18,6 +18,9 @@ Table customers {
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 
+  indexes {
+    email [unique, name: 'customers_email_lower_key', note: 'ON LOWER(email)']
+  }
   Note: 'Entidad principal de identidad y credenciales del cliente'
 }
 
@@ -32,6 +35,10 @@ Table identity_documents {
   validation_status varchar(20) [not null]
   created_at timestamptz [not null, default: `now()`]
 
+  indexes {
+    customer_id [name: 'identity_documents_customer_idx']
+    sha256 [unique, name: 'identity_documents_sha256_key']
+  }
   Note: 'Fotografía y documento de identificación para mesa de control'
 }
 
@@ -43,6 +50,9 @@ Table email_activation_tokens {
   used_at timestamptz
   created_at timestamptz [not null, default: `now()`]
 
+  indexes {
+    customer_id [name: 'email_activation_tokens_customer_idx']
+  }
   Note: 'Tokens hashed de activación de cuenta por correo electrónico'
 }
 
@@ -54,6 +64,9 @@ Table password_reset_tokens {
   used_at timestamptz
   created_at timestamptz [not null, default: `now()`]
 
+  indexes {
+    customer_id [name: 'password_reset_tokens_customer_idx', note: 'WHERE used_at IS NULL']
+  }
   Note: 'Tokens de recuperación de contraseña de vida corta'
 }
 

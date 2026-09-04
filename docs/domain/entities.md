@@ -79,6 +79,8 @@ the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may b
 | `balance` | Quetzales, exactly two decimals |
 | `status` | `ACTIVE` \| `INACTIVE` |
 | `accountType` | `MONETARIA` \| `AHORRO`. Classification only in Phase 1 (D-02) |
+| `billerCode` | Optional code for institutional biller collection accounts (EEGSA, Empagua, Claro) |
+| `billerName` | Optional commercial name of institutional biller |
 | `lastActivityAt` | Last confirmed money movement |
 
 ### Account type
@@ -133,9 +135,13 @@ case, a transfer failing at the last step for a reason the sender can neither kn
 
 | Attribute | Notes |
 | --- | --- |
+| `customerId` | Originator customer reference for access control and ownership |
 | `sourceAccount`, `targetAccount` | Opaque references |
 | `amount` | Greater than zero, two decimals |
 | `status` | See below |
+| `reference` | Optional transfer concept/note |
+| `paymentScenario` | Simulation scenario for payment gateway attempts |
+| `failureReason` | Stored reason when transfer fails or compensates |
 | `correlationId` | Originated by the Gateway, propagated through the whole flow |
 | `idempotencyKey` | Unique within this service |
 | `createdAt`, `updatedAt` | — |
@@ -226,7 +232,7 @@ deleted, not even by an `ADMINISTRADOR`.
 
 **Owner**: Notification & Audit Service
 
-Attributes: recipient, channel, type, `status` (`PENDING` \| `SENT` \| `FAILED`), attempts.
+Attributes: `notificationId`, `customerId` (for recipient inbox scoping), `recipient`, `subject`, `channel`, `type`, `status` (`PENDING` \| `SENT` \| `FAILED`), `readAt`, `causedBy`, `referenceId`, `correlationId`, attempts.
 
 ### Invariants
 
