@@ -1,6 +1,6 @@
 # Diagramas Entidad-Relación (ER) por Microservicio — Bank USAC
 
-Este directorio contiene los diagramas Entidad-Relación (ER) de cada una de las **cinco bases de datos independientes** del sistema bancario, garantizando el principio de arquitectura **Database-per-Service** ([ADR-005](../../adr/ADR-005-database-engine.md)).
+Este directorio contiene los diagramas Entidad-Relación (ER) de cada una de las **cinco bases de datos independientes** del sistema bancario, garantizando el principio de arquitectura **Database-per-Service** ([ADR-005](../../adr/ADR-005-persistence.md)).
 
 Cada microservicio cuenta con:
 1. **Código fuente DBML** (`.dbml`): Especificación declarativa en Database Markup Language.
