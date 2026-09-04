@@ -151,7 +151,7 @@ useHead({ title: 'Transferencias · bonking' });
       </template>
     </UCard>
 
-    <UCard>
+    <UCard v-if="isStaff">
       <template #header>
         <h2 class="text-[20px] font-semibold leading-7">Consultar una transferencia</h2>
       </template>

@@ -158,6 +158,8 @@ export const QUEUES: readonly QueueDescriptor[] = [
       { exchange: EXCHANGES.commands, pattern: 'notification.mark-read.v1' },
       // The dashboard's count of what the trail recorded today.
       { exchange: EXCHANGES.commands, pattern: 'audit.stats.query.v1' },
+      // The recent audit events query for administrators
+      { exchange: EXCHANGES.commands, pattern: 'audit.events.list.query.v1' },
     ],
   },
 ];

@@ -80,14 +80,12 @@ export const ACCOUNT_TYPE_PRESENTATION: Readonly<
   MONETARIA: {
     label: 'Monetaria',
     mark: 'MO',
-    description:
-      'Uso diario, transferencias y pagos. Aplica desactivación automática tras 6 meses inactiva con saldo menor a Q 50.00.',
+    description: 'Uso diario, transferencias y pagos sin límite de movimientos.',
   },
   AHORRO: {
     label: 'Ahorro',
     mark: 'AH',
-    description:
-      'Para guardar dinero. Como toda cuenta, aplica desactivación automática tras 6 meses inactiva con saldo menor a Q 50.00.',
+    description: 'Para guardar dinero y acumular fondos.',
   },
 };
 

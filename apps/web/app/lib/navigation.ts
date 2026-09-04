@@ -124,7 +124,12 @@ export function modulesFor(role: Role | null): readonly ModuleEntry[] {
     return [];
   }
 
-  return MODULES.filter((module) => module.roles.includes(role));
+  return MODULES.filter((module) => module.roles.includes(role)).map((module) => {
+    if (role === 'ADMINISTRADOR' && module.to === '/clientes') {
+      return { ...module, label: 'Usuarios' };
+    }
+    return module;
+  });
 }
 
 /**

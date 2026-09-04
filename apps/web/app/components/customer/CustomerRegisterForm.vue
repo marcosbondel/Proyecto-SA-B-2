@@ -100,6 +100,35 @@ const roleOptions = (['CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR'] as const).m
   label: labelForRole(value),
 }));
 
+const registeredTitle = computed(() => {
+  if (props.mode === 'self') return 'Solicitud de registro recibida';
+  if (role.value === 'CAJERO_RECEPTOR') return 'Agente cajero registrado';
+  if (role.value === 'ADMINISTRADOR') return 'Administrador registrado';
+  return 'Cliente registrado';
+});
+
+const registeredDescription = computed(() => {
+  if (role.value === 'CAJERO_RECEPTOR') {
+    return 'El agente cajero fue registrado y validado exitosamente. Se envió el enlace de activación a';
+  }
+  if (role.value === 'ADMINISTRADOR') {
+    return 'El administrador fue registrado y validado exitosamente. Se envió el enlace de activación a';
+  }
+  return 'El cliente fue registrado y validado exitosamente. Se envió el enlace de activación a';
+});
+
+const customerIdLabel = computed(() => {
+  if (role.value === 'CAJERO_RECEPTOR') return 'Número de agente cajero';
+  if (role.value === 'ADMINISTRADOR') return 'Número de administrador';
+  return 'Número de cliente';
+});
+
+const viewCustomerButtonLabel = computed(() => {
+  if (role.value === 'CAJERO_RECEPTOR') return 'Ver el agente cajero';
+  if (role.value === 'ADMINISTRADOR') return 'Ver el administrador';
+  return 'Ver el cliente';
+});
+
 const summary = computed(() => [
   { key: 'Nombre completo', value: fields.fullName },
   { key: 'Fecha de nacimiento', value: fields.dateOfBirth },
@@ -234,11 +263,11 @@ function startOver(): void {
 
       <div>
         <h2 class="text-[22px] font-bold leading-[30px]">
-          {{ props.mode === 'staff' ? 'Cliente registrado' : 'Solicitud de registro recibida' }}
+          {{ registeredTitle }}
         </h2>
 
         <p v-if="props.mode === 'staff'" class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
-          El cliente fue registrado y validado exitosamente. Se envió el enlace de activación a
+          {{ registeredDescription }}
           <strong class="text-[#23242A]">{{ fields.email }}</strong>.
         </p>
         <p v-else class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
@@ -260,7 +289,7 @@ function startOver(): void {
         <SharedCorrelationIdBadge
           v-if="acceptedCommand?.customerId"
           :correlation-id="acceptedCommand.customerId"
-          label="Número de cliente"
+          :label="customerIdLabel"
         />
         <SharedCorrelationIdBadge :correlation-id="username" label="Usuario" />
         <SharedCorrelationIdBadge
@@ -282,7 +311,7 @@ function startOver(): void {
           variant="outline"
           color="neutral"
           :to="`/clientes/${acceptedCommand.customerId}`"
-        >Ver el cliente</UButton>
+        >{{ viewCustomerButtonLabel }}</UButton>
         <UButton v-if="props.mode === 'staff'" color="primary" @click="startOver">
           Registrar otro
         </UButton>
