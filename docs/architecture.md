@@ -153,7 +153,7 @@ Bank USAC se implementa como una **Arquitectura de Microservicios Asíncrona Ori
 * **Persistencia:** PostgreSQL dedicado (`notification_audit_db` en puerto 5437).
 
 #### Message Broker (RabbitMQ 4.x)
-* **Responsabilidad:** Desacopla la comunicación mediante 4 exchanges: `bank.commands` (direct), `bank.events` (topic), `bank.queries` (direct) y `bank.errors` (fanout / DLQ).
+* **Responsabilidad:** Desacopla la comunicación mediante 4 exchanges configurados como tipo `topic` y durables: `bank.commands` (comandos y solicitudes de consulta emitidos al bus), `bank.events` (eventos de dominio y notificaciones de cambio de estado), `bank.replies` (respuestas de consulta correlacionadas hacia el API Gateway) y `bank.errors` (mensajes rechazados o inválidos en Dead Letter Exchanges).
 
 #### Almacenamiento de Objetos (MinIO S3-Compatible)
 * **Responsabilidad:** Almacena de forma binaria las fotografías de documentos DPI con acceso seguro por referencias y verificación de hashes SHA-256.
