@@ -123,10 +123,20 @@ export class RegisterCustomerUseCase {
                 },
           );
 
+    const registeredByStaff =
+      identity !== null &&
+      (identity.role === 'CAJERO_RECEPTOR' || identity.role === 'ADMINISTRADOR');
+
     // An uploaded document that passes basic structure remains PENDING until a
     // teller or administrator manually reviews and approves it in the validation queue.
+    // However, if the registration is performed directly by a teller or administrator
+    // at the counter, the identity is physically verified at creation.
     const identityStatus: IdentityStatus =
-      verdict !== null && verdict.outcome === 'REJECTED' ? 'REJECTED' : 'PENDING';
+      verdict !== null && verdict.outcome === 'REJECTED'
+        ? 'REJECTED'
+        : registeredByStaff
+          ? 'VALIDATED'
+          : 'PENDING';
 
     const activation = this.#tokens.issue();
     const expiresAt = new Date(now.getTime() + ACTIVATION_TTL_MS).toISOString();
@@ -191,24 +201,34 @@ export class RegisterCustomerUseCase {
       },
     });
 
-    /**
-     * The activation email is triggered by an event, not by an SMTP call. This
-     * service owns customers; delivering mail is Notification & Audit's job,
-     * and the clear token travels in this one message and nowhere else.
-     */
-    await this.#publisher.publish({
-      messageType: customerActivationRequestedV1.name,
-      payload: {
-        customerId: customer.customerId,
-        email: customer.email,
-        expiresAt,
-        // The clear value travels here and nowhere else; the database holds
-        // only its digest.
-        activationToken: activation.token,
-      },
-    });
+    if (registeredByStaff) {
+      /**
+       * In-person registration at the counter by bank staff:
+       * Identity is physically verified, so the activation email is sent immediately.
+       */
+      await this.#publisher.publish({
+        messageType: customerActivationRequestedV1.name,
+        payload: {
+          customerId: customer.customerId,
+          email: customer.email,
+          expiresAt,
+          // The clear value travels here and nowhere else; the database holds
+          // only its digest.
+          activationToken: activation.token,
+        },
+      });
 
-    if (verdict !== null && verdict.outcome === 'REJECTED') {
+      if (identityStatus === 'VALIDATED') {
+        await this.#publisher.publish({
+          messageType: customerIdentityValidatedV1.name,
+          payload: {
+            customerId: customer.customerId,
+            identityStatus: 'VALIDATED',
+            validatedAt: now.toISOString(),
+          },
+        });
+      }
+    } else if (verdict !== null && verdict.outcome === 'REJECTED') {
       await this.#publishVerdict(customer.customerId, verdict, now);
     }
   }

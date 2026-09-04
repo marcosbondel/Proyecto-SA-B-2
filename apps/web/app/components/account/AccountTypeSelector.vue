@@ -53,5 +53,9 @@ const TYPES = Object.entries(ACCOUNT_TYPE_PRESENTATION) as [
         </span>
       </button>
     </div>
+
+    <p class="mt-1 text-[12px] leading-[18px] text-[#5A5B63]">
+      Toda cuenta bancaria (Monetaria o Ahorro) se desactiva automáticamente si permanece inactiva por 6 meses con saldo menor a Q 50.00.
+    </p>
   </fieldset>
 </template>

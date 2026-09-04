@@ -158,6 +158,8 @@ export const QUEUES: readonly QueueDescriptor[] = [
       { exchange: EXCHANGES.commands, pattern: 'notification.mark-read.v1' },
       // The dashboard's count of what the trail recorded today.
       { exchange: EXCHANGES.commands, pattern: 'audit.stats.query.v1' },
+      // The recent audit events query for administrators
+      { exchange: EXCHANGES.commands, pattern: 'audit.events.list.query.v1' },
     ],
   },
 ];
@@ -199,6 +201,11 @@ export const GATEWAY_REPLY_BINDINGS: readonly {
   // again: a command, two events, and somebody watching a spinner.
   { exchange: EXCHANGES.events, pattern: 'customer.password-changed.v1' },
   { exchange: EXCHANGES.events, pattern: 'customer.password-change.rejected.v1' },
+  /*
+   * The verdict of registration: immediate confirmation or business rejection (duplicate DPI/email).
+   */
+  { exchange: EXCHANGES.events, pattern: 'customer.registered.v1' },
+  { exchange: EXCHANGES.events, pattern: 'customer.register.rejected.v1' },
   /*
    * And of a deposit at a window. A teller is standing in front of somebody
    * who just handed over cash; "202, check the audit trail" is not an answer

@@ -121,6 +121,15 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     return await Promise.resolve({ customers: pending.slice(0, limit), total: pending.length });
   }
 
+  public async listCustomers(limit: number): Promise<{
+    readonly customers: readonly Customer[];
+    readonly total: number;
+  }> {
+    const all = [...this.customers.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    return await Promise.resolve({ customers: all.slice(0, limit), total: all.length });
+  }
+
   public async findByEmail(
     email: string,
   ): Promise<{ readonly customer: Customer; readonly credentialHash: string } | null> {
@@ -166,7 +175,17 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     readonly document: Omit<StoredIdentityDocument, 'documentId' | 'customerId'> | null;
     readonly idempotency: ProcessedMessage;
   }): Promise<void> {
-    this.customers.set(input.customer.customerId, input.customer);
+    if (input.customer.identityStatus === 'REJECTED') {
+      const freed = {
+        ...input.customer,
+        email: `${input.customer.email}#rejected#${input.customer.customerId}`,
+        identityDocument: `${input.customer.identityDocument}#rejected#${input.customer.customerId}`,
+        username: `${input.customer.username}#rejected#${input.customer.customerId}`,
+      };
+      this.customers.set(input.customer.customerId, freed);
+    } else {
+      this.customers.set(input.customer.customerId, input.customer);
+    }
 
     if (input.document !== null) {
       this.documents.push({

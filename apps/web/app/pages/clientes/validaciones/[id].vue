@@ -104,10 +104,22 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
 
   if (result.ok) {
     sent.value = verdict;
+    if (record.value) {
+      record.value = { ...record.value, identityStatus: verdict };
+    }
   } else {
     loadError.value = result.error.message;
   }
 }
+
+const currentStatus = computed<IdentityStatus>(() => {
+  return sent.value ?? record.value?.identityStatus ?? 'PENDING';
+});
+
+const isPending = computed(() => currentStatus.value === 'PENDING');
+
+const cleanDocNumber = computed(() => record.value?.identityDocument?.split('#rejected#')[0] ?? '');
+const cleanUsername = computed(() => record.value?.username?.split('#rejected#')[0] ?? '');
 </script>
 
 <template>
@@ -119,7 +131,7 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
           Compara la foto del documento con los datos declarados.
         </p>
       </div>
-      <UButton to="/clientes/validaciones" variant="ghost" color="neutral">Volver a la cola</UButton>
+      <UButton to="/clientes/validaciones" variant="ghost" color="neutral">Volver a validaciones</UButton>
     </header>
 
     <UAlert
@@ -127,7 +139,7 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
       color="success"
       variant="subtle"
       :title="sent === 'VALIDATED' ? 'Identidad aprobada' : 'Identidad rechazada'"
-      description="El veredicto se envió. El cliente saldrá de la cola cuando se procese."
+      description="El veredicto de validación ha sido procesado exitosamente."
       data-testid="verdict-sent"
     />
     <UAlert
@@ -183,7 +195,7 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
             </div>
             <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
               <span class="text-[13px] text-[#75767F]">Número de documento</span>
-              <span class="text-[13px] font-medium">{{ record.identityDocument }}</span>
+              <span class="text-[13px] font-medium">{{ cleanDocNumber }}</span>
             </div>
             <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
               <span class="text-[13px] text-[#75767F]">Fecha de nacimiento</span>
@@ -195,26 +207,29 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
             </div>
             <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
               <span class="text-[13px] text-[#75767F]">Usuario</span>
-              <span class="text-[13px] font-medium">{{ record.username }}</span>
+              <span class="text-[13px] font-medium">{{ cleanUsername }}</span>
             </div>
-            <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+            <div class="flex justify-between items-center gap-4 border-t border-[#E9E9EC] py-3">
               <span class="text-[13px] text-[#75767F]">Estado de identidad</span>
-              <span class="text-[13px] font-medium">
-                {{ IDENTITY_PRESENTATION[record.identityStatus].label }}
-              </span>
+              <UBadge
+                :color="currentStatus === 'VALIDATED' ? 'success' : currentStatus === 'REJECTED' ? 'error' : 'warning'"
+                variant="subtle"
+              >
+                {{ IDENTITY_PRESENTATION[currentStatus].label }}
+              </UBadge>
             </div>
           </div>
           <p v-else class="mt-4 text-[13px] text-[#75767F]">Cargando la ficha…</p>
         </UCard>
 
         <ClientOnly>
-          <div class="flex gap-2">
+          <div v-if="isPending" class="flex gap-2">
             <UButton
               color="primary"
               size="lg"
               class="flex-1 justify-center"
               :loading="sending"
-              :disabled="!mayReview || sent !== null"
+              :disabled="!mayReview"
               @click="decide('VALIDATED')"
             >
               Aprobar identidad
@@ -223,9 +238,31 @@ async function decide(verdict: 'VALIDATED' | 'REJECTED'): Promise<void> {
               variant="outline"
               color="error"
               size="lg"
-              :disabled="!mayReview || sent !== null"
+              :disabled="!mayReview"
               @click="rejectOpen = true"
             >Rechazar</UButton>
+          </div>
+          <div v-else class="flex flex-col gap-3 rounded-2xl border border-[#DCDCE0] bg-[#F9FAFB] p-5 text-center">
+            <div class="flex items-center justify-center gap-2">
+              <UIcon
+                :name="currentStatus === 'VALIDATED' ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
+                :class="currentStatus === 'VALIDATED' ? 'text-emerald-600' : 'text-rose-600'"
+                class="h-5 w-5"
+              />
+              <span class="text-[15px] font-semibold text-[#23242A]">
+                {{ currentStatus === 'VALIDATED' ? 'Identidad verificada' : 'Identidad rechazada' }}
+              </span>
+            </div>
+            <p class="text-[13px] leading-5 text-[#5A5B63]">
+              {{
+                currentStatus === 'VALIDATED'
+                  ? 'El documento fue aprobado y se emitió el correo de activación para el cliente.'
+                  : 'El documento fue rechazado. Se notificó al usuario por correo y se liberaron sus datos para permitir un nuevo registro limpio.'
+              }}
+            </p>
+            <UButton to="/clientes/validaciones" variant="outline" color="neutral" class="mt-1 justify-center">
+              Volver a la cola de validaciones
+            </UButton>
           </div>
         </ClientOnly>
       </div>

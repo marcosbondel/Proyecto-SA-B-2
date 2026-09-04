@@ -289,6 +289,28 @@ export class PostgresAuditRepository implements AuditRepository {
     return result.rows.map(auditEventFrom);
   }
 
+  public async listRecentEvents(input: {
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<{ readonly events: readonly AuditEvent[]; readonly total: number }> {
+    const [eventsResult, countResult] = await Promise.all([
+      this.#pool.query<AuditRow>(
+        `SELECT event_id, message_type, message_version, producer, occurred_at, received_at,
+                correlation_id, causation_id, payload, processing_status, consumer
+           FROM audit_events
+          ORDER BY occurred_at DESC, event_id DESC
+          LIMIT $1 OFFSET $2`,
+        [input.limit, input.offset],
+      ),
+      this.#pool.query<{ total: string }>(`SELECT COUNT(*)::TEXT AS total FROM audit_events`),
+    ]);
+
+    return {
+      events: eventsResult.rows.map(auditEventFrom),
+      total: Number(countResult.rows[0]?.total ?? '0'),
+    };
+  }
+
   public async notificationsFor(correlationId: string): Promise<readonly Notification[]> {
     const result = await this.#pool.query<NotificationRow>(
       `SELECT ${NOTIFICATION_COLUMNS}

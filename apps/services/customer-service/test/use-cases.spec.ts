@@ -79,7 +79,7 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
     update: new UpdateCustomerUseCase({ repository, publisher, clock }),
     getCustomer: new GetCustomerUseCase({ repository, publisher }),
     getIdentityDocument: new GetIdentityDocumentUseCase({ repository, publisher, stager }),
-    setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock }),
+    setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
     pending: new GetPendingValidationUseCase({ repository, publisher }),
     authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
     verifyEmail: new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
@@ -95,10 +95,7 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
 
     expect(context.repository.customers.size).toBe(1);
     expect(context.repository.documents).toHaveLength(1);
-    expect(context.publisher.typesPublished()).toEqual([
-      'customer.registered.v1',
-      'customer.activation.requested.v1',
-    ]);
+    expect(context.publisher.typesPublished()).toEqual(['customer.registered.v1']);
   });
 
   it('generates the username from the name and publishes it', async () => {
@@ -111,17 +108,22 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
     });
   });
 
-  it('sends the activation email with a live token, and no account can sign in yet', async () => {
+  it('sends the activation email when teller validates identity, and no account can sign in yet', async () => {
     const context = build();
 
     await context.register.execute(REGISTER, 'key-1');
-
-    const activation = context.publisher.payloadOf('customer.activation.requested.v1');
-
-    expect(activation).toMatchObject({ email: REGISTER.email, activationToken: 'token-1' });
     expect(context.repository.customers.get(REGISTER.customerId)!.status).toBe(
       'PENDING_ACTIVATION',
     );
+
+    await context.setVerdict.execute(
+      { customerId: REGISTER.customerId, verdict: 'VALIDATED' },
+      { customerId: 'staff-1', role: 'CAJERO_RECEPTOR' },
+      'verdict-key-1',
+    );
+
+    const activation = context.publisher.payloadOf('customer.activation.requested.v1');
+    expect(activation).toMatchObject({ email: REGISTER.email, activationToken: 'token-2' });
   });
 
   it('does nothing at all the second time the same command arrives (criterion 2)', async () => {
@@ -131,7 +133,7 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
     await context.register.execute(REGISTER, 'key-1');
 
     expect(context.repository.customers.size).toBe(1);
-    expect(context.publisher.published).toHaveLength(2);
+    expect(context.publisher.published).toHaveLength(1);
   });
 
   it('refuses a duplicated document with a safe reason and no success event', async () => {
@@ -715,7 +717,7 @@ describe('signing in (criterion 11)', () => {
       context.publisher.published.filter(
         (message) => message.messageType === 'customer.activation.requested.v1',
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   it('re-sends the reply on a broker redelivery, but does not invalidate the token it just issued', async () => {
@@ -723,8 +725,7 @@ describe('signing in (criterion 11)', () => {
     await context.register.execute(REGISTER, 'key-1');
 
     // The first delivery of the authenticate command legitimately re-issues a
-    // link, exactly as the "re-sends the activation email" test above shows —
-    // registration's own link, plus this one.
+    // link, exactly as the "re-sends the activation email" test above shows.
     await context.authenticate.execute(
       { email: REGISTER.email, credential: REGISTER.credential },
       'login-1',
@@ -733,7 +734,7 @@ describe('signing in (criterion 11)', () => {
     const afterFirstDelivery = context.publisher.published.filter(
       (message) => message.messageType === 'customer.activation.requested.v1',
     );
-    expect(afterFirstDelivery).toHaveLength(2);
+    expect(afterFirstDelivery).toHaveLength(1);
 
     // A broker redelivery of that *same* command — same idempotencyKey,
     // exactly as the broker replays the identical envelope.
@@ -767,12 +768,12 @@ describe('signing in (criterion 11)', () => {
       'login-2',
     );
 
-    // Registration's link, plus one per distinct login attempt.
+    // One per distinct login attempt.
     expect(
       context.publisher.published.filter(
         (message) => message.messageType === 'customer.activation.requested.v1',
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
   });
 });
 

@@ -18,7 +18,7 @@
  * exactly this case and leaves the navigation matrix — and its parity with the
  * Gateway — untouched.
  */
-const { session, role } = useSession();
+const { role } = useSession();
 
 const customerId = ref('');
 
@@ -36,43 +36,89 @@ async function open(): Promise<void> {
   }
 }
 
-useHead({ title: 'Clientes · bonking' });
+interface CustomerSummary {
+  customerId: string;
+  fullName: string;
+  email: string;
+  username: string;
+  documentNumber: string;
+  identityStatus: 'PENDING' | 'VALIDATED' | 'REJECTED';
+  role: string;
+  status: string;
+  registeredAt: string;
+}
+
+const api = useGatewayApi();
+const customers = ref<CustomerSummary[]>([]);
+const loading = ref(false);
+const error = ref<string | null>(null);
+
+async function loadCustomers(): Promise<void> {
+  if (!isStaff.value) return;
+  loading.value = true;
+  error.value = null;
+  const result = await api.call<{ customers: CustomerSummary[]; omitted: number }>('/api/customers?limit=50');
+  loading.value = false;
+  if (result.ok) {
+    customers.value = result.data.customers;
+  } else {
+    error.value = result.error.message;
+  }
+}
+
+const copiedId = ref<string | null>(null);
+
+async function copyId(id: string): Promise<void> {
+  await navigator.clipboard.writeText(id);
+  copiedId.value = id;
+  setTimeout(() => {
+    copiedId.value = null;
+  }, 1500);
+}
+
+onMounted(() => {
+  loadCustomers();
+});
+
+if (role.value === 'CLIENTE') {
+  await navigateTo('/perfil');
+}
+
+const isAdmin = computed(() => role.value === 'ADMINISTRADOR');
+
+useHead({ title: isAdmin.value ? 'Usuarios · bonking' : 'Clientes · bonking' });
 </script>
 
 <template>
   <section class="flex flex-col gap-6">
     <header>
-      <h1 class="text-[32px] font-bold leading-10 tracking-tight">Clientes</h1>
+      <h1 class="text-[32px] font-bold leading-10 tracking-tight">
+        {{ isAdmin ? 'Usuarios' : 'Clientes' }}
+      </h1>
       <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
         {{
-          isStaff
-            ? 'Registro con foto del documento, actualización de datos y revisión de identidad.'
-            : 'Tus datos personales y el estado de la revisión de tu documento.'
+          isAdmin
+            ? 'Directorio de usuarios del sistema: registro con foto, actualización de datos y roles.'
+            : 'Registro con foto del documento, actualización de datos y revisión de identidad.'
         }}
       </p>
     </header>
 
     <div class="grid gap-4 sm:grid-cols-2">
       <UCard v-if="isStaff">
-        <h2 class="text-[16px] font-semibold">Registrar un cliente</h2>
+        <h2 class="text-[16px] font-semibold">
+          {{ isAdmin ? 'Registrar un usuario' : 'Registrar un cliente' }}
+        </h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Alta en tres pasos con la foto del DPI. El registro dispara el correo de activación:
-          la cuenta no puede iniciar sesión hasta que se abra ese enlace.
+          {{
+            isAdmin
+              ? 'Alta de nuevo usuario (cliente, cajero o administrador) con foto del DPI y correo de activación.'
+              : 'Alta en tres pasos con la foto del DPI. El registro dispara el correo de activación: la cuenta no puede iniciar sesión hasta que se abra ese enlace.'
+          }}
         </p>
         <template #footer>
-          <UButton to="/clientes/nuevo" color="primary">Nuevo cliente</UButton>
-        </template>
-      </UCard>
-
-      <UCard v-if="session">
-        <h2 class="text-[16px] font-semibold">Mis datos</h2>
-        <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Actualiza tu nombre, tu dirección o tu fecha de nacimiento. El correo y el usuario no
-          se modifican.
-        </p>
-        <template #footer>
-          <UButton :to="`/clientes/${session.customerId}`" variant="outline" color="neutral">
-            Abrir mi ficha
+          <UButton to="/clientes/nuevo" color="primary">
+            {{ isAdmin ? 'Nuevo usuario' : 'Nuevo cliente' }}
           </UButton>
         </template>
       </UCard>
@@ -80,7 +126,11 @@ useHead({ title: 'Clientes · bonking' });
       <UCard v-if="isStaff">
         <h2 class="text-[16px] font-semibold">Validación de identidad</h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Clientes registrados que esperan revisión de su documento.
+          {{
+            isAdmin
+              ? 'Usuarios registrados que esperan revisión de su documento de identidad.'
+              : 'Clientes registrados que esperan revisión de su documento.'
+          }}
         </p>
         <template #footer>
           <UButton to="/clientes/validaciones" variant="outline" color="neutral">
@@ -90,15 +140,20 @@ useHead({ title: 'Clientes · bonking' });
       </UCard>
 
       <UCard v-if="isStaff">
-        <h2 class="text-[16px] font-semibold">Abrir la ficha de un cliente</h2>
+        <h2 class="text-[16px] font-semibold">
+          {{ isAdmin ? 'Abrir la ficha de un usuario' : 'Abrir la ficha de un cliente' }}
+        </h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Con el número de cliente que devolvió su registro. Todavía no hay búsqueda por nombre,
-          así que hay que pedírselo o tomarlo de la cola de validación.
+          {{
+            isAdmin
+              ? 'Ingresa el identificador único (UUID) para consultar o gestionar su expediente en el sistema.'
+              : 'Ingresa el identificador único del cliente (UUID) para consultar o gestionar su expediente bancario.'
+          }}
         </p>
         <form class="mt-3 flex gap-2" @submit.prevent="open">
           <UInput
             v-model="customerId"
-            placeholder="Pega aquí el número de cliente"
+            :placeholder="isAdmin ? 'Pega aquí el número de usuario' : 'Pega aquí el número de cliente'"
             class="flex-1"
             style="font-variant-numeric: tabular-nums lining-nums"
           />
@@ -108,5 +163,115 @@ useHead({ title: 'Clientes · bonking' });
         </form>
       </UCard>
     </div>
+
+    <UCard v-if="isStaff" class="mt-2">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-[18px] font-bold text-[#23242A]">
+              {{ isAdmin ? 'Usuarios registrados' : 'Clientes registrados' }}
+            </h2>
+            <p class="text-[13px] text-[#5A5B63]">
+              {{
+                isAdmin
+                  ? 'Directorio bancario de usuarios del sistema para consulta y gestión administrativa.'
+                  : 'Directorio bancario de expedientes para consulta y operaciones de ventanilla.'
+              }}
+            </p>
+          </div>
+          <UButton
+            icon="i-lucide-refresh-cw"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            :loading="loading"
+            @click="loadCustomers"
+          >
+            Actualizar
+          </UButton>
+        </div>
+      </template>
+
+      <div v-if="loading && customers.length === 0" class="py-8 text-center text-[#5A5B63]">
+        {{ isAdmin ? 'Cargando listado de usuarios…' : 'Cargando listado de clientes…' }}
+      </div>
+      <div v-else-if="customers.length === 0" class="py-8 text-center text-[#75767F]">
+        {{ isAdmin ? 'No hay usuarios registrados en el sistema.' : 'No hay clientes registrados en el sistema.' }}
+      </div>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-left text-[13px]">
+          <thead class="border-b border-[#E9E9EC] text-[#75767F]">
+            <tr>
+              <th class="pb-2 font-medium">{{ isAdmin ? 'Usuario / Nombre' : 'Cliente / Nombre' }}</th>
+              <th class="pb-2 font-medium">{{ isAdmin ? 'No. Usuario (UUID)' : 'No. Cliente (UUID)' }}</th>
+              <th class="pb-2 font-medium">Correo electrónico</th>
+              <th class="pb-2 font-medium">Rol</th>
+              <th class="pb-2 font-medium">Identidad</th>
+              <th class="pb-2 text-right font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#E9E9EC]">
+            <tr v-for="c in customers" :key="c.customerId" class="hover:bg-neutral-50">
+              <td class="py-3 font-medium text-[#23242A]">
+                {{ c.fullName }}
+                <span class="block text-[11px] text-[#75767F]">@{{ c.username }}</span>
+              </td>
+              <td class="py-3">
+                <div class="flex items-center gap-1.5">
+                  <span
+                    class="font-mono text-[11px] text-[#5A5B63] select-all"
+                    style="font-variant-numeric: tabular-nums lining-nums"
+                  >{{ c.customerId }}</span>
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :icon="copiedId === c.customerId ? 'i-lucide-check' : 'i-lucide-copy'"
+                    :title="copiedId === c.customerId ? 'Copiado' : 'Copiar UUID'"
+                    @click="copyId(c.customerId)"
+                  />
+                </div>
+              </td>
+              <td class="py-3 text-[#5A5B63]">{{ c.email }}</td>
+              <td class="py-3">
+                <UBadge variant="subtle" color="neutral" size="sm">{{ c.role }}</UBadge>
+              </td>
+              <td class="py-3">
+                <UBadge
+                  :color="c.identityStatus === 'VALIDATED' ? 'success' : c.identityStatus === 'REJECTED' ? 'error' : 'warning'"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ c.identityStatus === 'VALIDATED' ? 'Verificada' : c.identityStatus === 'REJECTED' ? 'Rechazada' : 'Pendiente' }}
+                </UBadge>
+              </td>
+              <td class="py-3 text-right">
+                <div class="flex flex-col items-end gap-1">
+                  <UButton
+                    :to="`/clientes/${c.customerId}`"
+                    variant="outline"
+                    color="neutral"
+                    size="xs"
+                    class="w-[95px] justify-center text-center"
+                  >
+                    <span class="w-full text-center">Ficha</span>
+                  </UButton>
+                  <UButton
+                    v-if="c.role === 'CLIENTE'"
+                    :to="`/cuentas/nueva?customerId=${c.customerId}`"
+                    variant="outline"
+                    color="primary"
+                    size="xs"
+                    class="w-[95px] justify-center text-center leading-tight"
+                  >
+                    <span class="w-full text-center">Abrir cuenta</span>
+                  </UButton>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </UCard>
   </section>
 </template>

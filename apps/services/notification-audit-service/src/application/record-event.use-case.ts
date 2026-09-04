@@ -58,6 +58,7 @@ export class RecordEventUseCase {
     readonly event: InboundRecord;
     /** Whoever the flow is acting for, for the simulated address. */
     readonly customerId: string | null;
+    readonly role?: string | null;
   }): Promise<RecordOutcome> {
     const now = this.#clock.now();
 
@@ -84,17 +85,11 @@ export class RecordEventUseCase {
             notificationId: this.#ids.next(),
             intent,
             /**
-             * The envelope's identity first, and the payload's subject when it
-             * is absent. Public registration is the one flow with no session,
-             * and it is the one that most needs to be told anything — see
-             * `subjectCustomerIdFrom`.
+             * The payload's customer first (the actual beneficiary or affected client),
+             * falling back to the session customer when the role is a client.
+             * Staff (tellers and admins) never receive personal client notifications.
              */
             recipient: simulatedRecipientFor(subjectOf(input)),
-            /**
-             * The same subject, written down rather than only derived into an
-             * address. This is the column that makes `N-01` possible: without
-             * it a notification is a row nobody can claim (TD-041).
-             */
             customerId: subjectOf(input),
           };
 
@@ -136,21 +131,27 @@ export class RecordEventUseCase {
 }
 
 /**
- * Whom a notification is about: the envelope's identity, or the payload's
- * subject when there is none.
+ * Whom a notification is about:
  *
- * Public registration is the one flow with no session and the one that most
- * needs to be told anything — see `subjectCustomerIdFrom`. Pulled out of the
- * expression it used to be written inline in, because it is now read twice: once
- * to derive the simulated address, once to write the column that makes the row
- * claimable.
+ * 1. The payload's customerId first (the subject of the event, e.g. registered customer,
+ *    account holder, transfer originator).
+ * 2. If absent from payload, use the envelope's identity ONLY IF the actor is a CLIENTE.
+ *    Staff actions (teller or admin operating the terminal) do NOT receive client notifications.
  */
 function subjectOf(input: {
   readonly customerId: string | null;
+  readonly role?: string | null;
   readonly event: { readonly messageType: string; readonly payload: unknown };
 }): string | null {
-  return (
-    input.customerId ?? subjectCustomerIdFrom(input.event.messageType, input.event.payload)
-  );
+  const fromPayload = subjectCustomerIdFrom(input.event.messageType, input.event.payload);
+  if (fromPayload !== null) {
+    return fromPayload;
+  }
+
+  if (input.role && input.role !== 'CLIENTE') {
+    return null;
+  }
+
+  return input.customerId;
 }
 

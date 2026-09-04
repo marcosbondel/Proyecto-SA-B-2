@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { MAX_PHOTO_BYTES } from '@bank/contracts';
+import type { Identity } from '@bank/contracts';
 import type { Response } from 'express';
 
 import { ChangePasswordUseCase } from '../application/routes/change-password.use-case';
@@ -184,6 +185,7 @@ export class CustomersController {
       ...(photo === undefined ? {} : { photo: { bytes: photo.buffer, mimetype: photo.mimetype } }),
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,
+      actor: this.#optionalActor(request),
     });
   }
 
@@ -219,6 +221,24 @@ export class CustomersController {
       actor: actorOf(request),
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,
+    });
+  }
+
+  /**
+   * The list of registered customers for staff. Declared before :customerId.
+   */
+  @ApiOperation({ summary: 'Lista de clientes registrados' })
+  @ApiBearerAuth('session')
+  @Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')
+  @Get()
+  public async list(
+    @Query('limit') limitRaw: string | undefined,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    const limit = limitRaw ? Math.min(100, Math.max(1, Number(limitRaw) || 50)) : 50;
+    return await this.#queries.customerList(limit, {
+      actor: actorOf(request),
+      correlationId: request.correlationId,
     });
   }
 
@@ -370,6 +390,19 @@ export class CustomersController {
       throw GatewayError.forbidden(
         'Solo un administrador puede asignar un rol distinto de CLIENTE.',
       );
+    }
+  }
+
+  #optionalActor(request: GatewayRequest): Identity | null {
+    const token = bearerTokenOf(request);
+    if (token === undefined) {
+      return null;
+    }
+    try {
+      const verified = this.#sessions.verify(token);
+      return { customerId: verified.customerId, role: verified.role };
+    } catch {
+      return null;
     }
   }
 }

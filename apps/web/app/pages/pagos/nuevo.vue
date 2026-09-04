@@ -3,7 +3,7 @@ import type { AccountSummary } from '../../lib/account';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { LoadState } from '../../lib/gateway-error';
 import { formatQuetzales, MIN_AMOUNT_MINOR } from '../../lib/money';
-import type { Biller, PaymentKind } from '../../lib/payment';
+import type { Biller } from '../../lib/payment';
 
 /**
  * `G-01` — "Nuevo pago", and the screen that made this module a product rather
@@ -28,20 +28,19 @@ import type { Biller, PaymentKind } from '../../lib/payment';
 const api = useGatewayApi();
 
 /**
- * `null` is "nothing chosen yet", and it cannot be `''`.
- *
- * A `USelect` item whose value is the empty string never opens: Reka reserves
- * the empty string for "no selection" and refuses it as an item value. The
- * failure is silent — the trigger flips `aria-expanded` to `true`, the list
- * never mounts, and nothing is logged where a form would show it. Both selects
- * on this screen had it, so **this form has never been usable in a browser**:
- * neither the account nor the biller could be picked. Found by opening it
- * (TD-054); `PaymentScenarioSelect` had the right shape all along.
+ * Format holder name to show first name and primary surname.
  */
-const kind = ref<PaymentKind>('EXTERNAL');
-const sourceAccount = ref<string | null>(null);
-const billerCode = ref<string | null>(null);
-const internalTarget = ref<string | null>(null);
+function formatDisplayName(name?: string): string {
+  if (!name || name.trim().length === 0) return '';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0]!;
+  const first = parts[0]!;
+  const surname = parts.length >= 3 ? parts[2]! : parts[1]!;
+  return `${first} ${surname}`;
+}
+
+const sourceAccount = ref<string | undefined>(undefined);
+const billerCode = ref<string | undefined>(undefined);
 const amountMinor = ref<number | null>(null);
 const reference = ref('');
 const idempotencyKey = ref('');
@@ -71,42 +70,46 @@ async function load(): Promise<void> {
   }
 
   accounts.value = mine.data.accounts.filter((account) => account.status === 'ACTIVE');
-  // A catalogue that failed to load is not a reason to refuse an internal
-  // payment, so this failure narrows the screen instead of stopping it.
   billers.value = catalogue.ok ? catalogue.data.billers : [];
   state.value = 'READY';
 }
 
 onMounted(load);
 
+function describe(account: AccountSummary): string {
+  const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
+  const namePart = account.holderName ? `${formatDisplayName(account.holderName)} · ` : '';
+
+  return `${namePart}${kind} · ···${account.accountId.slice(-6)} · ${formatQuetzales(account.balance.amountMinor)}`;
+}
+
+const sourceItems = computed(() =>
+  accounts.value.map((account) => ({
+    value: account.accountId,
+    label: describe(account),
+  })),
+);
+
+const billerItems = computed(() =>
+  billers.value.map((biller) => ({
+    value: biller.code,
+    label: biller.name,
+  })),
+);
+
 const source = computed(
   () => accounts.value.find((account) => account.accountId === sourceAccount.value) ?? null,
 );
 
 const targetAccount = computed(() => {
-  if (kind.value === 'INTERNAL') {
-    return internalTarget.value ?? '';
-  }
-
   return billers.value.find((biller) => biller.code === billerCode.value)?.accountId ?? '';
 });
-
-/** The accounts an internal payment may go to: mine, except the one paying. */
-const internalTargets = computed(() =>
-  accounts.value.filter((account) => account.accountId !== sourceAccount.value),
-);
 
 const localProblem = computed(() => {
   if (amountMinor.value !== null && amountMinor.value < MIN_AMOUNT_MINOR) {
     return 'El monto tiene que ser mayor que cero.';
   }
 
-  /**
-   * Checked here so the form can say so while somebody is typing. It is **not**
-   * the guarantee: the balance moves on its own, and Account Service decides
-   * under a row lock. A screen that treated this as the answer would refuse a
-   * payment that a deposit had just made affordable.
-   */
   if (
     source.value !== null &&
     amountMinor.value !== null &&
@@ -115,7 +118,7 @@ const localProblem = computed(() => {
     return 'El monto es mayor que el saldo disponible de la cuenta de origen.';
   }
 
-  if (kind.value === 'EXTERNAL' && billerCode.value !== null && reference.value.trim() === '') {
+  if (billerCode.value !== undefined && reference.value.trim() === '') {
     return 'El servicio necesita un número de contrato o referencia.';
   }
 
@@ -124,18 +127,17 @@ const localProblem = computed(() => {
 
 const canSend = computed(
   () =>
-    sourceAccount.value !== null &&
+    sourceAccount.value !== undefined &&
     targetAccount.value !== '' &&
-    targetAccount.value !== sourceAccount.value &&
+    reference.value.trim() !== '' &&
     amountMinor.value !== null &&
     amountMinor.value >= MIN_AMOUNT_MINOR &&
-    (kind.value === 'INTERNAL' || reference.value.trim() !== '') &&
     localProblem.value === null &&
     !sending.value,
 );
 
 async function send(): Promise<void> {
-  if (amountMinor.value === null || sourceAccount.value === null) {
+  if (amountMinor.value === null || sourceAccount.value === undefined) {
     return;
   }
 
@@ -151,7 +153,7 @@ async function send(): Promise<void> {
         sourceAccount: sourceAccount.value,
         targetAccount: targetAccount.value,
         amount: { amountMinor: amountMinor.value, currency: 'GTQ' },
-        ...(kind.value === 'EXTERNAL' ? { reference: reference.value.trim() } : {}),
+        reference: reference.value.trim(),
       },
     },
   );
@@ -159,9 +161,6 @@ async function send(): Promise<void> {
   sending.value = false;
 
   if (result.ok) {
-    // The Saga has four more steps to take; the tracking screen is where they
-    // are watched, and it is the transfer's own screen because that is what
-    // this is.
     await navigateTo(`/transferencias/${result.data.transactionId}`);
     return;
   }
@@ -177,9 +176,9 @@ useHead({ title: 'Nuevo pago · bonking' });
   <section class="flex flex-col gap-6">
     <header class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 class="text-[32px] font-bold leading-10 tracking-tight">Nuevo pago</h1>
+        <h1 class="text-[32px] font-bold leading-10 tracking-tight">Pago de servicios</h1>
         <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-          Paga un servicio o mueve dinero entre tus cuentas.
+          Paga servicios públicos (luz, agua, telefonía) con débito directo a tu cuenta bancaria.
         </p>
       </div>
       <UButton to="/pagos" variant="outline" color="neutral">Volver</UButton>
@@ -199,44 +198,14 @@ useHead({ title: 'Nuevo pago · bonking' });
     <div v-else class="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr]">
       <UCard>
         <form class="flex flex-col gap-5" @submit.prevent="send">
-          <fieldset class="flex flex-col gap-2">
-            <legend class="mb-2 text-[14px] font-semibold">Tipo de pago</legend>
-
-            <div class="grid gap-3 sm:grid-cols-2">
-              <label
-                v-for="option in [
-                  { value: 'INTERNAL' as const, title: 'Pago interno', hint: 'Entre tus cuentas de este banco' },
-                  { value: 'EXTERNAL' as const, title: 'Pago externo', hint: 'Luz, agua, teléfono' },
-                ]"
-                :key="option.value"
-                class="flex cursor-pointer items-start gap-3 rounded-xl border p-4"
-                :class="
-                  kind === option.value
-                    ? 'border-[#17191F] bg-[#F0F0F2]'
-                    : 'border-[#DCDCE0] bg-white'
-                "
-              >
-                <input v-model="kind" type="radio" :value="option.value" class="mt-1">
-                <span>
-                  <span class="block text-[14px] font-semibold text-[#23242A]">{{ option.title }}</span>
-                  <span class="block text-[13px] leading-5 text-[#5A5B63]">{{ option.hint }}</span>
-                </span>
-              </label>
-            </div>
-          </fieldset>
-
           <UFormField label="Cuenta origen" name="sourceAccount">
-            <USelect
+            <USelectMenu
               v-model="sourceAccount"
               class="w-full"
-              :items="[
-                { value: null, label: 'Elige una cuenta' },
-                ...accounts.map((account) => ({
-                  value: account.accountId,
-                  label: `${account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro'} · ${account.accountId.slice(-10)}`,
-                })),
-              ]"
+              :items="sourceItems"
               value-key="value"
+              placeholder="Elige o busca una cuenta..."
+              :search-input="{ placeholder: 'Buscar por titular o número de cuenta...' }"
             />
             <p v-if="source" class="tab mt-1 text-[13px] text-[#5A5B63]">
               Saldo disponible: <strong class="font-semibold text-[#23242A]">{{
@@ -246,46 +215,33 @@ useHead({ title: 'Nuevo pago · bonking' });
           </UFormField>
 
           <UFormField
-            v-if="kind === 'EXTERNAL'"
-            label="Servicio destino"
+            label="Servicio público o factura"
             name="biller"
             :help="billers.length === 0 ? 'No pudimos cargar el catálogo de servicios.' : undefined"
           >
-            <USelect
+            <USelectMenu
               v-model="billerCode"
               class="w-full"
-              :items="[
-                { value: null, label: 'Elige un servicio' },
-                ...billers.map((biller) => ({ value: biller.code, label: biller.name })),
-              ]"
+              :items="billerItems"
               value-key="value"
-            />
-          </UFormField>
-
-          <UFormField v-else label="Cuenta destino" name="internalTarget">
-            <USelect
-              v-model="internalTarget"
-              class="w-full"
-              :items="[
-                { value: null, label: 'Elige una cuenta' },
-                ...internalTargets.map((account) => ({
-                  value: account.accountId,
-                  label: `${account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro'} · ${account.accountId.slice(-10)}`,
-                })),
-              ]"
-              value-key="value"
+              placeholder="Elige el servicio (EEGSA, EMPAGUA, Claro...)"
+              :search-input="{ placeholder: 'Buscar servicio...' }"
             />
           </UFormField>
 
           <SharedMoneyInput label="Monto" name="amount" @update:amount-minor="amountMinor = $event" />
 
           <UFormField
-            v-if="kind === 'EXTERNAL'"
-            label="Referencia"
+            label="Número de contrato o referencia"
             name="reference"
             help="Número de contrato, de medidor o de línea. Es lo que le dice al prestador de quién es el pago."
           >
-            <UInput v-model="reference" class="tab w-full" maxlength="60" />
+            <UInput
+              v-model="reference"
+              placeholder="Ej. 24891024"
+              class="tab w-full font-mono text-[13px]"
+              maxlength="60"
+            />
           </UFormField>
 
           <p v-if="localProblem" class="text-[13px] text-[#B01B1B]" data-testid="payment-local-problem">
@@ -298,41 +254,41 @@ useHead({ title: 'Nuevo pago · bonking' });
             variant="subtle"
             title="No pudimos registrar el pago"
             :description="failure"
-            data-testid="payment-failure"
           />
 
-          <SharedIdempotencyKeyField v-model="idempotencyKey" :visible="true" />
+          <SharedIdempotencyKeyField v-model="idempotencyKey" />
 
-          <UButton type="submit" :loading="sending" :disabled="!canSend" block size="lg">
-            Pagar
-          </UButton>
+          <div class="flex items-center justify-between gap-3">
+            <UButton
+              type="submit"
+              color="primary"
+              size="lg"
+              :loading="sending"
+              :disabled="!canSend"
+            >
+              Pagar servicio
+            </UButton>
+            <SharedCorrelationIdBadge :correlation-id="correlationId" />
+          </div>
         </form>
       </UCard>
 
-      <UCard>
-        <h2 class="text-[14px] font-semibold">Qué pasa al pagar</h2>
-        <ul class="mt-3 flex list-disc flex-col gap-2 pl-4 text-[13px] leading-5 text-[#5A5B63]">
+      <UCard class="text-[13px] leading-5 text-[#5A5B63]">
+        <h2 class="text-[14px] font-semibold text-[#23242A]">Qué pasa al pagar</h2>
+        <ul class="mt-2 list-disc space-y-2 pl-4">
           <li>
-            Un pago de servicio es una <strong class="font-semibold">transferencia</strong> a la
-            cuenta recaudadora del prestador, y pasa por los mismos pasos: se descuenta de tu
-            cuenta, se procesa el pago y se acredita al prestador.
+            Un pago de servicio es una transferencia a la cuenta recaudadora del prestador (luz, agua, teléfono), y pasa por los mismos pasos: se descuenta de tu cuenta, se procesa el pago y se acredita al prestador.
           </li>
           <li>
-            Si algo falla después del débito, el dinero
-            <strong class="font-semibold">se devuelve automáticamente</strong> y verás dos
-            movimientos en el estado de cuenta.
+            Si algo falla después del débito, el dinero se devuelve automáticamente mediante la compensación de la Saga.
           </li>
           <li>
-            El saldo que se muestra arriba es el de la última consulta. Si alcanza o no se decide
-            en el momento del cobro, no ahora.
+            El saldo mostrado es el de la última consulta. Si alcanza o no se decide en el momento del cobro.
           </li>
         </ul>
-
-        <p class="mt-4 border-t border-[#E9E9EC] pt-4 text-[13px] leading-5 text-[#5A5B63]">
+        <p class="mt-4 border-t border-[#E9E9EC] pt-3 text-[12px] text-[#75767F]">
           Al terminar te llevamos al seguimiento de la transferencia, que es donde se ve cada paso.
         </p>
-
-        <SharedCorrelationIdBadge class="mt-4" :correlation-id="correlationId" />
       </UCard>
     </div>
   </section>

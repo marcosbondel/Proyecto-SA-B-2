@@ -186,6 +186,14 @@ export interface CustomerRepository {
   }>;
 
   /**
+   * Registered customers, newest first and bounded by `limit`.
+   */
+  listCustomers(limit: number): Promise<{
+    readonly customers: readonly Customer[];
+    readonly total: number;
+  }>;
+
+  /**
    * The most recently stored identity document for a customer, or `null` when
    * none was ever uploaded — legal, since `customer.register.v1` accepts
    * `photo: null` (`docs/domain/entities.md`).

@@ -85,9 +85,7 @@ export const ACCOUNT_TYPE_PRESENTATION: Readonly<
   AHORRO: {
     label: 'Ahorro',
     mark: 'AH',
-    description:
-      'Para guardar dinero. Hoy no tiene reglas distintas a la monetaria; como toda cuenta, ' +
-      'se desactiva sola si pasa seis meses inactiva con saldo menor a Q 50.00.',
+    description: 'Para guardar dinero y acumular fondos.',
   },
 };
 

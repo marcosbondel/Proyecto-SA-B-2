@@ -113,7 +113,7 @@ describe('queues', () => {
 
   /** The two questions share the query queue and touch no event queue. */
   it('keeps the queries off every event queue', () => {
-    for (const name of ['audit.query.requested.v1', 'notification.list.query.v1']) {
+    for (const name of ['audit.query.requested.v1', 'notification.list.query.v1', 'audit.events.list.query.v1']) {
       const contract = catalog.find((c) => c.name === name)!;
 
       expect([...queuesFor(contract)]).toEqual(['audit.query']);

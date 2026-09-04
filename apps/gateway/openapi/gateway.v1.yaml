@@ -147,6 +147,20 @@ paths:
       tags:
         - customers
       x-bank-publishes: customer.register.v1
+    get:
+      operationId: CustomersController_list
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista de clientes registrados
+      tags:
+        - customers
+      x-bank-publishes: customer.list.query.v1
+      x-bank-awaits:
+        - customer.list.replied.v1
   /api/customers/{customerId}:
     patch:
       description: El parámetro es el SUJETO; el actor sale del token. Si el actor puede operar sobre ese
@@ -520,6 +534,22 @@ paths:
       x-bank-publishes: audit.query.requested.v1
       x-bank-awaits:
         - audit.query.replied.v1
+  /api/audit/recent:
+    get:
+      description: Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación.
+      operationId: AuditController_recent
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta los eventos de auditoría más recientes paginados
+      tags:
+        - audit
+      x-bank-publishes: audit.events.list.query.v1
+      x-bank-awaits:
+        - audit.events.list.replied.v1
   /api/audit/notifications:
     get:
       description: "Solo ADMINISTRADOR, por D-06. Devuelve el registro operativo de lo que se envió, con

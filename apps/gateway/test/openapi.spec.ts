@@ -101,6 +101,7 @@ describe('the versioned API contract', () => {
         '/api/accounts/{accountId}/operations',
         '/api/accounts/{accountId}/status',
         '/api/audit',
+        '/api/audit/recent',
         // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
         '/api/audit/notifications',
         // Added for the prototype's D-01 and D-02: five services' own counts,
@@ -170,7 +171,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(25);
+      expect(functional).toHaveLength(26);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

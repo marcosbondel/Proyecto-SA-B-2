@@ -61,7 +61,7 @@ describe('what each role sees in the navigation', () => {
   test('an administrator is the only one who sees the audit record', () => {
     assert.deepEqual(
       modulesFor('ADMINISTRADOR').map((module) => module.label),
-      ['Inicio', 'Clientes', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
+      ['Inicio', 'Usuarios', 'Cuentas', 'Transferencias', 'Pagos', 'Auditoría'],
     );
 
     assert.equal(modulesFor('CLIENTE').some((module) => module.to === '/auditoria'), false);

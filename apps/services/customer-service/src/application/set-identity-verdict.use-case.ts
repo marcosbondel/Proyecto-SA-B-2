@@ -1,8 +1,12 @@
-import { customerIdentityRejectedV1, customerIdentityValidatedV1 } from '@bank/contracts';
+import {
+  customerActivationRequestedV1,
+  customerIdentityRejectedV1,
+  customerIdentityValidatedV1,
+} from '@bank/contracts';
 import type { CustomerSetIdentityVerdictV1, Identity } from '@bank/contracts';
 
 import { DomainRejection, mayValidateIdentity, recordIdentityVerdict } from '../domain/customer';
-import type { Clock, CustomerRepository, EventPublisher } from './ports';
+import type { ActivationTokenFactory, Clock, CustomerRepository, EventPublisher } from './ports';
 
 const MESSAGE_TYPE = 'customer.set-identity-verdict.v1';
 
@@ -21,15 +25,18 @@ export class SetIdentityVerdictUseCase {
   readonly #repository: CustomerRepository;
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
+  readonly #tokens?: ActivationTokenFactory;
 
   constructor(dependencies: {
     readonly repository: CustomerRepository;
     readonly publisher: EventPublisher;
     readonly clock: Clock;
+    readonly tokens?: ActivationTokenFactory;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
+    this.#tokens = dependencies.tokens;
   }
 
   public async execute(
@@ -100,6 +107,26 @@ export class SetIdentityVerdictUseCase {
           validatedAt: now.toISOString(),
         },
       });
+
+      if (this.#tokens !== undefined && existing.status === 'PENDING_ACTIVATION') {
+        const activation = this.#tokens.issue();
+        const expiresAt = new Date(now.getTime() + 86_400_000).toISOString();
+        await this.#repository.saveActivationToken({
+          customerId: updated.customerId,
+          tokenHash: activation.tokenHash,
+          expiresAt,
+        });
+
+        await this.#publisher.publish({
+          messageType: customerActivationRequestedV1.name,
+          payload: {
+            customerId: updated.customerId,
+            email: updated.email,
+            expiresAt,
+            activationToken: activation.token,
+          },
+        });
+      }
       return;
     }
 
@@ -113,6 +140,8 @@ export class SetIdentityVerdictUseCase {
         // saying exactly that.
         reason: 'IDENTITY_DOCUMENT_UNREADABLE',
         rejectedAt: now.toISOString(),
+        email: existing.email,
+        fullName: existing.fullName,
       },
     });
   }
