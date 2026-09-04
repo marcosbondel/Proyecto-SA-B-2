@@ -41,6 +41,7 @@ Table notifications {
     (correlation_id, created_at) [name: 'notifications_correlation_idx']
     created_at [name: 'notifications_recent_idx']
     (caused_by, type) [unique, name: 'notifications_one_per_event_idx', note: 'WHERE caused_by IS NOT NULL']
+    (customer_id, created_at) [name: 'notifications_customer_idx']
   }
   Note: 'Buzón de notificaciones del cliente e historial de despachos'
 }
