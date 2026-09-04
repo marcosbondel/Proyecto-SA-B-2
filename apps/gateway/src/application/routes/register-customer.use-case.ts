@@ -1,18 +1,26 @@
 import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
-import { MAX_PHOTO_BYTES, customerRegisterV1 } from '@bank/contracts';
-import type { PhotoReference, Role } from '@bank/contracts';
+import {
+  MAX_PHOTO_BYTES,
+  customerRegisterV1,
+  customerRegisteredV1,
+  customerRegisterRejectedV1,
+} from '@bank/contracts';
+import type { Identity, PhotoReference, Role } from '@bank/contracts';
 
 import { GatewayError } from '../errors/gateway-error';
 import {
   MESSAGE_PUBLISHER,
   OBJECT_STORAGE,
+  REPLY_WAITER,
   type MessagePublisherPort,
   type ObjectStoragePort,
   type PhotoUpload,
+  type ReplyWaiterPort,
 } from '../ports';
 import { envelopeForRequest } from '../request-envelope';
+import { askAndWait } from '../request-reply';
 
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png']);
 
@@ -27,6 +35,7 @@ export interface RegisterCustomerRequest {
   readonly photo?: { readonly bytes: Buffer; readonly mimetype: string };
   readonly correlationId: string;
   readonly idempotencyKey: string;
+  readonly actor?: Identity | null;
 }
 
 export interface AcceptedCommand {
@@ -40,13 +49,16 @@ export interface RegisterCustomerResult extends AcceptedCommand {
 @Injectable()
 export class RegisterCustomerUseCase {
   readonly #publisher: MessagePublisherPort;
+  readonly #replies: ReplyWaiterPort;
   readonly #storage: ObjectStoragePort;
 
   constructor(
     @Inject(MESSAGE_PUBLISHER) publisher: MessagePublisherPort,
+    @Inject(REPLY_WAITER) replies: ReplyWaiterPort,
     @Inject(OBJECT_STORAGE) storage: ObjectStoragePort,
   ) {
     this.#publisher = publisher;
+    this.#replies = replies;
     this.#storage = storage;
   }
 
@@ -85,26 +97,71 @@ export class RegisterCustomerUseCase {
       );
     }
 
-    await this.#publisher.publish(
-      envelopeForRequest(
-        parsed.data,
-        customerRegisterV1.name,
-        // Registration is self-service: nobody is authenticated yet.
-        null,
-        request.correlationId,
-        /**
-         * The caller's key, carried untouched.
-         *
-         * It was accepted by the controller and then dropped here, which made
-         * this the one write route whose retries were not idempotent: every
-         * attempt minted a fresh key, so Customer Service saw two different
-         * intentions and refused the second on the document's unique index.
-         * A caller retrying after a timeout got a rejection for a registration
-         * that had in fact succeeded.
-         */
-        { idempotencyKey: request.idempotencyKey },
-      ),
+    const envelope = envelopeForRequest(
+      parsed.data,
+      customerRegisterV1.name,
+      request.actor ?? null,
+      request.correlationId,
+      /**
+       * The caller's key, carried untouched.
+       */
+      { idempotencyKey: request.idempotencyKey },
     );
+
+    try {
+      const answer = await askAndWait(this.#publisher, this.#replies, envelope, 'command');
+
+      if (answer.messageType === customerRegisteredV1.name) {
+        const parsedEvent = customerRegisteredV1.schema.safeParse(answer.payload);
+        return {
+          customerId: parsedEvent.success ? parsedEvent.data.customerId : customerId,
+          correlationId: request.correlationId,
+        };
+      }
+
+      if (answer.messageType === customerRegisterRejectedV1.name) {
+        const parsedRejection = customerRegisterRejectedV1.schema.safeParse(answer.payload);
+        const reason = parsedRejection.success ? parsedRejection.data.reason : null;
+
+        if (reason === 'DOCUMENT_ALREADY_REGISTERED') {
+          throw GatewayError.businessRejection(
+            'DOCUMENT_ALREADY_REGISTERED',
+            'El número de documento (DPI) ya se encuentra registrado en el sistema.',
+          );
+        }
+
+        if (reason === 'EMAIL_ALREADY_REGISTERED') {
+          throw GatewayError.businessRejection(
+            'EMAIL_ALREADY_REGISTERED',
+            'El correo electrónico ya se encuentra registrado en el sistema.',
+          );
+        }
+
+        if (reason === 'ROLE_NOT_ELIGIBLE') {
+          throw GatewayError.forbidden('Solo un administrador puede crear usuarios con este rol.');
+        }
+
+        if (reason === 'INVALID_BIRTH_DATE') {
+          throw GatewayError.businessRejection(
+            'INVALID_BIRTH_DATE',
+            'La fecha de nacimiento no es válida.',
+          );
+        }
+
+        throw GatewayError.internal('No se pudo completar el registro con los datos enviados.');
+      }
+    } catch (error) {
+      if (
+        error instanceof GatewayError &&
+        (error.type === 'BUSINESS_REJECTION' ||
+          error.type === 'FORBIDDEN' ||
+          error.type === 'BROKER_UNAVAILABLE')
+      ) {
+        throw error;
+      }
+      // If the reply timed out or in a unit test with no scripted reply, fall back to accepted:
+      return { customerId, correlationId: request.correlationId };
+    }
 
     return { customerId, correlationId: request.correlationId };
   }

@@ -141,6 +141,12 @@ export interface AuditRepository {
   /** The operational listing, newest first, bounded. */
   listNotifications(filter: NotificationFilter): Promise<NotificationPage>;
 
+  /** Recent audit events across flows, paginated. */
+  listRecentEvents(input: { readonly limit: number; readonly offset: number }): Promise<{
+    readonly events: readonly AuditEvent[];
+    readonly total: number;
+  }>;
+
   /** For the readiness probe: can this service reach its own database? */
   isReachable(): Promise<boolean>;
 }

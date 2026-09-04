@@ -2,11 +2,10 @@
 import {
   ageOn,
   photoRejection,
-  registrationHeading,
   usernameFrom,
   validateRegistration,
 } from '../../lib/customer';
-import type { FieldErrors, RegistrationOutcome } from '../../lib/customer';
+import type { FieldErrors } from '../../lib/customer';
 import { labelForRole } from '../../lib/navigation';
 import type { Role } from '../../lib/navigation';
 
@@ -38,7 +37,6 @@ const {
   correlationId,
   accepted: acceptedCommand,
   isSending,
-  canWatch,
   run,
   reset: resetOutcome,
 } = useCustomerOutcome();
@@ -65,6 +63,7 @@ const fields = reactive({
   terms: false,
 });
 
+const { role: sessionRole } = useSession();
 const role = ref<Role>('CLIENTE');
 const photo = ref<File | null>(null);
 const idempotencyKey = ref('');
@@ -79,25 +78,39 @@ const age = computed(() => (fields.dateOfBirth === '' ? null : ageOn(fields.date
 /** The command was accepted; the form is behind us and only the wait remains. */
 const isAccepted = computed(() => acceptedCommand.value !== null);
 
-/**
- * `outcomeState` widened to what `registrationHeading` actually decides on.
- * Everything that is not a settled `SUCCESS` or `BUSINESS_REJECTION` — still
- * `PENDING`, or a session that watched and gave up — reads as "not yet
- * confirmed", because none of them license the screen to claim the email went
- * out.
- */
-const registrationOutcome = computed<RegistrationOutcome>(() =>
-  outcomeState.value === 'SUCCESS' || outcomeState.value === 'BUSINESS_REJECTION'
-    ? outcomeState.value
-    : 'PENDING',
-);
-
-const registrationCopy = computed(() => registrationHeading(registrationOutcome.value));
-
 const roleOptions = (['CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR'] as const).map((value) => ({
   value,
   label: labelForRole(value),
 }));
+
+const registeredTitle = computed(() => {
+  if (props.mode === 'self') return 'Solicitud de registro recibida';
+  if (role.value === 'CAJERO_RECEPTOR') return 'Agente cajero registrado';
+  if (role.value === 'ADMINISTRADOR') return 'Administrador registrado';
+  return 'Cliente registrado';
+});
+
+const registeredDescription = computed(() => {
+  if (role.value === 'CAJERO_RECEPTOR') {
+    return 'El agente cajero fue registrado y validado exitosamente. Se envió el enlace de activación a';
+  }
+  if (role.value === 'ADMINISTRADOR') {
+    return 'El administrador fue registrado y validado exitosamente. Se envió el enlace de activación a';
+  }
+  return 'El cliente fue registrado y validado exitosamente. Se envió el enlace de activación a';
+});
+
+const customerIdLabel = computed(() => {
+  if (role.value === 'CAJERO_RECEPTOR') return 'Número de agente cajero';
+  if (role.value === 'ADMINISTRADOR') return 'Número de administrador';
+  return 'Número de cliente';
+});
+
+const viewCustomerButtonLabel = computed(() => {
+  if (role.value === 'CAJERO_RECEPTOR') return 'Ver el agente cajero';
+  if (role.value === 'ADMINISTRADOR') return 'Ver el administrador';
+  return 'Ver el cliente';
+});
 
 const summary = computed(() => [
   { key: 'Nombre completo', value: fields.fullName },
@@ -185,6 +198,18 @@ async function submit(): Promise<void> {
       idempotencyKey: idempotencyKey.value,
     }),
   );
+
+  if (outcomeState.value === 'BUSINESS_REJECTION' && outcomeMessage.value) {
+    const msg = outcomeMessage.value.toLowerCase();
+    if (msg.includes('dpi') || msg.includes('documento')) {
+      errors.value = { ...errors.value, identityDocument: outcomeMessage.value };
+      step.value = 2;
+    } else if (msg.includes('correo') || msg.includes('email')) {
+      errors.value = { ...errors.value, email: outcomeMessage.value };
+      step.value = 1;
+    }
+    keyField.value?.renew();
+  }
 }
 
 /** A new intention: a different person, a new key. */
@@ -210,78 +235,56 @@ function startOver(): void {
 
 <template>
   <UCard>
-    <!-- show.regSent — accepted, and honest about what that means. -->
+    <!-- show.regSent -->
     <div v-if="isAccepted" class="flex flex-col gap-4 text-center" data-testid="registration-accepted">
       <div
-        class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#E4E4E8] text-[22px] font-bold text-[#0B0C10]"
+        class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#E4E4E8] text-emerald-600"
         aria-hidden="true"
-      >✓</div>
+      >
+        <UIcon name="i-lucide-check" class="h-8 w-8" />
+      </div>
 
       <div>
-        <h2 class="text-[22px] font-bold leading-[30px]">{{ registrationCopy.heading }}</h2>
+        <h2 class="text-[22px] font-bold leading-[30px]">
+          {{ registeredTitle }}
+        </h2>
 
-        <!-- Only a confirmed SUCCESS may claim the email went out. -->
-        <p v-if="registrationCopy.confirmed" class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
-          Verificamos tu registro y enviamos un correo a
-          <strong class="text-[#23242A]">{{ fields.email }}</strong>
-          con un enlace de activación. La cuenta queda activa cuando se abra ese enlace, y no
-          antes: sin activación no se puede iniciar sesión.
-        </p>
-        <p
-          v-else-if="registrationOutcome === 'BUSINESS_REJECTION'"
-          class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]"
-        >
-          No pudimos completarlo con estos datos. Revisa el motivo abajo.
+        <p v-if="props.mode === 'staff'" class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
+          {{ registeredDescription }}
+          <strong class="text-[#23242A]">{{ fields.email }}</strong>.
         </p>
         <p v-else class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
-          Recibimos tu solicitud y la estamos procesando. Si se completa, te llegará un correo a
-          <strong class="text-[#23242A]">{{ fields.email }}</strong>
-          con un enlace de activación; la cuenta queda activa solo cuando se abre ese enlace.
+          Recibimos tu solicitud y documento de identidad. Un cajero revisará tu información.
+          Una vez aprobada tu identidad, recibirás un correo electrónico en
+          <strong class="text-[#23242A]">{{ fields.email }}</strong> con el enlace para activar tu cuenta.
         </p>
 
-        <p
-          v-if="registrationOutcome !== 'BUSINESS_REJECTION'"
-          class="mt-2 text-[13px] leading-[18px] text-[#75767F]"
-        >
+        <p class="mt-2 text-[13px] leading-[18px] text-[#75767F]">
           El usuario será
           <span
             class="font-semibold text-[#23242A]"
             style="font-variant-numeric: tabular-nums lining-nums"
-          >{{ username }}</span>
-          — si ya existe, el sistema le añadirá un sufijo.
+          >{{ username }}</span>.
         </p>
       </div>
 
-      <!--
-        The two identifiers the registration produced, both copyable. The
-        customerId is the only handle that exists on this person until a route
-        can read them back, and a UUID transcribed by hand is the wrong one.
-      -->
       <div class="flex flex-col gap-3 rounded-2xl border border-[#DCDCE0] bg-[#F0F0F2] p-4 text-left">
         <SharedCorrelationIdBadge
           v-if="acceptedCommand?.customerId"
           :correlation-id="acceptedCommand.customerId"
-          label="Número de cliente"
+          :label="customerIdLabel"
         />
-        <SharedCorrelationIdBadge :correlation-id="username" label="Usuario (previsualización)" />
+        <SharedCorrelationIdBadge :correlation-id="username" label="Usuario" />
+        <SharedCorrelationIdBadge
+          v-if="correlationId"
+          :correlation-id="correlationId"
+          label="Código de seguimiento"
+        />
       </div>
 
-      <SharedAsyncStateAlert
-        :state="outcomeState === 'IDLE' ? 'PENDING' : outcomeState"
-        :message="outcomeMessage"
-        :correlation-id="correlationId"
-      />
-
-      <p v-if="!canWatch" class="text-[12px] leading-[18px] text-[#75767F]">
-        El rastro de auditoría solo puede consultarlo un administrador (decisión D-06), así que
-        esta pantalla no puede confirmar el desenlace por sí sola. Guarda el identificador de
-        correlación: con él, un administrador puede decir exactamente qué ocurrió.
-      </p>
-
-      <div v-if="props.mode === 'self'" class="rounded-xl border border-[#F5D9A6] bg-[#FFFBEB] p-3.5 text-left">
-        <p class="text-[13px] font-medium text-[#92400E]">
-          ⚠️ <strong>Paso obligatorio:</strong> Revisa la bandeja de entrada de tu correo (o spam).
-          Debes hacer clic en el enlace de activación antes de poder iniciar sesión.
+      <div v-if="props.mode === 'self'" class="rounded-xl border border-[#DCDCE0] bg-[#F9FAFB] p-3.5 text-left">
+        <p class="text-[13px] font-medium text-[#374151]">
+          <strong>Siguiente paso:</strong> Un cajero verificará tu documento en breve. Cuando tu solicitud sea aprobada, recibirás un correo para activar tu cuenta.
         </p>
       </div>
 
@@ -291,11 +294,11 @@ function startOver(): void {
           variant="outline"
           color="neutral"
           :to="`/clientes/${acceptedCommand.customerId}`"
-        >Ver el cliente</UButton>
+        >{{ viewCustomerButtonLabel }}</UButton>
         <UButton v-if="props.mode === 'staff'" color="primary" @click="startOver">
           Registrar otro
         </UButton>
-        <UButton v-else color="primary" to="/login">Ir a iniciar sesión (tras activar)</UButton>
+        <UButton v-else color="primary" to="/login">Volver a inicio de sesión</UButton>
       </div>
     </div>
 
@@ -310,6 +313,13 @@ function startOver(): void {
           >{{ label }}</div>
         </li>
       </ol>
+
+      <UAlert
+        v-if="outcomeState === 'BUSINESS_REJECTION' && outcomeMessage"
+        color="error"
+        variant="subtle"
+        :title="outcomeMessage"
+      />
 
       <section v-if="step === 1" class="flex flex-col gap-4">
         <header>
@@ -345,10 +355,10 @@ function startOver(): void {
         </UFormField>
 
         <UFormField
-          v-if="props.mode === 'staff'"
+          v-if="props.mode === 'staff' && sessionRole === 'ADMINISTRADOR'"
           label="Rol"
           name="role"
-          help="Quién será esta persona en el sistema. Un registro público siempre es un cliente."
+          help="Quién será esta persona en el sistema. Un cajero o registro público siempre es un cliente."
         >
           <USelect v-model="role" :items="roleOptions" value-key="value" class="w-full" />
         </UFormField>

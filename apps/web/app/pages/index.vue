@@ -201,15 +201,6 @@ useHead({ title: 'Inicio · bonking' });
           action="Registrar depósito"
         />
       </div>
-
-      <UCard>
-        <h2 class="text-[14px] font-semibold">Tu turno</h2>
-        <p class="mt-2 max-w-[70ch] text-[13px] leading-5 text-[#5A5B63]">
-          Los tres números son de hoy y los cuenta cada servicio dueño de sus filas. Si alguno
-          aparece como «sin dato», ese servicio no respondió a tiempo — la pantalla no lo dibuja
-          como cero para no inventar un número.
-        </p>
-      </UCard>
     </template>
 
     <!-- D-02 — the system, from an administrator's chair. -->

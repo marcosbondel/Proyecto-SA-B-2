@@ -8,6 +8,7 @@ import {
   customerNamesQueryV1,
   customerStatsQueryV1,
   customerPendingValidationQueryV1,
+  customerListQueryV1,
   customerRegisterV1,
   customerSetIdentityVerdictV1,
   customerUpdateV1,
@@ -24,6 +25,7 @@ import type { GetCustomerStatsUseCase } from '../application/get-customer-stats.
 import type { GetCustomerUseCase } from '../application/get-customer.use-case';
 import type { GetIdentityDocumentUseCase } from '../application/get-identity-document.use-case';
 import type { GetPendingValidationUseCase } from '../application/get-pending-validation.use-case';
+import type { GetCustomerListUseCase } from '../application/get-customer-list.use-case';
 import type { RegisterCustomerUseCase } from '../application/register-customer.use-case';
 import type { RequestPasswordResetUseCase } from '../application/request-password-reset.use-case';
 import type { SetIdentityVerdictUseCase } from '../application/set-identity-verdict.use-case';
@@ -425,3 +427,27 @@ export class ValidateIdentityHandler extends ContractHandler<
     await this.#useCase.execute(payload, envelope.idempotencyKey);
   }
 }
+
+export class CustomerListHandler extends ContractHandler<
+  ReturnType<typeof customerListQueryV1.schema.parse>
+> {
+  public readonly messageType = customerListQueryV1.name;
+  readonly #useCase: GetCustomerListUseCase;
+
+  constructor(useCase: GetCustomerListUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerListQueryV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerListQueryV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity);
+  }
+}
+

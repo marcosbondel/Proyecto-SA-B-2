@@ -272,7 +272,11 @@ export function simulatedRecipientFor(customerId: string | null): string | null 
  * mailing list — which is the rule `redaction.ts` exists to keep.
  */
 export function subjectCustomerIdFrom(messageType: string, payload: unknown): string | null {
-  if (!messageType.startsWith('customer.') && !messageType.startsWith('transaction.')) {
+  if (
+    !messageType.startsWith('customer.') &&
+    !messageType.startsWith('transaction.') &&
+    messageType !== 'account.opened.v1'
+  ) {
     return null;
   }
 
@@ -314,6 +318,7 @@ export function deliverableEmailFrom(messageType: string, payload: unknown): str
 const DELIVERABLE = new Set([
   'customer.activation.requested.v1',
   'customer.password-reset.issued.v1',
+  'customer.identity.rejected.v1',
 ]);
 
 function readString(payload: unknown, field: string): string | null {

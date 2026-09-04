@@ -1,5 +1,6 @@
 import {
   auditQueryRequestedV1,
+  auditEventsListQueryV1,
   auditStatsQueryV1,
   contractFor,
   notificationInboxQueryV1,
@@ -10,6 +11,7 @@ import type { MessageEnvelope } from '@bank/contracts';
 
 import type { GetAuditStatsUseCase } from '../application/get-audit-stats.use-case';
 import type { ListNotificationsUseCase } from '../application/list-notifications.use-case';
+import type { ListAuditEventsUseCase } from '../application/list-audit-events.use-case';
 import type { MarkNotificationsReadUseCase } from '../application/mark-notifications-read.use-case';
 import type { ReadInboxUseCase } from '../application/read-inbox.use-case';
 import type { QueryAuditUseCase } from '../application/query-audit.use-case';
@@ -93,6 +95,7 @@ export class RecordEventHandler {
         consumer: this.#consumer,
       },
       customerId: envelope.identity?.customerId ?? null,
+      role: envelope.identity?.role ?? null,
     });
 
     this.#logger.info('event recorded', {
@@ -135,6 +138,22 @@ export class NotificationListHandler implements InboundMessageHandler {
 
   public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
     const query = notificationListQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.execute(query, envelope.identity);
+  }
+}
+
+/** Paginated recent audit events. Administrator only. */
+export class AuditEventsListHandler implements InboundMessageHandler {
+  public readonly messageType = auditEventsListQueryV1.name;
+  readonly #useCase: ListAuditEventsUseCase;
+
+  constructor(useCase: ListAuditEventsUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const query = auditEventsListQueryV1.schema.parse(envelope.payload);
 
     await this.#useCase.execute(query, envelope.identity);
   }

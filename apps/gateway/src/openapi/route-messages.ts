@@ -20,6 +20,8 @@ import {
   accountSetStatusV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
+  auditEventsListQueryV1,
+  auditEventsListRepliedV1,
   customerAuthenticateRepliedV1,
   customerAuthenticateV1,
   customerEmailVerificationRejectedV1,
@@ -30,6 +32,8 @@ import {
   customerIdentityDocumentRepliedV1,
   customerPendingValidationQueryV1,
   customerPendingValidationRepliedV1,
+  customerListQueryV1,
+  customerListRepliedV1,
   customerChangePasswordV1,
   customerPasswordChangedV1,
   customerPasswordChangeRejectedV1,
@@ -116,6 +120,10 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     publishes: customerChangePasswordV1.name,
     awaits: [customerPasswordChangedV1.name, customerPasswordChangeRejectedV1.name],
   },
+  'GET /api/customers': {
+    publishes: customerListQueryV1.name,
+    awaits: [customerListRepliedV1.name],
+  },
   'GET /api/customers/pending-validation': {
     publishes: customerPendingValidationQueryV1.name,
     awaits: [customerPendingValidationRepliedV1.name],
@@ -182,6 +190,10 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'GET /api/audit': {
     publishes: auditQueryRequestedV1.name,
     awaits: [auditQueryRepliedV1.name],
+  },
+  'GET /api/audit/recent': {
+    publishes: auditEventsListQueryV1.name,
+    awaits: [auditEventsListRepliedV1.name],
   },
   'GET /api/audit/notifications': {
     publishes: notificationListQueryV1.name,

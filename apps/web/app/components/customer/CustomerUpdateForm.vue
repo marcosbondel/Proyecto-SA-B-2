@@ -63,7 +63,6 @@ const {
   message: outcomeMessage,
   correlationId,
   isSending,
-  canWatch,
   run,
 } = useCustomerOutcome();
 
@@ -158,15 +157,22 @@ async function submit(): Promise<void> {
       <SharedIdempotencyKeyField v-model="idempotencyKey" />
 
       <SharedAsyncStateAlert
-        v-if="outcomeState !== 'IDLE'"
+        v-if="outcomeState !== 'IDLE' && outcomeState !== 'PENDING'"
         :state="outcomeState"
         :message="outcomeMessage"
         :correlation-id="correlationId"
       />
 
-      <p v-if="outcomeState === 'PENDING' && !canWatch" class="text-[13px] leading-[18px] font-medium text-emerald-700">
-        ✓ Tus datos personales han sido actualizados en el sistema.
-      </p>
+      <div v-if="outcomeState === 'PENDING'" class="flex flex-col gap-2 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-emerald-800">
+        <p class="text-[13px] leading-[18px] font-medium">
+          Tus datos personales han sido actualizados en el sistema.
+        </p>
+        <SharedCorrelationIdBadge
+          v-if="correlationId"
+          :correlation-id="correlationId"
+          label="Código de seguimiento"
+        />
+      </div>
 
       <div class="flex justify-end">
         <UButton

@@ -40,7 +40,7 @@ function withoutComments(source: string): string {
 }
 
 const SOURCES = sourceFiles(join(SERVICE, 'src')).map((path) => ({
-  path: path.slice(SERVICE.length + 1),
+  path: path.slice(SERVICE.length + 1).replace(/\\/g, '/'),
   text: withoutComments(readFileSync(path, 'utf8')),
 }));
 
