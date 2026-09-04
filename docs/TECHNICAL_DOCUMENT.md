@@ -7,7 +7,7 @@ repositorio que lo cumple** y en qué estado está.
 
 Todo lo que se enlaza aquí está versionado en este repositorio y en formato
 Markdown, como pide el enunciado. Los diagramas se entregan además como fuentes
-de texto versionadas (`.mmd` y `.puml`) y como imagen exportada.
+de texto versionadas (PlantUML `.puml`, Structurizr `.dsl` y DBML `.dbml`) y como imagen exportada.
 
 > **Sobre el idioma.** Los documentos dirigidos a personas usuarias y a la
 > evaluación están en español: el manual de usuario y todos los diagramas. La
@@ -78,21 +78,20 @@ dato posee cada servicio y qué invariantes protege, está en
 
 Los ocho diagramas que exige el enunciado están en
 [`docs/architecture/diagrams/`](architecture/diagrams/). Cada uno se entrega con
-**dos fuentes de texto versionadas que deben coincidir** —Mermaid (`.mmd`) y
-PlantUML (`.puml`)— más su exportación en PNG. Si las dos fuentes no coinciden,
-el diagrama no está hecho: es la regla que fija la
-[ADR-013](architecture/adr/ADR-013-diagramming-toolchain-revision.md).
+sus fuentes de texto versionadas (PlantUML `.puml` y Structurizr `.dsl`) más su
+exportación en PNG de alta resolución.
 
 | # | Diagrama | Fuentes |
 | --- | --- | --- |
-| 1 | Arquitectura general | [`.mmd`](architecture/diagrams/01-arquitectura-general.mmd) · [`.puml`](architecture/diagrams/01-arquitectura-general.puml) · [`.png`](architecture/diagrams/01-arquitectura-general.png) |
-| 2 | C4 Nivel 1 — Contexto | [`.mmd`](architecture/diagrams/02-c4-contexto.mmd) · [`.puml`](architecture/diagrams/02-c4-contexto.puml) · [`.png`](architecture/diagrams/02-c4-contexto.png) |
-| 3 | C4 Nivel 2 — Contenedores | [`.mmd`](architecture/diagrams/03-c4-contenedores.mmd) · [`.puml`](architecture/diagrams/03-c4-contenedores.puml) · [`.png`](architecture/diagrams/03-c4-contenedores.png) |
-| 4 | C4 Nivel 3 — Componentes | [`.mmd`](architecture/diagrams/04-c4-componentes.mmd) · [`.puml`](architecture/diagrams/04-c4-componentes.puml) · [`.png`](architecture/diagrams/04-c4-componentes.png) · [`.dsl`](architecture/diagrams/04-c4-componentes.dsl) |
-| 5 | UML — Despliegue | [`.mmd`](architecture/diagrams/05-uml-despliegue.mmd) · [`.puml`](architecture/diagrams/05-uml-despliegue.puml) · [`.png`](architecture/diagrams/05-uml-despliegue.png) |
-| 6 | UML — Secuencia: crear cuenta | [`.mmd`](architecture/diagrams/06-uml-secuencia-crear-cuenta.mmd) · [`.puml`](architecture/diagrams/06-uml-secuencia-crear-cuenta.puml) · [`.png`](architecture/diagrams/06-uml-secuencia-crear-cuenta.png) |
-| 7 | UML — Secuencia: transferencia con Saga | [`.mmd`](architecture/diagrams/07-uml-secuencia-transferencia.mmd) · [`.puml`](architecture/diagrams/07-uml-secuencia-transferencia.puml) · [`.png`](architecture/diagrams/07-uml-secuencia-transferencia.png) |
+| 1 | Arquitectura general | [`.puml`](architecture/diagrams/01-arquitectura-general.puml) · [`.png`](architecture/diagrams/01-arquitectura-general.png) |
+| 2 | C4 Nivel 1 — Contexto | [`.dsl`](architecture/diagrams/02-c4-contexto.dsl) · [`.puml`](architecture/diagrams/02-c4-contexto.puml) · [`.png`](architecture/diagrams/02-c4-contexto.png) |
+| 3 | C4 Nivel 2 — Contenedores | [`.puml`](architecture/diagrams/03-c4-contenedores.puml) · [`.png`](architecture/diagrams/03-c4-contenedores.png) |
+| 4 | C4 Nivel 3 — Componentes | [`.dsl`](architecture/diagrams/04-c4-componentes.dsl) · [`.puml`](architecture/diagrams/04-c4-componentes.puml) · [`.png`](architecture/diagrams/04-c4-componentes.png) |
+| 5 | UML — Despliegue | [`.puml`](architecture/diagrams/05-uml-despliegue.puml) · [`.png`](architecture/diagrams/05-uml-despliegue.png) |
+| 6 | UML — Secuencia: crear cuenta | [`.puml`](architecture/diagrams/06-uml-secuencia-crear-cuenta.puml) · [`.png`](architecture/diagrams/06-uml-secuencia-crear-cuenta.png) |
+| 7 | UML — Secuencia: transferencia con Saga | [`.puml`](architecture/diagrams/07-uml-secuencia-transferencia.puml) · [`.png`](architecture/diagrams/07-uml-secuencia-transferencia.png) |
 | 8 | UML — Casos de uso (jerarquía) | [`cdu/`](architecture/diagrams/cdu/README.md) — un diagrama de alto nivel, la primera descomposición y una carpeta por microservicio |
+| 9 | Modelos Entidad-Relación (ER) | [`er/`](architecture/diagrams/er/README.md) — fuentes `.dbml` y diagramas `.png` físicos para las 5 bases de datos |
 
 ### Cómo se leen
 

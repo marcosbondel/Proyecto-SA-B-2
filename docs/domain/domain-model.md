@@ -46,6 +46,8 @@ Este documento define de forma exhaustiva las **entidades principales del negoci
   * `balance`: Saldo contable en Quetzales con exactamente dos decimales (`NUMERIC(14,2)`).
   * `status`: Estado operativo de la cuenta (`ACTIVE`, `INACTIVE`).
   * `accountType`: Clasificación de producto (`MONETARIA`, `AHORRO`).
+  * `billerCode`: Código opcional de facturador institucional (ej. `EEGSA`, `EMPAGUA`, `CLARO`) para cuentas recaudadoras de servicios.
+  * `billerName`: Nombre comercial del facturador institucional asociado.
   * `lastActivityAt`: Fecha del último movimiento contable confirmado.
   * `version`: Entero incremental para control de concurrencia optimista.
 * **Reglas de Desactivación y Reactivación Automática**:
@@ -65,10 +67,14 @@ Este documento define de forma exhaustiva las **entidades principales del negoci
 * **Microservicio Dueño**: Transaction Service.
 * **Identificador Único**: `transactionId` (UUID).
 * **Atributos**:
+  * `customerId`: Referencia al cliente originador titular para validación perimetral y consulta de historial.
   * `sourceAccount`: Identificador de cuenta de origen (referencia opaca).
   * `targetAccount`: Identificador de cuenta de destino (referencia opaca).
   * `amount`: Monto monetario mayor a cero en Quetzales.
   * `status`: Estado actual de la Saga (`PENDING`, `DEBITING`, `PAYMENT_PENDING`, `COMPLETED`, `FAILED`, `COMPENSATED`).
+  * `reference`: Concepto o motivo descriptivo de la transferencia.
+  * `paymentScenario`: Escenario de prueba para pasarela de pago (`PAYMENT_SUCCESS`, `FIRST_ATTEMPT_DECLINED`, etc.).
+  * `failureReason`: Motivo de rechazo o compensación cuando no completa con éxito.
   * `correlationId`: Identificador de trazabilidad distribuida.
   * `idempotencyKey`: Llave única para evitar transferencias duplicadas.
 * **Máquina de Estados Finita**:
@@ -122,6 +128,17 @@ Este documento define de forma exhaustiva las **entidades principales del negoci
   * `receivedAt`: Marca de tiempo del reloj local de auditoría.
   * `correlationId`: Código de trazabilidad transversal.
   * `payload`: Cuerpo del mensaje redactado (sin contraseñas, saldos ni DPIs).
+* **Atributos de Notificación**:
+  * `notificationId`: Identificador único de la notificación generada.
+  * `customerId`: Referencia al cliente destinatario para aislamiento en su buzón privado.
+  * `recipient`: Dirección simulada de envío (ej. correo electrónico).
+  * `subject`: Asunto descriptivo del evento comunicado.
+  * `channel`: Canal de despacho (`EMAIL`).
+  * `type`: Tipo de notificación emitida.
+  * `status`: Estado de envío (`PENDING`, `SENT`, `FAILED`).
+  * `readAt`: Marca de tiempo de lectura por el cliente (nulo si no ha sido leída).
+  * `causedBy`: Tipo de mensaje o evento disparador.
+  * `correlationId`: Identificador de correlación para trazabilidad.
 * **Invariantes**:
   * `E-1`: Tabla append-only inmutable: no existen sentencias `UPDATE` ni `DELETE`.
   * `E-2`: Deduplicación por clave primaria compuesta `(event_id, consumer)`.

@@ -330,5 +330,9 @@ export const catalogByName: ReadonlyMap<string, MessageContract> = (() => {
 
 /** The contract for a message name, or `undefined` if the name is unknown. */
 export function contractFor(messageType: string): MessageContract | undefined {
+  if (messageType === 'account.open-rejected.v1') {
+    return catalogByName.get('account.open.rejected.v1');
+  }
   return catalogByName.get(messageType);
 }
+

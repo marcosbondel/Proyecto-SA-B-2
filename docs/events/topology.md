@@ -14,12 +14,12 @@ Four, all `topic`, all `durable`.
 
 | Exchange | Carries | Published by |
 | --- | --- | --- |
-| `bank.commands` | The 37 commands and requests | Gateway, Transaction |
+| `bank.commands` | The 40 commands and requests | Gateway, Transaction |
 | `bank.events` | The 33 events | Customer, Account, Transaction, Payment |
-| `bank.replies` | The 21 replies | Customer, Account, Transaction, Payment, Audit |
+| `bank.replies` | The 24 replies | Customer, Account, Transaction, Payment, Audit |
 | `bank.errors` | Whatever exhausted its retries or arrived invalid | Any consumer |
 
-Ninety-one contracts in total, counted from
+Ninety-seven contracts in total, counted from
 [`../../apps/packages/contracts/src/events/`](../../apps/packages/contracts/src/events/) and
 listed message by message in [`catalog.md`](catalog.md).
 
@@ -57,7 +57,7 @@ assignment refuses to award (§8.2, page 25).
 | `audit.account` | Notification & Audit | `account.#` on `bank.events` |
 | `audit.transaction` | Notification & Audit | `transaction.#` on `bank.events` |
 | `audit.payment` | Notification & Audit | `payment.#` on `bank.events` |
-| `audit.query` | Notification & Audit | `audit.query.requested.v1`, `notification.list.query.v1`, `notification.inbox.query.v1`, `notification.mark-read.v1`, `audit.stats.query.v1` on `bank.commands` |
+| `audit.query` | Notification & Audit | `audit.query.requested.v1`, `audit.events.list.query.v1`, `notification.list.query.v1`, `notification.inbox.query.v1`, `notification.mark-read.v1`, `audit.stats.query.v1` on `bank.commands` |
 
 Ten declared queues, plus one more that is not declared here — see below.
 
