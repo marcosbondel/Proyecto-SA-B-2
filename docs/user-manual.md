@@ -122,6 +122,15 @@ Todas las operaciones a lo largo de los tres módulos se ejecutan sobre el **mis
   * **Correo electrónico**: `deennerparaprobar@gmail.com`
   * **Usuario asignado**: `lcomunica` / `luisitocomunica`
   * **Identificador de Cliente (`customerId`)**: `3809b1a4-0deb-4da3-8a12-e1bd8cfab72d`
+* **Tercer Usuario / Personal Operativo Creado por el Administrador (Pasos 68 al 70)**:
+  * **Nombre**: `lucas luquito`
+  * **Documento de Identificación (DPI)**: `5454545455454`
+  * **Fecha de nacimiento**: `01/03/2003` (Edad: 23 años)
+  * **Dirección**: `sdafdf`
+  * **Correo electrónico**: `probando@gmail.com`
+  * **Rol asignado**: `CAJERO_RECEPTOR` (Cajero receptor)
+  * **Usuario sugerido**: `luquita`
+  * **Código de Operación (`idempotencyKey`)**: `b585ff52-1538-46e4-be16-38488b871a8a`
 
 ---
 
@@ -1513,17 +1522,363 @@ Al regresar a la pantalla general de pagos (`http://localhost:3010/pagos`), la t
 
 ### 5.3 Módulo 3: Portal del Administrador (`ADMINISTRADOR`)
 
-Este módulo ilustra la supervisión global, auditoría técnica y gestión institucional que el administrador ejerce sobre las operaciones originadas por los clientes y cajeros:
+Este módulo cubre la supervisión global de la plataforma bancaria, la gestión de identidades corporativas con asignación de roles operativos, la fiscalización de transferencias distribuidas y la auditoría transversal del sistema.
 
-* **5.3.1 Pista de Auditoría Transversal (`/auditoria`)**:
-  * Consulta y filtrado de eventos mediante el código de seguimiento `975be732-5808-47c6-8394-c6e39502255a`.
-  * Verificación de payloads inmutables redactados (cumplimiento de privacidad sin exhibir datos sensibles ni credenciales).
-* **5.3.2 Monitor de la Saga y Mensajería RabbitMQ**:
-  * Visualización de las transiciones distribuidas entre microservicios (Customer, Account, Transaction, Payment, Notification & Audit).
-* **5.3.3 Control y Bloqueo de Cuentas (`/cuentas/administracion`)**:
-  * Supervisión del estado operativo de las cuentas aperturadas.
+* **Credenciales de Acceso del Administrador**: `admin@bankusac.gt` / `BankUsac#2026`
 
-*(Las capturas paso a paso correspondientes a la supervisión del administrador se detallarán a continuación).*
+---
+
+#### Paso 66: Panel de Control del Administrador (Dashboard) — Métricas Institucionales y Alertas Operativas (`/`)
+
+Al autenticarse con el rol de Administrador (`http://localhost:3010`), el sistema despliega el centro de mando y telemetría global del banco, consolidando los indicadores de todos los microservicios en tiempo real.
+
+![Dashboard del Administrador](images/user-manual/admin-01-dashboard.png)
+
+##### Métricas Consolidadas y Secciones del Dashboard:
+1. **Encabezado Institucional**:
+   * Saludo de sesión: *"Hola, admin. Estás operando como Administrador."*
+   * Avatar superior con indicación de rol `A admin` y barra lateral completa con acceso a: **Inicio**, **Usuarios**, **Cuentas**, **Transferencias**, **Pagos** y **Auditoría**.
+2. **Fila de Indicadores Clave de Desempeño (KPIs)**:
+   * **CLIENTES REGISTRADOS**: Contador en **`6`** (`0 sin validar`). Confirma que todos los expedientes procesados (Enner, Luisito, Clara, Marco Tulio, etc.) se encuentran debidamente validados y verificados documentalmente.
+   * **CUENTAS ACTIVAS**: Contador en **`6`** (`0 inactivas`), reflejando la totalidad de cuentas monetarias y de ahorro operativas en el sistema.
+   * **TRANSFERENCIAS HOY**: **`5`** operaciones registradas (`4 completadas`).
+   * **PAGOS PROCESADOS**: **`5`** transacciones tramitadas (`4 exitosos`).
+3. **Tarjeta "Estados de operaciones"**:
+   * Desglose transaccional del día:
+     * **`4` Completadas hoy** (en verde): Transferencias directas y pagos de servicios aprobados.
+     * **`0` En proceso** (en amarillo): Ninguna operación retenida en la cola asíncrona de RabbitMQ.
+     * **`1` Fallidas y compensadas hoy** (en rojo): Registra con precisión la transacción de prueba evaluada en el Paso 25, donde el rechazo forzado del cobro activó la compensación automática de la Saga.
+4. **Tarjeta "Alertas operativas" (Detección de Compensaciones)**:
+   * Acceso directo: **"Ir a auditoría →"** (`/auditoria`).
+   * Alerta ámbar activa: **`1 transferencias compensadas hoy`**.
+   * Regla de negocio visible en pantalla: *"El dinero salió y volvió. Cada una deja dos movimientos en el estado de cuenta del cliente, que probablemente los vea antes que nosotros."*
+   * Enlace: **"Ver →"** para inspeccionar la traza del incidente.
+5. **Auditoría de Actividad Global y Telemetría**:
+   * Contador: **`51 Eventos registrados hoy`** en el servicio de auditoría inmutable (`notification-audit-service`).
+   * Registro más reciente en tiempo real: `Último: customer.login.succeeded.v1 · 3/09/2026, 9:45 p. m.`
+6. **Trazabilidad**:
+   * Botón: **"Actualizar"** para sondeo dinámico sin refrescar la página.
+   * **CÓDIGO DE SEGUIMIENTO**: `204c5724-52d9-4957-a158-ce74e5b77813` [Copiar].
+
+---
+
+#### Paso 67: Directorio Administrativo de Usuarios del Sistema (`/clientes` o `/usuarios`)
+
+El administrador hace clic en **"Usuarios"** en el menú lateral (`http://localhost:3010/clientes`) para gestionar el padrón de usuarios, revisar expedientes y supervisar la jerarquía de roles bancarios.
+
+![Directorio administrativo de usuarios](images/user-manual/admin-02-usuarios-directorio.png)
+
+##### Herramientas de Expediente y Control Corporativo:
+1. **Registrar un usuario**: Tarjeta con botón **"Nuevo usuario"** (*"Alta de nuevo usuario (cliente, cajero o administrador) con foto del DPI y correo de activación"*). A diferencia del cajero, el administrador tiene la facultad de enrolar personal operativo e institucional.
+2. **Validación de identidad**: Tarjeta con botón **"Ver la cola"** (*"Usuarios registrados que esperan revisión de su documento de identidad"*).
+3. **Abrir la ficha de un usuario**: Buscador por UUID para auditoría directa de expedientes de cuentahabientes o funcionarios.
+
+##### Directorio Bancario de Usuarios Registrados:
+La tabla exhibe el catálogo íntegro de identidades del sistema con su estado de verificación:
+* **Fila 1 (`luisito comunica`)**: `@luisitocomunica` | UUID: `3809b1a4-0deb-4da3-8a12-e1bd8cfab72d` | Correo: `deennerparaprobar@gmail.com` | Rol: `CLIENTE` | Identidad: `Verificada` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
+* **Fila 2 (`Ennercito`)**: `@ennermendizabal` (refleja el cambio de nombre efectuado en el Paso 33) | UUID: `b165d73d-a709-4dd4-9620-688ea75219a3` | Correo: `enneresamen@gmail.com` | Rol: `CLIENTE` | Identidad: `Verificada` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
+* **Fila 3 (`Clara Cliente`)**: `@cliente` | UUID: `a0000000-0000-4000-8000-000000000005` | Correo: `cliente@bankusac.gt` | Rol: `CLIENTE` | Identidad: `Verificada` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
+* **Fila 4 (`Marco Tulio Lopez Medina`)**: `@marcotulio` | UUID: `a0000000-0000-4000-8000-000000000003` | Correo: `2895884051401@ingenieria.usac.edu.gt` | Rol: `CLIENTE` | Identidad: `Verificada` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
+* **Fila 5 (`Carlos Cajero`)**: `@cajero` | UUID: `a0000000-0000-4000-8000-000000000002` | Correo: `cajero@bankusac.gt` | Rol: `CAJERO_RECEPTOR` | Identidad: `Verificada` (verde) | Acción: `Ficha`.
+* **Fila 6 (`Ana Administradora`)**: `@admin` | Rol: `ADMINISTRADOR`.
+
+---
+
+#### Paso 68: Creación Administrativa de Usuario — Paso 1: Datos Personales, Rol y Validación de Entrada (`/clientes/nuevo`)
+
+Al presionar el botón **"Nuevo usuario"**, el administrador accede al asistente de alta institucional (`http://localhost:3010/clientes/nuevo`).
+
+![Registro de nuevo usuario paso 1 datos personales](images/user-manual/admin-03-nuevo-usuario-paso1-datos.png)
+
+##### Elementos del Asistente y Reglas de Validación en Pantalla:
+1. **Encabezado y Barra de Progreso**:
+   * Título: **Nuevo usuario** (*"Registro de nuevo usuario del sistema (cliente, cajero receptor o administrador) con fotografía del documento"*).
+   * Stepper: **Datos personales** (Activo: *Paso 1 de 3 · Tus datos*), **Documento**, **Confirmación**.
+2. **Formulario de Registro**:
+   * **Nombre completo**: `lucas luquito`.
+     * **Validación Reactiva de Integridad**: La interfaz detecta la estructura del nombre y resalta el campo con borde rojo desplegando la advertencia: *"Escribe al menos un nombre y un apellido."* Esto demuestra la ejecución de las validaciones de entrada en el cliente para garantizar datos de filiación fidedignos antes de someterlos al backend.
+   * **Fecha de nacimiento**: `01/03/2003` (selector de calendario integrado con cálculo dinámico: *"Edad: 23 años"*).
+   * **Dirección**: `sdafdf`.
+   * **Correo electrónico**: `probando@gmail.com`.
+   * **Asignación de Rol Institucional**: Selector desplegable configurado en **`Cajero receptor`**.
+     * Leyenda institucional: *"Quién será esta persona en el sistema. Un cajero o registro público siempre es un cliente."* (Demuestra la facultad exclusiva del administrador de otorgar permisos operativos dentro de la jerarquía de seguridad).
+3. **Acción**:
+   * Botón principal: **"Continuar"**.
+
+---
+
+#### Paso 69: Creación Administrativa de Usuario — Paso 2: Carga Documental de DPI (`/clientes/nuevo`)
+
+El asistente avanza a la etapa de respaldo documental para digitalizar el documento de identificación del nuevo funcionario bancario.
+
+![Registro de nuevo usuario paso 2 documento DPI](images/user-manual/admin-04-nuevo-usuario-paso2-dpi.png)
+
+##### Elementos y Arquitectura de Almacenamiento:
+1. **Barra de Progreso**:
+   * **Datos personales**: Completado.
+   * **Documento**: Activo (*Paso 2 de 3 · La foto del DPI la revisa un cajero*).
+   * **Confirmación**: Pendiente.
+2. **Campos Documentales**:
+   * **Número de DPI (13 dígitos)**: `5454545455454` (valida la longitud obligatoria del Código Único de Identificación).
+   * **Foto del documento**:
+     * Vista previa y estado de carga: `2026-07-16 08_37_56-Documento1 - Word.png`.
+     * Peso y validación: `14 KB · Listo para enviar`.
+     * Botón: **"Cambiar"** para reemplazar el archivo si fuera necesario.
+3. **Integración con MinIO y SHA-256**:
+   * Al confirmar el registro, el API Gateway sube el archivo binario directamente al bucket `identity-documents` en el servidor de almacenamiento de objetos **MinIO**.
+   * Se genera un digest criptográfico SHA-256 inmutable que queda vinculado al expediente en `customer-service` para auditoría forense.
+4. **Acciones**:
+   * Botón secundario: **"Volver"**.
+   * Botón principal: **"Continuar"**.
+
+---
+
+#### Paso 70: Creación Administrativa de Usuario — Paso 3: Revisión, Credenciales y Confirmación (`/clientes/nuevo`)
+
+En la etapa final del asistente, el administrador revisa la ficha consolidada del usuario y define sus credenciales iniciales de autenticación.
+
+![Registro de nuevo usuario paso 3 confirmacion](images/user-manual/admin-05-nuevo-usuario-paso3-confirmacion.png)
+
+##### Elementos de la Ficha de Confirmación:
+1. **Resumen de Datos Ingresados**:
+   * **Nombre completo**: `lucas luquito`
+   * **Fecha de nacimiento**: `2003-03-01`
+   * **Dirección**: `sdafdf`
+   * **Correo electrónico**: `probando@gmail.com`
+   * **Documento (DPI)**: `5454545455454`
+   * **Documento**: `2026-07-16 08_37_56-Documento1 - Word.png cargado`
+2. **Definición de Usuario y Clave de Acceso**:
+   * **Usuario que te crearemos**: Campo autocompletado reactivamente con **`luquita`**.
+     * Leyenda informativa: *"Se genera a partir de tu nombre. Si ya existe, le añadimos un número al final."*
+   * **Contraseña**: Campo enmascarado `••••••••`.
+   * **Confirmar contraseña**: Campo de verificación con el valor `luquita` (con control de visibilidad activo).
+   * **Aceptación Normativa**: Checkbox marcado: *"Acepto los términos y condiciones y el tratamiento de mis datos personales."*
+3. **Idempotencia Técnica y Envío**:
+   * `CÓDIGO DE ESTA OPERACIÓN`: `b585ff52-1538-46e4-be16-38488b871a8a` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación."*).
+   * Botón secundario: **"Volver"**.
+   * Botón principal: **"Crear cuenta"** (dispara el comando asíncrono `customer.register.v1` hacia RabbitMQ).
+
+---
+
+#### Paso 71: Confirmación de Alta Exitosa de Agente Cajero (`/clientes/nuevo`)
+
+Al presionar **"Crear cuenta"**, `customer-service` procesa el registro, asigna el identificador corporativo y despacha inmediatamente la notificación de activación a la dirección de correo del funcionario.
+
+![Agente cajero registrado exitosamente](images/user-manual/admin-06-agente-cajero-registrado-exito.png)
+
+##### Elementos y Notificaciones de Éxito en Pantalla:
+1. **Icono y Encabezado de Aprobación**:
+   * Icono de verificación circular en verde.
+   * **Título**: **"Agente cajero registrado"**.
+   * **Notificación de Correo Despachado**: *"El agente cajero fue registrado y validado exitosamente. Se envió el enlace de activación a **probando@gmail.com**. El usuario será **luquita**."*
+2. **Tarjeta de Credenciales y Trazabilidad Institucional**:
+   * **NÚMERO DE AGENTE CAJERO (`customerId`)**: `03618920-a7dd-4f6a-ae4d-025a6f4a5161` [Copiar].
+   * **USUARIO**: `lluquita` [Copiar].
+   * **CÓDIGO DE SEGUIMIENTO (`correlationId`)**: `e26a74c0-096f-406a-b236-df5bd9675056` [Copiar].
+3. **Acciones Disponibles**:
+   * Botón secundario: **"Ver el agente cajero"** (redirige al expediente del usuario en `/clientes/03618920-a7dd-4f6a-ae4d-025a6f4a5161`).
+   * Botón primario: **"Registrar otro"** (reinicia el asistente para dar de alta nuevo personal).
+4. **Fundamento de Seguridad y Activación por Correo**:
+   * Por haber sido enrolado directamente por el administrador (`registeredByStaff = true`), su identidad documental nace como **`VALIDATED`** (no requiere hacer fila en la mesa de control de fotos).
+   * Sin embargo, cumpliendo con la regla estricta del enunciado para el acceso seguro al sistema bancario, la cuenta nace en estado **`PENDING_ACTIVATION`**. El sistema emite inmediatamente el evento `customer.activation.requested.v1` para que el funcionario verifique la recepción del token en su bandeja de correo antes de que se le permita iniciar sesión y obtener su token JWT.
+
+---
+
+#### Paso 72: Directorio General de Usuarios con Nuevo Agente Cajero Incorporado (`/clientes` o `/usuarios`)
+
+Al retornar al directorio de **Usuarios** (`http://localhost:3010/clientes`), el administrador constata que el nuevo agente cajero ha sido dado de alta formalmente en la nómina del banco y se encuentra listo para operar una vez active sus credenciales.
+
+![Directorio de usuarios con nuevo cajero Luquitas](images/user-manual/admin-07-usuarios-directorio-con-cajero-luquitas.png)
+
+##### Registro del Nuevo Funcionario en la Tabla:
+* **Fila 1 (Nuevo Agente Incorporado)**:
+  * **Usuario / Nombre**: `lucas luquito` (`@lucasluquita`).
+  * **No. Usuario (UUID)**: `03618920-a7dd-4f6a-ae4d-025a6f4a5161` [Copiar].
+  * **Correo electrónico**: `probando@gmail.com`.
+  * **Rol**: Badge distintivo **`CAJERO_RECEPTOR`**, validando que los permisos otorgados por el administrador aplican de inmediato en la capa de autorización del Gateway (D-06).
+  * **Estado de Identidad**: Badge verde **`Verificada`**.
+  * **Acciones**: Botón **"Ficha"** para consultar el expediente operativo del funcionario.
+* **Trazabilidad**:
+  * Botón **"Actualizar"** con tiempo de respuesta de `32 ms`, certificando la persistencia y lectura atómica sobre la base de datos PostgreSQL de `customer-service`.
+
+---
+
+#### Paso 73: Directorio General de Cuentas y Supervisión Administrativa del Saldo Custodiado (`/cuentas`)
+
+Al ingresar a la sección de **Cuentas** (`http://localhost:3010/cuentas`), el administrador accede al inventario consolidado de productos financieros del banco.
+
+> **Principio de Jerarquía Operativa**: El administrador cuenta con todas las facultades operativas del cajero receptor (puede registrar depósitos con **"Depósito"** y abrir cuentas con **"Abrir cuenta"**), pero dispone adicionalmente de herramientas de gobierno institucional como el botón de **"Gestión de cuentas"** para el control de estados y supervisión global del pasivo bancario.
+
+![Directorio general de cuentas del administrador](images/user-manual/admin-08-cuentas-directorio.png)
+
+##### Elementos y Métricas Observadas en Pantalla:
+1. **Encabezado y Saldo Institucional**:
+   * **Título**: **"Cuentas de clientes"** (*"Cuentas monetarias y de ahorro de los clientes del banco."*).
+   * **Saldo total custodiado**: Muestra en tiempo real **`Q 10,500.00`**, reflejando con estricta exactitud matemática el balance acumulado de todos los depósitos, transferencias y pagos de servicios liquidables ejecutados en los módulos anteriores.
+   * **Herramientas de Ventanilla Disponibles**:
+     * Botón **"Depósito"**: Permite al administrador captar fondos y fondear cuentas en efectivo directamente.
+     * Botón **"Abrir cuenta"**: Permite aperturar cuentas monetarias o de ahorro para clientes verificados.
+2. **Inventario de Cuentas Bancarias Registradas**:
+   * **Fila 1 (Cuenta de Ahorro de Enner)**: `AH Ahorro` | No. `afd97145-831e-40f7-92b6-a167b28c511a` | Estado: `ACTIVA` (verde) | Saldo: **`Q 700.00`** | [Ver detalle].
+   * **Fila 2 (Cuenta Monetaria de Enner)**: `MO Monetaria` | No. `e80bd8e9-930a-4f5a-9f34-229cc6d6e822` | Estado: `ACTIVA` (verde) | Saldo: **`Q 400.00`** (saldo resultante exacto tras descontar la transferencia a ahorro de Q 700.00 y el pago de electricidad EEGSA de Q 300.00) | [Ver detalle].
+   * **Filas 3 a 6 (Cuentas Institucionales y de Otros Clientes)**:
+     * Ahorro `...0004`: `Q 400.00` (Clara Cliente).
+     * Monetaria `...0005`: `Q 2,500.00`.
+     * Ahorro `...0002`: `Q 1,500.00`.
+     * Monetaria `...0001`: `Q 5,000.00`.
+3. **Control Exclusivo del Administrador**:
+   * Botón **"Gestión de cuentas"**: Redirige al submódulo administrativo (`/cuentas/administracion`) para aplicar bloqueos, reactivaciones o cierres preventivos de cuentas según requerimientos regulatorios.
+   * Botón **"Actualizar"** con código de seguimiento `0f1d9f6b-eb02-4d0e-b15a-b949cd97fb7e` [Copiar].
+
+---
+
+#### Paso 74: Consola Administrativa de Transferencias y Monitor de Operaciones (`/transferencias`)
+
+Al navegar a **Transferencias** en el menú lateral (`http://localhost:3010/transferencias`), el administrador visualiza la bitácora histórica de operaciones interbancarias y cuenta con herramientas avanzadas de fiscalización.
+
+![Historial de transferencias del administrador](images/user-manual/admin-09-transferencias-historial.png)
+
+##### Herramientas y Operatividad del Administrador:
+1. **Capacidades Operativas y Supervisoras**:
+   * Botón **"Nueva transferencia"**: Al igual que un cajero, el administrador puede iniciar órdenes de traslado de fondos entre cuentas de clientes.
+   * Botón **"Monitoreo"** (Función avanzada): Acceso directo al monitor de la Saga distribuida para inspeccionar la máquina de estados coreografiada y los eventos asíncronos en RabbitMQ.
+2. **Tabla "Historial de operaciones de clientes"**:
+   * **Fila 1 (Demostración de Falla y Compensación)**:
+     * Fecha: `3/09/2026, 9:43 p. m.`
+     * Origen $ightarrow$ Destino: `a167b28c511a -> 229cc6d6e822` (Ahorro Enner $ightarrow$ Monetaria Enner).
+     * Estado: Badge rosa/rojo **`Compensada`** (reflejo fiel de la transacción revertida en el Paso 25).
+     * Monto: **`Q 200.00`** | Enlace: **`Ver →`**.
+   * **Fila 2 (Traslado entre Cuentas Propias)**:
+     * Fecha: `3/09/2026, 9:42 p. m.`
+     * Origen $ightarrow$ Destino: `229cc6d6e822 -> a167b28c511a` (Monetaria $ightarrow$ Ahorro).
+     * Estado: Badge verde **`Completada`**.
+     * Monto: **`Q 700.00`** | Enlace: **`Ver →`**.
+   * **Fila 3 (Transferencia de Terceros)**:
+     * Fecha: `3/09/2026, 9:33 p. m.`
+     * Origen $ightarrow$ Destino: `000000000004 -> 229cc6d6e822` (Clara Cliente $ightarrow$ Enner Mendizabal).
+     * Estado: Badge verde **`Completada`**.
+     * Monto: **`Q 400.00`** | Enlace: **`Ver →`**.
+3. **Buscador Directo de Operaciones**:
+   * Tarjeta **"Consultar una transferencia"**: Permite ingresar un `transactionId` arbitrario (`00000000-0000-4000-8000-000000000000`) para consultar el estado en curso de transferencias que aún no se reflejen en la vista paginada.
+   * Botón **"Ver el estado"**.
+4. **Trazabilidad**:
+   * **CÓDIGO DE SEGUIMIENTO**: `236d290e-165f-4328-9781-b12970fc88cc` [Copiar].
+
+---
+
+#### Paso 75: Módulo Administrativo de Pagos de Servicios y Supervisión de Facturadores (`/pagos`)
+
+El administrador ingresa a **Pagos** (`http://localhost:3010/pagos`) para fiscalizar la liquidación de facturas hacia entidades externas (telefonía, electricidad, agua).
+
+![Historial de pagos del administrador](images/user-manual/admin-10-pagos-historial.png)
+
+##### Funciones y Registros en Pantalla:
+1. **Acciones Operativas y Supervisión**:
+   * Botón **"Nuevo pago"**: Capacidad de procesar el pago de cualquier factura pública cargada a cuentas bancarias institucionales o de clientes.
+   * Botón **"Monitoreo"** (Función exclusiva): Permite abrir el panel de observabilidad de `payment-service` para verificar los cobros procesados, las respuestas de los proveedores y la escalera de reintentos.
+2. **Tabla "Historial de pagos"**:
+   * **Fila 1 (Factura de Electricidad EEGSA)**:
+     * Fecha: `3/09/2026, 9:44 p. m.`
+     * Servicio: `EEGSA · Energía eléctrica` con etiqueta amarilla **`Externo`**.
+     * Estado: Badge verde **`Completada`**.
+     * Monto: **`Q 300.00`** | Enlace: **`Ver →`**.
+   * **Fila 2 (Factura de Telefonía Claro)**:
+     * Fecha: `3/09/2026, 9:38 p. m.`
+     * Servicio: `Claro · Telefonía` con etiqueta amarilla **`Externo`**.
+     * Estado: Badge verde **`Completada`**.
+     * Monto: **`Q 500.00`** | Enlace: **`Ver →`**.
+3. **Trazabilidad**:
+   * **CÓDIGO DE SEGUIMIENTO**: `99c69db3-8b73-453b-805c-76bc9e08b54e` [Copiar].
+4. **Tarjeta Explicativa ("Por qué un pago aparece como transferencia")**:
+   * Explica que cada proveedor externo posee una cuenta recaudadora en el banco, por lo que las facturas se liquidan como transferencias bajo el patrón Saga con reversión automática garantizada en caso de error.
+
+---
+
+#### Paso 76: Pista de Auditoría Transversal de Eventos del Sistema (`/auditoria`)
+
+Al acceder a la sección de **Auditoría** (`http://localhost:3010/auditoria`), el administrador ingresa a la herramienta forense y de cumplimiento más potente del sistema, exclusiva de este rol.
+
+![Pista de auditoría transversal](images/user-manual/admin-11-auditoria-eventos-inicio.png)
+
+##### Capacidades de Observabilidad y Elementos en Pantalla:
+1. **Encabezado y Módulo de Alertas**:
+   * **Título**: **"Auditoría de eventos"** (*"El rastro completo de una operación, por su código de seguimiento."*).
+   * Botón superior derecho: **"Consola de notificaciones"** para auditar el canal de entrega de correos y alertas emitidas a los usuarios.
+2. **Búsqueda Forense por Código de Seguimiento (`correlationId`)**:
+   * Campo de consulta con el identificador ingresado: `7d41e8b2-9a3f-4c15-8ee8-1b2f9a4c7d18`.
+   * Botón: **"Consultar"**.
+   * Descripción técnica: *"Es el identificador que acompaña a cada operación: aparece en la pantalla de la transferencia, en el registro de un pago y en cada aviso de error."*
+3. **Registro Cronológico Global**:
+   * Tarjeta **"Últimos eventos del sistema"**: Navegación paginada con 10 eventos por página que consulta directamente los registros inmutables de `notification-audit-service`.
+   * Botón: **"Actualizar"**.
+4. **Principio de Trazabilidad de Extremo a Extremo**:
+   * Tarjeta informativa: *"Cada operación del sistema —un registro, una transferencia, un pago— lleva un identificador que la acompaña por los cinco servicios. Con él, esta pantalla arma la historia completa: qué se publicó, quién lo publicó, en qué orden y qué se le avisó al cliente."*
+   * **Privacidad y Redacción**: Ningún payload expone contraseñas en claro, tokens desprotegidos ni información confidencial; los eventos se almacenan previamente redactados para cumplir con normativas de seguridad financiera.
+
+---
+
+#### Paso 77: Búsqueda Forense y Consulta de Eventos por Identificador de Correlación (`/auditoria`)
+
+Al ingresar un código de seguimiento (`correlationId`) y presionar **"Consultar"**, el sistema reconstruye toda la traza de eventos distribuidos de la operación a través del intercambio de mensajería asíncrona en RabbitMQ.
+
+![Búsqueda y consulta forense de eventos](images/user-manual/admin-12-auditoria-eventos-consulta.png)
+
+##### Capacidades Forenses y Elementos en Pantalla:
+1. **Entrada de Consulta Forense**:
+   * Campo de búsqueda con el código ingresado: `7d41e8b2-9a3f-4c15-8ee8-1b2f9a4c7d18`.
+   * Botón interactivo **"Consultar"**: Emite la consulta asíncrona hacia el servicio de auditoría para recolectar cronológicamente cada mensaje emitido por los 5 microservicios (`Customer`, `Account`, `Transaction`, `Payment`, `Notification`).
+2. **Paginación Global y Monitoreo de Eventos**:
+   * Módulo **"Últimos eventos del sistema"** (*"Registro cronológico global con navegación paginada (10 eventos por página)"*).
+   * Botón **"Actualizar"**: Refresca en caliente la lista de eventos conforme ocurren transferencias, aperturas o pagos concurrentes en el banco.
+   * Paginador: Navegación ordenada con controles de página anterior y siguiente para examinar auditorías históricas.
+3. **Tarjeta de Orientación al Auditor**:
+   * Tarjeta inferior instructiva **"Ingresa un código de seguimiento"**:
+     * Detalla cómo cada operación (un registro, una transferencia o un pago) nace con un identificador único e inmutable en el API Gateway.
+     * Esta pantalla arma la historia completa: qué evento se publicó en el broker, qué servicio lo produjo (`customer-service`, `transaction-service`, etc.), la marca de tiempo precisa en milisegundos y la notificación final despachada al cliente.
+4. **Depuración de Tiempos y Resiliencia**:
+   * En caso de incidencias de red o timeouts momentáneos en los microservicios, la herramienta de auditoría permite detectar rápidamente cuellos de botella en la respuesta de los consumidores RabbitMQ sin alterar el estado de las transacciones financieras.
+
+---
+
+#### Paso 78: Consola de Supervisión y Entrega de Notificaciones del Sistema (`/auditoria/notificaciones`)
+
+Al presionar el botón **"Consola de notificaciones"** en la pantalla de auditoría, el administrador accede a la bitácora operativa de todos los comunicados, alertas y correos generados por el banco (`http://localhost:3010/auditoria/notificaciones`).
+
+![Consola de supervisión de notificaciones](images/user-manual/admin-13-auditoria-notificaciones-consola.png)
+
+##### Elementos y Capacidades de Fiscalización en Pantalla:
+1. **Encabezado y Política de Entornos Simulados**:
+   * **Título**: **"Notificaciones"**.
+   * **Subtítulo Operativo**: *"Lo que el sistema avisó, con su estado real de entrega. Los envíos son simulados: no sale correo de este sistema."*
+   * Botón superior derecho: **"Actualizar"** para refrescar la lista de mensajes en tiempo real.
+2. **Filtros de Estado de Entrega**:
+   * Selector desplegable **"Todos los estados"**: Permite filtrar las notificaciones según su condición operativa (`Enviada`, `Pendiente`, `Fallida`).
+3. **Registro Cronológico de Notificaciones Emitidas**:
+   * **Notificación 1 (Activación de Cuenta)**:
+     * Asunto: **`Activa tu cuenta de bonking`** | Badge verde **`Enviada`**.
+     * Evento origen: `customer.activation` hacia destinatario protegido `cliente-03618920@simulado.bonking.gt`.
+     * Fecha y resolución: `3/09/2026, 8:47 p. m.` (resuelta a las `9:47 p. m.`).
+     * Detalle: *"El canal simulado la dio por entregada."* | Enlace: **`Ver el flujo completo →`**.
+   * **Notificación 2 (Validación de Identidad)**:
+     * Asunto: **`Tu identidad fue verificada`** | Badge verde **`Enviada`**.
+     * Evento origen: `identity.validated` hacia `cliente-03618920@simulado.bonking.gt`.
+     * Fecha: `3/09/2026, 9:47 p. m.`.
+   * **Notificación 3 (Confirmación de Solicitud de Registro)**:
+     * Asunto: **`Recibimos tu registro`** | Badge verde **`Enviada`**.
+     * Evento origen: `customer.registered` hacia `cliente-03618920@simulado.bonking.gt`.
+   * **Notificación 4 (Transferencia Exitosa)**:
+     * Asunto: **`Tu transferencia se completó`** | Badge verde **`Enviada`**.
+     * Evento origen: `transfer.completed` hacia `cliente-b165d73d@simulado.bonking.gt` (`3/09/2026, 9:44 p. m.`).
+   * **Notificación 5 (Compensación Saga y Reversión de Fondos)**:
+     * Asunto: **`Tu transferencia fue revertida y el monto regresó a tu cuenta`** | Badge verde **`Enviada`**.
+     * Evento origen: `transfer.compensated` hacia `cliente-b165d73d@simulado.bonking.gt` (`3/09/2026, 8:43 p. m.`).
+     * Evidencia en vivo de la ejecución del patrón Saga: cuando un pago o transferencia no puede concretarse en el proveedor o banco destino, el sistema notifica inmediatamente al usuario que el débito fue revertido íntegramente.
+4. **Navegación Cruzada a Auditoría ("Ver el flujo completo →")**:
+   * Cada fila dispone de un acceso directo que abre la auditoría de eventos filtrada por el `correlationId` exacto que generó esa notificación, cerrando el ciclo de trazabilidad técnica y operativa.
+
+---
+
+*(Las siguientes secciones de supervisión administrativa continuarán documentándose conforme se completen las operaciones de auditoría, control de cuentas y telemetría).*
 
 ---
 
