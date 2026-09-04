@@ -239,10 +239,16 @@ export class PostgresTransactionRepository implements TransactionRepository {
     const result = await this.#pool.query<TransactionRow>(
       `SELECT ${COLUMNS}
          FROM transactions
-        WHERE transaction_id = $1
-           OR transaction_id = (
+        WHERE transaction_id::text = $1
+           OR idempotency_key = $1
+           OR correlation_id::text = $1
+           OR transaction_id IN (
                 SELECT transaction_id FROM transaction_aliases
-                 WHERE requested_transaction_id = $1
+                 WHERE requested_transaction_id::text = $1
+              )
+           OR transaction_id IN (
+                SELECT transaction_id FROM transaction_events
+                 WHERE payload->>'paymentId' = $1
               )
         LIMIT 1`,
       [transactionId],
