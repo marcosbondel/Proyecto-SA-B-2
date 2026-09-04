@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(93);
+    expect(catalog).toHaveLength(97);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the fifty-one messages recorded as an extension, and no others', () => {
+  it('adds exactly the fifty-five messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -124,6 +124,8 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        */
       'account.stats.query.v1',
       'account.stats.replied.v1',
+      'audit.events.list.query.v1',
+      'audit.events.list.replied.v1',
       'audit.query.replied.v1',
       'audit.query.requested.v1',
       'audit.stats.query.v1',
@@ -156,6 +158,8 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        */
       'customer.identity-document.query.v1',
       'customer.identity-document.replied.v1',
+      'customer.list.query.v1',
+      'customer.list.replied.v1',
       /*
        * The five added for the prototype's `P-07`, the password recovery the
        * assignment's flow needs and T-05 had no message for. They repeat the

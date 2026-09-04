@@ -84,34 +84,53 @@ if (role.value === 'CLIENTE') {
   await navigateTo('/perfil');
 }
 
-useHead({ title: 'Clientes · bonking' });
+const isAdmin = computed(() => role.value === 'ADMINISTRADOR');
+
+useHead({ title: isAdmin.value ? 'Usuarios · bonking' : 'Clientes · bonking' });
 </script>
 
 <template>
   <section class="flex flex-col gap-6">
     <header>
-      <h1 class="text-[32px] font-bold leading-10 tracking-tight">Clientes</h1>
+      <h1 class="text-[32px] font-bold leading-10 tracking-tight">
+        {{ isAdmin ? 'Usuarios' : 'Clientes' }}
+      </h1>
       <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-        Registro con foto del documento, actualización de datos y revisión de identidad.
+        {{
+          isAdmin
+            ? 'Directorio de usuarios del sistema: registro con foto, actualización de datos y roles.'
+            : 'Registro con foto del documento, actualización de datos y revisión de identidad.'
+        }}
       </p>
     </header>
 
     <div class="grid gap-4 sm:grid-cols-2">
       <UCard v-if="isStaff">
-        <h2 class="text-[16px] font-semibold">Registrar un cliente</h2>
+        <h2 class="text-[16px] font-semibold">
+          {{ isAdmin ? 'Registrar un usuario' : 'Registrar un cliente' }}
+        </h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Alta en tres pasos con la foto del DPI. El registro dispara el correo de activación:
-          la cuenta no puede iniciar sesión hasta que se abra ese enlace.
+          {{
+            isAdmin
+              ? 'Alta de nuevo usuario (cliente, cajero o administrador) con foto del DPI y correo de activación.'
+              : 'Alta en tres pasos con la foto del DPI. El registro dispara el correo de activación: la cuenta no puede iniciar sesión hasta que se abra ese enlace.'
+          }}
         </p>
         <template #footer>
-          <UButton to="/clientes/nuevo" color="primary">Nuevo cliente</UButton>
+          <UButton to="/clientes/nuevo" color="primary">
+            {{ isAdmin ? 'Nuevo usuario' : 'Nuevo cliente' }}
+          </UButton>
         </template>
       </UCard>
 
       <UCard v-if="isStaff">
         <h2 class="text-[16px] font-semibold">Validación de identidad</h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Clientes registrados que esperan revisión de su documento.
+          {{
+            isAdmin
+              ? 'Usuarios registrados que esperan revisión de su documento de identidad.'
+              : 'Clientes registrados que esperan revisión de su documento.'
+          }}
         </p>
         <template #footer>
           <UButton to="/clientes/validaciones" variant="outline" color="neutral">
@@ -121,14 +140,20 @@ useHead({ title: 'Clientes · bonking' });
       </UCard>
 
       <UCard v-if="isStaff">
-        <h2 class="text-[16px] font-semibold">Abrir la ficha de un cliente</h2>
+        <h2 class="text-[16px] font-semibold">
+          {{ isAdmin ? 'Abrir la ficha de un usuario' : 'Abrir la ficha de un cliente' }}
+        </h2>
         <p class="mt-2 text-[13px] leading-5 text-[#5A5B63]">
-          Ingresa el identificador único del cliente (UUID) para consultar o gestionar su expediente bancario.
+          {{
+            isAdmin
+              ? 'Ingresa el identificador único (UUID) para consultar o gestionar su expediente en el sistema.'
+              : 'Ingresa el identificador único del cliente (UUID) para consultar o gestionar su expediente bancario.'
+          }}
         </p>
         <form class="mt-3 flex gap-2" @submit.prevent="open">
           <UInput
             v-model="customerId"
-            placeholder="Pega aquí el número de cliente"
+            :placeholder="isAdmin ? 'Pega aquí el número de usuario' : 'Pega aquí el número de cliente'"
             class="flex-1"
             style="font-variant-numeric: tabular-nums lining-nums"
           />
@@ -143,8 +168,16 @@ useHead({ title: 'Clientes · bonking' });
       <template #header>
         <div class="flex items-center justify-between">
           <div>
-            <h2 class="text-[18px] font-bold text-[#23242A]">Clientes registrados</h2>
-            <p class="text-[13px] text-[#5A5B63]">Directorio bancario de expedientes para consulta y operaciones de ventanilla.</p>
+            <h2 class="text-[18px] font-bold text-[#23242A]">
+              {{ isAdmin ? 'Usuarios registrados' : 'Clientes registrados' }}
+            </h2>
+            <p class="text-[13px] text-[#5A5B63]">
+              {{
+                isAdmin
+                  ? 'Directorio bancario de usuarios del sistema para consulta y gestión administrativa.'
+                  : 'Directorio bancario de expedientes para consulta y operaciones de ventanilla.'
+              }}
+            </p>
           </div>
           <UButton
             icon="i-lucide-refresh-cw"
@@ -160,17 +193,17 @@ useHead({ title: 'Clientes · bonking' });
       </template>
 
       <div v-if="loading && customers.length === 0" class="py-8 text-center text-[#5A5B63]">
-        Cargando listado de clientes…
+        {{ isAdmin ? 'Cargando listado de usuarios…' : 'Cargando listado de clientes…' }}
       </div>
       <div v-else-if="customers.length === 0" class="py-8 text-center text-[#75767F]">
-        No hay clientes registrados en el sistema.
+        {{ isAdmin ? 'No hay usuarios registrados en el sistema.' : 'No hay clientes registrados en el sistema.' }}
       </div>
       <div v-else class="overflow-x-auto">
         <table class="w-full text-left text-[13px]">
           <thead class="border-b border-[#E9E9EC] text-[#75767F]">
             <tr>
-              <th class="pb-2 font-medium">Cliente / Nombre</th>
-              <th class="pb-2 font-medium">No. Cliente (UUID)</th>
+              <th class="pb-2 font-medium">{{ isAdmin ? 'Usuario / Nombre' : 'Cliente / Nombre' }}</th>
+              <th class="pb-2 font-medium">{{ isAdmin ? 'No. Usuario (UUID)' : 'No. Cliente (UUID)' }}</th>
               <th class="pb-2 font-medium">Correo electrónico</th>
               <th class="pb-2 font-medium">Rol</th>
               <th class="pb-2 font-medium">Identidad</th>
@@ -219,9 +252,9 @@ useHead({ title: 'Clientes · bonking' });
                     variant="outline"
                     color="neutral"
                     size="xs"
-                    class="w-[85px] justify-center"
+                    class="w-[95px] justify-center text-center"
                   >
-                    Ficha
+                    <span class="w-full text-center">Ficha</span>
                   </UButton>
                   <UButton
                     v-if="c.role === 'CLIENTE'"
@@ -229,9 +262,9 @@ useHead({ title: 'Clientes · bonking' });
                     variant="outline"
                     color="primary"
                     size="xs"
-                    class="w-[85px] justify-center"
+                    class="w-[95px] justify-center text-center leading-tight"
                   >
-                    Abrir cuenta
+                    <span class="w-full text-center">Abrir cuenta</span>
                   </UButton>
                 </div>
               </td>
