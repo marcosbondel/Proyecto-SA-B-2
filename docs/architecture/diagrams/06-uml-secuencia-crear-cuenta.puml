@@ -96,7 +96,7 @@
       Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nDESPUÉS de guardar - channel.ack(message)
   else tipo de cuenta ausente o no reconocido
       Account -> Account : Rechazar la solicitud, sin guardar\n- openingRefusal(identity, customerId) devuelve el motivo
-      Account ->> Broker : Publicar evento "apertura rechazada" - publisher.publish(account.open-rejected.v1)
+      Account ->> Broker : Publicar evento "apertura rechazada" - publisher.publish(account.open.rejected.v1)
       Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nrechazo registrado - channel.ack(message)
   end
   deactivate Account
