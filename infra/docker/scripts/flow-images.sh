@@ -11,6 +11,14 @@ set -uo pipefail
 #     docker compose -f infra/docker/docker-compose.images.yml up -d
 #   BANK_GATEWAY_PORT=3100 ./infra/docker/scripts/flow-images.sh
 #
+# The same flow runs against the **Kubernetes deployment** — the images are the
+# same artefacts, so the only thing that changes is where the Gateway is and how
+# the notification log is read:
+#
+#   pnpm k8s:forward &   # 3000 -> gateway
+#   BANK_LOGS_CMD="kubectl logs -n bank-usac deploy/bank-usac-notification-audit-service --tail 400" \
+#     ./infra/docker/scripts/flow-images.sh
+#
 # `SEED_DEMO_DATA=true` matters here and nowhere else in these three lines:
 # step 5 below needs a staff session to put money into an account, and
 # self-service registration can only ever create a `CLIENTE`
@@ -44,10 +52,25 @@ CREDENTIAL='Contrasena-Segura-2026'
 
 cd "$REPO_ROOT"
 
-set -a
-# shellcheck source=/dev/null
-source infra/docker/.env
-set +a
+# Optional, because this script also runs against the Kubernetes deployment,
+# where the credentials live in the cluster's Secret rather than in this file
+# and the only thing needed from here is SEED_PASSWORD.
+if [[ -f infra/docker/.env ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source infra/docker/.env
+  set +a
+fi
+
+# How to read the notification service's log. The default is the Compose
+# container; the Kubernetes deployment overrides it, which is the only
+# difference between running this flow there and running it here:
+#
+#   BANK_LOGS_CMD="kubectl logs -n bank-usac deploy/bank-usac-notification-audit-service --tail 400"
+#
+# Everything else in this script is curl against $GATEWAY and does not care
+# where the Gateway is.
+BANK_LOGS_CMD="${BANK_LOGS_CMD:-docker logs notification-audit-service}"
 
 step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 note() { printf '   \033[33m%s\033[0m\n' "$1"; }
@@ -89,9 +112,14 @@ step "2. activate the account  →  GET /api/customers/verify-email"
 # TD-043 for what it costs. It is the same thing every local mail catcher does.
 token=""
 for _ in $(seq 1 20); do
-  token="$(docker logs notification-audit-service 2>&1 \
+  # The field is `deliveryLink`, not `activationLink`. It was renamed on
+  # purpose — see the comment in notification-audit-service's
+  # interfaces/logging.ts — and this grep was not updated with it, which broke
+  # this script at step 2 for every caller, Compose included. Both spellings
+  # are accepted so an older container's log still parses.
+  token="$($BANK_LOGS_CMD 2>&1 \
     | grep "$correlation" \
-    | sed -n 's/.*"activationLink":"[^"]*token=\([^"&]*\)".*/\1/p' | tail -1)"
+    | sed -nE 's/.*"(deliveryLink|activationLink)":"[^"]*token=([^"&]*)".*/\2/p' | tail -1)"
   [[ -n "$token" ]] && break
   sleep 1
 done
@@ -299,7 +327,7 @@ for label in "the transfer that worked:${happy_correlation}" \
              "the payment that was refused:${declined_correlation}" \
              "the payment that timed out:${flaky_correlation}"; do
   echo "   ${label%%:*}"
-  docker logs notification-audit-service 2>&1 \
+  $BANK_LOGS_CMD 2>&1 \
     | grep "${label##*:}" \
     | sed -n 's/.*"messageType":"\([^"]*\)".*"outcome":"\([^"]*\)".*/     \1 → \2/p' \
     | sort -u

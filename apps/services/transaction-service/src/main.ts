@@ -87,6 +87,23 @@ async function bootstrap(): Promise<void> {
 
   const pool = new Pool({ connectionString: environment.DATABASE_URL });
 
+  // Without this listener the process dies the first time the database drops a
+  // connection it had already established. `pg`'s Pool emits 'error' on an idle
+  // client — PostgreSQL sends "terminating connection due to administrator
+  // command" on shutdown — and an unhandled 'error' event is a fatal exception
+  // in Node, so the container exits 1 and kubelet restarts it.
+  //
+  // That is a different failure from the one the boot sequence already handles.
+  // A database that is *absent* (ECONNREFUSED) leaves this service alive and
+  // unready by design; a database that *goes away mid-connection* used to kill
+  // it. Only the second one needed fixing: the pool discards the broken client
+  // and dials again by itself, so all that was missing was somebody listening.
+  pool.on('error', (error: Error) => {
+    logger.error('idle database client errored; the pool will reconnect', {
+      error: error.message,
+    });
+  });
+
   const repository = new PostgresTransactionRepository(pool);
   const broker = new MessageBroker({
     url: environment.RABBITMQ_URL,

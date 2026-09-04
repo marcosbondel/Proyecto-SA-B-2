@@ -2,6 +2,11 @@
 
 Este documento describe el despliegue del sistema bancario **Bank USAC**, especificando los nodos físicos y de virtualización, contenedores, servicios Kubernetes, puertos y protocolos de red.
 
+Para **ejecutar** este despliegue —prerrequisitos, comandos, verificación y
+resolución de fallos— el procedimiento está en
+[`docs/operations/DEPLOYMENT.md`](../operations/DEPLOYMENT.md). Este documento
+explica la forma; aquel explica cómo levantarla.
+
 ---
 
 ## 1. Diagrama de Despliegue
@@ -10,6 +15,13 @@ Este documento describe el despliegue del sistema bancario **Bank USAC**, especi
 
 Fuentes de diagramación versionadas:
 * [PlantUML (`.puml`)](diagrams/05-uml-despliegue.puml)
+
+> **Los puertos reenviados, por escrito.** El `port-forward` mapea
+> `localhost:3000 → gateway` y `localhost:3010 → frontend`; así lo declara la
+> fuente `.puml`, así lo fija `pnpm k8s:forward` y así lo exigen
+> `web.apiBaseUrl` y `gateway.corsAllowedOrigins` en `values.yaml`. La imagen
+> exportada de esta sección fue recompuesta a mano y quedó por detrás de su
+> fuente en este punto: si la lees al revés, la fuente manda.
 
 ---
 

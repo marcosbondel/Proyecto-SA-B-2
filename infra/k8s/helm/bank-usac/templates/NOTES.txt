@@ -22,12 +22,13 @@ External mode: {{ .Values.external.mode }}
 
 0. If any pod shows `ImagePullBackOff` or `ErrImageNeverPull` instead of
    Running, this is not a dependency problem — it never got as far as
-   starting. `image.tag` defaults to `dev` in every component's values, and
-   `build-images.sh --kind <cluster>` only loads the short-commit tag onto
-   the node, never `dev` (see the comment above `services:` in values.yaml).
-   Re-run `helm upgrade --install` with `--set <component>.image.tag=` set to
-   the tag `build-images.sh` printed, for every component this release
-   touched.
+   starting. Nothing on this node satisfies that image name. Run
+
+     pnpm images:build -- --kind bank-usac    # the kind cluster, not the release
+
+   which builds every component and loads both the short-commit tag and `dev`
+   onto the node, then re-run `pnpm k8s:install` so the release names the
+   commit it is running rather than whatever was built last.
 
 1. Check that every workload is Ready before touching anything else — a pod
    stuck at Running/0-1 Ready is reachable but its dependencies are not:
@@ -71,7 +72,12 @@ External mode: {{ .Values.external.mode }}
    assuming something is actually wrong, then read its /ready body (step 1)
    for which dependency it is still waiting on.
 
-Live validation beyond this point (T-014: `helm upgrade --install` against
-a real kind cluster; T-015: an end-to-end transfer and a degraded-dependency
-case through the port-forwarded Gateway) needs a machine with `kind`
-installed — see infra/k8s/README.md and ADR-007.
+5. Capture what this release actually looks like — pods, services, nodes, the
+   out-of-cluster containers and every component's /ready body:
+
+     pnpm k8s:evidence
+
+   It only reads, and it writes into specs/008-audit-remediation/evidence/.
+
+The full procedure, prerequisites and troubleshooting live in
+docs/operations/DEPLOYMENT.md; the decision behind this shape is ADR-007.

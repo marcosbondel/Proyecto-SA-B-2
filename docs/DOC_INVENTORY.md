@@ -51,7 +51,13 @@ not require a new row for every generated link or vendor file.
 | `docs/events/catalog.md` | generated | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/events/topology.md` | project | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/events/saga-transfer.md` | project | Marcos Bonifasi | current | 2026-08-19 |
+| `docs/operations/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `docs/operations/CONTAINERS.md` | project | Marcos Bonifasi | current | 2026-08-27 |
+| `docs/operations/DEPLOYMENT.md` | project | Marcos Bonifasi | current | 2026-09-03 |
+| `docs/operations/EMAIL_RESEND.md` | project | Marcos Bonifasi | current | 2026-08-30 |
+| `docs/architecture/deployment.md` | project | Marcos Bonifasi | current | 2026-09-03 |
+| `infra/k8s/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
+| `infra/docker/README.md` | project | Marcos Bonifasi | current | 2026-08-27 |
 | `docs/architecture/adr/ADR-012-object-storage.md` | project | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/design-docs/PROMPT_MOCKUP.MD` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/architecture/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
@@ -95,6 +101,7 @@ document itself. A reader must not fill that gap with an assumption.
 | `specs/**/*.md` | harness | — | Archived or active feature-work artifacts governed by Spec Kit. |
 | `docs/templates/**/*.md` | template | — | Project document templates; copy, do not treat as live guidance. |
 | `docs/generated/**/*.md` | generated | — | Generated reference and schema outputs. |
+| `apps/**/README.md` | project | Component owner | Layer and package READMEs that live beside the code they describe; the component's owner in `OWNERSHIP.md` maintains them. |
 
 The `.claude/` and `.opencode/` entries are symlinks to canonical bodies under
 `.agents/`; the links are covered by the rule and are not duplicated as project
@@ -115,10 +122,11 @@ only uncovered paths. Its expected output is empty:
 ```sh
 find . -name '*.md' -not -path './.git/*' -not -path '*/node_modules/*' -print | while IFS= read -r path; do
   case "$path" in
-    ./README.md|./ARCHITECTURE.md|./AGENTS.md|./CLAUDE.md|./apps/web/README.md|./docs/AI_PROJECT_AGENTS.md|./docs/AI_PROJECT_SKILLS.md|./docs/DESIGN.md|./docs/DOC_INVENTORY.md|./docs/FRONTEND.md|./docs/METHODOLOGY.md|./docs/OWNERSHIP.md|./docs/PRODUCT_SENSE.md|./docs/QUALITY_SCORE.md|./docs/RELIABILITY.md|./docs/SECURITY.md|./docs/TECH_DEBT.md|./docs/design-docs/*.md|./docs/references/README.md|./.agents/roles/*.md|./.agents/skills/*/*.md|./.claude/agents/*.md|./.opencode/commands/*.md|./.specify/memory/*.md|./.specify/templates/*.md|./docs/templates/*.md|./docs/generated/*.md|./specs/*/*.md|./specs/*/*/*.md|./specs/*/*/*/*.md)
+    ./README.md|./ARCHITECTURE.md|./AGENTS.md|./CLAUDE.md|./apps/*/README.md|./apps/*/*/README.md|./apps/*/src/*/README.md|./apps/*/*/src/*/README.md|./apps/*/*/scripts/*.md|./docs/*.md|./docs/domain/*.md|./docs/events/*.md|./docs/manual/*.md|./docs/operations/*.md|./docs/architecture/*.md|./docs/architecture/adr/*.md|./docs/architecture/diagrams/*.md|./docs/architecture/diagrams/*/*.md|./docs/decisions/*.md|./docs/design-docs/*.md|./docs/sre/*.md|./docs/uml/*.md|./docs/saga/*.md|./docs/references/*.md|./infra/*/README.md|./.agents/roles/*.md|./.agents/skills/*/*.md|./.agents/skills/*/*/*.md|./.claude/agents/*.md|./.claude/skills/*/*.md|./.opencode/commands/*.md|./.specify/memory/*.md|./.specify/templates/*.md|./docs/templates/*.md|./docs/generated/*.md|./specs/*/*.md|./specs/*/*/*.md|./specs/*/*/*/*.md)
       ;;
     *) printf '%s\n' "$path" ;;
   esac
+done
 ```
 
 Every result is either a row in **Project Documents** or falls under one of

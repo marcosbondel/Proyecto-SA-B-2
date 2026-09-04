@@ -29,7 +29,7 @@ de texto versionadas (`.mmd` y `.puml`) y como imagen exportada.
 | **Manual de usuario** | [`docs/manual/README.md`](manual/README.md), con una guía por rol. Ver [§7](#7-manual-de-usuario) | Completo |
 | **Repositorio con estrategia de monorepo** | Un solo repositorio, un `pnpm-workspace.yaml`, un lockfile y Turborepo como task runner. Ver [§8](#8-código-fuente-y-monorepo) | Completo |
 | **Código fuente separado por microservicio** | [`apps/services/`](../apps/services/) — cinco servicios, uno por carpeta, más `apps/gateway` y `apps/web`. Ver [§8](#8-código-fuente-y-monorepo) | Completo |
-| **Archivos de configuración para despliegue en Kubernetes** | [`infra/k8s/`](../infra/k8s/README.md) — chart de Helm en `infra/k8s/helm/bank-usac` y el clúster kind en `infra/k8s/kind`. Ver [§9](#9-contenedores-y-despliegue) | Ver §9 |
+| **Archivos de configuración para despliegue en Kubernetes** | [`infra/k8s/`](../infra/k8s/README.md) — chart de Helm en `infra/k8s/helm/bank-usac`, el clúster kind en `infra/k8s/kind` y el procedimiento completo en [`docs/operations/DEPLOYMENT.md`](operations/DEPLOYMENT.md). Ver [§9](#9-contenedores-y-despliegue) | Completo |
 | **Documento de Decisión y Diseño de Arquitectura (DDA)** | [`docs/dda.md`](dda.md) — análisis de caso de negocio, CDU, especificaciones, atributos de calidad y matrices de trazabilidad | Completo |
 | **Guía Integral de Pruebas y Happy Path** | [`docs/happypath.md`](happypath.md) — recorrido visual exhaustivo de los 3 actores con 60+ capturas | Completo |
 | **Frontend** | [`apps/web/`](../apps/web/README.md), con su guía de diseño en [`docs/DESIGN.md`](DESIGN.md). Ver [§10](#10-frontend) | Completo |
@@ -291,19 +291,58 @@ Las bases de datos, el broker y el almacén de objetos corren fuera del clúster
 propósito: es el principio III de la constitución del proyecto, y es lo que
 dibuja el [diagrama de despliegue](architecture/diagrams/05-uml-despliegue.puml).
 
-El chart **se instaló en un clúster kind real** (v0.33.0) el 2026-08-28, y no
-solo pasó `helm lint` y `helm template`: los siete pods llegaron a `1/1 Ready`
-contra el PostgreSQL, el RabbitMQ y el MinIO de fuera del clúster, el Gateway
-respondió por `port-forward` y una transferencia recorrió la Saga hasta un
-estado terminal. Esa instalación encontró dos defectos que un chequeo de
-renderizado no podía ver —un arreglo asociativo de bash 4 que rompía en el bash
-3.2 de macOS, y unos valores por defecto de usuario y base de datos que
+El chart **se instala en un clúster kind real** (v0.33.0), y no solo pasa
+`helm lint` y `helm template`: los siete pods llegan a `1/1 Ready` contra el
+PostgreSQL, el RabbitMQ y el MinIO de fuera del clúster, y el Gateway responde
+por `port-forward`. La primera instalación encontró dos defectos que un chequeo
+de renderizado no podía ver —un arreglo asociativo de bash 4 que rompía en el
+bash 3.2 de macOS, y unos valores por defecto de usuario y base de datos que
 apuntaban cada pod al rol equivocado—, que es exactamente la razón por la que
-`helm template` no basta. Dos matices honestos acompañan a ese párrafo: la
-transferencia terminó en `FAILED` por `DEBIT_REJECTED` sobre una cuenta en cero
-—la forma de manejo de fallos, no la que se completa—, y **de esa ejecución no
-quedó evidencia capturada en el repositorio**: `specs/008-audit-remediation/quickstart.md`
-guarda lo que se esperaba, no lo que salió.
+`helm template` no basta.
+
+El procedimiento completo —prerrequisitos con versiones, los cuatro comandos,
+la verificación, el escalado y cada modo de fallo— está en
+[`docs/operations/DEPLOYMENT.md`](operations/DEPLOYMENT.md).
+
+**La evidencia de la ejecución está capturada**, y por un guion en vez de un
+pegado, de modo que se puede volver a producir en cualquier momento:
+
+```bash
+pnpm k8s:evidence   # solo lee: helm list, get pods/svc/nodes, docker ps, /ready ×7
+```
+
+Escribe en [`specs/008-audit-remediation/evidence/`](../specs/008-audit-remediation/evidence/)
+la salida real de cada comando, incluida la respuesta `/ready` de los siete
+componentes y el `docker ps` que demuestra el requisito del enunciado §4.2: las
+cinco bases, el broker y el almacén de objetos corriendo **fuera** del clúster.
+
+### El despliegue, en imágenes
+
+| | |
+| --- | --- |
+| ![Construcción de las siete imágenes](images/kubernetes/01-build-imagenes.png) | **Las siete imágenes**, etiquetadas con el commit que llevan dentro y cargadas en el nodo kind. No hay registro: nunca salen de la máquina. |
+| ![helm upgrade --install](images/kubernetes/02-helm-install.png) | **El release**, con los siete Deployments completando su rollout. |
+| ![Los siete pods en ejecución](images/kubernetes/03-pods-running.png) | **Los siete pods `1/1 Running`** en el namespace `bank-usac`, más sus Services `ClusterIP`. |
+| ![Las dependencias fuera del clúster](images/kubernetes/04-dependencias-fuera-del-cluster.png) | **Las cinco PostgreSQL, RabbitMQ y MinIO corriendo fuera del clúster**, en la red `bank-usac-local`. Es el requisito del §4.2, y solo `docker ps` puede demostrarlo: una foto de los pods enseña lo que está dentro, no lo que quedó fuera deliberadamente. |
+| ![/ready por componente](images/kubernetes/05-ready-por-componente.png) | **Cada componente responde por sí mismo**: `broker connected`, `database reachable`, `queues consuming`. |
+| ![La Saga en sus tres formas](images/kubernetes/06-saga-completed.png) | **Las tres formas de la Saga sobre el clúster**, con los saldos leídos antes y después: `COMPLETED` (150000 → 125000), un pago rechazado que `COMPENSATED` y una escalera de reintentos agotada que `COMPENSATED` igual. La compensación es un hecho sobre el dinero, no un estado escrito. |
+| ![Caso degradado](images/kubernetes/07-degradado-not-ready.png) | **Con `postgres-customer` detenido**, su pod queda `0/1 Running` —no `CrashLoopBackOff`—, y los otros seis siguen sirviendo. Sobre los reinicios que muestra la captura, ver la nota de abajo. |
+| ![/health responde, /ready no](images/kubernetes/07b-health-ok-ready-503.png) | **Vivo no es listo**: con la base caída, `/health` responde `ok` mientras `/ready` devuelve `503`. Por eso la sonda de liveness no reinicia el pod, y por eso el 503 nombra la dependencia que falta en vez de esconderla tras un reinicio. |
+| ![El frontend servido por el clúster](images/kubernetes/08-frontend-desde-el-cluster.png) | **El frontend servido por el pod `web`** a través de `kubectl port-forward`, con sesión de cliente iniciada. |
+
+> **Sobre los reinicios de la penúltima captura.** Muestra `RESTARTS 2`, y esa
+> cifra es la razón por la que vale la pena mirarla. Ejecutar el caso degradado
+> destapó un defecto que ningún test tenía: los cinco servicios creaban un
+> `pg.Pool` sin escuchar su evento `'error'`. Una base *ausente* estaba bien
+> resuelta —el servicio sigue vivo y no-listo—, pero una base que tumbaba una
+> conexión **ya establecida** emitía `terminating connection due to
+> administrator command`, y un `'error'` sin oyente es excepción fatal en Node:
+> el proceso moría y kubelet lo reiniciaba, camino del `CrashLoopBackOff` que
+> este documento promete que no ocurre. Corregido en `921426f`; repetida la
+> misma prueba con la base detenida noventa segundos, el pod aguanta
+> `0/1 Running` con **cero reinicios** y vuelve solo a `1/1` al levantarla. La
+> captura conserva el estado anterior a propósito: es la prueba de que el
+> escenario de fallo se ejecutó de verdad, y de que encontró algo.
 
 ---
 
