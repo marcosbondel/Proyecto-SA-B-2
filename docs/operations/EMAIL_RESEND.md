@@ -135,6 +135,50 @@ APP_BASE_URL=http://localhost:3010
 Registra un cliente con el correo de tu cuenta de Resend y confirma que llega.
 Luego cambia a tu dominio verificado para poder enviar a cualquiera.
 
+## En Kubernetes (chart de Helm)
+
+El chart cablea las cuatro variables al pod de `notification-audit-service`
+**siempre**, tanto en `simulated` como en `resend`. Es seguro porque el servicio
+solo lee `RESEND_API_KEY`, `EMAIL_FROM` y `APP_BASE_URL` en la rama `resend`; con
+el canal por defecto llegan vacías y sin usar. Cablearlas condicionalmente
+significaría que el `helm upgrade` que gira el canal también tendría que agregar
+tres variables, y un pod que arranca sin ellas entra en `CrashLoopBackOff` por
+validación de entorno en lugar de decir qué falta.
+
+La clave vive en el Secret (`secrets.resendApiKey`) y el resto en el ConfigMap
+(`services.notificationAudit.resend.*`). Pásalos en la instalación:
+
+```sh
+helm upgrade --install bank-usac infra/k8s/helm/bank-usac \
+  --namespace bank-usac --create-namespace \
+  -f infra/k8s/kind/generated-external.values.yaml \
+  --set services.notificationAudit.notificationChannel=resend \
+  --set secrets.resendApiKey=re_tu_clave \
+  --set 'services.notificationAudit.resend.emailFrom=bonking <no-reply@mail.tudominio.com>' \
+  --set services.notificationAudit.resend.appBaseUrl=https://app.tudominio.com \
+  --set services.notificationAudit.revealActivationLinks=false
+  # ...y los demás valores que templates/secret.yaml marca como requeridos.
+```
+
+Dos cosas que el chart hace para que esto no falle en silencio:
+
+- **Falla al renderizar, no en ejecución.** Con el canal en `resend` y cualquiera
+  de los tres valores vacío, `helm` se niega a renderizar y nombra el que falta —
+  el mismo contrato que `templates/secret.yaml` da a las contraseñas de base de
+  datos. Es preferible a un pod que arranca y descubre el problema al primer
+  correo.
+- **El pod se reinicia al cambiar la configuración.** El deployment lleva
+  anotaciones `checksum/config` y `checksum/secret`. Sin ellas, un `helm upgrade`
+  que gire el canal a `resend` dejaría el pod corriendo con el entorno anterior
+  y no enviaría nada: toda la configuración llega por `configMapKeyRef` y
+  `secretKeyRef`, cuyos *nombres de clave* no cambian, así que el pod spec sería
+  idéntico y no habría despliegue nuevo.
+
+`RESEND_API_URL` no se pasa: `values.yaml` ya trae el endpoint real por defecto y
+el ConfigMap lo respalda con `default`, porque se valida como URL en **cada**
+arranque —incluido el canal simulado— y un valor vacío tumbaría un pod que no
+envía ningún correo.
+
 ## Notas de seguridad
 
 - La `RESEND_API_KEY` es un secreto: va en `.env` (git-ignored) o en un secreto

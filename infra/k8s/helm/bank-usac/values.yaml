@@ -221,6 +221,25 @@ services:
     # real channel (docs/operations/CONTAINERS.md, docs/operations/EMAIL_RESEND.md).
     revealActivationLinks: "true"
     notificationChannel: simulated
+    # The Resend channel's non-sensitive half, read only when
+    # notificationChannel is "resend". The API key is the sensitive half and
+    # lives in secrets.resendApiKey. With the channel on "resend" and any of
+    # these empty, templates/notification-audit/deployment.yaml refuses to
+    # render and names the value — the same contract templates/secret.yaml
+    # gives the database passwords (docs/operations/EMAIL_RESEND.md).
+    resend:
+      # A sender on a domain verified in Resend, e.g.
+      # "bonking <no-reply@mail.tudominio.com>". An unverified domain is
+      # accepted here and rejected by Resend at send time.
+      emailFrom: ""
+      # The frontend's public origin, prepended to /activar?token=... so the
+      # emailed link is absolute. The service cannot know it any other way:
+      # it builds a path, and this is what makes it a URL.
+      appBaseUrl: ""
+      # Never "": RESEND_API_URL is validated as a URL on every boot, the
+      # simulated channel included, so an empty value would crash-loop a pod
+      # that sends no mail at all. Override only to point a test elsewhere.
+      apiUrl: "https://api.resend.com/emails"
 
 # ---------------------------------------------------------------------------
 # Gateway — the system's only entry point (constitution V). No DATABASE_URL,
@@ -262,6 +281,11 @@ web:
 # an untracked file.
 secrets:
   jwtSecret: ""
+  # The one secret that is NOT wrapped in `required`: the default "simulated"
+  # channel sends no mail and needs no key. It becomes required — enforced by
+  # the notification-audit template, not here — the moment
+  # services.notificationAudit.notificationChannel is "resend".
+  resendApiKey: ""
   rabbitmq:
     user: bank_app # the app account provisioned by infra/docker/scripts/init-rabbitmq.sh
     password: ""
