@@ -1,15 +1,34 @@
 # Notification & Audit Service (T-20). Env matches
 # docs/operations/CONTAINERS.md's notification-audit-service row: NODE_ENV,
-# PORT, DATABASE_URL, RABBITMQ_URL required; REVEAL_ACTIVATION_LINKS and
-# NOTIFICATION_CHANNEL optional. The Resend variables (RESEND_API_KEY,
-# EMAIL_FROM, APP_BASE_URL, RESEND_API_URL) are deliberately not wired here:
-# NOTIFICATION_CHANNEL defaults to "simulated", so they are not required,
-# and real outbound email is out of scope for a kind demonstration — set
-# them with --set if a specific test needs the real channel
+# PORT, DATABASE_URL, RABBITMQ_URL required; REVEAL_ACTIVATION_LINKS,
+# NOTIFICATION_CHANNEL and the four Resend variables optional.
+#
+# The Resend variables are wired unconditionally, which is safe because the
+# service reads RESEND_API_KEY, EMAIL_FROM and APP_BASE_URL only in the
+# "resend" branch — under the default "simulated" channel they arrive empty and
+# unused. Wiring them conditionally instead would mean the `helm upgrade` that
+# switches the channel also has to add three variables, and a pod that boots
+# without them crash-loops on environment validation instead of saying what is
+# missing.
+#
+# What IS conditional is the guard below: with the channel on "resend" and any
+# of the three empty, the chart refuses to render and names the value, the same
+# contract templates/secret.yaml gives the database passwords
 # (docs/operations/EMAIL_RESEND.md).
 {{- $component := .Values.services.notificationAudit.component }}
 {{- $ctx := dict "root" $ "component" $component }}
 {{- $cfg := .Values.services.notificationAudit }}
+{{- if eq $cfg.notificationChannel "resend" }}
+  {{- if not .Values.secrets.resendApiKey }}
+    {{- fail "notificationChannel is \"resend\" but secrets.resendApiKey is empty — pass it at install time, e.g. --set secrets.resendApiKey=re_xxxxxxxx (docs/operations/EMAIL_RESEND.md)" }}
+  {{- end }}
+  {{- if not $cfg.resend.emailFrom }}
+    {{- fail "notificationChannel is \"resend\" but services.notificationAudit.resend.emailFrom is empty — it must name a sender on a domain verified in Resend (docs/operations/EMAIL_RESEND.md)" }}
+  {{- end }}
+  {{- if not $cfg.resend.appBaseUrl }}
+    {{- fail "notificationChannel is \"resend\" but services.notificationAudit.resend.appBaseUrl is empty — without it the activation link in the email has no origin (docs/operations/EMAIL_RESEND.md)" }}
+  {{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,6 +43,17 @@ spec:
       {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # This component alone carries these, and the asymmetry is deliberate.
+        # Its whole configuration — the delivery channel, the sender, the API
+        # key — lives in the ConfigMap and the Secret, and none of it appears in
+        # the pod spec: every variable arrives by configMapKeyRef or
+        # secretKeyRef, whose *key names* never change. Without a checksum, a
+        # `helm upgrade` that flips the channel to "resend" would leave the
+        # running pod on the old env and send nothing, which is precisely the
+        # symptom this wiring exists to remove.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
     spec:
@@ -62,6 +92,26 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: NOTIFICATION_CHANNEL
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: RESEND_API_KEY
+            - name: EMAIL_FROM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: EMAIL_FROM
+            - name: APP_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: APP_BASE_URL
+            - name: RESEND_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: RESEND_API_URL
           livenessProbe:
             httpGet:
               path: /health
