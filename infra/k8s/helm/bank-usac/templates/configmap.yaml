@@ -21,6 +21,14 @@ data:
   NUXT_PUBLIC_API_BASE_URL: {{ .Values.web.apiBaseUrl | quote }}
   NOTIFICATION_CHANNEL: {{ .Values.services.notificationAudit.notificationChannel | quote }}
   REVEAL_ACTIVATION_LINKS: {{ .Values.services.notificationAudit.revealActivationLinks | quote }}
+  # The Resend channel's non-sensitive half. Harmless while the channel is
+  # "simulated": the service reads EMAIL_FROM and APP_BASE_URL only in the
+  # "resend" branch. RESEND_API_URL is the exception — it is validated as a URL
+  # on every boot, so `default` guarantees a real value even if someone empties
+  # it in an overrides file.
+  EMAIL_FROM: {{ .Values.services.notificationAudit.resend.emailFrom | quote }}
+  APP_BASE_URL: {{ .Values.services.notificationAudit.resend.appBaseUrl | quote }}
+  RESEND_API_URL: {{ .Values.services.notificationAudit.resend.apiUrl | default "https://api.resend.com/emails" | quote }}
   DEACTIVATION_ENABLED: {{ .Values.services.account.deactivation.enabled | quote }}
   DEACTIVATION_INTERVAL_MS: {{ .Values.services.account.deactivation.intervalMs | quote }}
   INACTIVITY_MONTHS: {{ .Values.services.account.deactivation.inactivityMonths | quote }}
