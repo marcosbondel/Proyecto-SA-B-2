@@ -157,4 +157,4 @@ pnpm test:e2e             # Suite completa de 68 pruebas con score
 pnpm test:e2e:happypath   # Recorrido visual con capturas para documentación
 ```
 
-Los resultados detallados se guardan en `docs/qa-test-results.json` y las capturas en `docs/screenshots/`.
+Los resultados detallados se guardan en `docs/qa/qa-test-results.json` y las capturas en `docs/qa/screenshots/`.

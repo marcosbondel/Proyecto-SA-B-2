@@ -312,8 +312,8 @@ async function runSuite() {
 
   console.log(`\n📊 RESULTADOS FINALES: ${testResults.metrics.passed}/${testResults.metrics.total} pruebas superadas (${testResults.metrics.score}%).`);
 
-  writeFileSync(resolve('docs/qa-test-results.json'), JSON.stringify(testResults, null, 2), 'utf-8');
-  console.log('💾 Resultados guardados en docs/qa-test-results.json');
+  writeFileSync(resolve('docs/qa/qa-test-results.json'), JSON.stringify(testResults, null, 2), 'utf-8');
+  console.log('💾 Resultados guardados en docs/qa/qa-test-results.json');
 }
 
 runSuite().catch((err) => {

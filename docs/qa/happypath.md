@@ -83,7 +83,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 | **DPI** | `1111111111111` | Exactamente 13 dígitos numéricos |
 | **Contraseña** | `bambino123` | Longitud $\ge 8$ caracteres |
 
-![Registro Paso 1 - Datos Válidos](images/happypath/06-registro-paso1-datos.png)
+![Registro Paso 1 - Datos Válidos](screenshots/hp-09-registro-paso1-datos-validos.png)
 
 #### B. Caminos de Error y Bloqueo en Paso 1
 1. **Campos Vacíos**: El formulario intercepta el envío y marca en rojo los campos obligatorios.
@@ -98,7 +98,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 - **Valores Válidos**: `DPI: 1111111111111` (13 dígitos) y archivo de fotografía adjunto.
 - **Acción**: La imagen se transmite de forma segura al API Gateway, que la deposita en el bucket de MinIO para la posterior validación visual del cajero.
 
-![Registro Paso 2 - Documento Válido](images/happypath/07-registro-paso2-dpi.png)
+![Registro Paso 2 - Documento Válido](screenshots/hp-13-registro-paso2-completo.png)
 
 ---
 
@@ -112,7 +112,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Paso 3 Listo para Envío | Confirmación de Solicitud Aceptada (`202 Accepted`) |
 | :--- | :--- |
-| ![Registro Paso 3](images/happypath/08-registro-paso3-password.png) | ![Registro Recibido](images/happypath/09-registro-recibido.png) |
+| ![Registro Paso 3](screenshots/hp-17-registro-paso3-completo.png) | ![Registro Recibido](screenshots/hp-18-registro-solicitud-aceptada.png) |
 
 ---
 
@@ -124,7 +124,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 - **Comportamiento del Sistema (ADR D-04)**: El sistema **rechaza el login con 401 Unauthorized** mostrando: *"No pudimos iniciar sesión con esos datos"*.
 - **Mecanismo de Auto-Reenvío**: Al detectar una contraseña correcta en una cuenta no activada, `customer-service` reenvía automáticamente un nuevo enlace de activación a `enneresamen@gmail.com`.
 
-![Login Rechazado por Cuenta Inactiva](images/happypath/10-login-pendiente-activacion.png)
+*Login Rechazado por Cuenta Inactiva — captura pendiente de recapturar*
 
 ### 3.2 Activación Exitosa por Token
 - **URL**: `http://localhost:3010/activar?token=<token_hash>`
@@ -132,7 +132,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 - **URL**: `http://localhost:3010/activar?token=<token_hash>`
 - **Flujo**: Notification Service emite el enlace con token temporal de 24 horas. Al ser visitado, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para operar.
 
-![Activación Exitosa](screenshots/hp-19-activacion-exitosa.png)
+*Activación Exitosa — captura pendiente de recapturar*
 
 ### 3.2 Caminos de Error en Activación
 1. **Token Reusado (Single-Use)**: Por la decisión **D-05**, un token consumido no puede volver a utilizarse (`ACTIVATION_TOKEN_INVALID`).
@@ -140,7 +140,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Token Reusado (Expirado / Consumido) | Token Fabricado / Inválido |
 | :--- | :--- |
-| ![Token Reusado](screenshots/hp-20-activacion-token-reusado.png) | ![Token Inválido](screenshots/hp-21-activacion-token-invalido.png) |
+| *Token Reusado — captura pendiente de recapturar* | ![Token Inválido](screenshots/hp-21-activacion-token-invalido.png) |
 
 ---
 
@@ -165,7 +165,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Selección de Tipo Ahorro | Confirmación de Apertura | Cuenta Creada Exitosamente (`accountId`) |
 | :--- | :--- | :--- |
-| ![Tipo Ahorro](images/happypath/19-abrir-cuenta-tipo.png) | ![Confirmación](images/happypath/20-abrir-cuenta-confirmar.png) | ![Cuenta Creada](images/happypath/21-cuenta-creada-resultado.png) |
+| ![Tipo Ahorro](screenshots/hp-29-cuenta-nueva-tipo-ahorro.png) | ![Confirmación](screenshots/hp-27-cuenta-nueva-confirmacion.png) | ![Cuenta Creada](screenshots/hp-30-cuenta-ahorro-creada.png) |
 
 ### 5.2 Listado y Detalle Individual de Cuentas
 
@@ -183,7 +183,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Dashboard del Cajero Receptor | Cola de Validaciones de Identidad | Detalle de Documento DPI |
 | :--- | :--- | :--- |
-| ![Dashboard Cajero](screenshots/hp-33-dashboard-cajero.png) | ![Cola Validaciones](screenshots/hp-34-cola-validaciones.png) | ![Detalle DPI](screenshots/14-detalle-validacion-identidad.png) |
+| ![Dashboard Cajero](screenshots/hp-33-dashboard-cajero.png) | ![Cola Validaciones](screenshots/hp-34-cola-validaciones.png) | ![Detalle DPI](screenshots/hp-34-cola-validaciones.png) |
 
 ---
 
@@ -195,7 +195,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Formulario de Depósito | Confirmación de Depósito | Comprobante Exitoso (`200 OK`) |
 | :--- | :--- | :--- |
-| ![Form Depósito](screenshots/hp-40-deposito-formulario-lleno.png) | ![Confirm Depósito](screenshots/hp-41-deposito-confirmacion.png) | ![Comprobante Depósito](screenshots/hp-42-deposito-exitoso-comprobante.png) |
+| *Form Depósito — captura pendiente de recapturar* | *Confirm Depósito — captura pendiente de recapturar* | ![Comprobante Depósito](screenshots/hp-42-deposito-exitoso-comprobante.png) |
 
 #### B. Caminos de Error en Depósito
 1. **Formulario Vacío**: El botón *Continuar* permanece deshabilitado hasta ingresar cuenta y monto válido.
@@ -205,7 +205,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Formulario Vacío (Botón Deshabilitado) | Formato UUID Inválido | Error por Cuenta Inexistente |
 | :--- | :--- | :--- |
-| ![Depósito Vacío](screenshots/hp-37-deposito-campos-vacios.png) | ![UUID Inválido](screenshots/hp-38-deposito-uuid-invalido.png) | ![Cuenta Inexistente](screenshots/err-06-deposito-cuenta-inexistente.png) |
+| ![Depósito Vacío](screenshots/hp-37-deposito-campos-vacios.png) | ![UUID Inválido](screenshots/hp-38-deposito-uuid-invalido.png) | *Cuenta Inexistente — captura pendiente de recapturar* |
 
 #### C. Restricciones RBAC del Cajero (ADR D-06)
 - El cajero **no puede** consultar auditoría distribuida (`403 Forbidden`).
@@ -232,7 +232,7 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 | Destino Inválido en UI | Fallo de Saga por Fondos Insuficientes |
 | :--- | :--- |
-| ![Destino Inválido](screenshots/err-07-transferencia-destino-invalido.png) | ![Fondos Insuficientes](screenshots/err-08-saga-fondos-insuficientes-fallida.png) |
+| *Destino Inválido — captura pendiente de recapturar* | *Fondos Insuficientes — captura pendiente de recapturar* |
 
 ---
 
@@ -282,7 +282,7 @@ sequenceDiagram
 
 | Login Administrador | Dashboard Administrativo Global | Perfil del Administrador |
 | :--- | :--- | :--- |
-| ![Login Admin](screenshots/24-login-administrador.png) | ![Dashboard Admin](screenshots/hp-52-dashboard-admin.png) | ![Perfil Admin](screenshots/hp-56-perfil-admin.png) |
+| ![Login Admin](screenshots/hp-52-dashboard-admin.png) | ![Dashboard Admin](screenshots/hp-52-dashboard-admin.png) | ![Perfil Admin](screenshots/hp-56-perfil-admin.png) |
 
 ---
 
