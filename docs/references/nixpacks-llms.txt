@@ -1,7 +1,0 @@
-Nixpacks Reference For Agents
-
-Status: Placeholder
-Retrieved: Not applicable
-
-Use this file only if the project deploys with Nixpacks. Add concise notes and
-links to official references instead of copying full docs.

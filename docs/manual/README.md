@@ -29,6 +29,12 @@ repositorio](../../README.md) y en
 - [Manual del Cajero Receptor](rol-cajero-receptor.md)
 - [Manual del Administrador](rol-administrador.md)
 
+**[Recorrido visual](recorrido-visual.md)** — los mismos flujos, pero con una
+captura de pantalla por paso: 78 pasos que atraviesan los tres roles sobre un
+único ejemplo con datos concretos, desde el registro del cliente hasta el pago
+de un servicio. Úsalo cuando quieras *ver* la pantalla en lugar de leer su
+descripción.
+
 ---
 
 ## 1. Antes de empezar

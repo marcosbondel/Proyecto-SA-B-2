@@ -22,7 +22,7 @@ output, and anything you could not finish with the reason.
 ## Rules
 
 - Read your task's `spec.md` and `plan.md`, then `ARCHITECTURE.md` and the
-  relevant `docs/design-docs/` entries, before writing code. Respect the
+  relevant `docs/architecture/adr/` records, before writing code. Respect the
   dependency direction they define.
 - A hook blocks production code while no spec is cleared for implementation. If
   it fires, the work is unspecced — report that, do not route around it.
