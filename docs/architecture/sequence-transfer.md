@@ -6,10 +6,10 @@ Este documento describe la secuencia de eventos, comandos y compensaciones del p
 
 ## 1. Diagrama de Secuencia
 
-![Secuencia — Transferencia con Saga](../architecture/diagrams/07-uml-secuencia-transferencia.png)
+![Secuencia — Transferencia con Saga](diagrams/07-uml-secuencia-transferencia.png)
 
 Fuentes de diagramación versionadas:
-* [PlantUML (`.puml`)](../architecture/diagrams/07-uml-secuencia-transferencia.puml)
+* [PlantUML (`.puml`)](diagrams/07-uml-secuencia-transferencia.puml)
 
 ---
 
