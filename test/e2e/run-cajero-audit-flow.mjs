@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path';
 
 const BASE = 'http://localhost:3010';
 const GW = 'http://localhost:3000';
-const DIR = resolve('docs/images/automated_test');
+const DIR = resolve('docs/qa/automated_test');
 mkdirSync(DIR, { recursive: true });
 
 const shot = (page, name) => page.screenshot({ path: join(DIR, `${name}.png`), fullPage: false });

@@ -25,8 +25,8 @@ you updated, and the specific constraint each implementer must respect.
 ## Rules
 
 - Read `ARCHITECTURE.md` first, always. It is the map you are amending.
-- Record decisions as ADRs in `docs/design-docs/` using the format in
-  `.agents/skills/domain-modeling/ADR-FORMAT.md`. ADRs live in `docs/` and not
+- Record decisions as ADRs in `docs/architecture/adr/`, numbered and indexed by
+  that directory's `README.md`. ADRs live in `docs/` and not
   in the spec directory, because they outlive the spec that produced them —
   cite the spec number in the ADR so the trail survives archival.
 - Update `ARCHITECTURE.md` in the same change that makes it stale. A layering

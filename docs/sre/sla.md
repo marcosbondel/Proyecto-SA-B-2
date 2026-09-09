@@ -144,7 +144,7 @@ Los siguientes eventos **no cuentan** contra el cumplimiento de este acuerdo:
 | `pnpm k8s:status` · `pnpm k8s:evidence` | Estado del clúster y captura reproducible de la evidencia de plataforma (SLO-9, SLO-10) |
 
 La verificación documentada se conserva en
-[`docs/qa-validation-report.md`](../qa-validation-report.md) y en los logs
+[`docs/qa/validation-report.md`](../qa/validation-report.md) y en los logs
 estructurados con niveles `INFO`, `WARN` y `ERROR`.
 
 ---

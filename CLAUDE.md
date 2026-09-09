@@ -154,10 +154,28 @@ changing a Dockerfile, adding a variable a container needs at run time, or
 touching a health check: it is the image inventory and the contract T-22 builds
 the Helm chart against.
 
-The complete project-documentation index is maintained in
-[AGENTS.md](AGENTS.md), including [docs/DOC_INVENTORY.md](docs/DOC_INVENTORY.md)
-for Markdown classification and [docs/OWNERSHIP.md](docs/OWNERSHIP.md) for
-component ownership.
+**Start at [docs/README.md](docs/README.md)** — it lists every document in
+`docs/` by what it answers, which is the fastest way to find the right one.
+[AGENTS.md](AGENTS.md) keeps the short index of what must be read before acting,
+[docs/DOC_INVENTORY.md](docs/DOC_INVENTORY.md) classifies every Markdown file in
+the repository, and [docs/OWNERSHIP.md](docs/OWNERSHIP.md) names the owner of
+each component.
+
+**Agent documentation lives in [`context/`](context/README.md), not in `docs/`.**
+The split is by audience: `docs/` explains the banking system, `context/`
+explains how it is built with agents — the roles, the skills and the prompts.
+Configuration the tools *execute* (`.agents/`, `.claude/`, `.opencode/`,
+`.specify/`, plus `AGENTS.md` and this file) stays at the repository root,
+because each tool looks for its own path there. Do not move those to make them
+match; do put a new document about agent practice in `context/`.
+
+`docs/` was reorganised on 2026-09-09: sixteen files went (scaffold boilerplate
+that was never adapted, and Spanish duplicates that had drifted into stating
+things the code contradicts), the diagram documents were gathered under
+`docs/architecture/`, the test evidence under `docs/qa/`, and the two manuals
+under `docs/manual/`. **Do not recreate `docs/templates/`, `docs/design-docs/`,
+`docs/decisions/`, `docs/saga/` or `docs/uml/`** — each was removed for a reason
+recorded in [docs/TECH_DEBT.md](docs/TECH_DEBT.md).
 
 ## Commands
 
@@ -259,7 +277,7 @@ relative symlinks into it — all 24 skills, including the ten from Spec Kit.
 **Always edit the `.agents/` side.** Adding a role means writing the `.agents/`
 file and creating the symlink by hand
 (`ln -s ../../.agents/roles/<name>.md .claude/agents/<name>.md`); new roles also
-get a row in [docs/AI_PROJECT_AGENTS.md](docs/AI_PROJECT_AGENTS.md).
+get a row in [context/AI_PROJECT_AGENTS.md](context/AI_PROJECT_AGENTS.md).
 
 A Spec Kit upgrade replaces those symlinks with per-tool copies. If
 `specify integration upgrade` ever runs, re-collapse the ten speckit skills into

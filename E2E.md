@@ -17,7 +17,7 @@ Este documento consolida la ejecución, metodología, cobertura y resultados de 
 | **Almacenamiento de Objetos** | MinIO (S3 compatible para fotografías de DPI) | Saludable |
 | **Suite 1 (QA & Seguridad)** | **11 / 11 pruebas aprobadas** | **100% Éxito** |
 | **Suite 2 (Happy Path & Flujos)** | **67 / 69 pruebas aprobadas** | **97.1% Éxito** |
-| **Capturas de Evidencia Generadas** | **138+ capturas de pantalla** en alta resolución | Guardadas en `docs/screenshots/` |
+| **Capturas de Evidencia Generadas** | **138+ capturas de pantalla** en alta resolución | Guardadas en `docs/qa/screenshots/` |
 | **Enlaces de Documentación Verificados** | **571 enlaces locales** | **0 enlaces rotos** |
 
 ---
@@ -76,7 +76,7 @@ minio                         Up (healthy)            0.0.0.0:9000-9001/tcp
 
 * **Script Ejecutado**: `node test/e2e/qa-suite.e2e.mjs` (disponible vía `pnpm test:e2e`).
 * **Resultado**: **11 de 11 pruebas superadas (100%)**.
-* **Archivo de Métricas**: `docs/qa-test-results.json`.
+* **Archivo de Métricas**: `docs/qa/qa-test-results.json`.
 
 ### Detalle de Pruebas Ejecutadas:
 
@@ -100,7 +100,7 @@ minio                         Up (healthy)            0.0.0.0:9000-9001/tcp
 
 * **Script Ejecutado**: `node test/e2e/happypath.e2e.mjs` (disponible vía `pnpm test:e2e:happypath`).
 * **Resultado**: **67 de 69 pruebas superadas (97.1%)**.
-* **Evidencias Gráficas**: **138+ capturas de pantalla** generadas en `docs/screenshots/`.
+* **Evidencias Gráficas**: **138+ capturas de pantalla** generadas en `docs/qa/screenshots/`.
 
 ### Desglose por Secciones Evaluadas:
 
@@ -173,4 +173,4 @@ minio                         Up (healthy)            0.0.0.0:9000-9001/tcp
 1. **Aislamiento Arquitectónico Verificado**: Ningún microservicio lee la base de datos de otro ni realiza llamadas HTTP directas inter-servicios. Toda la sincronización se realiza mediante RabbitMQ.
 2. **Consistencia de Datos**: La Saga Coreografiada maneja adecuadamente los escenarios exitosos y los caminos de compensación financiera, preservando la invariante de saldos no negativos (`CHECK (balance >= 0)`).
 3. **Seguridad y Resiliencia**: El API Gateway aplica control de acceso por roles (RBAC) sin almacenar estado de sesión ni lógica de negocio, cumpliendo estrictamente con la constitución del sistema.
-4. **Evidencias Completas**: Toda la ejecución cuenta con respaldo en archivos de métricas JSON (`docs/qa-test-results.json`) y más de 138 capturas de pantalla organizadas por flujo en `docs/screenshots/`.
+4. **Evidencias Completas**: Toda la ejecución cuenta con respaldo en archivos de métricas JSON (`docs/qa/qa-test-results.json`) y más de 138 capturas de pantalla organizadas por flujo en `docs/qa/screenshots/`.

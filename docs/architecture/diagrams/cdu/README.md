@@ -51,10 +51,10 @@ microservicio.
 - Un **diagrama de actividad** muestra el flujo principal, decisiones, errores
   y resultados de un caso de uso. Es el equivalente a los diagramas de flujo
   mostrados en clase.
-- PlantUML contiene la notación UML nativa. Mermaid es la representación
-  versionable aproximada exigida por ADR-013; en `flujos/`, los PNG se generan
-  desde los archivos `.mmd` de Mermaid y los `.puml` se conservan como fuente
-  UML alternativa.
+- PlantUML es la fuente versionada de todos estos diagramas y la notación UML
+  nativa de los casos de uso. Las fuentes Mermaid que ADR-013 pedía junto a ella
+  se retiraron del repositorio el 2026-09-02, así que cada diagrama de esta
+  carpeta se entrega como `.puml` más su PNG.
 
 ## Fuente funcional
 
@@ -64,7 +64,7 @@ Los casos se derivan de:
 - `docs/domain/use-cases.md` — seis flujos de negocio y la Saga.
 - `docs/domain/message-catalog.md` — comandos y eventos por servicio.
 - `docs/domain/bounded-contexts.md` — responsabilidades y límites.
-- `docs/design-docs/PROMPT_MOCKUP.MD` — superficies funcionales del frontend,
+- `context/prompt-mockup.md` — superficies funcionales del frontend,
   solamente cuando no contradicen el modelo de dominio.
 
 El **depósito en ventanilla sí se modela** (`CDU002.9`): existe en el código
@@ -80,30 +80,65 @@ recaudadora en este banco, así que pagar la luz es una transferencia a esa
 cuenta con el número de contrato. Un caso separado describiría un mecanismo que
 no existe.
 
-## Estructura
+## Los archivos
 
-```text
-cdu/
-├── 00-alto-nivel.{puml,mmd,png}
-├── 01-primera-descomposicion.{puml,mmd,png}
-├── customer/
-│   ├── customer-casos-de-uso.{puml,mmd,png}
-│   └── flujos/
-│       ├── CDU001.1-registrar-cliente.{puml,mmd,png}
-│       ├── CDU001.2-activar-cliente.{puml,mmd,png}
-│       ├── CDU001.3-iniciar-sesion.{puml,mmd,png}
-│       ├── CDU001.4-actualizar-datos.{puml,mmd,png}
-│       ├── CDU001.5-cargar-fotografia.{puml,mmd,png}
-│       ├── CDU001.6-validar-identidad.{puml,mmd,png}
-│       ├── CDU001.11-solicitar-restablecimiento.{puml,mmd,png}
-│       ├── CDU001.12-restablecer-contrasena.{puml,mmd,png}
-│       └── CDU001.13-cambiar-contrasena.{puml,mmd,png}
-├── account/flujos/ (CDU002.1 a CDU002.4 y CDU002.9)
-├── transaction/flujos/ (CDU003.1 y CDU003.2)
-├── payment/flujos/ (CDU004.1 y CDU004.2)
-└── notification-audit/flujos/ (CDU005.1 a CDU005.4)
-```
+Cada diagrama tiene su fuente PlantUML versionada y el PNG que se entrega.
 
-Las carpetas `account/flujos/`, `transaction/flujos/`, `payment/flujos/` y
-`notification-audit/flujos/` siguen la misma convención: cada flujo dispone de
-su fuente `.mmd`, su fuente `.puml` y el PNG generado desde Mermaid.
+### Nivel del sistema
+
+| CDU | Diagrama | Fuente | Render |
+| --- | --- | --- | --- |
+| CDU000 | Objetivo general de Bank USAC | [`.puml`](00-alto-nivel.puml) | [`.png`](00-alto-nivel.png) |
+| CDU001–005 | Primera descomposición por microservicio | [`.puml`](01-primera-descomposicion.puml) | [`.png`](01-primera-descomposicion.png) |
+
+### CDU001 — Customer Service
+
+| CDU | Caso de uso | Fuente | Render |
+| --- | --- | --- | --- |
+| CDU001 | **Diagrama de casos de uso del servicio** | [`.puml`](customer/customer-casos-de-uso.puml) | [`.png`](customer/customer-casos-de-uso.png) |
+| CDU001.1 | Registrar cliente | [`.puml`](customer/flujos/CDU001.1-registrar-cliente.puml) | [`.png`](customer/flujos/CDU001.1-registrar-cliente.png) |
+| CDU001.2 | Activar cliente por correo | [`.puml`](customer/flujos/CDU001.2-activar-cliente.puml) | [`.png`](customer/flujos/CDU001.2-activar-cliente.png) |
+| CDU001.3 | Iniciar sesión | [`.puml`](customer/flujos/CDU001.3-iniciar-sesion.puml) | [`.png`](customer/flujos/CDU001.3-iniciar-sesion.png) |
+| CDU001.4 | Actualizar datos personales | [`.puml`](customer/flujos/CDU001.4-actualizar-datos.puml) | [`.png`](customer/flujos/CDU001.4-actualizar-datos.png) |
+| CDU001.5 | Cargar fotografía del DPI | [`.puml`](customer/flujos/CDU001.5-cargar-fotografia.puml) | [`.png`](customer/flujos/CDU001.5-cargar-fotografia.png) |
+| CDU001.6 | Validar identidad en ventanilla | [`.puml`](customer/flujos/CDU001.6-validar-identidad.puml) | [`.png`](customer/flujos/CDU001.6-validar-identidad.png) |
+| CDU001.11 | Solicitar restablecimiento de contraseña | [`.puml`](customer/flujos/CDU001.11-solicitar-restablecimiento.puml) | [`.png`](customer/flujos/CDU001.11-solicitar-restablecimiento.png) |
+| CDU001.12 | Restablecer contraseña con el enlace | [`.puml`](customer/flujos/CDU001.12-restablecer-contrasena.puml) | [`.png`](customer/flujos/CDU001.12-restablecer-contrasena.png) |
+| CDU001.13 | Cambiar la contraseña propia | [`.puml`](customer/flujos/CDU001.13-cambiar-contrasena.puml) | [`.png`](customer/flujos/CDU001.13-cambiar-contrasena.png) |
+
+### CDU002 — Account Service
+
+| CDU | Caso de uso | Fuente | Render |
+| --- | --- | --- | --- |
+| CDU002 | **Diagrama de casos de uso del servicio** | [`.puml`](account/account-casos-de-uso.puml) | [`.png`](account/account-casos-de-uso.png) |
+| CDU002.1 | Abrir cuenta | [`.puml`](account/flujos/CDU002.1-abrir-cuenta.puml) | [`.png`](account/flujos/CDU002.1-abrir-cuenta.png) |
+| CDU002.2 | Consultar saldo | [`.puml`](account/flujos/CDU002.2-consultar-saldo.puml) | [`.png`](account/flujos/CDU002.2-consultar-saldo.png) |
+| CDU002.3 | Aplicar movimiento de la Saga | [`.puml`](account/flujos/CDU002.3-aplicar-movimiento.puml) | [`.png`](account/flujos/CDU002.3-aplicar-movimiento.png) |
+| CDU002.4 | Gestionar estado de la cuenta | [`.puml`](account/flujos/CDU002.4-gestionar-estado.puml) | [`.png`](account/flujos/CDU002.4-gestionar-estado.png) |
+| CDU002.9 | Registrar depósito en ventanilla | [`.puml`](account/flujos/CDU002.9-registrar-deposito.puml) | [`.png`](account/flujos/CDU002.9-registrar-deposito.png) |
+
+### CDU003 — Transaction Service
+
+| CDU | Caso de uso | Fuente | Render |
+| --- | --- | --- | --- |
+| CDU003 | **Diagrama de casos de uso del servicio** | [`.puml`](transaction/transaction-casos-de-uso.puml) | [`.png`](transaction/transaction-casos-de-uso.png) |
+| CDU003.1 | Transferir fondos | [`.puml`](transaction/flujos/CDU003.1-transferir-fondos.puml) | [`.png`](transaction/flujos/CDU003.1-transferir-fondos.png) |
+| CDU003.2 | Consultar estado de la transferencia | [`.puml`](transaction/flujos/CDU003.2-consultar-estado.puml) | [`.png`](transaction/flujos/CDU003.2-consultar-estado.png) |
+
+### CDU004 — Payment Service
+
+| CDU | Caso de uso | Fuente | Render |
+| --- | --- | --- | --- |
+| CDU004 | **Diagrama de casos de uso del servicio** | [`.puml`](payment/payment-casos-de-uso.puml) | [`.png`](payment/payment-casos-de-uso.png) |
+| CDU004.1 | Procesar pago | [`.puml`](payment/flujos/CDU004.1-procesar-pago.puml) | [`.png`](payment/flujos/CDU004.1-procesar-pago.png) |
+| CDU004.2 | Consultar historial de pagos | [`.puml`](payment/flujos/CDU004.2-consultar-historial.puml) | [`.png`](payment/flujos/CDU004.2-consultar-historial.png) |
+
+### CDU005 — Notification & Audit Service
+
+| CDU | Caso de uso | Fuente | Render |
+| --- | --- | --- | --- |
+| CDU005 | **Diagrama de casos de uso del servicio** | [`.puml`](notification-audit/notification-audit-casos-de-uso.puml) | [`.png`](notification-audit/notification-audit-casos-de-uso.png) |
+| CDU005.1 | Registrar evento de auditoría | [`.puml`](notification-audit/flujos/CDU005.1-registrar-auditoria.puml) | [`.png`](notification-audit/flujos/CDU005.1-registrar-auditoria.png) |
+| CDU005.2 | Enviar notificación | [`.puml`](notification-audit/flujos/CDU005.2-enviar-notificacion.puml) | [`.png`](notification-audit/flujos/CDU005.2-enviar-notificacion.png) |
+| CDU005.3 | Consultar la bitácora de auditoría | [`.puml`](notification-audit/flujos/CDU005.3-consultar-auditoria.puml) | [`.png`](notification-audit/flujos/CDU005.3-consultar-auditoria.png) |
+| CDU005.4 | Consultar notificaciones propias | [`.puml`](notification-audit/flujos/CDU005.4-consultar-notificaciones.puml) | [`.png`](notification-audit/flujos/CDU005.4-consultar-notificaciones.png) |

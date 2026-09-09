@@ -3,7 +3,7 @@
  *
  * This script visits EVERY page in Bank USAC for EVERY actor (Cliente, Cajero,
  * Admin), exercises EVERY form validation and RBAC boundary, and captures
- * high-resolution screenshots for docs/happypath.md.
+ * high-resolution screenshots for docs/qa/happypath.md.
  *
  * Run:  pnpm test:e2e:happypath
  */
@@ -14,7 +14,7 @@ import { resolve, join } from 'node:path';
 
 const BASE  = process.env.APP_BASE_URL || 'http://localhost:3010';
 const GW    = process.env.GATEWAY_URL  || 'http://localhost:3000';
-const DIR   = resolve('docs/screenshots');
+const DIR   = resolve('docs/qa/screenshots');
 mkdirSync(DIR, { recursive: true });
 
 const shot = (page, name) => page.screenshot({ path: join(DIR, `${name}.png`), fullPage: false });
@@ -928,15 +928,15 @@ async function run() {
   console.log(`  RESULTADOS: ${passed}/${total} pruebas superadas (${score}%)`);
   console.log('═══════════════════════════════════════════════════════════════\n');
 
-  writeFileSync(resolve('docs/qa-test-results.json'), JSON.stringify({
+  writeFileSync(resolve('docs/qa/qa-test-results.json'), JSON.stringify({
     suite: 'Bank USAC — Exhaustive E2E QA Suite',
     timestamp: new Date().toISOString(),
     metrics: { total, passed, failed: total - passed, score },
     tests: results,
   }, null, 2), 'utf-8');
 
-  console.log('💾 Resultados guardados en docs/qa-test-results.json');
-  console.log(`📸 ${total * 2}+ capturas guardadas en docs/screenshots/`);
+  console.log('💾 Resultados guardados en docs/qa/qa-test-results.json');
+  console.log(`📸 ${total * 2}+ capturas guardadas en docs/qa/screenshots/`);
 }
 
 run().catch(err => {

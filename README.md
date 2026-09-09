@@ -177,6 +177,20 @@ infra/k8s/                           # the local Kubernetes deployment
                                      #   + kind/, the single-node cluster config
                                      #   + scripts/, create · install · evidence
 docs/                                # durable project documentation
+                                     #   + README.md, the index: every document
+                                     #     by what it answers
+                                     #   + architecture/, the diagrams, the ADRs
+                                     #     and one reading per diagram
+                                     #   + domain/ and events/, the model and
+                                     #     the messages it travels in
+                                     #   + operations/ and sre/, the runbooks
+                                     #     and the reliability targets
+                                     #   + manual/, the user guides and the
+                                     #     78-step visual walkthrough
+                                     #   + qa/, the test evidence and its
+                                     #     screenshots
+context/                             # how AI agents build this: roles, skills,
+                                     #   prompts. Separate from docs/ on purpose
 specs/                               # Spec Kit artifacts for feature work
 ```
 
@@ -188,7 +202,14 @@ point inward. That direction is enforced by lint, not by convention: see
 The rest of the scaffolding: `.specify/` holds Spec Kit workflow state,
 templates and the constitution; `.agents/` holds the canonical role and skill
 definitions; `.claude/` and `.opencode/` link to them; `docs/references/` holds
-assignment material.
+the assignment statements.
+
+Those dot-directories are configuration the AI tools **execute**, and each tool
+looks for its own at the repository root, so they stay there. The documentation
+*about* them — which roles exist, what each may not do, which skills are
+installed — is [`context/`](context/README.md). The rule between the two written
+directories is by audience: `docs/` explains the banking system, `context/`
+explains how agents build it.
 
 ## Documentation
 
@@ -211,10 +232,11 @@ assignment material.
 - [Technical debt](docs/TECH_DEBT.md) - actionable open debt.
 - [Documentation inventory](docs/DOC_INVENTORY.md) - classification and
   coverage rules for every Markdown file.
-- [AI project agents](docs/AI_PROJECT_AGENTS.md) - agent roles and boundaries.
-- [AI project skills](docs/AI_PROJECT_SKILLS.md) - installed and deferred
-  skills.
-- [Design documents](docs/design-docs/index.md) - durable design records.
+- [Documentation index](docs/README.md) - every document in `docs/`, grouped by
+  what it answers. **Start here.**
+- [Agent context](context/README.md) - how this repository is built with AI
+  agents: the [roles](context/AI_PROJECT_AGENTS.md) and what each may not do,
+  and the [skills](context/AI_PROJECT_SKILLS.md) installed.
 
 ## Development
 
