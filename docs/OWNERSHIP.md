@@ -10,8 +10,8 @@ not remove the shared work listed below.
 | --- | --- | --- | --- |
 | Customer Service | Service | Enner Esai Mendizabal Castro (202302220) | Customer registration, identity validation, and customer data. |
 | Account Service | Service | Enner Esai Mendizabal Castro (202302220) | Account lifecycle, balances, and account state. |
-| Transaction Service | Service | David Estuardo Barrios Ramirez (202300769) | Transfer validation, transaction state, and Saga participation. |
-| Payment Service | Service | David Estuardo Barrios Ramirez (202300769) | Internal and external payment processing. |
+| Transaction Service | Service | David Estuardo Barrios Ramirez (202300670) | Transfer validation, transaction state, and Saga participation. |
+| Payment Service | Service | David Estuardo Barrios Ramirez (202300670) | Internal and external payment processing. |
 | Notification & Audit Service | Service | Marcos Daniel Bonifasi de Leon (202202410) | Notifications, audit records, and distributed logging foundations. |
 | API Gateway | Gateway | Marcos Daniel Bonifasi de Leon (202202410) | External entry point, routing, authentication, and aggregation without domain logic. |
 | Frontend | Frontend | Marcos Daniel Bonifasi de Leon (202202410) | Nuxt shell, shared UI direction, and frontend integration. |

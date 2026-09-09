@@ -13,7 +13,7 @@ Saga choreography so distributed operations remain observable and resilient.
 | Member | Student ID | Role |
 | --- | --- | --- |
 | Enner Esai Mendizabal Castro | 202302220 | AI Engineer; Customer and Account Services |
-| David Estuardo Barrios Ramirez | 202300769 | AI Engineer; Transaction and Payment Services |
+| David Estuardo Barrios Ramirez | 202300670 | AI Engineer; Transaction and Payment Services |
 | Marcos Daniel Bonifasi de Leon | 202202410 | AI Project Manager and Tech Lead; Gateway, frontend, infrastructure, SRE, Notification & Audit, and documentation |
 
 All three members share responsibility for event contracts, integration,
