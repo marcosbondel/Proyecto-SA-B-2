@@ -51,48 +51,38 @@ this directory holds the decisions behind it and the diagrams that show it.
   `test/isolation.spec.ts` fails the build if it reads another service's
   database or opens an HTTP call.
 
-## Delivery format — two required sources and generated exports
+## Delivery format — the sources actually in the repository
 
-Every diagram ships **two required, versioned text sources that must agree**.
-Generated visual exports are kept alongside their source when the diagram is
-rendered for delivery:
+Every diagram ships a **versioned text source plus the render that is handed
+in**. What that source is, per diagram:
 
-1. **Mermaid** — a versioned `.mmd` source in `diagrams/`, so the architecture
-   is reviewable in Git and in pull requests. **Generating it with AI is
-   allowed**; shipping it unreviewed is not. Mermaid-rendered PNGs, such as
-   the activity-flow exports under `diagrams/cdu/*/flujos/`, are generated
-   artefacts derived from this source.
-2. **PlantUML** — a versioned `.puml` source in `diagrams/`, plus its export
-   (PNG, SVG or PDF) committed alongside it. **Generating it with AI is
-   allowed**; shipping it unreviewed is not.
-3. **LucidChart** (optional) — the editable document, plus an export committed
-   to `diagrams/` if the team produces one. Register the Lucid link in the
-   table above only when a Lucid document exists; it is not required for a
-   diagram to be done.
+| # | Diagram | Source | Render | Document that reads it |
+| --- | --- | --- | --- | --- |
+| 1 | General architecture | [`01-arquitectura-general.puml`](diagrams/01-arquitectura-general.puml) | `.png` | [`../architecture.md`](../architecture.md) §3 |
+| 2 | C4 L1 — Context | [`02-c4-contexto.puml`](diagrams/02-c4-contexto.puml) · [`c4.dsl`](diagrams/c4.dsl) | `.png` | [`c4-context.md`](c4-context.md) |
+| 3 | C4 L2 — Containers | [`03-c4-contenedores.puml`](diagrams/03-c4-contenedores.puml) · [`c4.dsl`](diagrams/c4.dsl) | `.png` | [`c4-container.md`](c4-container.md) |
+| 4 | C4 L3 — Components | [`04-c4-componentes.puml`](diagrams/04-c4-componentes.puml) · [`.dsl`](diagrams/04-c4-componentes.dsl) | `.png` | [`c4-component.md`](c4-component.md) |
+| 5 | UML — Deployment | [`05-uml-despliegue.puml`](diagrams/05-uml-despliegue.puml) | `.png` | [`deployment.md`](deployment.md) |
+| 6 | UML — Sequence, create account | [`06-uml-secuencia-crear-cuenta.puml`](diagrams/06-uml-secuencia-crear-cuenta.puml) | `.png` | [`sequence-create-account.md`](sequence-create-account.md) |
+| 7 | UML — Sequence, transfer with Saga | [`07-uml-secuencia-transferencia.puml`](diagrams/07-uml-secuencia-transferencia.puml) | `.png` | [`sequence-transfer.md`](sequence-transfer.md) |
+| 8 | UML — Use cases | [`diagrams/cdu/`](diagrams/cdu/README.md) — 7 use-case diagrams and 22 activity flows, each `.puml` + `.png` | | [`use-cases-uml.md`](use-cases-uml.md) |
+| — | Entity-relationship | [`diagrams/er/`](diagrams/er/README.md) — five `.dbml`, one per database | `.png` | [`../generated/db-schema.md`](../generated/db-schema.md) |
 
-This is the decision recorded in
-[ADR-013](adr/ADR-013-diagramming-toolchain-revision.md), which supersedes
-[ADR-011](adr/ADR-011-diagramming-toolchain.md): PlantUML is now required
-alongside Mermaid, and Lucid — previously required — is optional.
+**Mermaid is gone and no ADR records it.** [ADR-013](adr/ADR-013-diagramming-toolchain-revision.md)
+requires PlantUML *alongside* Mermaid, and made Lucid optional. On 2026-09-02 the
+`.mmd` sources were removed (commit `9acf394`, "remove .mmd diagram sources in
+favor of PlantUML, DBML, and PNG"), and Structurizr DSL and DBML — which no ADR
+mentions — took their place. The repository and its ADR therefore disagree today.
+The rule that a decision changes only through a superseding ADR is what makes
+that a gap to close (**TD-064**), not a detail: an ADR nobody may edit is only
+worth as much as the practice of writing the successor.
 
-If the Mermaid and PlantUML sources disagree, the diagram is not done — the
-rubric penalises documentation inconsistency by 25 % (§8.3). A Lucid export
-that disagrees with either required source is also not done, if one is
-shipped.
-
-Mermaid covers seven of the eight natively (`C4Context`, `C4Container`,
-`C4Component`, `C4Deployment`, `sequenceDiagram`). **Use cases are the
-exception**: Mermaid has no UML use-case diagram, so that one uses a
-`flowchart` approximation. PlantUML covers all eight natively, including UML
-use cases (`usecase`, `<<include>>`/`<<extend>>`) and C4 notation via the
-`C4-PlantUML` library, so **for the use-case diagram, PlantUML is the
-authoritative artefact** — it replaces Lucid in that role.
-
-The written use-case records that accompany diagram 7 — actor, preconditions,
-postconditions, main and alternate flows, published events and errors — are
-**already written** in [`../domain/use-cases.md`](../domain/use-cases.md). The
-six flows recorded there are the source for diagrams 6 and 7; do not restate
-them here, and do not let a diagram contradict them.
+Three PNG exports do **not** come from the sources beside them —
+`02-c4-contexto.png`, `03-c4-contenedores.png` and `05-uml-despliegue.png` were
+composed by hand and restored by an explicit team decision. Where an image and
+its source disagree, the source is the one to trust; `deployment.md` records the
+concrete case (the port-forward is drawn reversed). Do not re-render them to
+"fix" the mismatch without asking the team first.
 
 ## Transversal rules
 
@@ -105,12 +95,9 @@ The eight principles in `.specify/memory/constitution.md` are already binding
 and do not wait for this directory. What is missing is the written reasoning,
 not the rules.
 
-> **Current status**: The eight diagram source sets are present. The CDU source
-> set is organized by level and microservice under `diagrams/cdu/`. PNG exports
-> have been generated from the Mermaid sources for the 18 activity flows under
-> `diagrams/cdu/*/flujos/`. PlantUML exports remain subject to the delivery
-> rule above wherever a rendered PlantUML artefact is required.
->
-> The ADRs are **no longer blocked**: the thirteen decision records live in
-> [`adr/`](adr/README.md), with the consolidated view in
+> **Current status**: all eight diagram sources are present as `.puml`, with the
+> ER set in DBML, and every one of them is now linked from this file or from
+> [`diagrams/cdu/README.md`](diagrams/cdu/README.md). Each diagram has a document
+> that reads it — the table above names which. The thirteen ADRs live in
+> [`adr/`](adr/README.md) with the consolidated view in
 > [`decision-matrix.md`](decision-matrix.md).

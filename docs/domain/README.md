@@ -30,6 +30,14 @@ Those belong elsewhere and are deliberately excluded:
 | [use-cases.md](use-cases.md) | You are building or diagramming a business flow and need its actor, input, result, failures and compensation. |
 | [message-catalog.md](message-catalog.md) | You are designing events or wiring the broker and need who produces and who consumes each message. |
 
+The model stops at the boundary of physical design on purpose. When you need the
+tables rather than the entities, the physical side is
+[`../architecture/diagrams/er/`](../architecture/diagrams/er/README.md) for the
+per-service ER diagrams and [`../generated/db-schema.md`](../generated/db-schema.md)
+for the column-level catalogue. Where a table and an entity disagree, the entity
+here is what was agreed and the schema is what was built — that gap is a finding,
+not a detail to smooth over.
+
 ## Ubiquitous language
 
 The prose here is English and the assignment's literal enumerations stay in Spanish. Both

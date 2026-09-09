@@ -8,9 +8,9 @@ Este documento consolida la especificación formal y la jerarquía de **Casos de
 
 Muestra a Bank USAC como una caja negra en el nivel de negocio. A la izquierda se encuentran los actores primarios (humanos) y a la derecha los actores secundarios (sistemas externos de apoyo).
 
-![CDU000 - Alto Nivel](../architecture/diagrams/cdu/00-alto-nivel.png)
+![CDU000 - Alto Nivel](diagrams/cdu/00-alto-nivel.png)
 
-Fuentes: [PlantUML (`00-alto-nivel.puml`)](../architecture/diagrams/cdu/00-alto-nivel.puml)
+Fuentes: [PlantUML (`00-alto-nivel.puml`)](diagrams/cdu/00-alto-nivel.puml)
 
 ---
 
@@ -18,9 +18,9 @@ Fuentes: [PlantUML (`00-alto-nivel.puml`)](../architecture/diagrams/cdu/00-alto-
 
 Descompone el núcleo del banco en sus cinco funciones principales, correspondientes a cada microservicio de dominio:
 
-![CDU001-CDU005 - Primera Descomposición](../architecture/diagrams/cdu/01-primera-descomposicion.png)
+![CDU001-CDU005 - Primera Descomposición](diagrams/cdu/01-primera-descomposicion.png)
 
-Fuentes: [PlantUML (`01-primera-descomposicion.puml`)](../architecture/diagrams/cdu/01-primera-descomposicion.puml)
+Fuentes: [PlantUML (`01-primera-descomposicion.puml`)](diagrams/cdu/01-primera-descomposicion.puml)
 
 ---
 
@@ -28,28 +28,28 @@ Fuentes: [PlantUML (`01-primera-descomposicion.puml`)](../architecture/diagrams/
 
 ### A. Customer Service (`CDU001 - Gestionar clientes e identidad`)
 * Registro de usuario, carga de fotografía de DPI, activación por correo, inicio de sesión y validación de identidad por mesa de control.
-* Diagrama: ![CDU001 - Clientes](../architecture/diagrams/cdu/customer/customer-casos-de-uso.png)
-* Fuentes: [PlantUML](../architecture/diagrams/cdu/customer/customer-casos-de-uso.puml)
+* Diagrama: ![CDU001 - Clientes](diagrams/cdu/customer/customer-casos-de-uso.png)
+* Fuentes: [PlantUML](diagrams/cdu/customer/customer-casos-de-uso.puml)
 
 ### B. Account Service (`CDU002 - Gestionar cuentas y saldos`)
 * Apertura de cuentas, consulta de saldos, movimientos contables de la Saga, depósito en ventanilla y proceso automático de desactivación por inactividad.
-* Diagrama: ![CDU002 - Cuentas](../architecture/diagrams/cdu/account/account-casos-de-uso.png)
-* Fuentes: [PlantUML](../architecture/diagrams/cdu/account/account-casos-de-uso.puml)
+* Diagrama: ![CDU002 - Cuentas](diagrams/cdu/account/account-casos-de-uso.png)
+* Fuentes: [PlantUML](diagrams/cdu/account/account-casos-de-uso.puml)
 
 ### C. Transaction Service (`CDU003 - Gestionar transferencias`)
 * Transferencias de fondos, consulta de estado, coordinación de la Saga coreografiada, orden de débito, solicitud de pago y compensación contable.
-* Diagrama: ![CDU003 - Transferencias](../architecture/diagrams/cdu/transaction/transaction-casos-de-uso.png)
-* Fuentes: [PlantUML](../architecture/diagrams/cdu/transaction/transaction-casos-de-uso.puml)
+* Diagrama: ![CDU003 - Transferencias](diagrams/cdu/transaction/transaction-casos-de-uso.png)
+* Fuentes: [PlantUML](diagrams/cdu/transaction/transaction-casos-de-uso.puml)
 
 ### D. Payment Service (`CDU004 - Gestionar pagos`)
 * Procesamiento de cobros a facturadores, escalera de reintentos con backoff exponencial y emisión de desenlaces terminales.
-* Diagrama: ![CDU004 - Pagos](../architecture/diagrams/cdu/payment/payment-casos-de-uso.png)
-* Fuentes: [PlantUML](../architecture/diagrams/cdu/payment/payment-casos-de-uso.puml)
+* Diagrama: ![CDU004 - Pagos](diagrams/cdu/payment/payment-casos-de-uso.png)
+* Fuentes: [PlantUML](diagrams/cdu/payment/payment-casos-de-uso.puml)
 
 ### E. Notification & Audit Service (`CDU005 - Gestionar notificaciones y auditoría`)
 * Registro inmutable de eventos con datos personales redactados, consulta de auditoría filtrada por `correlationId` y entrega de alertas al buzón personal.
-* Diagrama: ![CDU005 - Notificaciones y Auditoría](../architecture/diagrams/cdu/notification-audit/notification-audit-casos-de-uso.png)
-* Fuentes: [PlantUML](../architecture/diagrams/cdu/notification-audit/notification-audit-casos-de-uso.puml)
+* Diagrama: ![CDU005 - Notificaciones y Auditoría](diagrams/cdu/notification-audit/notification-audit-casos-de-uso.png)
+* Fuentes: [PlantUML](diagrams/cdu/notification-audit/notification-audit-casos-de-uso.puml)
 
 ---
 

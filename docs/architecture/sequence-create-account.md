@@ -6,10 +6,10 @@ Este documento describe la secuencia de interacción asíncrona y orquestación 
 
 ## 1. Diagrama de Secuencia
 
-![Secuencia — Crear Cuenta](../architecture/diagrams/06-uml-secuencia-crear-cuenta.png)
+![Secuencia — Crear Cuenta](diagrams/06-uml-secuencia-crear-cuenta.png)
 
 Fuentes de diagramación versionadas:
-* [PlantUML (`.puml`)](../architecture/diagrams/06-uml-secuencia-crear-cuenta.puml)
+* [PlantUML (`.puml`)](diagrams/06-uml-secuencia-crear-cuenta.puml)
 
 ---
 
