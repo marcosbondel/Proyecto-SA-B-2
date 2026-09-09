@@ -1,7 +1,7 @@
 import re
 import sys
 
-manual_path = 'docs/user-manual.md'
+manual_path = 'docs/manual/recorrido-visual.md'
 
 with open(manual_path, 'r', encoding='utf-8') as f:
     content = f.read()
@@ -171,4 +171,4 @@ new_content = part_before + new_steps + part_after
 with open(manual_path, 'w', encoding='utf-8') as f:
     f.write(new_content)
 
-print('Successfully updated docs/user-manual.md with Pasos 29, 30, and 31, and renumbered remaining steps!')
+print('Successfully updated docs/manual/recorrido-visual.md with Pasos 29, 30, and 31, and renumbered remaining steps!')
