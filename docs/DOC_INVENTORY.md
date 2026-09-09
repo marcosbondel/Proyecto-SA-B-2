@@ -5,6 +5,13 @@ documents have a named owner and review date. Tooling and installed harness
 content is covered by directory rules so that adding a skill or workflow does
 not require a new row for every generated link or vendor file.
 
+Two directories hold written documentation and the split between them is by
+audience, not by topic: **`docs/` documents the banking system**, and
+**`context/` documents how agents build it** — the roles, the skills and the
+prompts. Configuration the AI tools execute rather than read (`.agents/`,
+`.claude/`, `.opencode/`, `.specify/`) stays at the repository root, where each
+tool looks for it; those are covered by the directory rules below.
+
 ## Classes
 
 | Class | Meaning | Authority |
@@ -23,8 +30,8 @@ not require a new row for every generated link or vendor file.
 | `ARCHITECTURE.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `AGENTS.md` | project | Marcos Bonifasi | current | 2026-08-24 |
 | `CLAUDE.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/AI_PROJECT_AGENTS.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/AI_PROJECT_SKILLS.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `context/AI_PROJECT_AGENTS.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `context/AI_PROJECT_SKILLS.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/DESIGN.md` | project | Marcos Bonifasi | current | 2026-08-24 |
 | `docs/DOC_INVENTORY.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/FRONTEND.md` | project | Marcos Bonifasi | blocked | 2026-08-24 |
@@ -59,7 +66,6 @@ not require a new row for every generated link or vendor file.
 | `infra/k8s/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `infra/docker/README.md` | project | Marcos Bonifasi | current | 2026-08-27 |
 | `docs/architecture/adr/ADR-012-object-storage.md` | project | Marcos Bonifasi | current | 2026-08-19 |
-| `docs/design-docs/PROMPT_MOCKUP.MD` | project | Marcos Bonifasi | current | 2026-08-14 |
 | `docs/architecture/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/decision-matrix.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/adr/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
@@ -74,14 +80,33 @@ not require a new row for every generated link or vendor file.
 | `docs/architecture/adr/ADR-009-distributed-transactions.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/adr/ADR-010-authentication.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/adr/ADR-011-diagramming-toolchain.md` | project | Marcos Bonifasi | current | 2026-08-15 |
-| `docs/design-docs/core-beliefs.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/design-docs/index.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/references/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `docs/references/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
 | `apps/web/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/dda.md` | project | Marcos Bonifasi | current | 2026-09-01 |
-| `docs/adr.md` | project | Marcos Bonifasi | current | 2026-09-01 |
-| `docs/architecture.md` | project | Marcos Bonifasi | current | 2026-09-01 |
-| `docs/happypath.md` | project | Marcos Bonifasi | current | 2026-09-01 |
+| `docs/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
+| `docs/dda.md` | project | Enner Mendizabal | current | 2026-09-01 |
+| `docs/adr.md` | project | Enner Mendizabal | current | 2026-09-01 |
+| `docs/architecture.md` | project | Enner Mendizabal | current | 2026-09-01 |
+| `docs/architecture/c4-context.md` | project | Enner Mendizabal | current | 2026-09-02 |
+| `docs/architecture/c4-container.md` | project | Enner Mendizabal | current | 2026-09-02 |
+| `docs/architecture/c4-component.md` | project | Enner Mendizabal | current | 2026-09-02 |
+| `docs/architecture/sequence-create-account.md` | project | Enner Mendizabal | current | 2026-09-02 |
+| `docs/architecture/sequence-transfer.md` | project | Enner Mendizabal | current | 2026-09-02 |
+| `docs/architecture/use-cases-uml.md` | project | Enner Mendizabal | current | 2026-09-02 |
+| `docs/architecture/diagrams/cdu/README.md` | project | Enner Mendizabal | current | 2026-09-09 |
+| `docs/architecture/diagrams/er/README.md` | project | Enner Mendizabal | current | 2026-09-03 |
+| `docs/generated/db-schema.md` | project | Enner Mendizabal | current | 2026-09-03 |
+| `docs/sre/sli.md` | project | Marcos Bonifasi | current | 2026-09-05 |
+| `docs/sre/slo.md` | project | Marcos Bonifasi | current | 2026-09-05 |
+| `docs/sre/sla.md` | project | Marcos Bonifasi | current | 2026-09-05 |
+| `docs/manual/recorrido-visual.md` | project | Enner Mendizabal | current | 2026-09-03 |
+| `docs/qa/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
+| `docs/qa/happypath.md` | project | Enner Mendizabal | current | 2026-09-09 |
+| `docs/qa/validation-report.md` | project | Enner Mendizabal | current | 2026-09-01 |
+| `docs/images/kubernetes/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
+| `context/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
+| `context/prompt-mockup.md` | project | Marcos Bonifasi | superseded | 2026-09-09 |
+| `E2E.md` | project | Enner Mendizabal | current | 2026-09-03 |
+| `lluquitas.md` | project | Enner Mendizabal | superseded | 2026-09-09 |
 
 Blocked project documents are still current as documents: their `blocked`
 state records an explicit missing decision, owner, and arrival ticket in the
@@ -99,8 +124,7 @@ document itself. A reader must not fill that gap with an assumption.
 | `.specify/memory/**/*.md` | harness | — | The active Spec Kit constitution and future workflow memory. |
 | `.specify/templates/**/*.md` | template | — | Spec Kit templates; update through the Spec Kit workflow. |
 | `specs/**/*.md` | harness | — | Archived or active feature-work artifacts governed by Spec Kit. |
-| `docs/templates/**/*.md` | template | — | Project document templates; copy, do not treat as live guidance. |
-| `docs/generated/**/*.md` | generated | — | Generated reference and schema outputs. |
+| `docs/architecture/adr/ADR-*.md` | project | Marcos Bonifasi | One record per decision; ADR-013 and any successor are covered here without a row of their own. |
 | `apps/**/README.md` | project | Component owner | Layer and package READMEs that live beside the code they describe; the component's owner in `OWNERSHIP.md` maintains them. |
 
 The `.claude/` and `.opencode/` entries are symlinks to canonical bodies under
@@ -116,22 +140,30 @@ Run this from the repository root after adding or removing Markdown files:
 find . -name '*.md' -not -path './.git/*' -not -path '*/node_modules/*' | sort
 ```
 
-The following coverage check applies the rows and directory rules and prints
-only uncovered paths. Its expected output is empty:
+The following coverage check prints every Markdown file that has **neither** a
+row in the table above **nor** a directory rule. Its expected output is empty.
+It reads the rows out of this very file, so adding a row is all it takes to
+cover a new document:
 
 ```sh
-find . -name '*.md' -not -path './.git/*' -not -path '*/node_modules/*' -print | while IFS= read -r path; do
-  case "$path" in
-    ./README.md|./ARCHITECTURE.md|./AGENTS.md|./CLAUDE.md|./apps/*/README.md|./apps/*/*/README.md|./apps/*/src/*/README.md|./apps/*/*/src/*/README.md|./apps/*/*/scripts/*.md|./docs/*.md|./docs/domain/*.md|./docs/events/*.md|./docs/manual/*.md|./docs/operations/*.md|./docs/architecture/*.md|./docs/architecture/adr/*.md|./docs/architecture/diagrams/*.md|./docs/architecture/diagrams/*/*.md|./docs/decisions/*.md|./docs/design-docs/*.md|./docs/sre/*.md|./docs/uml/*.md|./docs/saga/*.md|./docs/references/*.md|./infra/*/README.md|./.agents/roles/*.md|./.agents/skills/*/*.md|./.agents/skills/*/*/*.md|./.claude/agents/*.md|./.claude/skills/*/*.md|./.opencode/commands/*.md|./.specify/memory/*.md|./.specify/templates/*.md|./docs/templates/*.md|./docs/generated/*.md|./specs/*/*.md|./specs/*/*/*.md|./specs/*/*/*/*.md)
-      ;;
-    *) printf '%s\n' "$path" ;;
-  esac
-done
+rows=$(sed -nE 's/^\| `([^`]*)` \| (project|template|generated|harness|vendored) \|.*/\1/p' docs/DOC_INVENTORY.md)
+find . -name '*.md' -not -path './.git/*' -not -path '*/node_modules/*' \
+       -not -path './.turbo/*' -not -path './.pnpm-store/*' -print |
+  sed 's|^\./||' | while IFS= read -r path; do
+    printf '%s\n' "$rows" | grep -qxF "$path" && continue
+    case "$path" in
+      .agents/roles/*|.agents/skills/*|.claude/agents/*|.claude/skills/*) ;;
+      .opencode/commands/*|.specify/memory/*|.specify/templates/*|specs/*) ;;
+      docs/architecture/adr/ADR-*) ;;
+      apps/*/README.md|apps/*/*/README.md|apps/*/*/*/README.md) ;;
+      apps/*/src/*|apps/*/*/src/*|apps/*/*/scripts/*) ;;
+      *) printf '%s\n' "$path" ;;
+    esac
+  done
 ```
 
-Every result is either a row in **Project Documents** or falls under one of
-the **Directory Rules**. The expected uncovered set is empty.
-
-The inventory intentionally does not list `docs/templates/` or
-`docs/generated/` files individually, because their directory rules are the
-authority and those directories are protected from this feature's edits.
+The earlier version of this check used a single `case` with `./docs/*.md`. In a
+POSIX `case`, `*` matches `/` as well, so that one pattern swallowed every
+document at any depth under `docs/` and the check could never report anything.
+It is replaced rather than patched: a check that cannot fail is worse than no
+check, because it reads as a passing one.
