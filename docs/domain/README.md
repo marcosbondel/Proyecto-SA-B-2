@@ -100,7 +100,7 @@ recorded team decision, or to the approval below. Nothing is asserted without on
 | --- | --- | --- | --- |
 | Marcos Daniel Bonifasi de Leon (202202410) | Coordinator | — | — |
 | Enner Esai Mendizabal Castro (202302220) | Customer & Account Service owner | — | — |
-| David Estuardo Barrios Ramirez (202300769) | Transaction & Payment Service owner | — | — |
+| David Estuardo Barrios Ramirez (202300670) | Transaction & Payment Service owner | — | — |
 
 Approval was requested in
 [issue #9](https://github.com/marcosbondel/Proyecto-SA-B-2/issues/9#issuecomment-5299551281)
