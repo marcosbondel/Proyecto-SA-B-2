@@ -332,6 +332,7 @@ surfaces exist and their owners request them.
 | `run` | project-local | Bank USAC local stack startup for Claude Code and OpenCode. |
 | `run-k8s-local` | project-local | Bank USAC on the local kind cluster, repairing infrastructure failures rather than stopping at them. |
 | `codex-run` | project-local | Generic Codex workflow for starting and verifying local projects. |
+| `sociedadanonima` | project-local | Funda un proyecto de punta a punta: caso de negocio, requisitos, dominio, ADR, esquema de datos, SLI/SLO/SLA, backlog y cronograma con ruta crítica. Genérica y portable a otros repositorios. |
 
 Deferred until the stack exists: `webapp-testing`, `mobile-responsiveness`,
 `vercel-react-best-practices`, `vercel-composition-patterns`, `shadcn`,
@@ -421,6 +422,7 @@ Phrasing that reliably reaches each installed skill:
 | "add pre-commit hooks", "set up Husky" | `setup-pre-commit` |
 | "run the app", "start the local stack" | `run` for Bank USAC, or `codex-run` as the generic Codex fallback |
 | "run it on Kubernetes", "deploy to kind", "the cluster is broken" | `run-k8s-local` — it repairs the infrastructure failure it finds instead of reporting and stopping |
+| "vamos a definir el proyecto", "aterriza la idea", "documenta la arquitectura", "hazme el cronograma" | `sociedadanonima` — nueve fases con puerta, de la idea a los documentos y el plan |
 | "is there a skill for X?" | `find-skills` |
 
 ### Which Skill Serves Which Phase
