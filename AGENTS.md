@@ -135,6 +135,12 @@ base-image bump procedure are in
 
 ## Project Documentation
 
+Two written directories, split by audience. **`docs/` documents the banking
+system** and **[`context/`](context/README.md) documents how agents build it** —
+the roles, the skills, the prompts. Put a new document on the side its reader
+sits on; the full index of each is [docs/README.md](docs/README.md) and
+[context/README.md](context/README.md).
+
 Consult these documents before making decisions or describing the repository:
 
 - [README.md](README.md): project identity, team, layout, and development entry points.
@@ -151,13 +157,18 @@ Consult these documents before making decisions or describing the repository:
 - [docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md): current quality assessment at milestone reviews.
 - [docs/TECH_DEBT.md](docs/TECH_DEBT.md): open debt before adding or closing follow-up work.
 - [docs/DOC_INVENTORY.md](docs/DOC_INVENTORY.md): document class and ownership before editing Markdown.
-- [docs/AI_PROJECT_AGENTS.md](docs/AI_PROJECT_AGENTS.md): role capabilities and restrictions before delegating work.
-- [docs/AI_PROJECT_SKILLS.md](docs/AI_PROJECT_SKILLS.md): installed skills and stack-specific skill policy.
-- [docs/design-docs/index.md](docs/design-docs/index.md): durable design records before recording a new decision.
-- [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md): repository operating beliefs before changing agent practice.
+- [context/AI_PROJECT_AGENTS.md](context/AI_PROJECT_AGENTS.md): role capabilities and restrictions before delegating work.
+- [context/AI_PROJECT_SKILLS.md](context/AI_PROJECT_SKILLS.md): installed skills and stack-specific skill policy.
+- [docs/TECHNICAL_DOCUMENT.md](docs/TECHNICAL_DOCUMENT.md): the assignment's consolidated technical deliverable — where every required artifact lives, with the diagrams embedded and read one by one.
+- [docs/dda.md](docs/dda.md): the business case, stakeholders, requirements and the traceability matrices that tie them to the use cases.
+- [docs/architecture.md](docs/architecture.md): the Spanish architecture deliverable — guiding principles, the port and variable matrix, and the resilience strategy.
+- [docs/adr.md](docs/adr.md): the unified Spanish narrative of the decisions. The canonical records are `docs/architecture/adr/`; where the two disagree, the ADR wins.
 - [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md): **the image inventory** — one row per component with its Dockerfile, port, start command, health checks and required variables, plus the tagging scheme T-22 references. Read it before changing a Dockerfile, adding a variable a container needs, or writing the Helm chart.
 - [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md): **the Kubernetes runbook** — prerequisites, the four commands that take the system from a clean machine to a running cluster, verification, the Saga run, scaling limits and every failure mode. Read it before changing the Helm chart, the kind configuration or anything under `infra/k8s/`.
-- [docs/references/README.md](docs/references/README.md): how to add or consult external references.
+- [docs/manual/](docs/manual/README.md): the user manual — the general guide, one walkthrough per role, and the 78-step visual tour.
+- [docs/qa/](docs/qa/README.md): the test evidence — the happy-path and error-case guide, the validation report, and the screenshots the suites produce.
+- [docs/sre/](docs/sre/sli.md): the SLI, SLO and SLA in full; `docs/RELIABILITY.md` states the design concerns they answer.
+- [docs/references/README.md](docs/references/README.md): the assignment statements, phase 1 and phase 2, and the prototype prompt.
 - [apps/web/README.md](apps/web/README.md): Nuxt starter-level application commands when working inside the web app.
 - [.specify/memory/constitution.md](.specify/memory/constitution.md): mandatory architecture principles before writing a spec or plan.
 
@@ -377,12 +388,12 @@ numbering when there is none.
 
 - Adding a role: write `.agents/roles/<name>.md`, symlink it with
   `ln -s ../../.agents/roles/<name>.md .claude/agents/<name>.md`, and add a row
-  to the roster in `docs/AI_PROJECT_AGENTS.md`.
+  to the roster in `context/AI_PROJECT_AGENTS.md`.
 - Adding a skill:
   `npx skills add <owner/repo> --skill <name> -a universal -a claude-code -y`.
   Repeat `--skill` for several skills — a comma-separated list is silently
   ignored while reporting success. Record additions in
-  `docs/AI_PROJECT_SKILLS.md`. Repair a drifted tree with
+  `context/AI_PROJECT_SKILLS.md`. Repair a drifted tree with
   `npx skills experimental_install`.
 
 ## Boundaries

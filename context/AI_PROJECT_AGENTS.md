@@ -215,7 +215,7 @@ supplies the procedure now, and this table is the role mapping to hang it on.
 | Phase | Role | Output |
 | --- | --- | --- |
 | specify | `product-mvp` | `spec.md` |
-| plan | `architect`, then `planner` | ADR in `docs/design-docs/`, `plan.md` |
+| plan | `architect`, then `planner` | ADR in `docs/architecture/adr/`, `plan.md` |
 | tasks | `planner` | `tasks.md` |
 | implement | `backend`, `frontend`, `mobile`, `infra-aws` | the diff |
 | verify | `qa` | `evidence.md`, criteria with real output |
