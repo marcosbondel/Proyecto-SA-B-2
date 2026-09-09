@@ -36,18 +36,19 @@ Este documento consolida la arquitectura, el diseño y las evidencias de impleme
 
 | Entregable Oficial | Dónde vive en el repositorio | Estado |
 | :--- | :--- | :---: |
-| **Documento técnico completo** | Este documento ([`docs/TECHNICAL_DOCUMENT.md`](TECHNICAL_DOCUMENT.md)) + [`docs/architecture.md`](architecture.md) | **Completo** |
+| **Documento técnico completo** | Este documento ([`docs/TECHNICAL_DOCUMENT.md`](TECHNICAL_DOCUMENT.md)) + [`docs/architecture.md`](architecture.md). El índice de toda la documentación es [`docs/README.md`](README.md) | **Completo** |
+| **Caso de negocio, requisitos y trazabilidad** | [`docs/dda.md`](dda.md) — stakeholders, RF/RNF, escenarios de calidad y las matrices que atan cada requisito a su caso de uso | **Completo** |
 | **Diagramas arquitectónicos** | [`docs/architecture/diagrams/`](architecture/diagrams/) (fuentes `.puml`, `.dsl`, `.dbml` e imágenes renderizadas `.png`) | **Completo** |
-| **Definición de SLI, SLO y SLA** | [`docs/RELIABILITY.md`](RELIABILITY.md) (fórmulas, umbrales y error budgets) | **Completo** |
+| **Definición de SLI, SLO y SLA** | [`docs/sre/sli.md`](sre/sli.md), [`slo.md`](sre/slo.md) y [`sla.md`](sre/sla.md) (30 indicadores, 26 objetivos y sus exclusiones); las preocupaciones de diseño que responden, en [`docs/RELIABILITY.md`](RELIABILITY.md) | **Completo** |
 | **Casos de uso detallados** | [`docs/domain/use-cases.md`](domain/use-cases.md) y jerarquía UML en [`docs/architecture/diagrams/cdu/`](architecture/diagrams/cdu/README.md) | **Completo** |
 | **Decisiones arquitectónicas (ADRs)** | [`docs/adr.md`](adr.md) y 13 registros formales en [`docs/architecture/adr/`](architecture/adr/README.md) | **Completo** |
-| **Manual de usuario integral** | [`docs/user-manual.md`](user-manual.md) (36 pasos con capturas) y guías por rol en [`docs/manual/`](manual/README.md) | **Completo** |
+| **Manual de usuario integral** | [`docs/manual/`](manual/README.md) — la guía general, una por rol y el [recorrido visual](manual/recorrido-visual.md) de 78 pasos con captura por paso | **Completo** |
 | **Estrategia de monorepo** | Raíz: `pnpm-workspace.yaml`, `package.json` y Turborepo (`turbo.json`) | **Completo** |
 | **5 microservicios desacoplados** | [`apps/services/`](../apps/services/) (`customer`, `account`, `transaction`, `payment`, `notification-audit`) | **Completo** |
 | **API Gateway perimetral** | [`apps/gateway/`](../apps/gateway/) (NestJS, puerto 3000, sin DB, sin HTTP interno) | **Completo** |
 | **Despliegue en Kubernetes** | [`infra/k8s/`](../infra/k8s/README.md), chart Helm en `infra/k8s/helm/bank-usac/` y runbook [`DEPLOYMENT.md`](operations/DEPLOYMENT.md) | **Completo** |
 | **Frontend web funcional** | [`apps/web/`](../apps/web/README.md) (Nuxt 3, puerto 3010, Claude Design, 34 pantallas) | **Completo** |
-| **Informe de Pruebas E2E** | [`E2E.md`](../E2E.md) (Playwright, 67/69 pasos aprobados, 138+ capturas de pantalla) | **Completo** |
+| **Informe de Pruebas E2E** | [`docs/qa/`](qa/README.md) — el [informe de validación](qa/validation-report.md) con las 68 pruebas una por una, la [guía de happy path y errores](qa/happypath.md) y las capturas que produce cada suite; la narrativa de la ejecución, en [`E2E.md`](../E2E.md) | **Completo** |
 
 ---
 
@@ -310,7 +311,7 @@ Los trece registros de decisiones arquitectónicas están documentados en [`docs
 
 ## 7. Manual de usuario y guías operativas
 
-El manual de usuario se encuentra completamente estructurado en [`docs/user-manual.md`](user-manual.md) y [`docs/manual/`](manual/README.md), proporcionando guías específicas para cada rol:
+El manual de usuario se encuentra completamente estructurado en [`docs/manual/recorrido-visual.md`](manual/recorrido-visual.md) y [`docs/manual/`](manual/README.md), proporcionando guías específicas para cada rol:
 
 * **[Manual del Cliente](manual/rol-cliente.md):** Flujo de auto-registro, verificación de correo, consulta de balances, realización de transferencias locales y pago de facturas.
 * **[Manual del Cajero Receptor](manual/rol-cajero-receptor.md):** Atención a cuentahabientes, registro de depósitos en efectivo y bandeja de validación de documentos DPI.
@@ -384,7 +385,7 @@ La aplicación web en [`apps/web/`](../apps/web/) ofrece una experiencia bancari
 * **Pruebas de Aislamiento y Dominio:** Todas las suites pasan con éxito (`pnpm test`).
 * **Pruebas de Contratos de Eventos:** 16 suites y **737 pruebas aprobadas** en `@bank/contracts` (`pnpm test:contract`).
 * **Chequeo de Tipos y Linter:** 11 paquetes aprobados con **0 errores de TypeScript y 0 infracciones de arquitectura** (`pnpm typecheck`, `pnpm lint`).
-* **Pruebas End-to-End (E2E):** Suite Playwright con **11/11 en QA y Seguridad** y **67/69 en Happy Path** con 138+ capturas en [`docs/screenshots/`](screenshots/) (documentado en [`E2E.md`](../E2E.md)).
+* **Pruebas End-to-End (E2E):** Suite Playwright con **11/11 en QA y Seguridad** y **67/69 en Happy Path** con 138+ capturas en [`docs/qa/screenshots/`](qa/screenshots/) (documentado en [`E2E.md`](../E2E.md)).
 * **Integridad de Enlaces de Documentación:** **571 enlaces internos verificados, 0 enlaces rotos**.
 
 ### Registro de Deudas Técnicas Menores ([`docs/TECH_DEBT.md`](TECH_DEBT.md))
