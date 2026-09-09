@@ -1,5 +1,13 @@
 # Confiabilidad y SRE — Bank USAC
 
+> **La definición completa vive en [`sre/`](sre/sli.md).** Este documento fija
+> las preocupaciones de diseño que el enunciado exige resolver y la línea base de
+> métricas aprobada en T-03. Los indicadores, objetivos y compromisos en su
+> versión extendida —30 SLI, 26 SLO, severidades y exclusiones— están en
+> [SLI](sre/sli.md) · [SLO](sre/slo.md) · [SLA](sre/sla.md), encadenados de modo
+> que ninguna promesa carece de un número que la verifique. Donde ambos hablen
+> del mismo indicador, `sre/` es el que se mantiene.
+
 ## Preocupaciones de Diseño Obligatorias
 
 El enunciado del proyecto exige que cada microservicio resuelva de forma explícita las siguientes preocupaciones de ingeniería de confiabilidad:
