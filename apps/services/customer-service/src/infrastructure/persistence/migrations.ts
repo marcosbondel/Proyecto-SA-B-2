@@ -161,6 +161,21 @@ export const MIGRATIONS: readonly Migration[] = [
          ON password_reset_tokens (customer_id) WHERE used_at IS NULL`,
     ],
   },
+  {
+    /*
+     * Fase 2's KYC verdict (§4.1, p. 4), C-8. Additive and distinct from
+     * `identity_status`: that column is Fase 1's document-photo review, this
+     * one is the broader compliance decision a teller or administrator
+     * registers directly and that gates initiating a transaction.
+     */
+    name: '007_customers_kyc_status',
+    statements: [
+      `ALTER TABLE customers ADD COLUMN IF NOT EXISTS kyc_status VARCHAR(20) NOT NULL DEFAULT 'PENDING'`,
+      `ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_kyc_status_known`,
+      `ALTER TABLE customers ADD CONSTRAINT customers_kyc_status_known
+         CHECK (kyc_status IN ('PENDING', 'VERIFIED', 'REJECTED'))`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

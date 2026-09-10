@@ -95,6 +95,19 @@ export interface CustomerRepository {
     readonly idempotency: ProcessedMessage;
   }): Promise<void>;
 
+  /**
+   * Records a new KYC verdict, in one transaction with its idempotency record.
+   *
+   * Distinct from `saveIdentityVerdict`: no document is involved, and no
+   * anonymisation of `email`/`username`/`identityDocument` happens on
+   * rejection — a KYC rejection does not free those fields for reuse the way
+   * an identity-document rejection does.
+   */
+  saveKycVerdict(input: {
+    readonly customer: Customer;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void>;
+
   /** Records a new activation token for an account that is still pending. */
   saveActivationToken(input: {
     readonly customerId: string;
