@@ -31,6 +31,7 @@ export const customerGetRepliedV1 = defineContract({
       role,
       status: z.enum(['PENDING_ACTIVATION', 'ACTIVE']),
       identityStatus: z.enum(['PENDING', 'VALIDATED', 'REJECTED']),
+      kycStatus: z.enum(['PENDING', 'VERIFIED', 'REJECTED']),
     }),
     z.object({
       outcome: z.literal('NOT_FOUND'),

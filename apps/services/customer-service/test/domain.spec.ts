@@ -2,8 +2,11 @@ import {
   DomainRejection,
   applyChanges,
   canSignIn,
+  mayInitiateTransactions,
+  mayManageKyc,
   recordIdentityVerdict,
   registerCustomer,
+  setKycStatus,
   verifyEmail,
   yearsBetween,
 } from '../src/domain/customer';
@@ -37,6 +40,10 @@ describe('registering a customer', () => {
     expect(customer.status).toBe('PENDING_ACTIVATION');
     expect(customer.identityStatus).toBe('PENDING');
     expect(customer.emailVerifiedAt).toBeNull();
+  });
+
+  it('starts the KYC status pending too, independent of the other two axes', () => {
+    expect(registerCustomer(VALID, 'mlopez', NOW).kycStatus).toBe('PENDING');
   });
 
   it('lower-cases the email, so C-3 uniqueness is not case-sensitive to a person', () => {
@@ -165,6 +172,56 @@ describe('the verdict on an identity document', () => {
     const validated = recordIdentityVerdict(customer, 'VALIDATED', NOW);
 
     expect(() => recordIdentityVerdict(validated, 'REJECTED', NOW)).toThrow(DomainRejection);
+  });
+});
+
+describe('the KYC verdict (Fase 2, C-8)', () => {
+  const customer = registerCustomer(VALID, 'mlopez', NOW);
+
+  it('accepts a rejected KYC status being reviewed again', () => {
+    const rejected = setKycStatus(customer, 'REJECTED', NOW);
+
+    expect(setKycStatus(rejected, 'VERIFIED', NOW).kycStatus).toBe('VERIFIED');
+  });
+
+  it('refuses to re-open a verified KYC status', () => {
+    // Otherwise a later, weaker review silently replaces an accepted one.
+    const verified = setKycStatus(customer, 'VERIFIED', NOW);
+
+    expect(() => setKycStatus(verified, 'REJECTED', NOW)).toThrow(DomainRejection);
+  });
+
+  it('updates updatedAt and leaves every other field untouched', () => {
+    const verified = setKycStatus(customer, 'VERIFIED', NOW);
+
+    expect(verified.updatedAt).toBe(NOW.toISOString());
+    expect(verified.customerId).toBe(customer.customerId);
+    expect(verified.identityStatus).toBe(customer.identityStatus);
+  });
+});
+
+describe('who may manage KYC (staff only)', () => {
+  it('refuses a CLIENTE and an unauthenticated caller', () => {
+    expect(mayManageKyc(null)).toBe(false);
+    expect(mayManageKyc({ role: 'CLIENTE', customerId: 'c1' })).toBe(false);
+  });
+
+  it('allows a cajero and an administrador', () => {
+    expect(mayManageKyc({ role: 'CAJERO_RECEPTOR', customerId: 'staff-1' })).toBe(true);
+    expect(mayManageKyc({ role: 'ADMINISTRADOR', customerId: 'staff-2' })).toBe(true);
+  });
+});
+
+describe('who may initiate a transaction (§4.1 p. 4)', () => {
+  it('requires a VERIFIED kycStatus for a CLIENTE', () => {
+    expect(mayInitiateTransactions({ role: 'CLIENTE', kycStatus: 'PENDING' })).toBe(false);
+    expect(mayInitiateTransactions({ role: 'CLIENTE', kycStatus: 'REJECTED' })).toBe(false);
+    expect(mayInitiateTransactions({ role: 'CLIENTE', kycStatus: 'VERIFIED' })).toBe(true);
+  });
+
+  it('does not gate staff, who hold no accounts', () => {
+    expect(mayInitiateTransactions({ role: 'CAJERO_RECEPTOR', kycStatus: 'PENDING' })).toBe(true);
+    expect(mayInitiateTransactions({ role: 'ADMINISTRADOR', kycStatus: 'REJECTED' })).toBe(true);
   });
 });
 

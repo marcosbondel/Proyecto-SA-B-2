@@ -1031,6 +1031,77 @@ The payload is an empty object. There is nothing to narrow: the question is the 
 
 ---
 
+## Register a KYC verdict (Fase 2, T-26)
+
+Distinct from "Validate identity" above: that flow is Fase 1's review of the document photo.
+This is the broader KYC compliance decision (§4.1, p. 4) that C-8 ties to initiating a
+transaction — a `CLIENTE` with `kycStatus != VERIFIED` may not start one. Enforcing that inside
+the transfer Saga is **T-31**'s job; this service only owns the state, the transitions and the
+events T-31 will consume.
+
+### `customer.set-kyc-status.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | customer-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `customer.set-kyc-status.v1` |
+| **Contract** | [`customer.set-kyc-status.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.set-kyc-status.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customerId` | UUID v4 | yes |
+| `status` | `VERIFIED` \| `REJECTED` | yes |
+
+**Preconditions.** The caller is staff (`CAJERO_RECEPTOR` or `ADMINISTRADOR`) — checked here and not only at the Gateway, the same reason `customer.set-identity-verdict.v1` re-checks.
+
+**Effects.** `kycStatus` becomes the verdict, and `customer.kyc.verified.v1` or `customer.kyc.rejected.v1` follows.
+
+**On error.** `VERIFIED` is terminal — the domain refuses to re-open an already-verified customer — so a second approval is a no-op rather than a way to swap in a different verdict.
+
+### `customer.kyc.verified.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | customer-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `customer.kyc.verified.v1` |
+| **Contract** | [`customer.kyc.verified.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.kyc.verified.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customerId` | UUID v4 | yes |
+| `kycStatus` | `VERIFIED` | yes |
+| `verifiedAt` | ISO-8601 timestamp | yes |
+
+### `customer.kyc.rejected.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | customer-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `customer.kyc.rejected.v1` |
+| **Contract** | [`customer.kyc.rejected.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.kyc.rejected.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customerId` | UUID v4 | yes |
+| `kycStatus` | `REJECTED` | yes |
+| `rejectedAt` | ISO-8601 timestamp | yes |
+
+`REJECTED → PENDING` remains legal, so this event may be followed by a later
+`customer.kyc.verified.v1` for the same customer — unlike `VERIFIED`, this status is not
+terminal.
+
+
+---
+
 ## Open an account
 
 ### `account.create.v1`
