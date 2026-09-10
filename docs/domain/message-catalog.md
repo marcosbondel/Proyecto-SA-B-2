@@ -179,6 +179,33 @@ persistence and the events only.
 
 The payload of all three lives in [`../events/catalog.md`](../events/catalog.md#register-a-kyc-verdict-fase-2-t-26).
 
+## Fase 2 extension: account type rules (T-27)
+
+The assignment's Fase 2 (§4.1, p. 6) gives `AHORRO` and `MONETARIA` (the assignment's "Corriente")
+each their own rule (`account-type-rules.ts`) — both were pure classification until now
+(`entities.md`, "Account type"); this is the "new approval" that document said differentiated
+rules would need. The two rules apply at different moments: a minimum opening deposit
+(`AHORRO` only, Q100.00, checked once — never a floor `debit` re-enforces afterward) and a
+per-debit commission (`AHORRO` only, for the account's whole life).
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| event | `account.commission.charged` | **Added by T-27.** Published alongside `account.debited` — never folded into it — whenever the debited account's type charges a commission. Absent entirely for a type that does not, which is what makes "opcional" a fact about this event's presence |
+
+**One failure code was added with it.** `MINIMUM_BALANCE_VIOLATION` names the refusal an
+`AHORRO` opening gets when its `initialDeposit` does not reach the type's minimum —
+`account.open.rejected` is the contract that admits it. It is unrelated to `INSUFFICIENT_FUNDS`,
+which is a debit's own refusal when the account cannot cover the amount plus a commission it may
+carry.
+
+Enforcing account-type rules is entirely Account Service's own job — the opening minimum is
+checked once, before an account is created; the commission is applied atomically alongside the
+debit it accompanies — so no other service needed a change to consume this. Both rules live
+entirely inside the service the assignment names for them (§4.1, p. 6), same as T-17's original
+account invariants.
+
+The payload lives in [`../events/catalog.md`](../events/catalog.md#the-ahorro-commission-fase-2-t-27).
+
 ---
 
 ## Coherence checks

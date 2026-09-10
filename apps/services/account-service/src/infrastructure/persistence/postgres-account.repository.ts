@@ -148,6 +148,10 @@ export class PostgresAccountRepository implements AccountRepository {
       readonly amount: ReturnType<typeof quetzales>;
       readonly balanceAfter: ReturnType<typeof quetzales>;
       readonly reactivated: boolean;
+      readonly commission: {
+        readonly amount: ReturnType<typeof quetzales>;
+        readonly balanceAfter: ReturnType<typeof quetzales>;
+      } | null;
     };
     readonly compensates?: { readonly transactionId: string };
     readonly now: Date;
@@ -238,6 +242,40 @@ export class PostgresAccountRepository implements AccountRepository {
         ],
       );
 
+      /**
+       * The commission (T-27), inserted as its own row in the same
+       * transaction — same `idempotency_key`, different `type`, which the
+       * `account_operations_once UNIQUE (idempotency_key, type)` constraint
+       * from `002_account_operations` already accepts without change. A
+       * redelivery cannot double-charge it for the same reason a redelivered
+       * debit cannot double-debit: the same key, the same type, and the
+       * unique index is what makes the second insert a no-op rather than a
+       * second fee.
+       */
+      const commissionOperationId = decided.commission === null ? null : randomUUID();
+
+      if (decided.commission !== null && commissionOperationId !== null) {
+        await client.query(
+          `INSERT INTO account_operations
+             (operation_id, account_id, type, amount, balance_after, transaction_id, status, idempotency_key, created_at)
+           VALUES ($1, $2, 'COMMISSION', $3::NUMERIC, $4::NUMERIC, $5, 'APPLIED', $6, $7)`,
+          [
+            commissionOperationId,
+            input.accountId,
+            numericFromMinorUnits(decided.commission.amount.amountMinor),
+            numericFromMinorUnits(decided.commission.balanceAfter.amountMinor),
+            input.transactionId,
+            input.idempotencyKey,
+            input.now,
+          ],
+        );
+      }
+
+      const commissionSummary =
+        decided.commission === null
+          ? null
+          : { amount: decided.commission.amount, balanceAfter: decided.commission.balanceAfter };
+
       await recordProcessedWith(client, {
         idempotencyKey: input.idempotencyKey,
         messageType: input.messageType,
@@ -248,6 +286,7 @@ export class PostgresAccountRepository implements AccountRepository {
           balanceAfter: decided.balanceAfter,
           reactivated: decided.reactivated,
           occurredAt: input.now.toISOString(),
+          commission: commissionSummary,
         },
       });
 
@@ -265,6 +304,20 @@ export class PostgresAccountRepository implements AccountRepository {
           idempotencyKey: input.idempotencyKey,
           occurredAt: input.now,
         },
+        commission:
+          decided.commission === null || commissionOperationId === null
+            ? null
+            : {
+                operationId: commissionOperationId,
+                accountId: input.accountId,
+                type: 'COMMISSION',
+                amount: decided.commission.amount,
+                balanceAfter: decided.commission.balanceAfter,
+                transactionId: input.transactionId,
+                status: 'APPLIED',
+                idempotencyKey: input.idempotencyKey,
+                occurredAt: input.now,
+              },
       };
     });
   }

@@ -52,6 +52,9 @@ export const FAILURE_CODE_STATUS: Readonly<Record<FailureCode, number>> = {
   INVALID_AMOUNT_PRECISION: 422,
   SAME_ACCOUNT_TRANSFER: 422,
   INSUFFICIENT_FUNDS: 422,
+  // Added by T-27: a debit that clears the amount but breaks the account
+  // type's minimum-balance floor — same "well-formed, domain refuses it" shape.
+  MINIMUM_BALANCE_VIOLATION: 422,
   IDENTITY_DOCUMENT_UNREADABLE: 422,
   IDENTITY_DIGEST_MISMATCH: 422,
   PAYMENT_DECLINED: 422,

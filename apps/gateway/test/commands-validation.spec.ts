@@ -84,6 +84,19 @@ describe('a request that fails validation', () => {
       ['no account type', {}],
       ['an account type nobody defined', { accountType: 'PLAZO_FIJO' }],
       ['a subject that is not a UUID', { accountType: 'AHORRO', customerId: 'nope' }],
+      /**
+       * T-27: only the shape of `initialDeposit` is this gateway's to check —
+       * whether AHORRO's Q100.00 minimum is met is Account Service's decision
+       * (X-7), so a malformed amount is refused here but a *low* one is not.
+       */
+      [
+        'an initial deposit with a negative amount',
+        { accountType: 'AHORRO', initialDeposit: { amountMinor: -100, currency: 'GTQ' } },
+      ],
+      [
+        'an initial deposit with no currency',
+        { accountType: 'AHORRO', initialDeposit: { amountMinor: 10_000 } },
+      ],
     ])('is refused when it sends %s, and publishes nothing', async (_case, body) => {
       const response = await request(app.getHttpServer())
         .post('/api/accounts')

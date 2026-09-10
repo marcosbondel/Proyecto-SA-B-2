@@ -53,11 +53,14 @@ describeIntegration('PostgresAccountRepository', () => {
     await pool.query('TRUNCATE account_operations, accounts, processed_messages, deactivation_runs');
   });
 
-  async function seed(balanceMinor: number, overrides: { customerId?: string } = {}) {
+  async function seed(
+    balanceMinor: number,
+    overrides: { customerId?: string; accountType?: 'MONETARIA' | 'AHORRO' } = {},
+  ) {
     const account = openAccount({
       accountId: randomUUID(),
       customerId: overrides.customerId ?? CUSTOMER,
-      accountType: 'MONETARIA',
+      accountType: overrides.accountType ?? 'MONETARIA',
       now: NOW,
     });
 
@@ -116,6 +119,30 @@ describeIntegration('PostgresAccountRepository', () => {
       expect(first.created).toBe(true);
       expect(second.created).toBe(false);
       expect(second.account.accountId).toBe(account.accountId);
+    });
+
+    /** T-27: AHORRO's minimum opening deposit becomes the row's real balance. */
+    it('persists a non-zero initial deposit as the balance, with no operation row for it', async () => {
+      const accountId = randomUUID();
+      const account = openAccount({
+        accountId,
+        customerId: CUSTOMER,
+        accountType: 'AHORRO',
+        now: NOW,
+        initialDepositMinor: 10_000,
+      });
+
+      await repository.openAccount({
+        account,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'account.create.v1',
+          resultSummary: { outcome: 'OPENED' },
+        },
+      });
+
+      expect((await repository.findById(accountId))?.balanceMinor).toBe(10_000);
+      expect(await repository.operationsOf(accountId)).toHaveLength(0);
     });
   });
 
@@ -345,6 +372,94 @@ describeIntegration('PostgresAccountRepository', () => {
 
       expect((await repository.findById(accountId))?.balanceMinor).toBe(1_000);
       expect(await repository.operationsOf(accountId)).toHaveLength(1); // the seeding credit
+    });
+  });
+
+  /** T-27: the commission an AHORRO debit charges, as its own row and a real UPDATE. */
+  describe('the AHORRO commission', () => {
+    it('records the debit and the commission as two separate rows, and one balance', async () => {
+      const accountId = await seed(20_000, { accountType: 'AHORRO' });
+
+      const applied = await repository.applyMovement({
+        accountId,
+        type: 'DEBIT',
+        transactionId: randomUUID(),
+        idempotencyKey: randomUUID(),
+        messageType: 'account.debit.requested.v1',
+        decide: (account) => debit(account, quetzales(2_500), NOW),
+        now: NOW,
+      });
+
+      expect(applied?.commission).toMatchObject({ type: 'COMMISSION', amount: quetzales(300) });
+
+      const operations = await repository.operationsOf(accountId);
+
+      // The seeding credit, plus the debit, plus the commission.
+      expect(operations).toHaveLength(3);
+      expect(operations.map((operation) => operation.type).sort()).toEqual([
+        'COMMISSION',
+        'CREDIT',
+        'DEBIT',
+      ]);
+
+      const commissionRow = operations.find((operation) => operation.type === 'COMMISSION');
+      const debitRow = operations.find((operation) => operation.type === 'DEBIT');
+
+      // amount + commission left the account; the ledger is one number.
+      expect((await repository.findById(accountId))?.balanceMinor).toBe(17_200);
+      // The DEBIT's own balanceAfter is the intermediate figure (amount only) —
+      // what account.debited.v1 carries — while the COMMISSION row's is final.
+      expect(debitRow?.balanceAfter).toEqual(quetzales(17_500));
+      expect(commissionRow?.balanceAfter).toEqual(quetzales(17_200));
+    });
+
+    it('charges no commission row at all on a MONETARIA debit', async () => {
+      const accountId = await seed(20_000, { accountType: 'MONETARIA' });
+
+      const applied = await repository.applyMovement({
+        accountId,
+        type: 'DEBIT',
+        transactionId: randomUUID(),
+        idempotencyKey: randomUUID(),
+        messageType: 'account.debit.requested.v1',
+        decide: (account) => debit(account, quetzales(2_500), NOW),
+        now: NOW,
+      });
+
+      expect(applied?.commission).toBeNull();
+
+      const operations = await repository.operationsOf(accountId);
+
+      expect(operations.map((operation) => operation.type).sort()).toEqual(['CREDIT', 'DEBIT']);
+    });
+
+    it('does not double-charge the commission on a redelivered debit', async () => {
+      const accountId = await seed(20_000, { accountType: 'AHORRO' });
+      const idempotencyKey = randomUUID();
+
+      const attempt = async () =>
+        await repository.applyMovement({
+          accountId,
+          type: 'DEBIT',
+          transactionId: randomUUID(),
+          idempotencyKey,
+          messageType: 'account.debit.requested.v1',
+          decide: (account) => debit(account, quetzales(2_500), NOW),
+          now: NOW,
+        });
+
+      await attempt();
+
+      // The second delivery must not reach `decide` at all in the real use
+      // case — `DebitAccountUseCase` checks `findProcessed` first — but this
+      // proves the database-level backstop too: the same (idempotency_key,
+      // type='COMMISSION') can only ever insert once.
+      await expect(attempt()).rejects.toThrow();
+
+      const operations = await repository.operationsOf(accountId);
+
+      expect(operations.filter((operation) => operation.type === 'COMMISSION')).toHaveLength(1);
+      expect((await repository.findById(accountId))?.balanceMinor).toBe(17_200);
     });
   });
 

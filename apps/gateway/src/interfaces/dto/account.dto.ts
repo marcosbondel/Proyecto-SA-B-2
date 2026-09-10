@@ -31,6 +31,17 @@ export class OpenAccountDto {
   @IsOptional()
   @IsUUID('4', { message: 'El identificador del cliente no tiene un formato válido.' })
   public customerId?: string;
+
+  /**
+   * `AHORRO`'s minimum opening deposit (T-27) is Account Service's rule to
+   * enforce, not this gateway's — only the shape is validated here. Absent
+   * defaults to Q0.00, which is every `MONETARIA` opening.
+   */
+  @IsOptional()
+  @IsObject({ message: 'El monto debe incluir la cantidad y la moneda.' })
+  @ValidateNested()
+  @Type(() => MoneyDto)
+  public initialDeposit?: MoneyDto;
 }
 
 /**

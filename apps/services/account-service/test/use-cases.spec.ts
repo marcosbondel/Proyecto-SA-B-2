@@ -33,13 +33,19 @@ function fixture() {
 
 function seed(
   repository: InMemoryAccountRepository,
-  overrides: { accountId?: string; customerId?: string; balanceMinor?: number; status?: 'ACTIVE' | 'INACTIVE' } = {},
+  overrides: {
+    accountId?: string;
+    customerId?: string;
+    balanceMinor?: number;
+    status?: 'ACTIVE' | 'INACTIVE';
+    accountType?: 'MONETARIA' | 'AHORRO';
+  } = {},
 ) {
   const account = {
     ...openAccount({
       accountId: overrides.accountId ?? ACCOUNT,
       customerId: overrides.customerId ?? CUSTOMER,
-      accountType: 'MONETARIA' as const,
+      accountType: overrides.accountType ?? ('MONETARIA' as const),
       now: NOW,
     }),
     balanceMinor: overrides.balanceMinor ?? 0,
@@ -117,6 +123,57 @@ describe('opening an account', () => {
 
     expect(repository.accounts.size).toBe(1);
     expect(publisher.typesPublished()).toEqual(['account.opened.v1']);
+  });
+
+  /** T-27: AHORRO's minimum opening deposit — a condition of opening, checked once. */
+  describe('the AHORRO minimum opening deposit', () => {
+    const ahorroPayload = { accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'AHORRO' as const };
+
+    it('refuses to open an AHORRO account below the Q100.00 minimum, and creates nothing', async () => {
+      const { repository, publisher, dependencies } = fixture();
+
+      await new CreateAccountUseCase(dependencies).execute(
+        { ...ahorroPayload, initialDeposit: quetzales(9_999) },
+        CLIENT,
+        'key-1',
+      );
+
+      expect(repository.accounts.size).toBe(0);
+      expect(publisher.typesPublished()).toEqual(['account.open.rejected.v1']);
+      expect(publisher.events[0]?.payload).toMatchObject({ reason: 'MINIMUM_BALANCE_VIOLATION' });
+    });
+
+    it('opens an AHORRO account at exactly Q100.00', async () => {
+      const { repository, publisher, dependencies } = fixture();
+
+      await new CreateAccountUseCase(dependencies).execute(
+        { ...ahorroPayload, initialDeposit: quetzales(10_000) },
+        CLIENT,
+        'key-1',
+      );
+
+      expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(10_000);
+      expect(publisher.typesPublished()).toEqual(['account.opened.v1']);
+      expect(publisher.events[0]?.payload).toMatchObject({ balance: quetzales(10_000) });
+    });
+
+    it('refuses an AHORRO opening with no deposit at all', async () => {
+      const { repository, publisher, dependencies } = fixture();
+
+      await new CreateAccountUseCase(dependencies).execute(ahorroPayload, CLIENT, 'key-1');
+
+      expect(repository.accounts.size).toBe(0);
+      expect(publisher.events[0]?.payload).toMatchObject({ reason: 'MINIMUM_BALANCE_VIOLATION' });
+    });
+
+    it('opens a MONETARIA account with no deposit, exactly as before T-27', async () => {
+      const { repository, publisher, dependencies } = fixture();
+
+      await new CreateAccountUseCase(dependencies).execute(payload, CLIENT, 'key-1');
+
+      expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+      expect(publisher.typesPublished()).toEqual(['account.opened.v1']);
+    });
   });
 });
 
@@ -316,6 +373,73 @@ describe('debiting, which is criteria 3 and 4', () => {
     await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
 
     expect(publisher.events[0]?.payload).toMatchObject({ reason: 'ACCOUNT_INACTIVE' });
+  });
+});
+
+describe('the AHORRO commission a debit charges alongside itself (T-27)', () => {
+  const command = { transactionId: TRANSACTION, accountId: ACCOUNT, amount: quetzales(2_500) };
+
+  it('publishes account.commission.charged.v1 after account.debited.v1, never before it', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { balanceMinor: 20_000, accountType: 'AHORRO' });
+
+    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+
+    expect(publisher.typesPublished()).toEqual([
+      'account.debited.v1',
+      'account.commission.charged.v1',
+    ]);
+    // account.debited.v1 carries the amount alone — never amount + commission.
+    expect(publisher.events[0]?.payload).toMatchObject({ amount: quetzales(2_500) });
+    expect(publisher.events[1]?.payload).toMatchObject({
+      accountId: ACCOUNT,
+      transactionId: TRANSACTION,
+      amount: quetzales(300),
+      balanceAfter: quetzales(17_200),
+    });
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(17_200);
+  });
+
+  it('publishes no commission event at all for a MONETARIA debit', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { balanceMinor: 20_000, accountType: 'MONETARIA' });
+
+    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+
+    expect(publisher.typesPublished()).toEqual(['account.debited.v1']);
+  });
+
+  it('does not re-publish the commission twice for two deliveries of one message', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { balanceMinor: 20_000, accountType: 'AHORRO' });
+    const useCase = new DebitAccountUseCase(dependencies);
+
+    await useCase.execute(command, 'key-1');
+    await useCase.execute(command, 'key-1');
+
+    expect(publisher.typesPublished()).toEqual([
+      'account.debited.v1',
+      'account.commission.charged.v1',
+      'account.debited.v1',
+      'account.commission.charged.v1',
+    ]);
+    expect(repository.operations).toHaveLength(2);
+  });
+
+  it('lets an AHORRO debit empty the account — no floor once it is open (T-27, corrected)', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    // command's amount is Q25.00 (2_500); the Q3.00 commission on top leaves
+    // exactly 0. No minimum balance blocks this — that is an opening
+    // condition now, not a floor `debit` re-enforces.
+    seed(repository, { balanceMinor: 2_800, accountType: 'AHORRO' });
+
+    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+
+    expect(publisher.typesPublished()).toEqual([
+      'account.debited.v1',
+      'account.commission.charged.v1',
+    ]);
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
   });
 });
 

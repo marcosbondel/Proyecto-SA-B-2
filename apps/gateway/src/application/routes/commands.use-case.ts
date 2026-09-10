@@ -43,6 +43,8 @@ export interface OpenAccountRequest extends CommandContext {
   readonly accountType: AccountType;
   /** The subject. Absent means "myself", which is the common case. */
   readonly customerId?: string;
+  /** AHORRO's minimum-opening-deposit rule (T-27) is Account Service's to enforce. */
+  readonly initialDeposit?: Money;
 }
 
 export interface SetAccountStatusRequest extends CommandContext {
@@ -117,6 +119,7 @@ export class CommandsUseCase {
         // whether they may operate on that person is Account Service's call.
         customerId: request.customerId ?? request.actor.customerId,
         accountType: request.accountType,
+        ...(request.initialDeposit === undefined ? {} : { initialDeposit: request.initialDeposit }),
       },
       request,
     );
