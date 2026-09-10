@@ -106,6 +106,12 @@ export const customerStatus = z.enum(['PENDING_ACTIVATION', 'ACTIVE']);
 /** `Customer.identityStatus` — independent of activation (C-4 vs C-6). */
 export const identityStatus = z.enum(['PENDING', 'VALIDATED', 'REJECTED']);
 
+/**
+ * `Customer.kycStatus` (Fase 2, §4.1 p. 4) — distinct from `identityStatus`:
+ * the document-photo review and the KYC verdict are two different facts, C-8.
+ */
+export const kycStatus = z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
+
 /** `Account.status`. A credit to an INACTIVE account reactivates it (A-3). */
 export const accountStatus = z.enum(['ACTIVE', 'INACTIVE']);
 
@@ -268,3 +274,4 @@ export type PaymentErrorType = z.infer<typeof paymentErrorType>;
 export type NotificationStatus = z.infer<typeof notificationStatus>;
 export type NotificationChannel = z.infer<typeof notificationChannel>;
 export type AuditProcessingStatus = z.infer<typeof auditProcessingStatus>;
+export type KycStatus = z.infer<typeof kycStatus>;

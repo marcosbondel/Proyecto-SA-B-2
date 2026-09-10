@@ -11,6 +11,7 @@ import {
   customerListQueryV1,
   customerRegisterV1,
   customerSetIdentityVerdictV1,
+  customerSetKycStatusV1,
   customerUpdateV1,
   customerValidateIdentityV1,
   customerVerifyEmailV1,
@@ -29,6 +30,7 @@ import type { GetCustomerListUseCase } from '../application/get-customer-list.us
 import type { RegisterCustomerUseCase } from '../application/register-customer.use-case';
 import type { RequestPasswordResetUseCase } from '../application/request-password-reset.use-case';
 import type { SetIdentityVerdictUseCase } from '../application/set-identity-verdict.use-case';
+import type { SetKycStatusUseCase } from '../application/set-kyc-status.use-case';
 import type { UpdateCustomerUseCase } from '../application/update-customer.use-case';
 import type { ValidateIdentityUseCase } from '../application/validate-identity.use-case';
 import type { VerifyEmailActivationUseCase } from '../application/verify-email-activation.use-case';
@@ -399,6 +401,30 @@ export class SetIdentityVerdictHandler extends ContractHandler<
 
   protected async run(
     payload: ReturnType<typeof customerSetIdentityVerdictV1.schema.parse>,
+    envelope: MessageEnvelope<unknown>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);
+  }
+}
+
+/** A teller's manual VERIFIED/REJECTED verdict on a customer's KYC status. */
+export class SetKycStatusHandler extends ContractHandler<
+  ReturnType<typeof customerSetKycStatusV1.schema.parse>
+> {
+  public readonly messageType = customerSetKycStatusV1.name;
+  readonly #useCase: SetKycStatusUseCase;
+
+  constructor(useCase: SetKycStatusUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerSetKycStatusV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerSetKycStatusV1.schema.parse>,
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);

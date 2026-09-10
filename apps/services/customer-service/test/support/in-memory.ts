@@ -198,6 +198,14 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     await this.recordProcessed(input.idempotency);
   }
 
+  public async saveKycVerdict(input: {
+    readonly customer: Customer;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void> {
+    this.customers.set(input.customer.customerId, input.customer);
+    await this.recordProcessed(input.idempotency);
+  }
+
   public async saveActivationToken(input: {
     readonly customerId: string;
     readonly tokenHash: string;

@@ -18,6 +18,7 @@ import { GetCustomerListUseCase } from './application/get-customer-list.use-case
 import { RegisterCustomerUseCase } from './application/register-customer.use-case';
 import { RequestPasswordResetUseCase } from './application/request-password-reset.use-case';
 import { SetIdentityVerdictUseCase } from './application/set-identity-verdict.use-case';
+import { SetKycStatusUseCase } from './application/set-kyc-status.use-case';
 import { UpdateCustomerUseCase } from './application/update-customer.use-case';
 import { ValidateIdentityUseCase } from './application/validate-identity.use-case';
 import { VerifyEmailActivationUseCase } from './application/verify-email-activation.use-case';
@@ -48,6 +49,7 @@ import {
   GetPendingValidationHandler,
   CustomerListHandler,
   SetIdentityVerdictHandler,
+  SetKycStatusHandler,
   UpdateCustomerHandler,
   ValidateIdentityHandler,
   VerifyEmailHandler,
@@ -161,6 +163,7 @@ async function bootstrap(): Promise<void> {
       new SetIdentityVerdictHandler(
         new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
       ),
+      new SetKycStatusHandler(new SetKycStatusUseCase({ repository, publisher, clock })),
       new AuthenticateCustomerHandler(
         new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
       ),
