@@ -264,6 +264,8 @@ describe('what a person is told', () => {
       'IDEMPOTENCY_KEY_CONFLICT',
       'PAYMENT_DECLINED',
       'PAYMENT_RETRIES_EXHAUSTED',
+      // Added by T-27: Account Service's own minimum-balance floor.
+      'MINIMUM_BALANCE_VIOLATION',
     ];
 
     for (const code of codes) {

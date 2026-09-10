@@ -123,7 +123,10 @@ export const accountStatus = z.enum(['ACTIVE', 'INACTIVE']);
  * and a statement that showed them alike would make a failed transfer read as
  * an incoming payment.
  */
-export const accountOperationType = z.enum(['DEBIT', 'CREDIT', 'COMPENSATION']);
+/* 'COMMISSION' added by T-27: the per-transaction fee `debit` charges
+ * alongside a DEBIT, on account types that configure one, recorded as its own
+ * ledger row rather than folded into the DEBIT amount. */
+export const accountOperationType = z.enum(['DEBIT', 'CREDIT', 'COMPENSATION', 'COMMISSION']);
 
 /**
  * `AccountOperation.status`.
@@ -239,6 +242,13 @@ export const failureCode = z.enum([
   'ACCOUNT_INACTIVE',
   'ACCOUNT_NOT_FOUND',
   'INVALID_AMOUNT_PRECISION',
+  /*
+   * Added by T-27. Distinct from INSUFFICIENT_FUNDS: a debit that would leave
+   * a positive balance can still be refused when that balance falls below the
+   * account type's floor (`account-type-rules.ts`) — a different fact from
+   * "there is not enough money to move at all".
+   */
+  'MINIMUM_BALANCE_VIOLATION',
   /*
    * Added by T-17. `../domain/actors.md` names this refusal — "may not operate
    * on an account that is not theirs ... the expected result is

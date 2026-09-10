@@ -79,6 +79,35 @@ describe('the five asynchronous commands', () => {
       expect(harness.publisher.lastType).toBe(accountCreateV1.name);
     });
 
+    /**
+     * T-27: the gateway forwards `initialDeposit` as given — it does not
+     * decide whether AHORRO's minimum is met (X-7), only that the request is
+     * shaped like an amount.
+     */
+    it('carries the initial deposit through to account.create.v1, when one is given', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/accounts')
+        .set('Authorization', auth)
+        .send({ accountType: 'AHORRO', initialDeposit: { amountMinor: 10_000, currency: 'GTQ' } });
+
+      expect(response.status).toBe(202);
+      expect(harness.publisher.lastType).toBe(accountCreateV1.name);
+      expect(harness.publisher.published.at(-1)?.payload).toMatchObject({
+        initialDeposit: { amountMinor: 10_000, currency: 'GTQ' },
+      });
+    });
+
+    it('leaves initialDeposit out of account.create.v1 when none is given', async () => {
+      await request(app.getHttpServer())
+        .post('/api/accounts')
+        .set('Authorization', auth)
+        .send({ accountType: 'MONETARIA' });
+
+      const payload = harness.publisher.published.at(-1)?.payload as Record<string, unknown>;
+
+      expect(payload).not.toHaveProperty('initialDeposit');
+    });
+
     it('requests a transfer', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/transfers')

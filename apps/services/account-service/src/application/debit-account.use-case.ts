@@ -1,4 +1,4 @@
-import { accountDebitRejectedV1, accountDebitedV1 } from '@bank/contracts';
+import { accountCommissionChargedV1, accountDebitRejectedV1, accountDebitedV1 } from '@bank/contracts';
 import type { AccountDebitRequestedV1, FailureCode } from '@bank/contracts';
 
 import { DomainRejection, debit } from '../domain/account';
@@ -72,6 +72,21 @@ export class DebitAccountUseCase {
           debitedAt: applied.operation.occurredAt.toISOString(),
         },
       });
+
+      // Published only when the account's type charges one (T-27) — never a
+      // zero-amount event, since `commission` is `null` and not a zero.
+      if (applied.commission !== null) {
+        await this.#publisher.publish({
+          messageType: accountCommissionChargedV1.name,
+          payload: {
+            accountId: payload.accountId,
+            transactionId: payload.transactionId,
+            amount: applied.commission.amount,
+            balanceAfter: applied.commission.balanceAfter,
+            chargedAt: applied.commission.occurredAt.toISOString(),
+          },
+        });
+      }
     } catch (error) {
       if (!(error instanceof DomainRejection)) {
         throw error;
@@ -148,5 +163,23 @@ export class DebitAccountUseCase {
         debitedAt: summary.occurredAt,
       },
     });
+
+    const commission = summary.commission as
+      | { readonly amount: unknown; readonly balanceAfter: unknown }
+      | null
+      | undefined;
+
+    if (commission != null) {
+      await this.#publisher.publish({
+        messageType: accountCommissionChargedV1.name,
+        payload: {
+          accountId: payload.accountId,
+          transactionId: payload.transactionId,
+          amount: commission.amount,
+          balanceAfter: commission.balanceAfter,
+          chargedAt: summary.occurredAt,
+        },
+      });
+    }
   }
 }

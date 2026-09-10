@@ -1,3 +1,4 @@
+import { AHORRO_MINIMUM_OPENING_BALANCE_MINOR, ruleFor } from './account-type-rules';
 import { amountProblem } from './money';
 import type { Money } from './money';
 
@@ -20,7 +21,14 @@ export type RejectionCode =
   | 'ACCOUNT_NOT_FOUND'
   | 'INVALID_AMOUNT_PRECISION'
   | 'ROLE_NOT_ELIGIBLE'
-  | 'FORBIDDEN_ACCOUNT_ACCESS';
+  | 'FORBIDDEN_ACCOUNT_ACCESS'
+  /**
+   * Added by T-27 (Fase 2, §4.1 p. 6). Distinct from `INSUFFICIENT_FUNDS`: the
+   * account has enough to cover the amount, but not enough to also stay above
+   * its type's floor once the amount — and the commission, when the type
+   * charges one — has left (`account-type-rules.ts`).
+   */
+  | 'MINIMUM_BALANCE_VIOLATION';
 
 /**
  * The aggregate this service exists to protect.
@@ -71,10 +79,25 @@ export interface Movement {
   readonly balanceAfter: Money;
   /** Only a credit can set this: it is what tells Notification an account woke up. */
   readonly reactivated: boolean;
+  /**
+   * The commission charged alongside this movement, or `null` when the
+   * account's type charges none (T-27, `account-type-rules.ts`). Only `debit`
+   * can set this — a commission is levied on money leaving, never on money
+   * arriving or on a compensation undoing the bank's own mistake.
+   * `balanceAfter` here is the account's balance once the amount **and** the
+   * commission have both left, matching `account.balanceMinor` after the
+   * movement; the outer `Movement.balanceAfter` is the intermediate figure,
+   * after the amount alone — the number `account.debited.v1` carries, since
+   * that event must never reflect the commission.
+   */
+  readonly commission: { readonly amount: Money; readonly balanceAfter: Money } | null;
 }
 
 /**
- * Opens an account. Balance Q0.00, status ACTIVE, no activity yet.
+ * Opens an account. Status ACTIVE, no activity yet, balance the initial
+ * deposit — Q0.00 when the caller gives none, which is every `MONETARIA`
+ * opening and every `AHORRO` opening the domain already refused via
+ * `openingDepositRefusal`.
  *
  * `lastActivityAt` starts at the opening rather than at `null` because the
  * deactivation job counts inactivity from *something*, and an account opened
@@ -86,17 +109,40 @@ export function openAccount(input: {
   readonly customerId: string;
   readonly accountType: AccountType;
   readonly now: Date;
+  readonly initialDepositMinor?: number;
 }): Account {
   return {
     accountId: input.accountId,
     customerId: input.customerId,
     accountType: input.accountType,
-    balanceMinor: 0,
+    balanceMinor: input.initialDepositMinor ?? 0,
     status: 'ACTIVE',
     lastActivityAt: input.now,
     openedAt: input.now,
     version: 0,
   };
+}
+
+/**
+ * Whether an opening's initial deposit meets its type's requirement (T-27,
+ * corrected: this is a condition of *opening* the account, not of keeping it
+ * funded afterward — `debit` enforces no floor of its own).
+ *
+ * Only `AHORRO` has one. `MONETARIA` never refuses here, whatever the amount
+ * — including none at all, which keeps every existing `MONETARIA` opening
+ * (no deposit, criterion 1's Q0.00) exactly as it was before T-27.
+ */
+export function openingDepositRefusal(
+  accountType: AccountType,
+  initialDepositMinor: number,
+): 'MINIMUM_BALANCE_VIOLATION' | null {
+  if (accountType !== 'AHORRO') {
+    return null;
+  }
+
+  return initialDepositMinor < AHORRO_MINIMUM_OPENING_BALANCE_MINOR
+    ? 'MINIMUM_BALANCE_VIOLATION'
+    : null;
 }
 
 /**
@@ -129,6 +175,13 @@ export function openingRefusal(
  * malformed amount is not an insufficient balance, and an inactive account is
  * not either. Collapsing them into one "cannot debit" would make the Saga
  * compensate for reasons it could not distinguish.
+ *
+ * `debit`'s own version of `moved`: the only movement that can carry a
+ * commission (T-27, `account-type-rules.ts`), so it is not folded into the
+ * generic `moved` that `credit` and `compensate` share. There is **no**
+ * minimum-balance floor here — a debit may empty the account down to Q0.00.
+ * The type's minimum, where it has one, is a requirement for *opening* the
+ * account (`openingDepositRefusal`), not for keeping it funded afterward.
  */
 export function debit(account: Account, amount: Money, now: Date): Movement {
   const problem = amountProblem(amount);
@@ -141,11 +194,35 @@ export function debit(account: Account, amount: Money, now: Date): Movement {
     throw new DomainRejection('ACCOUNT_INACTIVE', 'La cuenta no está activa.');
   }
 
-  if (account.balanceMinor < amount.amountMinor) {
+  const rule = ruleFor(account.accountType);
+  const commissionMinor = rule.commissionMinor ?? 0;
+  const totalMinor = amount.amountMinor + commissionMinor;
+
+  if (account.balanceMinor < totalMinor) {
     throw new DomainRejection('INSUFFICIENT_FUNDS', 'El saldo disponible no alcanza.');
   }
 
-  return moved(account, -amount.amountMinor, amount, false, now, true);
+  const balanceAfterAmount = account.balanceMinor - amount.amountMinor;
+  const balanceAfterTotal = balanceAfterAmount - commissionMinor;
+
+  return {
+    account: {
+      ...account,
+      balanceMinor: balanceAfterTotal,
+      lastActivityAt: now,
+      version: account.version + 1,
+    },
+    amount,
+    balanceAfter: { amountMinor: balanceAfterAmount, currency: amount.currency },
+    reactivated: false,
+    commission:
+      rule.commissionMinor === null
+        ? null
+        : {
+            amount: { amountMinor: rule.commissionMinor, currency: amount.currency },
+            balanceAfter: { amountMinor: balanceAfterTotal, currency: amount.currency },
+          },
+  };
 }
 
 /**
@@ -246,5 +323,8 @@ function moved(
     amount,
     balanceAfter: { amountMinor: balanceMinor, currency: amount.currency },
     reactivated,
+    // Only `debit` can charge a commission (T-27); `credit` and `compensate`
+    // share this helper and never do.
+    commission: null,
   };
 }

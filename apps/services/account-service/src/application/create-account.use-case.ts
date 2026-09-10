@@ -1,7 +1,7 @@
 import { accountOpenRejectedV1, accountOpenedV1 } from '@bank/contracts';
 import type { AccountCreateV1, Identity } from '@bank/contracts';
 
-import { openAccount, openingRefusal } from '../domain/account';
+import { openAccount, openingDepositRefusal, openingRefusal } from '../domain/account';
 import { quetzales } from '../domain/money';
 import type { AccountRepository, Clock, EventPublisher } from './ports';
 
@@ -14,6 +14,9 @@ import type { AccountRepository, Clock, EventPublisher } from './ports';
  * it does not mint the identifier: the Gateway did that before publishing, so a
  * redelivery carries the same one and the unique key on the primary key is what
  * makes the retry a no-op rather than a second account.
+ *
+ * `AHORRO`'s minimum opening deposit (T-27) is checked here, alongside who may
+ * open for whom — both are refusals the account never gets created for.
  */
 export class CreateAccountUseCase {
   readonly #repository: AccountRepository;
@@ -37,7 +40,11 @@ export class CreateAccountUseCase {
   ): Promise<void> {
     const now = this.#clock.now();
 
-    const refusal = identity === null ? null : openingRefusal(identity, payload.customerId);
+    const initialDepositMinor = payload.initialDeposit?.amountMinor ?? 0;
+
+    const refusal =
+      (identity === null ? null : openingRefusal(identity, payload.customerId)) ??
+      openingDepositRefusal(payload.accountType, initialDepositMinor);
 
     if (refusal !== null) {
       await this.#publisher.publish({
@@ -66,6 +73,7 @@ export class CreateAccountUseCase {
         customerId: payload.customerId,
         accountType: payload.accountType,
         now,
+        initialDepositMinor,
       }),
       idempotency: {
         idempotencyKey,

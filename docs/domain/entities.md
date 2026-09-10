@@ -87,18 +87,45 @@ the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may b
 | `customerId` | Opaque reference. Always to a `Customer` with `role = CLIENTE` |
 | `balance` | Quetzales, exactly two decimals |
 | `status` | `ACTIVE` \| `INACTIVE` |
-| `accountType` | `MONETARIA` \| `AHORRO`. Classification only in Phase 1 (D-02) |
+| `accountType` | `MONETARIA` \| `AHORRO`. Pure classification through Phase 1 (D-02); carries its own rules as of T-27 |
 | `billerCode` | Optional code for institutional biller collection accounts (EEGSA, Empagua, Claro) |
 | `billerName` | Optional commercial name of institutional biller |
 | `lastActivityAt` | Last confirmed money movement |
 
 ### Account type
 
-`accountType` is recorded, reported on creation and displayed. In Phase 1 it changes **no
-invariant, no state and no flow**, and both types are equally subject to automatic
-deactivation. The assignment requires the two types to exist (§4.1, note on p. 7); it does not
-require them to behave differently. Introducing differentiated rules later is a model change
-and needs a new approval.
+`accountType` is recorded, reported on creation and displayed. Through Phase 1 it changed **no
+invariant, no state and no flow**, and both types were equally subject to automatic
+deactivation. The assignment required the two types to exist (§4.1, note on p. 7); it did not
+require them to behave differently, and the domain said in so many words that introducing
+differentiated rules later was a model change needing a new approval.
+
+**T-27 (Fase 2, §4.1, p. 6) is that approval.** Each type now carries a fixed rule
+(`account-type-rules.ts`), stated the way `deactivation-policy.ts` states its own boundary
+decisions rather than left implicit — the assignment names the two capabilities ("Límite de
+saldo mínimo", "Comisión por transacción (opcional)") but no amounts, and neither when in the
+account's life each applies:
+
+| Type | Minimum balance | Per-debit commission |
+| --- | --- | --- |
+| `MONETARIA` (the assignment's "Corriente") | none | none |
+| `AHORRO` | Q100.00, **to open** | Q3.00, on every debit |
+
+The minimum balance is a condition of **opening** an `AHORRO` account — the initial deposit must
+reach Q100.00, checked once by `openingDepositRefusal`, or the opening is refused
+(`account.open.rejected.v1`, `MINIMUM_BALANCE_VIOLATION`) and no account is created. It is not a
+floor the domain re-enforces afterward: an open `AHORRO` account may be debited down to Q0.00 by
+ordinary transfers, exactly like `MONETARIA`. (An earlier revision of this section described the
+minimum as a floor `debit` checked on every movement; that was corrected before the ticket closed
+— `AHORRO`'s Q100.00 is an entry requirement, not a balance the account must stay above.)
+
+The commission, unlike the minimum, applies for the account's whole life: every `AHORRO` debit
+carries one. It is a fact separate from the transfer itself and travels on its own event,
+`account.commission.charged.v1`, never folded into `account.debited.v1`'s `amount`, because
+Transaction Service compares that field against the amount its own Saga asked to move. Automatic
+deactivation is unaffected — both types remain equally subject to it, and its own Q50.00
+threshold (`MIN_BALANCE_MINOR` in `deactivation-policy.ts`) is a distinct number from
+`AHORRO`'s opening minimum, checked by a different job for a different reason.
 
 ### Automatic deactivation
 

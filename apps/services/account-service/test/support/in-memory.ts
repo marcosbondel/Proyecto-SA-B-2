@@ -108,6 +108,25 @@ export class InMemoryAccountRepository implements AccountRepository {
 
     this.operations.push(operation);
 
+    const commission: AccountOperation | null =
+      decided.commission === null
+        ? null
+        : {
+            operationId: randomUUID(),
+            accountId: input.accountId,
+            type: 'COMMISSION',
+            amount: decided.commission.amount,
+            balanceAfter: decided.commission.balanceAfter,
+            transactionId: input.transactionId,
+            status: 'APPLIED',
+            idempotencyKey: input.idempotencyKey,
+            occurredAt: input.now,
+          };
+
+    if (commission !== null) {
+      this.operations.push(commission);
+    }
+
     await this.recordProcessed({
       idempotencyKey: input.idempotencyKey,
       messageType: input.messageType,
@@ -118,10 +137,14 @@ export class InMemoryAccountRepository implements AccountRepository {
         balanceAfter: decided.balanceAfter,
         reactivated: decided.reactivated,
         occurredAt: input.now.toISOString(),
+        commission:
+          commission === null
+            ? null
+            : { amount: commission.amount, balanceAfter: commission.balanceAfter },
       },
     });
 
-    return { account: decided.account, operation, reactivated: decided.reactivated };
+    return { account: decided.account, operation, reactivated: decided.reactivated, commission };
   }
 
   /** The billers this fake knows about. Empty unless a test puts one here. */
