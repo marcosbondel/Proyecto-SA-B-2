@@ -56,6 +56,7 @@ export class GetCustomerUseCase {
         role: customer.role,
         status: customer.status,
         identityStatus: customer.identityStatus,
+        kycStatus: customer.kycStatus,
       },
     });
   }

@@ -159,6 +159,26 @@ second pattern for the same situation.
 
 The payload of all forty-eight lives in [`../events/catalog.md`](../events/catalog.md).
 
+## Fase 2 extension: KYC (T-26)
+
+The assignment's Fase 2 (§4.1, p. 4) adds a KYC verdict to Customer Service — three more
+messages, distinct from the identity-document review above (that is a photo check; this is the
+broader compliance decision a teller or administrator registers directly, and the one C-8 ties to
+initiating a transaction).
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| command | `customer.set-kyc-status` | **Added by T-26.** Registers or updates a customer's `PENDING` \| `VERIFIED` \| `REJECTED` KYC status |
+| event | `customer.kyc.verified` | The verdict was `VERIFIED`. `VERIFIED` is terminal, mirroring `identityStatus`'s `VALIDATED` |
+| event | `customer.kyc.rejected` | The verdict was `REJECTED`. `REJECTED → PENDING` remains legal, unlike `VERIFIED` |
+
+Enforcing "a non-verified `CLIENTE` may not initiate a transaction" inside the live transfer Saga
+is **T-31**'s job — it consumes these events (or asks by request/reply) rather than Transaction
+Service querying this service's table (X-1). T-26 owns the state, the transitions, the
+persistence and the events only.
+
+The payload of all three lives in [`../events/catalog.md`](../events/catalog.md#register-a-kyc-verdict-fase-2-t-26).
+
 ---
 
 ## Coherence checks

@@ -27,6 +27,7 @@ Related: [bounded-contexts.md](bounded-contexts.md) · [use-cases.md](use-cases.
 | Access credential | Never leaves the service |
 | `role` | `ADMINISTRADOR` \| `CAJERO_RECEPTOR` \| `CLIENTE` |
 | `identityStatus` | `PENDING` \| `VALIDATED` \| `REJECTED` |
+| `kycStatus` | `PENDING` \| `VERIFIED` \| `REJECTED` — Fase 2 (§4.1, p. 4), C-8 |
 | `emailVerifiedAt` | Nullable timestamp |
 | `status` | `PENDING_ACTIVATION` \| `ACTIVE` |
 
@@ -50,6 +51,13 @@ verification. There is no path back in Phase 1.
 `identityStatus`: `PENDING` → `VALIDATED` \| `REJECTED`, and `REJECTED` → `PENDING` when a new
 photo is uploaded.
 
+`kycStatus` (Fase 2): `PENDING` → `VERIFIED` \| `REJECTED`, and `REJECTED` → `PENDING` when a new
+review reopens it. `VERIFIED` is terminal, for the same reason `VALIDATED` is on `identityStatus`
+— re-verifying an already-verified customer would let a later, weaker review silently replace an
+accepted one. Distinct from `identityStatus`: that axis is Fase 1's review of the document photo;
+this one is the broader compliance decision a teller or administrator registers directly
+(`customer.set-kyc-status.v1`), and it is what C-8 ties to initiating a transaction.
+
 **The two axes are independent.** Email verification (which enables signing in) and
 identity-document validation (which reviews the photo) are different flows and neither implies
 the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may be
@@ -66,6 +74,7 @@ the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may b
 | C-5 | The date of birth is coherent — in the past, and plausible for a living person | `INVALID_BIRTH_DATE` — rejected |
 | C-6 | Only `role = CLIENTE` requires identity validation and may hold accounts | `ROLE_NOT_ELIGIBLE` when opening an account for staff |
 | C-7 | Verifying a token that is expired, already used or invalidated changes no state | `ACTIVATION_TOKEN_INVALID` — rejected with no effect |
+| C-8 | A `CLIENTE` may initiate a transaction only when `kycStatus = VERIFIED` (Fase 2, §4.1 p. 4) | `mayInitiateTransactions` refuses; enforcing this inside the transfer Saga is **T-31**, which consumes `customer.kyc.verified.v1` / `customer.kyc.rejected.v1` rather than querying this service's table (X-1) |
 
 ---
 
