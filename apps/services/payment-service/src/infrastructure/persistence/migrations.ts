@@ -167,6 +167,31 @@ export const MIGRATIONS: readonly Migration[] = [
          ON outbox_messages (id) WHERE dispatch_status = 'PENDING'`,
     ],
   },
+  {
+    /*
+     * T-29: the simulated provider gains a third answer, `TIMEOUT`, alongside
+     * `APPROVE` and `REJECT`/`TRANSIENT_FAILURE`. Widening `payments_scenario_known`
+     * needs DROP + ADD rather than an edit to `001_payments`, because the
+     * migration ledger (`schema_migrations`) makes `001` a no-op on a database
+     * that already applied it — the constraint it created would never change.
+     *
+     * `payment_attempts` gains its own column: what the provider answered on
+     * that rung, distinct from `result` (which only says whether the *policy*
+     * treated the attempt as settled or retryable) and from `error_type` (which
+     * says nothing when the attempt succeeded). Nullable, because an attempt
+     * recorded before this migration has no such answer to report.
+     */
+    name: '004_payment_provider_simulation',
+    statements: [
+      `ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_scenario_known`,
+      `ALTER TABLE payments ADD CONSTRAINT payments_scenario_known
+         CHECK (scenario IS NULL OR scenario IN ('APPROVE','REJECT','TRANSIENT_FAILURE','TIMEOUT'))`,
+      `ALTER TABLE payment_attempts ADD COLUMN IF NOT EXISTS provider_result VARCHAR(20)`,
+      `ALTER TABLE payment_attempts DROP CONSTRAINT IF EXISTS payment_attempts_provider_result_known`,
+      `ALTER TABLE payment_attempts ADD CONSTRAINT payment_attempts_provider_result_known
+         CHECK (provider_result IS NULL OR provider_result IN ('SUCCESS','FAILURE','TIMEOUT'))`,
+    ],
+  },
 ];
 
 /**

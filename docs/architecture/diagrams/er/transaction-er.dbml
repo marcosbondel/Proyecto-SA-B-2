@@ -10,7 +10,7 @@ Table transactions {
   correlation_id uuid [not null, note: 'Trazabilidad distribuida']
   idempotency_key varchar(200) [unique, not null]
   failure_reason text
-  payment_scenario varchar(20) [note: 'APPROVE, REJECT, TRANSIENT_FAILURE']
+  payment_scenario varchar(20) [note: 'APPROVE, REJECT, TRANSIENT_FAILURE, TIMEOUT']
   customer_id uuid [note: 'Identidad del usuario solicitante (claims JWT)']
   reference varchar(60) [note: 'Referencia de factura o contrato en pago de servicios']
   created_at timestamptz [not null, default: `now()`]

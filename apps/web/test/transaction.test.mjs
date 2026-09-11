@@ -314,10 +314,10 @@ describe('what a person is told', () => {
 });
 
 describe('the demonstration scenarios', () => {
-  test('offers exactly the three the Gateway accepts', () => {
+  test('offers exactly the four the Gateway accepts', () => {
     assert.deepEqual(
       PAYMENT_SCENARIOS.map((scenario) => scenario.value),
-      ['APPROVE', 'REJECT', 'TRANSIENT_FAILURE'],
+      ['APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT'],
     );
   });
 

@@ -202,6 +202,51 @@ concurrencia contra PostgreSQL real.
 
 ---
 
+## T-29 — Simulación de proveedor externo de pagos (Payment Service)
+
+### Qué pedía el enunciado
+
+Sección 4.1 (Payment Service, p. 5-6): procesar pagos externos simulando éxito, fallo y
+**timeout**, con reintentos acotados, idempotencia y sin doble cargo.
+
+### Cómo se cubrió
+
+Éxito y fallo ya existían desde T-19 (`APPROVE`/`REJECT`/`TRANSIENT_FAILURE`). Lo que
+faltaba era el timeout como su propio resultado disparable: antes de T-29,
+`TRANSIENT_FAILURE` describía a la vez "un timeout, un reset de conexión, un 503" — tres
+causas distintas en un solo valor, así que un timeout no se podía ensayar por separado de
+un fallo transitorio cualquiera.
+
+T-29 separa el proveedor simulado (`callProvider`: responde `SUCCESS`/`FAILURE`/`TIMEOUT`,
+sin reloj ni azar) de la política de reintentos (`decideAttempt`, sin cambios en su
+escalera). `TIMEOUT` sube exactamente la misma escalera que `TRANSIENT_FAILURE` — 1 s, 5 s,
+30 s, cuatro intentos — y se agota con el mismo código `PAYMENT_RETRIES_EXHAUSTED`; lo único
+nuevo es que cada intento fallido ahora dice, en `providerResult`, si el proveedor respondió
+que no o si simplemente no respondió.
+
+Detalle completo en
+[`docs/qa/backend/T-29-payment-provider-evidence.md`](../qa/backend/T-29-payment-provider-evidence.md).
+
+### Qué probar en la web
+
+1. **Dispara el timeout**, desde `/transferencias/nueva`, eligiendo "El proveedor no
+   responde (timeout)" en el campo de escenario de pago (solo demostración).
+2. **Observa la escalera**, en `/transferencias/{id}`: el panel de la transferencia debe
+   mostrar hasta cuatro intentos, con esperas de 1 s, 5 s y 30 s entre uno y otro — el
+   mismo aviso que ya existía para "Fallo transitorio".
+3. **Cada intento debe decir qué respondió el proveedor**: en la ficha de intentos, junto
+   al tipo de fallo, debe leerse "el proveedor no respondió (timeout)" — distinto del
+   texto que aparece con "Fallo transitorio" ("el proveedor rechazó"), aunque ambos
+   comparten la misma escalera y el mismo desenlace final.
+4. **Confirma la compensación**: tras agotar los cuatro intentos, la transferencia debe
+   cerrar en **Compensada**, con el dinero de vuelta en la cuenta origen — dos movimientos
+   en el estado de cuenta, igual que un fallo transitorio agotado.
+5. **Compara con los otros dos resultados** en la misma pantalla: `APPROVE` cierra
+   Completada de inmediato; `REJECT` cierra Fallida sin subir la escalera. Los tres deben
+   poder dispararse por separado, sin depender uno del otro.
+
+---
+
 ## Una nota sobre el entorno, no sobre el código
 
 Si `pnpm dev` falla en el paso `rabbitmq-init` con un código de salida `127`, no es un

@@ -272,6 +272,18 @@ already draw from `status` alone.
 `PENDING` → `SUCCEEDED` \| `FAILED`. Retries happen **inside** `PENDING`, incrementing
 `attempt`; `FAILED` is reached only when retries are exhausted, and is terminal.
 
+### The simulated external provider (T-29)
+
+Each attempt asks a simulated provider — deterministic, chosen by the
+demonstration `scenario` carried from the transfer request — and records what
+it answered: `SUCCESS`, `FAILURE`, or `TIMEOUT`. This `providerResult` is
+distinct from `errorType`: `errorType` is the retry policy's own statement
+about whether an attempt is worth retrying (`TRANSIENT` vs `PERMANENT`), while
+`providerResult` is what the provider itself said. A `TRANSIENT_FAILURE`
+scenario and a `TIMEOUT` scenario both produce `errorType: 'TRANSIENT'` and
+climb the identical retry ladder — `providerResult` is the only fact that
+tells the two apart in the record kept of each attempt.
+
 ### Invariants
 
 | # | Invariant | Expected failure |
