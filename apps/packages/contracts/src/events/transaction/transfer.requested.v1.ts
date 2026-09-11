@@ -15,8 +15,16 @@ import { defineContract } from '../contract';
  * would be exactly the domain logic constitution V forbids there.
  *
  * Its absence is the normal path.
+ *
+ * `TIMEOUT` was added by T-29 alongside Payment Service's simulated provider.
+ * It is a third, distinct way to fail: `TRANSIENT_FAILURE` already named "a
+ * timeout, a connection reset, a 503" as one value, which meant a timeout
+ * could not be rehearsed on its own. `TIMEOUT` and `TRANSIENT_FAILURE` both
+ * retry on the same ladder and both exhaust into `PAYMENT_RETRIES_EXHAUSTED`
+ * — the only difference is which answer the simulated provider gives, which
+ * is why `payment.attempt.failed.v1` is what makes the two distinguishable.
  */
-export const paymentScenario = z.enum(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE']);
+export const paymentScenario = z.enum(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT']);
 
 export type PaymentScenario = z.infer<typeof paymentScenario>;
 

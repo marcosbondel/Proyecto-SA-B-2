@@ -102,6 +102,7 @@ class FakeRepository implements PaymentRepository {
         result: result.attemptResult,
         errorType: result.attemptResult === 'FAILED' ? result.errorType : null,
         failureReason: result.attemptResult === 'FAILED' ? result.failureReason : null,
+        providerResult: result.providerResult,
         occurredAt: input.now,
       },
     ]);
@@ -259,6 +260,10 @@ describe('a payment the provider takes', () => {
       nextAttemptAt: null,
       decidedAt: NOW,
     });
+
+    expect(await repository.attemptsOf(PAYMENT_ID)).toMatchObject([
+      { result: 'SUCCEEDED', providerResult: 'SUCCESS' },
+    ]);
   });
 
   /**
@@ -404,6 +409,70 @@ describe('a payment that keeps timing out', () => {
 
     clock.advance(60_000);
     expect(await repository.due(clock.now(), 10)).toEqual([]);
+  });
+});
+
+describe('a payment the provider never answers — T-29', () => {
+  it('climbs the same ladder as a transient failure, tagged as a timeout', async () => {
+    const repository = new FakeRepository();
+    const publisher = new RecordingPublisher();
+    const clock = clockFrom(NOW);
+    const useCase = useCaseWith(repository, clock);
+
+    await useCase.open({ ...ORDER, scenario: 'TIMEOUT' }, publisher);
+
+    expect(publisher.published.map((message) => message.messageType)).toEqual([
+      'payment.attempt.failed.v1',
+    ]);
+    expect(publisher.published[0]!.payload).toMatchObject({
+      attempt: 1,
+      errorType: 'TRANSIENT',
+      providerResult: 'TIMEOUT',
+      willRetry: true,
+      failureReason: null,
+    });
+
+    for (const delay of LADDER) {
+      clock.advance(delay);
+      const due = await repository.due(clock.now(), 10);
+      expect(due).toHaveLength(1);
+      await useCase.retry(due[0]!, publisher);
+    }
+
+    const kinds = publisher.published.map((message) => message.messageType);
+    expect(kinds).toEqual([
+      'payment.attempt.failed.v1',
+      'payment.attempt.failed.v1',
+      'payment.attempt.failed.v1',
+      'payment.failed.v1',
+    ]);
+
+    /** Every failed attempt kept the `TIMEOUT` tag, including the last one. */
+    for (const message of publisher.published.slice(0, 3)) {
+      expect(message.payload).toMatchObject({ providerResult: 'TIMEOUT' });
+    }
+
+    expect(publisher.published[3]!.payload).toMatchObject({
+      status: 'FAILED',
+      attempt: 3,
+      failureReason: 'PAYMENT_RETRIES_EXHAUSTED',
+    });
+
+    const attempts = await repository.attemptsOf(PAYMENT_ID);
+    expect(attempts).toHaveLength(3);
+    expect(attempts.every((recorded) => recorded.providerResult === 'TIMEOUT')).toBe(true);
+  });
+
+  it('does not charge twice on a redelivered command', async () => {
+    const repository = new FakeRepository();
+    const publisher = new RecordingPublisher();
+    const useCase = useCaseWith(repository, clockFrom(NOW));
+
+    await useCase.open({ ...ORDER, scenario: 'TIMEOUT' }, publisher);
+    await useCase.open({ ...ORDER, scenario: 'TIMEOUT' }, publisher);
+
+    expect(publisher.published).toHaveLength(1);
+    expect(await repository.attemptsOf(PAYMENT_ID)).toHaveLength(1);
   });
 });
 

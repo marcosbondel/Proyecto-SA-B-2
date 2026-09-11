@@ -1625,7 +1625,7 @@ The payload is an empty object.
 | `sourceAccount` | UUID v4 | yes |
 | `targetAccount` | UUID v4 | yes |
 | `amount` | object | yes |
-| `paymentScenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` | no |
+| `paymentScenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` \| `TIMEOUT` | no |
 | `reference` | string, 1–60 | no |
 
 **Preconditions.** Both accounts exist, the source is `ACTIVE` and has funds. Only the first two are checkable here; the rest belongs to Account Service.
@@ -1751,7 +1751,7 @@ balance that covers the amount alone but not the amount plus the commission is s
 | `paymentId` | UUID v4 | yes |
 | `transactionId` | UUID v4 | yes |
 | `amount` | object | yes |
-| `scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` | no |
+| `scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` \| `TIMEOUT` | no |
 
 **Preconditions.** The debit succeeded and the transaction is in `PAYMENT_PENDING`.
 
@@ -1776,6 +1776,7 @@ balance that covers the amount alone but not the amount plus the commission is s
 | `transactionId` | UUID v4 | yes |
 | `attempt` | integer ≥ 1 | yes |
 | `errorType` | `TRANSIENT` \| `PERMANENT` | yes |
+| `providerResult` | `FAILURE` \| `TIMEOUT` | yes |
 | `willRetry` | boolean | yes |
 | `nextAttemptAt` | ISO-8601 UTC \| null | yes |
 | `failureReason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
@@ -1788,6 +1789,8 @@ balance that covers the amount alone but not the amount plus the commission is s
 **It does not close the Saga.** `payment.failed.v1` is still the only event that means "the payment is over", and it still arrives afterwards when the retries are spent. Transaction Service records the attempt and the error kind onto the transaction it already owns and changes no state: `PAYMENT_PENDING` stays `PAYMENT_PENDING`. A consumer that treated this as terminal would compensate a payment about to succeed on its second attempt.
 
 `willRetry` is a field rather than something a consumer derives. A reader could compare `attempt` against the ladder's length and guess, but the decision belongs to the retry policy in Payment Service's domain, and a consumer that re-derives it is a second implementation of that policy waiting to disagree with the first — a `PERMANENT` error stops at attempt 1 no matter what the ladder allows. `nextAttemptAt` is `null` exactly when `willRetry` is `false`.
+
+`providerResult` (T-29) is what the simulated provider itself answered — `FAILURE` or `TIMEOUT`, never `SUCCESS`, since a successful attempt does not publish this event. `errorType` alone cannot distinguish the two: a `TRANSIENT_FAILURE` scenario and a `TIMEOUT` scenario both produce `errorType: 'TRANSIENT'` and climb the same ladder, so `providerResult` is the only field that tells a reader which one actually happened.
 
 `failureReason` is nullable because a transient failure — a timeout, a socket the provider closed — has no place in the closed failure-code enum, and inventing one would put transport noise into the vocabulary services use to decide whether to compensate.
 
@@ -2239,7 +2242,7 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 | `payment.errorType` | `TRANSIENT` \| `PERMANENT` \| null | yes |
 | `payment.failureReason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
 | `payment.providerReference` | string, ≤ 100 \| null | yes |
-| `payment.scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` \| null | yes |
+| `payment.scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` \| `TIMEOUT` \| null | yes |
 | `payment.originCorrelationId` | UUID v4 \| null | yes |
 | `payment.createdAt` | ISO-8601 UTC | yes |
 | `payment.updatedAt` | ISO-8601 UTC | yes |
@@ -2249,6 +2252,7 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 | `attempts[].result` | `SUCCEEDED` \| `FAILED` | yes |
 | `attempts[].errorType` | `TRANSIENT` \| `PERMANENT` \| null | yes |
 | `attempts[].failureReason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
+| `attempts[].providerResult` | `SUCCESS` \| `FAILURE` \| `TIMEOUT` \| null | yes |
 | `attempts[].occurredAt` | ISO-8601 UTC | yes |
 
 **When outcome = `NOT_FOUND`**
@@ -2259,7 +2263,7 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 
 **Preconditions.** A `payment.status.query.v1` was handled.
 
-**Effects.** The Gateway answers the caller. `attempts` is the retry ladder **as evidence rather than as narrative**: "it was retried three times" is something anyone can check afterwards instead of something the service asserts. It is oldest rung first, and it is present even when it holds a single successful rung, because "approved on the first try" and "approved on the third" are different operational stories and a screen that could only show the second would make the first look like missing data. `providerReference` is opaque on purpose — a string to quote back to a provider, not a value any consumer may parse — and `scenario` is echoed so a screen can say *why* a payment was rejected on purpose instead of leaving a rehearsal looking like a real refusal.
+**Effects.** The Gateway answers the caller. `attempts` is the retry ladder **as evidence rather than as narrative**: "it was retried three times" is something anyone can check afterwards instead of something the service asserts. It is oldest rung first, and it is present even when it holds a single successful rung, because "approved on the first try" and "approved on the third" are different operational stories and a screen that could only show the second would make the first look like missing data. `providerReference` is opaque on purpose — a string to quote back to a provider, not a value any consumer may parse — and `scenario` is echoed so a screen can say *why* a payment was rejected on purpose instead of leaving a rehearsal looking like a real refusal. `attempts[].providerResult` (T-29) is what the simulated provider itself answered on that rung — `null` only for an attempt recorded before the field existed — and is the only value that tells a `TIMEOUT` rung apart from an ordinary `TRANSIENT_FAILURE` one, since both share the same `errorType` and the same ladder.
 
 **On error.** `NOT_FOUND` carries no failure code. Every code in the catalogue is a reason something was *refused*, and a payment that does not exist was not refused — it is a question about nothing. The Gateway supplies the nearest catalogue code when it has to render an HTTP status, in one place rather than letting each service invent a vocabulary for absence.
 

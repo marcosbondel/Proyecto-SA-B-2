@@ -41,7 +41,7 @@ describe('paymentScenario', () => {
       .send(body);
   }
 
-  it.each(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE'])(
+  it.each(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT'])(
     'carries %s to the broker untouched',
     async (scenario) => {
       const response = await transfer({ ...TRANSFER, paymentScenario: scenario });
@@ -67,7 +67,7 @@ describe('paymentScenario', () => {
     expect(harness.publisher.published).toHaveLength(2);
   });
 
-  it('refuses a fourth value, and publishes nothing', async () => {
+  it('refuses a value outside the four, and publishes nothing', async () => {
     const response = await transfer({ ...TRANSFER, paymentScenario: 'MAYBE' });
 
     expect(response.status).toBe(400);

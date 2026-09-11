@@ -16,7 +16,7 @@ import {
 } from 'class-validator';
 import { MAX_TRANSACTION_ROWS } from '@bank/contracts';
 
-const SCENARIOS = ['APPROVE', 'REJECT', 'TRANSIENT_FAILURE'] as const;
+const SCENARIOS = ['APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT'] as const;
 
 /** The six states of the machine, as the listing may filter by them. */
 const TRANSACTION_STATUSES = [
