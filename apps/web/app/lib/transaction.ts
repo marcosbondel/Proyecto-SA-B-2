@@ -253,6 +253,8 @@ const REACHED: Readonly<Record<TimelineNode, Readonly<Record<TransactionStatus, 
  */
 export const FAILURE_REASON_TEXT: Readonly<Record<string, string>> = {
   INSUFFICIENT_FUNDS: 'La cuenta de origen no tenía saldo suficiente.',
+  MINIMUM_BALANCE_VIOLATION:
+    'El monto dejaría el saldo de la cuenta de origen por debajo del mínimo permitido para su tipo de cuenta.',
   ACCOUNT_INACTIVE: 'La cuenta de origen está inactiva, así que no se puede debitar de ella.',
   ACCOUNT_NOT_FOUND: 'Una de las dos cuentas no existe.',
   INVALID_AMOUNT: 'El monto debe ser mayor que cero.',

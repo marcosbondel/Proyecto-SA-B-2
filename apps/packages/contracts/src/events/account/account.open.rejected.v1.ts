@@ -11,10 +11,14 @@ import { defineContract } from '../contract';
  * for something that had already been decided. That is the same gap TD-022
  * closed for registration.
  *
- * Two reasons, both of which this service can actually judge from the envelope
- * and the payload alone. It does **not** validate that the customer exists —
- * `customerId` is an opaque reference and any check on it would be a
+ * Three reasons, all of which this service can actually judge from the
+ * envelope and the payload alone. It does **not** validate that the customer
+ * exists — `customerId` is an opaque reference and any check on it would be a
  * synchronous read into another service's data (§8.2, 2.3).
+ *
+ * `MINIMUM_BALANCE_VIOLATION` (T-27) means an `AHORRO` opening's
+ * `initialDeposit` did not reach its type's minimum — a condition of opening
+ * the account, checked once, here.
  */
 export const accountOpenRejectedV1 = defineContract({
   name: 'account.open.rejected.v1',
@@ -24,7 +28,11 @@ export const accountOpenRejectedV1 = defineContract({
   schema: z.object({
     accountId: uuidV4,
     customerId: uuidV4,
-    reason: failureCode.extract(['ROLE_NOT_ELIGIBLE', 'FORBIDDEN_ACCOUNT_ACCESS']),
+    reason: failureCode.extract([
+      'ROLE_NOT_ELIGIBLE',
+      'FORBIDDEN_ACCOUNT_ACCESS',
+      'MINIMUM_BALANCE_VIOLATION',
+    ]),
     rejectedAt: isoTimestamp,
   }),
 });

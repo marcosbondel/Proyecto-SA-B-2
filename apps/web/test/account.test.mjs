@@ -184,6 +184,11 @@ describe('the words the interface uses', () => {
     assert.deepEqual(Object.keys(ACCOUNT_TYPE_PRESENTATION).sort(), ['AHORRO', 'MONETARIA']);
   });
 
+  test('only AHORRO carries a minimum opening deposit (T-27)', () => {
+    assert.equal(ACCOUNT_TYPE_PRESENTATION.AHORRO.minimumOpeningDepositMinor, 10_000);
+    assert.equal(ACCOUNT_TYPE_PRESENTATION.MONETARIA.minimumOpeningDepositMinor, null);
+  });
+
   test('explains what an inactive account cannot do, rather than only naming it', () => {
     assert.match(ACCOUNT_STATUS_PRESENTATION.INACTIVE.explanation, /debitar/i);
     assert.equal(ACCOUNT_STATUS_PRESENTATION.INACTIVE.color, 'warning');

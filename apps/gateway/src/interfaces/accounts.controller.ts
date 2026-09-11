@@ -125,6 +125,7 @@ export class AccountsController {
     return await this.#commands.openAccount({
       accountType: body.accountType,
       ...(body.customerId === undefined ? {} : { customerId: body.customerId }),
+      ...(body.initialDeposit === undefined ? {} : { initialDeposit: body.initialDeposit }),
       actor: actorOf(request),
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,

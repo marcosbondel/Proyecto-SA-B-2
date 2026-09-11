@@ -1102,6 +1102,56 @@ terminal.
 
 ---
 
+## The AHORRO commission and minimum opening deposit (Fase 2, T-27)
+
+`AHORRO` and `MONETARIA` each carry a rule now (`account-type-rules.ts`), applying at different
+moments in the account's life: `AHORRO` requires a Q100.00 minimum deposit to **open** — see
+"Open an account" below, `account.open.rejected.v1`'s new `MINIMUM_BALANCE_VIOLATION` reason —
+and, once open, a Q3.00 commission on every debit for as long as the account exists. `MONETARIA`
+has neither. The minimum is checked once, at opening; it is never a floor `debit` re-enforces
+afterward, so an `AHORRO` account may be emptied to Q0.00 by ordinary transfers.
+
+### `account.commission.charged.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | account-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `account.commission.charged.v1` |
+| **Contract** | [`account.commission.charged.v1.ts`](../../apps/packages/contracts/src/events/account/account.commission.charged.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `accountId` | UUID v4 | yes |
+| `transactionId` | UUID v4 | yes |
+| `amount` | Money | yes |
+| `balanceAfter` | Money | yes |
+| `chargedAt` | ISO-8601 timestamp | yes |
+
+**Preconditions.** A `DEBIT` was just applied to an account whose type has a commission
+configured (`AHORRO`, as of this ticket — `MONETARIA` has none). Never published for a type with
+no commission, which is what makes the commission "opcional" a fact about whether this event
+exists at all rather than a field that is sometimes zero.
+
+**Effects.** None of its own — it narrates a fact `applyMovement` already committed in the same
+database transaction as the debit, as a second `account_operations` row (`type = 'COMMISSION'`).
+
+**On error.** There is none to have: this event is only ever published after the movement it
+describes has already succeeded. A debit still fails on `INSUFFICIENT_FUNDS` when the balance
+cannot cover the amount plus the commission together — see "Debit a source account" below — and
+produces no commission and no `DEBIT` either.
+
+**Why `amount` on `account.debited.v1` never grows by the commission.** Transaction Service
+compares that field against the amount its own Saga asked to move (`account.debit.requested.v1`),
+and a payload that silently grew by a fee it never asked about would break that equality. The
+commission is a fact about Account Service's own account-type rule, not about the transfer, so it
+travels as a separate statement.
+
+
+---
+
 ## Open an account
 
 ### `account.create.v1`
@@ -1120,12 +1170,17 @@ terminal.
 | `accountId` | UUID v4 | yes |
 | `customerId` | UUID v4 | yes |
 | `accountType` | `MONETARIA` \| `AHORRO` | yes |
+| `initialDeposit` | Money | no |
 
-**Preconditions.** The customer exists and has `role = CLIENTE` (C-6).
+**Preconditions.** The customer exists and has `role = CLIENTE` (C-6). `AHORRO` requires
+`initialDeposit` to reach its type's minimum (T-27, Fase 2 §4.1 p. 6) — absent or below it, the
+opening is refused. `initialDeposit` absent on `MONETARIA` opens at Q0.00, exactly as before T-27.
 
-**Effects.** An account is opened `ACTIVE` with a zero balance and the requested `accountType`.
+**Effects.** An account is opened `ACTIVE` with `initialDeposit` (or Q0.00, when absent) as its
+balance, and the requested `accountType`.
 
-**On error.** `ROLE_NOT_ELIGIBLE` when the customer is staff. No account is created.
+**On error.** `ROLE_NOT_ELIGIBLE` when the customer is staff, `MINIMUM_BALANCE_VIOLATION` (T-27)
+when an `AHORRO` opening's deposit does not reach the minimum. No account is created either way.
 
 ### `account.opened.v1`
 
@@ -1168,7 +1223,7 @@ terminal.
 | --- | --- | --- |
 | `accountId` | UUID v4 | yes |
 | `customerId` | UUID v4 | yes |
-| `reason` | `ROLE_NOT_ELIGIBLE` \| `FORBIDDEN_ACCOUNT_ACCESS` | yes |
+| `reason` | `ROLE_NOT_ELIGIBLE` \| `FORBIDDEN_ACCOUNT_ACCESS` \| `MINIMUM_BALANCE_VIOLATION` | yes |
 | `rejectedAt` | ISO-8601 UTC | yes |
 
 **Preconditions.** An `account.create.v1` was refused before any row was written.
@@ -1672,7 +1727,9 @@ The payload is an empty object.
 | `accountId` | UUID v4 | yes |
 | `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT_PRECISION` | yes |
 
-**Preconditions.** The debit did not happen.
+**Preconditions.** The debit did not happen. `INSUFFICIENT_FUNDS` (T-27) is checked against the
+amount *and* the account type's commission together, when the account's type charges one — a
+balance that covers the amount alone but not the amount plus the commission is still refused.
 
 **Effects.** The transaction closes in `FAILED`. **No compensation runs**, because there is no effect to reverse.
 
@@ -1951,7 +2008,7 @@ The payload is an empty object.
 | `transactionId` | UUID v4 | yes |
 | `customerId` | UUID v4 \| `null` | yes |
 | `status` | `FAILED` | yes |
-| `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT` \| `INVALID_AMOUNT_PRECISION` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` | yes |
+| `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT` \| `INVALID_AMOUNT_PRECISION` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `MINIMUM_BALANCE_VIOLATION` | yes |
 | `failedAt` | ISO-8601 UTC | yes |
 
 **Preconditions.** The debit was rejected.
@@ -2031,7 +2088,7 @@ The payload is an empty object.
 | `transactionId` | UUID v4 | yes |
 | `status` | `PENDING` \| `DEBITING` \| `PAYMENT_PENDING` \| `COMPLETED` \| `FAILED` \| `COMPENSATED` | yes |
 | `amount` | object | yes |
-| `reason` | `DOCUMENT_ALREADY_REGISTERED` \| `EMAIL_ALREADY_REGISTERED` \| `INVALID_BIRTH_DATE` \| `ROLE_NOT_ELIGIBLE` \| `ACTIVATION_TOKEN_INVALID` \| `ACTIVATION_TOKEN_EXPIRED` \| `RESET_TOKEN_INVALID` \| `RESET_TOKEN_EXPIRED` \| `INVALID_CREDENTIALS` \| `IDENTITY_DOCUMENT_UNREADABLE` \| `IDENTITY_OBJECT_NOT_FOUND` \| `IDENTITY_DIGEST_MISMATCH` \| `CUSTOMER_NOT_FOUND` \| `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT_PRECISION` \| `FORBIDDEN_ACCOUNT_ACCESS` \| `INVALID_AMOUNT` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `ILLEGAL_TRANSITION` \| `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
+| `reason` | the full `failureCode` enum (`../../apps/packages/contracts/src/schemas/primitives.ts`), unrestricted \| null | yes |
 | `createdAt` | ISO-8601 UTC | yes |
 | `updatedAt` | ISO-8601 UTC | yes |
 | `originCorrelationId` | UUID v4 | no |
