@@ -5,6 +5,7 @@ import type {
   Transaction,
   TransactionStatus,
   Transition,
+  TransitionRecord,
 } from '../domain/transaction';
 
 /**
@@ -175,7 +176,10 @@ export interface TransactionRepository {
     readonly ownerId: string | null;
     readonly customerId?: string;
     readonly accountId?: string;
-    readonly status?: TransactionStatus;
+    /** Every status the caller's `status` and `phaseStatus` filters resolve to. */
+    readonly statuses?: readonly TransactionStatus[];
+    readonly from?: Date;
+    readonly to?: Date;
     readonly limit: number;
   }): Promise<{ readonly transactions: readonly Transaction[]; readonly total: number }>;
 
@@ -266,6 +270,14 @@ export interface TransactionRepository {
 
   /** The payment half of the local trail, folded into one answer. */
   paymentOutcomeOf(transactionId: string): Promise<PaymentOutcome | null>;
+
+  /**
+   * The real history (T-28): one row per legal transition actually applied,
+   * newest last, plus the opening row `start()` wrote. Never filtered by
+   * ownership here — the use case calls this only after `mayReadTransaction`
+   * has already let the caller in.
+   */
+  transitionsOf(transactionId: string): Promise<readonly TransitionRecord[]>;
 
   /** For the readiness probe: can this service reach its own database? */
   isReachable(): Promise<boolean>;
