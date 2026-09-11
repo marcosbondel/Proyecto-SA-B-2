@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatQuetzales } from '../../lib/money';
 import { ACCOUNT_TYPE_PRESENTATION, isUuidV4 } from '../../lib/account';
 import type { AccountType } from '../../lib/account';
 
@@ -6,18 +7,20 @@ import type { AccountType } from '../../lib/account';
  * Opening an account, in the three steps the prototype's `show.createAccount`
  * defines: the form, the confirmation, and the result.
  *
- * Three deliberate departures from that prototype, all of them because the
+ * Two deliberate departures from that prototype, both of them because the
  * system behind it does not have what the picture shows:
  *
  * - **No customer search by DPI.** The Gateway exposes no route that reads a
  *   customer (TD-020), so the box takes the `customerId` a registration handed
  *   back. A search that returned nothing would look broken; a box that says
  *   what it wants does not.
- * - **No initial deposit.** `account.create.v1` carries no amount and criterion
- *   1 says a new account starts at Q 0.00. Offering the field would be offering
- *   a deposit that silently never happens.
  * - **No "identity verified" chip.** Whether this customer's document was
  *   validated is Customer Service's knowledge, and this screen cannot ask.
+ *
+ * **The initial deposit field (T-27)** only appears for `AHORRO`: it is the
+ * one type with a minimum to open (`ACCOUNT_TYPE_PRESENTATION.AHORRO.minimumOpeningDepositMinor`).
+ * `MONETARIA` still opens at Q 0.00 with no field to fill in — asking for an
+ * amount that gets ignored would be worse than asking for nothing.
  *
  * The confirmation step earns its place: opening an account for the wrong
  * `customerId` produces a real account belonging to the wrong person, and
@@ -44,13 +47,27 @@ const isStaff = computed(() => role.value !== 'CLIENTE');
 
 const step = ref<Step>('FORM');
 const accountType = ref<AccountType | null>(null);
+const initialDepositMinor = ref<number | null>(null);
 const forSomebodyElse = ref(isStaff.value);
+
+/** `null` for MONETARIA (no minimum); the amount for AHORRO. */
+const minimumDepositMinor = computed(() =>
+  accountType.value === null ? null : ACCOUNT_TYPE_PRESENTATION[accountType.value].minimumOpeningDepositMinor,
+);
 const customerId = ref(
   typeof route.query.customerId === 'string' ? route.query.customerId.trim() : '',
 );
 const idempotencyKey = ref('');
 const errors = ref<Record<string, string>>({});
 const copied = ref(false);
+
+watch(accountType, (val) => {
+  // A MONETARIA opening carries no deposit; a stale AHORRO amount left in the
+  // field would otherwise ride along in the payload after switching types.
+  if (val !== 'AHORRO') {
+    initialDepositMinor.value = null;
+  }
+});
 
 watch(isStaff, (val) => {
   if (val) {
@@ -140,6 +157,11 @@ function validate(): boolean {
 
   if (accountType.value === null) {
     found.accountType = 'Elige el tipo de cuenta.';
+  } else if (
+    minimumDepositMinor.value !== null &&
+    (initialDepositMinor.value === null || initialDepositMinor.value < minimumDepositMinor.value)
+  ) {
+    found.initialDeposit = `El depósito inicial debe ser de al menos ${formatQuetzales(minimumDepositMinor.value)}.`;
   }
 
   if (isStaff.value) {
@@ -170,6 +192,9 @@ async function submit(): Promise<void> {
       body: {
         accountType: accountType.value,
         ...(isStaff.value || forSomebodyElse.value ? { customerId: customerId.value.trim() } : {}),
+        ...(minimumDepositMinor.value !== null && initialDepositMinor.value !== null
+          ? { initialDeposit: { amountMinor: initialDepositMinor.value, currency: 'GTQ' } }
+          : {}),
       },
       idempotencyKey: idempotencyKey.value,
     }),
@@ -189,6 +214,7 @@ function openAnother(): void {
   keyField.value?.renew();
   step.value = 'FORM';
   accountType.value = null;
+  initialDepositMinor.value = null;
   customerId.value = '';
   forSomebodyElse.value = isStaff.value;
   errors.value = {};
@@ -212,7 +238,13 @@ async function copyAccountId(): Promise<void> {
     <template #header>
       <h2 class="text-[20px] font-semibold leading-7">Abrir una cuenta</h2>
       <p class="mt-1 text-[13px] leading-5 text-[#5A5B63]">
-        La cuenta se abre con saldo inicial de <strong>Q 0.00</strong>.
+        <template v-if="minimumDepositMinor !== null">
+          La cuenta {{ ACCOUNT_TYPE_PRESENTATION.AHORRO.label.toLowerCase() }} requiere un depósito
+          inicial de al menos <strong>{{ formatQuetzales(minimumDepositMinor) }}</strong>.
+        </template>
+        <template v-else>
+          La cuenta se abre con saldo inicial de <strong>Q 0.00</strong>.
+        </template>
       </p>
     </template>
 
@@ -230,6 +262,20 @@ async function copyAccountId(): Promise<void> {
         <AccountTypeSelector v-model="accountType" />
         <p v-if="errors.accountType" class="mt-2 text-[13px] text-[#B01B1B]">
           {{ errors.accountType }}
+        </p>
+      </div>
+
+      <div v-if="minimumDepositMinor !== null">
+        <SharedMoneyInput
+          label="Depósito inicial"
+          name="initialDeposit"
+          @update:amount-minor="initialDepositMinor = $event"
+        />
+        <p v-if="errors.initialDeposit" class="mt-2 text-[13px] text-[#B01B1B]">
+          {{ errors.initialDeposit }}
+        </p>
+        <p v-else class="mt-2 text-[13px] text-[#5A5B63]">
+          Mínimo {{ formatQuetzales(minimumDepositMinor) }}.
         </p>
       </div>
 
@@ -319,7 +365,7 @@ async function copyAccountId(): Promise<void> {
           <dd
             class="text-[13px] font-semibold"
             style="font-variant-numeric: tabular-nums lining-nums"
-          >Q 0.00</dd>
+          >{{ formatQuetzales(initialDepositMinor ?? 0) }}</dd>
         </div>
       </dl>
 
@@ -351,7 +397,7 @@ async function copyAccountId(): Promise<void> {
         color="success"
         variant="subtle"
         title="¡Cuenta bancaria creada exitosamente!"
-        description="La cuenta ha sido procesada y registrada en el sistema bancario con saldo inicial de Q 0.00."
+        :description="`La cuenta ha sido procesada y registrada en el sistema bancario con saldo inicial de ${formatQuetzales(initialDepositMinor ?? 0)}.`"
       />
 
       <div

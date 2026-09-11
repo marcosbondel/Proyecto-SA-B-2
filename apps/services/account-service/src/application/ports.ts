@@ -44,6 +44,13 @@ export interface AppliedMovement {
   readonly account: Account;
   readonly operation: AccountOperation;
   readonly reactivated: boolean;
+  /**
+   * The commission operation recorded alongside this one, or `null` when the
+   * account's type charges none (T-27). A second, separately-auditable row in
+   * `account_operations` — never folded into `operation` — so the ledger shows
+   * the debit and the fee as two distinct facts.
+   */
+  readonly commission: AccountOperation | null;
 }
 
 export interface AccountFilter {
@@ -103,6 +110,7 @@ export interface AccountRepository {
       readonly amount: Money;
       readonly balanceAfter: Money;
       readonly reactivated: boolean;
+      readonly commission: { readonly amount: Money; readonly balanceAfter: Money } | null;
     };
     /** Marks the debit this compensation returns, when there is one. */
     readonly compensates?: { readonly transactionId: string };
