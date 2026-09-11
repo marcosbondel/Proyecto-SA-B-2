@@ -217,6 +217,43 @@ operational situations and the audit record has to be able to tell them apart.
 | T-6 | An event requesting a transition not in the diagram is discarded and recorded | `ILLEGAL_TRANSITION` in the audit record, no state change |
 | T-7 | Any transaction that left `DEBITING` with the debit applied ends in `COMPLETED` or `COMPENSATED`, never in `FAILED` | Saga guarantee |
 
+### Phase status (T-28)
+
+Fase 2 of the assignment names three states — `PENDING`, `APPROVED`, `FAILED` — coarser
+than the six above. Rather than a seventh vocabulary the machine has to agree with, it is a
+**projection** computed from `status` by `phaseStatusOf` in the domain and never stored:
+`PENDING`/`DEBITING`/`PAYMENT_PENDING` read as `PENDING`, `COMPLETED` as `APPROVED`,
+`FAILED`/`COMPENSATED` as `FAILED`. It is carried on `transaction.list.replied.v1` and
+`transaction.status.replied.v1` alongside `status`, and both vocabularies are available as
+listing filters — naming both narrows to their overlap.
+
+### Real history (T-28)
+
+**Table**: `transaction_transitions` · **Owner**: Transaction Service, this service's own
+database only.
+
+| Column | Notes |
+| --- | --- |
+| `transactionId` | Opaque reference to the owning transaction |
+| `fromStatus` | Null only on the opening row — the transfer's acceptance, which nothing preceded |
+| `toStatus` | One of the six states above |
+| `eventType` | The message type that caused this row, or `transfer.requested.v1` for the opening one |
+| `failureReason` | Set exactly when the transition records a cause |
+| `messageId` | Null only on the opening row; the envelope's `messageId` for every other |
+| `occurredAt` | — |
+
+One row per legal transition `applyEvent` actually applies — self-transitions on
+`PAYMENT_PENDING` included, since those are the ones that order the payment, the credit and
+the compensation — written inside the same database transaction as the state change it
+records. Illegal transitions are not here: they moved nothing, and T-6's own record in
+`transaction_events` and `processed_messages.outcome` already covers them. A unique index on
+`(transactionId, messageId)` makes T-5 (no second row for a redelivered message) a fact about
+this table, not only about `processed_messages`'s own primary key.
+
+Exposed as `transitions` on `transaction.status.replied.v1`, oldest first — the answer to
+"what happened to this transfer, step by step", as opposed to the timeline a screen can
+already draw from `status` alone.
+
 ---
 
 ## Payment

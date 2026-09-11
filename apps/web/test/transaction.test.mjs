@@ -5,18 +5,22 @@ import {
   CREATION_GRACE_MS,
   FAILURE_REASON_TEXT,
   PAYMENT_SCENARIOS,
+  PHASE_PRESENTATION,
   POLL_CEILING_MS,
   POLL_INTERVAL_MS,
   STATUS_PRESENTATION,
   canSend,
   directionOf,
   explainReason,
+  historyFilterProblems,
   isInFlight,
   isTerminal,
+  phaseFilterOptions,
   statusFilterOptions,
   meaningOfMissing,
   shouldKeepPolling,
   timelineFor,
+  traceFor,
   transferProblems,
 } from '../app/lib/transaction.ts';
 
@@ -392,5 +396,90 @@ describe('the status filter', () => {
     for (const option of options) {
       assert.equal(option.label, STATUS_PRESENTATION[option.value].label);
     }
+  });
+});
+
+describe('the phase filter (T-28)', () => {
+  test('offers Fase 2’s three phases, labelled the way the badge labels them', () => {
+    const options = phaseFilterOptions();
+
+    assert.equal(options.length, Object.keys(PHASE_PRESENTATION).length);
+
+    for (const option of options) {
+      assert.equal(option.label, PHASE_PRESENTATION[option.value].label);
+    }
+  });
+});
+
+describe('the real trace, as opposed to the prospective line (T-28)', () => {
+  test('is empty for a transfer with no recorded history', () => {
+    assert.deepEqual(traceFor([]), []);
+  });
+
+  test('labels a known event in Spanish, oldest first', () => {
+    const trace = traceFor([
+      { from: null, to: 'PENDING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.100Z' },
+      { from: 'PENDING', to: 'DEBITING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.200Z' },
+      { from: 'DEBITING', to: 'PAYMENT_PENDING', event: 'account.debited.v1', reason: null, occurredAt: '2026-08-19T14:32:08.300Z' },
+    ]);
+
+    assert.equal(trace.length, 3);
+    assert.equal(trace[2].label, 'Se debitó la cuenta de origen');
+    assert.equal(trace[2].to, 'PAYMENT_PENDING');
+    assert.equal(trace[2].failed, false);
+  });
+
+  test('marks a step failed exactly when it carries a reason', () => {
+    const trace = traceFor([
+      {
+        from: 'DEBITING',
+        to: 'FAILED',
+        event: 'account.debit.rejected.v1',
+        reason: 'INSUFFICIENT_FUNDS',
+        occurredAt: '2026-08-19T14:32:08.400Z',
+      },
+    ]);
+
+    assert.equal(trace[0].failed, true);
+  });
+
+  test('falls back to the raw event name for one this file has not met yet', () => {
+    const trace = traceFor([
+      {
+        from: 'PENDING',
+        to: 'DEBITING',
+        event: 'a.future.event.v2',
+        reason: null,
+        occurredAt: '2026-08-19T14:32:08.100Z',
+      },
+    ]);
+
+    assert.equal(trace[0].label, 'a.future.event.v2');
+  });
+});
+
+describe('a date-range filter before it is sent (T-28)', () => {
+  test('has no problem when either end is missing', () => {
+    assert.equal(historyFilterProblems({ from: null, to: null }), undefined);
+    assert.equal(historyFilterProblems({ from: '2026-08-01', to: null }), undefined);
+    assert.equal(historyFilterProblems({ from: null, to: '2026-08-31' }), undefined);
+  });
+
+  test('has no problem when the range is the right way round, equal ends included', () => {
+    assert.equal(
+      historyFilterProblems({ from: '2026-08-01', to: '2026-08-31' }),
+      undefined,
+    );
+    assert.equal(
+      historyFilterProblems({ from: '2026-08-01', to: '2026-08-01' }),
+      undefined,
+    );
+  });
+
+  test('names the problem when the range is reversed', () => {
+    assert.equal(
+      historyFilterProblems({ from: '2026-08-31', to: '2026-08-01' }),
+      'La fecha inicial es posterior a la final.',
+    );
   });
 });

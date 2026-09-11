@@ -55,7 +55,8 @@ describeIntegration('PostgresTransactionRepository', () => {
 
   beforeEach(async () => {
     await pool.query(
-      'TRUNCATE outbox_messages, transaction_aliases, transaction_events, transactions, processed_messages',
+      'TRUNCATE outbox_messages, transaction_aliases, transaction_events, transaction_transitions, ' +
+        'transactions, processed_messages',
     );
   });
 
@@ -785,6 +786,236 @@ describeIntegration('PostgresTransactionRepository', () => {
 
       // Exactly one debit ordered, whichever delivery won the race.
       expect(stored!.status).toBe('DEBITING');
+    });
+  });
+
+  describe('the real history, as a fact about the database (T-28)', () => {
+    it('writes the opening row from start(), with a null from_status and message_id', async () => {
+      const transaction = candidate();
+      await repository.start({ transaction });
+
+      const rows = await repository.transitionsOf(transaction.transactionId);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ from: null, to: 'PENDING', event: 'transfer.requested.v1' });
+    });
+
+    it('writes no second opening row for a retried idempotency key', async () => {
+      const transaction = candidate();
+      await repository.start({ transaction });
+      await repository.start({ transaction }); // same idempotency_key: loses the race
+
+      const rows = await repository.transitionsOf(transaction.transactionId);
+
+      expect(rows).toHaveLength(1);
+    });
+
+    it('writes one row per applied transition, self-transitions on PAYMENT_PENDING included', async () => {
+      const transaction = await seedDebiting();
+
+      await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'account.debited.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'DEBITED' }),
+        now: NOW,
+      });
+
+      // PAYMENT_SUCCEEDED is a self-transition: PAYMENT_PENDING -> PAYMENT_PENDING.
+      // It is the one that orders the credit, and a history without it could not
+      // explain a transfer that later shows as compensated.
+      await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'payment.succeeded.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'PAYMENT_SUCCEEDED' }),
+        now: NOW,
+      });
+
+      const rows = await repository.transitionsOf(transaction.transactionId);
+
+      expect(rows.map((row) => `${row.from ?? '—'}->${row.to}`)).toEqual([
+        '—->PENDING',
+        'PENDING->DEBITING',
+        'DEBITING->PAYMENT_PENDING',
+        'PAYMENT_PENDING->PAYMENT_PENDING',
+      ]);
+    });
+
+    it('writes no transition row for a redelivered messageId (T-5)', async () => {
+      const transaction = await seedDebiting();
+      const messageId = randomUUID();
+
+      await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId,
+        messageType: 'account.debited.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'DEBITED' }),
+        now: NOW,
+      });
+      await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId, // same delivery again
+        messageType: 'account.debited.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'DEBITED' }),
+        now: NOW,
+      });
+
+      const rows = await repository.transitionsOf(transaction.transactionId);
+
+      // seedDebiting() already wrote the opening row and PENDING->DEBITING;
+      // exactly one DEBITED transition follows, never two.
+      expect(rows).toHaveLength(3);
+    });
+
+    /**
+     * The unique index is a guard independent of `processed_messages` — this
+     * proves it holds even if the application-level dedup were ever bypassed,
+     * by writing the same (transaction_id, message_id) pair directly.
+     */
+    it('refuses a duplicate (transaction_id, message_id) at the database level', async () => {
+      const transaction = await seedDebiting();
+      const messageId = randomUUID();
+
+      await pool.query(
+        `INSERT INTO transaction_transitions
+           (transaction_id, from_status, to_status, event_type, message_id)
+         VALUES ($1, 'DEBITING', 'PAYMENT_PENDING', 'account.debited.v1', $2)`,
+        [transaction.transactionId, messageId],
+      );
+
+      await expect(
+        pool.query(
+          `INSERT INTO transaction_transitions
+             (transaction_id, from_status, to_status, event_type, message_id)
+           VALUES ($1, 'DEBITING', 'PAYMENT_PENDING', 'account.debited.v1', $2)`,
+          [transaction.transactionId, messageId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('writes no transition row for an illegal transition, only the discard in transaction_events', async () => {
+      const transaction = await seedDebiting();
+
+      const outcome = await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'account.credited.v1',
+        payload: {},
+        // CREDITED is not legal from DEBITING.
+        decide: (found) => applyEvent(found, { kind: 'CREDITED' }),
+        now: NOW,
+      });
+
+      expect(outcome.kind).toBe('ILLEGAL');
+
+      const rows = await repository.transitionsOf(transaction.transactionId);
+
+      // Just what seedDebiting() wrote (opening + PENDING->DEBITING) — the
+      // illegal CREDITED attempt left no transition behind.
+      expect(rows).toHaveLength(2);
+    });
+
+    it('two Saga events racing on the same transaction write exactly one transition row each', async () => {
+      const transaction = await seedDebiting();
+
+      await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'account.debited.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'DEBITED' }),
+        now: NOW,
+      });
+
+      await Promise.all([
+        repository.applyEvent({
+          transactionId: transaction.transactionId,
+          messageId: randomUUID(),
+          messageType: 'account.credited.v1',
+          payload: {},
+          decide: (found) => applyEvent(found, { kind: 'CREDITED' }),
+          now: NOW,
+        }),
+        repository.applyEvent({
+          transactionId: transaction.transactionId,
+          messageId: randomUUID(),
+          messageType: 'payment.failed.v1',
+          payload: { paymentId: randomUUID(), failureReason: 'PAYMENT_DECLINED' },
+          decide: (found) =>
+            applyEvent(found, { kind: 'PAYMENT_FAILED', reason: 'PAYMENT_DECLINED' }),
+          now: NOW,
+        }),
+      ]);
+
+      const rows = await repository.transitionsOf(transaction.transactionId);
+
+      // Opening + PENDING->DEBITING + DEBITED + exactly one of
+      // {CREDITED, PAYMENT_FAILED} — never both.
+      expect(rows).toHaveLength(4);
+    });
+  });
+
+  describe('list(): date range and status filters, combinable (T-28)', () => {
+    /**
+     * Accepted at `createdAt`, and moved to DEBITING through the real
+     * transition when asked.
+     *
+     * `candidate()`'s own overrides go into `openTransaction`'s *input*, which
+     * only reads `now` — passing `createdAt`/`updatedAt` there is silently
+     * ignored. Overriding them on the built object instead is what actually
+     * reaches the row `start()` inserts.
+     */
+    async function seeded(advance: boolean, createdAt: Date): Promise<Transaction> {
+      const transaction = { ...candidate(), createdAt, updatedAt: createdAt };
+      await repository.start({ transaction });
+
+      if (!advance) {
+        return transaction;
+      }
+
+      const outcome = await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'transfer.requested.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+        now: createdAt,
+      });
+
+      return outcome.kind === 'APPLIED' ? outcome.transaction : transaction;
+    }
+
+    it('filters by date range, both ends inclusive', async () => {
+      const early = await seeded(false, new Date('2026-08-01T00:00:00.000Z'));
+      await seeded(false, new Date('2026-08-20T00:00:00.000Z'));
+
+      const { transactions } = await repository.list({
+        ownerId: null,
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-01T00:00:00.000Z'),
+        limit: 10,
+      });
+
+      expect(transactions.map((t) => t.transactionId)).toEqual([early.transactionId]);
+    });
+
+    it('filters by a set of statuses with ANY($n), combined with the date range', async () => {
+      await seeded(false, new Date('2026-08-01T00:00:00.000Z'));
+      const debiting = await seeded(true, new Date('2026-08-20T00:00:00.000Z'));
+
+      const { transactions } = await repository.list({
+        ownerId: null,
+        statuses: ['DEBITING', 'PAYMENT_PENDING'],
+        from: new Date('2026-08-10T00:00:00.000Z'),
+        limit: 10,
+      });
+
+      expect(transactions.map((t) => t.transactionId)).toEqual([debiting.transactionId]);
     });
   });
 });

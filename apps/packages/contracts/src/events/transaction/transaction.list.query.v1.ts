@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { transactionStatus, uuidV4 } from '../../schemas/primitives';
+import { isoTimestamp, phaseStatus, transactionStatus, uuidV4 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
 
 /** How many rows one screen may ask for at once. */
@@ -26,14 +26,35 @@ export const transactionListQueryV1 = defineContract({
   category: 'command',
   producer: 'gateway',
   consumers: ['transaction-service'],
-  schema: z.object({
-    /** Narrow to one customer's transfers. Staff only, in effect. */
-    customerId: uuidV4.optional(),
-    /** Narrow to the transfers that touched one account, either side. */
-    accountId: uuidV4.optional(),
-    status: transactionStatus.optional(),
-    limit: z.int().positive().max(MAX_TRANSACTION_ROWS).optional(),
-  }),
+  schema: z
+    .object({
+      /** Narrow to one customer's transfers. Staff only, in effect. */
+      customerId: uuidV4.optional(),
+      /** Narrow to the transfers that touched one account, either side. */
+      accountId: uuidV4.optional(),
+      status: transactionStatus.optional(),
+      /**
+       * A **separate** field from `status`, added by T-28, rather than
+       * `status` widened to accept either vocabulary. Widening it would make
+       * `status=PENDING` ambiguous — the exact opening state, or "not yet
+       * done" — and this system does not resolve an ambiguous filter by
+       * guessing. The two intersect: naming both narrows to their overlap.
+       */
+      phaseStatus: phaseStatus.optional(),
+      /** Both ends inclusive, against `createdAt` — when the transfer was asked for. */
+      from: isoTimestamp.optional(),
+      to: isoTimestamp.optional(),
+      limit: z.int().positive().max(MAX_TRANSACTION_ROWS).optional(),
+    })
+    /**
+     * A reversed range is refused rather than silently returning nothing: a
+     * caller who swapped the two dates by mistake gets a message that says so,
+     * not an empty list they might read as "no transfers".
+     */
+    .refine((query) => query.from === undefined || query.to === undefined || query.to >= query.from, {
+      message: '"to" must not be earlier than "from".',
+      path: ['to'],
+    }),
 });
 
 export type TransactionListQueryV1 = z.infer<typeof transactionListQueryV1.schema>;

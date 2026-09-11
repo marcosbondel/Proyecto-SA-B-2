@@ -247,7 +247,11 @@ useHead({ title: 'Transferencia · bonking' });
           </dl>
         </div>
 
-        <TransactionStatusTimeline :status="transfer.status" :live="!finished" />
+        <TransactionStatusTimeline
+          :status="transfer.status"
+          :live="!finished"
+          :transitions="transfer.transitions"
+        />
 
         <UAlert
           v-if="reason"

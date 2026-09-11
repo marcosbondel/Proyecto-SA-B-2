@@ -8,6 +8,7 @@ import type {
   Transaction,
   TransactionStatus,
   Transition,
+  TransitionRecord,
 } from '../../domain/transaction';
 import { minorUnitsFromNumeric, numericFromMinorUnits, quetzales } from '../../domain/money';
 import type {
@@ -84,6 +85,21 @@ export class PostgresTransactionRepository implements TransactionRepository {
         const created = transactionFrom(inserted.rows[0]!);
 
         /**
+         * The opening row of the real history (T-28): `from_status` NULL,
+         * because nothing preceded PENDING. Written only for the delivery that
+         * actually won the insert, same as the outbox line below — a delivery
+         * that loses the race and reads the row back never gets here, so a
+         * retry of the request never writes a second opening row.
+         */
+        await this.#recordTransition(client, created.transactionId, {
+          from: null,
+          to: created.status,
+          eventType: 'transfer.requested.v1',
+          failureReason: null,
+          messageId: null,
+        });
+
+        /**
          * The outbox, written in the same transaction as the insert (TD-031's
          * gap, closed for the one publish that used to skip it). A crash
          * between this commit and the broker publish now leaves
@@ -122,7 +138,9 @@ export class PostgresTransactionRepository implements TransactionRepository {
     readonly ownerId: string | null;
     readonly customerId?: string;
     readonly accountId?: string;
-    readonly status?: TransactionStatus;
+    readonly statuses?: readonly TransactionStatus[];
+    readonly from?: Date;
+    readonly to?: Date;
     readonly limit: number;
   }): Promise<{ readonly transactions: readonly Transaction[]; readonly total: number }> {
     const where: string[] = [];
@@ -152,9 +170,29 @@ export class PostgresTransactionRepository implements TransactionRepository {
       );
     }
 
-    if (input.status !== undefined) {
-      values.push(input.status);
-      where.push(`status = $${String(values.length)}`);
+    /**
+     * A list, not a single value: this is what lets `phaseStatus` (three
+     * coarse states resolved to their member statuses in the use case) and
+     * `status` (one exact state) share one SQL clause instead of two.
+     */
+    if (input.statuses !== undefined) {
+      values.push(input.statuses);
+      where.push(`status = ANY($${String(values.length)}::TEXT[])`);
+    }
+
+    /**
+     * Both ends inclusive, both against `created_at`: "transfers from March"
+     * means the ones requested in March, not the ones that last moved in
+     * March, and `updated_at` would answer a different question.
+     */
+    if (input.from !== undefined) {
+      values.push(input.from);
+      where.push(`created_at >= $${String(values.length)}`);
+    }
+
+    if (input.to !== undefined) {
+      values.push(input.to);
+      where.push(`created_at <= $${String(values.length)}`);
     }
 
     const clause = where.length === 0 ? '' : `WHERE ${where.join(' AND ')}`;
@@ -387,6 +425,23 @@ export class PostgresTransactionRepository implements TransactionRepository {
       }
 
       await recordEvent(client, input.transactionId, input.messageType, input.payload);
+
+      /**
+       * The real history row for this transition (T-28), including
+       * self-transitions on PAYMENT_PENDING — those are the ones that order
+       * the payment, the credit and the compensation, and a history that
+       * skipped them could not explain why a transfer ended up compensated.
+       * Written here rather than from `transition` alone because `applied`
+       * carries the transaction's own updated `updated_at`, and this row's
+       * `occurred_at` should read the same moment.
+       */
+      await this.#recordTransition(client, input.transactionId, {
+        from: transition.from,
+        to: transition.status,
+        eventType: input.messageType,
+        failureReason: transition.failureReason,
+        messageId: input.messageId,
+      });
 
       const applied = transactionFrom(updated.rows[0]);
 
@@ -640,6 +695,51 @@ export class PostgresTransactionRepository implements TransactionRepository {
     }
   }
 
+  /**
+   * The real history, newest last — the order a trace is read in.
+   *
+   * Read-only and unguarded, same as `paymentOutcomeOf`: a caller who may not
+   * read the transaction never reaches this (`mayReadTransaction` runs first,
+   * in the use case), and one who may is owed the whole trail.
+   */
+  public async transitionsOf(transactionId: string): Promise<readonly TransitionRecord[]> {
+    const result = await this.#pool.query<TransitionRow>(
+      `SELECT from_status, to_status, event_type, failure_reason, occurred_at
+         FROM transaction_transitions
+        WHERE transaction_id = $1
+        ORDER BY id`,
+      [transactionId],
+    );
+
+    return result.rows.map((row) => ({
+      from: row.from_status,
+      to: row.to_status,
+      event: row.event_type,
+      failureReason: row.failure_reason as FailureReason | null,
+      occurredAt: row.occurred_at,
+    }));
+  }
+
+  /** The one insert both `start` and `applyEvent` make into `transaction_transitions`. */
+  async #recordTransition(
+    client: PoolClient,
+    transactionId: string,
+    row: {
+      readonly from: TransactionStatus | null;
+      readonly to: TransactionStatus;
+      readonly eventType: string;
+      readonly failureReason: FailureReason | null;
+      readonly messageId: string | null;
+    },
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO transaction_transitions
+         (transaction_id, from_status, to_status, event_type, failure_reason, message_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [transactionId, row.from, row.to, row.eventType, row.failureReason, row.messageId],
+    );
+  }
+
   /** The one insert both `start` and `applyEvent` make into the outbox — kept in one place. */
   async #writeOutbox(
     client: PoolClient,
@@ -699,6 +799,14 @@ interface TransactionRow {
   created_at: Date;
   updated_at: Date;
   completed_at: Date | null;
+}
+
+interface TransitionRow {
+  from_status: TransactionStatus | null;
+  to_status: TransactionStatus;
+  event_type: string;
+  failure_reason: string | null;
+  occurred_at: Date;
 }
 
 interface OutboxRow {

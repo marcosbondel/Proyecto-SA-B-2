@@ -45,18 +45,47 @@ export class TransfersController {
     description:
       'Los filtros son una PETICIÓN, no un permiso: Transaction Service los cruza con el ' +
       'alcance que deriva de la identidad del sobre. Un CLIENTE que nombre el customerId de ' +
-      'otro recibe una lista vacía, nunca un 403.',
+      'otro recibe una lista vacía, nunca un 403. phaseStatus (T-28) es un filtro aparte de ' +
+      'status: nombrar ambos reduce a su intersección. from/to son inclusivos y se aplican ' +
+      'sobre la fecha de solicitud.',
   })
   @Get()
   public async list(
     @Query(validated(ListTransfersQueryDto)) query: ListTransfersQueryDto,
     @Req() request: GatewayRequest,
   ): Promise<Record<string, unknown>> {
+    /**
+     * Caught at the edge, where every other validation in this controller
+     * happens, rather than left for the contract's own `.refine()` to reject
+     * with a generic parse failure. This produces the standard `400` instead
+     * of a `500` from an unparsed reply on the other side of the broker.
+     */
+    if (
+      query.from !== undefined &&
+      query.to !== undefined &&
+      new Date(query.to).getTime() < new Date(query.from).getTime()
+    ) {
+      throw GatewayError.validation(
+        'El rango de fechas es inválido: la fecha inicial es posterior a la final.',
+        'from',
+      );
+    }
+
     return await this.#queries.transfers(
       {
         ...(query.customerId === undefined ? {} : { customerId: query.customerId }),
         ...(query.accountId === undefined ? {} : { accountId: query.accountId }),
         ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.phaseStatus === undefined ? {} : { phaseStatus: query.phaseStatus }),
+        /**
+         * Normalised to the strict ISO 8601 the contract requires
+         * (`z.iso.datetime()`, always `Z`-suffixed): `@IsISO8601` accepts
+         * looser forms than that, and forwarding one of those verbatim would
+         * turn a well-formed request into a `500` when the reply fails to
+         * parse on the other side of the broker.
+         */
+        ...(query.from === undefined ? {} : { from: new Date(query.from).toISOString() }),
+        ...(query.to === undefined ? {} : { to: new Date(query.to).toISOString() }),
         ...(query.limit === undefined ? {} : { limit: query.limit }),
       },
       { actor: actorOf(request), correlationId: request.correlationId },
