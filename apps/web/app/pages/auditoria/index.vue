@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  SEVERITY_PRESENTATION,
   filterTrail,
   formatSpan,
   mayQueryAudit,
@@ -7,7 +8,7 @@ import {
   producersIn,
   summariseTrail,
 } from '../../lib/audit';
-import type { AuditEventRow, AuditNotification } from '../../lib/audit';
+import type { AuditEventRow, AuditNotification, EventSeverity } from '../../lib/audit';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
 import { formatDate } from '../../lib/money';
@@ -90,6 +91,15 @@ const summary = computed(() => summariseTrail(events.value));
 /** The event the side panel is showing, or `null` when it is closed. */
 const inspected = ref<AuditEventRow | null>(null);
 
+/**
+ * Wraps every state the query can be in (idle, loading, an answer, an
+ * error) — see the template. `query()` scrolls here as soon as it starts, so
+ * the person who just pressed "Consultar" sees the answer land instead of
+ * having to find it below the fold themselves, which is what confused a real
+ * reviewer testing this screen.
+ */
+const resultsAnchor = ref<HTMLElement | null>(null);
+
 async function query(correlationId: string): Promise<void> {
   state.value = 'LOADING';
   message.value = undefined;
@@ -105,6 +115,9 @@ async function query(correlationId: string): Promise<void> {
    * shared makes everybody repeat the search.
    */
   await router.replace({ query: { correlationId } });
+
+  await nextTick();
+  resultsAnchor.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   const result = await api.auditFor(correlationId);
 
@@ -132,6 +145,8 @@ interface RecentAuditEvent {
   processingStatus: string;
   consumer: string;
   payload: Record<string, unknown>;
+  /** Absent for an event recorded before T-30 added the classification. */
+  severity?: EventSeverity;
 }
 
 const recentEvents = ref<RecentAuditEvent[]>([]);
@@ -139,16 +154,22 @@ const recentTotal = ref(0);
 const recentPage = ref(1);
 const recentLimit = 10;
 const recentLoading = ref(false);
+/** `TODOS` shows every row, including the ones recorded before T-30 with no severity at all. */
+const severityFilter = ref<'TODOS' | EventSeverity>('TODOS');
+
+const stats = ref<{ infoToday: number; warningToday: number; errorToday: number } | null>(null);
 
 async function loadRecentEvents(page = 1): Promise<void> {
   if (!mayQuery.value) return;
   recentLoading.value = true;
+  const severityParam =
+    severityFilter.value === 'TODOS' ? '' : `&severity=${severityFilter.value}`;
   const result = await api.call<{
     events: RecentAuditEvent[];
     total: number;
     page: number;
     limit: number;
-  }>(`/api/audit/recent?page=${page}&limit=${recentLimit}`);
+  }>(`/api/audit/recent?page=${page}&limit=${recentLimit}${severityParam}`);
   recentLoading.value = false;
 
   if (result.ok) {
@@ -158,10 +179,34 @@ async function loadRecentEvents(page = 1): Promise<void> {
   }
 }
 
+/**
+ * Reuses `GET /api/dashboard` rather than adding a route of its own: that is
+ * the one endpoint that already composes `audit.stats.query.v1`
+ * (`dashboard.use-case.ts`), and no other stats question in this system has a
+ * standalone route either — the Gateway asks the five services at once and
+ * every section is independently optional, which is what makes this cheap to
+ * reuse rather than a reason to duplicate.
+ */
+async function loadStats(): Promise<void> {
+  if (!mayQuery.value) return;
+  const result = await api.call<{
+    audit?: { infoToday?: number; warningToday?: number; errorToday?: number };
+  }>('/api/dashboard');
+
+  if (result.ok && result.data.audit) {
+    stats.value = {
+      infoToday: result.data.audit.infoToday ?? 0,
+      warningToday: result.data.audit.warningToday ?? 0,
+      errorToday: result.data.audit.errorToday ?? 0,
+    };
+  }
+}
+
 function inspectRecent(targetCorrelationId: string): void {
   correlationInput.value = targetCorrelationId;
+  // query() itself scrolls to the results anchor once it starts — no need
+  // for a separate scroll here, and a second one would fight it.
   query(targetCorrelationId);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /** A correlation in the URL is asked immediately: that is what the link is for. */
@@ -174,7 +219,11 @@ onMounted(async () => {
   }
 
   await loadRecentEvents(1);
+  await loadStats();
 });
+
+/** Changing the filter starts a fresh listing, same as clicking "Actualizar". */
+watch(severityFilter, () => loadRecentEvents(1));
 
 useHead({ title: 'Auditoría · bonking' });
 </script>
@@ -201,6 +250,20 @@ useHead({ title: 'Auditoría · bonking' });
       />
     </UCard>
 
+    <!--
+      §4.1's classification, at a glance. Today's count per severity, so the
+      axis this ticket adds is something a reader sees in one look rather than
+      something they have to filter for to notice at all.
+    -->
+    <div v-if="stats" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <UCard v-for="severity in (['INFO', 'WARNING', 'ERROR'] as const)" :key="severity">
+        <p class="text-[13px] text-[#75767F]">{{ SEVERITY_PRESENTATION[severity].label }} hoy</p>
+        <p class="mt-1 text-[28px] font-bold leading-9">
+          {{ severity === 'INFO' ? stats.infoToday : severity === 'WARNING' ? stats.warningToday : stats.errorToday }}
+        </p>
+      </UCard>
+    </div>
+
     <!-- Últimos 10 eventos del sistema paginados -->
     <UCard>
       <template #header>
@@ -211,18 +274,35 @@ useHead({ title: 'Auditoría · bonking' });
               Registro cronológico global con navegación paginada (10 eventos por página).
             </p>
           </div>
-          <UButton
-            icon="i-lucide-refresh-cw"
-            variant="ghost"
-            color="neutral"
-            size="sm"
-            :loading="recentLoading"
-            @click="loadRecentEvents(recentPage)"
-          >
-            Actualizar
-          </UButton>
+          <div class="flex items-center gap-2">
+            <USelect
+              v-model="severityFilter"
+              :items="[
+                { label: 'Todas las severidades', value: 'TODOS' },
+                { label: 'Info', value: 'INFO' },
+                { label: 'Advertencia', value: 'WARNING' },
+                { label: 'Error', value: 'ERROR' },
+              ]"
+              size="sm"
+            />
+            <UButton
+              icon="i-lucide-refresh-cw"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              :loading="recentLoading"
+              @click="loadRecentEvents(recentPage)"
+            >
+              Actualizar
+            </UButton>
+          </div>
         </div>
       </template>
+
+      <p v-if="severityFilter !== 'TODOS'" class="mb-3 text-[12px] text-[#75767F]">
+        Filtrando por severidad: no incluye los eventos registrados antes de esta
+        clasificación, que no tienen una asignada.
+      </p>
 
       <div v-if="recentLoading && recentEvents.length === 0" class="py-8 text-center text-[#5A5B63]">
         Cargando eventos recientes…
@@ -239,6 +319,7 @@ useHead({ title: 'Auditoría · bonking' });
               <th class="pb-2 font-medium">Servicio</th>
               <th class="pb-2 font-medium">Código de seguimiento</th>
               <th class="pb-2 font-medium">Estado</th>
+              <th class="pb-2 font-medium">Severidad</th>
               <th class="pb-2 text-right font-medium">Acción</th>
             </tr>
           </thead>
@@ -266,6 +347,18 @@ useHead({ title: 'Auditoría · bonking' });
                 >
                   {{ evt.processingStatus }}
                 </UBadge>
+              </td>
+              <td class="py-3">
+                <UBadge
+                  v-if="evt.severity"
+                  :color="SEVERITY_PRESENTATION[evt.severity].color"
+                  variant="subtle"
+                  size="sm"
+                  :title="SEVERITY_PRESENTATION[evt.severity].explanation"
+                >
+                  {{ SEVERITY_PRESENTATION[evt.severity].label }}
+                </UBadge>
+                <span v-else class="text-[12px] text-[#75767F]">—</span>
               </td>
               <td class="py-3 text-right">
                 <UButton
@@ -312,6 +405,13 @@ useHead({ title: 'Auditoría · bonking' });
       </template>
     </UCard>
 
+    <!--
+      One anchor around every state below, so submitting the form can scroll
+      straight to the answer instead of leaving somebody to find it themselves
+      below the fold — which is exactly what confused a real reviewer testing
+      this screen (T-30 QA).
+    -->
+    <div ref="resultsAnchor" class="flex flex-col gap-5">
     <!-- Nothing asked yet. The prototype has no such state; a screen keyed by
          an identifier needs one, because an empty table would read as "no hay
          nada" about a flow nobody named. -->
@@ -452,6 +552,7 @@ useHead({ title: 'Auditoría · bonking' });
         color="neutral"
         @click="asked && query(asked)"
       >Reintentar la consulta</UButton>
+    </div>
     </div>
 
     <AuditEventDetail :event="inspected" @close="inspected = null" />

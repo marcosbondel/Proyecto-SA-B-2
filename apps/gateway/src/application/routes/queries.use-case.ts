@@ -428,7 +428,7 @@ export class QueriesUseCase {
    * The paginated list of recent audit events across flows. ADMINISTRADOR only.
    */
   public async auditEventsList(
-    params: { page: number; limit: number },
+    params: { page: number; limit: number; severity?: 'INFO' | 'WARNING' | 'ERROR' },
     context: QueryContext,
   ): Promise<Record<string, unknown>> {
     const raw = await this.#ask(auditEventsListQueryV1.name, params, context);

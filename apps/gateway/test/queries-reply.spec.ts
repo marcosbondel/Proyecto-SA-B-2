@@ -9,6 +9,8 @@ import {
   accountListRepliedV1,
   accountOperationsQueryV1,
   accountOperationsRepliedV1,
+  auditEventsListQueryV1,
+  auditEventsListRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
   notificationListQueryV1,
@@ -420,6 +422,48 @@ describe('the five queries that wait for an answer', () => {
       expect(response.status).toBe(200);
       expect(response.body.events[0].processingStatus).toBe('PROCESSED');
       expect(response.body.events[0].payload.amount).toBe('[redactado]');
+    });
+  });
+
+  describe('recent audit events, optionally by severity (§4.1, T-30)', () => {
+    it('passes the severity filter through to the query', async () => {
+      harness.replier.answerWith(auditEventsListRepliedV1.name, {
+        events: [
+          {
+            eventId: TRANSACTION,
+            messageType: 'transaction.compensated.v1',
+            producer: 'transaction-service',
+            occurredAt: '2026-08-19T14:32:08.100Z',
+            correlationId: TRACE,
+            processingStatus: 'PROCESSED',
+            consumer: 'audit.transaction',
+            payload: {},
+            severity: 'ERROR',
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 10,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/api/audit/recent?severity=ERROR')
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(200);
+      expect(harness.publisher.lastType).toBe(auditEventsListQueryV1.name);
+      expect(harness.publisher.published[0]?.payload).toMatchObject({ severity: 'ERROR' });
+      expect(response.body.events[0].severity).toBe('ERROR');
+    });
+
+    it('refuses a severity outside INFO/WARNING/ERROR, without asking anyone', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/audit/recent?severity=CATASTROPHIC')
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(400);
+      expect(response.body.field).toBe('severity');
+      expect(harness.publisher.published).toHaveLength(0);
     });
   });
 

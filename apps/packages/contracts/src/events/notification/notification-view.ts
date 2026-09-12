@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  eventSeverity,
   isoTimestamp,
   notificationChannel,
   notificationStatus,
@@ -43,6 +44,8 @@ export const notificationView = z.object({
   createdAt: isoTimestamp,
   /** When the simulated adapter finished with it, however it finished. */
   processedAt: isoTimestamp.nullable(),
+  /** §4.1's classification (T-30). Absent for a row created before it existed. */
+  severity: eventSeverity.optional(),
 });
 
 export type NotificationView = z.infer<typeof notificationView>;

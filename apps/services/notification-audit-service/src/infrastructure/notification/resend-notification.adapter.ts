@@ -61,6 +61,7 @@ export class ResendNotificationAdapter implements NotificationSender {
     readonly recipient: string | null;
     readonly subject: string;
     readonly correlationId: string;
+    readonly severity: 'INFO' | 'WARNING' | 'ERROR';
     readonly link?: string;
     readonly deliveryAddress?: string | null;
   }): Promise<'SENT' | 'FAILED'> {

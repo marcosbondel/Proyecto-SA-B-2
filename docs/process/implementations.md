@@ -272,6 +272,77 @@ de T-27 o T-29 cubría, porque ninguno ejercitaba una compensación sobre una cu
 
 ---
 
+## T-30 — Clasificación de eventos, notificaciones inteligentes e historial de auditoría (Notification & Audit Service)
+
+### Qué pedía el enunciado
+
+Sección 4.1 (p. 5): nueve líneas, sin más detalle — "clasificar eventos" en `INFO`,
+`WARNING` o `ERROR`; "generar notificaciones según tipo"; "almacenar historial de
+eventos". No define ninguna regla de clasificación ni ningún nombre de campo; la
+taxonomía y el mapeo son la decisión de este ticket.
+
+### Qué ya existía y qué agregó este ticket
+
+El servicio ya registraba todo lo que oía (T-20) y notificaba según una tabla de quince
+tipos de evento, pero no existía ninguna noción de severidad en ninguna capa — dominio,
+esquema, contratos o interfaz. Lo más cercano era `tintFor()` en el frontend, que
+*infería* un color con una expresión regular sobre el nombre del mensaje: una conjetura
+del navegador, no un hecho calculado por el servicio dueño del rastro.
+
+También había un hueco ya presente en el código: `AuditProcessingStatus` declaraba
+`'ERROR'` y el `CHECK` de la tabla lo permitía, pero ningún camino lo escribía nunca — los
+dos escritores fijaban siempre `PROCESSED` o `INVALID`. Ese hueco es exactamente lo que el
+alcance del ticket llama "registrar errores de procesamiento como eventos claros", y se
+cierra sin agregar un camino de manejo de errores nuevo: se aprovecha que un fallo real de
+este servicio ya relanza el mensaje hasta que agota su escalera de reintentos y cae en
+`bank.errors`, cuyo drenaje ya existía (T-20) y ahora lo clasifica `ERROR`.
+
+| Capa | Qué se agregó |
+| --- | --- |
+| Dominio | `domain/classification.ts` (nuevo): `EventSeverity`, `classify()` — pura, depende sólo de `(messageType, processingStatus, parked)`, nunca del payload — y `severityCatalogue()`. Precedencia: `processingStatus === 'ERROR'` → `ERROR`; `parked` → `ERROR`; `processingStatus === 'INVALID'` → `WARNING`; si no, una tabla explícita sobre los 36 contratos de evento que las cuatro colas de auditoría oyen, con fallback por sufijo para uno futuro. `domain/notification.ts`: `NotificationIntent.severity`, derivada de `classify()` y no escrita a mano en `POLICY`, para que la severidad del aviso y la del evento nunca puedan discrepar. |
+| Persistencia | Migración `005_event_severity`: `audit_events.severity` y `notifications.severity`, ambas `VARCHAR(10)` **nullable, sin `DEFAULT` y sin backfill**, con `CHECK` y un índice por severidad. Nullable a propósito: un `DEFAULT 'INFO'` afirmaría una clasificación que nadie calculó sobre filas que pudieron ser compensaciones, y un `UPDATE` de relleno rompería la regla append-only de la tabla. `NULL` en una fila anterior a T-30 es el dato honesto. |
+| Contratos | `eventSeverity` en `primitives.ts`. Campo `severity` aditivo y opcional en `audit.query.replied.v1`, `audit.events.list.replied.v1`, `notification-view.ts`, `notification.inbox.replied.v1`; filtro `severity` opcional en `audit.events.list.query.v1`; `infoToday`/`warningToday`/`errorToday` opcionales en `audit.stats.replied.v1`. Ningún contrato nuevo — `catalog-completeness.spec.ts` fija el catálogo en 101 mensajes exactos. |
+| Aplicación | `RecordEventHandler` clasifica cada evento antes de pasarlo al caso de uso; el drenaje de `bank.errors` en `main.ts` clasifica con `parked: true`. `ListAuditEventsUseCase` y `GetAuditStatsUseCase` propagan la severidad y sus contadores. |
+| Gateway | `GET /api/audit/recent` acepta `severity`, validado contra el enum (`400` con `field: "severity"` si no lo es, nunca una consulta al broker). |
+| Web | `lib/audit.ts`: `EventSeverity`, `SEVERITY_PRESENTATION`, `severityTint()` — que prefiere la severidad registrada por el servicio y cae a `tintFor()` sólo para una fila sin clasificar. `tintFor` no se borró: sigue siendo el respaldo honesto mientras una fila pueda llegar sin `severity`. Columna "Severidad" y filtro en `/auditoria`; tres contadores del día (reutilizando `GET /api/dashboard`, que ya compone `audit.stats.query.v1` — ninguna ruta nueva para tres números); badge de severidad en el rastro (`AuditEventTable.vue`, `AuditEventDetail.vue`), en el buzón del cliente (`/notificaciones`) y en la consola (`AuditNotificationCard.vue`). |
+| Tests | `domain.spec.ts`: los 36 eventos del catálogo real (cruzados contra `@bank/contracts`, no una lista copiada a mano) reciben exactamente una severidad; las tres están cubiertas; la precedencia de `ERROR`/`parked`/`INVALID`; el fallback por sufijo; la severidad es re-derivable desde `(messageType, processingStatus)`. `inbound-message.handler.spec.ts` (ampliado): el camino `ERROR`/`WARNING`/`INFO` de `RecordEventHandler`. `simulated-notification.spec.ts`: una notificación `ERROR` se registra como `warn`, no como `info`. `repository.integration.spec.ts`: la columna persiste, el `CHECK` rechaza un valor desconocido, el filtro funciona y una fila sin severidad lee `null` — contra PostgreSQL real. `apps/web/test/audit.test.mjs`: `SEVERITY_PRESENTATION` cubre las tres severidades y la severidad registrada gana sobre la inferida. |
+
+### Comandos de validación
+
+```
+$ pnpm lint          # 11 tareas exitosas
+$ pnpm typecheck     # 11 tareas exitosas
+$ pnpm test          # 11 tareas exitosas (contratos: 763; notification-audit-service: 139 con
+                      #   DATABASE_URL, 127 sin él más 12 saltadas; gateway: 317; web: 269)
+$ pnpm test:contract # 763 pasan
+$ pnpm build         # 9 tareas exitosas
+```
+
+Corrida completa contra PostgreSQL real (`pnpm dev:infra`,
+`DATABASE_URL=postgresql://notification_audit_app:changeme@localhost:5437/notification_audit
+turbo run test --filter=notification-audit-service`): 139 pruebas, incluida la migración
+`005_event_severity` y el `CHECK` de severidad. Detalle completo con la salida pegada en
+[`docs/qa/backend/T-30-event-classification-evidence.md`](../qa/backend/T-30-event-classification-evidence.md).
+
+### Qué probar en la web
+
+1. **Entra a `/auditoria` como `ADMINISTRADOR`.** La tabla "Últimos eventos del sistema"
+   trae ahora una columna **Severidad** y un selector para filtrar por ella, más tres
+   contadores del día (Info / Advertencia / Error) arriba de la tabla. Los eventos
+   registrados **antes** de este cambio aparecen "sin clasificar" (`—`) a propósito: no se
+   les inventó una severidad retroactiva.
+2. **Provoca las tres severidades** con transferencias nuevas:
+   - Un registro de cliente y una transferencia exitosa → **Info**.
+   - Una transferencia rechazada por saldo insuficiente → **Advertencia**.
+   - Una transferencia con escenario de pago `REJECT`, o agotando la escalera con
+     `TIMEOUT` (que termina compensando), → **Error**.
+3. **Consulta por `correlationId`** en la misma pantalla: cada fila del rastro trae su
+   propia severidad, con una explicación al pasar el cursor.
+4. **Entra como `CLIENTE` a `/notificaciones`.** El aviso de una transferencia compensada
+   o fallida lleva la severidad que corresponde al resultado, junto al asunto.
+5. **Entra como `ADMINISTRADOR` a `/auditoria/notificaciones`.** La consola muestra la
+   misma severidad junto al estado de entrega de cada notificación.
+
 ## Una nota sobre el entorno, no sobre el código
 
 Si `pnpm dev` falla en el paso `rabbitmq-init` con un código de salida `127`, no es un

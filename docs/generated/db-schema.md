@@ -411,11 +411,13 @@ Pista de auditoría append-only de todos los eventos del sistema financiero.
 | `causation_id` | `UUID` | SÍ | `NULL` | Identificador del evento causal |
 | `payload` | `JSONB` | NO | — | **Payload previamente redactado** (sin contraseñas ni montos) |
 | `processing_status`| `VARCHAR(20)`| NO | — | `CHECK (processing_status IN ('PROCESSED', 'INVALID', 'ERROR'))` |
+| `severity` | `VARCHAR(10)` | SÍ | `NULL` | §4.1 (T-30): `CHECK (severity IS NULL OR severity IN ('INFO','WARNING','ERROR'))`. Sin `DEFAULT` y sin backfill — `NULL` en una fila anterior a esta columna, nunca una clasificación inventada |
 
 **Índices**:
 * `audit_events_once_per_consumer`: `PRIMARY KEY (event_id, consumer)`
 * `audit_events_correlation_idx`: `INDEX (correlation_id, occurred_at)`
 * `audit_events_type_idx`: `INDEX (message_type, occurred_at DESC)`
+* `audit_events_severity_idx`: `INDEX (severity, occurred_at DESC)`
 
 ---
 
@@ -437,6 +439,7 @@ Buzón de notificaciones emitidas y canal simulado de correo.
 | `read_at` | `TIMESTAMPTZ` | SÍ | `NULL` | Fecha/hora en que el cliente leyó la notificación |
 | `created_at` | `TIMESTAMPTZ` | NO | `now()` | Timestamp de generación |
 | `processed_at` | `TIMESTAMPTZ` | SÍ | `NULL` | Timestamp de resolución/despacho simulado |
+| `severity` | `VARCHAR(10)` | SÍ | `NULL` | §4.1 (T-30): la severidad del evento que la causó, derivada de `classify()`. `CHECK` idéntico al de `audit_events` |
 
 **Índices**:
 * `notifications_pkey`: `PRIMARY KEY (notification_id)`
