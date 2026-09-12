@@ -105,7 +105,13 @@ export interface AccountRepository {
     readonly transactionId: string | null;
     readonly idempotencyKey: string;
     readonly messageType: string;
-    readonly decide: (account: Account) => {
+    /**
+     * `commissionToReverse` is `null` for every movement except a compensation
+     * whose original debit charged one (T-27/T-29 fix): the repository looks
+     * it up from the `account_operations` row the debit wrote, inside the same
+     * lock, and hands it here so the domain can fold it into what comes back.
+     */
+    readonly decide: (account: Account, commissionToReverse: Money | null) => {
       readonly account: Account;
       readonly amount: Money;
       readonly balanceAfter: Money;

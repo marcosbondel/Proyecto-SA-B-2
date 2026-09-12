@@ -463,9 +463,11 @@ Botón **Nueva transferencia**. Necesitas tres datos:
 Hay además un campo **Escenario de pago**, marcado como *«Solo para
 demostración»*. Sirve para forzar cómo termina el pago y **no existe en un banco
 real**; en uso normal se deja en *«Sin escenario (comportamiento real)»*. Las
-otras opciones —aprobar el pago, rechazarlo, o provocar un fallo transitorio que
-se reintenta— están ahí para poder demostrar los tres finales posibles de una
-transferencia sin esperar a que ocurran solos.
+otras opciones —aprobar el pago, rechazarlo, provocar un fallo transitorio que
+se reintenta, o provocar que el proveedor no responda (timeout, que sube la
+misma escalera de reintentos que el fallo transitorio pero se distingue de él
+en la ficha de cada intento)— están ahí para poder demostrar los cuatro finales
+posibles de una transferencia sin esperar a que ocurran solos.
 
 **La pantalla no comprueba tu saldo antes de enviar.** Esa decisión la toma el
 servicio de cuentas en el momento del cobro, que es el único que puede tomarla
@@ -539,7 +541,9 @@ roles. Ahí un Cliente paga la luz, el agua o el teléfono desde **Nuevo pago**,
 ve el historial de los servicios que ya pagó. Un pago de servicio **es una
 transferencia** a la cuenta recaudadora del prestador, así que se comporta
 exactamente igual que cualquier otra: los mismos estados, la misma devolución
-automática si algo falla.
+automática si algo falla — e incluye el mismo campo **Escenario de pago**
+(§6.1) para poder demostrar un rechazo, un fallo transitorio o un timeout del
+proveedor pagando un servicio real, y no solo transfiriendo entre cuentas.
 
 **El monitoreo, `/pagos/monitor`, es otra cosa** y es solo para Cajero receptor
 y Administrador. Ahí «pago» no significa pagar un servicio, sino el paso
