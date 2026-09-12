@@ -15,6 +15,9 @@ import type { Role } from './navigation.ts';
  * Nothing here talks to the Gateway.
  */
 
+/** §4.1's classification (T-30): what the audit service decided this event is worth. */
+export type EventSeverity = 'INFO' | 'WARNING' | 'ERROR';
+
 /** The events of one flow, as `audit.query.replied.v1` carries them. */
 export interface AuditEventRow {
   readonly messageId: string;
@@ -24,6 +27,8 @@ export interface AuditEventRow {
   readonly occurredAt: string;
   /** Added by T-20, optional on the wire. Absent from an older reply. */
   readonly processingStatus?: 'PROCESSED' | 'INVALID' | 'ERROR';
+  /** Added by T-30, optional on the wire. Absent from a row recorded before it existed. */
+  readonly severity?: EventSeverity;
   /** Redacted by the owning service. Absent when nothing survived. */
   readonly payload?: Record<string, unknown>;
 }
@@ -47,6 +52,8 @@ export interface NotificationRow {
   readonly correlationId: string;
   readonly createdAt: string;
   readonly processedAt: string | null;
+  /** Added by T-30, optional on the wire. Absent from a row created before it existed. */
+  readonly severity?: EventSeverity;
 }
 
 export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED';
@@ -127,6 +134,54 @@ export function tintFor(messageType: string): TrailTint {
   return /(completed|succeeded|credited|verified|validated|registered|opened)/.test(messageType)
     ? 'success'
     : 'neutral';
+}
+
+/**
+ * The three severities §4.1 asks for, presented the same way
+ * `PROCESSING_STATUS_PRESENTATION` and `NOTIFICATION_STATUS_PRESENTATION` are:
+ * a label, a colour and a sentence explaining what the axis actually means.
+ *
+ * The colours are deliberately not the same mapping as `TrailTint`: `WARNING`
+ * is an expected refusal with nothing to undo (a customer's afternoon, not the
+ * bank's), while `ERROR` is a flow that had to be unwound after money already
+ * moved — the fact an operator watches for. `tintFor`'s guess conflates both
+ * into "failure", which is exactly the distinction this axis was added to make.
+ */
+export const SEVERITY_PRESENTATION: Readonly<Record<EventSeverity, StatusPresentation>> = {
+  INFO: {
+    label: 'Info',
+    color: 'success',
+    explanation: 'El sistema hizo lo que se le pidió.',
+  },
+  WARNING: {
+    label: 'Advertencia',
+    color: 'warning',
+    explanation: 'Un rechazo esperado. No hay nada que deshacer.',
+  },
+  ERROR: {
+    label: 'Error',
+    color: 'error',
+    explanation:
+      'Algo que ya había ocurrido tuvo que deshacerse, o el flujo terminó mal de forma terminal.',
+  },
+};
+
+/**
+ * The colour a row is shown in, preferring the severity the audit service
+ * itself computed and recorded (T-30) over `tintFor`'s guess from the message
+ * name.
+ *
+ * `tintFor` stays rather than being deleted: a row recorded before this axis
+ * existed carries no `severity` at all, and a screen that crashed on that row
+ * would be a worse regression than one that falls back to a guess for it.
+ * Delete `tintFor` only once no reply can return a row without `severity`.
+ */
+export function severityTint(row: { readonly severity?: EventSeverity; readonly messageType: string }): TrailTint {
+  if (row.severity === undefined) {
+    return tintFor(row.messageType);
+  }
+
+  return row.severity === 'ERROR' ? 'failure' : row.severity === 'INFO' ? 'success' : 'neutral';
 }
 
 /** What the filters narrow by. Applied here, over rows already on screen. */
@@ -345,6 +400,8 @@ export interface InboxNotification {
   readonly correlationId: string;
   readonly createdAt: string;
   readonly readAt: string | null;
+  /** Added by T-30, optional on the wire. Absent from a row created before it existed. */
+  readonly severity?: EventSeverity;
 }
 
 /**

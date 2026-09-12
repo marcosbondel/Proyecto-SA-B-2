@@ -2355,6 +2355,7 @@ Each entry has the same shape as `payment` on `payment.status.replied.v1`, shari
 | `correlationId` | UUID v4 | yes |
 | `events` | array of object | yes |
 | `events[].processingStatus` | `PROCESSED` \| `INVALID` \| `ERROR` | no |
+| `events[].severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 | `events[].payload` | object, redacted | no |
 | `notifications` | array of object | yes |
 
@@ -2363,6 +2364,8 @@ Each entry has the same shape as `payment` on `payment.status.replied.v1`, shari
 **Effects.** The Gateway answers with the ordered events and the notifications of that flow. Returns **metadata and a redacted payload, never the payload as published**: echoing every payload back verbatim would recreate, in one reply, the data the per-service databases exist to keep apart.
 
 The two optional fields were added by T-20 and are additive — a reply that omits them validates exactly as before (TD-039). `processingStatus` exists so that a message this service could not parse is visible rather than absent; `payload` exists because the interface has to show *something* of what happened, and the redaction is computed by the service that owns the record, never by the consumer. What survives redaction is decided in one place: `redactPayload` in the service's domain.
+
+`severity` was added by T-30, additive and optional the same way: §4.1's classification (`INFO`/`WARNING`/`ERROR`), computed once by `domain/classification.ts` and absent for a row recorded before this axis existed.
 
 **On error.** On timeout the Gateway stops waiting.
 
@@ -2381,10 +2384,11 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | --- | --- | --- |
 | `limit` | integer, 1–100 (default 10) | no |
 | `page` | integer ≥ 1 (default 1) | no |
+| `severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 
 **Preconditions.** Restricted to `ADMINISTRADOR`.
 
-**Effects.** Paginated raw audit events query across all event families.
+**Effects.** Paginated raw audit events query across all event families, optionally narrowed by severity (T-30).
 
 **On error.** On timeout the Gateway stops waiting.
 
@@ -2410,13 +2414,14 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `events[].processingStatus` | string | yes |
 | `events[].consumer` | string | yes |
 | `events[].payload` | object, redacted | yes |
+| `events[].severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 | `total` | integer ≥ 0 | yes |
 | `page` | integer ≥ 1 | yes |
 | `limit` | integer ≥ 1 | yes |
 
 **Preconditions.** An `audit.events.list.query.v1` was handled.
 
-**Effects.** Returns the paginated list of audited events with redacted payloads.
+**Effects.** Returns the paginated list of audited events with redacted payloads. `severity` (T-30) is absent for a row recorded before this classification existed.
 
 ## Consult the notifications console
 
@@ -2468,11 +2473,12 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `notifications[].correlationId` | UUID v4 | yes |
 | `notifications[].createdAt` | ISO-8601 UTC | yes |
 | `notifications[].processedAt` | ISO-8601 UTC \| null | yes |
+| `notifications[].severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 | `omitted` | integer ≥ 0 | yes |
 
 **Preconditions.** A `notification.list.query.v1` was handled.
 
-**Effects.** The Gateway answers with the page, newest first, and with how many rows were left out, so a console can say "200 of 4,318" instead of implying it is showing everything. The ordering is part of the contract rather than left to the caller: this list is read while something is going wrong, and a screen that had to sort a truncated page would show the wrong rows.
+**Effects.** The Gateway answers with the page, newest first, and with how many rows were left out, so a console can say "200 of 4,318" instead of implying it is showing everything. The ordering is part of the contract rather than left to the caller: this list is read while something is going wrong, and a screen that had to sort a truncated page would show the wrong rows. `severity` (T-30) is absent for a row created before this classification existed.
 
 `recipient` is a **simulated address** — no mail leaves this system (§4.1, notificaciones simuladas) — and it is here because a console that lists deliveries without saying who they were for cannot be used to investigate one. It must not travel on any reply a customer can read, which is why the customer's own inbox is a separate message with a separate shape rather than this one with a filter.
 
@@ -2525,11 +2531,12 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `notifications[].correlationId` | UUID v4 | yes |
 | `notifications[].createdAt` | ISO-8601 UTC | yes |
 | `notifications[].readAt` | ISO-8601 UTC \| null | yes |
+| `notifications[].severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 | `unread` | integer ≥ 0 | yes |
 
 **Preconditions.** A `notification.inbox.query.v1` was handled.
 
-**Effects.** The Gateway answers the caller. **No `recipient` field**, and that is the whole reason this is a separate shape from the console's row: that one carries the simulated address of every delivery in the system, and this one is read by the person the notification is about, who does not need to be told their own address and must not be handed a field that would carry somebody else's if a scope were ever wrong. **No `status` either** — `PENDING` and `FAILED` are facts about the bank's mail plumbing, and the customer is reading the notification right now, so its delivery status is not a thing they can act on. `unread` is counted over the **whole** inbox rather than over the page, so a badge does not shrink when somebody scrolls.
+**Effects.** The Gateway answers the caller. **No `recipient` field**, and that is the whole reason this is a separate shape from the console's row: that one carries the simulated address of every delivery in the system, and this one is read by the person the notification is about, who does not need to be told their own address and must not be handed a field that would carry somebody else's if a scope were ever wrong. **No `status` either** — `PENDING` and `FAILED` are facts about the bank's mail plumbing, and the customer is reading the notification right now, so its delivery status is not a thing they can act on. `unread` is counted over the **whole** inbox rather than over the page, so a badge does not shrink when somebody scrolls. `severity` (T-30) is absent for a row created before this classification existed.
 
 **On error.** On timeout the Gateway stops waiting. Nothing was changed.
 
@@ -2751,7 +2758,12 @@ The payload is an empty object. `ADMINISTRADOR` only.
 | `notificationsToday` | integer ≥ 0 | yes |
 | `lastEventType` | string, ≤ 120 \| null | yes |
 | `lastEventAt` | ISO-8601 UTC \| null | yes |
+| `infoToday` | integer ≥ 0 | no |
+| `warningToday` | integer ≥ 0 | no |
+| `errorToday` | integer ≥ 0 | no |
 
 `invalidToday` is the number worth having on a screen and the one a trail that counted only successes would hide: a message this service could not parse is recorded `INVALID` rather than parked, precisely so somebody can see that it happened.
 
 `lastEventType` is a **message name, never a payload**. It says the system is alive and what it was last doing, and it carries nothing about anyone — which is the rule for this database in general, and for a screen left open on a monitor in particular.
+
+`infoToday`/`warningToday`/`errorToday` (T-30) are §4.1's classification counted over today's rows, additive and optional the same way `invalidToday` is required — a reply from before this ticket still validates without them.

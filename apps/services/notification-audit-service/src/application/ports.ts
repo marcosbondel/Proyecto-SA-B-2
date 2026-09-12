@@ -1,4 +1,5 @@
 import type { AuditEvent, AuditProcessingStatus } from '../domain/audit-event';
+import type { EventSeverity } from '../domain/classification';
 import type { Notification, NotificationIntent, NotificationStatus } from '../domain/notification';
 import type { RecordOutcome } from '../domain/deduplication';
 
@@ -25,6 +26,13 @@ export interface InboundRecord {
   readonly processingStatus: AuditProcessingStatus;
   /** The family queue this arrived on. Half of the deduplication key. */
   readonly consumer: string;
+  /**
+   * §4.1's classification, computed by `classify()` at the boundary that
+   * received the message (`RecordEventHandler`, or the `bank.errors` drain in
+   * `main.ts`) — not here, so this port stays free of the domain's decision
+   * and simply carries its answer through to storage.
+   */
+  readonly severity: EventSeverity;
 }
 
 /** What a notifications listing may be narrowed by. None of these is a permission. */
@@ -32,6 +40,7 @@ export interface NotificationFilter {
   readonly correlationId?: string;
   readonly status?: NotificationStatus;
   readonly type?: string;
+  readonly severity?: EventSeverity;
   readonly limit?: number;
 }
 
@@ -123,6 +132,10 @@ export interface AuditRepository {
     readonly notificationsToday: number;
     readonly lastEventType: string | null;
     readonly lastEventAt: string | null;
+    /** §4.1's classification, counted over today's rows. `null` severities are not counted here. */
+    readonly infoToday: number;
+    readonly warningToday: number;
+    readonly errorToday: number;
   }>;
 
   /** Moves a notification out of `PENDING`. The only update in this service. */
@@ -141,8 +154,12 @@ export interface AuditRepository {
   /** The operational listing, newest first, bounded. */
   listNotifications(filter: NotificationFilter): Promise<NotificationPage>;
 
-  /** Recent audit events across flows, paginated. */
-  listRecentEvents(input: { readonly limit: number; readonly offset: number }): Promise<{
+  /** Recent audit events across flows, paginated, optionally narrowed by severity. */
+  listRecentEvents(input: {
+    readonly limit: number;
+    readonly offset: number;
+    readonly severity?: EventSeverity;
+  }): Promise<{
     readonly events: readonly AuditEvent[];
     readonly total: number;
   }>;
@@ -169,6 +186,7 @@ export interface NotificationSender {
     readonly recipient: string | null;
     readonly subject: string;
     readonly correlationId: string;
+    readonly severity: EventSeverity;
     /** The path an email would link to. Passed through, never persisted. */
     readonly link?: string;
     /**
@@ -246,5 +264,7 @@ export interface InboxNotification {
   readonly correlationId: string;
   readonly createdAt: string;
   readonly readAt: string | null;
+  /** `null` for a row created before T-30. See `migrations.ts`. */
+  readonly severity: EventSeverity | null;
 }
 

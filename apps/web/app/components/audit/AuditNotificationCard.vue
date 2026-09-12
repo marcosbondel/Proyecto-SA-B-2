@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NOTIFICATION_STATUS_PRESENTATION } from '../../lib/audit';
+import { NOTIFICATION_STATUS_PRESENTATION, SEVERITY_PRESENTATION } from '../../lib/audit';
 import type { NotificationRow } from '../../lib/audit';
 import { formatDate } from '../../lib/money';
 
@@ -49,6 +49,13 @@ const settled = computed(() => props.notification.status === 'SENT');
         <UBadge :color="presentation.color" variant="subtle" size="sm">
           {{ presentation.label }}
         </UBadge>
+        <!-- Absent for a notification created before T-30 added the classification. -->
+        <UBadge
+          v-if="notification.severity"
+          :color="SEVERITY_PRESENTATION[notification.severity].color"
+          variant="subtle"
+          size="sm"
+        >{{ SEVERITY_PRESENTATION[notification.severity].label }}</UBadge>
       </div>
 
       <p class="text-[13px] leading-5 text-[#5A5B63]">

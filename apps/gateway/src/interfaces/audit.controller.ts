@@ -12,6 +12,9 @@ import { validated } from './validation';
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** §4.1's classification (T-30). Matches `eventSeverity` in `@bank/contracts`. */
+const EVENT_SEVERITIES = new Set(['INFO', 'WARNING', 'ERROR']);
+
 /**
  * The audit trail and the notifications console, both restricted to
  * `ADMINISTRADOR`.
@@ -62,20 +65,33 @@ export class AuditController {
 
   @ApiOperation({
     summary: 'Consulta los eventos de auditoría más recientes paginados',
-    description: 'Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación.',
+    description:
+      'Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y, ' +
+      'opcionalmente, acotar por severidad (§4.1: INFO/WARNING/ERROR).',
   })
   @Roles('ADMINISTRADOR')
   @Get('recent')
   public async recent(
     @Query('page') pageRaw: string | undefined,
     @Query('limit') limitRaw: string | undefined,
+    @Query('severity') severityRaw: string | undefined,
     @Req() request: GatewayRequest,
   ): Promise<Record<string, unknown>> {
     const page = Math.max(1, Number(pageRaw) || 1);
     const limit = Math.min(100, Math.max(1, Number(limitRaw) || 10));
 
+    if (severityRaw !== undefined && !EVENT_SEVERITIES.has(severityRaw)) {
+      throw GatewayError.validation('severity debe ser INFO, WARNING o ERROR', 'severity');
+    }
+
     return await this.#queries.auditEventsList(
-      { page, limit },
+      {
+        page,
+        limit,
+        ...(severityRaw === undefined
+          ? {}
+          : { severity: severityRaw as 'INFO' | 'WARNING' | 'ERROR' }),
+      },
       {
         actor: actorOf(request),
         correlationId: request.correlationId,

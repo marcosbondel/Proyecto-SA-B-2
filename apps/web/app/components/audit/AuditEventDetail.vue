@@ -2,6 +2,7 @@
 import {
   PROCESSING_STATUS_PRESENTATION,
   REDACTION_MARKER,
+  SEVERITY_PRESENTATION,
   formatPayload,
   redactedCount,
 } from '../../lib/audit';
@@ -134,6 +135,23 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
             >{{ PROCESSING_STATUS_PRESENTATION[event.processingStatus].label }}</UBadge>
             <p class="mt-1 max-w-[320px] text-[12px] leading-4 text-[#5A5B63]">
               {{ PROCESSING_STATUS_PRESENTATION[event.processingStatus].explanation }}
+            </p>
+          </dd>
+        </div>
+        <!-- Absent for a row recorded before T-30 added the classification. -->
+        <div
+          v-if="event.severity"
+          class="flex items-start justify-between gap-4 border-t border-[#E9E9EC] py-3"
+        >
+          <dt class="text-[13px] text-[#75767F]">Severidad</dt>
+          <dd class="text-right">
+            <UBadge
+              :color="SEVERITY_PRESENTATION[event.severity].color"
+              variant="subtle"
+              size="sm"
+            >{{ SEVERITY_PRESENTATION[event.severity].label }}</UBadge>
+            <p class="mt-1 max-w-[320px] text-[12px] leading-4 text-[#5A5B63]">
+              {{ SEVERITY_PRESENTATION[event.severity].explanation }}
             </p>
           </dd>
         </div>

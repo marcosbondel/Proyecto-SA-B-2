@@ -41,6 +41,7 @@ export class SimulatedNotificationAdapter implements NotificationSender {
     readonly recipient: string | null;
     readonly subject: string;
     readonly correlationId: string;
+    readonly severity: 'INFO' | 'WARNING' | 'ERROR';
     readonly link?: string;
     /** A real channel delivers here; the simulation has no inbox and ignores it. */
     readonly deliveryAddress?: string | null;
@@ -50,17 +51,25 @@ export class SimulatedNotificationAdapter implements NotificationSender {
         notificationId: notification.notificationId,
         notificationType: notification.type,
         correlationId: notification.correlationId,
+        severity: notification.severity,
         outcome: 'FAILED',
       });
 
       return await Promise.resolve('FAILED');
     }
 
-    this.#logger.info('notification sent (simulated)', {
+    /**
+     * `ERROR` gets a `warn` log line rather than `info`, on the same basis the
+     * severity itself is decided: this is a notification about a flow that had
+     * to be undone, worth an operator's attention in the logs even though the
+     * simulated delivery to the customer succeeds exactly the same way.
+     */
+    const fields = {
       notificationId: notification.notificationId,
       notificationType: notification.type,
       correlationId: notification.correlationId,
-      outcome: 'SENT',
+      severity: notification.severity,
+      outcome: 'SENT' as const,
       /**
        * The one place a clear token — an activation link or a password-reset
        * one — is written down, and it is closed in production.
@@ -81,7 +90,13 @@ export class SimulatedNotificationAdapter implements NotificationSender {
       ...(this.#revealLinks && notification.link !== undefined
         ? { deliveryLink: notification.link }
         : {}),
-    });
+    };
+
+    if (notification.severity === 'ERROR') {
+      this.#logger.warn('notification sent (simulated)', fields);
+    } else {
+      this.#logger.info('notification sent (simulated)', fields);
+    }
 
     return await Promise.resolve('SENT');
   }
