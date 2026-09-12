@@ -244,6 +244,31 @@ Detalle completo en
 5. **Compara con los otros dos resultados** en la misma pantalla: `APPROVE` cierra
    Completada de inmediato; `REJECT` cierra Fallida sin subir la escalera. Los tres deben
    poder dispararse por separado, sin depender uno del otro.
+6. **Repite los cinco pasos anteriores desde `/pagos/nuevo`** ("Pago de servicios"), no
+   solo desde `/transferencias/nueva`. Un pago de servicio es la misma transferencia con
+   el destino puesto en la cuenta recaudadora de un biller, así que atraviesa exactamente
+   el mismo Payment Service — y hasta la corrección de abajo, esa pantalla nunca ofrecía
+   el campo "Escenario de pago", así que el proveedor externo (lo que este ticket trata)
+   solo se podía ensayar transfiriendo entre cuentas, nunca pagando un servicio real.
+
+### Dos correcciones surgidas de probar esto en vivo, no del alcance original del ticket
+
+Probando el flujo completo con el responsable del proyecto (frontend + backend reales,
+no solo los comandos de validación) surgieron dos defectos que ningún test automatizado
+de T-27 o T-29 cubría, porque ninguno ejercitaba una compensación sobre una cuenta
+`AHORRO` ni el escenario de pago desde la pantalla de servicios:
+
+- **La comisión de Q3.00 no se devolvía en una transferencia compensada** (defecto de
+  T-27, expuesto agotando la escalera de T-29 sobre una cuenta `AHORRO`). Registrado como
+  **TD-065** (`docs/TECH_DEBT.md`, **Resuelto**) y en
+  [`docs/qa/backend/T-27-account-type-rules-evidence.md`](../qa/backend/T-27-account-type-rules-evidence.md).
+- **`/pagos/nuevo` no ofrecía el campo "Escenario de pago"**, así que un pago de servicio
+  jamás podía demostrar el timeout, el rechazo o el fallo transitorio que este ticket
+  añade — solo una transferencia entre cuentas podía. Corregido reutilizando
+  `PaymentScenarioSelect` (el mismo componente de `/transferencias/nueva`) en
+  `apps/web/app/pages/pagos/nuevo.vue`, sin tocar el Gateway ni Payment Service: el
+  endpoint (`POST /api/transfers`) ya aceptaba `paymentScenario` para cualquier destino,
+  biller incluido — faltaba solo exponerlo en este formulario.
 
 ---
 

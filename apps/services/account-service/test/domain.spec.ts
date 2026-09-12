@@ -160,13 +160,23 @@ describe('crediting', () => {
 
 describe('compensating', () => {
   it('returns the money to an inactive account, because the alternative is losing it', () => {
-    const moved = compensate(account({ balanceMinor: 0, status: 'INACTIVE' }), quetzales(2_500), NOW);
+    const moved = compensate(
+      account({ balanceMinor: 0, status: 'INACTIVE' }),
+      quetzales(2_500),
+      null,
+      NOW,
+    );
 
     expect(moved.account.balanceMinor).toBe(2_500);
   });
 
   it('does not reactivate: the account was corrected, not used', () => {
-    const moved = compensate(account({ balanceMinor: 0, status: 'INACTIVE' }), quetzales(2_500), NOW);
+    const moved = compensate(
+      account({ balanceMinor: 0, status: 'INACTIVE' }),
+      quetzales(2_500),
+      null,
+      NOW,
+    );
 
     expect(moved.reactivated).toBe(false);
     expect(moved.account.status).toBe('INACTIVE');
@@ -180,9 +190,38 @@ describe('compensating', () => {
    */
   it('does not refresh the inactivity clock — a correction is not activity', () => {
     const EARLIER = new Date('2026-01-15T09:00:00.000Z');
-    const moved = compensate(account({ lastActivityAt: EARLIER }), quetzales(2_500), NOW);
+    const moved = compensate(account({ lastActivityAt: EARLIER }), quetzales(2_500), null, NOW);
 
     expect(moved.account.lastActivityAt).toEqual(EARLIER);
+  });
+
+  /**
+   * T-29 correction: a compensated `AHORRO` transfer used to return the
+   * transfer amount and keep the Q3.00 commission — the bank cancelled the
+   * transfer and still charged a fee for money that never moved. Discovered
+   * testing T-29's TIMEOUT scenario end to end; fixed by having the
+   * repository hand `compensate` the commission the original debit charged.
+   */
+  it('folds a reversed commission into the amount that comes back', () => {
+    const moved = compensate(
+      account({ balanceMinor: 0, status: 'INACTIVE' }),
+      quetzales(10_000),
+      quetzales(300),
+      NOW,
+    );
+
+    expect(moved.account.balanceMinor).toBe(10_300);
+    expect(moved.amount).toEqual(quetzales(10_300));
+    // Compensation itself never charges a commission of its own (T-27) — this
+    // field is about a fee it levies, not a fee it happens to be undoing.
+    expect(moved.commission).toBeNull();
+  });
+
+  it('is unchanged for a MONETARIA compensation, which never charged a commission', () => {
+    const moved = compensate(account({ balanceMinor: 0 }), quetzales(2_500), null, NOW);
+
+    expect(moved.account.balanceMinor).toBe(2_500);
+    expect(moved.amount).toEqual(quetzales(2_500));
   });
 });
 
@@ -300,7 +339,7 @@ describe('account type rules (T-27): the AHORRO commission', () => {
 
   it('never charges a commission on credit or compensation, only on debit', () => {
     expect(credit(ahorro({ balanceMinor: 0 }), quetzales(500), NOW).commission).toBeNull();
-    expect(compensate(ahorro({ balanceMinor: 0 }), quetzales(500), NOW).commission).toBeNull();
+    expect(compensate(ahorro({ balanceMinor: 0 }), quetzales(500), null, NOW).commission).toBeNull();
   });
 });
 
