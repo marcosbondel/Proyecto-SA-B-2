@@ -145,12 +145,16 @@ base-image bump procedure are in
 [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
 **Continuous integration runs on every `feature/*` push and every pull request
-into `develop`** (T-32): a single GitHub Actions job installs from a frozen
-lockfile and runs build, lint, typecheck, the unit suites and the contract
-suite, in that order, on `ubuntu-latest`. Any failing step stops the job.
-Neither PostgreSQL nor RabbitMQ are started, so the pipeline never runs the
-suites `describe.skip` gates on `DATABASE_URL`/`RABBITMQ_URL` — the gap is
-tracked as TD-069. `pnpm format:check` is left out for the same reason
+into `develop`** (T-32), as three separate GitHub Actions jobs mirroring the
+assignment's three named phases — Build, Test, Validación — instead of one
+job with many steps: `build` (`pnpm build`), `test` (`pnpm test`,
+`pnpm test:contract`) and `validate` (a tracked-`.env` guard, `pnpm lint`,
+`pnpm typecheck`). `test` and `validate` both depend on `build`, so a failure
+there stops the pipeline; `validate` is skipped on a pull request into
+`develop`, where only Build and Test are meant to repeat. Neither PostgreSQL
+nor RabbitMQ are started, so the pipeline never runs the suites
+`describe.skip` gates on `DATABASE_URL`/`RABBITMQ_URL` — the gap is tracked as
+TD-069. `pnpm format:check` is left out for the same reason
 `docs/operations/CI.md` records: the Helm templates under `infra/k8s/` are Go
 template syntax that is not valid YAML, which Prettier rejects today.
 

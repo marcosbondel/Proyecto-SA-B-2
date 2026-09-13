@@ -1,5 +1,12 @@
 name: CI
 
+# Fases obligatorias del pipeline de CI (enunciado de la Fase 2, "Flujo de
+# Integracion y Despliegue Continuo"): Build, Test y Validacion, cada una un
+# job independiente y bloqueante. Un push a feature/** ejecuta las tres; un
+# pull request hacia develop repite unicamente Build y Test, tal como pide el
+# enunciado ("Se ejecutan nuevamente las fases de: Build, Test") y el ticket
+# T-32 ("Repetir build y tests para cambios hacia develop").
+
 on:
   push:
     branches:
@@ -22,10 +29,11 @@ env:
   DO_NOT_TRACK: 1
 
 jobs:
-  verify:
-    name: Build, lint, typecheck, test
+  # Fase 1: Build — compilacion del proyecto.
+  build:
+    name: 'Fase 1: Build'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,10 +47,89 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      # Guards against a tracked .env slipping into the repository, since a
-      # value like that would otherwise land in the workspace this job checks
-      # out and could be echoed by an unrelated step. Only *.env.example is
-      # meant to be tracked (see .gitignore).
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Comparte el resultado de la compilacion con las fases siguientes:
+      # Turborepo decide por el contenido de este cache si un job posterior
+      # necesita recompilar o puede reusar lo ya construido aqui, en vez de
+      # que cada fase repita la compilacion desde cero.
+      - name: Save Turborepo cache
+        uses: actions/cache/save@v4
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}
+
+  # Fase 2: Test — ejecucion de pruebas automatizadas.
+  test:
+    name: 'Fase 2: Test'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turborepo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}
+
+      - name: Test
+        run: pnpm test
+
+      - name: Contract tests
+        run: pnpm test:contract
+
+  # Fase 3: Validacion — verificacion basica del sistema (sanity check).
+  # No se repite en un pull request hacia develop: el enunciado y el ticket
+  # solo piden repetir Build y Test en ese punto del flujo.
+  validate:
+    name: 'Fase 3: Validacion'
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turborepo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}
+
+      # Sanity check: ningun archivo con secretos debe llegar a estar
+      # versionado (solo *.env.example esta permitido; ver .gitignore).
       - name: No tracked .env files
         run: |
           tracked_env_files=$(git ls-files -- '*.env' ':!:*.env.example')
@@ -52,22 +139,8 @@ jobs:
             exit 1
           fi
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Ordered so a compilation failure surfaces here rather than inside the
-      # lint/typecheck/test steps that also depend on ^build.
-      - name: Build
-        run: pnpm build
-
       - name: Lint
         run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
-
-      - name: Test
-        run: pnpm test
-
-      - name: Contract tests
-        run: pnpm test:contract
