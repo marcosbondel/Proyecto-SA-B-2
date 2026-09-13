@@ -143,6 +143,24 @@ export interface Transition {
 }
 
 /**
+ * One row of the transaction's real history, as opposed to `timelineFor`'s
+ * projection from the current status alone.
+ *
+ * `from` is `null` for exactly one row per transaction: the one `start()`
+ * writes when the transfer is accepted, before any Saga event has moved it.
+ * Every later row is a `Transition` this file actually applied, self-
+ * transitions on `PAYMENT_PENDING` included — a history that skipped them
+ * could not explain why a transfer ended up compensated.
+ */
+export interface TransitionRecord {
+  readonly from: TransactionStatus | null;
+  readonly to: TransactionStatus;
+  readonly event: string;
+  readonly failureReason: FailureReason | null;
+  readonly occurredAt: Date;
+}
+
+/**
  * An event that has no place in the diagram, from the state the transaction is
  * actually in.
  *

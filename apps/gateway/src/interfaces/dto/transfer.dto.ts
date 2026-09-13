@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsDefined,
   IsIn,
+  IsISO8601,
   IsInt,
   IsObject,
   IsOptional,
@@ -26,6 +27,9 @@ const TRANSACTION_STATUSES = [
   'FAILED',
   'COMPENSATED',
 ] as const;
+
+/** Fase 2's three states (T-28) — a separate filter from `status`, never a wider version of it. */
+const PHASE_STATUSES = ['PENDING', 'APPROVED', 'FAILED'] as const;
 
 /** Money on the wire: an integer of minor units, never a float. */
 export class MoneyDto {
@@ -109,6 +113,25 @@ export class ListTransfersQueryDto {
     message: `El estado debe ser uno de: ${TRANSACTION_STATUSES.join(', ')}.`,
   })
   public status?: (typeof TRANSACTION_STATUSES)[number];
+
+  /**
+   * Fase 2's vocabulary (T-28), a separate field from `status` — naming both
+   * narrows to their overlap rather than one silently widening the other.
+   */
+  @IsOptional()
+  @IsIn(PHASE_STATUSES, {
+    message: `La fase debe ser una de: ${PHASE_STATUSES.join(', ')}.`,
+  })
+  public phaseStatus?: (typeof PHASE_STATUSES)[number];
+
+  /** Both ends inclusive, against the date the transfer was requested. */
+  @IsOptional()
+  @IsISO8601({}, { message: 'La fecha inicial debe tener formato ISO 8601.' })
+  public from?: string;
+
+  @IsOptional()
+  @IsISO8601({}, { message: 'La fecha final debe tener formato ISO 8601.' })
+  public to?: string;
 
   /**
    * Coerced from the query string, where everything is text. Without the

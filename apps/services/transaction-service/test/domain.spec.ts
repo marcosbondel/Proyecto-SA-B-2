@@ -14,6 +14,8 @@ import {
   numericFromMinorUnits,
   quetzales,
 } from '../src/domain/money';
+import { phaseStatusOf, statusesInPhase } from '../src/domain/phase-status';
+import type { PhaseStatus } from '../src/domain/phase-status';
 
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
@@ -391,5 +393,41 @@ describe('writing a transition down', () => {
     );
 
     expect(again.completedAt).toEqual(later);
+  });
+});
+
+describe('phaseStatusOf — Fase 2’s three states as a projection of the six (T-28)', () => {
+  const EXPECTED: Readonly<Record<TransactionStatus, PhaseStatus>> = {
+    PENDING: 'PENDING',
+    DEBITING: 'PENDING',
+    PAYMENT_PENDING: 'PENDING',
+    COMPLETED: 'APPROVED',
+    FAILED: 'FAILED',
+    COMPENSATED: 'FAILED',
+  };
+
+  it.each(Object.entries(EXPECTED) as [TransactionStatus, PhaseStatus][])(
+    'reads %s as %s',
+    (status, phase) => {
+      expect(phaseStatusOf(status)).toBe(phase);
+    },
+  );
+
+  it('never invents or drops a status: every one of the six lands in exactly one phase', () => {
+    const covered = (['PENDING', 'APPROVED', 'FAILED'] as const).flatMap((phase) =>
+      statusesInPhase(phase),
+    );
+
+    expect(covered.sort()).toEqual(
+      ['PENDING', 'DEBITING', 'PAYMENT_PENDING', 'COMPLETED', 'FAILED', 'COMPENSATED'].sort(),
+    );
+  });
+
+  it('inverts phaseStatusOf exactly: every status in a phase reads back as that phase', () => {
+    for (const phase of ['PENDING', 'APPROVED', 'FAILED'] as const) {
+      for (const status of statusesInPhase(phase)) {
+        expect(phaseStatusOf(status)).toBe(phase);
+      }
+    }
   });
 });

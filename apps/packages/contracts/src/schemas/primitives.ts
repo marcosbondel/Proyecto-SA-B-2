@@ -151,6 +151,14 @@ export const transactionStatus = z.enum([
   'COMPENSATED',
 ]);
 
+/**
+ * The three states Fase 2 of the assignment names — a coarser projection of
+ * `transactionStatus`, computed in Transaction Service's domain
+ * (`phaseStatusOf`) and never stored. `PENDING|DEBITING|PAYMENT_PENDING` read
+ * as `PENDING`, `COMPLETED` as `APPROVED`, `FAILED|COMPENSATED` as `FAILED`.
+ */
+export const phaseStatus = z.enum(['PENDING', 'APPROVED', 'FAILED']);
+
 /** `Payment.status`. */
 export const paymentStatus = z.enum(['PENDING', 'SUCCEEDED', 'FAILED']);
 
