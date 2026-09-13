@@ -1,7 +1,8 @@
 import { MAX_TRANSACTION_ROWS, transactionListRepliedV1 } from '@bank/contracts';
 import type { Identity, TransactionListQueryV1 } from '@bank/contracts';
 
-import type { Transaction } from '../domain/transaction';
+import { phaseStatusOf, statusesInPhase } from '../domain/phase-status';
+import type { Transaction, TransactionStatus } from '../domain/transaction';
 import type { EventPublisher, TransactionRepository } from './ports';
 
 /** What a screen gets when it does not say. Enough to fill a page, not a table dump. */
@@ -49,11 +50,15 @@ export class ListTransactionsUseCase {
       return;
     }
 
+    const statuses = resolveStatuses(query);
+
     const found = await this.#repository.list({
       ownerId: identity.role === 'CLIENTE' ? identity.customerId : null,
       ...(query.customerId === undefined ? {} : { customerId: query.customerId }),
       ...(query.accountId === undefined ? {} : { accountId: query.accountId }),
-      ...(query.status === undefined ? {} : { status: query.status }),
+      ...(statuses === undefined ? {} : { statuses }),
+      ...(query.from === undefined ? {} : { from: new Date(query.from) }),
+      ...(query.to === undefined ? {} : { to: new Date(query.to) }),
       limit: Math.min(query.limit ?? DEFAULT_LIMIT, MAX_TRANSACTION_ROWS),
     });
 
@@ -70,6 +75,7 @@ export class ListTransactionsUseCase {
           targetAccount: transaction.targetAccount,
           amount: transaction.amount,
           status: transaction.status,
+          phaseStatus: phaseStatusOf(transaction.status),
           reason: transaction.failureReason,
           createdAt: transaction.createdAt.toISOString(),
           completedAt: transaction.completedAt?.toISOString() ?? null,
@@ -78,4 +84,24 @@ export class ListTransactionsUseCase {
       },
     });
   }
+}
+
+/**
+ * `status` and `phaseStatus` as one set of statuses to match, or `undefined`
+ * when neither was asked. Naming both narrows to their overlap — one exact
+ * state if it belongs to the named phase, none if it does not — rather than
+ * one filter silently overriding the other.
+ */
+function resolveStatuses(query: TransactionListQueryV1): readonly TransactionStatus[] | undefined {
+  if (query.status === undefined && query.phaseStatus === undefined) {
+    return undefined;
+  }
+
+  if (query.phaseStatus === undefined) {
+    return [query.status!];
+  }
+
+  const inPhase = statusesInPhase(query.phaseStatus);
+
+  return query.status === undefined ? inPhase : inPhase.filter((status) => status === query.status);
 }

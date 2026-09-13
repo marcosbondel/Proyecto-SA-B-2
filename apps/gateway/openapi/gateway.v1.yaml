@@ -422,7 +422,9 @@ paths:
     get:
       description: "Los filtros son una PETICIÓN, no un permiso: Transaction Service los cruza con el
         alcance que deriva de la identidad del sobre. Un CLIENTE que nombre el customerId de otro
-        recibe una lista vacía, nunca un 403."
+        recibe una lista vacía, nunca un 403. phaseStatus (T-28) es un filtro aparte de status:
+        nombrar ambos reduce a su intersección. from/to son inclusivos y se aplican sobre la fecha
+        de solicitud."
       operationId: TransfersController_list
       parameters: []
       responses:

@@ -23,6 +23,14 @@ export type TransactionStatus =
   | 'FAILED'
   | 'COMPENSATED';
 
+/**
+ * Fase 2's three states (T-28) — a coarser reading of `TransactionStatus`,
+ * computed by Transaction Service and carried alongside `status`, never
+ * instead of it. `PENDING|DEBITING|PAYMENT_PENDING` read as `PENDING`,
+ * `COMPLETED` as `APPROVED`, `FAILED|COMPENSATED` as `FAILED`.
+ */
+export type PhaseStatus = 'PENDING' | 'APPROVED' | 'FAILED';
+
 /** The demonstration scenarios `POST /api/transfers` accepts. */
 export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE';
 
@@ -45,11 +53,25 @@ export interface PaymentOutcome {
   readonly decidedAt: string | null;
 }
 
+/**
+ * One row of the real history (T-28), oldest first. `from` is `null` only on
+ * the opening row — the transfer's acceptance itself, which nothing preceded.
+ */
+export interface TransitionRow {
+  readonly from: TransactionStatus | null;
+  readonly to: TransactionStatus;
+  readonly event: string;
+  readonly reason: string | null;
+  readonly occurredAt: string;
+}
+
 /** A transfer as `GET /api/transfers/:transactionId` answers. */
 export interface TransferStatus {
   readonly outcome: 'FOUND';
   readonly transactionId: string;
   readonly status: TransactionStatus;
+  /** Fase 2's vocabulary (T-28). Absent on a reply from before this field existed. */
+  readonly phaseStatus?: PhaseStatus;
   readonly amount: WireMoney;
   readonly reason: string | null;
   readonly createdAt: string;
@@ -57,6 +79,12 @@ export interface TransferStatus {
   /** The correlation the transfer was **born** in, not the query's. */
   readonly originCorrelationId?: string;
   readonly payment?: PaymentOutcome;
+  /**
+   * The real history (T-28). `undefined` on an old reply, `[]` on a transfer
+   * this migration predates — both read the same to a caller: no trace to
+   * show, fall back to the line `timelineFor` draws from `status` alone.
+   */
+  readonly transitions?: readonly TransitionRow[];
   /** Added by the Gateway: the correlation of this particular question. */
   readonly correlationId?: string;
 }
@@ -125,6 +153,21 @@ export const STATUS_PRESENTATION: Readonly<Record<TransactionStatus, StatusPrese
       'automáticamente, así que verás dos movimientos en el estado de cuenta.',
   },
 };
+
+/** What each Fase 2 phase means, in the same three colors `StatusPresentation` uses. */
+export const PHASE_PRESENTATION: Readonly<Record<PhaseStatus, { label: string; color: StatusPresentation['color'] }>> = {
+  PENDING: { label: 'En proceso', color: 'warning' },
+  APPROVED: { label: 'Aprobada', color: 'success' },
+  FAILED: { label: 'Fallida', color: 'error' },
+};
+
+/** Fase 2's three phases, for a filter control — mirrors `statusFilterOptions`. */
+export function phaseFilterOptions(): readonly { readonly value: PhaseStatus; readonly label: string }[] {
+  return (Object.keys(PHASE_PRESENTATION) as PhaseStatus[]).map((value) => ({
+    value,
+    label: PHASE_PRESENTATION[value].label,
+  }));
+}
 
 export type StepState = 'done' | 'current' | 'pending' | 'failed' | 'skipped';
 
@@ -242,6 +285,72 @@ const REACHED: Readonly<Record<TimelineNode, Readonly<Record<TransactionStatus, 
     COMPENSATED: 'failed',
   },
 };
+
+/** One step of the real history (T-28), ready to render. */
+export interface TraceStep {
+  readonly label: string;
+  readonly to: TransactionStatus;
+  readonly failed: boolean;
+  readonly occurredAt: string;
+}
+
+/**
+ * What each event that can appear in `transitions` means, in Spanish.
+ *
+ * Keyed by the event name Transaction Service records it under — the wire
+ * message type, not this file's own vocabulary — because that is what
+ * `transitions` actually carries. An event not in this table (a future one
+ * this file has not met yet) falls back to its raw name rather than throwing,
+ * the same defensive read `FAILURE_REASON_TEXT` uses below.
+ */
+const TRANSITION_EVENT_LABELS: Readonly<Record<string, string>> = {
+  'transfer.requested.v1': 'Se aceptó la solicitud',
+  'account.debited.v1': 'Se debitó la cuenta de origen',
+  'account.debit.rejected.v1': 'Se rechazó el débito',
+  'payment.succeeded.v1': 'El pago se aprobó',
+  'payment.failed.v1': 'El pago falló',
+  'account.credited.v1': 'Se acreditó la cuenta de destino',
+  'account.credit.rejected.v1': 'Se rechazó el crédito',
+  'account.debit.compensated.v1': 'Se devolvió el dinero a la cuenta de origen',
+};
+
+/**
+ * The real trace (T-28), as it actually happened — as opposed to `timelineFor`,
+ * which draws a *prospective* line from the current status alone.
+ *
+ * `[]` in, `[]` out: a transfer this migration predates, or a reply from
+ * before the field existed, has no trace to show, and the caller is expected
+ * to fall back to `timelineFor` in that case rather than render an empty list
+ * as if it meant something.
+ */
+export function traceFor(transitions: readonly TransitionRow[]): readonly TraceStep[] {
+  return transitions.map((transition) => ({
+    label: TRANSITION_EVENT_LABELS[transition.event] ?? transition.event,
+    to: transition.to,
+    failed: transition.reason !== null,
+    occurredAt: transition.occurredAt,
+  }));
+}
+
+/**
+ * Why a date-range filter cannot be sent, or `undefined` when it can.
+ *
+ * The one thing worth catching before the request goes out: a reversed range
+ * would otherwise come back as a Gateway `400` the reader has to decode from a
+ * generic error banner instead of a message next to the field they typed in.
+ */
+export function historyFilterProblems(range: {
+  readonly from: string | null;
+  readonly to: string | null;
+}): string | undefined {
+  if (range.from === null || range.to === null) {
+    return undefined;
+  }
+
+  return new Date(range.to).getTime() < new Date(range.from).getTime()
+    ? 'La fecha inicial es posterior a la final.'
+    : undefined;
+}
 
 /**
  * What a failure code means, in Spanish, to the person it happened to.
@@ -431,6 +540,8 @@ export interface TransferRow {
   readonly targetAccount: string;
   readonly amount: WireMoney;
   readonly status: TransactionStatus;
+  /** Fase 2's vocabulary (T-28). Absent on a reply from before this field existed. */
+  readonly phaseStatus?: PhaseStatus;
   readonly reason: string | null;
   readonly createdAt: string;
   readonly completedAt: string | null;

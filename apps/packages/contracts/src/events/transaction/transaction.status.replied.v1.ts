@@ -6,6 +6,7 @@ import {
   money,
   paymentErrorType,
   paymentStatus,
+  phaseStatus,
   transactionStatus,
   uuidV4,
 } from '../../schemas/primitives';
@@ -25,6 +26,19 @@ import { defineContract } from '../contract';
  * back yet — which is a different statement from "there is no payment", and the
  * screen that shows it has to be able to tell them apart.
  */
+/**
+ * One row of the real history (T-28) — a transition this file's producer
+ * actually applied, in the order it applied it. `from` is `null` only on the
+ * opening row, the transfer's acceptance itself.
+ */
+const transitionRow = z.object({
+  from: transactionStatus.nullable(),
+  to: transactionStatus,
+  event: z.string().max(120),
+  reason: failureCode.nullable(),
+  occurredAt: isoTimestamp,
+});
+
 const paymentOutcome = z.object({
   paymentId: uuidV4,
   status: paymentStatus,
@@ -92,6 +106,15 @@ export const transactionStatusRepliedV1 = defineContract({
       originCorrelationId: uuidV4.optional(),
       /** What the payment step did, when there is a payment step yet. */
       payment: paymentOutcome.optional(),
+      /** Fase 2's vocabulary (T-28), computed alongside `status`. */
+      phaseStatus: phaseStatus.optional(),
+      /**
+       * The transfer's real history (T-28), oldest first. `undefined` on a
+       * reply from before this field existed and `[]` on a transfer this
+       * migration predates — both read the same to a caller, and a screen
+       * with no trace falls back to the line it draws from `status` alone.
+       */
+      transitions: z.array(transitionRow).optional(),
     }),
     z.object({
       outcome: z.literal('NOT_FOUND'),
@@ -103,3 +126,6 @@ export type TransactionStatusRepliedV1 = z.infer<typeof transactionStatusReplied
 
 /** The payment half of a status reply, on its own. */
 export type TransactionPaymentOutcome = z.infer<typeof paymentOutcome>;
+
+/** One row of a status reply's `transitions`, on its own. */
+export type TransactionTransitionRow = z.infer<typeof transitionRow>;

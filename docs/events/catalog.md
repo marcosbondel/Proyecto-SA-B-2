@@ -2099,6 +2099,13 @@ balance that covers the amount alone but not the amount plus the commission is s
 | `payment.reason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
 | `payment.errorType` | `TRANSIENT` \| `PERMANENT` \| null | no |
 | `payment.decidedAt` | ISO-8601 UTC \| null | yes |
+| `phaseStatus` | `PENDING` \| `APPROVED` \| `FAILED` | no |
+| `transitions` | array of object | no |
+| `transitions[].from` | the six-state enum \| null | yes |
+| `transitions[].to` | the six-state enum | yes |
+| `transitions[].event` | string, ≤ 120 chars | yes |
+| `transitions[].reason` | failure code \| null | yes |
+| `transitions[].occurredAt` | ISO-8601 UTC | yes |
 
 **When outcome = `NOT_FOUND`**
 
@@ -2111,6 +2118,8 @@ balance that covers the amount alone but not the amount plus the commission is s
 **Effects.** The Gateway answers the client. `reason` is present exactly when the transfer did not complete, and always from the closed failure set — this is the most likely thing a customer sees after a timeout, so it is the last place that should leak an internal detail.
 
 The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.failed.v1` said, not a second opinion**: Transaction Service processes no payments and reads no other service's database, so it repeats the event it received. `payment.status = PENDING` means the payment was ordered and nothing has come back yet, which is a different statement from "there is no payment" and a screen has to tell them apart. `payment.errorType` is not derivable from `payment.reason` — the two look related, but that mapping is Payment Service's policy rather than a law, and it says something while the payment is still `PENDING`, where `reason` is `null` and the kind of the last failed attempt is the only signal that a retry is under way. For the per-attempt evidence, ask `payment.status.query.v1`, which is the owner answering about its own row.
+
+`phaseStatus` and `transitions` were added by **T-28** as additive-optional fields — a reply that omits either validates exactly as before, so this contract stays at `v1`. `phaseStatus` is Fase 2's three-state vocabulary (`PENDING` \| `APPROVED` \| `FAILED`), computed from `status` by `phaseStatusOf` in the domain and never stored: `PENDING`/`DEBITING`/`PAYMENT_PENDING` read as `PENDING`, `COMPLETED` as `APPROVED`, `FAILED`/`COMPENSATED` as `FAILED`. `transitions` is the real history, oldest first — one row per legal state change `applyEvent` actually applied (self-transitions on `PAYMENT_PENDING` included, since those are the ones that order the payment, the credit and the compensation), plus the opening row `start()` writes with `from: null`. `undefined` on a reply from before this field existed and `[]` on a transfer this service's migration `008_transaction_transitions` predates read the same to a caller: no trace to show.
 
 **On error.** On timeout the Gateway stops waiting; the caller may ask again.
 
@@ -2135,13 +2144,16 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 | `customerId` | UUID v4 | no |
 | `accountId` | UUID v4 | no |
 | `status` | `PENDING` \| `DEBITING` \| `PAYMENT_PENDING` \| `COMPLETED` \| `FAILED` \| `COMPENSATED` | no |
+| `phaseStatus` | `PENDING` \| `APPROVED` \| `FAILED` | no |
+| `from` | ISO-8601 UTC | no |
+| `to` | ISO-8601 UTC | no |
 | `limit` | integer, 1–100 | no |
 
-**Preconditions.** None. This closes TD-033: `transaction.status.requested.v1` has answered "how did this one end" since T-18, and nothing answered "which transfers are mine".
+**Preconditions.** None. This closes TD-033: `transaction.status.requested.v1` has answered "how did this one end" since T-18, and nothing answered "which transfers are mine". `phaseStatus`, `from` and `to` were added by **T-28**, additive-optional, so the contract stays at `v1`.
 
-**Effects.** Nothing changes. **Every filter is a request, not a permission.** Who may see which transfers is Transaction Service's decision, made from the envelope identity against the `customer_id` it records at request time. `accountId` narrows to transfers that touched one account on either side.
+**Effects.** Nothing changes. **Every filter is a request, not a permission.** Who may see which transfers is Transaction Service's decision, made from the envelope identity against the `customer_id` it records at request time. `accountId` narrows to transfers that touched one account on either side. `phaseStatus` is a **separate field from `status`**, not a widened version of it — naming both narrows to their overlap, which is empty rather than one filter silently overriding the other. `from`/`to` are both inclusive and apply to `createdAt` — when the transfer was requested, not when it last moved.
 
-**On error.** A `CLIENTE` naming somebody else's `customerId` gets an empty list rather than a `403`, for the reason the account listing does the same: a distinguishable refusal is a way to discover which customers exist.
+**On error.** A `CLIENTE` naming somebody else's `customerId` gets an empty list rather than a `403`, for the reason the account listing does the same: a distinguishable refusal is a way to discover which customers exist. `to` earlier than `from` is refused by the contract's own `refine`, before Transaction Service acts on it; the Gateway catches the same case at the edge and answers `400` rather than forwarding a request the contract would reject.
 
 ### `transaction.list.replied.v1`
 
@@ -2162,10 +2174,13 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 | `transactions[].targetAccount` | UUID v4 | yes |
 | `transactions[].amount` | object | yes |
 | `transactions[].status` | `PENDING` \| `DEBITING` \| `PAYMENT_PENDING` \| `COMPLETED` \| `FAILED` \| `COMPENSATED` | yes |
+| `transactions[].phaseStatus` | `PENDING` \| `APPROVED` \| `FAILED` | no |
 | `transactions[].reason` | failure code \| null | yes |
 | `transactions[].createdAt` | ISO-8601 UTC | yes |
 | `transactions[].completedAt` | ISO-8601 UTC \| null | yes |
 | `total` | integer ≥ 0 | yes |
+
+`phaseStatus` was added by **T-28**, additive-optional, so the contract stays at `v1` — see `transaction.status.replied.v1` above for what it means and how it is computed.
 
 **Preconditions.** A `transaction.list.query.v1` was handled.
 
