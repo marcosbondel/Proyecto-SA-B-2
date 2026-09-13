@@ -182,6 +182,34 @@ export const MIGRATIONS: readonly Migration[] = [
          ON notifications (customer_id, created_at DESC)`,
     ],
   },
+  {
+    /*
+     * §4.1's classification (T-30): INFO/WARNING/ERROR, computed once by
+     * `domain/classification.ts` and written down rather than recomputed on
+     * read.
+     *
+     * **Nullable, with no `DEFAULT` and no backfill.** A `DEFAULT 'INFO'`
+     * would assert a classification nobody computed over rows that predate
+     * this column — some of which may have been compensations, i.e. exactly
+     * the events this axis calls `ERROR`. And an `UPDATE` to backfill it would
+     * break the one guarantee `audit_events` exists to keep: this table is
+     * append-only, and nothing in this service updates a row in it (see the
+     * top of this file). `NULL` on an old row means "recorded before this
+     * classification existed", which is the honest answer; every row inserted
+     * from here on always supplies one.
+     */
+    name: '005_event_severity',
+    statements: [
+      `ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS severity VARCHAR(10)`,
+      `ALTER TABLE audit_events ADD CONSTRAINT audit_events_severity_known
+         CHECK (severity IS NULL OR severity IN ('INFO','WARNING','ERROR'))`,
+      `CREATE INDEX IF NOT EXISTS audit_events_severity_idx
+         ON audit_events (severity, occurred_at DESC)`,
+      `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS severity VARCHAR(10)`,
+      `ALTER TABLE notifications ADD CONSTRAINT notifications_severity_known
+         CHECK (severity IS NULL OR severity IN ('INFO','WARNING','ERROR'))`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

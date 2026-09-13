@@ -308,10 +308,21 @@ tells the two apart in the record kept of each attempt.
 
 **Owner**: Notification & Audit Service · **Identity**: `eventId`
 
-Attributes: event type, `timestamp`, `payload`, `correlationId`, originating service.
+Attributes: event type, `timestamp`, `payload`, `correlationId`, originating service,
+`severity` (`INFO` \| `WARNING` \| `ERROR`, nullable — T-30).
 
 **No states.** It is an append-only record and it is **immutable**: never modified, never
 deleted, not even by an `ADMINISTRADOR`.
+
+**`severity` (T-30)** is computed once, by a pure function of `(messageType,
+processingStatus, parked)` — never of the payload, so a severity is always re-derivable
+from the row a reader already has. `ERROR` means this service itself failed to record the
+message, or the message reached the trail through the `bank.errors` drain after
+exhausting its retry ladder; `WARNING` means an expected business refusal with nothing to
+undo, or a payload this consumer could not read; `INFO` means the system did what was
+asked. Nullable and never backfilled: a row recorded before this axis existed reports
+`NULL` rather than an invented classification, which the append-only invariant (E-1
+below, restated) forbids correcting after the fact.
 
 ### Invariants
 
@@ -320,6 +331,7 @@ deleted, not even by an `ADMINISTRADOR`.
 | E-1 | Every `AuditEvent` carries a `correlationId` | Record rejected; an event without correlation is not auditable |
 | E-2 | An already recorded `eventId` is not recorded twice | Silently discarded |
 | E-3 | The `payload` contains no access credential and no full identity document number | A model violation, not a runtime error — it is caught in review |
+| E-4 | Every processable event receives exactly one `severity` (T-30) | `severity` computed and persisted alongside the row, in the same insert |
 
 ---
 
@@ -327,7 +339,7 @@ deleted, not even by an `ADMINISTRADOR`.
 
 **Owner**: Notification & Audit Service
 
-Attributes: `notificationId`, `customerId` (for recipient inbox scoping), `recipient`, `subject`, `channel`, `type`, `status` (`PENDING` \| `SENT` \| `FAILED`), `readAt`, `causedBy`, `referenceId`, `correlationId`, attempts.
+Attributes: `notificationId`, `customerId` (for recipient inbox scoping), `recipient`, `subject`, `channel`, `type`, `status` (`PENDING` \| `SENT` \| `FAILED`), `readAt`, `causedBy`, `referenceId`, `correlationId`, `severity` (`INFO` \| `WARNING` \| `ERROR`, nullable — T-30), attempts.
 
 ### Invariants
 

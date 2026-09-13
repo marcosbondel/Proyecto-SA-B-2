@@ -9,6 +9,7 @@ import {
 } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 
+import { classify } from '../domain/classification';
 import type { GetAuditStatsUseCase } from '../application/get-audit-stats.use-case';
 import type { ListNotificationsUseCase } from '../application/list-notifications.use-case';
 import type { ListAuditEventsUseCase } from '../application/list-audit-events.use-case';
@@ -81,6 +82,8 @@ export class RecordEventHandler {
           ? (parsed.error.issues[0]?.message ?? 'payload does not satisfy its contract')
           : null;
 
+    const processingStatus = invalidReason === null ? 'PROCESSED' : 'INVALID';
+
     const outcome = await this.#useCase.execute({
       event: {
         eventId: envelope.messageId,
@@ -91,8 +94,9 @@ export class RecordEventHandler {
         correlationId: envelope.correlationId,
         causationId: envelope.causationId,
         payload: envelope.payload,
-        processingStatus: invalidReason === null ? 'PROCESSED' : 'INVALID',
+        processingStatus,
         consumer: this.#consumer,
+        severity: classify({ messageType: envelope.messageType, processingStatus }),
       },
       customerId: envelope.identity?.customerId ?? null,
       role: envelope.identity?.role ?? null,

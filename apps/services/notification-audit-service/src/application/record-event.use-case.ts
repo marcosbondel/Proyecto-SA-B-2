@@ -116,6 +116,7 @@ export class RecordEventUseCase {
       recipient: planned.recipient,
       subject: planned.intent.subject,
       correlationId: input.event.correlationId,
+      severity: planned.intent.severity,
       ...(planned.intent.link === undefined ? {} : { link: planned.intent.link }),
       ...(deliveryAddress === null ? {} : { deliveryAddress }),
     });

@@ -7,6 +7,8 @@
  * second `if` in a handler is how one event ends up notifying twice.
  */
 
+import { classify, type EventSeverity } from './classification';
+
 export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED';
 
 export interface Notification {
@@ -34,6 +36,11 @@ export interface Notification {
   readonly customerId: string | null;
   /** When the recipient read it, or `null` while it is still unread. */
   readonly readAt: Date | null;
+  /**
+   * The severity of the event that caused it. See `NotificationIntent.severity`.
+   * `null` for a row created before T-30 — see `migrations.ts`.
+   */
+  readonly severity: EventSeverity | null;
 }
 
 /** What the policy decides, before an id or a clock is involved. */
@@ -41,6 +48,13 @@ export interface NotificationIntent {
   readonly type: string;
   readonly subject: string;
   readonly referenceId: string | null;
+  /**
+   * The severity of the event that caused this notification, computed by
+   * `classify()` rather than written by hand in `POLICY` below — so the
+   * severity attached to a notification and the severity attached to the
+   * audit row it came from can never disagree.
+   */
+  readonly severity: EventSeverity;
   /**
    * The path a real email would link to, when the message carries what it takes
    * to build one. Today that is exactly one message: the activation event, the
@@ -58,7 +72,7 @@ export interface NotificationIntent {
 /**
  * Which events produce a notification, and what it says.
  *
- * Fourteen entries and not sixty-eight. The trail records everything; the *inbox*
+ * Fifteen entries and not sixty-eight. The trail records everything; the *inbox*
  * records the things a person would want to be told, and a notification for
  * `account.debit.requested.v1` would be the bank narrating its own plumbing.
  * The three the ticket names — completed, failed, compensated — are the first
@@ -186,6 +200,7 @@ export function notificationFor(messageType: string, payload: unknown): Notifica
     type: rule.type,
     subject: rule.subject,
     referenceId: readString(payload, rule.reference),
+    severity: classify({ messageType, processingStatus: 'PROCESSED' }),
     ...(link === null ? {} : { link }),
   };
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { isoTimestamp, uuidV4 } from '../../schemas/primitives';
+import { eventSeverity, isoTimestamp, uuidV4 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
 
 /**
@@ -29,6 +29,8 @@ const inboxRow = z.object({
   createdAt: isoTimestamp,
   /** When the person read it, or `null` while it is still unread. */
   readAt: isoTimestamp.nullable(),
+  /** §4.1's classification (T-30). Absent for a row created before it existed. */
+  severity: eventSeverity.optional(),
 });
 
 /**

@@ -63,6 +63,7 @@ describeIntegration('PostgresAuditRepository', () => {
     payload: { transactionId: randomUUID(), amount: { amountMinor: 125_000, currency: 'GTQ' } },
     processingStatus: 'PROCESSED',
     consumer: 'audit.transaction',
+    severity: 'INFO',
     ...overrides,
   });
 
@@ -72,6 +73,7 @@ describeIntegration('PostgresAuditRepository', () => {
       type: 'transfer.completed',
       subject: 'Tu transferencia se completó',
       referenceId: null,
+      severity: 'INFO' as const,
     },
     recipient: 'cliente-3f2a1c04@simulado.bonking.gt',
     customerId: '3f2a1c04-9c2e-4a71-b8f5-2d6e7c0a1b93',
@@ -194,5 +196,66 @@ describeIntegration('PostgresAuditRepository', () => {
     expect(page.notifications[0]!.createdAt.getTime()).toBeGreaterThan(
       page.notifications[1]!.createdAt.getTime(),
     );
+  });
+
+  describe('§4.1 classification, persisted', () => {
+    it('persists the severity computed for the event and its notification', async () => {
+      await repository.record({
+        event: arriving({ severity: 'ERROR' }),
+        notification: { ...notifying(), intent: { ...notifying().intent, severity: 'ERROR' } },
+        now: NOW,
+      });
+
+      const [event] = await repository.trailFor(CORRELATION);
+      const [notification] = await repository.notificationsFor(CORRELATION);
+
+      expect(event?.severity).toBe('ERROR');
+      expect(notification?.severity).toBe('ERROR');
+    });
+
+    /** The `CHECK` is the enforcement; a bug upstream cannot write past it. */
+    it('rejects a severity outside INFO/WARNING/ERROR at the database', async () => {
+      await expect(
+        pool.query(
+          `INSERT INTO audit_events
+             (event_id, message_type, message_version, producer, occurred_at, received_at,
+              correlation_id, causation_id, payload, processing_status, consumer, severity)
+           VALUES ($1, 'transaction.completed.v1', 1, 'transaction-service', $2, $2, $3, NULL,
+                   '{}'::JSONB, 'PROCESSED', 'audit.transaction', 'NOT-A-SEVERITY')`,
+          [randomUUID(), NOW, CORRELATION],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('narrows listRecentEvents by severity', async () => {
+      await repository.record({ event: arriving({ severity: 'INFO' }), notification: null, now: NOW });
+      await repository.record({
+        event: arriving({ eventId: randomUUID(), severity: 'ERROR' }),
+        notification: null,
+        now: NOW,
+      });
+
+      const onlyErrors = await repository.listRecentEvents({ limit: 10, offset: 0, severity: 'ERROR' });
+
+      expect(onlyErrors.total).toBe(1);
+      expect(onlyErrors.events).toHaveLength(1);
+      expect(onlyErrors.events[0]?.severity).toBe('ERROR');
+    });
+
+    /** A row written before T-30's migration has no classification. `NULL`, not a guess. */
+    it('reads null for a row with no severity', async () => {
+      await pool.query(
+        `INSERT INTO audit_events
+           (event_id, message_type, message_version, producer, occurred_at, received_at,
+            correlation_id, causation_id, payload, processing_status, consumer)
+         VALUES ($1, 'transaction.completed.v1', 1, 'transaction-service', $2, $2, $3, NULL,
+                 '{}'::JSONB, 'PROCESSED', 'audit.transaction')`,
+        [randomUUID(), NOW, CORRELATION],
+      );
+
+      const [event] = await repository.trailFor(CORRELATION);
+
+      expect(event?.severity).toBeNull();
+    });
   });
 });

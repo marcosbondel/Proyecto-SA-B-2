@@ -13,14 +13,18 @@ import { notificationFor } from '../src/domain/notification';
  */
 
 class Sink {
-  public readonly lines: { message: string; fields: Record<string, string | undefined> }[] = [];
+  public readonly lines: {
+    level: 'info' | 'warn';
+    message: string;
+    fields: Record<string, string | undefined>;
+  }[] = [];
 
   public info(message: string, fields: Record<string, string | undefined>): void {
-    this.lines.push({ message, fields });
+    this.lines.push({ level: 'info', message, fields });
   }
 
   public warn(message: string, fields: Record<string, string | undefined>): void {
-    this.lines.push({ message, fields });
+    this.lines.push({ level: 'warn', message, fields });
   }
 }
 
@@ -30,6 +34,7 @@ const delivery = {
   recipient: 'cliente-3f2a1c04@simulado.bonking.gt',
   subject: 'Activa tu cuenta de bonking',
   correlationId: '7d41e8b2-9a3f-4c15-8ee0-1b2f9a4c7d10',
+  severity: 'INFO' as const,
   link: '/activar?token=abcdef0123456789abcdef',
 };
 
@@ -38,6 +43,31 @@ describe('the simulated delivery channel', () => {
     const sink = new Sink();
 
     await expect(new SimulatedNotificationAdapter(sink).send(delivery)).resolves.toBe('SENT');
+  });
+
+  /**
+   * An `ERROR`-severity notification is about a flow that had to be undone —
+   * worth an operator's attention in the logs, even though the simulated
+   * delivery to the customer succeeds exactly the same way as any other.
+   */
+  it('logs an ERROR-severity delivery as a warning, not as info', async () => {
+    const sink = new Sink();
+
+    await new SimulatedNotificationAdapter(sink).send({ ...delivery, severity: 'ERROR' });
+
+    expect(sink.lines).toHaveLength(1);
+    expect(sink.lines[0]?.level).toBe('warn');
+    expect(sink.lines[0]?.message).toBe('notification sent (simulated)');
+    expect(sink.lines[0]?.fields.severity).toBe('ERROR');
+  });
+
+  it('logs an INFO or WARNING delivery as info, not as a warning', async () => {
+    const sink = new Sink();
+
+    await new SimulatedNotificationAdapter(sink).send({ ...delivery, severity: 'WARNING' });
+
+    expect(sink.lines[0]?.level).toBe('info');
+    expect(sink.lines[0]?.fields.severity).toBe('WARNING');
   });
 
   /**
