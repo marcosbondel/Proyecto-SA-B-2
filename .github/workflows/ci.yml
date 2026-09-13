@@ -102,7 +102,7 @@ jobs:
   # solo piden repetir Build y Test en ese punto del flujo.
   validate:
     name: 'Fase 3: Validacion'
-    needs: build
+    needs: [build, test]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15

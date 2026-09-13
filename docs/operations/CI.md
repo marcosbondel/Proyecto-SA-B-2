@@ -9,9 +9,9 @@ pull request into `develop`. Built by **T-32**. Defined in
 
 | Event | Branches | Runs |
 | --- | --- | --- |
-| `push` | `feature/**` | `build` → `test` and `build` → `validate` |
+| `push` | `feature/**` | `build` → `test` → `validate`, in that order |
 | `pull_request` | target `develop` | `build` → `test` only |
-| `workflow_dispatch` | any | `build` → `test` and `build` → `validate` |
+| `workflow_dispatch` | any | `build` → `test` → `validate` |
 
 A push to `main`, `develop` itself, or any other branch does not trigger the
 workflow — those are integration or release branches, not where a contributor
@@ -29,10 +29,11 @@ each phase is its own GitHub Actions **job**, not a step folded into a bigger
 one, so the three appear as separate, independently pass/fail entries in the
 checks list and none can be skipped without being visible as skipped.
 
-`test` and `validate` both declare `needs: build` — if `build` fails, GitHub
-Actions skips both automatically, which is what "detener el pipeline ante
-cualquier fallo" and "no se permite omitir etapas del pipeline" require: a
-failure stops everything downstream rather than continuing partially.
+`test` declares `needs: build`, and `validate` declares `needs: [build, test]`
+— the chain runs strictly in the order the assignment lists it, Build then
+Test then Validación, and a failure anywhere skips every phase after it
+automatically. That satisfies "detener el pipeline ante cualquier fallo" and
+"no se permite omitir etapas del pipeline" without any extra logic.
 
 ### Fase 1 — Build (`build`)
 
@@ -99,7 +100,7 @@ Every service's `test/repository.integration.spec.ts` is gated
 `describe.skip` when `DATABASE_URL` is unset, and
 `apps/packages/messaging/test/broker.integration.spec.ts` is gated the same
 way on `RABBITMQ_URL`. This pipeline sets neither, by design (see Scope
-below), so a green `verify` run:
+below), so a green `test` job:
 
 - Never exercises the row lock a concurrent debit relies on, the optimistic
   `version` that rejects a stale write, or the `CHECK (balance >= 0)`
