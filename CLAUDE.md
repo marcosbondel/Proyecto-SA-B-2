@@ -149,9 +149,10 @@ into `develop`** (T-32), as three separate GitHub Actions jobs mirroring the
 assignment's three named phases — Build, Test, Validación — instead of one
 job with many steps: `build` (`pnpm build`), `test` (`pnpm test`,
 `pnpm test:contract`) and `validate` (a tracked-`.env` guard, `pnpm lint`,
-`pnpm typecheck`). `test` and `validate` both depend on `build`, so a failure
-there stops the pipeline; `validate` is skipped on a pull request into
-`develop`, where only Build and Test are meant to repeat. Neither PostgreSQL
+`pnpm typecheck`). `test` depends on `build` and `validate` depends on both, so the
+three phases run strictly in that order and a failure anywhere stops every
+phase after it; `validate` is skipped on a pull request into `develop`, where
+only Build and Test are meant to repeat. Neither PostgreSQL
 nor RabbitMQ are started, so the pipeline never runs the suites
 `describe.skip` gates on `DATABASE_URL`/`RABBITMQ_URL` — the gap is tracked as
 TD-069. `pnpm format:check` is left out for the same reason
