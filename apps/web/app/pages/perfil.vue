@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IdentityStatus } from '../lib/customer';
+import type { IdentityStatus, KycStatus } from '../lib/customer';
 import { labelForRole } from '../lib/navigation';
 
 /**
@@ -28,6 +28,7 @@ interface CustomerRecord {
   readonly address: string;
   readonly username: string;
   readonly identityStatus: IdentityStatus;
+  readonly kycStatus: KycStatus;
 }
 
 const record = ref<CustomerRecord | null>(null);
@@ -132,6 +133,22 @@ useHead({ title: 'Mi perfil · bonking' });
               {{ loadFailure ?? 'Consultando el estado de la validación…' }}
             </p>
           </div>
+        </UCard>
+
+        <UCard v-if="role === 'CLIENTE'">
+          <h2 class="text-[14px] font-semibold">Verificación de cumplimiento (KYC)</h2>
+
+          <div class="mt-4">
+            <CustomerKycStatusBadge v-if="record" :status="record.kycStatus" explain />
+            <p v-else class="text-[13px] leading-5 text-[#5A5B63]" data-testid="profile-kyc-unknown">
+              {{ loadFailure ?? 'Consultando el estado de la verificación…' }}
+            </p>
+          </div>
+
+          <p v-if="record?.kycStatus === 'PENDING'" class="mt-3 text-[13px] leading-5 text-[#5A5B63]">
+            Un cajero receptor debe verificar tu identidad antes de que puedas realizar
+            transferencias.
+          </p>
         </UCard>
       </div>
     </div>

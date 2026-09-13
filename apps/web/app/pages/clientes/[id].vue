@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IdentityStatus } from '../../lib/customer';
+import type { IdentityStatus, KycStatus } from '../../lib/customer';
 
 /**
  * One customer: what can be changed, and where their identity stands.
@@ -23,17 +23,23 @@ import type { IdentityStatus } from '../../lib/customer';
  */
 const api = useGatewayApi();
 const route = useRoute();
-const { session } = useSession();
+const { session, role } = useSession();
 
 const customerId = computed(() => String(route.params.id));
 
 const isMe = computed(() => session.value?.customerId === customerId.value);
+
+/** Staff registers a KYC verdict (T-31); a client only ever sees their own. */
+const isStaff = computed(
+  () => role.value === 'CAJERO_RECEPTOR' || role.value === 'ADMINISTRADOR',
+);
 
 const STATUSES: readonly string[] = ['PENDING', 'VALIDATED', 'REJECTED'];
 
 interface CustomerRecord {
   readonly username: string;
   readonly identityStatus: IdentityStatus;
+  readonly kycStatus: KycStatus;
 }
 
 const record = ref<CustomerRecord | null>(null);
@@ -52,6 +58,34 @@ onMounted(async () => {
   // this panel says what it does not know rather than guessing.
   unreadable.value = true;
 });
+
+/**
+ * The Fase 2 compliance verdict (T-31): whether this customer may initiate a
+ * transfer at all, decided by staff and read by the transfer Saga's own KYC
+ * gate — never by anything in this frontend.
+ */
+const kycSending = ref(false);
+const kycError = ref<string | null>(null);
+
+async function decideKyc(status: 'VERIFIED' | 'REJECTED'): Promise<void> {
+  kycSending.value = true;
+  kycError.value = null;
+
+  const result = await api.call<{ correlationId: string }>(
+    `/api/customers/${customerId.value}/kyc-status`,
+    { method: 'POST', body: { status } },
+  );
+
+  kycSending.value = false;
+
+  if (result.ok) {
+    if (record.value) {
+      record.value = { ...record.value, kycStatus: status };
+    }
+  } else {
+    kycError.value = result.error.message;
+  }
+}
 
 const overridden = computed<IdentityStatus | null>(() => {
   const declared = String(route.query.identidad ?? '').toUpperCase();
@@ -114,6 +148,43 @@ useHead({ title: 'Ficha de cliente · bonking' });
               class="text-[13px] font-semibold text-[#23242A]"
               style="font-variant-numeric: tabular-nums lining-nums"
             >{{ username }}</div>
+          </div>
+        </UCard>
+
+        <UCard v-if="record">
+          <h2 class="text-[14px] font-semibold">Verificación de cumplimiento (KYC)</h2>
+
+          <div class="mt-4">
+            <CustomerKycStatusBadge :status="record.kycStatus" explain />
+          </div>
+
+          <UAlert
+            v-if="kycError"
+            color="error"
+            variant="subtle"
+            :description="kycError"
+            class="mt-3"
+          />
+
+          <div v-if="isStaff && record.kycStatus !== 'VERIFIED'" class="mt-4 flex gap-2">
+            <UButton
+              color="primary"
+              size="sm"
+              class="flex-1 justify-center"
+              :loading="kycSending"
+              @click="decideKyc('VERIFIED')"
+            >
+              Verificar KYC
+            </UButton>
+            <UButton
+              variant="outline"
+              color="error"
+              size="sm"
+              :loading="kycSending"
+              @click="decideKyc('REJECTED')"
+            >
+              Rechazar
+            </UButton>
           </div>
         </UCard>
 

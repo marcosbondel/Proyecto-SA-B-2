@@ -63,6 +63,13 @@ export const QUEUES: readonly QueueDescriptor[] = [
     name: 'transaction.saga',
     owner: 'transaction-service',
     bindings: [
+      /*
+       * Added by T-31: the KYC gate the Saga now opens with. Bound here and
+       * not on `transaction.commands`, for the same reason every other Saga
+       * answer is — this is what happened elsewhere, not something somebody
+       * asked this service for.
+       */
+      { exchange: EXCHANGES.events, pattern: 'customer.kyc.checked.v1' },
       { exchange: EXCHANGES.events, pattern: 'account.debited.v1' },
       { exchange: EXCHANGES.events, pattern: 'account.debit.rejected.v1' },
       { exchange: EXCHANGES.events, pattern: 'account.credited.v1' },

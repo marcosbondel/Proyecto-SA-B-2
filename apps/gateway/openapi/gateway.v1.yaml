@@ -245,6 +245,32 @@ paths:
       tags:
         - customers
       x-bank-publishes: customer.set-identity-verdict.v1
+  /api/customers/{customerId}/kyc-status:
+    post:
+      description: "Publica customer.set-kyc-status.v1. VERIFIED es terminal: un segundo veredicto sobre
+        un cliente ya verificado no hace nada."
+      operationId: CustomersController_setKycStatus
+      parameters:
+        - name: customerId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetKycStatusDto"
+      responses:
+        "202":
+          description: ""
+      security:
+        - session: []
+      summary: Veredicto KYC del cajero
+      tags:
+        - customers
+      x-bank-publishes: customer.set-kyc-status.v1
   /api/customers/{customerId}/identity-document:
     get:
       description: Devuelve la imagen tal como la tiene guardada Customer Service, con su tipo de
@@ -670,6 +696,9 @@ components:
       type: object
       properties: {}
     SetIdentityVerdictDto:
+      type: object
+      properties: {}
+    SetKycStatusDto:
       type: object
       properties: {}
     DepositDto:

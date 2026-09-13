@@ -37,9 +37,9 @@ function chainFrom(messages: Message[]): string[] {
 }
 
 describe.each([
-  ['happy-path', 9, 'transaction.completed.v1'],
-  ['rejected', 5, 'transaction.failed.v1'],
-  ['compensated', 9, 'transaction.compensated.v1'],
+  ['happy-path', 11, 'transaction.completed.v1'],
+  ['rejected', 7, 'transaction.failed.v1'],
+  ['compensated', 11, 'transaction.compensated.v1'],
 ])('the %s example', (name, length, closing) => {
   const messages = load(name);
 
