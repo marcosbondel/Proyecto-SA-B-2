@@ -50,9 +50,10 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 
 | Documento | Qué responde |
 | --- | --- |
-| [operations/](operations/README.md) | Los runbooks: despliegue, contenedores y el canal de correo real. |
+| [operations/](operations/README.md) | Los runbooks: despliegue, contenedores, CI y el canal de correo real. |
 | [operations/DEPLOYMENT.md](operations/DEPLOYMENT.md) | De una máquina limpia a un clúster corriendo, en cuatro comandos, y qué hacer cuando algo falla. |
 | [operations/CONTAINERS.md](operations/CONTAINERS.md) | El inventario de las siete imágenes: Dockerfile, puerto, health checks y variables requeridas. |
+| [operations/CI.md](operations/CI.md) | El pipeline de GitHub Actions: qué lo dispara, qué verifica cada etapa y qué no demuestra un run verde. |
 | [operations/EMAIL_RESEND.md](operations/EMAIL_RESEND.md) | Cómo enviar correo de activación real en lugar del canal simulado. |
 | [RELIABILITY.md](RELIABILITY.md) | Las preocupaciones de confiabilidad que el enunciado exige resolver: idempotencia, reintentos, consistencia eventual, trazabilidad. |
 | [sre/sli.md](sre/sli.md) · [slo.md](sre/slo.md) · [sla.md](sre/sla.md) | Qué se mide, qué meta se persigue y qué se promete. Encadenados: ninguna promesa sin un número que la verifique. |
