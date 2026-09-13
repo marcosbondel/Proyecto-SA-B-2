@@ -167,7 +167,7 @@ describe('the retry decision lives in one place', () => {
     const offenders = SOURCES.filter(
       (source) =>
         !source.path.startsWith('src/domain/') &&
-        /(===|!==)\s*'(APPROVE|REJECT|TRANSIENT_FAILURE)'/.test(source.text),
+        /(===|!==)\s*'(APPROVE|REJECT|TRANSIENT_FAILURE|TIMEOUT)'/.test(source.text),
     );
 
     expect(offenders.map((source) => source.path)).toEqual([]);

@@ -99,6 +99,7 @@ function attemptViewOf(attempt: PaymentAttempt): Record<string, unknown> {
     result: attempt.result,
     errorType: attempt.errorType,
     failureReason: attempt.failureReason,
+    providerResult: attempt.providerResult,
     occurredAt: attempt.occurredAt.toISOString(),
   };
 }

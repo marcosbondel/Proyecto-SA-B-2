@@ -32,7 +32,7 @@ export type TransactionStatus =
 export type PhaseStatus = 'PENDING' | 'APPROVED' | 'FAILED';
 
 /** The demonstration scenarios `POST /api/transfers` accepts. */
-export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE';
+export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE' | 'TIMEOUT';
 
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED';
 
@@ -405,7 +405,7 @@ export interface ScenarioPresentation {
 }
 
 /**
- * The three endings a demonstration can ask for.
+ * The four endings a demonstration can ask for.
  *
  * They exist because the assignment's Saga is only interesting when it can be
  * shown failing and compensating on demand, and a payment provider cannot be
@@ -433,6 +433,14 @@ export const PAYMENT_SCENARIOS: readonly ScenarioPresentation[] = [
     description:
       'El pago falla y el sistema lo reintenta. Termina completada o, si se agotan los ' +
       'intentos, compensada con el dinero de vuelta.',
+  },
+  {
+    value: 'TIMEOUT',
+    label: 'El proveedor no responde (timeout)',
+    description:
+      'El proveedor simulado no contesta. El sistema reintenta con la misma escalera que un ' +
+      'fallo transitorio y termina completada o, si se agotan los intentos, compensada con el ' +
+      'dinero de vuelta.',
   },
 ];
 

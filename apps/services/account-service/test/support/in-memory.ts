@@ -76,11 +76,12 @@ export class InMemoryAccountRepository implements AccountRepository {
       return null;
     }
 
-    // Throws out of here exactly as the real one does, before anything is
-    // written, so a test can assert that a rejection changed nothing.
-    const decided = input.decide(account);
-
-    this.accounts.set(input.accountId, decided.account);
+    /**
+     * Mirrors the real repository's lookup (T-29 correction): a compensation
+     * marks the debit's own commission row `COMPENSATED` too, and hands its
+     * amount to `decide` so `compensate` can fold it into what comes back.
+     */
+    let commissionToReverse: AccountOperation['amount'] | null = null;
 
     if (input.compensates !== undefined) {
       for (const [index, operation] of this.operations.entries()) {
@@ -91,8 +92,24 @@ export class InMemoryAccountRepository implements AccountRepository {
         ) {
           this.operations[index] = { ...operation, status: 'COMPENSATED' };
         }
+
+        if (
+          operation.accountId === input.accountId &&
+          operation.transactionId === input.compensates.transactionId &&
+          operation.type === 'COMMISSION' &&
+          operation.status === 'APPLIED'
+        ) {
+          commissionToReverse = operation.amount;
+          this.operations[index] = { ...operation, status: 'COMPENSATED' };
+        }
       }
     }
+
+    // Throws out of here exactly as the real one does, before anything is
+    // written, so a test can assert that a rejection changed nothing.
+    const decided = input.decide(account, commissionToReverse);
+
+    this.accounts.set(input.accountId, decided.account);
 
     const operation: AccountOperation = {
       operationId: randomUUID(),

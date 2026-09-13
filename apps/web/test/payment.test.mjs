@@ -6,6 +6,7 @@ import {
   ERROR_TYPE_PRESENTATION,
   MAX_ATTEMPTS,
   POLL_CEILING_MS,
+  PROVIDER_RESULT_PRESENTATION,
   RETRY_LADDER_MS,
   VERDICT_PRESENTATION,
   attemptProgress,
@@ -245,6 +246,21 @@ describe('the two kinds of failure, said out loud', () => {
   test('each one answers whether anything is still going to happen', () => {
     assert.match(ERROR_TYPE_PRESENTATION.TRANSIENT.explanation, /reintent/i);
     assert.match(ERROR_TYPE_PRESENTATION.PERMANENT.explanation, /No se reintenta/i);
+  });
+});
+
+describe('the simulated provider result, said out loud — T-29', () => {
+  test('has exactly the three the provider can answer', () => {
+    assert.deepEqual(Object.keys(PROVIDER_RESULT_PRESENTATION).sort(), [
+      'FAILURE',
+      'SUCCESS',
+      'TIMEOUT',
+    ]);
+  });
+
+  /** The one label the ladder alone cannot tell apart from a transient failure. */
+  test('names a timeout as a timeout, not as a generic failure', () => {
+    assert.match(PROVIDER_RESULT_PRESENTATION.TIMEOUT, /timeout/i);
   });
 });
 

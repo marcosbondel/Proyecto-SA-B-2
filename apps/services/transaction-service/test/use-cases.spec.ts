@@ -84,6 +84,7 @@ function world() {
         transactionId: TRANSACTION,
         attempt: 1,
         errorType: 'TRANSIENT',
+        providerResult: 'FAILURE',
         willRetry: true,
         nextAttemptAt: '2026-08-26T12:00:01.000Z',
         failureReason: null,

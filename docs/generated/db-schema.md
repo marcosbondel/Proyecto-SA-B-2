@@ -237,7 +237,7 @@ Instancias maestras de transferencias entre cuentas.
 | `correlation_id` | `UUID` | NO | — | Identificador de trazabilidad distribuida |
 | `idempotency_key`| `VARCHAR(200)`| NO | — | **UNIQUE** (Invariantes T-3 y T-4) |
 | `failure_reason` | `TEXT` | SÍ | `NULL` | Motivo de rechazo o compensación |
-| `payment_scenario`| `VARCHAR(20)`| SÍ | `NULL` | `CHECK (payment_scenario IN ('APPROVE', 'REJECT', 'TRANSIENT_FAILURE'))` |
+| `payment_scenario`| `VARCHAR(20)`| SÍ | `NULL` | `CHECK (payment_scenario IN ('APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT'))` |
 | `customer_id` | `UUID` | SÍ | `NULL` | Identidad del cliente autenticado que inició el flujo |
 | `reference` | `VARCHAR(60)` | SÍ | `NULL` | Referencia de contrato/contador en pagos de servicios |
 | `created_at` | `TIMESTAMPTZ` | NO | `now()` | Timestamp de solicitud |
@@ -339,7 +339,7 @@ Registro de pagos solicitados por la Saga.
 | `error_type` | `VARCHAR(20)` | SÍ | `NULL` | `CHECK (error_type IN ('TRANSIENT', 'PERMANENT'))` |
 | `failure_reason` | `TEXT` | SÍ | `NULL` | Motivo terminal de rechazo |
 | `provider_reference` | `VARCHAR(100)`| SÍ | `NULL` | Referencia entregada por el proveedor externo |
-| `scenario` | `VARCHAR(20)` | SÍ | `NULL` | `CHECK (scenario IN ('APPROVE', 'REJECT', 'TRANSIENT_FAILURE'))` |
+| `scenario` | `VARCHAR(20)` | SÍ | `NULL` | `CHECK (scenario IN ('APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT'))` |
 | `origin_correlation_id`| `UUID` | SÍ | `NULL` | Trazabilidad del flujo original |
 | `next_attempt_at` | `TIMESTAMPTZ` | SÍ | `NULL` | Próximo intento programado en la escalera |
 | `created_at` | `TIMESTAMPTZ` | NO | `now()` | Timestamp de solicitud |
@@ -364,6 +364,7 @@ Historial inmutable de cada intento de cobro en la escalera de reintentos.
 | `result` | `VARCHAR(20)` | NO | — | `CHECK (result IN ('SUCCEEDED', 'FAILED'))` |
 | `error_type` | `VARCHAR(20)` | SÍ | `NULL` | `CHECK (error_type IN ('TRANSIENT', 'PERMANENT'))` |
 | `failure_reason` | `TEXT` | SÍ | `NULL` | Causa técnica del fallo en este intento |
+| `provider_result` | `VARCHAR(20)` | SÍ | `NULL` | `CHECK (provider_result IN ('SUCCESS', 'FAILURE', 'TIMEOUT'))` — T-29: lo que respondió el proveedor simulado en este intento |
 | `occurred_at` | `TIMESTAMPTZ` | NO | `now()` | Timestamp del intento |
 
 ---

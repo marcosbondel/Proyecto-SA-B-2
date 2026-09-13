@@ -1,12 +1,15 @@
 # T-27 — Evidencia: tipos de cuenta con reglas diferenciadas (Account Service)
 
-> **Corrección registrada el mismo día, ver "Corrección: el saldo mínimo es un
-> requisito de apertura, no un piso de débito" al final de este documento.**
-> Todo lo que sigue hasta esa sección describe el diseño **original**
-> (saldo mínimo como piso re-forzado en cada débito), que quedó reemplazado
-> tras una prueba en vivo en la UI que mostró el comportamiento equivocado.
-> Se deja tal cual se escribió — igual que T-26 pide para sus propias
-> revisiones — y la sección final es la versión vigente.
+> **Dos correcciones registradas al final de este documento, no el mismo
+> día.** "Corrección: el saldo mínimo es un requisito de apertura, no un piso
+> de débito" es del 2026-09-10, el mismo día de esta evidencia. "Corrección:
+> la comisión no sobrevivía a una transferencia compensada" es del
+> 2026-09-11, encontrada probando **T-29** en vivo — un ticket distinto y
+> posterior — y se documenta aquí porque el defecto vive en el diseño de la
+> comisión que este ticket estableció. Todo lo que sigue hasta esas secciones
+> describe el diseño tal como se escribió en su momento; se deja así — igual
+> que T-26 pide para sus propias revisiones — y las secciones finales son la
+> versión vigente.
 
 Registro manual, no regenerado por un script — mismo formato que
 [`T-26-kyc-evidence.md`](T-26-kyc-evidence.md): salida real de los comandos de
@@ -282,3 +285,79 @@ Los tres casos reproducidos también desde el navegador
 (`Cuentas → Abrir una cuenta`) quedan pendientes de que el responsable del
 proyecto los confirme por su cuenta, igual que hizo con el escenario que
 motivó esta corrección.
+
+---
+
+## Corrección: la comisión no sobrevivía a una transferencia compensada
+
+**Fecha**: 2026-09-11, probando **T-29** (Payment Service, el escenario
+`TIMEOUT`) en vivo con el frontend y el backend completos — no una prueba de
+este ticket. El responsable del proyecto envió una transferencia de Q100.00
+desde una cuenta `AHORRO`, forzó el agotamiento de la escalera de reintentos y
+observó la transferencia terminar en **Compensada**, pero el saldo consolidado
+quedó Q3.00 por debajo del que tenía antes de enviarla — exactamente la
+comisión que `debit()` había cobrado junto al monto. Registrado en detalle
+como **TD-065** (`docs/TECH_DEBT.md`) y en `docs/domain/entities.md`.
+
+`compensate()` (`domain/account.ts`) solo recibía el monto de la
+transferencia — nunca supo que hubo una comisión que devolver. Ni este ticket
+ni T-29 decidieron eso a propósito; era una consecuencia de la firma de la
+función, no una regla de negocio. Ningún test de ninguno de los dos tickets lo
+cubría, porque ninguno ejercitaba una compensación sobre una cuenta `AHORRO`.
+
+### Qué cambió
+
+- `compensate(account, amount, commissionToReverse, now)` (dominio): tercer
+  parámetro nuevo, `Money | null`. Suma su monto al de la transferencia antes
+  de invocar `moved()`, así que el movimiento que vuelve a la cuenta es el
+  total correcto en una sola operación atómica.
+- `PostgresAccountRepository.applyMovement` (infraestructura): cuando
+  `compensates` viene informado, además de marcar `COMPENSATED` la fila
+  `DEBIT` (como ya hacía), busca la fila `COMMISSION` `APPLIED` con el mismo
+  `transaction_id`, la marca `COMPENSATED` también, y pasa su monto a
+  `decide` — todo dentro del mismo `SELECT … FOR UPDATE` que ya protegía la
+  reversión del débito, así que no es un segundo paso que pueda perderse en
+  una carrera.
+- `CompensateDebitUseCase` y el `AccountRepository.applyMovement.decide` de
+  `ports.ts`: firma ensanchada para recibir `commissionToReverse` y pasarlo a
+  `compensate`. `debit()` y `credit()` no cambian — solo `compensate()` puede
+  recibir algo que revertir.
+- El doble de pruebas en memoria (`test/support/in-memory.ts`) se actualizó
+  para imitar la misma búsqueda, así que un test que use el repositorio falso
+  también prueba el comportamiento correcto, no solo el real contra Postgres.
+
+Una compensación sobre `MONETARIA` no cambia: nunca hay una fila `COMMISSION`
+que buscar, así que `commissionToReverse` llega `null` y `compensate` suma
+cero, como siempre.
+
+### Tests nuevos
+
+- `domain.spec.ts`: `compensate` con una comisión distinta de `null` devuelve
+  el monto total, y con `null` se comporta exactamente como antes.
+- `use-cases.spec.ts`: un débito `AHORRO` seguido de su compensación deja la
+  cuenta en el balance exacto previo a la transferencia (no balance - Q3.00).
+- `repository.integration.spec.ts`, **contra PostgreSQL real**: la fila
+  `COMMISSION` queda `COMPENSATED` (no solo la `DEBIT`), el balance vuelve
+  exacto, y un caso `MONETARIA` paralelo confirma que ahí no hay nada que
+  encontrar ni que reversar.
+
+### Comandos ejecutados tras la corrección
+
+```
+$ pnpm --filter account-service test
+Test Suites: 1 skipped, 8 passed, 8 of 9 total
+Tests:       22 skipped, 128 passed, 150 total
+
+$ DATABASE_URL=postgresql://account_app:changeme@localhost:5434/account \
+  pnpm --filter account-service test
+Test Suites: 9 passed, 9 total
+Tests:       150 passed, 150 total
+
+$ pnpm lint         # Tasks: 11 successful, 11 total
+$ pnpm typecheck    # Tasks: 11 successful, 11 total
+```
+
+Pendiente de que el responsable del proyecto repita el mismo escenario desde
+el navegador (transferencia `AHORRO` con escenario `TIMEOUT` hasta agotar la
+escalera) y confirme que el saldo consolidado vuelve exacto, sin el
+descuento de Q3.00 que motivó esta corrección.

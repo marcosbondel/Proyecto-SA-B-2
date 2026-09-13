@@ -143,7 +143,10 @@ export class PostgresAccountRepository implements AccountRepository {
     readonly transactionId: string | null;
     readonly idempotencyKey: string;
     readonly messageType: string;
-    readonly decide: (account: Account) => {
+    readonly decide: (
+      account: Account,
+      commissionToReverse: ReturnType<typeof quetzales> | null,
+    ) => {
       readonly account: Account;
       readonly amount: ReturnType<typeof quetzales>;
       readonly balanceAfter: ReturnType<typeof quetzales>;
@@ -178,6 +181,8 @@ export class PostgresAccountRepository implements AccountRepository {
        * `AND status = 'APPLIED'` also means a debit already compensated will not
        * match, so a duplicate compensation cannot credit twice.
        */
+      let commissionToReverse: ReturnType<typeof quetzales> | null = null;
+
       if (input.compensates !== undefined) {
         const reversed = await client.query(
           `UPDATE account_operations
@@ -194,10 +199,33 @@ export class PostgresAccountRepository implements AccountRepository {
               'that never left; this needs a person.',
           );
         }
+
+        /**
+         * The debit this compensation undoes may have charged a commission
+         * (T-27, `AHORRO`) as its own row, same transaction, different type.
+         * Reversing only the transfer amount would leave that row `APPLIED`
+         * forever and the customer paying a fee for a transfer the bank itself
+         * cancelled — the correction T-29's manual testing surfaced. Marking it
+         * `COMPENSATED` here, inside the same lock that reverses the debit, and
+         * handing its amount to `decide` is what makes the refund atomic with
+         * the rest of the compensation instead of a second, separately-racy step.
+         */
+        const commissionReversed = await client.query<{ amount: string }>(
+          `UPDATE account_operations
+              SET status = 'COMPENSATED'
+            WHERE account_id = $1 AND transaction_id = $2 AND type = 'COMMISSION'
+              AND status = 'APPLIED'
+          RETURNING amount`,
+          [input.accountId, input.compensates.transactionId],
+        );
+
+        if (commissionReversed.rows[0] !== undefined) {
+          commissionToReverse = quetzales(minorUnitsFromNumeric(commissionReversed.rows[0].amount));
+        }
       }
 
       // Runs inside the lock. That placement is the whole guarantee.
-      const decided = input.decide(before);
+      const decided = input.decide(before, commissionToReverse);
 
       const updated = await client.query(
         `UPDATE accounts
