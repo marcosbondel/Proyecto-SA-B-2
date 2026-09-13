@@ -305,6 +305,9 @@ export interface TraceStep {
  */
 const TRANSITION_EVENT_LABELS: Readonly<Record<string, string>> = {
   'transfer.requested.v1': 'Se aceptó la solicitud',
+  // Added by T-31. Covers both KYC_APPROVED (to: DEBITING) and KYC_REJECTED
+  // (to: FAILED, with a reason) — the icon and the reason text tell them apart.
+  'customer.kyc.checked.v1': 'Se resolvió la verificación de cumplimiento (KYC)',
   'account.debited.v1': 'Se debitó la cuenta de origen',
   'account.debit.rejected.v1': 'Se rechazó el débito',
   'payment.succeeded.v1': 'El pago se aprobó',
@@ -325,11 +328,26 @@ const TRANSITION_EVENT_LABELS: Readonly<Record<string, string>> = {
  */
 export function traceFor(transitions: readonly TransitionRow[]): readonly TraceStep[] {
   return transitions.map((transition) => ({
-    label: TRANSITION_EVENT_LABELS[transition.event] ?? transition.event,
+    label: labelFor(transition),
     to: transition.to,
     failed: transition.reason !== null,
     occurredAt: transition.occurredAt,
   }));
+}
+
+/**
+ * The one row `TRANSITION_EVENT_LABELS` cannot name by `event` alone (T-31):
+ * the Saga's KYC gate is asked through the same wire message that opened the
+ * transfer (`transfer.requested.v1`, `docs/events/saga-transfer.md`'s "no
+ * message of its own"), so both the opening row and this one share an event
+ * name. `from === to === 'PENDING'` is what tells them apart.
+ */
+function labelFor(transition: TransitionRow): string {
+  if (transition.from === 'PENDING' && transition.to === 'PENDING') {
+    return 'Se solicitó la verificación de cumplimiento (KYC)';
+  }
+
+  return TRANSITION_EVENT_LABELS[transition.event] ?? transition.event;
 }
 
 /**
@@ -375,6 +393,11 @@ export const FAILURE_REASON_TEXT: Readonly<Record<string, string>> = {
   PAYMENT_DECLINED: 'El pago fue rechazado. El dinero se devolvió a la cuenta de origen.',
   PAYMENT_RETRIES_EXHAUSTED:
     'El pago no se pudo procesar tras varios intentos. El dinero se devolvió a la cuenta de origen.',
+  // Added by T-31: the Saga's own KYC gate, refused before any debit — the
+  // money never left, unlike every compensated outcome above.
+  KYC_NOT_VERIFIED:
+    'El cliente que origina la transferencia no tiene su verificación KYC completa. ' +
+    'Un cajero receptor debe verificarla antes de intentarlo de nuevo.',
 };
 
 /**

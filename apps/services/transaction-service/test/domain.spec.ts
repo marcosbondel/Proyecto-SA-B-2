@@ -164,7 +164,8 @@ describe('a repeated idempotency key', () => {
 
 describe('the legal transitions', () => {
   it.each([
-    ['PENDING', 'DEBIT_ORDERED', 'DEBITING', 'DEBIT'],
+    ['PENDING', 'KYC_CHECK_ORDERED', 'PENDING', 'KYC_CHECK'],
+    ['PENDING', 'KYC_APPROVED', 'DEBITING', 'DEBIT'],
     ['DEBITING', 'DEBITED', 'PAYMENT_PENDING', 'PAYMENT'],
     ['PAYMENT_PENDING', 'PAYMENT_SUCCEEDED', 'PAYMENT_PENDING', 'CREDIT'],
     ['PAYMENT_PENDING', 'CREDITED', 'COMPLETED', null],
@@ -176,7 +177,18 @@ describe('the legal transitions', () => {
     expect(result.failureReason).toBeNull();
   });
 
-  it('a rejected debit is the only door to FAILED (T-7)', () => {
+  it('the KYC gate is the other door to FAILED — refused before any debit (T-31)', () => {
+    const result = applyEvent(transaction({ status: 'PENDING' }), {
+      kind: 'KYC_REJECTED',
+      reason: 'KYC_NOT_VERIFIED',
+    });
+
+    expect(result.status).toBe('FAILED');
+    expect(result.failureReason).toBe('KYC_NOT_VERIFIED');
+    expect(result.command).toBeNull();
+  });
+
+  it('a rejected debit is the only door to FAILED once the gate has approved (T-7)', () => {
     const result = applyEvent(transaction({ status: 'DEBITING' }), {
       kind: 'DEBIT_REJECTED',
       reason: 'INSUFFICIENT_FUNDS',
@@ -238,7 +250,9 @@ describe('the legal transitions', () => {
 
 describe('an event that has no place here (T-6)', () => {
   const EVERY_EVENT: readonly SagaEvent[] = [
-    { kind: 'DEBIT_ORDERED' },
+    { kind: 'KYC_CHECK_ORDERED' },
+    { kind: 'KYC_APPROVED' },
+    { kind: 'KYC_REJECTED', reason: 'KYC_NOT_VERIFIED' },
     { kind: 'DEBITED' },
     { kind: 'DEBIT_REJECTED', reason: 'INSUFFICIENT_FUNDS' },
     { kind: 'PAYMENT_SUCCEEDED' },
@@ -363,7 +377,7 @@ describe('writing a transition down', () => {
   it('stamps a closing time only when the transaction closed', () => {
     const open = afterTransition(
       transaction(),
-      applyEvent(transaction(), { kind: 'DEBIT_ORDERED' }),
+      applyEvent(transaction(), { kind: 'KYC_CHECK_ORDERED' }),
       later,
     );
 

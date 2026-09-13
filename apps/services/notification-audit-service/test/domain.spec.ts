@@ -156,8 +156,20 @@ describe('which events are worth telling somebody about', () => {
     }
   });
 
-  it('notifies on fifteen message types and no more', () => {
-    expect(notifyingMessageTypes()).toHaveLength(15);
+  it('notifies on seventeen message types and no more', () => {
+    expect(notifyingMessageTypes()).toHaveLength(17);
+  });
+
+  /** T-31: the customer hears the KYC verdict, not just its downstream refusal. */
+  it.each([
+    ['customer.kyc.verified.v1', 'kyc.verified'],
+    ['customer.kyc.rejected.v1', 'kyc.rejected'],
+  ])('notifies on %s', (messageType, expected) => {
+    const intent = notificationFor(messageType, { customerId: 'c-1' });
+
+    expect(intent?.type).toBe(expected);
+    expect(intent?.referenceId).toBe('c-1');
+    expect(intent?.severity).toBe(messageType.endsWith('verified.v1') ? 'INFO' : 'WARNING');
   });
 
   /**

@@ -270,6 +270,8 @@ describe('what a person is told', () => {
       'PAYMENT_RETRIES_EXHAUSTED',
       // Added by T-27: Account Service's own minimum-balance floor.
       'MINIMUM_BALANCE_VIOLATION',
+      // Added by T-31: the Saga's own KYC gate.
+      'KYC_NOT_VERIFIED',
     ];
 
     for (const code of codes) {
@@ -440,6 +442,37 @@ describe('the real trace, as opposed to the prospective line (T-28)', () => {
       },
     ]);
 
+    assert.equal(trace[0].failed, true);
+  });
+
+  /**
+   * T-31: the KYC gate is asked through the same wire message that opened the
+   * transfer, so both rows share `event: 'transfer.requested.v1'` — the label
+   * has to tell them apart by `from`/`to`, not by `event` alone.
+   */
+  test('labels the KYC self-transition distinctly from the opening row', () => {
+    const trace = traceFor([
+      { from: null, to: 'PENDING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.100Z' },
+      { from: 'PENDING', to: 'PENDING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.150Z' },
+    ]);
+
+    assert.equal(trace[0].label, 'Se aceptó la solicitud');
+    assert.equal(trace[1].label, 'Se solicitó la verificación de cumplimiento (KYC)');
+    assert.notEqual(trace[0].label, trace[1].label);
+  });
+
+  test('labels a KYC rejection as failed, distinct from a debit rejection', () => {
+    const trace = traceFor([
+      {
+        from: 'PENDING',
+        to: 'FAILED',
+        event: 'customer.kyc.checked.v1',
+        reason: 'KYC_NOT_VERIFIED',
+        occurredAt: '2026-08-19T14:32:08.200Z',
+      },
+    ]);
+
+    assert.equal(trace[0].label, 'Se resolvió la verificación de cumplimiento (KYC)');
     assert.equal(trace[0].failed, true);
   });
 

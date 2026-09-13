@@ -46,6 +46,8 @@ interface CustomerSummary {
   role: string;
   status: string;
   registeredAt: string;
+  /** Fase 2's compliance verdict (T-31). Absent on a reply from before T-26. */
+  kycStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
 }
 
 const api = useGatewayApi();
@@ -207,6 +209,7 @@ useHead({ title: isAdmin.value ? 'Usuarios · bonking' : 'Clientes · bonking' }
               <th class="pb-2 font-medium">Correo electrónico</th>
               <th class="pb-2 font-medium">Rol</th>
               <th class="pb-2 font-medium">Identidad</th>
+              <th class="pb-2 font-medium">KYC</th>
               <th class="pb-2 text-right font-medium">Acciones</th>
             </tr>
           </thead>
@@ -244,6 +247,10 @@ useHead({ title: isAdmin.value ? 'Usuarios · bonking' : 'Clientes · bonking' }
                 >
                   {{ c.identityStatus === 'VALIDATED' ? 'Verificada' : c.identityStatus === 'REJECTED' ? 'Rechazada' : 'Pendiente' }}
                 </UBadge>
+              </td>
+              <td class="py-3">
+                <CustomerKycStatusBadge v-if="c.kycStatus" :status="c.kycStatus" />
+                <span v-else class="text-[#75767F]">—</span>
               </td>
               <td class="py-3 text-right">
                 <div class="flex flex-col items-end gap-1">

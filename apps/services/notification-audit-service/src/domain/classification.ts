@@ -81,6 +81,14 @@ const CATALOGUE: Readonly<Record<string, EventSeverity>> = {
   'customer.identity.rejected.v1': 'WARNING',
   'customer.kyc.verified.v1': 'INFO',
   'customer.kyc.rejected.v1': 'WARNING',
+  /*
+   * Added by T-31. A fixed severity rather than one that reads `allowed`:
+   * `classify()` never looks at the payload (the payload is redacted before
+   * this ever runs), and a customer's own refusal is already recorded at
+   * `WARNING` by `transaction.failed.v1` with `reason: 'KYC_NOT_VERIFIED'` —
+   * this event is the gate answering a question, not the refusal itself.
+   */
+  'customer.kyc.checked.v1': 'INFO',
 
   // account.*
   'account.opened.v1': 'INFO',
@@ -112,7 +120,7 @@ const CATALOGUE: Readonly<Record<string, EventSeverity>> = {
  * The words a message's own name is written in, for a contract the catalogue
  * above does not (yet) list.
  *
- * The catalogue is meant to be exhaustive over today's 36 event contracts —
+ * The catalogue is meant to be exhaustive over today's 37 event contracts —
  * this exists only so a future contract added without updating this file
  * degrades to a reasonable guess instead of an unhandled case, on the same
  * principle as `messageTypeLabel` in the web's `lib/audit.ts`.

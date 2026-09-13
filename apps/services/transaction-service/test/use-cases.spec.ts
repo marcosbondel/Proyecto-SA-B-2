@@ -62,6 +62,20 @@ function world() {
     saga,
     request: new RequestTransferUseCase({ repository, publisher, saga, clock }),
     status: new GetTransactionStatusUseCase({ repository, publisher }),
+    /**
+     * The KYC gate's own answer, as `customer.kyc.checked.v1` would deliver it
+     * — `allowed: true`, the common case every test below the request step
+     * assumes unless it is testing the gate itself.
+     */
+    async approveKyc(messageId = 'customer.kyc.checked.v1') {
+      return await saga.execute({
+        transactionId: TRANSACTION,
+        event: { kind: 'KYC_APPROVED' },
+        messageId,
+        messageType: 'customer.kyc.checked.v1',
+        payload: {},
+      });
+    },
     /** One inbound Saga event, as the interface layer would deliver it. */
     async deliver(
       messageType: string,
@@ -101,7 +115,7 @@ function world() {
 }
 
 describe('step 1: accepting a transfer', () => {
-  it('creates the transaction, announces it in PENDING and orders the debit', async () => {
+  it('creates the transaction, announces it in PENDING and asks the KYC gate (T-31)', async () => {
     const { request, publisher, repository } = world();
 
     const outcome = await request.execute(transferRequest(), envelope());
@@ -112,18 +126,63 @@ describe('step 1: accepting a transfer', () => {
      * The order is the audit trail. `transaction.initiated.v1` says PENDING
      * because that is genuinely where the transfer was when it was announced;
      * a first event already claiming DEBITING would leave no record of the
-     * transfer having merely been accepted.
+     * transfer having merely been accepted. `KYC_CHECK_ORDERED` is a
+     * self-transition — the gate is asked before anything else, and the
+     * transaction stays PENDING until it answers.
      */
     expect(publisher.typesOf('published')).toEqual(['transaction.initiated.v1']);
-    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
+    expect(publisher.typesOf('sent')).toEqual(['customer.kyc.check.requested.v1']);
     expect(publisher.published[0]!.payload).toMatchObject({ status: 'PENDING' });
     expect(publisher.sent[0]!.payload).toEqual({
+      transactionId: TRANSACTION,
+      customerId: OWNER.customerId,
+    });
+
+    expect(repository.transactions.get(TRANSACTION)!.status).toBe('PENDING');
+  });
+
+  it('orders the debit once the KYC gate approves', async () => {
+    const { request, approveKyc, publisher, repository } = world();
+
+    await request.execute(transferRequest(), envelope());
+    const outcome = await approveKyc();
+
+    expect(outcome.kind).toBe('APPLIED');
+    expect(publisher.typesOf('sent')).toEqual([
+      'customer.kyc.check.requested.v1',
+      'account.debit.requested.v1',
+    ]);
+    expect(publisher.sent[1]!.payload).toEqual({
       transactionId: TRANSACTION,
       accountId: SOURCE,
       amount: quetzales(15_000),
     });
 
     expect(repository.transactions.get(TRANSACTION)!.status).toBe('DEBITING');
+  });
+
+  it('closes in FAILED, orders no debit, when the KYC gate refuses (T-31)', async () => {
+    const { request, deliver, publisher, repository } = world();
+
+    await request.execute(transferRequest(), envelope());
+    await deliver('customer.kyc.checked.v1', {
+      kind: 'KYC_REJECTED',
+      reason: 'KYC_NOT_VERIFIED',
+    });
+
+    expect(repository.transactions.get(TRANSACTION)!.status).toBe('FAILED');
+    expect(repository.transactions.get(TRANSACTION)!.failureReason).toBe('KYC_NOT_VERIFIED');
+    expect(publisher.typesOf('sent')).toEqual(['customer.kyc.check.requested.v1']);
+    expect(publisher.published.at(-1)).toEqual({
+      messageType: 'transaction.failed.v1',
+      payload: {
+        transactionId: TRANSACTION,
+        customerId: OWNER.customerId,
+        status: 'FAILED',
+        reason: 'KYC_NOT_VERIFIED',
+        failedAt: NOW.toISOString(),
+      },
+    });
   });
 
   it('keeps the correlation the Gateway originated', async () => {
@@ -151,8 +210,16 @@ describe('step 1: accepting a transfer', () => {
 });
 
 describe('a repeated idempotency key', () => {
-  /** Criterion 2: a duplicate request does not start a second Saga. */
-  it('honours the retry with the original and orders nothing again (T-3)', async () => {
+  /**
+   * Criterion 2: a duplicate request does not start a second Saga. It does,
+   * harmlessly, re-ask the still-pending KYC gate: `KYC_CHECK_ORDERED` is a
+   * self-transition, so the transaction is still `PENDING` when this second,
+   * genuinely different delivery (`messageId` `...602`) arrives, and
+   * `isPending` resumes it exactly as it would a crash. Asking a question
+   * twice produces two identical answers, never two effects — the guarantee
+   * this test actually protects is the one below: no second row.
+   */
+  it('honours the retry with the original and starts no second Saga (T-3)', async () => {
     const { request, publisher, repository } = world();
 
     await request.execute(transferRequest(), envelope());
@@ -166,8 +233,10 @@ describe('a repeated idempotency key', () => {
     expect(outcome.kind).toBe('DUPLICATE');
     expect(repository.transactions.size).toBe(1);
 
-    // Exactly what the first request produced, and nothing more.
-    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
+    expect(publisher.typesOf('sent')).toEqual([
+      'customer.kyc.check.requested.v1',
+      'customer.kyc.check.requested.v1',
+    ]);
     expect(publisher.typesOf('published')).toEqual(['transaction.initiated.v1']);
   });
 
@@ -218,11 +287,11 @@ describe('a repeated idempotency key', () => {
 describe('a transfer request that crashed before its Saga started', () => {
   /**
    * `repository.start` commits the row and publishes `transaction.initiated.v1`
-   * before `saga.execute` ever orders the debit — three steps that used to be
-   * three separate moments with nothing guaranteeing the process stayed alive
-   * between them. This reproduces the crash directly: the row exists, in
-   * `PENDING`, with no debit ever ordered — exactly what a process death right
-   * after `start` leaves behind.
+   * before `saga.execute` ever orders the KYC check — three steps that used to
+   * be three separate moments with nothing guaranteeing the process stayed
+   * alive between them. This reproduces the crash directly: the row exists, in
+   * `PENDING`, with no KYC check ever ordered — exactly what a process death
+   * right after `start` leaves behind.
    */
   const stuck = () =>
     openTransaction({
@@ -238,7 +307,7 @@ describe('a transfer request that crashed before its Saga started', () => {
       now: NOW,
     });
 
-  it('resumes the debit on the next delivery, and orders it exactly once', async () => {
+  it('resumes the KYC check on the next delivery, and orders it exactly once', async () => {
     const { request, repository, publisher } = world();
 
     await repository.start({ transaction: stuck() });
@@ -248,12 +317,13 @@ describe('a transfer request that crashed before its Saga started', () => {
     const outcome = await request.execute(transferRequest(), envelope());
 
     expect(outcome.kind).toBe('DUPLICATE');
-    expect(repository.transactions.get(TRANSACTION)!.status).toBe('DEBITING');
-    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
+    // A self-transition: the gate is asked, and nothing has answered yet.
+    expect(repository.transactions.get(TRANSACTION)!.status).toBe('PENDING');
+    expect(publisher.typesOf('sent')).toEqual(['customer.kyc.check.requested.v1']);
   });
 
   /** T-5 still holds for the resume: a second identical redelivery is a no-op. */
-  it('does not order a second debit for a further redelivery of the same message', async () => {
+  it('does not order a second KYC check for a further redelivery of the same message', async () => {
     const { request, repository, publisher } = world();
 
     await repository.start({ transaction: stuck() });
@@ -261,33 +331,41 @@ describe('a transfer request that crashed before its Saga started', () => {
     await request.execute(transferRequest(), envelope());
     await request.execute(transferRequest(), envelope()); // same messageId again
 
-    expect(repository.transactions.get(TRANSACTION)!.status).toBe('DEBITING');
-    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
+    expect(repository.transactions.get(TRANSACTION)!.status).toBe('PENDING');
+    expect(publisher.typesOf('sent')).toEqual(['customer.kyc.check.requested.v1']);
   });
 
   /**
    * The other half of the fix: a transfer that already moved on must not be
    * resumed. This is T-3's existing guarantee, restated here so the two
-   * branches of `#existing` are each demonstrated on their own.
+   * branches of `#existing` are each demonstrated on their own. "Moved on" is
+   * now the KYC gate's own answer, not the request step itself — the request
+   * step alone is a self-transition, so a redelivery that arrives before the
+   * gate answers still resumes (harmlessly, see the test above).
    */
   it('does nothing extra when the redelivery finds a transfer that already moved on', async () => {
-    const { request, publisher } = world();
+    const { request, approveKyc, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await request.execute(
       transferRequest({ transactionId: '88888888-8888-4888-8888-888888888888' }),
       envelope({ messageId: '66666666-6666-4666-8666-666666666699' }),
     );
 
-    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
+    expect(publisher.typesOf('sent')).toEqual([
+      'customer.kyc.check.requested.v1',
+      'account.debit.requested.v1',
+    ]);
   });
 });
 
 describe('the happy path, end to end', () => {
   it('produces exactly the flow docs/events/examples/happy-path.json records', async () => {
-    const { request, deliver, publisher, repository } = world();
+    const { request, approveKyc, deliver, publisher, repository } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
     await deliver(
       'payment.succeeded.v1',
@@ -304,6 +382,7 @@ describe('the happy path, end to end', () => {
       [
         'account.credit.requested.v1',
         'account.debit.requested.v1',
+        'customer.kyc.check.requested.v1',
         'payment.requested.v1',
         'transaction.completed.v1',
         'transaction.initiated.v1',
@@ -316,9 +395,10 @@ describe('the happy path, end to end', () => {
 
   /** Criterion 6: COMPLETED happens only after the credit is confirmed. */
   it('does not complete on the payment alone', async () => {
-    const { request, deliver, publisher, repository } = world();
+    const { request, approveKyc, deliver, publisher, repository } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
     await deliver('payment.succeeded.v1', { kind: 'PAYMENT_SUCCEEDED' });
 
@@ -328,9 +408,10 @@ describe('the happy path, end to end', () => {
   });
 
   it('orders the credit into the target account, not the source', async () => {
-    const { request, deliver, publisher } = world();
+    const { request, approveKyc, deliver, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
     await deliver('payment.succeeded.v1', { kind: 'PAYMENT_SUCCEEDED' });
 
@@ -348,9 +429,10 @@ describe('the happy path, end to end', () => {
    * carried, never obeyed: nothing in this service branches on the value.
    */
   it('carries the payment scenario to Payment Service untouched', async () => {
-    const { request, deliver, publisher } = world();
+    const { request, approveKyc, deliver, publisher } = world();
 
     await request.execute(transferRequest({ paymentScenario: 'REJECT' }), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
 
     const payment = publisher.sent.find((m) => m.messageType === 'payment.requested.v1');
@@ -364,9 +446,10 @@ describe('the happy path, end to end', () => {
   });
 
   it('omits the scenario entirely when nobody chose one', async () => {
-    const { request, deliver, publisher } = world();
+    const { request, approveKyc, deliver, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
 
     const payment = publisher.sent.find((m) => m.messageType === 'payment.requested.v1');
@@ -378,9 +461,10 @@ describe('the happy path, end to end', () => {
 describe('the rejected path', () => {
   /** Criterion 4: insufficient funds ends in FAILED, and no balance is touched here. */
   it('closes in FAILED and orders nothing further', async () => {
-    const { request, deliver, publisher, repository } = world();
+    const { request, approveKyc, deliver, publisher, repository } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debit.rejected.v1', {
       kind: 'DEBIT_REJECTED',
       reason: 'INSUFFICIENT_FUNDS',
@@ -389,7 +473,10 @@ describe('the rejected path', () => {
     expect(repository.transactions.get(TRANSACTION)!.status).toBe('FAILED');
     expect(repository.transactions.get(TRANSACTION)!.failureReason).toBe('INSUFFICIENT_FUNDS');
 
-    expect(publisher.typesOf('sent')).toEqual(['account.debit.requested.v1']);
+    expect(publisher.typesOf('sent')).toEqual([
+      'customer.kyc.check.requested.v1',
+      'account.debit.requested.v1',
+    ]);
     expect(publisher.published.at(-1)).toEqual({
       messageType: 'transaction.failed.v1',
       payload: {
@@ -403,9 +490,10 @@ describe('the rejected path', () => {
   });
 
   it('never orders a compensation for money that never left', async () => {
-    const { request, deliver, publisher } = world();
+    const { request, approveKyc, deliver, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debit.rejected.v1', {
       kind: 'DEBIT_REJECTED',
       reason: 'ACCOUNT_INACTIVE',
@@ -430,9 +518,10 @@ describe('the compensated path', () => {
    * was.
    */
   it('orders the compensation and closes in COMPENSATED once it is confirmed', async () => {
-    const { request, deliver, publisher, repository } = world();
+    const { request, approveKyc, deliver, publisher, repository } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
     await deliver(
       'payment.failed.v1',
@@ -481,9 +570,10 @@ describe('the compensated path', () => {
    * debit never announces `transaction.failed.v1`, whatever goes wrong after.
    */
   it('never announces FAILED once the money has moved (T-7)', async () => {
-    const { request, deliver, publisher } = world();
+    const { request, approveKyc, deliver, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
     await deliver('payment.failed.v1', { kind: 'PAYMENT_FAILED', reason: 'PAYMENT_DECLINED' });
     await deliver('account.debit.compensated.v1', { kind: 'DEBIT_COMPENSATED' });
@@ -492,9 +582,10 @@ describe('the compensated path', () => {
   });
 
   it('compensates a rejected credit by the same path', async () => {
-    const { request, deliver, publisher } = world();
+    const { request, approveKyc, deliver, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
     await deliver('payment.succeeded.v1', { kind: 'PAYMENT_SUCCEEDED' });
     await deliver('account.credit.rejected.v1', {
@@ -512,9 +603,10 @@ describe('the compensated path', () => {
 describe('events that must change nothing', () => {
   /** T-5: a redelivery produces no second transition and no second command. */
   it('applies a redelivered event exactly once', async () => {
-    const { request, deliver, publisher, repository } = world();
+    const { request, approveKyc, deliver, publisher, repository } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' }, {}, 'the-same-message');
     const second = await deliver('account.debited.v1', { kind: 'DEBITED' }, {}, 'the-same-message');
 
@@ -525,9 +617,10 @@ describe('events that must change nothing', () => {
 
   /** T-6: an out-of-order event is discarded, recorded, and changes nothing. */
   it('discards an event that has no place in the current state, and records it', async () => {
-    const { request, deliver, publisher, repository } = world();
+    const { request, approveKyc, deliver, publisher, repository } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
 
     const outcome = await deliver('account.credited.v1', { kind: 'CREDITED' });
 
@@ -552,9 +645,10 @@ describe('events that must change nothing', () => {
    * `account.credited.v1` after the transfer was already compensated.
    */
   it('refuses to complete a transfer that was already refunded', async () => {
-    const { request, deliver, publisher, repository } = world();
+    const { request, approveKyc, deliver, publisher, repository } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
     await deliver('payment.failed.v1', { kind: 'PAYMENT_FAILED', reason: 'PAYMENT_DECLINED' });
     await deliver('account.debit.compensated.v1', { kind: 'DEBIT_COMPENSATED' });
@@ -570,9 +664,10 @@ describe('events that must change nothing', () => {
 describe('recording one rung of the retry ladder', () => {
   /** Never a transition: the status the Saga sees is untouched either way. */
   it('records the attempt without moving the Saga', async () => {
-    const { request, deliver, deliverAttempt, repository } = world();
+    const { request, approveKyc, deliver, deliverAttempt, repository } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
 
     const outcome = await deliverAttempt({ attempt: 1 }, 'attempt-1');
@@ -583,9 +678,10 @@ describe('recording one rung of the retry ladder', () => {
 
   /** T-5: a redelivered attempt is not a second rung. */
   it('claims a redelivered attempt exactly once (T-5)', async () => {
-    const { request, deliver, deliverAttempt } = world();
+    const { request, approveKyc, deliver, deliverAttempt } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
 
     const first = await deliverAttempt({ attempt: 1 }, 'the-same-attempt');
@@ -625,16 +721,18 @@ describe('the status query', () => {
     expect(reply.payload).toMatchObject({
       outcome: 'FOUND',
       transactionId: TRANSACTION,
-      status: 'DEBITING',
+      // Right after acceptance, still awaiting the KYC gate's verdict (T-31).
+      status: 'PENDING',
       originCorrelationId: CORRELATION,
       reason: null,
     });
   });
 
   it('reports the payment step from its own trail', async () => {
-    const { request, deliver, status, publisher } = world();
+    const { request, approveKyc, deliver, status, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
 
     await status.execute({ transactionId: TRANSACTION }, OWNER);
@@ -680,9 +778,10 @@ describe('the status query', () => {
    * climb while the payment is still `PENDING`.
    */
   it('shows the ladder being climbed before any verdict arrives', async () => {
-    const { request, deliver, deliverAttempt, status, publisher } = world();
+    const { request, approveKyc, deliver, deliverAttempt, status, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
 
     await deliverAttempt({ attempt: 1, errorType: 'TRANSIENT' }, 'attempt-1');
@@ -705,9 +804,10 @@ describe('the status query', () => {
   });
 
   it('does not let a late attempt row regress a payment that already has a verdict', async () => {
-    const { request, deliver, deliverAttempt, status, publisher } = world();
+    const { request, approveKyc, deliver, deliverAttempt, status, publisher } = world();
 
     await request.execute(transferRequest(), envelope());
+    await approveKyc();
     await deliver('account.debited.v1', { kind: 'DEBITED' });
     await deliver(
       'payment.succeeded.v1',

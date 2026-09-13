@@ -173,15 +173,15 @@ describe('the frontend matrix agrees with the Gateway', () => {
     assert.equal(mayTakeDeposits('CLIENTE'), false);
     assert.equal(mayTakeDeposits(null), false);
 
-    // The customers controller restricts exactly four routes to staff: the general
+    // The customers controller restricts exactly five routes to staff: the general
     // directory listing, the teller's pending-validation queue, the manual identity verdict,
-    // and reading the identity document itself.
+    // the manual KYC verdict (T-31), and reading the identity document itself.
     const customers = await readFile(
       new URL('../../gateway/src/interfaces/customers.controller.ts', import.meta.url),
       'utf8',
     );
 
-    assert.equal((customers.match(/@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)/g) ?? []).length, 4);
+    assert.equal((customers.match(/@Roles\('CAJERO_RECEPTOR', 'ADMINISTRADOR'\)/g) ?? []).length, 5);
 
     // One module is restricted: Auditoría, by D-06 outright. Pagos was the
     // second until the service-payment product moved the unscoped listing

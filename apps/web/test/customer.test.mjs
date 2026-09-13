@@ -4,6 +4,7 @@ import { test, describe } from 'node:test';
 import {
   CUSTOMER_REJECTION_TEXT,
   IDENTITY_PRESENTATION,
+  KYC_PRESENTATION,
   MAX_PHOTO_BYTES,
   ageOn,
   birthDateRejection,
@@ -238,6 +239,18 @@ describe('how things are written for a person', () => {
     assert.equal(IDENTITY_PRESENTATION.PENDING.color, 'warning');
     assert.equal(IDENTITY_PRESENTATION.VALIDATED.color, 'success');
     assert.equal(IDENTITY_PRESENTATION.REJECTED.color, 'error');
+  });
+
+  /** T-31: the Fase 2 compliance verdict, distinct from the identity states above. */
+  test('the three KYC states each have a colour and an explanation', () => {
+    for (const status of ['PENDING', 'VERIFIED', 'REJECTED']) {
+      assert.ok(KYC_PRESENTATION[status].label.length > 0);
+      assert.ok(KYC_PRESENTATION[status].explanation.length > 0);
+    }
+
+    assert.equal(KYC_PRESENTATION.PENDING.color, 'warning');
+    assert.equal(KYC_PRESENTATION.VERIFIED.color, 'success');
+    assert.equal(KYC_PRESENTATION.REJECTED.color, 'error');
   });
 
   test('a DPI is grouped the way the prototype prints it', () => {

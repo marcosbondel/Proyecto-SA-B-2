@@ -161,6 +161,21 @@ const POLICY: Readonly<
     subject: 'No pudimos verificar tu identidad',
     reference: 'customerId',
   },
+  /*
+   * Added by T-31, alongside the Saga's own KYC gate: the customer whose
+   * transfer this later blocks should hear the verdict from the bank, not
+   * only discover it as a rejected transfer with no explanation.
+   */
+  'customer.kyc.verified.v1': {
+    type: 'kyc.verified',
+    subject: 'Verificamos tu identidad para operaciones (KYC)',
+    reference: 'customerId',
+  },
+  'customer.kyc.rejected.v1': {
+    type: 'kyc.rejected',
+    subject: 'No pudimos completar tu verificación de identidad (KYC)',
+    reference: 'customerId',
+  },
   'account.opened.v1': {
     type: 'account.opened',
     subject: 'Tu cuenta fue creada',

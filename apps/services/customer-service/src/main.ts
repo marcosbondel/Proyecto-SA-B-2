@@ -8,6 +8,7 @@ import { Pool } from 'pg';
 
 import { AuthenticateCustomerUseCase } from './application/authenticate-customer.use-case';
 import { ChangePasswordUseCase } from './application/change-password.use-case';
+import { CheckKycUseCase } from './application/check-kyc.use-case';
 import { ConfirmPasswordResetUseCase } from './application/confirm-password-reset.use-case';
 import { GetCustomerNamesUseCase } from './application/get-customer-names.use-case';
 import { GetCustomerStatsUseCase } from './application/get-customer-stats.use-case';
@@ -39,6 +40,7 @@ import { StructuredLogger } from './interfaces/logging';
 import {
   AuthenticateCustomerHandler,
   ChangePasswordHandler,
+  CheckKycHandler,
   ConfirmPasswordResetHandler,
   RegisterCustomerHandler,
   RequestPasswordResetHandler,
@@ -164,6 +166,7 @@ async function bootstrap(): Promise<void> {
         new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
       ),
       new SetKycStatusHandler(new SetKycStatusUseCase({ repository, publisher, clock })),
+      new CheckKycHandler(new CheckKycUseCase({ repository, publisher })),
       new AuthenticateCustomerHandler(
         new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
       ),
