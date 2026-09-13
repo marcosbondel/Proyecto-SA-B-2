@@ -28,7 +28,11 @@ export class ListAuditEventsUseCase {
     const limit = Math.min(100, Math.max(1, query.limit ?? 10));
     const offset = (page - 1) * limit;
 
-    const result = await this.#repository.listRecentEvents({ limit, offset });
+    const result = await this.#repository.listRecentEvents({
+      limit,
+      offset,
+      ...(query.severity === undefined ? {} : { severity: query.severity }),
+    });
 
     const payload: unknown = {
       events: result.events.map((event) => ({
@@ -40,6 +44,8 @@ export class ListAuditEventsUseCase {
         processingStatus: event.processingStatus,
         consumer: event.consumer,
         payload: event.payload as Record<string, unknown>,
+        /** `null` for a row recorded before T-30. See `migrations.ts`. */
+        ...(event.severity === null ? {} : { severity: event.severity }),
       })),
       total: result.total,
       page,

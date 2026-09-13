@@ -538,7 +538,8 @@ paths:
         - audit.query.replied.v1
   /api/audit/recent:
     get:
-      description: Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación.
+      description: "Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y,
+        opcionalmente, acotar por severidad (§4.1: INFO/WARNING/ERROR)."
       operationId: AuditController_recent
       parameters: []
       responses:

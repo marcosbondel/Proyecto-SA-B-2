@@ -1,3 +1,5 @@
+import type { EventSeverity } from './classification';
+
 /**
  * One message, as this service wrote it down.
  *
@@ -25,6 +27,13 @@ export interface AuditEvent {
   readonly processingStatus: AuditProcessingStatus;
   /** Which family queue delivered it. Half of the deduplication key. */
   readonly consumer: string;
+  /**
+   * §4.1's classification, computed once by `classify()` and written down
+   * rather than recomputed on read. `null` for a row written before T-30 —
+   * that is the honest answer for a row nobody classified, not a value to
+   * paper over with a default (see `migrations.ts`).
+   */
+  readonly severity: EventSeverity | null;
 }
 
 /**

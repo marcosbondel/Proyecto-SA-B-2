@@ -27,6 +27,10 @@ export const auditStatsRepliedV1 = defineContract({
     notificationsToday: z.int().nonnegative(),
     lastEventType: z.string().max(120).nullable(),
     lastEventAt: isoTimestamp.nullable(),
+    /** §4.1's classification (T-30), counted over today's rows. Additive and optional. */
+    infoToday: z.int().nonnegative().optional(),
+    warningToday: z.int().nonnegative().optional(),
+    errorToday: z.int().nonnegative().optional(),
   }),
 });
 

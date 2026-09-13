@@ -39,6 +39,9 @@ export class GetAuditStatsUseCase {
             notificationsToday: 0,
             lastEventType: null,
             lastEventAt: null,
+            infoToday: 0,
+            warningToday: 0,
+            errorToday: 0,
           };
 
     await this.#publisher.reply({

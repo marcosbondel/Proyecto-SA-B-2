@@ -214,6 +214,15 @@ export const notificationChannel = z.enum(['EMAIL']);
 export const auditProcessingStatus = z.enum(['PROCESSED', 'INVALID', 'ERROR']);
 
 /**
+ * §4.1's classification (T-30): every processable event Notification & Audit
+ * Service records gets exactly one of these, computed by that service's own
+ * `domain/classification.ts` and never by a consumer. Optional everywhere it
+ * appears on the wire — a reply that omits it still validates, because a row
+ * recorded before this axis existed has no severity to report.
+ */
+export const eventSeverity = z.enum(['INFO', 'WARNING', 'ERROR']);
+
+/**
  * The failure codes `docs/domain/entities.md` names as expected failures.
  *
  * Closed on purpose: a consumer that receives an unlisted code cannot know
@@ -292,4 +301,5 @@ export type PaymentErrorType = z.infer<typeof paymentErrorType>;
 export type NotificationStatus = z.infer<typeof notificationStatus>;
 export type NotificationChannel = z.infer<typeof notificationChannel>;
 export type AuditProcessingStatus = z.infer<typeof auditProcessingStatus>;
+export type EventSeverity = z.infer<typeof eventSeverity>;
 export type KycStatus = z.infer<typeof kycStatus>;
