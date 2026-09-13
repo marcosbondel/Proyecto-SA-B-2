@@ -34,13 +34,15 @@ set -uo pipefail
 #
 # What this proves: seven images, one network, and the assignment's flow start
 # to finish — register, activate, sign in, open two accounts, fund one through
-# the real teller-deposit route, then the Saga in all three of its shapes. One
-# transfer COMPLETES; one payment is refused on the first attempt and the Saga
-# COMPENSATES; one climbs the retry ladder to its end and COMPENSATES the same
-# way. The source balance is read before and after each, so the compensation
-# is a fact about the money, not a status somebody wrote down — and the
+# the real teller-deposit route, then the Saga's own KYC gate (T-31) refusing a
+# transfer before the customer is verified, then the Saga in all three of its
+# shapes once a teller verifies them. One transfer COMPLETES; one payment is
+# refused on the first attempt and the Saga COMPENSATES; one climbs the retry
+# ladder to its end and COMPENSATES the same way. The source balance is read
+# before and after each, so the compensation — and the KYC refusal's *lack* of
+# one — is a fact about the money, not a status somebody wrote down. The
 # seventh image, the audit trail, is read at the end to show it recorded all
-# three.
+# four.
 
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(CDPATH="" cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -195,7 +197,6 @@ echo "   200 OK — ${deposited}"
 balance="$(curl -fsS "${GATEWAY}/api/accounts/${source_account}/balance" "${auth[@]}")"
 echo "   GET /api/accounts/{id}/balance → ${balance}"
 
-step "6. a transfer that works  →  POST /api/transfers"
 transfer_of() {
   local scenario="$1"
   local body
@@ -259,6 +260,38 @@ balance_of() {
     | sed -n 's/.*"amountMinor":\([0-9-]*\).*/\1/p' | head -1
 }
 
+step "6. a transfer before KYC verification  →  the Saga's own gate refuses it (T-31)"
+# A freshly-registered customer's kycStatus is PENDING (T-26). Nothing in this
+# script has verified it yet, so the transfer Saga must refuse the transfer
+# before ordering any debit — no compensation, because no money moved.
+before="$(balance_of "$source_account")"
+gated="$(transfer_of none)"
+gated_id="$(echo "$gated" | sed -n 's/.*"transactionId":"\([^"]*\)".*/\1/p')"
+echo "   202 Accepted — transactionId ${gated_id}"
+
+state="$(settle "$gated_id")" || fail "the gated transfer never settled: ${state}"
+echo "   settled: $(transfer_status "$state")"
+echo "   ${state}"
+
+after="$(balance_of "$source_account")"
+echo "   source balance ${before} → ${after} minor units (must be unchanged)"
+[[ "$state" == *'"status":"FAILED"'* ]] || fail "expected FAILED before KYC verification, got: ${state}"
+[[ "$state" == *'"reason":"KYC_NOT_VERIFIED"'* ]] || fail "expected reason KYC_NOT_VERIFIED, got: ${state}"
+[[ "$before" -eq "$after" ]] || fail "the KYC gate let money move: ${before} → ${after}"
+echo "   refused before any debit — the source balance never moved"
+gated_correlation="$(transfer_correlation "$state")"
+
+step "7. a teller verifies the customer's KYC  →  POST /api/customers/{id}/kyc-status"
+# The same teller session step 5 already holds — no second bootstrap needed.
+kyc_verified="$(curl -fsS -X POST "${GATEWAY}/api/customers/${customer_id}/kyc-status" \
+  -H "Authorization: Bearer ${teller_token}" \
+  -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"status":"VERIFIED"}')" || fail "the KYC verdict was refused"
+echo "   202 Accepted — ${kyc_verified}"
+sleep 2
+
+step "8. a transfer that works  →  POST /api/transfers"
 before="$(balance_of "$source_account")"
 happy="$(transfer_of none)"
 happy_id="$(echo "$happy" | sed -n 's/.*"transactionId":"\([^"]*\)".*/\1/p')"
@@ -274,7 +307,7 @@ echo "   source balance ${before} → ${after} minor units"
 [[ $((before - after)) -eq 25000 ]] || fail "the debit did not stick: ${before} → ${after}"
 happy_correlation="$(transfer_correlation "$state")"
 
-step "7. a payment the provider refuses  →  the Saga compensates"
+step "9. a payment the provider refuses  →  the Saga compensates"
 # §6 paso 12 asks for failure scenarios, not only successful ones. `REJECT` is
 # a permanent refusal: no ladder, and the debit is given back.
 before="$(balance_of "$source_account")"
@@ -293,7 +326,7 @@ echo "   source balance ${before} → ${after} minor units"
 echo "   the money came back — the compensation is real, not a status"
 declined_correlation="$(transfer_correlation "$state")"
 
-step "8. a payment that keeps timing out  →  the ladder, then the compensation"
+step "10. a payment that keeps timing out  →  the ladder, then the compensation"
 # `TRANSIENT_FAILURE` fails every attempt with a retryable error. The Saga must
 # not compensate until the ladder is exhausted: a payment mid-retry may still
 # succeed, and refunding it early would be a transfer undone twice.
@@ -319,11 +352,12 @@ climbed="$(echo "$state" | sed -n 's/.*"payment":{[^}]*"attempt":\([0-9]*\).*/\1
 echo "   the provider was asked ${climbed} times before the Saga gave up"
 [[ "${climbed:-0}" -gt 1 ]] || fail "the ladder was never climbed: ${state}"
 
-step "9. the audit trail  →  the seventh image"
+step "11. the audit trail  →  the seventh image"
 # The trail is restricted to ADMINISTRADOR (D-06, TD-021), so this client
 # session cannot read it over HTTP. What it can be shown to have recorded is
 # read from the service's own log, which is where a container's evidence lives.
-for label in "the transfer that worked:${happy_correlation}" \
+for label in "the transfer refused for KYC:${gated_correlation}" \
+             "the transfer that worked:${happy_correlation}" \
              "the payment that was refused:${declined_correlation}" \
              "the payment that timed out:${flaky_correlation}"; do
   echo "   ${label%%:*}"
@@ -335,8 +369,9 @@ done
 
 echo
 echo "════════════════════════════════════════════════════════════════"
-echo " Three Sagas, seven images, one network."
+echo " Four Sagas, seven images, one network."
 echo
+echo " FAILED      — the KYC gate refused before any debit (T-31)"
 echo " COMPLETED   — debit, payment, credit"
 echo " COMPENSATED — a refusal, and the money given back"
 echo " COMPENSATED — a retry ladder climbed to its end, then the same"
@@ -345,6 +380,6 @@ echo " Every request entered through the Gateway; no service was called"
 echo " directly and no service read another's database — not even the source"
 echo " balance, which arrived through a teller's deposit (A-05), not SQL."
 echo " The balances were checked before and after each transfer, so the"
-echo " compensation is a fact about the money rather than a status somebody"
-echo " wrote down."
+echo " compensation — and the KYC refusal's lack of one — is a fact about the"
+echo " money rather than a status somebody wrote down."
 echo "════════════════════════════════════════════════════════════════"

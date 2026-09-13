@@ -5,6 +5,7 @@ import {
   accountCreateV1,
   accountSetStatusV1,
   customerSetIdentityVerdictV1,
+  customerSetKycStatusV1,
   customerUpdateV1,
   transferRequestedV1,
 } from '@bank/contracts';
@@ -37,6 +38,11 @@ export interface UpdateCustomerRequest extends CommandContext {
 export interface SetIdentityVerdictRequest extends CommandContext {
   readonly customerId: string;
   readonly verdict: 'VALIDATED' | 'REJECTED';
+}
+
+export interface SetKycStatusRequest extends CommandContext {
+  readonly customerId: string;
+  readonly status: 'VERIFIED' | 'REJECTED';
 }
 
 export interface OpenAccountRequest extends CommandContext {
@@ -100,6 +106,22 @@ export class CommandsUseCase {
     await this.#publish(
       customerSetIdentityVerdictV1,
       { customerId: request.customerId, verdict: request.verdict },
+      request,
+    );
+
+    return { correlationId: request.correlationId };
+  }
+
+  /**
+   * A teller's manual KYC verdict (T-31, §4.1 p. 4). Distinct from
+   * `setIdentityVerdict`: this is the broader compliance decision the
+   * transfer Saga's own KYC gate reads, not Fase 1's document-photo review.
+   * Authorisation is the owning service's, made from the envelope identity.
+   */
+  public async setKycStatus(request: SetKycStatusRequest): Promise<AcceptedCommand> {
+    await this.#publish(
+      customerSetKycStatusV1,
+      { customerId: request.customerId, status: request.status },
       request,
     );
 

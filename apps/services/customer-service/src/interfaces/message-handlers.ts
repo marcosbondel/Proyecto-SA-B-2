@@ -3,6 +3,7 @@ import {
   customerChangePasswordV1,
   customerGetQueryV1,
   customerIdentityDocumentQueryV1,
+  customerKycCheckRequestedV1,
   customerPasswordResetConfirmV1,
   customerPasswordResetRequestedV1,
   customerNamesQueryV1,
@@ -20,6 +21,7 @@ import type { MessageEnvelope } from '@bank/contracts';
 
 import type { AuthenticateCustomerUseCase } from '../application/authenticate-customer.use-case';
 import type { ChangePasswordUseCase } from '../application/change-password.use-case';
+import type { CheckKycUseCase } from '../application/check-kyc.use-case';
 import type { ConfirmPasswordResetUseCase } from '../application/confirm-password-reset.use-case';
 import type { GetCustomerNamesUseCase } from '../application/get-customer-names.use-case';
 import type { GetCustomerStatsUseCase } from '../application/get-customer-stats.use-case';
@@ -428,6 +430,35 @@ export class SetKycStatusHandler extends ContractHandler<
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
     await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);
+  }
+}
+
+/**
+ * The Saga's own KYC gate (T-31): "may this customer initiate a transfer at
+ * all". Ordered by Transaction Service, not gated by role here — every
+ * authenticated envelope may ask, because asking changes nothing and the
+ * refusal that matters is `mayInitiateTransactions`'s own, not a permission
+ * check on top of it.
+ */
+export class CheckKycHandler extends ContractHandler<
+  ReturnType<typeof customerKycCheckRequestedV1.schema.parse>
+> {
+  public readonly messageType = customerKycCheckRequestedV1.name;
+  readonly #useCase: CheckKycUseCase;
+
+  constructor(useCase: CheckKycUseCase) {
+    super();
+    this.#useCase = useCase;
+  }
+
+  protected parse(payload: unknown) {
+    return customerKycCheckRequestedV1.schema.parse(payload);
+  }
+
+  protected async run(
+    payload: ReturnType<typeof customerKycCheckRequestedV1.schema.parse>,
+  ): Promise<void> {
+    await this.#useCase.execute(payload);
   }
 }
 
