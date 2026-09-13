@@ -134,12 +134,15 @@ base-image bump procedure are in
 [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
 **Continuous integration runs on every `feature/*` push and every pull request
-into `develop`** (T-32): a single GitHub Actions job installs from a frozen
-lockfile and runs build, lint, typecheck, the unit suites and the contract
-suite, in that order, on `ubuntu-latest`, stopping at the first failing step.
-Neither PostgreSQL nor RabbitMQ are started, so the pipeline never runs the
-suites gated `describe.skip` on `DATABASE_URL`/`RABBITMQ_URL` — that gap is
-TD-069. Details in [docs/operations/CI.md](docs/operations/CI.md).
+into `develop`** (T-32), as three separate GitHub Actions jobs mirroring the
+assignment's three named phases: `build` (`pnpm build`), `test` (`pnpm test`,
+`pnpm test:contract`) and `validate` (the tracked-`.env` guard, `pnpm lint`,
+`pnpm typecheck`). `test` and `validate` depend on `build`, so a failure there
+stops both; `validate` does not run on a pull request into `develop` — only
+Build and Test repeat there, per the assignment. Neither PostgreSQL nor
+RabbitMQ are started, so the pipeline never runs the suites gated
+`describe.skip` on `DATABASE_URL`/`RABBITMQ_URL` — that gap is TD-069. Details
+in [docs/operations/CI.md](docs/operations/CI.md).
 
 ## Project Documentation
 

@@ -9,9 +9,9 @@ pull request into `develop`. Built by **T-32**. Defined in
 
 | Event | Branches | Runs |
 | --- | --- | --- |
-| `push` | `feature/**` | The `verify` job |
-| `pull_request` | target `develop` | The `verify` job |
-| `workflow_dispatch` | any | The `verify` job, manually |
+| `push` | `feature/**` | `build` → `test` and `build` → `validate` |
+| `pull_request` | target `develop` | `build` → `test` only |
+| `workflow_dispatch` | any | `build` → `test` and `build` → `validate` |
 
 A push to `main`, `develop` itself, or any other branch does not trigger the
 workflow — those are integration or release branches, not where a contributor
@@ -19,32 +19,68 @@ lands unreviewed commits. `concurrency` cancels an in-flight run for the same
 ref when a new push arrives, so a rapid sequence of fixups does not queue
 redundant runs.
 
-## The `verify` job
+## The three phases
 
-One job, `ubuntu-latest`, one step per stage, run in the order below. GitHub
-Actions stops the job at the first step that exits non-zero — every stage is
-blocking, which is what the ticket's "detener el pipeline ante cualquier
-fallo" requires.
+The assignment statement (`docs/references/780_Proyecto_2_2S2026.pdf`,
+"Flujo de Integración y Despliegue Continuo") names three **Fases
+obligatorias** — Build, Test, Validación — and requires a pull request into
+`develop` to repeat only Build and Test. The pipeline mirrors that literally:
+each phase is its own GitHub Actions **job**, not a step folded into a bigger
+one, so the three appear as separate, independently pass/fail entries in the
+checks list and none can be skipped without being visible as skipped.
+
+`test` and `validate` both declare `needs: build` — if `build` fails, GitHub
+Actions skips both automatically, which is what "detener el pipeline ante
+cualquier fallo" and "no se permite omitir etapas del pipeline" require: a
+failure stops everything downstream rather than continuing partially.
+
+### Fase 1 — Build (`build`)
+
+| Step | Command | What it verifies | A failure means |
+| --- | --- | --- | --- |
+| Install | `pnpm install --frozen-lockfile` | The lockfile matches every `package.json`; the workspace installs from a clean checkout | `pnpm-lock.yaml` is stale — regenerate it locally and commit it |
+| Build | `pnpm build` | The seven applications and the shared packages compile, `@bank/contracts` before `@bank/messaging` before anything that imports them | A TypeScript or bundler error |
+
+The job's last step saves Turborepo's local cache (`.turbo/`) as a GitHub
+Actions cache keyed on the commit SHA. `test` and `validate` restore it before
+running, so Turborepo reports a cache hit for the `build` task they both
+depend on (`^build`) instead of recompiling on a second, unrelated runner —
+the same "do not recompile what did not change" guarantee `turbo run build
+--force` bypasses locally, applied across jobs.
+
+### Fase 2 — Test (`test`)
+
+| Step | Command | What it verifies | A failure means |
+| --- | --- | --- | --- |
+| Test | `pnpm test` | The unit suites for every application and package | A unit test regressed |
+| Contract tests | `pnpm test:contract` | `@bank/contracts`'s own Jest suite | A shared contract broke |
+
+Runs on both triggers: a `feature/**` push and a pull request into `develop`,
+exactly the two points the assignment names for this phase.
+
+### Fase 3 — Validación (`validate`)
 
 | Step | Command | What it verifies | A failure means |
 | --- | --- | --- | --- |
 | No tracked `.env` files | `git ls-files` guard | No secret-bearing file was committed | A credential or config file was added by mistake; remove it and use `.env.example` instead |
-| Install | `pnpm install --frozen-lockfile` | The lockfile matches every `package.json`; the workspace installs from a clean checkout | `pnpm-lock.yaml` is stale — regenerate it locally and commit it |
-| Build | `pnpm build` | The seven applications and the shared packages compile, `@bank/contracts` before `@bank/messaging` before anything that imports them | A TypeScript or bundler error |
 | Lint | `pnpm lint` | Style **and** the architectural isolation rules in `apps/packages/tooling/eslint.base.mjs` (no cross-service import, no framework import in `domain`, no `infrastructure` import in `application`) | A style violation or an architecture boundary was crossed |
 | Typecheck | `pnpm typecheck` | `tsc --noEmit` across every workspace | A type error `lint` did not already catch |
-| Test | `pnpm test` | The unit suites for every application and package | A unit test regressed |
-| Contract tests | `pnpm test:contract` | `@bank/contracts`'s own Jest suite | A shared contract broke |
 
-Build runs before lint/typecheck/test on purpose: all three already depend on
-`^build` through Turborepo, so a compilation error is reported by the step
-named "Build" instead of surfacing inside whichever verification step happens
-to trigger the rebuild first.
+This is the phase the assignment describes only as "verificación básica del
+sistema (ejecución o sanity check)": with no running system to smoke-test at
+this stage (building and deploying Docker images is T-33's job, not a pull
+request's), the sanity check this pipeline can perform is static — no secret
+committed, no architectural boundary crossed, no type error — which is what
+`git diff`/review cannot catch as reliably as a machine can.
+
+`validate` carries `if: github.event_name != 'pull_request'`, so it does not
+run on a pull request into `develop` — the assignment and the ticket only ask
+that moment to repeat Build and Test.
 
 Node and pnpm versions are read from `.nvmrc` and the `packageManager` field
-in the root `package.json` — nothing in the workflow pins a version
-separately, so bumping either file is the only change a toolchain upgrade
-needs.
+in the root `package.json` in every job — nothing in the workflow pins a
+version separately, so bumping either file is the only change a toolchain
+upgrade needs.
 
 ## Why `pnpm format:check` is not a step
 
@@ -99,15 +135,22 @@ that can leak into a log line. If a future step genuinely needs one:
 
 ## Reproducing it locally
 
-The same commands, from a clean checkout, in the same order:
+The same commands, from a clean checkout, grouped by the phase that runs
+them:
 
 ```bash
 pnpm install --frozen-lockfile
+
+# Fase 1 — Build
 pnpm build
-pnpm lint
-pnpm typecheck
+
+# Fase 2 — Test
 pnpm test
 pnpm test:contract
+
+# Fase 3 — Validación (skip these two if only reproducing a pull-request run)
+pnpm lint
+pnpm typecheck
 ```
 
 To also exercise the suites the pipeline skips, follow the "Check the ports
