@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  TURBO_TELEMETRY_DISABLED: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  verify:
+    name: Build, lint, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Guards against a tracked .env slipping into the repository, since a
+      # value like that would otherwise land in the workspace this job checks
+      # out and could be echoed by an unrelated step. Only *.env.example is
+      # meant to be tracked (see .gitignore).
+      - name: No tracked .env files
+        run: |
+          tracked_env_files=$(git ls-files -- '*.env' ':!:*.env.example')
+          if [ -n "$tracked_env_files" ]; then
+            echo "::error::Tracked .env file(s) found — secrets must never be committed:"
+            echo "$tracked_env_files"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Ordered so a compilation failure surfaces here rather than inside the
+      # lint/typecheck/test steps that also depend on ^build.
+      - name: Build
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Contract tests
+        run: pnpm test:contract

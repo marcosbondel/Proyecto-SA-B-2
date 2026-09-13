@@ -144,6 +144,16 @@ images end to end. The inventory, the required variables per component and the
 base-image bump procedure are in
 [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
+**Continuous integration runs on every `feature/*` push and every pull request
+into `develop`** (T-32): a single GitHub Actions job installs from a frozen
+lockfile and runs build, lint, typecheck, the unit suites and the contract
+suite, in that order, on `ubuntu-latest`. Any failing step stops the job.
+Neither PostgreSQL nor RabbitMQ are started, so the pipeline never runs the
+suites `describe.skip` gates on `DATABASE_URL`/`RABBITMQ_URL` — the gap is
+tracked as TD-069. `pnpm format:check` is left out for the same reason
+`docs/operations/CI.md` records: the Helm templates under `infra/k8s/` are Go
+template syntax that is not valid YAML, which Prettier rejects today.
+
 ## Project Documentation
 
 Read [docs/DESIGN.md](docs/DESIGN.md) before creating or modifying any
@@ -152,7 +162,9 @@ and must not be removed by a documentation change without an explicit team
 decision. Read [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md) before
 changing a Dockerfile, adding a variable a container needs at run time, or
 touching a health check: it is the image inventory and the contract T-22 builds
-the Helm chart against.
+the Helm chart against. Read
+[docs/operations/CI.md](docs/operations/CI.md) before changing
+`.github/workflows/ci.yml` or any script it calls.
 
 **Start at [docs/README.md](docs/README.md)** — it lists every document in
 `docs/` by what it answers, which is the fastest way to find the right one.

@@ -32,6 +32,8 @@ and the headers a parked message carries. It lives in
   it, how to run the Saga against it, and what each failure mode looks like.
 - [CONTAINERS.md](CONTAINERS.md) — the image inventory: one row per component
   with its Dockerfile, port, health checks and required runtime variables.
+- [CI.md](CI.md) — the GitHub Actions pipeline: what triggers it, what each
+  stage verifies, and what a green run does not prove.
 - [EMAIL_RESEND.md](EMAIL_RESEND.md) — sending real activation email instead of
   the simulated channel.
 
