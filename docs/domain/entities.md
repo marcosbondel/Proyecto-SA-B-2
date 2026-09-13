@@ -74,7 +74,7 @@ the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may b
 | C-5 | The date of birth is coherent — in the past, and plausible for a living person | `INVALID_BIRTH_DATE` — rejected |
 | C-6 | Only `role = CLIENTE` requires identity validation and may hold accounts | `ROLE_NOT_ELIGIBLE` when opening an account for staff |
 | C-7 | Verifying a token that is expired, already used or invalidated changes no state | `ACTIVATION_TOKEN_INVALID` — rejected with no effect |
-| C-8 | A `CLIENTE` may initiate a transaction only when `kycStatus = VERIFIED` (Fase 2, §4.1 p. 4) | `mayInitiateTransactions` refuses; enforcing this inside the transfer Saga is **T-31**, which consumes `customer.kyc.verified.v1` / `customer.kyc.rejected.v1` rather than querying this service's table (X-1) |
+| C-8 | A `CLIENTE` may initiate a transaction only when `kycStatus = VERIFIED` (Fase 2, §4.1 p. 4) | `mayInitiateTransactions` decides it; enforced inside the transfer Saga since **T-31**, which asks over the broker (`customer.kyc.check.requested.v1` / `customer.kyc.checked.v1`) rather than querying this service's table (X-1) |
 
 ---
 
@@ -197,7 +197,9 @@ case, a transfer failing at the last step for a reason the sender can neither kn
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING
-    PENDING --> DEBITING
+    PENDING --> PENDING: KYC check ordered (T-31)
+    PENDING --> FAILED: KYC gate refused (nothing to undo)
+    PENDING --> DEBITING: KYC gate approved
     DEBITING --> FAILED: Debit rejected (nothing to undo)
     DEBITING --> PAYMENT_PENDING: Debit applied
     PAYMENT_PENDING --> COMPLETED: Credit applied
@@ -209,7 +211,8 @@ stateDiagram-v2
 
 
 `COMPLETED`, `FAILED` and `COMPENSATED` are terminal. Any transition not drawn above is illegal
-and is discarded.
+and is discarded. `FAILED` is reachable from two places, both before any money moves: a KYC
+refusal (T-31) and a rejected debit.
 
 **`FAILED` and `COMPENSATED` are not the same thing.** `FAILED` means money never left the
 source account. `COMPENSATED` means it left and was returned. They are two different

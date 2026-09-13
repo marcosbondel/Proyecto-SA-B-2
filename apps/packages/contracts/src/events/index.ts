@@ -39,6 +39,8 @@ import { customerIdentityValidatedV1 } from './customer/customer.identity.valida
 import { customerSetKycStatusV1 } from './customer/customer.set-kyc-status.v1';
 import { customerKycRejectedV1 } from './customer/customer.kyc.rejected.v1';
 import { customerKycVerifiedV1 } from './customer/customer.kyc.verified.v1';
+import { customerKycCheckRequestedV1 } from './customer/customer.kyc.check.requested.v1';
+import { customerKycCheckedV1 } from './customer/customer.kyc.checked.v1';
 import { customerLoginRejectedV1 } from './customer/customer.login.rejected.v1';
 import { customerLoginSucceededV1 } from './customer/customer.login.succeeded.v1';
 import { customerRegisterRejectedV1 } from './customer/customer.register.rejected.v1';
@@ -134,6 +136,8 @@ export * from './customer/customer.identity.validated.v1';
 export * from './customer/customer.set-kyc-status.v1';
 export * from './customer/customer.kyc.rejected.v1';
 export * from './customer/customer.kyc.verified.v1';
+export * from './customer/customer.kyc.check.requested.v1';
+export * from './customer/customer.kyc.checked.v1';
 export * from './customer/customer.login.rejected.v1';
 export * from './customer/customer.login.succeeded.v1';
 export * from './customer/customer.register.rejected.v1';
@@ -254,6 +258,8 @@ export const catalog: readonly MessageContract[] = [
   customerSetKycStatusV1,
   customerKycRejectedV1,
   customerKycVerifiedV1,
+  customerKycCheckRequestedV1,
+  customerKycCheckedV1,
   customerVerifyEmailV1,
   accountBalanceQueryV1,
   accountBalanceRepliedV1,

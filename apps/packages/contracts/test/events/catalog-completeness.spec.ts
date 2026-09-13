@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(101);
+    expect(catalog).toHaveLength(103);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -170,6 +170,15 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        * which are Fase 1's document-photo review: these carry the broader KYC
        * verdict that gates initiating a transaction (C-8).
        */
+      /*
+       * Added by T-31: the Saga's own KYC gate. `check.requested` is
+       * Transaction Service ordering the question the same way it orders a
+       * debit; `checked` is Customer Service's answer, routed back onto
+       * `transaction.saga` rather than a Gateway reply queue, because nobody
+       * is waiting on an HTTP connection for it.
+       */
+      'customer.kyc.check.requested.v1',
+      'customer.kyc.checked.v1',
       'customer.kyc.rejected.v1',
       'customer.kyc.verified.v1',
       'customer.list.query.v1',

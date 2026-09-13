@@ -173,9 +173,8 @@ initiating a transaction).
 | event | `customer.kyc.rejected` | The verdict was `REJECTED`. `REJECTED → PENDING` remains legal, unlike `VERIFIED` |
 
 Enforcing "a non-verified `CLIENTE` may not initiate a transaction" inside the live transfer Saga
-is **T-31**'s job — it consumes these events (or asks by request/reply) rather than Transaction
-Service querying this service's table (X-1). T-26 owns the state, the transitions, the
-persistence and the events only.
+was **T-31**'s job — the two messages it added are documented below. T-26 owns the state, the
+transitions, the persistence and the three events above only.
 
 The payload of all three lives in [`../events/catalog.md`](../events/catalog.md#register-a-kyc-verdict-fase-2-t-26).
 
@@ -205,6 +204,24 @@ entirely inside the service the assignment names for them (§4.1, p. 6), same as
 account invariants.
 
 The payload lives in [`../events/catalog.md`](../events/catalog.md#the-ahorro-commission-fase-2-t-27).
+
+## Fase 2 extension: the transfer Saga's KYC gate (T-31)
+
+T-26 built the KYC verdict; nothing enforced it inside the flow the assignment actually grades
+until this ticket. The Saga now asks the question as its own first step, over the broker rather
+than a shared table (X-1) — Transaction Service names the customer, Customer Service answers.
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| command | `customer.kyc.check.requested` | **Added by T-31.** Transaction Service asks whether the customer who requested this transfer may initiate one at all, before ordering any debit |
+| event | `customer.kyc.checked` | Customer Service's answer. Carries `allowed` explicitly — derived from `mayInitiateTransactions`, never re-derived by the consumer from `kycStatus` alone — so the verdict cannot drift from the rule that decided it |
+
+One failure code was added with it: `KYC_NOT_VERIFIED`, the reason `transaction.failed.v1` and
+`account.open.rejected`'s sibling `transaction.status.replied` carry when the gate refuses. The
+money never left, exactly like `SAME_ACCOUNT_TRANSFER` and `IDEMPOTENCY_KEY_CONFLICT` — none of
+the three ever reaches `DEBITING`.
+
+The payload of both lives in [`../events/catalog.md`](../events/catalog.md#the-transfer-sagas-kyc-gate-t-31).
 
 ---
 

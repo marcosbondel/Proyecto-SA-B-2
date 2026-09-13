@@ -83,9 +83,9 @@ describeIntegration('PostgresTransactionRepository', () => {
     const advanced = await repository.applyEvent({
       transactionId: transaction.transactionId,
       messageId: randomUUID(),
-      messageType: 'transfer.requested.v1',
+      messageType: 'customer.kyc.checked.v1',
       payload: {},
-      decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+      decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
       now: NOW,
     });
 
@@ -402,7 +402,7 @@ describeIntegration('PostgresTransactionRepository', () => {
 
   describe('the transactional outbox (TD-031)', () => {
     /**
-     * The debit command a `DEBIT_ORDERED` transition implies, shaped exactly as
+     * The debit command a `KYC_APPROVED` transition implies, shaped exactly as
      * the Saga builds it: the whole envelope, on the commands exchange, ready to
      * be republished byte-for-byte.
      */
@@ -434,7 +434,7 @@ describeIntegration('PostgresTransactionRepository', () => {
         messageId,
         messageType: 'transfer.requested.v1',
         payload: {},
-        decide: (found: Transaction): Transition => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+        decide: (found: Transaction): Transition => applyEvent(found, { kind: 'KYC_APPROVED' }),
         outbound: (transaction) => debitOutbound(transaction),
         now: NOW,
       });
@@ -693,8 +693,8 @@ describeIntegration('PostgresTransactionRepository', () => {
   describe('resuming a transfer that crashed before its Saga started', () => {
     /**
      * Reproduces the crash directly against a real lock: `start` committed the
-     * row, and nothing ever called `applyEvent` for `DEBIT_ORDERED` — exactly
-     * what a process death between the two leaves behind.
+     * row, and nothing ever called `applyEvent` for `KYC_CHECK_ORDERED` —
+     * exactly what a process death between the two leaves behind.
      */
     async function crashed(): Promise<Transaction> {
       const { transaction } = await repository.start({ transaction: candidate() });
@@ -702,7 +702,7 @@ describeIntegration('PostgresTransactionRepository', () => {
       return transaction;
     }
 
-    it('lets the first resume order the debit', async () => {
+    it('lets the first resume order the KYC check', async () => {
       const transaction = await crashed();
 
       const outcome = await repository.applyEvent({
@@ -710,7 +710,7 @@ describeIntegration('PostgresTransactionRepository', () => {
         messageId: randomUUID(),
         messageType: 'transfer.requested.v1',
         payload: {},
-        decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+        decide: (found) => applyEvent(found, { kind: 'KYC_CHECK_ORDERED' }),
         now: NOW,
       });
 
@@ -718,7 +718,8 @@ describeIntegration('PostgresTransactionRepository', () => {
 
       const stored = await repository.findById(transaction.transactionId);
 
-      expect(stored!.status).toBe('DEBITING');
+      // A self-transition: the gate is asked, but nothing has answered yet.
+      expect(stored!.status).toBe('PENDING');
     });
 
     /**
@@ -736,7 +737,7 @@ describeIntegration('PostgresTransactionRepository', () => {
           messageId,
           messageType: 'transfer.requested.v1',
           payload: {},
-          decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+          decide: (found) => applyEvent(found, { kind: 'KYC_CHECK_ORDERED' }),
           now: NOW,
         });
 
@@ -748,15 +749,14 @@ describeIntegration('PostgresTransactionRepository', () => {
     });
 
     /**
-     * The edge case this fix's safety argument rests on: two *different*
-     * deliveries (different `messageId`s, as two genuinely concurrent
-     * redeliveries would be) racing to resume the same transfer. The row lock
-     * serialises them, and the domain's own `PENDING`-only guard on
-     * `DEBIT_ORDERED` — not the `messageId` dedup — is what stops the second
-     * one from ordering a second debit: it finds the row already `DEBITING`
-     * and is refused as `ILLEGAL`, discarded and recorded, never applied.
+     * Two *different* deliveries (different `messageId`s) racing to resume the
+     * same transfer both succeed here, and that is correct rather than a gap:
+     * `KYC_CHECK_ORDERED` is a self-transition that asks a question, not one
+     * that moves money, so asking it twice produces two identical questions
+     * rather than two effects. The guard that matters — never ordering a
+     * second debit — lives one step later, on the gate's answer.
      */
-    it('refuses a second debit even when two different deliveries race the resume', async () => {
+    it('lets two different deliveries both re-ask the KYC gate harmlessly', async () => {
       const transaction = await crashed();
 
       const [first, second] = await Promise.all([
@@ -765,7 +765,7 @@ describeIntegration('PostgresTransactionRepository', () => {
           messageId: randomUUID(),
           messageType: 'transfer.requested.v1',
           payload: {},
-          decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+          decide: (found) => applyEvent(found, { kind: 'KYC_CHECK_ORDERED' }),
           now: NOW,
         }),
         repository.applyEvent({
@@ -773,7 +773,43 @@ describeIntegration('PostgresTransactionRepository', () => {
           messageId: randomUUID(),
           messageType: 'transfer.requested.v1',
           payload: {},
-          decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+          decide: (found) => applyEvent(found, { kind: 'KYC_CHECK_ORDERED' }),
+          now: NOW,
+        }),
+      ]);
+
+      const kinds = [first.kind, second.kind].sort();
+
+      expect(kinds).toEqual(['APPLIED', 'APPLIED']);
+    });
+
+    /**
+     * The edge case the old debit-ordering guard used to cover, now one step
+     * later: two different deliveries of the gate's own answer racing to move
+     * the same transfer out of `PENDING`. The row lock serialises them, and
+     * the domain's own `PENDING`-only guard on `KYC_APPROVED` — not the
+     * `messageId` dedup — is what stops the second one from ordering a second
+     * debit: it finds the row already `DEBITING` and is refused as `ILLEGAL`,
+     * discarded and recorded, never applied.
+     */
+    it('refuses a second debit even when two different KYC verdicts race the resume', async () => {
+      const transaction = await crashed();
+
+      const [first, second] = await Promise.all([
+        repository.applyEvent({
+          transactionId: transaction.transactionId,
+          messageId: randomUUID(),
+          messageType: 'customer.kyc.checked.v1',
+          payload: {},
+          decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
+          now: NOW,
+        }),
+        repository.applyEvent({
+          transactionId: transaction.transactionId,
+          messageId: randomUUID(),
+          messageType: 'customer.kyc.checked.v1',
+          payload: {},
+          decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
           now: NOW,
         }),
       ]);
@@ -981,9 +1017,9 @@ describeIntegration('PostgresTransactionRepository', () => {
       const outcome = await repository.applyEvent({
         transactionId: transaction.transactionId,
         messageId: randomUUID(),
-        messageType: 'transfer.requested.v1',
+        messageType: 'customer.kyc.checked.v1',
         payload: {},
-        decide: (found) => applyEvent(found, { kind: 'DEBIT_ORDERED' }),
+        decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
         now: createdAt,
       });
 

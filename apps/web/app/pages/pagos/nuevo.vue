@@ -35,6 +35,32 @@ import type { PaymentScenario } from '../../lib/transaction';
  * never from the external-payment screen the ticket is actually about.
  */
 const api = useGatewayApi();
+const { role, session } = useSession();
+
+/**
+ * A courtesy warning, not the rule itself (T-31) — see the identical notice in
+ * `TransactionTransferForm`. A service payment is a transfer, so it goes
+ * through the same KYC gate; staff are never gated by it.
+ */
+const ownKycStatus = ref<'PENDING' | 'VERIFIED' | 'REJECTED' | null>(null);
+
+async function loadOwnKyc(): Promise<void> {
+  if (role.value === null || role.value !== 'CLIENTE' || session.value === null) {
+    return;
+  }
+
+  const result = await api.call<{ kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' }>(
+    `/api/customers/${session.value.customerId}`,
+  );
+
+  if (result.ok) {
+    ownKycStatus.value = result.data.kycStatus;
+  }
+}
+
+const kycBlocksSubmission = computed(
+  () => ownKycStatus.value !== null && ownKycStatus.value !== 'VERIFIED',
+);
 
 /**
  * Format holder name to show first name and primary surname.
@@ -85,6 +111,7 @@ async function load(): Promise<void> {
 }
 
 onMounted(load);
+onMounted(loadOwnKyc);
 
 function describe(account: AccountSummary): string {
   const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
@@ -209,6 +236,15 @@ useHead({ title: 'Nuevo pago · bonking' });
     <div v-else class="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr]">
       <UCard>
         <form class="flex flex-col gap-5" @submit.prevent="send">
+          <UAlert
+            v-if="kycBlocksSubmission"
+            color="warning"
+            variant="subtle"
+            title="Verificación de cumplimiento (KYC) pendiente"
+            description="Un cajero receptor debe verificar tu identidad para cumplimiento antes de que puedas pagar. Puedes revisar el formulario, pero el envío se rechazará mientras tanto."
+            data-testid="payment-kyc-blocked"
+          />
+
           <UFormField label="Cuenta origen" name="sourceAccount">
             <USelectMenu
               v-model="sourceAccount"

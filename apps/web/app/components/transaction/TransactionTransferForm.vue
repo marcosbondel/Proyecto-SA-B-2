@@ -49,8 +49,35 @@ import { formatQuetzales } from '../../lib/money';
  * money from needs to see it; it is not consulted to block the send.
  */
 const api = useGatewayApi();
-const { role } = useSession();
+const { role, session } = useSession();
 const isStaff = computed(() => role.value !== null && role.value !== 'CLIENTE');
+
+/**
+ * A courtesy warning, not the rule itself (T-31). The Saga's own KYC gate is
+ * what actually refuses an unverified client's transfer — this only saves
+ * that client the round trip of finding out from a failed transfer instead.
+ * Staff are never gated by this rule (`mayInitiateTransactions`), so this is
+ * skipped for them entirely.
+ */
+const ownKycStatus = ref<'PENDING' | 'VERIFIED' | 'REJECTED' | null>(null);
+
+async function loadOwnKyc(): Promise<void> {
+  if (isStaff.value || session.value === null) {
+    return;
+  }
+
+  const result = await api.call<{ kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' }>(
+    `/api/customers/${session.value.customerId}`,
+  );
+
+  if (result.ok) {
+    ownKycStatus.value = result.data.kycStatus;
+  }
+}
+
+const kycBlocksSubmission = computed(
+  () => ownKycStatus.value !== null && ownKycStatus.value !== 'VERIFIED',
+);
 
 /**
  * Format holder name to show first name and primary surname (e.g. 'Marco López').
@@ -116,6 +143,7 @@ async function load(): Promise<void> {
 }
 
 onMounted(load);
+onMounted(loadOwnKyc);
 
 const source = computed(
   () => accounts.value.find((account) => account.accountId === sourceAccount.value) ?? null,
@@ -318,6 +346,15 @@ async function submit(): Promise<void> {
 
     <!-- Paso 1: los datos. -->
     <form v-else-if="step === 'FORM'" class="flex flex-col gap-5" @submit.prevent="review">
+      <UAlert
+        v-if="kycBlocksSubmission"
+        color="warning"
+        variant="subtle"
+        title="Verificación de cumplimiento (KYC) pendiente"
+        description="Un cajero receptor debe verificar tu identidad para cumplimiento antes de que puedas transferir. Puedes revisar el formulario, pero el envío se rechazará mientras tanto."
+        data-testid="transfer-kyc-blocked"
+      />
+
       <UFormField
         label="Cuenta de origen"
         name="sourceAccount"

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { CustomerRegisterV1 } from '@bank/contracts';
 
 import { AuthenticateCustomerUseCase } from '../src/application/authenticate-customer.use-case';
+import { CheckKycUseCase } from '../src/application/check-kyc.use-case';
 import { GetCustomerUseCase } from '../src/application/get-customer.use-case';
 import { GetIdentityDocumentUseCase } from '../src/application/get-identity-document.use-case';
 import { GetPendingValidationUseCase } from '../src/application/get-pending-validation.use-case';
@@ -82,6 +83,7 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
     getIdentityDocument: new GetIdentityDocumentUseCase({ repository, publisher, stager }),
     setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
     setKycStatus: new SetKycStatusUseCase({ repository, publisher, clock }),
+    checkKyc: new CheckKycUseCase({ repository, publisher }),
     pending: new GetPendingValidationUseCase({ repository, publisher }),
     authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
     verifyEmail: new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
@@ -908,5 +910,135 @@ describe('the teller registers a KYC verdict (Fase 2, T-26)', () => {
 
     expect(context.publisher.published.length).toBe(afterVerified);
     expect(context.repository.customers.get(REGISTER.customerId)!.kycStatus).toBe('VERIFIED');
+  });
+});
+
+describe('the Saga asks the KYC gate (T-31)', () => {
+  const TRANSACTION_ID = '99999999-9999-4999-8999-999999999901';
+
+  it('allows a verified customer', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'VERIFIED' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-kyc-1',
+    );
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toEqual({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+      kycStatus: 'VERIFIED',
+      allowed: true,
+    });
+  });
+
+  it('refuses a customer still PENDING, without touching anything', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toEqual({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+      kycStatus: 'PENDING',
+      allowed: false,
+    });
+  });
+
+  it('refuses a customer whose KYC was rejected', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'REJECTED' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-kyc-1',
+    );
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toMatchObject({
+      kycStatus: 'REJECTED',
+      allowed: false,
+    });
+  });
+
+  /**
+   * Staff never opens an account and is never gated by this rule
+   * (`mayInitiateTransactions`) — the same exemption `setKycStatus`'s own
+   * tests exercise from the other side.
+   */
+  it('always allows staff, whatever their KYC status', async () => {
+    const context = build();
+    const staff = {
+      customerId: '33333333-3333-4333-8333-333333333301',
+      fullName: 'Un Cajero',
+      identityDocument: '9999999990101',
+      email: 'cajero@bank.test',
+      dateOfBirth: '1990-01-01',
+      address: 'la sucursal',
+      role: 'CAJERO_RECEPTOR' as const,
+      credential: 'una-clave-larga',
+      photo: null,
+    };
+    await context.register.execute(staff, 'key-staff', {
+      role: 'ADMINISTRADOR',
+      customerId: '44444444-4444-4444-8444-444444444401',
+    });
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: staff.customerId,
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toMatchObject({
+      allowed: true,
+    });
+  });
+
+  it('answers allowed: false for a customer id that names nobody', async () => {
+    const context = build();
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: '00000000-0000-4000-8000-000000000000',
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toEqual({
+      transactionId: TRANSACTION_ID,
+      customerId: '00000000-0000-4000-8000-000000000000',
+      kycStatus: 'PENDING',
+      allowed: false,
+    });
+  });
+
+  it('answers again on a redelivery, since a question changes nothing', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+
+    expect(
+      context.publisher.published.filter((m) => m.messageType === 'customer.kyc.checked.v1'),
+    ).toHaveLength(2);
   });
 });

@@ -282,6 +282,14 @@ export const failureCode = z.enum([
   'SAME_ACCOUNT_TRANSFER',
   'IDEMPOTENCY_KEY_CONFLICT',
   'ILLEGAL_TRANSITION',
+  /*
+   * Added by T-31. The Saga's own KYC gate (§4.1 p. 4: "Validar que solo
+   * clientes verificados puedan realizar transacciones"), decided from
+   * `customer.kyc.checked.v1` rather than from a status read off another
+   * service's table (X-1). Distinct from every account-side rejection: the
+   * money never left because the transfer was never allowed to start.
+   */
+  'KYC_NOT_VERIFIED',
   // Payment
   'PAYMENT_DECLINED',
   'PAYMENT_RETRIES_EXHAUSTED',

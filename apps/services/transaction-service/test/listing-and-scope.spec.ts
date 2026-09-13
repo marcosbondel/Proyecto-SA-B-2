@@ -248,9 +248,10 @@ describe('reading one transfer', () => {
     };
 
     /**
-     * Two rows: the opening one `start()` writes, and the `DEBIT_ORDERED`
-     * self-service takes in the same call that accepted the request — the one
-     * transition with no message of its own (see `saga-transfer.md`).
+     * Two rows: the opening one `start()` writes, and the `KYC_CHECK_ORDERED`
+     * self-transition takes in the same call that accepted the request — the
+     * one transition with no message of its own (see `saga-transfer.md`). It
+     * stays `PENDING`: the gate's own verdict has not arrived in this test.
      */
     expect(found.transitions).toEqual([
       {
@@ -262,7 +263,7 @@ describe('reading one transfer', () => {
       },
       {
         from: 'PENDING',
-        to: 'DEBITING',
+        to: 'PENDING',
         event: 'transfer.requested.v1',
         reason: null,
         occurredAt: expect.any(String),
@@ -277,7 +278,8 @@ describe('reading one transfer', () => {
     await context.status.execute({ transactionId: id }, OWNER);
     const found = context.publisher.replies.at(-1)!.payload as { phaseStatus: string };
 
-    // DEBITING (the status right after acceptance) is still the PENDING phase.
+    // PENDING (the status right after acceptance, awaiting the KYC verdict)
+    // is, unsurprisingly, the PENDING phase.
     expect(found.phaseStatus).toBe('PENDING');
   });
 });
@@ -316,17 +318,18 @@ describe('filtering the history by date and phase (T-28)', () => {
 
   /**
    * `transferBy` runs the request through `RequestTransferUseCase`, which
-   * orders `DEBIT_ORDERED` in the same call that accepts the request — so by
-   * the time the row exists it already reads `DEBITING`, not `PENDING`. Both
-   * are the `PENDING` phase (see `phase-status.ts`), which is what these
-   * tests filter by.
+   * orders `KYC_CHECK_ORDERED` in the same call that accepts the request — a
+   * self-transition, so by the time the row exists it still reads `PENDING`,
+   * with nobody's verdict having arrived in this test. `PENDING` is the
+   * `PENDING` phase (see `phase-status.ts`), which is what these tests filter
+   * by.
    */
   it('filters by status alone, unaffected by date', async () => {
     const context = world();
     await transferOn(context, OWNER, '01', EARLY);
     await transferOn(context, OWNER, '02', LATE);
 
-    await context.list.execute({ status: 'DEBITING' }, OWNER);
+    await context.list.execute({ status: 'PENDING' }, OWNER);
 
     expect(rowsOf(context.publisher).total).toBe(2);
   });
@@ -337,7 +340,7 @@ describe('filtering the history by date and phase (T-28)', () => {
     await transferOn(context, OWNER, '02', LATE);
 
     await context.list.execute(
-      { status: 'DEBITING', from: '2026-08-15T00:00:00.000Z' },
+      { status: 'PENDING', from: '2026-08-15T00:00:00.000Z' },
       OWNER,
     );
 
@@ -361,13 +364,13 @@ describe('filtering the history by date and phase (T-28)', () => {
     const context = world();
     await transferOn(context, OWNER, '01', EARLY);
 
-    // DEBITING is in the PENDING phase — the intersection is non-empty.
-    await context.list.execute({ status: 'DEBITING', phaseStatus: 'PENDING' }, OWNER);
+    // PENDING is in the PENDING phase — the intersection is non-empty.
+    await context.list.execute({ status: 'PENDING', phaseStatus: 'PENDING' }, OWNER);
 
     expect(rowsOf(context.publisher).total).toBe(1);
 
-    // DEBITING is never APPROVED — the intersection is empty, not a widened match.
-    await context.list.execute({ status: 'DEBITING', phaseStatus: 'APPROVED' }, OWNER);
+    // PENDING is never APPROVED — the intersection is empty, not a widened match.
+    await context.list.execute({ status: 'PENDING', phaseStatus: 'APPROVED' }, OWNER);
 
     expect(rowsOf(context.publisher).total).toBe(0);
   });

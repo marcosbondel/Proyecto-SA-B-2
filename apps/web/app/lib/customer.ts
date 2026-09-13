@@ -328,6 +328,41 @@ export const IDENTITY_PRESENTATION: Readonly<Record<IdentityStatus, IdentityPres
 };
 
 /**
+ * The Fase 2 compliance verdict (T-26, §4.1 p. 4) — distinct from
+ * `IdentityStatus` above, which is Fase 1's review of the document photo.
+ * `PENDING` here does not block opening an account; since T-31 it blocks
+ * initiating a transfer, which is the fact this presentation exists to
+ * explain before a customer discovers it as a rejected transfer instead.
+ */
+export type KycStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
+
+export interface KycPresentation {
+  readonly label: string;
+  readonly color: 'warning' | 'success' | 'error';
+  readonly explanation: string;
+}
+
+/** `REJECTED` is not terminal here (a new review reopens it), unlike `VERIFIED`. */
+export const KYC_PRESENTATION: Readonly<Record<KycStatus, KycPresentation>> = {
+  PENDING: {
+    label: 'KYC pendiente',
+    color: 'warning',
+    explanation:
+      'Un cajero receptor debe verificar tu identidad para cumplimiento antes de que puedas transferir.',
+  },
+  VERIFIED: {
+    label: 'KYC verificado',
+    color: 'success',
+    explanation: 'Tu identidad fue verificada para cumplimiento. Puedes transferir con normalidad.',
+  },
+  REJECTED: {
+    label: 'KYC rechazado',
+    color: 'error',
+    explanation: 'No pudimos completar tu verificación de cumplimiento. Un cajero puede revisarla de nuevo.',
+  },
+};
+
+/**
  * Whether a failed fetch of the identity-document photo means "nothing was
  * ever uploaded" rather than a real failure.
  *

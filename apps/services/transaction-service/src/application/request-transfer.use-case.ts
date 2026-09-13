@@ -7,7 +7,12 @@ import {
   openTransaction,
   requestRefusal,
 } from '../domain/transaction';
-import type { RequestRejection, Transaction } from '../domain/transaction';
+import type {
+  KycRejection,
+  RequestRejection,
+  SagaEvent,
+  Transaction,
+} from '../domain/transaction';
 import type { AdvanceSagaUseCase } from './advance-saga.use-case';
 import type { Clock, EventPublisher, TransactionRepository } from './ports';
 
@@ -16,8 +21,8 @@ export type RequestOutcome =
   | { readonly kind: 'STARTED'; readonly transaction: Transaction }
   /** Invariant T-3: a retry, honoured with the original and no second Saga. */
   | { readonly kind: 'DUPLICATE'; readonly transaction: Transaction }
-  /** Invariant T-4, or T-1/T-2. Nothing was started. */
-  | { readonly kind: 'REFUSED'; readonly reason: RequestRejection };
+  /** Invariant T-4, T-1/T-2, or the KYC gate refusing an unidentified caller. */
+  | { readonly kind: 'REFUSED'; readonly reason: RequestRejection | KycRejection };
 
 /**
  * Step 1 of the Saga: accept the transfer, or refuse it before anything moves.
@@ -139,18 +144,37 @@ export class RequestTransferUseCase {
     /**
      * The first edge of the diagram, taken through the same code path as every
      * other edge — deduplicated by `messageId`, decided under the row lock,
-     * recorded in the local trail. Ordering the debit by hand here would be one
-     * transition that skipped the machine that governs all the others.
+     * recorded in the local trail. Ordering the KYC check by hand here would be
+     * one transition that skipped the machine that governs all the others.
+     *
+     * The gate (T-31, §4.1 p. 4) comes before the debit, not after: refusing an
+     * unverified customer's transfer should cost the source account nothing,
+     * not a debit immediately undone.
      */
     await this.#saga.execute({
       transactionId: outcome.transaction.transactionId,
-      event: { kind: 'DEBIT_ORDERED' },
+      event: this.#openingEvent(outcome.transaction.customerId),
       messageId: envelope.messageId,
       messageType: 'transfer.requested.v1',
       payload,
     });
 
     return { kind: 'STARTED', transaction: outcome.transaction };
+  }
+
+  /**
+   * What opens the Saga: a question to the KYC gate, or — for a transfer with
+   * nobody recorded behind it — nothing to ask the gate about.
+   *
+   * `mayInitiateTransactions` (Customer Service's own domain) already exempts
+   * every actor but `CLIENTE` from the gate; a `null` `customerId` is the same
+   * kind of exemption one step earlier; there is no customer here at all for
+   * `customer.kyc.check.requested.v1` to name. `KYC_APPROVED` fired locally
+   * moves the Saga on exactly as `KYC_CHECK_ORDERED` would once answered
+   * `allowed: true` — it orders the debit and nothing else.
+   */
+  #openingEvent(customerId: string | null): SagaEvent {
+    return customerId === null ? { kind: 'KYC_APPROVED' } : { kind: 'KYC_CHECK_ORDERED' };
   }
 
   /** A key that was used before. Which of T-3 and T-4 applies is the content. */
@@ -176,30 +200,31 @@ export class RequestTransferUseCase {
     });
 
     /**
-     * The row this delivery found can be a transfer whose Saga never started:
-     * `start` committed the insert, and the process died before the
-     * `saga.execute` below ever ran — a real crash window, not a hypothetical
-     * one, because the two used to be two separate steps with nothing between
-     * them but the process staying alive. A transaction left in `PENDING` is
-     * indistinguishable from that crash, so it is resumed here, on whatever
-     * delivery next finds it.
+     * The row this delivery found can be a transfer whose Saga never started,
+     * or one still waiting on the KYC gate's answer — both leave the row in
+     * `PENDING`, because `KYC_CHECK_ORDERED` is a self-transition
+     * (`domain/transaction.ts`). `start` committed the insert, and the process
+     * may have died before the `saga.execute` below ever ran — a real crash
+     * window, not a hypothetical one, because the two used to be two separate
+     * steps with nothing between them but the process staying alive. Either
+     * way it is resumed here, on whatever delivery next finds it.
      *
      * Resuming costs nothing extra. `saga.execute` deduplicates by `messageId`
      * under the same row lock every other transition uses, so a plain
      * redelivery — the common case, same `messageId` as the request that
-     * already ordered the debit — is a no-op the moment the row shows
-     * `DEBITING`. And if two *different* deliveries (different `messageId`s)
-     * ever raced here at once, the domain's own guard closes the gap the
-     * dedup check cannot: `applyEvent`'s `DEBIT_ORDERED` case only accepts a
-     * transaction that is still `PENDING` (`domain/transaction.ts`), so
-     * whichever delivery's lock loses the race finds the row already
-     * `DEBITING` and gets `ILLEGAL` — discarded and recorded, never a second
-     * debit.
+     * already ordered the check — is a no-op. And re-asking the KYC gate is
+     * itself harmless: it is a question, not a movement, so asking it twice
+     * while a genuine second `messageId` races here produces two identical
+     * answers rather than two effects. Once the answer moves the row past
+     * `PENDING`, `applyEvent`'s guard closes the gap: neither
+     * `KYC_APPROVED` nor `KYC_REJECTED` accepts a transaction that already
+     * left `PENDING`, so a late verdict finds the row in `DEBITING` and is
+     * `ILLEGAL` — discarded and recorded, never a second debit.
      */
     if (isPending(original)) {
       await this.#saga.execute({
         transactionId: original.transactionId,
-        event: { kind: 'DEBIT_ORDERED' },
+        event: this.#openingEvent(original.customerId),
         messageId: envelope.messageId,
         messageType: 'transfer.requested.v1',
         payload,
@@ -228,7 +253,7 @@ export class RequestTransferUseCase {
    */
   async #refuse(
     transactionId: string,
-    reason: RequestRejection,
+    reason: RequestRejection | KycRejection,
     customerId: string | null,
   ): Promise<void> {
     await this.#publisher.publish({

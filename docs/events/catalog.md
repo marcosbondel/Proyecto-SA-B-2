@@ -1035,9 +1035,9 @@ The payload is an empty object. There is nothing to narrow: the question is the 
 
 Distinct from "Validate identity" above: that flow is Fase 1's review of the document photo.
 This is the broader KYC compliance decision (§4.1, p. 4) that C-8 ties to initiating a
-transaction — a `CLIENTE` with `kycStatus != VERIFIED` may not start one. Enforcing that inside
-the transfer Saga is **T-31**'s job; this service only owns the state, the transitions and the
-events T-31 will consume.
+transaction — a `CLIENTE` with `kycStatus != VERIFIED` may not start one. This service owns the
+state, the transitions and these two events; the transfer Saga's own KYC gate — the two messages
+below this section, `customer.kyc.check.requested.v1` and `customer.kyc.checked.v1` — is **T-31**.
 
 ### `customer.set-kyc-status.v1`
 
@@ -1098,6 +1098,68 @@ events T-31 will consume.
 `REJECTED → PENDING` remains legal, so this event may be followed by a later
 `customer.kyc.verified.v1` for the same customer — unlike `VERIFIED`, this status is not
 terminal.
+
+## The transfer Saga's KYC gate (T-31)
+
+Step 1 of the Saga (`docs/events/saga-transfer.md`) now asks this question before anything else:
+may the customer who requested this transfer initiate one at all. The two messages below are how
+Transaction Service asks and Customer Service answers, over the broker rather than a shared
+table (X-1).
+
+### `customer.kyc.check.requested.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | transaction-service |
+| **Consumers** | customer-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `customer.kyc.check.requested.v1` |
+| **Contract** | [`customer.kyc.check.requested.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.kyc.check.requested.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `transactionId` | UUID v4 | yes |
+| `customerId` | UUID v4 | yes |
+
+**Preconditions.** Ordered once, from `PENDING`, in the same call that accepts
+`transfer.requested.v1` — a self-transition (`KYC_CHECK_ORDERED`) that leaves the transaction in
+`PENDING`, waiting on the answer.
+
+**Effects.** Customer Service answers with `customer.kyc.checked.v1`, never with a query reply:
+nobody is waiting on an HTTP connection for this, so it travels the same way every other Saga
+step does.
+
+### `customer.kyc.checked.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | customer-service |
+| **Consumers** | transaction-service, notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `customer.kyc.checked.v1` |
+| **Contract** | [`customer.kyc.checked.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.kyc.checked.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `transactionId` | UUID v4 | yes |
+| `customerId` | UUID v4 | yes |
+| `kycStatus` | `PENDING` \| `VERIFIED` \| `REJECTED` | yes |
+| `allowed` | boolean | yes |
+
+**Effects.** `allowed: true` moves `PENDING → DEBITING` and orders `account.debit.requested.v1`
+(`KYC_APPROVED`). `allowed: false` moves `PENDING → FAILED` and publishes `transaction.failed.v1`
+with `reason: 'KYC_NOT_VERIFIED'` (`KYC_REJECTED`) — no compensation, because the debit was never
+ordered.
+
+**On error.** A customer id this service cannot find at all still answers, with
+`kycStatus: 'PENDING'` and `allowed: false`: the Saga always gets a verdict rather than waiting
+out its own retry ladder on a bad reference.
+
+`allowed` is carried explicitly rather than left for the consumer to derive from `kycStatus`,
+because the rule that only `VERIFIED` may transact (`mayInitiateTransactions`) belongs to the
+service that owns the customer.
 
 
 ---
@@ -2011,10 +2073,10 @@ balance that covers the amount alone but not the amount plus the commission is s
 | `transactionId` | UUID v4 | yes |
 | `customerId` | UUID v4 \| `null` | yes |
 | `status` | `FAILED` | yes |
-| `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT` \| `INVALID_AMOUNT_PRECISION` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `MINIMUM_BALANCE_VIOLATION` | yes |
+| `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT` \| `INVALID_AMOUNT_PRECISION` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `MINIMUM_BALANCE_VIOLATION` \| `KYC_NOT_VERIFIED` | yes |
 | `failedAt` | ISO-8601 UTC | yes |
 
-**Preconditions.** The debit was rejected.
+**Preconditions.** The debit was rejected, or (T-31) the KYC gate refused before any debit was ordered.
 
 **Effects.** Audited, and the customer is notified. Terminal. **Not interchangeable with `COMPENSATED`**: this means the money never left.
 

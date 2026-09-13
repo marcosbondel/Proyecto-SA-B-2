@@ -41,6 +41,7 @@ export class GetCustomerListUseCase {
           role: c.role,
           status: c.status,
           registeredAt: c.createdAt,
+          kycStatus: c.kycStatus,
         })),
         omitted: Math.max(0, total - customers.length),
       },

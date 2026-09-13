@@ -2,6 +2,7 @@ import {
   accountCreditRequestedV1,
   accountDebitCompensationRequestedV1,
   accountDebitRequestedV1,
+  customerKycCheckRequestedV1,
   paymentRequestedV1,
   transactionCompensatedV1,
   transactionCompletedV1,
@@ -136,6 +137,32 @@ export class AdvanceSagaUseCase {
     switch (transition.command) {
       case null:
         return null;
+
+      case 'KYC_CHECK':
+        /**
+         * `customerId` is never `null` here: `RequestTransferUseCase` refuses
+         * an identity-less request before a row exists, and a customer's own
+         * record is the only place this transition ever came from
+         * (`domain/transaction.ts`'s `KYC_CHECK_ORDERED`, ordered once, from
+         * `PENDING`). If that invariant is ever wrong, publishing a command
+         * with no customer to ask about is a bug worth crashing loud on
+         * rather than one this Saga would otherwise wait out silently.
+         */
+        if (transaction.customerId === null) {
+          throw new Error(
+            `Transaction ${transaction.transactionId} ordered a KYC check with no customerId.`,
+          );
+        }
+
+        return {
+          message: {
+            messageType: customerKycCheckRequestedV1.name,
+            payload: {
+              transactionId: transaction.transactionId,
+              customerId: transaction.customerId,
+            },
+          },
+        };
 
       case 'DEBIT':
         return {

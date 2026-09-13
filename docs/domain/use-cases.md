@@ -181,38 +181,44 @@ Decision **D-04**.
 
 ## 6. Transfer money
 
-The distributed flow. It spans four services, so it is a Saga with explicit compensation
-(§4.2, expected patterns, p. 7), implemented as choreography.
+The distributed flow. It spans five services (T-31 added Customer Service's KYC gate to the
+four Transaction/Account/Payment/Notification always had), so it is a Saga with explicit
+compensation (§4.2, expected patterns, p. 7), implemented as choreography.
 
 | | |
 | --- | --- |
 | **Actor** | `CLIENTE` from their own accounts; `CAJERO_RECEPTOR` / `ADMINISTRADOR` at the counter |
-| **Preconditions** | Both accounts exist; the source is `ACTIVE` and has sufficient funds |
+| **Preconditions** | Both accounts exist; the source is `ACTIVE` and has sufficient funds; the originating `CLIENTE`'s KYC status is `VERIFIED` (T-31, §4.1 p. 4) |
 | **Input** | `sourceAccount`, `targetAccount`, `amount`, `idempotencyKey` |
 | **Result** | The amount moves from source to target, and the `Transaction` closes in `COMPLETED` |
 
-### The seven steps
+### The eight steps
 
 | # | Service | Reacts to | Does | Publishes |
 | --- | --- | --- | --- | --- |
-| 1 | Transaction | `transfer.requested` | Validates `amount > 0`, source ≠ target, idempotency. Creates the `Transaction` in `PENDING`, moves to `DEBITING` | `account.debit.requested` |
-| 2 | Account | `account.debit.requested` | Checks the account exists, is `ACTIVE`, has funds. Debits, updates `lastActivityAt` | `account.debited` \| `account.debit.rejected` |
-| 3 | Transaction | `account.debited` | Moves to `PAYMENT_PENDING` | `payment.requested` |
-| 4 | Payment | `payment.requested` | Processes, retrying and counting `attempt` | `payment.succeeded` \| `payment.failed` |
-| 5 | Transaction | `payment.succeeded` | Orders the credit | `account.credit.requested` |
-| 6 | Account | `account.credit.requested` | Credits the target; reactivates it if it was `INACTIVE` (A-3) | `account.credited` \| `account.credit.rejected` |
-| 7 | Transaction | `account.credited` | Closes in `COMPLETED` | `transaction.completed` |
+| 1 | Transaction | `transfer.requested` | Validates `amount > 0`, source ≠ target, idempotency. Creates the `Transaction` in `PENDING`, asks the KYC gate | `customer.kyc.check.requested` |
+| 2 | Customer | `customer.kyc.check.requested` | Answers whether this customer may initiate a transaction | `customer.kyc.checked` |
+| 3 | Transaction | `customer.kyc.checked` | Orders the debit if allowed, closes otherwise | `account.debit.requested` \| moves to `FAILED` |
+| 4 | Account | `account.debit.requested` | Checks the account exists, is `ACTIVE`, has funds. Debits, updates `lastActivityAt` | `account.debited` \| `account.debit.rejected` |
+| 5 | Transaction | `account.debited` | Moves to `PAYMENT_PENDING` | `payment.requested` |
+| 6 | Payment | `payment.requested` | Processes, retrying and counting `attempt` | `payment.succeeded` \| `payment.failed` |
+| 7 | Transaction | `payment.succeeded` | Orders the credit | `account.credit.requested` |
+| 8 | Account | `account.credit.requested` | Credits the target; reactivates it if it was `INACTIVE` (A-3) | `account.credited` \| `account.credit.rejected` |
+
+(A ninth row closes the flow: Transaction reacts to `account.credited` and closes in
+`COMPLETED`, publishing `transaction.completed`.)
 
 ### Compensation
 
 Two different endings, and they are not interchangeable.
 
-**Closes in `FAILED` — nothing to undo.** `account.debit.rejected` at step 2 means the money
-never left. The `Transaction` moves `DEBITING` → `FAILED` and publishes `transaction.failed`.
-No compensation runs, because there is no effect to reverse.
+**Closes in `FAILED` — nothing to undo.** Reachable from two places, both before any money
+moves: the KYC gate refusing at step 3 (T-31), or `account.debit.rejected` at step 4. Either
+way the `Transaction` moves to `FAILED` and publishes `transaction.failed`. No compensation
+runs, because there is no effect to reverse.
 
-**Closes in `COMPENSATED` — it left and came back.** Either `payment.failed` at step 4 or
-`account.credit.rejected` at step 6 triggers the same path:
+**Closes in `COMPENSATED` — it left and came back.** Either `payment.failed` at step 6 or
+`account.credit.rejected` at step 8 triggers the same path:
 
 1. Transaction Service publishes `account.debit.compensation.requested`.
 2. Account Service returns the amount to the source account and publishes
@@ -231,10 +237,11 @@ applied ends in `COMPLETED` or `COMPENSATED`, never in `FAILED`.**
 | More than two decimals | Step 1 | `INVALID_AMOUNT_PRECISION` (A-6). Rejected, never rounded |
 | Idempotency key reused, same content | Step 1 | The original transaction is returned. Balances do not move (T-3) |
 | Idempotency key reused, different content | Step 1 | `IDEMPOTENCY_KEY_CONFLICT` (T-4). Answering with the original result would be a lie |
-| Insufficient funds | Step 2 | `INSUFFICIENT_FUNDS` (A-1) → `FAILED` |
-| Source account inactive | Step 2 | `ACCOUNT_INACTIVE` (A-2) → `FAILED` |
-| Payment retries exhausted | Step 4 | `payment.failed` with `failureReason` → **compensation** → `COMPENSATED` |
-| Target account not found | Step 6 | `account.credit.rejected` → **compensation** → `COMPENSATED` |
+| Customer's KYC status is not `VERIFIED` | Step 3 | `KYC_NOT_VERIFIED` (T-31, C-8) → `FAILED`, no debit ever ordered |
+| Insufficient funds | Step 4 | `INSUFFICIENT_FUNDS` (A-1) → `FAILED` |
+| Source account inactive | Step 4 | `ACCOUNT_INACTIVE` (A-2) → `FAILED` |
+| Payment retries exhausted | Step 6 | `payment.failed` with `failureReason` → **compensation** → `COMPENSATED` |
+| Target account not found | Step 8 | `account.credit.rejected` → **compensation** → `COMPENSATED` |
 | Any event delivered twice | Any step | Discarded by `eventId`. No second transition, no second compensation (T-5, X-4) |
 | An event arriving out of order | Any step | The illegal transition is discarded and recorded as `ILLEGAL_TRANSITION` (T-6). It is not applied |
 

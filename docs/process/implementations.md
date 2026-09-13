@@ -343,6 +343,100 @@ turbo run test --filter=notification-audit-service`): 139 pruebas, incluida la m
 5. **Entra como `ADMINISTRADOR` a `/auditoria/notificaciones`.** La consola muestra la
    misma severidad junto al estado de entrega de cada notificación.
 
+## T-31 — Integración de las cinco extensiones en el flujo de transferencia
+
+### Qué pedía el enunciado
+
+Secciones 4.1, 4.2, 4.4, 6 y 8: conectar KYC, reglas de cuenta, historial, pagos
+externos y clasificación de eventos **dentro** del flujo de transferencia que la
+rúbrica califica — no como capacidades aisladas dentro de cada servicio.
+
+### Cómo se cubrió
+
+De las cinco capacidades, cuatro ya estaban conectadas al Saga desde sus
+propios tickets: T-27 (reglas de cuenta) actúa en el paso del débito, T-28
+(historial) registra cada transición real, T-29 (pagos externos) ya es el
+proveedor que Payment Service consulta, y T-30 (clasificación) ya clasifica
+todo lo que el Saga produce. Lo único que faltaba, y que T-26 dejó escrito con
+todas sus letras ("enforcing it inside the transfer Saga is T-31's job"), era
+el bloqueo real de KYC.
+
+**El chequeo de KYC es ahora el primer paso del Saga.** `transfer.requested.v1`
+crea la transacción en `PENDING` y publica `customer.kyc.check.requested.v1`;
+Customer Service responde `customer.kyc.checked.v1` con `allowed` derivado de
+`mayInitiateTransactions` (nunca recalculado por Transaction Service, que no
+puede leer la tabla de clientes — X-1). `allowed: true` mueve `PENDING →
+DEBITING` y ordena el débito, exactamente como antes; `allowed: false` mueve
+`PENDING → FAILED` con `reason: KYC_NOT_VERIFIED`, sin ninguna compensación,
+porque el dinero nunca salió. Los seis estados de la máquina no cambiaron —
+`PENDING` simplemente pasó a significar "aceptada, veredicto KYC pendiente" en
+vez de "aceptada, débito sin ordenar".
+
+Un cliente sin identidad en el sobre (`customerId: null`) no tiene a quién
+preguntarle, así que el chequeo se omite y el Saga avanza igual que antes —
+la misma excepción que ya existía para el rol distinto de `CLIENTE`
+(`mayInitiateTransactions`).
+
+**El resto de las conexiones fueron de superficie, no de dominio:**
+- Gateway: `POST /api/customers/{id}/kyc-status` (staff), con la forma exacta
+  de `setIdentityVerdict`.
+- `apps/web`: badge y explicación de KYC (`KYC_PRESENTATION`), columna en
+  `/clientes`, acciones de verificar/rechazar en `/clientes/{id}`, estado
+  propio en `/perfil`, aviso de cortesía (no bloqueante en el cliente, el Saga
+  ya bloquea de verdad) en `/transferencias/nueva` y `/pagos/nuevo`, y la
+  etiqueta del paso KYC en la línea de tiempo real de `/transferencias/{id}`.
+- `@bank/contracts`: dos mensajes nuevos (`customer.kyc.check.requested.v1`,
+  `customer.kyc.checked.v1`) y el código `KYC_NOT_VERIFIED`, aditivo en todos
+  los contratos que lo admiten.
+
+Detalle completo en
+[`docs/qa/backend/T-31-integration-evidence.md`](../qa/backend/T-31-integration-evidence.md).
+
+### Comandos de validación
+
+```
+$ pnpm lint          # 11 tareas exitosas
+$ pnpm typecheck     # 11 tareas exitosas
+$ pnpm test          # 11 tareas exitosas (contratos: 775; gateway: 321; web: 272)
+$ pnpm test:contract # 775 pasan
+$ pnpm build         # 9 tareas exitosas
+```
+
+Corrida completa contra PostgreSQL y RabbitMQ reales (`pnpm dev:infra`, cada
+servicio con su propia `DATABASE_URL`): 150 pruebas en customer-service, 170 en
+transaction-service (las de concurrencia sobre el nuevo paso KYC incluidas),
+150 en account-service, 141 en notification-audit-service y 70 en
+payment-service — todas verdes.
+
+`pnpm images:flow` se actualizó con un paso nuevo: un cliente recién
+registrado intenta transferir **antes** de que un cajero verifique su KYC, la
+transferencia cierra `FAILED` con `KYC_NOT_VERIFIED` y el saldo de origen
+queda intacto; solo entonces el cajero lo verifica y las tres formas del Saga
+(completada, compensada por rechazo, compensada por escalera agotada) se
+ejecutan como antes.
+
+### Qué probar en la web
+
+1. **Registra un cliente nuevo** y ábrele una cuenta con saldo (depósito de
+   ventanilla). Su KYC queda en `PENDING` — visible en `/perfil` con un aviso
+   explícito.
+2. **Intenta transferir** desde `/transferencias/nueva` o `/pagos/nuevo`: verás
+   el aviso de cortesía "Verificación de cumplimiento (KYC) pendiente", pero el
+   formulario no te impide enviarla. Envíala: el detalle en
+   `/transferencias/{id}` debe cerrar **Fallida**, con el motivo "El cliente
+   que origina la transferencia no tiene su verificación KYC completa" y la
+   línea de tiempo marcando el paso "Se resolvió la verificación de
+   cumplimiento (KYC)" como fallido — nunca un débito.
+3. **Entra como `CAJERO_RECEPTOR` o `ADMINISTRADOR` a `/clientes/{id}`** del
+   cliente registrado. La tarjeta "Verificación de cumplimiento (KYC)" debe
+   ofrecer **Verificar KYC** y **Rechazar**. Verifícalo.
+4. **Repite la transferencia.** Ahora debe completarse (o compensar, si eliges
+   un escenario de pago que falle) exactamente como antes de este ticket — el
+   único cambio es que ya no se rechaza por KYC.
+5. **Confirma en `/clientes`** que la columna KYC del cliente muestra
+   "KYC verificado", y que un segundo intento de rechazarlo desde la ficha no
+   hace nada (`VERIFIED` es terminal).
+
 ## Una nota sobre el entorno, no sobre el código
 
 Si `pnpm dev` falla en el paso `rabbitmq-init` con un código de salida `127`, no es un

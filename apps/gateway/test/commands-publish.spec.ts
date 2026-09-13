@@ -4,6 +4,7 @@ import {
   accountCreateV1,
   accountSetStatusV1,
   customerRegisterV1,
+  customerSetKycStatusV1,
   customerUpdateV1,
   transferRequestedV1,
   validateMessage,
@@ -216,6 +217,59 @@ describe('the five asynchronous commands', () => {
         .post(`/api/accounts/${SOURCE}/status`)
         .set('Authorization', admin)
         .send({ status: 'CERRADA', reason: 'lo que sea' });
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+  });
+
+  /**
+   * T-31's KYC gate needs a way for staff to actually set the verdict the
+   * Saga later reads. `setIdentityVerdict` (Fase 1's document review) already
+   * has this shape; this is its Fase 2 sibling.
+   */
+  describe('a teller registers a KYC verdict', () => {
+    const CUSTOMER = '5c7e2d10-9c2e-4a71-b8f5-2d6e7c0a1b93';
+
+    it('publishes customer.set-kyc-status.v1 for staff, and answers 202', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/customers/${CUSTOMER}/kyc-status`)
+        .set('Authorization', admin)
+        .send({ status: 'VERIFIED' });
+
+      expect(response.status).toBe(202);
+      expect(harness.publisher.lastType).toBe(customerSetKycStatusV1.name);
+      expect(harness.publisher.published.at(-1)?.payload).toEqual({
+        customerId: CUSTOMER,
+        status: 'VERIFIED',
+      });
+    });
+
+    it('refuses a CLIENTE with 403 and publishes nothing', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/customers/${CUSTOMER}/kyc-status`)
+        .set('Authorization', auth)
+        .send({ status: 'VERIFIED' });
+
+      expect(response.status).toBe(403);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('refuses a status outside VERIFIED/REJECTED, before publishing anything', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/customers/${CUSTOMER}/kyc-status`)
+        .set('Authorization', admin)
+        .send({ status: 'PENDING' });
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('refuses a malformed customerId, before publishing anything', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/customers/not-a-uuid/kyc-status')
+        .set('Authorization', admin)
+        .send({ status: 'VERIFIED' });
 
       expect(response.status).toBe(400);
       expect(harness.publisher.published).toHaveLength(0);

@@ -23,6 +23,15 @@ export type TransactionStatus =
 export type DebitRejection =
   'INSUFFICIENT_FUNDS' | 'ACCOUNT_INACTIVE' | 'ACCOUNT_NOT_FOUND' | 'INVALID_AMOUNT_PRECISION';
 
+/**
+ * The one reason the KYC gate can refuse, as Customer Service is allowed to
+ * say it (T-31, §4.1 p. 4). A single value rather than a union because the
+ * gate asks one question — "may this customer initiate a transaction at all"
+ * — and `customer.kyc.checked.v1` answers it with a boolean, not a status this
+ * service would have to interpret.
+ */
+export type KycRejection = 'KYC_NOT_VERIFIED';
+
 /** The reasons a credit can be refused. */
 export type CreditRejection = 'ACCOUNT_NOT_FOUND' | 'INVALID_AMOUNT_PRECISION';
 
@@ -37,7 +46,12 @@ export type RequestRejection =
   | 'IDEMPOTENCY_KEY_CONFLICT';
 
 /** Everything this service can record as a cause of not completing. */
-export type FailureReason = DebitRejection | CreditRejection | PaymentRejection | RequestRejection;
+export type FailureReason =
+  | DebitRejection
+  | CreditRejection
+  | PaymentRejection
+  | RequestRejection
+  | KycRejection;
 
 /**
  * The demonstration scenario, carried and never obeyed here.
@@ -107,13 +121,14 @@ export function isTerminal(status: TransactionStatus): boolean {
 
 /**
  * Whether a transaction is still exactly where `openTransaction` left it:
- * accepted, but with no `DEBIT_ORDERED` ever applied to it.
+ * accepted, but with no `KYC_CHECK_ORDERED` ever applied to it.
  *
  * The one place outside this file allowed to ask is `RequestTransferUseCase`,
  * to tell an ordinary redelivery apart from a transfer whose Saga never
- * started — a crash between the row committing and the debit being ordered
- * leaves exactly this shape, and a redelivery that finds it has to resume the
- * Saga rather than treat the row's mere existence as proof it already did.
+ * started — a crash between the row committing and the KYC check being
+ * ordered leaves exactly this shape, and a redelivery that finds it has to
+ * resume the Saga rather than treat the row's mere existence as proof it
+ * already did.
  */
 export function isPending(transaction: { readonly status: TransactionStatus }): boolean {
   return transaction.status === 'PENDING';
@@ -128,7 +143,9 @@ export function isPending(transaction: { readonly status: TransactionStatus }): 
  * the state machine.
  */
 export type SagaEvent =
-  | { readonly kind: 'DEBIT_ORDERED' }
+  | { readonly kind: 'KYC_CHECK_ORDERED' }
+  | { readonly kind: 'KYC_APPROVED' }
+  | { readonly kind: 'KYC_REJECTED'; readonly reason: KycRejection }
   | { readonly kind: 'DEBITED' }
   | { readonly kind: 'DEBIT_REJECTED'; readonly reason: DebitRejection }
   | { readonly kind: 'PAYMENT_SUCCEEDED' }
@@ -138,7 +155,7 @@ export type SagaEvent =
   | { readonly kind: 'DEBIT_COMPENSATED' };
 
 /** What the Saga must order next, if anything. */
-export type SagaCommand = 'DEBIT' | 'PAYMENT' | 'CREDIT' | 'COMPENSATION';
+export type SagaCommand = 'KYC_CHECK' | 'DEBIT' | 'PAYMENT' | 'CREDIT' | 'COMPENSATION';
 
 /** The result of a legal transition: where it lands and what it orders. */
 export interface Transition {
@@ -284,16 +301,18 @@ export function openTransaction(input: {
  *
  * ```
  * PENDING ──► DEBITING ──► PAYMENT_PENDING ──► COMPLETED
- *                │                │
- *                │                └──► COMPENSATED   (payment failed, or credit rejected)
- *                └──► FAILED                          (debit rejected: nothing to undo)
+ *    │           │                │
+ *    │           │                └──► COMPENSATED   (payment failed, or credit rejected)
+ *    │           └──► FAILED                          (debit rejected: nothing to undo)
+ *    └──► FAILED                                      (KYC gate refused: T-31)
  * ```
  *
  * Two things it guarantees that the picture does not say out loud:
  *
- * - **Invariant T-7.** Nothing reaches `FAILED` except a rejected debit. Once
- *   the money has left the source account the Saga can only end in `COMPLETED`
- *   or `COMPENSATED`, because those are the two endings in which the money is
+ * - **Invariant T-7.** Nothing reaches `FAILED` except a KYC refusal or a
+ *   rejected debit — both of them before any money has moved. Once the money
+ *   has left the source account the Saga can only end in `COMPLETED` or
+ *   `COMPENSATED`, because those are the two endings in which the money is
  *   somewhere. `FAILED` after a successful debit would mean a transfer closed
  *   with the money outside every account in the bank.
  * - **A compensation is ordered once.** `failureReason` is what records that
@@ -301,12 +320,12 @@ export function openTransaction(input: {
  *   redelivery, or a payment service that answered twice — is illegal rather
  *   than a second refund (T-5).
  *
- * `PAYMENT_SUCCEEDED` and the two compensation triggers are **self-transitions**:
- * they order the next command without moving the status. That is not an
- * oversight in the diagram. The states are the ones the assignment fixed and
- * the database's `CHECK` admits; inventing a `CREDITING` or a `COMPENSATING`
- * here would mean a status the contract cannot carry and the column will not
- * store.
+ * `KYC_CHECK_ORDERED`, `PAYMENT_SUCCEEDED` and the two compensation triggers
+ * are **self-transitions**: they order the next command without moving the
+ * status. That is not an oversight in the diagram. The states are the ones
+ * the assignment fixed and the database's `CHECK` admits; inventing a
+ * `CHECKING_KYC`, a `CREDITING` or a `COMPENSATING` here would mean a status
+ * the contract cannot carry and the column will not store.
  *
  * @throws IllegalTransition when the event has no place from this state (T-6).
  */
@@ -325,8 +344,23 @@ export function applyEvent(transaction: Transaction, event: SagaEvent): Transiti
   ): Transition => ({ from, status, failureReason, command });
 
   switch (event.kind) {
-    case 'DEBIT_ORDERED':
+    /**
+     * Step 2 of the Saga (T-31): the first thing a freshly-accepted transfer
+     * asks is not Account Service, it is Customer Service — whether this
+     * customer may initiate a transaction at all. `PENDING` stays `PENDING`
+     * for the length of the question, the same way it does not move while
+     * `DEBIT_ORDERED` used to be this event's name before the gate existed.
+     */
+    case 'KYC_CHECK_ORDERED':
+      return from === 'PENDING' ? stay('KYC_CHECK', null) : illegal(transaction, event);
+
+    case 'KYC_APPROVED':
       return from === 'PENDING' ? move('DEBITING', null, 'DEBIT') : illegal(transaction, event);
+
+    case 'KYC_REJECTED':
+      // The other door to FAILED, and the reason it needs no compensation:
+      // refused before the debit was ever ordered.
+      return from === 'PENDING' ? move('FAILED', event.reason) : illegal(transaction, event);
 
     case 'DEBITED':
       return from === 'DEBITING'
