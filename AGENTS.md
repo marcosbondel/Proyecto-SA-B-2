@@ -133,6 +133,18 @@ images end to end. The inventory, the required variables per component and the
 base-image bump procedure are in
 [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
+**Continuous integration runs on every `feature/*` push and every pull request
+into `develop`** (T-32), as three separate GitHub Actions jobs mirroring the
+assignment's three named phases: `build` (`pnpm build`), `test` (`pnpm test`,
+`pnpm test:contract`) and `validate` (the tracked-`.env` guard, `pnpm lint`,
+`pnpm typecheck`). `test` depends on `build` and `validate` depends on both, so the three run
+strictly in that order and a failure anywhere skips every phase after it;
+`validate` does not run on a pull request into `develop` — only Build and
+Test repeat there, per the assignment. Neither PostgreSQL nor
+RabbitMQ are started, so the pipeline never runs the suites gated
+`describe.skip` on `DATABASE_URL`/`RABBITMQ_URL` — that gap is TD-069. Details
+in [docs/operations/CI.md](docs/operations/CI.md).
+
 ## Project Documentation
 
 Two written directories, split by audience. **`docs/` documents the banking
@@ -164,6 +176,7 @@ Consult these documents before making decisions or describing the repository:
 - [docs/architecture.md](docs/architecture.md): the Spanish architecture deliverable — guiding principles, the port and variable matrix, and the resilience strategy.
 - [docs/adr.md](docs/adr.md): the unified Spanish narrative of the decisions. The canonical records are `docs/architecture/adr/`; where the two disagree, the ADR wins.
 - [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md): **the image inventory** — one row per component with its Dockerfile, port, start command, health checks and required variables, plus the tagging scheme T-22 references. Read it before changing a Dockerfile, adding a variable a container needs, or writing the Helm chart.
+- [docs/operations/CI.md](docs/operations/CI.md): **the GitHub Actions pipeline** — what triggers it, what each stage verifies, and what a green run does not prove. Read it before changing `.github/workflows/ci.yml` or the root `build`/`lint`/`typecheck`/`test`/`test:contract` scripts it calls.
 - [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md): **the Kubernetes runbook** — prerequisites, the four commands that take the system from a clean machine to a running cluster, verification, the Saga run, scaling limits and every failure mode. Read it before changing the Helm chart, the kind configuration or anything under `infra/k8s/`.
 - [docs/manual/](docs/manual/README.md): the user manual — the general guide, one walkthrough per role, and the 78-step visual tour.
 - [docs/qa/](docs/qa/README.md): the test evidence — the happy-path and error-case guide, the validation report, and the screenshots the suites produce.

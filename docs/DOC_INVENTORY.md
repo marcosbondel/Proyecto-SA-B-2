@@ -60,6 +60,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/events/saga-transfer.md` | project | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/operations/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `docs/operations/CONTAINERS.md` | project | Marcos Bonifasi | current | 2026-08-27 |
+| `docs/operations/CI.md` | project | Marcos Bonifasi | current | 2026-09-12 |
 | `docs/operations/DEPLOYMENT.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `docs/operations/EMAIL_RESEND.md` | project | Marcos Bonifasi | current | 2026-08-30 |
 | `docs/architecture/deployment.md` | project | Marcos Bonifasi | current | 2026-09-03 |
