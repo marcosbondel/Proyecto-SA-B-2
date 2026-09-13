@@ -267,6 +267,22 @@ export const MIGRATIONS: readonly Migration[] = [
          WHERE message_id IS NOT NULL`,
     ],
   },
+  {
+    /*
+     * T-29: Payment Service's simulated provider gains a third answer,
+     * `TIMEOUT`. This service only carries the value to `payment.requested.v1`
+     * and decides nothing from it, but the column's own CHECK still has to
+     * admit it or a transfer requested with `TIMEOUT` is refused here before
+     * Payment Service ever sees it.
+     */
+    name: '009_transactions_payment_scenario_timeout',
+    statements: [
+      `ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_scenario_known`,
+      `ALTER TABLE transactions ADD CONSTRAINT transactions_scenario_known
+         CHECK (payment_scenario IS NULL
+                OR payment_scenario IN ('APPROVE','REJECT','TRANSIENT_FAILURE','TIMEOUT'))`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

@@ -257,15 +257,47 @@ export function credit(account: Account, amount: Money, now: Date): Movement {
  * coming back to use the account. Letting it also count as activity would give
  * a dormant account with no genuine engagement six more months of life every
  * time one of its stale transfers finally failed.
+ *
+ * `commissionToReverse` is what `debit` charged alongside the movement this
+ * undoes, or `null` when the account's type charges none. Before this
+ * parameter existed, a compensated `AHORRO` transfer returned the transfer
+ * amount but kept the Q3.00 commission — the bank cancelled the transfer and
+ * still collected a fee for moving money that never actually moved. Nothing in
+ * the ticket or the design ever decided that on purpose; it was a consequence
+ * of `compensate` only ever being told the transfer amount. The repository is
+ * what looks up whether a commission was charged for the debit being reversed
+ * (its own `account_operations` row) and passes it here.
  */
-export function compensate(account: Account, amount: Money, now: Date): Movement {
+export function compensate(
+  account: Account,
+  amount: Money,
+  commissionToReverse: Money | null,
+  now: Date,
+): Movement {
   const problem = amountProblem(amount);
 
   if (problem !== null) {
     throw new DomainRejection(problem, 'El monto no cumple la precisión del contrato.');
   }
 
-  return moved(account, amount.amountMinor, amount, false, now, false);
+  if (commissionToReverse !== null) {
+    const commissionProblem = amountProblem(commissionToReverse);
+
+    if (commissionProblem !== null) {
+      throw new DomainRejection(commissionProblem, 'El monto no cumple la precisión del contrato.');
+    }
+  }
+
+  const totalMinor = amount.amountMinor + (commissionToReverse?.amountMinor ?? 0);
+
+  return moved(
+    account,
+    totalMinor,
+    { amountMinor: totalMinor, currency: amount.currency },
+    false,
+    now,
+    false,
+  );
 }
 
 /**

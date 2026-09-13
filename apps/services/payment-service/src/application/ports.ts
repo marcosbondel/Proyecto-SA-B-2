@@ -8,6 +8,7 @@ import type {
   PaymentScenario,
   PaymentStatus,
 } from '../domain/payment';
+import type { ProviderResult } from '../domain/provider';
 
 /**
  * Everything this service needs from the outside, named by what it is for.
@@ -149,6 +150,8 @@ export interface AttemptResult {
   readonly providerReference: string | null;
   readonly nextAttemptAt: Date | null;
   readonly attemptResult: 'SUCCEEDED' | 'FAILED';
+  /** What the simulated provider answered on this attempt — added by T-29. */
+  readonly providerResult: ProviderResult;
 }
 
 /** One outbound message, already shaped as a contract payload. */

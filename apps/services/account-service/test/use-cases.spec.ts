@@ -544,6 +544,31 @@ describe('compensating, which is criterion 5', () => {
       new CompensateDebitUseCase(dependencies).execute(compensation, 'compensation-key'),
     ).rejects.toThrow(/nowhere to return to/);
   });
+
+  /**
+   * T-29 correction: a compensated `AHORRO` transfer used to return the
+   * transfer amount and keep the Q3.00 commission — the bank cancelled the
+   * transfer and still charged for moving money that never moved. Found
+   * testing T-29's TIMEOUT scenario end to end against the running
+   * application, not by any acceptance criterion of T-27 or T-29 on its own.
+   */
+  it('refunds the AHORRO commission too, so the fee does not survive a compensated transfer', async () => {
+    const { repository, dependencies } = fixture();
+    seed(repository, { balanceMinor: 20_000, accountType: 'AHORRO' });
+
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'debit-key');
+
+    // Amount 2,500 + the Q3.00 (300) commission left the account.
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(17_200);
+
+    await new CompensateDebitUseCase(dependencies).execute(compensation, 'compensation-key');
+
+    // Back to the exact balance before the transfer.
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(20_000);
+    expect(
+      repository.operations.find((operation) => operation.type === 'COMMISSION')?.status,
+    ).toBe('COMPENSATED');
+  });
 });
 
 describe('an administrator changing the status by hand', () => {

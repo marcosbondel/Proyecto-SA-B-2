@@ -187,6 +187,7 @@ export class ProcessPaymentUseCase {
           transactionId: payment.transactionId,
           attempt,
           errorType: outcome.errorType,
+          providerResult: outcome.providerResult,
           willRetry,
           nextAttemptAt: willRetry
             ? new Date(now.getTime() + outcome.delayMs).toISOString()
@@ -228,6 +229,7 @@ function resultOf(outcome: AttemptOutcome, now: Date): AttemptResult {
         providerReference: outcome.providerReference,
         nextAttemptAt: null,
         attemptResult: 'SUCCEEDED',
+        providerResult: outcome.providerResult,
       };
 
     case 'RETRY':
@@ -244,6 +246,7 @@ function resultOf(outcome: AttemptOutcome, now: Date): AttemptResult {
         providerReference: null,
         nextAttemptAt: new Date(now.getTime() + outcome.delayMs),
         attemptResult: 'FAILED',
+        providerResult: outcome.providerResult,
       };
 
     case 'DECLINED':
@@ -255,6 +258,7 @@ function resultOf(outcome: AttemptOutcome, now: Date): AttemptResult {
         providerReference: null,
         nextAttemptAt: null,
         attemptResult: 'FAILED',
+        providerResult: outcome.providerResult,
       };
   }
 }

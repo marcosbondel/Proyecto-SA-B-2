@@ -22,7 +22,7 @@ export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED';
 export type PaymentErrorType = 'TRANSIENT' | 'PERMANENT';
 
 /** The demonstration scenarios a transfer may ask the payment to act out. */
-export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE';
+export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE' | 'TIMEOUT';
 
 /**
  * The retry ladder, restated from `@bank/contracts`' `RETRY_DELAYS_MS`.
@@ -305,8 +305,26 @@ export interface PaymentAttempt {
   readonly result: 'SUCCEEDED' | 'FAILED';
   readonly errorType: PaymentErrorType | null;
   readonly failureReason: string | null;
+  /**
+   * What the simulated provider answered on this rung — added by T-29.
+   * `null` only for an attempt recorded before this field existed.
+   */
+  readonly providerResult: 'SUCCESS' | 'FAILURE' | 'TIMEOUT' | null;
   readonly occurredAt: string;
 }
+
+/**
+ * The provider's own answer, said out loud — separate from `ERROR_TYPE_PRESENTATION`
+ * because `errorType` is the retry policy's statement ("worth retrying or not")
+ * and this is the provider's ("what actually happened"). `TRANSIENT_FAILURE` and
+ * `TIMEOUT` share the same `errorType` and the same ladder; this is the only
+ * label that tells them apart on screen.
+ */
+export const PROVIDER_RESULT_PRESENTATION: Readonly<Record<'SUCCESS' | 'FAILURE' | 'TIMEOUT', string>> = {
+  SUCCESS: 'el proveedor aprobó',
+  FAILURE: 'el proveedor rechazó',
+  TIMEOUT: 'el proveedor no respondió (timeout)',
+};
 
 /** A row is already the right shape to reason about. This names that. */
 export function signalsOf(row: PaymentRow): PaymentSignals {

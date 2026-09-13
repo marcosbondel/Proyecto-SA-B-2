@@ -269,7 +269,8 @@ describeIntegration('PostgresAccountRepository', () => {
         transactionId,
         idempotencyKey: sagaKey,
         messageType: 'account.debit.compensation.requested.v1',
-        decide: (account) => compensate(account, quetzales(2_500), NOW),
+        decide: (account, commissionToReverse) =>
+          compensate(account, quetzales(2_500), commissionToReverse, NOW),
         compensates: { transactionId },
         now: NOW,
       });
@@ -295,7 +296,8 @@ describeIntegration('PostgresAccountRepository', () => {
           transactionId,
           idempotencyKey: randomUUID(),
           messageType: 'account.debit.compensation.requested.v1',
-          decide: (account) => compensate(account, quetzales(2_500), NOW),
+          decide: (account, commissionToReverse) =>
+            compensate(account, quetzales(2_500), commissionToReverse, NOW),
           compensates: { transactionId },
           now: NOW,
         }),
@@ -460,6 +462,92 @@ describeIntegration('PostgresAccountRepository', () => {
 
       expect(operations.filter((operation) => operation.type === 'COMMISSION')).toHaveLength(1);
       expect((await repository.findById(accountId))?.balanceMinor).toBe(17_200);
+    });
+
+    /**
+     * T-29 correction: compensating an `AHORRO` transfer used to return the
+     * transfer amount and keep the Q3.00 commission, discovered testing T-29's
+     * TIMEOUT scenario end to end against the real application. The full
+     * balance — amount and commission both — must come back, and the
+     * commission's own `account_operations` row must read `COMPENSATED`
+     * rather than staying `APPLIED` forever for a fee that was refunded.
+     */
+    it('refunds the commission alongside the amount when the debit it charged is compensated', async () => {
+      const accountId = await seed(20_000, { accountType: 'AHORRO' });
+      const transactionId = randomUUID();
+      const sagaKey = randomUUID();
+
+      await repository.applyMovement({
+        accountId,
+        type: 'DEBIT',
+        transactionId,
+        idempotencyKey: sagaKey,
+        messageType: 'account.debit.requested.v1',
+        decide: (account) => debit(account, quetzales(2_500), NOW),
+        now: NOW,
+      });
+
+      // Amount 2,500 + commission 300 left the account: 20,000 - 2,800 = 17,200.
+      expect((await repository.findById(accountId))?.balanceMinor).toBe(17_200);
+
+      const compensated = await repository.applyMovement({
+        accountId,
+        type: 'COMPENSATION',
+        transactionId,
+        idempotencyKey: sagaKey,
+        messageType: 'account.debit.compensation.requested.v1',
+        decide: (account, commissionToReverse) =>
+          compensate(account, quetzales(2_500), commissionToReverse, NOW),
+        compensates: { transactionId },
+        now: NOW,
+      });
+
+      // Back to the exact balance before the transfer — the fee did not stick.
+      expect((await repository.findById(accountId))?.balanceMinor).toBe(20_000);
+      expect(compensated?.operation.amount).toEqual(quetzales(2_800));
+
+      const operations = await repository.operationsOf(accountId);
+
+      expect(operations.find((operation) => operation.type === 'DEBIT')?.status).toBe(
+        'COMPENSATED',
+      );
+      expect(operations.find((operation) => operation.type === 'COMMISSION')?.status).toBe(
+        'COMPENSATED',
+      );
+      expect(operations.find((operation) => operation.type === 'COMPENSATION')?.status).toBe(
+        'APPLIED',
+      );
+    });
+
+    it('compensates a MONETARIA debit for the amount alone — there was never a commission to reverse', async () => {
+      const accountId = await seed(20_000, { accountType: 'MONETARIA' });
+      const transactionId = randomUUID();
+      const sagaKey = randomUUID();
+
+      await repository.applyMovement({
+        accountId,
+        type: 'DEBIT',
+        transactionId,
+        idempotencyKey: sagaKey,
+        messageType: 'account.debit.requested.v1',
+        decide: (account) => debit(account, quetzales(2_500), NOW),
+        now: NOW,
+      });
+
+      const compensated = await repository.applyMovement({
+        accountId,
+        type: 'COMPENSATION',
+        transactionId,
+        idempotencyKey: sagaKey,
+        messageType: 'account.debit.compensation.requested.v1',
+        decide: (account, commissionToReverse) =>
+          compensate(account, quetzales(2_500), commissionToReverse, NOW),
+        compensates: { transactionId },
+        now: NOW,
+      });
+
+      expect((await repository.findById(accountId))?.balanceMinor).toBe(20_000);
+      expect(compensated?.operation.amount).toEqual(quetzales(2_500));
     });
   });
 

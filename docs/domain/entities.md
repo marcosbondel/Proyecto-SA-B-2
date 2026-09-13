@@ -127,6 +127,16 @@ deactivation is unaffected — both types remain equally subject to it, and its 
 threshold (`MIN_BALANCE_MINOR` in `deactivation-policy.ts`) is a distinct number from
 `AHORRO`'s opening minimum, checked by a different job for a different reason.
 
+**A compensated transfer refunds the commission too (T-29 correction).** Testing T-29's
+`TIMEOUT` scenario end to end surfaced a gap T-27 never actually decided on purpose: `compensate`
+only ever saw the transfer amount, so an `AHORRO` transfer the Saga cancelled after debiting
+still left the customer paying Q3.00 for a transfer that never happened. `CompensateDebitUseCase`
+now has the repository look up the `COMMISSION` row the original debit charged (its own
+`account_operations` entry, found by `transaction_id` inside the same lock that reverses the
+debit), mark it `COMPENSATED`, and hand its amount to `compensate` so the full amount —
+transfer plus commission — returns in one movement. A `MONETARIA` compensation is unaffected:
+there was never a commission to look up.
+
 ### Automatic deactivation
 
 The assignment requires an automatic process that deactivates inactive accounts with a balance
@@ -271,6 +281,18 @@ already draw from `status` alone.
 
 `PENDING` → `SUCCEEDED` \| `FAILED`. Retries happen **inside** `PENDING`, incrementing
 `attempt`; `FAILED` is reached only when retries are exhausted, and is terminal.
+
+### The simulated external provider (T-29)
+
+Each attempt asks a simulated provider — deterministic, chosen by the
+demonstration `scenario` carried from the transfer request — and records what
+it answered: `SUCCESS`, `FAILURE`, or `TIMEOUT`. This `providerResult` is
+distinct from `errorType`: `errorType` is the retry policy's own statement
+about whether an attempt is worth retrying (`TRANSIENT` vs `PERMANENT`), while
+`providerResult` is what the provider itself said. A `TRANSIENT_FAILURE`
+scenario and a `TIMEOUT` scenario both produce `errorType: 'TRANSIENT'` and
+climb the identical retry ladder — `providerResult` is the only fact that
+tells the two apart in the record kept of each attempt.
 
 ### Invariants
 

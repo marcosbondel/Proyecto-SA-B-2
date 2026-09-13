@@ -4,6 +4,7 @@ import { asyncStateFor } from '../../lib/gateway-error';
 import type { LoadState } from '../../lib/gateway-error';
 import { formatQuetzales, MIN_AMOUNT_MINOR } from '../../lib/money';
 import type { Biller } from '../../lib/payment';
+import type { PaymentScenario } from '../../lib/transaction';
 
 /**
  * `G-01` — "Nuevo pago", and the screen that made this module a product rather
@@ -24,6 +25,14 @@ import type { Biller } from '../../lib/payment';
  * The catalogue is **asked for**, never compiled in. A biller's collection
  * account id in a browser bundle is an account id that is wrong the first time
  * anything is reseeded.
+ *
+ * **`PaymentScenarioSelect` (added by T-29's correction).** Since a service
+ * payment is the same `POST /api/transfers` a transfer is, it goes through the
+ * identical Payment Service simulation — but until this fix, this screen was
+ * the one place in the product that could never demonstrate it: a pago de
+ * servicio always ran with no scenario, so a timeout, a rejection or a
+ * transient failure could only ever be rehearsed from `/transferencias/nueva`,
+ * never from the external-payment screen the ticket is actually about.
  */
 const api = useGatewayApi();
 
@@ -43,6 +52,7 @@ const sourceAccount = ref<string | undefined>(undefined);
 const billerCode = ref<string | undefined>(undefined);
 const amountMinor = ref<number | null>(null);
 const reference = ref('');
+const paymentScenario = ref<PaymentScenario | null>(null);
 const idempotencyKey = ref('');
 
 const accounts = ref<readonly AccountSummary[]>([]);
@@ -154,6 +164,7 @@ async function send(): Promise<void> {
         targetAccount: targetAccount.value,
         amount: { amountMinor: amountMinor.value, currency: 'GTQ' },
         reference: reference.value.trim(),
+        ...(paymentScenario.value === null ? {} : { paymentScenario: paymentScenario.value }),
       },
     },
   );
@@ -243,6 +254,8 @@ useHead({ title: 'Nuevo pago · bonking' });
               maxlength="60"
             />
           </UFormField>
+
+          <PaymentScenarioSelect v-model="paymentScenario" />
 
           <p v-if="localProblem" class="text-[13px] text-[#B01B1B]" data-testid="payment-local-problem">
             {{ localProblem }}

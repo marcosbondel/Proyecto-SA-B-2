@@ -39,8 +39,14 @@ export type RequestRejection =
 /** Everything this service can record as a cause of not completing. */
 export type FailureReason = DebitRejection | CreditRejection | PaymentRejection | RequestRejection;
 
-/** The demonstration scenario, carried and never obeyed here. */
-export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE';
+/**
+ * The demonstration scenario, carried and never obeyed here.
+ *
+ * `TIMEOUT` added by T-29, alongside Payment Service's simulated provider.
+ * This service still decides nothing from it — only Payment Service acts on
+ * the value.
+ */
+export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE' | 'TIMEOUT';
 
 /**
  * The aggregate this service owns.

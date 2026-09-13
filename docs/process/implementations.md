@@ -202,6 +202,76 @@ concurrencia contra PostgreSQL real.
 
 ---
 
+## T-29 — Simulación de proveedor externo de pagos (Payment Service)
+
+### Qué pedía el enunciado
+
+Sección 4.1 (Payment Service, p. 5-6): procesar pagos externos simulando éxito, fallo y
+**timeout**, con reintentos acotados, idempotencia y sin doble cargo.
+
+### Cómo se cubrió
+
+Éxito y fallo ya existían desde T-19 (`APPROVE`/`REJECT`/`TRANSIENT_FAILURE`). Lo que
+faltaba era el timeout como su propio resultado disparable: antes de T-29,
+`TRANSIENT_FAILURE` describía a la vez "un timeout, un reset de conexión, un 503" — tres
+causas distintas en un solo valor, así que un timeout no se podía ensayar por separado de
+un fallo transitorio cualquiera.
+
+T-29 separa el proveedor simulado (`callProvider`: responde `SUCCESS`/`FAILURE`/`TIMEOUT`,
+sin reloj ni azar) de la política de reintentos (`decideAttempt`, sin cambios en su
+escalera). `TIMEOUT` sube exactamente la misma escalera que `TRANSIENT_FAILURE` — 1 s, 5 s,
+30 s, cuatro intentos — y se agota con el mismo código `PAYMENT_RETRIES_EXHAUSTED`; lo único
+nuevo es que cada intento fallido ahora dice, en `providerResult`, si el proveedor respondió
+que no o si simplemente no respondió.
+
+Detalle completo en
+[`docs/qa/backend/T-29-payment-provider-evidence.md`](../qa/backend/T-29-payment-provider-evidence.md).
+
+### Qué probar en la web
+
+1. **Dispara el timeout**, desde `/transferencias/nueva`, eligiendo "El proveedor no
+   responde (timeout)" en el campo de escenario de pago (solo demostración).
+2. **Observa la escalera**, en `/transferencias/{id}`: el panel de la transferencia debe
+   mostrar hasta cuatro intentos, con esperas de 1 s, 5 s y 30 s entre uno y otro — el
+   mismo aviso que ya existía para "Fallo transitorio".
+3. **Cada intento debe decir qué respondió el proveedor**: en la ficha de intentos, junto
+   al tipo de fallo, debe leerse "el proveedor no respondió (timeout)" — distinto del
+   texto que aparece con "Fallo transitorio" ("el proveedor rechazó"), aunque ambos
+   comparten la misma escalera y el mismo desenlace final.
+4. **Confirma la compensación**: tras agotar los cuatro intentos, la transferencia debe
+   cerrar en **Compensada**, con el dinero de vuelta en la cuenta origen — dos movimientos
+   en el estado de cuenta, igual que un fallo transitorio agotado.
+5. **Compara con los otros dos resultados** en la misma pantalla: `APPROVE` cierra
+   Completada de inmediato; `REJECT` cierra Fallida sin subir la escalera. Los tres deben
+   poder dispararse por separado, sin depender uno del otro.
+6. **Repite los cinco pasos anteriores desde `/pagos/nuevo`** ("Pago de servicios"), no
+   solo desde `/transferencias/nueva`. Un pago de servicio es la misma transferencia con
+   el destino puesto en la cuenta recaudadora de un biller, así que atraviesa exactamente
+   el mismo Payment Service — y hasta la corrección de abajo, esa pantalla nunca ofrecía
+   el campo "Escenario de pago", así que el proveedor externo (lo que este ticket trata)
+   solo se podía ensayar transfiriendo entre cuentas, nunca pagando un servicio real.
+
+### Dos correcciones surgidas de probar esto en vivo, no del alcance original del ticket
+
+Probando el flujo completo con el responsable del proyecto (frontend + backend reales,
+no solo los comandos de validación) surgieron dos defectos que ningún test automatizado
+de T-27 o T-29 cubría, porque ninguno ejercitaba una compensación sobre una cuenta
+`AHORRO` ni el escenario de pago desde la pantalla de servicios:
+
+- **La comisión de Q3.00 no se devolvía en una transferencia compensada** (defecto de
+  T-27, expuesto agotando la escalera de T-29 sobre una cuenta `AHORRO`). Registrado como
+  **TD-065** (`docs/TECH_DEBT.md`, **Resuelto**) y en
+  [`docs/qa/backend/T-27-account-type-rules-evidence.md`](../qa/backend/T-27-account-type-rules-evidence.md).
+- **`/pagos/nuevo` no ofrecía el campo "Escenario de pago"**, así que un pago de servicio
+  jamás podía demostrar el timeout, el rechazo o el fallo transitorio que este ticket
+  añade — solo una transferencia entre cuentas podía. Corregido reutilizando
+  `PaymentScenarioSelect` (el mismo componente de `/transferencias/nueva`) en
+  `apps/web/app/pages/pagos/nuevo.vue`, sin tocar el Gateway ni Payment Service: el
+  endpoint (`POST /api/transfers`) ya aceptaba `paymentScenario` para cualquier destino,
+  biller incluido — faltaba solo exponerlo en este formulario.
+
+---
+
 ## Una nota sobre el entorno, no sobre el código
 
 Si `pnpm dev` falla en el paso `rabbitmq-init` con un código de salida `127`, no es un

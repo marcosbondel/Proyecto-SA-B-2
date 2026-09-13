@@ -53,6 +53,18 @@ export const paymentAttemptFailedV1 = defineContract({
     attempt: z.int().positive(),
     errorType: paymentErrorType,
     /**
+     * What the simulated provider actually answered — added by T-29.
+     *
+     * `errorType` says whether the policy will retry; this says what the
+     * provider was rehearsing when it produced that answer. A `REJECT`
+     * scenario and a `TRANSIENT_FAILURE` scenario both eventually reach
+     * `errorType: 'PERMANENT'` vs `'TRANSIENT'`, but `TRANSIENT_FAILURE` and
+     * `TIMEOUT` share `errorType: 'TRANSIENT'` and the same ladder — this field
+     * is the only place the two are told apart. Never `SUCCESS`: a successful
+     * attempt does not publish this event.
+     */
+    providerResult: z.enum(['FAILURE', 'TIMEOUT']),
+    /**
      * Whether the policy will try again. `false` on a `PERMANENT` error and on
      * the last rung of the ladder; the terminal `payment.failed.v1` follows.
      */

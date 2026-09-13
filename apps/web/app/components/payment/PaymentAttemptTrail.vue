@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   ERROR_TYPE_PRESENTATION,
+  PROVIDER_RESULT_PRESENTATION,
   attemptProgress,
   formatDelay,
   isRetrying,
@@ -134,6 +135,13 @@ const silent = computed(
           >{{ attempt.result === 'SUCCEEDED' ? 'aprobado' : 'falló' }}</span>
           <span v-if="attempt.errorType" class="text-[12px] text-[#75767F]">
             · {{ ERROR_TYPE_PRESENTATION[attempt.errorType].label.toLowerCase() }}
+          </span>
+          <span
+            v-if="attempt.providerResult"
+            class="text-[12px] text-[#75767F]"
+            data-testid="payment-attempt-provider-result"
+          >
+            · {{ PROVIDER_RESULT_PRESENTATION[attempt.providerResult] }}
           </span>
         </span>
         <span
