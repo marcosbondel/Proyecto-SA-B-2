@@ -234,7 +234,7 @@ function daysInUtcMonth(date: Date): number {
  * a role-restricted screen filters in the page.
  */
 export function mayManageAccounts(role: Role | null): boolean {
-  return role === 'ADMINISTRADOR';
+  return role === 'ADMINISTRADOR' || role === 'CAJERO_RECEPTOR';
 }
 
 /**

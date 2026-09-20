@@ -37,7 +37,7 @@ export class SetAccountStatusUseCase {
     identity: Identity | null,
     idempotencyKey: string,
   ): Promise<void> {
-    if (identity?.role !== 'ADMINISTRADOR') {
+    if (!identity) {
       return;
     }
 
@@ -59,6 +59,17 @@ export class SetAccountStatusUseCase {
       return;
     }
 
+    // Role authorization:
+    // ADMINISTRADOR & CAJERO_RECEPTOR can change status on any account.
+    // CLIENTE can only change status on their own accounts.
+    if (identity.role === 'CLIENTE') {
+      if (before.customerId !== identity.customerId) {
+        return;
+      }
+    } else if (identity.role !== 'ADMINISTRADOR' && identity.role !== 'CAJERO_RECEPTOR') {
+      return;
+    }
+
     const account = await this.#repository.setStatus({
       accountId: payload.accountId,
       status: payload.status,
@@ -74,6 +85,12 @@ export class SetAccountStatusUseCase {
     }
 
     const now = this.#clock.now().toISOString();
+    const cause =
+      identity.role === 'CLIENTE'
+        ? 'CUSTOMER'
+        : identity.role === 'CAJERO_RECEPTOR'
+          ? 'TELLER'
+          : 'ADMINISTRATOR';
 
     await this.#publisher.publish(
       payload.status === 'INACTIVE'
@@ -81,12 +98,10 @@ export class SetAccountStatusUseCase {
             messageType: accountDeactivatedV1.name,
             payload: {
               accountId: account.accountId,
-              cause: 'ADMINISTRATOR',
+              cause,
               balanceAtDeactivation: quetzales(account.balanceMinor),
               lastActivityAt: account.lastActivityAt?.toISOString() ?? null,
               deactivatedAt: now,
-              // The administrator's reason, required on the command and kept in
-              // the audit trail instead of discarded.
               reason: payload.reason,
             },
           }
@@ -94,7 +109,7 @@ export class SetAccountStatusUseCase {
             messageType: accountReactivatedV1.name,
             payload: {
               accountId: account.accountId,
-              cause: 'ADMINISTRATOR',
+              cause,
               reactivatedAt: now,
             },
           },

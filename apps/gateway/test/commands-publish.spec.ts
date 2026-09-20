@@ -172,31 +172,24 @@ describe('the five asynchronous commands', () => {
   describe('activating or deactivating an account by hand', () => {
     const STATUS_CHANGE = { status: 'INACTIVE', reason: 'Solicitud del titular' };
 
-    it('publishes account.set-status.v1 for an administrator, and answers 202', async () => {
-      const response = await request(app.getHttpServer())
-        .post(`/api/accounts/${SOURCE}/status`)
-        .set('Authorization', admin)
-        .send(STATUS_CHANGE);
+    it.each(['ADMINISTRADOR', 'CAJERO_RECEPTOR', 'CLIENTE'] as const)(
+      'publishes account.set-status.v1 for %s, and answers 202',
+      async (role) => {
+        const token = harness.tokens.sign({ customerId: ACTOR, username: 'user', role });
 
-      expect(response.status).toBe(202);
-      expect(harness.publisher.lastType).toBe(accountSetStatusV1.name);
-      expect(harness.publisher.published.at(-1)?.payload).toEqual({
-        accountId: SOURCE,
-        ...STATUS_CHANGE,
-      });
-    });
+        const response = await request(app.getHttpServer())
+          .post(`/api/accounts/${SOURCE}/status`)
+          .set('Authorization', `Bearer ${token}`)
+          .send(STATUS_CHANGE);
 
-    it.each(['CLIENTE', 'CAJERO_RECEPTOR'] as const)('refuses %s with 403 and publishes nothing', async (role) => {
-      const token = harness.tokens.sign({ customerId: ACTOR, username: 'ana', role });
-
-      const response = await request(app.getHttpServer())
-        .post(`/api/accounts/${SOURCE}/status`)
-        .set('Authorization', `Bearer ${token}`)
-        .send(STATUS_CHANGE);
-
-      expect(response.status).toBe(403);
-      expect(harness.publisher.published).toHaveLength(0);
-    });
+        expect(response.status).toBe(202);
+        expect(harness.publisher.lastType).toBe(accountSetStatusV1.name);
+        expect(harness.publisher.published.at(-1)?.payload).toEqual({
+          accountId: SOURCE,
+          ...STATUS_CHANGE,
+        });
+      },
+    );
 
     /**
      * The reason is the only record of *why* a manual deactivation happened —
