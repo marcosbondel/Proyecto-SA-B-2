@@ -420,8 +420,9 @@ paths:
         - account.operations.replied.v1
   /api/accounts/{accountId}/status:
     post:
-      description: "Solo ADMINISTRADOR (D-06). Devuelve 202: el cambio todavía no ocurrió. El motivo es
-        obligatorio porque es el único registro de por qué se hizo."
+      description: "ADMINISTRADOR, CAJERO_RECEPTOR y CLIENTE (para sus propias cuentas). Devuelve 202: el
+        cambio todavía no ocurrió. El motivo es obligatorio porque es el único registro de por qué
+        se hizo."
       operationId: AccountsController_setStatus
       parameters:
         - name: accountId
