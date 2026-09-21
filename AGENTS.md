@@ -180,7 +180,7 @@ Consult these documents before making decisions or describing the repository:
 - [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md): **the Kubernetes runbook** — prerequisites, the four commands that take the system from a clean machine to a running cluster, verification, the Saga run, scaling limits and every failure mode. Read it before changing the Helm chart, the kind configuration or anything under `infra/k8s/`.
 - [docs/manual/](docs/manual/README.md): the user manual — the general guide, one walkthrough per role, and the 78-step visual tour.
 - [docs/qa/](docs/qa/README.md): the test evidence — the happy-path and error-case guide, the validation report, and the screenshots the suites produce.
-- [docs/sre/](docs/sre/sli.md): the SLI, SLO and SLA in full; `docs/RELIABILITY.md` states the design concerns they answer.
+- [docs/sre/](docs/sre/sli-slo-sla.md): the unified SLI, SLO and SLA framework; `docs/RELIABILITY.md` states the design concerns they answer.
 - [docs/references/README.md](docs/references/README.md): the assignment statements, phase 1 and phase 2, and the prototype prompt.
 - [apps/web/README.md](apps/web/README.md): Nuxt starter-level application commands when working inside the web app.
 - [.specify/memory/constitution.md](.specify/memory/constitution.md): mandatory architecture principles before writing a spec or plan.

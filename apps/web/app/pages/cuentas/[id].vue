@@ -123,6 +123,59 @@ async function refresh(): Promise<void> {
   await Promise.all([loadBalance(), loadStatement()]);
 }
 
+const showStatusForm = ref(false);
+const statusReason = ref('');
+const statusChanging = ref(false);
+const statusChangeState = ref<'IDLE' | AsyncState>('IDLE');
+const statusChangeMessage = ref<string | undefined>(undefined);
+
+function beginStatusChange(): void {
+  showStatusForm.value = true;
+  statusReason.value =
+    account.value?.status === 'ACTIVE'
+      ? 'Desactivación/congelamiento voluntario por parte del titular'
+      : 'Reactivación voluntaria por parte del titular';
+  statusChangeState.value = 'IDLE';
+  statusChangeMessage.value = undefined;
+}
+
+async function confirmStatusChange(): Promise<void> {
+  if (!account.value || !statusReason.value.trim() || statusChanging.value) {
+    return;
+  }
+
+  statusChanging.value = true;
+  const next = account.value.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+
+  const result = await api.call<{ correlationId: string }>(
+    `/api/accounts/${account.value.accountId}/status`,
+    {
+      method: 'POST',
+      body: {
+        status: next,
+        reason: statusReason.value.trim(),
+      },
+    },
+  );
+
+  statusChanging.value = false;
+
+  if (!result.ok) {
+    statusChangeState.value = asyncStateFor(result.error);
+    statusChangeMessage.value = result.error.message;
+    correlationId.value = result.error.correlationId ?? correlationId.value;
+
+    return;
+  }
+
+  showStatusForm.value = false;
+  account.value = {
+    ...account.value,
+    status: next,
+  };
+  await refresh();
+}
+
 onMounted(async () => {
   if (malformed.value) {
     balanceState.value = 'VALIDATION_ERROR';
@@ -180,6 +233,71 @@ useHead({ title: 'Cuenta · bonking' });
       </div>
 
       <AccountDeactivationWarning v-if="account !== null" :account="account" />
+
+      <div
+        v-if="account !== null"
+        class="mt-2 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E9E9EC] bg-white p-5 shadow-sm"
+      >
+        <div>
+          <p class="text-[14px] font-semibold text-[#1B1B1F]">
+            Estado actual:
+            <span :class="account.status === 'ACTIVE' ? 'text-emerald-600 font-bold' : 'text-red-500 font-bold'">
+              {{ account.status === 'ACTIVE' ? 'ACTIVA' : 'INACTIVA / CONGELADA' }}
+            </span>
+          </p>
+          <p class="mt-1 text-[13px] text-[#5A5B63]">
+            {{ account.status === 'ACTIVE'
+              ? 'Puedes congelar o desactivar tu cuenta por seguridad si deseas suspender las transferencias salientes.'
+              : 'Tu cuenta está inactiva. Puedes reactivarla de inmediato para volver a operar.' }}
+          </p>
+        </div>
+        <UButton
+          size="sm"
+          :variant="account.status === 'ACTIVE' ? 'outline' : 'solid'"
+          :color="account.status === 'ACTIVE' ? 'neutral' : 'primary'"
+          @click="beginStatusChange"
+        >
+          {{ account.status === 'ACTIVE' ? 'Congelar / Desactivar cuenta' : 'Reactivar cuenta' }}
+        </UButton>
+      </div>
+
+      <UCard v-if="showStatusForm && account !== null" class="mt-2" data-testid="customer-status-change">
+        <template #header>
+          <h3 class="text-[16px] font-semibold">
+            {{ account.status === 'ACTIVE' ? 'Desactivar / Congelar' : 'Reactivar' }} cuenta
+          </h3>
+          <p class="mt-1 break-all font-mono text-[12px] text-[#5A5B63]">{{ account.accountId }}</p>
+        </template>
+
+        <form class="flex flex-col gap-4" @submit.prevent="confirmStatusChange">
+          <UFormField
+            label="Motivo"
+            name="statusReason"
+            help="Indica la justificación del cambio de estado."
+          >
+            <UInput v-model="statusReason" class="w-full" maxlength="300" />
+          </UFormField>
+
+          <SharedAsyncStateAlert
+            v-if="statusChangeState !== 'IDLE'"
+            :state="statusChangeState"
+            :message="statusChangeMessage"
+            :correlation-id="correlationId"
+          />
+
+          <div class="flex gap-2">
+            <UButton variant="outline" color="neutral" @click="showStatusForm = false">Cancelar</UButton>
+            <UButton
+              type="submit"
+              color="primary"
+              :loading="statusChanging"
+              :disabled="statusChanging || statusReason.trim().length === 0"
+            >
+              Confirmar cambio
+            </UButton>
+          </div>
+        </form>
+      </UCard>
 
       <div v-if="account !== null" class="mt-4 flex flex-col gap-3">
         <h2 class="text-[20px] font-semibold leading-7">Movimientos</h2>

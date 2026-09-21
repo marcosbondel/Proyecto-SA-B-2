@@ -77,12 +77,12 @@ describe('the frontend matrix agrees with the Gateway', () => {
 
     assert.match(
       source,
-      /@Roles\('ADMINISTRADOR'\)\s*\n\s*@Post\(':accountId\/status'\)/,
-      'the manual status change no longer restricts itself to ADMINISTRADOR',
+      /@Roles\('ADMINISTRADOR',\s*'CAJERO_RECEPTOR',\s*'CLIENTE'\)\s*\n\s*@Post\(':accountId\/status'\)/,
+      'the manual status change matches authorized roles',
     );
 
     assert.equal(mayManageAccounts('ADMINISTRADOR'), true);
-    assert.equal(mayManageAccounts('CAJERO_RECEPTOR'), false);
+    assert.equal(mayManageAccounts('CAJERO_RECEPTOR'), true);
     assert.equal(mayManageAccounts('CLIENTE'), false);
     assert.equal(mayManageAccounts(null), false);
   });
