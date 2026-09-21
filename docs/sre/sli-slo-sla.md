@@ -315,6 +315,21 @@ Para garantizar que el sistema soporte el SLA de 99.99%, la infraestructura en K
   * Tiempo total acumulado de la escalera: **36,000 ms**.
 * **Frecuencia del Barrido de Reintentos (*Sweeper*)**: Cada **500 ms**.
 
+### 8.3 Confiabilidad, Soberanía de Datos y Almacenamiento de Objetos (MinIO vs Almacenamiento Gestionado)
+
+En la arquitectura de Bank USAC, la gestión de documentos de identidad (fotografías de DPI y pasaportes) se delega a un clúster de almacenamiento de objetos **MinIO (StatefulSet)** dentro de la VPC privada de Kubernetes, en lugar de utilizar un bucket público o multitenant de un proveedor de nube (como Google Cloud Storage estándar). Esta decisión responde a directrices estrictas de SRE y regulación bancaria:
+
+1. **Aislamiento Perimetral y Modelo Zero Trust (Protección PII):**
+   * Los documentos de identificación contienen información personal sensible (*Personally Identifiable Information - PII*).
+   * Al ejecutarse MinIO dentro de la VPC privada (`10.10.0.0/20`), el tráfico de subida y validación criptográfica (hash SHA-256) **nunca transita por la red pública de Internet**, eliminando vectores de ataque por configuraciones erróneas de permisos en buckets globales.
+2. **Eliminación del Bloqueo de Proveedor (*Vendor Lock-in*) y Estrategia de Salida (*Exit Strategy*):**
+   * MinIO implementa la API estándar abierta de **Amazon S3** (`@aws-sdk/client-s3`).
+   * Los entes reguladores financieros (como la Superintendencia de Bancos - SIB) exigen planes de contingencia y salida multicloud: el banco puede migrar su plataforma entre GCP, AWS, Azure o centros de datos On-Premise sin modificar una sola línea de código fuente.
+3. **Métricas de Durabilidad y Disponibilidad de Almacenamiento:**
+   * **SLI de Durabilidad de Objetos**: **99.999999 % (8 Nueves)** sobre volúmenes persistentes SSD (`PersistentVolumeClaims`) con snapshots automatizados.
+   * **SLO de Latencia de Carga de Documentos (P95)**: $\le 400\text{ ms}$ (throughput interno dentro del clúster).
+   * **Cero Cobro por Operación (*Zero API Op Fees*)**: A diferencia de servicios gestionados que tarifan por cada operación Clase A/B (`PUT`/`GET`), MinIO permite millones de lecturas internas para validación de identidad con costo predecible y cero *egress fees*.
+
 ---
 
 ## 9. Matriz Cruzada de Trazabilidad SLI ↔ SLO ↔ SLA
@@ -326,6 +341,7 @@ Para garantizar que el sistema soporte el SLA de 99.99%, la infraestructura en K
 | **Libro Contable** | SLI-6, SLI-20, SLI-21 | SLO-3, SLO-15, SLO-16 (100% cuadre) | Tolerancia cero a saldos negativos o duplicados | `pnpm --filter account-service test` |
 | **Pagos a Terceros** | SLI-23, SLI-24 | SLO-11, SLO-14 (≥ 99.0% en escalera)| Transparencia y compensación tras 4 intentos | `pnpm --filter payment-service test` |
 | **Mensajería RabbitMQ** | SLI-5, SLI-19 | SLO-1, SLO-23 (≥ 99.0% sin DLQ) | Cero pérdida de mensajes válidos en tránsito | `pnpm test:contract` |
+| **Almacenamiento DPI (MinIO)** | SLI-9, SLI-10 | SLO-12 (P95 ≤ 400ms, 0 expuestos) | Soberanía perimetral privada y durabilidad 99.9999% | `pnpm --filter customer-service test` |
 | **Auditoría Forense** | SLI-16, SLI-17, SLI-18| SLO-20, SLO-21, SLO-22 (0 en claro) | Registro inmutable con datos sensibles ofuscados| `pnpm --filter notification-audit-service test`|
 | **Seguridad de Acceso** | SLI-28, SLI-29, SLI-30| SLO-24, SLO-25 (0 secretos) | Segregación de roles (D-06) y JWT inviolable | `pnpm images:smoke` |
 | **Plataforma K8s / Cloud**| SLI-11, SLI-12, SLI-13| SLO-9, SLO-10 (≥ 99.0% / < 90s) | Autoescalado al 80% CPU y RTO < 15 min | `pnpm k8s:evidence` |

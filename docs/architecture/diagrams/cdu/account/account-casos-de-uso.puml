@@ -36,8 +36,10 @@ rectangle "CDU002 - Gestionar cuentas y saldos" as system_account {
 
 actor_account_customer -- uc_account_open
 actor_account_customer -- uc_account_balance
+actor_account_customer -- uc_account_status
 actor_account_teller -- uc_account_open
 actor_account_teller -- uc_account_balance
+actor_account_teller -- uc_account_status
 actor_account_admin -- uc_account_open
 actor_account_admin -- uc_account_balance
 actor_account_admin -- uc_account_status
