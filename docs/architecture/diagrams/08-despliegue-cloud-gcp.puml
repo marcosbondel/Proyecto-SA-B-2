@@ -1,0 +1,138 @@
+@startuml 08-despliegue-cloud-gcp
+
+' Bank USAC - UML 2 Deployment Diagram (Google Cloud Platform - Fase 2)
+title UML 2 - Diagrama de Despliegue en la Nube (GCP - Fase 2)\nBank USAC
+
+left to right direction
+skinparam shadowing false
+skinparam linetype ortho
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultTextAlignment center
+skinparam wrapWidth 200
+
+skinparam node {
+    BackgroundColor #FFFFFF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+skinparam node<<gcpCloud>> {
+    BackgroundColor #F8FAFC
+    BorderColor #4285F4
+    FontColor #1A73E8
+}
+skinparam node<<vpc>> {
+    BackgroundColor #FFFFFF
+    BorderColor #34A853
+    FontColor #1E7E34
+}
+skinparam node<<subnet>> {
+    BackgroundColor #F1F8F4
+    BorderColor #34A853
+    FontColor #1E7E34
+}
+skinparam node<<gkeCluster>> {
+    BackgroundColor #E8F0FE
+    BorderColor #1A73E8
+    FontColor #1A73E8
+}
+skinparam node<<computeVM>> {
+    BackgroundColor #FFF9E6
+    BorderColor #FBBC04
+    FontColor #B06000
+}
+skinparam node<<serverless>> {
+    BackgroundColor #FCE8E6
+    BorderColor #EA4335
+    FontColor #C5221F
+}
+skinparam node<<pod>> {
+    BackgroundColor #FFFFFF
+    BorderColor #EF9425
+    FontColor #D06000
+}
+skinparam database<<postgres>> {
+    BackgroundColor #EBF3FB
+    BorderColor #336791
+    FontColor #336791
+}
+
+actor "Visitante / Cliente\nAdministrador / Cajero\n(Navegador Web)" as user
+
+node "Google Cloud Platform (GCP)" <<gcpCloud>> {
+
+    node "Cloud Run (Serverless)" <<serverless>> {
+        node "bank-usac-web" as cloudRunWeb {
+            artifact "Frontend Nuxt 3 (SSR/Nitro)\nPort 8080 | Autoescalado 0-5" as webArtifact
+        }
+    }
+
+    node "Virtual Private Cloud (VPC): bank-usac-vpc" <<vpc>> {
+        
+        node "Cloud NAT & Router" as cloudNat {
+            artifact "Salida segura a Internet\n(Actualizaciones / Paquetes apt)" as natArtifact
+        }
+
+        node "Subred Bases de Datos (10.40.0.0/24)" <<subnet>> {
+            node "VM: bank-db-customer" <<computeVM>> {
+                database "PostgreSQL :5432\n(customer)" <<postgres>> as dbCustomer
+            }
+            node "VM: bank-db-account" <<computeVM>> {
+                database "PostgreSQL :5432\n(account)" <<postgres>> as dbAccount
+            }
+            node "VM: bank-db-transaction" <<computeVM>> {
+                database "PostgreSQL :5432\n(transaction)" <<postgres>> as dbTransaction
+            }
+            node "VM: bank-db-payment" <<computeVM>> {
+                database "PostgreSQL :5432\n(payment)" <<postgres>> as dbPayment
+            }
+            node "VM: bank-db-audit" <<computeVM>> {
+                database "PostgreSQL :5432\n(notification_audit)" <<postgres>> as dbAudit
+            }
+        }
+
+        node "Subred GKE (10.10.0.0/20)" <<subnet>> {
+            node "GKE Managed Cluster" <<gkeCluster>> {
+                
+                node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
+                node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
+                node "Account Service Pods\n[1 Replica]" <<pod>> as podAccount
+                node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
+                node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
+                node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit
+
+                node "Broker RabbitMQ\nStatefulSet (:5672)" <<pod>> as brokerRabbit
+                node "MinIO Object Storage\nStatefulSet (:9000)" <<pod>> as storageMinio
+            }
+        }
+    }
+}
+
+' Flujos de comunicación
+user --> cloudRunWeb : "HTTPS :443 (Interfaz Web)"
+user --> podGateway : "HTTPS / REST :3000\n(API Gateway Ingress)"
+
+cloudRunWeb ..> podGateway : "NUXT_PUBLIC_API_BASE_URL\n(Consumo cliente)"
+
+podGateway --> brokerRabbit : "AMQP Request/Reply (:5672)"
+podGateway --> storageMinio : "S3 Upload DPI (:9000)"
+
+podCustomer --> brokerRabbit : "AMQP (:5672)"
+podAccount --> brokerRabbit : "AMQP (:5672)"
+podTransaction --> brokerRabbit : "AMQP (:5672)"
+podPayment --> brokerRabbit : "AMQP (:5672)"
+podAudit --> brokerRabbit : "AMQP (:5672)"
+
+podCustomer --> dbCustomer : "TCP :5432 (Privado)"
+podAccount --> dbAccount : "TCP :5432 (Privado)"
+podTransaction --> dbTransaction : "TCP :5432 (Privado)"
+podPayment --> dbPayment : "TCP :5432 (Privado)"
+podAudit --> dbAudit : "TCP :5432 (Privado)"
+
+dbCustomer ..> cloudNat : "Acceso de salida seguro"
+dbAccount ..> cloudNat
+dbTransaction ..> cloudNat
+dbPayment ..> cloudNat
+dbAudit ..> cloudNat
+
+@enduml

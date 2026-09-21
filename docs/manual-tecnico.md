@@ -10,6 +10,9 @@
    - [3.2 Requisitos de Software](#32-requisitos-de-software)
    - [3.3 Tecnologías y Herramientas Utilizadas](#33-tecnologías-y-herramientas-utilizadas)
 4. [Arquitectura del Sistema y Patrones de Diseño](#4-arquitectura-del-sistema-y-patrones-de-diseño)
+   - [4.1 Arquitectura General y Despliegue Local](#41-arquitectura-general-y-despliegue-local)
+   - [4.2 Arquitectura en la Nube (GCP - Fase 2)](#42-arquitectura-en-la-nube-gcp---fase-2)
+   - [4.3 Reglas Arquitectónicas Inviolables (Constitution)](#43-reglas-arquitectónicas-inviolables-constitution)
 5. [Lógica y Descripción de la Solución](#5-lógica-y-descripción-de-la-solución)
    - [5.1 API Gateway](#51-api-gateway)
    - [5.2 Customer Service](#52-customer-service)
@@ -20,6 +23,10 @@
    - [5.7 Frontend Web (Nuxt 3)](#57-frontend-web-nuxt-3)
 6. [Diseño de Bases de Datos](#6-diseño-de-bases-de-datos)
 7. [Guía de Compilación, Ejecución y Pruebas](#7-guía-de-compilación-ejecución-y-pruebas)
+   - [7.1 Levantado Completo en Docker Local](#71-levantado-completo-en-docker-local)
+   - [7.2 Ejecución de Pruebas Automatizadas](#72-ejecución-de-pruebas-automatizadas)
+   - [7.3 Despliegue en la Nube con Terraform y Helm (GCP - Fase 2)](#73-despliegue-en-la-nube-con-terraform-y-helm-gcp---fase-2)
+   - [7.4 Marco de Confiabilidad SRE (SLI, SLO y SLA)](#74-marco-de-confiabilidad-sre-sli-slo-y-sla)
 
 ---
 
@@ -76,7 +83,8 @@ El sistema bancario Bank USAC implementa la totalidad del ciclo de vida de opera
 
 ## 4. Arquitectura del Sistema y Patrones de Diseño
 
-El sistema está construido bajo una arquitectura orientada a microservicios desacoplados:
+### 4.1 Arquitectura General y Despliegue Local
+El sistema está construido bajo una arquitectura orientada a microservicios desacoplados y dirigida por eventos:
 
 ```text
 [ Cliente Web (Nuxt 3) ]  ──HTTP/REST──►  [ API Gateway (NestJS :3000) ]
@@ -100,7 +108,17 @@ El sistema está construido bajo una arquitectura orientada a microservicios des
     (PostgreSQL :5436)             (PostgreSQL :5437)
 ```
 
-### Reglas Arquitectónicas Inviolables (Constitution)
+*(Para ver el diagrama UML de despliegue local en detalle, consultar [`docs/architecture/diagrams/05-uml-despliegue.puml`](architecture/diagrams/05-uml-despliegue.puml)).*
+
+### 4.2 Arquitectura en la Nube (GCP - Fase 2)
+Para el cumplimiento de los requerimientos de la Fase 2, se estructuró la infraestructura como código (**Terraform**) sobre Google Cloud Platform (diagrama detallado en [`docs/architecture/diagrams/08-despliegue-cloud-gcp.puml`](architecture/diagrams/08-despliegue-cloud-gcp.puml)):
+
+1. **Frontend Serverless en Cloud Run:** El contenedor web corre de forma elástica escalando de 0 a 5 instancias, consumiendo la URL pública del API Gateway.
+2. **Clúster GKE Administrado:** Aloja los microservicios backend, el API Gateway, el broker RabbitMQ y MinIO. Incluye **Horizontal Pod Autoscaling (HPA)** configurado al **80% de utilización de CPU**.
+3. **Máquinas Virtuales Compute Engine para PostgreSQL:** 5 instancias privadas dedicadas en su propia subred (`10.40.0.0/24`), aisladas de Internet directo y protegidas por Cloud NAT y Firewall de red VPC.
+4. **Almacenamiento de Objetos Seguro con MinIO (API S3):** Para la custodia de fotografías de DPI, se utiliza MinIO StatefulSet dentro de la VPC privada de Kubernetes en lugar de un bucket multitenant público. Esto garantiza soberanía de datos personales sensibles (Zero Trust PII), latencia interna ultra baja, paridad dev/prod total (12-Factor App) y erradica el *Vendor Lock-in* al apegarse a la especificación estándar de la API S3.
+
+### 4.3 Reglas Arquitectónicas Inviolables (Constitution)
 1. **Frontera de Datos Estricta:** Cada microservicio es dueño de su base de datos PostgreSQL. Ningún servicio puede consultar tablas ni conectarse a la base de datos de otro microservicio.
 2. **Sin HTTP entre Servicios:** Todos los microservicios se comunican de forma 100% asíncrona mediante colas y exchanges de RabbitMQ.
 3. **Gateway Agregador sin Lógica de Dominio:** El API Gateway es el único punto de entrada; maneja autenticación JWT, autorización de roles y transmutación HTTP $\leftrightarrow$ AMQP, pero no toma decisiones financieras ni guarda datos.
@@ -373,3 +391,29 @@ pnpm test:contract  # Valida contratos de mensajería Zod
 pnpm lint           # Verifica las reglas de aislamiento arquitectónico
 pnpm typecheck      # Verificación de tipos TypeScript en estricto
 ```
+
+### 7.3 Despliegue en la Nube con Terraform y Helm (GCP - Fase 2)
+Para el aprovisionamiento de la infraestructura en Google Cloud Platform:
+
+```powershell
+# 1. Posicionarse en el módulo de Terraform
+cd infra/terraform/gcp
+
+# 2. Inicializar y aplicar la infraestructura
+terraform init
+terraform apply -var="project_id=tu-proyecto-gcp"
+
+# 3. Conectar kubectl al clúster GKE
+gcloud container clusters get-credentials bank-usac-vpc-gke --zone us-central1-a
+
+# 4. Desplegar microservicios y HPA con Helm
+# Utilizar las IPs privadas emitidas en terraform output para configurar Helm
+```
+*(Para instrucciones exhaustivas, consultar [`infra/terraform/gcp/README.md`](../infra/terraform/gcp/README.md)).*
+
+### 7.4 Marco de Confiabilidad SRE (SLI, SLO y SLA)
+El sistema opera bajo una política de confiabilidad de grado bancario (99.99% de disponibilidad, RPO=0, RTO < 15 min, latencias transaccionales P95 < 250 ms, autoescalado HPA al 80% de CPU y matriz de incidentes SEV-1 a SEV-4).
+
+El marco unificado con sus 30 SLIs, 26 SLOs y acuerdos contractuales se encuentra documentado en:
+👉 [`docs/sre/sli-slo-sla.md`](sre/sli-slo-sla.md).
+
