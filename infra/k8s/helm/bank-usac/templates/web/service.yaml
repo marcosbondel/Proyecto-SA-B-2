@@ -1,3 +1,4 @@
+{{- if ne .Values.web.enabled false }}
 {{- $component := .Values.web.component }}
 {{- $ctx := dict "root" $ "component" $component }}
 apiVersion: v1
@@ -15,3 +16,4 @@ spec:
     - name: http
       port: {{ .Values.web.port }}
       targetPort: http
+{{- end }}
