@@ -247,6 +247,10 @@ const targetLabel = computed(() => {
 });
 
 function review(): void {
+  if (kycBlocksSubmission.value) {
+    return;
+  }
+
   submitted.value = true;
 
   if (Object.keys(problems.value).length > 0) {
@@ -350,8 +354,8 @@ async function submit(): Promise<void> {
         v-if="kycBlocksSubmission"
         color="warning"
         variant="subtle"
-        title="Verificación de cumplimiento (KYC) pendiente"
-        description="Un cajero receptor debe verificar tu identidad para cumplimiento antes de que puedas transferir. Puedes revisar el formulario, pero el envío se rechazará mientras tanto."
+        title="Verificación de identidad pendiente"
+        description="Tu expediente se encuentra pendiente de verificación de identidad. No es posible realizar transferencias hasta que tu documento sea aprobado por un cajero o administrador."
         data-testid="transfer-kyc-blocked"
       />
 
@@ -455,7 +459,9 @@ async function submit(): Promise<void> {
       />
 
       <div class="flex flex-wrap gap-2">
-        <UButton type="submit" color="primary" size="lg" class="flex-1">Continuar</UButton>
+        <UButton type="submit" color="primary" size="lg" class="flex-1" :disabled="kycBlocksSubmission">
+          {{ kycBlocksSubmission ? 'Transferencias bloqueadas (pendiente verificación)' : 'Continuar' }}
+        </UButton>
         <UButton to="/cuentas" variant="ghost" color="neutral">Ver mis cuentas</UButton>
       </div>
     </form>
@@ -504,7 +510,7 @@ async function submit(): Promise<void> {
           size="lg"
           class="flex-1"
           :loading="isSending"
-          :disabled="isSending"
+          :disabled="isSending || kycBlocksSubmission"
           data-testid="confirm-transfer"
           @click="submit"
         >{{ canRetry ? 'Volver a intentar el envío' : 'Confirmar y enviar' }}</UButton>

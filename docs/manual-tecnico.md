@@ -53,6 +53,8 @@ El sistema bancario Bank USAC implementa la totalidad del ciclo de vida de opera
 * **Procesamiento de Pagos a Proveedores:** Pago de servicios (energía, agua, telefonía) con simulación estocástica de respuestas de proveedores externos (`Éxito`, `Fallo`, `Timeout`) y escalera de reintentos configurada a nivel de base de datos.
 * **Auditoría Regulatoria y Notificaciones:** Bitácora inmutable de eventos clasificados por severidad (`INFO`, `WARNING`, `ERROR`), trazabilidad integral mediante `correlationId` y emisión de notificaciones al cliente.
 
+> **Nota:** Para la guía operativa dirigida al usuario final, pantallas detalladas y flujos paso a paso por rol (Cliente, Cajero Receptor y Administrador), consultar el **[Manual de Usuario](manual-usuario.md)** y el **[Recorrido Visual de 78 Pasos](manual/recorrido-visual.md)**.
+
 ---
 
 ## 3. Especificaciones Técnicas

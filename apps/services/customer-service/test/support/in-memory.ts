@@ -82,6 +82,12 @@ export class InMemoryCustomerRepository implements CustomerRepository {
       ...shape,
       username,
       identityStatus: input.identityStatus,
+      kycStatus:
+        input.identityStatus === 'VALIDATED'
+          ? 'VERIFIED'
+          : input.identityStatus === 'REJECTED'
+            ? 'REJECTED'
+            : 'PENDING',
     };
 
     this.customers.set(customer.customerId, customer);

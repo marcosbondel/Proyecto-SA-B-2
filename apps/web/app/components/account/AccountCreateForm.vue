@@ -78,6 +78,7 @@ watch(isStaff, (val) => {
 interface CustomerIdentityRecord {
   readonly customerId: string;
   readonly identityStatus: 'PENDING' | 'VALIDATED' | 'REJECTED';
+  readonly kycStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
 }
 
 const customerRecord = ref<CustomerIdentityRecord | null>(null);
@@ -131,7 +132,8 @@ const isIdentityPending = computed(
   () =>
     role.value === 'CLIENTE' &&
     customerRecord.value !== null &&
-    customerRecord.value.identityStatus !== 'VALIDATED',
+    (customerRecord.value.identityStatus !== 'VALIDATED' ||
+      customerRecord.value.kycStatus !== 'VERIFIED'),
 );
 
 const subject = computed(() =>

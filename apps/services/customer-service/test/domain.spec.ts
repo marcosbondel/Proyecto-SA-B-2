@@ -196,7 +196,7 @@ describe('the KYC verdict (Fase 2, C-8)', () => {
 
     expect(verified.updatedAt).toBe(NOW.toISOString());
     expect(verified.customerId).toBe(customer.customerId);
-    expect(verified.identityStatus).toBe(customer.identityStatus);
+    expect(verified.identityStatus).toBe('VALIDATED');
   });
 });
 
