@@ -23,8 +23,9 @@ withDefaults(
     readonly accountId?: string | null;
     /** Shown by the admin monitor, hidden in a customer's own history. */
     readonly showAccounts?: boolean;
+    readonly accountNamesMap?: Record<string, string>;
   }>(),
-  { accountId: null, showAccounts: false },
+  { accountId: null, showAccounts: false, accountNamesMap: () => ({}) },
 );
 
 /** A UUID is unreadable at a glance; its last segment is enough to tell rows apart. */
@@ -59,21 +60,36 @@ function shortId(id: string): string {
 
           <td class="border-t border-[#E9E9EC] py-3.5 pr-4">
             <template v-if="showAccounts">
-              <span class="tab font-mono text-[12px] text-[#23242A]">
-                {{ shortId(row.sourceAccount) }}
-              </span>
-              <span class="px-1 text-[#A8A9B2]">→</span>
-              <span class="tab font-mono text-[12px] text-[#23242A]">
-                {{ shortId(row.targetAccount) }}
-              </span>
+              <div class="flex flex-col gap-0.5">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-medium text-[#23242A]">
+                    {{ accountNamesMap?.[row.sourceAccount] ?? shortId(row.sourceAccount) }}
+                  </span>
+                  <span class="text-[#A8A9B2]">→</span>
+                  <span class="font-medium text-[#23242A]">
+                    {{ accountNamesMap?.[row.targetAccount] ?? shortId(row.targetAccount) }}
+                  </span>
+                </div>
+                <div class="font-mono text-[11px] text-[#75767F]">
+                  ···{{ shortId(row.sourceAccount) }} → ···{{ shortId(row.targetAccount) }}
+                </div>
+              </div>
             </template>
-            <span v-else class="tab font-mono text-[12px] text-[#23242A]">
-              {{
-                directionOf(row, accountId) === 'OUT'
-                  ? shortId(row.targetAccount)
-                  : shortId(row.sourceAccount)
-              }}
-            </span>
+            <div v-else class="flex flex-col gap-0.5">
+              <span
+                v-if="accountNamesMap?.[directionOf(row, accountId) === 'OUT' ? row.targetAccount : row.sourceAccount]"
+                class="font-medium text-[#23242A]"
+              >
+                {{ accountNamesMap[directionOf(row, accountId) === 'OUT' ? row.targetAccount : row.sourceAccount] }}
+              </span>
+              <span class="tab font-mono text-[12px] text-[#5A5B63]">
+                ···{{
+                  directionOf(row, accountId) === 'OUT'
+                    ? shortId(row.targetAccount)
+                    : shortId(row.sourceAccount)
+                }}
+              </span>
+            </div>
           </td>
 
           <td class="border-t border-[#E9E9EC] py-3.5 pr-4">

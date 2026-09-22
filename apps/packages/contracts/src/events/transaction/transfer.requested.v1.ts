@@ -54,6 +54,7 @@ export const transferRequestedV1 = defineContract({
       sourceAccount: uuidV4,
       targetAccount: uuidV4,
       amount: money,
+      customerId: uuidV4.optional(),
       paymentScenario: paymentScenario.optional(),
 
       /**

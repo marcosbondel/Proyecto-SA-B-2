@@ -305,7 +305,9 @@ export function subjectCustomerIdFrom(messageType: string, payload: unknown): st
   if (
     !messageType.startsWith('customer.') &&
     !messageType.startsWith('transaction.') &&
-    messageType !== 'account.opened.v1'
+    messageType !== 'account.opened.v1' &&
+    messageType !== 'account.deactivated.v1' &&
+    messageType !== 'account.reactivated.v1'
   ) {
     return null;
   }
@@ -339,7 +341,7 @@ export function deliverableEmailFrom(messageType: string, payload: unknown): str
 }
 
 /**
- * The two events sanctioned to carry a real address, and the reason both are.
+ * The events sanctioned to carry a real address, and the reason they are.
  *
  * Neither email can be delivered without one, and neither reaches a person who
  * has a session — one is finishing a sign-up, the other has lost their
@@ -349,6 +351,7 @@ const DELIVERABLE = new Set([
   'customer.activation.requested.v1',
   'customer.password-reset.issued.v1',
   'customer.identity.rejected.v1',
+  'customer.password-changed.v1',
 ]);
 
 function readString(payload: unknown, field: string): string | null {

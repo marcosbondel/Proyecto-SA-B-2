@@ -85,7 +85,11 @@ export class RequestTransferUseCase {
     const refusal = requestRefusal(payload);
 
     if (refusal !== null) {
-      await this.#refuse(payload.transactionId, refusal, envelope.identity?.customerId ?? null);
+      await this.#refuse(
+        payload.transactionId,
+        refusal,
+        payload.customerId ?? envelope.identity?.customerId ?? null,
+      );
 
       return { kind: 'REFUSED', reason: refusal };
     }
@@ -98,7 +102,7 @@ export class RequestTransferUseCase {
       amount: payload.amount,
       correlationId: envelope.correlationId,
       idempotencyKey: envelope.idempotencyKey,
-      customerId: envelope.identity?.customerId ?? null,
+      customerId: payload.customerId ?? envelope.identity?.customerId ?? null,
       reference: payload.reference ?? null,
       paymentScenario: payload.paymentScenario ?? null,
       now,

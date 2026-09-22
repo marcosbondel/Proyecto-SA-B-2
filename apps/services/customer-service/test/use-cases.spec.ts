@@ -99,7 +99,10 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
 
     expect(context.repository.customers.size).toBe(1);
     expect(context.repository.documents).toHaveLength(1);
-    expect(context.publisher.typesPublished()).toEqual(['customer.registered.v1']);
+    expect(context.publisher.typesPublished()).toEqual([
+      'customer.registered.v1',
+      'customer.activation.requested.v1',
+    ]);
   });
 
   it('generates the username from the name and publishes it', async () => {
@@ -112,7 +115,7 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
     });
   });
 
-  it('sends the activation email when teller validates identity, and no account can sign in yet', async () => {
+  it('sends the activation email upon registration, and validates identity on staff approval', async () => {
     const context = build();
 
     await context.register.execute(REGISTER, 'key-1');
@@ -120,14 +123,23 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
       'PENDING_ACTIVATION',
     );
 
+    const activation = context.publisher.payloadOf('customer.activation.requested.v1');
+    expect(activation).toMatchObject({ email: REGISTER.email, activationToken: 'token-1' });
+
     await context.setVerdict.execute(
       { customerId: REGISTER.customerId, verdict: 'VALIDATED' },
       { customerId: 'staff-1', role: 'CAJERO_RECEPTOR' },
       'verdict-key-1',
     );
 
-    const activation = context.publisher.payloadOf('customer.activation.requested.v1');
-    expect(activation).toMatchObject({ email: REGISTER.email, activationToken: 'token-2' });
+    expect(context.publisher.payloadOf('customer.identity.validated.v1')).toMatchObject({
+      customerId: REGISTER.customerId,
+      identityStatus: 'VALIDATED',
+    });
+    expect(context.publisher.payloadOf('customer.kyc.verified.v1')).toMatchObject({
+      customerId: REGISTER.customerId,
+      kycStatus: 'VERIFIED',
+    });
   });
 
   it('does nothing at all the second time the same command arrives (criterion 2)', async () => {
@@ -137,7 +149,7 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
     await context.register.execute(REGISTER, 'key-1');
 
     expect(context.repository.customers.size).toBe(1);
-    expect(context.publisher.published).toHaveLength(1);
+    expect(context.publisher.published).toHaveLength(2);
   });
 
   it('refuses a duplicated document with a safe reason and no success event', async () => {
@@ -721,7 +733,7 @@ describe('signing in (criterion 11)', () => {
       context.publisher.published.filter(
         (message) => message.messageType === 'customer.activation.requested.v1',
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it('re-sends the reply on a broker redelivery, but does not invalidate the token it just issued', async () => {
@@ -738,7 +750,7 @@ describe('signing in (criterion 11)', () => {
     const afterFirstDelivery = context.publisher.published.filter(
       (message) => message.messageType === 'customer.activation.requested.v1',
     );
-    expect(afterFirstDelivery).toHaveLength(1);
+    expect(afterFirstDelivery).toHaveLength(2);
 
     // A broker redelivery of that *same* command — same idempotencyKey,
     // exactly as the broker replays the identical envelope.
@@ -772,12 +784,12 @@ describe('signing in (criterion 11)', () => {
       'login-2',
     );
 
-    // One per distinct login attempt.
+    // One from registration + one per distinct login attempt.
     expect(
       context.publisher.published.filter(
         (message) => message.messageType === 'customer.activation.requested.v1',
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 });
 
@@ -885,7 +897,7 @@ describe('the teller registers a KYC verdict (Fase 2, T-26)', () => {
 
     await context.setKycStatus.execute(command, STAFF, 'key-kyc-1');
     const afterFirst = context.publisher.published.length;
-    expect(afterFirst).toBe(before + 1);
+    expect(afterFirst).toBe(before + 2);
 
     await context.setKycStatus.execute(command, STAFF, 'key-kyc-1');
     expect(context.publisher.published.length).toBe(afterFirst);

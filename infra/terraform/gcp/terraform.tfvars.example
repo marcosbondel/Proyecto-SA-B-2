@@ -1,0 +1,42 @@
+# ==============================================================================
+# Variables de ejemplo para despliegue de Bank USAC en Google Cloud Platform
+# Renombra este archivo a terraform.tfvars y coloca los valores de tu proyecto.
+# ==============================================================================
+
+# Identificador de tu proyecto en GCP (creado en Google Cloud Console)
+project_id = "tu-proyecto-gcp-id"
+
+# Región y Zona
+region = "us-central1"
+zone   = "us-central1-a"
+
+# Nombre de la red VPC
+network_name = "bank-usac-vpc"
+
+# Dimensionamiento de GKE
+gke_machine_type = "e2-standard-2"
+gke_node_count   = 3
+
+# Dimensionamiento de VMs para PostgreSQL
+vm_machine_type = "e2-medium"
+
+# Contraseña maestra para usuarios de bases de datos
+db_default_password = "BankUsacSecurePassword#2026"
+
+# Contraseñas particulares (opcional, sobrescribe db_default_password)
+db_passwords = {
+  customer           = "BankUsacSecurePassword#2026"
+  account            = "BankUsacSecurePassword#2026"
+  transaction        = "BankUsacSecurePassword#2026"
+  payment            = "BankUsacSecurePassword#2026"
+  notification-audit = "BankUsacSecurePassword#2026"
+}
+
+# Despliegue de Frontend en Cloud Run
+deploy_cloud_run = true
+
+# Imagen de contenedor de Frontend en Artifact Registry o Container Registry
+# web_image = "us-central1-docker.pkg.dev/tu-proyecto-gcp-id/bank-repo/web:latest"
+
+# URL pública donde responderá el API Gateway (IP externa del LoadBalancer en GKE)
+gateway_public_url = "http://34.123.45.67:3000"

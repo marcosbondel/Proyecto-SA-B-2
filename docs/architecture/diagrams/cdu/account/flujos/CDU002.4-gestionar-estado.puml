@@ -8,11 +8,12 @@ skinparam activity {
     FontColor #1168BD
 }
 
-|Administrador o proceso automático|
+|Cliente, Cajero o Administrador|
 start
-if (¿Cambio solicitado por Administrador?) then (Sí)
-    |Administrador|
-    :Solicitar cambio de estado;
+if (¿Cambio solicitado por Cliente, Cajero o Admin?) then (Sí)
+    |Actor (Cliente / Cajero / Admin)|
+    :Solicitar cambio de estado (ACTIVADA <-> INACTIVA);
+    :Verificar permisos de rol y pertenencia de cuenta;
     |Account Service|
     :Validar transición permitida;
 else (No)

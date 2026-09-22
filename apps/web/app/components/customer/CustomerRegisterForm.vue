@@ -92,12 +92,12 @@ const registeredTitle = computed(() => {
 
 const registeredDescription = computed(() => {
   if (role.value === 'CAJERO_RECEPTOR') {
-    return 'El agente cajero fue registrado y validado exitosamente. Se envió el enlace de activación a';
+    return 'El agente cajero fue registrado y validado exitosamente. La cuenta está activa y lista para operar.';
   }
   if (role.value === 'ADMINISTRADOR') {
-    return 'El administrador fue registrado y validado exitosamente. Se envió el enlace de activación a';
+    return 'El administrador fue registrado y validado exitosamente. La cuenta está activa y lista para operar.';
   }
-  return 'El cliente fue registrado y validado exitosamente. Se envió el enlace de activación a';
+  return 'El cliente fue registrado y validado presencialmente. La cuenta está activa y verificada para todas las operaciones.';
 });
 
 const customerIdLabel = computed(() => {
@@ -254,9 +254,8 @@ function startOver(): void {
           <strong class="text-[#23242A]">{{ fields.email }}</strong>.
         </p>
         <p v-else class="mt-2 text-[15px] leading-[22px] text-[#5A5B63]">
-          Recibimos tu solicitud y documento de identidad. Un cajero revisará tu información.
-          Una vez aprobada tu identidad, recibirás un correo electrónico en
-          <strong class="text-[#23242A]">{{ fields.email }}</strong> con el enlace para activar tu cuenta.
+          Recibimos tu solicitud y documento de identidad. Te enviamos un correo electrónico a
+          <strong class="text-[#23242A]">{{ fields.email }}</strong> con el enlace para activar tu cuenta e ingresar inmediatamente.
         </p>
 
         <p class="mt-2 text-[13px] leading-[18px] text-[#75767F]">
@@ -284,7 +283,7 @@ function startOver(): void {
 
       <div v-if="props.mode === 'self'" class="rounded-xl border border-[#DCDCE0] bg-[#F9FAFB] p-3.5 text-left">
         <p class="text-[13px] font-medium text-[#374151]">
-          <strong>Siguiente paso:</strong> Un cajero verificará tu documento en breve. Cuando tu solicitud sea aprobada, recibirás un correo para activar tu cuenta.
+          <strong>Siguiente paso:</strong> Abre tu correo y pulsa el enlace de activación para iniciar sesión. Mientras un cajero o administrador valida tu identidad, las transferencias y pagos estarán temporalmente inhabilitados.
         </p>
       </div>
 

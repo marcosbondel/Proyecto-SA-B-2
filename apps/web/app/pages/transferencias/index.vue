@@ -49,6 +49,8 @@ function clearFilters(): void {
   toDate.value = '';
 }
 
+const accountNamesMap = ref<Record<string, string>>({});
+
 async function load(): Promise<void> {
   if (rangeProblem.value !== undefined) {
     return;
@@ -91,6 +93,19 @@ async function load(): Promise<void> {
   total.value = rows.value.length;
   correlationId.value = transfers.data.correlationId;
   state.value = 'READY';
+
+  if (Object.keys(accountNamesMap.value).length === 0) {
+    const accs = await api.call<{ accounts: Array<{ accountId: string; holderName?: string }> }>('/api/accounts');
+    if (accs.ok) {
+      const map: Record<string, string> = {};
+      for (const a of accs.data.accounts) {
+        if (a.holderName) {
+          map[a.accountId] = a.holderName;
+        }
+      }
+      accountNamesMap.value = map;
+    }
+  }
 }
 
 onMounted(load);
@@ -224,7 +239,12 @@ useHead({ title: 'Transferencias · bonking' });
         </UButton>
       </div>
 
-      <TransactionHistoryTable v-else :rows="rows" :show-accounts="true" />
+      <TransactionHistoryTable
+        v-else
+        :rows="rows"
+        :show-accounts="true"
+        :account-names-map="accountNamesMap"
+      />
 
       <template #footer>
         <div class="flex flex-wrap items-center justify-between gap-3">

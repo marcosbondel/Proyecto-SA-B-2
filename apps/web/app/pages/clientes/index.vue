@@ -208,8 +208,7 @@ useHead({ title: isAdmin.value ? 'Usuarios · bonking' : 'Clientes · bonking' }
               <th class="pb-2 font-medium">{{ isAdmin ? 'No. Usuario (UUID)' : 'No. Cliente (UUID)' }}</th>
               <th class="pb-2 font-medium">Correo electrónico</th>
               <th class="pb-2 font-medium">Rol</th>
-              <th class="pb-2 font-medium">Identidad</th>
-              <th class="pb-2 font-medium">KYC</th>
+              <th class="pb-2 font-medium">Estado de Verificación</th>
               <th class="pb-2 text-right font-medium">Acciones</th>
             </tr>
           </thead>
@@ -241,16 +240,29 @@ useHead({ title: isAdmin.value ? 'Usuarios · bonking' : 'Clientes · bonking' }
               </td>
               <td class="py-3">
                 <UBadge
-                  :color="c.identityStatus === 'VALIDATED' ? 'success' : c.identityStatus === 'REJECTED' ? 'error' : 'warning'"
+                  v-if="c.kycStatus === 'VERIFIED' || c.identityStatus === 'VALIDATED'"
+                  color="success"
                   variant="subtle"
                   size="sm"
                 >
-                  {{ c.identityStatus === 'VALIDATED' ? 'Verificada' : c.identityStatus === 'REJECTED' ? 'Rechazada' : 'Pendiente' }}
+                  Verificado
                 </UBadge>
-              </td>
-              <td class="py-3">
-                <CustomerKycStatusBadge v-if="c.kycStatus" :status="c.kycStatus" />
-                <span v-else class="text-[#75767F]">—</span>
+                <UBadge
+                  v-else-if="c.kycStatus === 'REJECTED' || c.identityStatus === 'REJECTED'"
+                  color="error"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Rechazado
+                </UBadge>
+                <UBadge
+                  v-else
+                  color="warning"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Pendiente
+                </UBadge>
               </td>
               <td class="py-3 text-right">
                 <div class="flex flex-col items-end gap-1">
