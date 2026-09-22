@@ -61,13 +61,66 @@ const idempotencyKey = ref('');
 const errors = ref<Record<string, string>>({});
 const copied = ref(false);
 
+const depositReceipt = ref('');
+const depositReceiptError = ref('');
+const depositVerified = ref(false);
+const isVerifyingDeposit = ref(false);
+
 watch(accountType, (val) => {
   // A MONETARIA opening carries no deposit; a stale AHORRO amount left in the
   // field would otherwise ride along in the payload after switching types.
   if (val !== 'AHORRO') {
     initialDepositMinor.value = null;
+    depositVerified.value = false;
+    depositReceipt.value = '';
+    depositReceiptError.value = '';
+  } else {
+    depositVerified.value = false;
+    depositReceipt.value = '';
+    depositReceiptError.value = '';
+    if (initialDepositMinor.value === null) {
+      initialDepositMinor.value = 10_000;
+    }
   }
 });
+
+function generateSimulatedReceipt(): void {
+  const randomNum = Math.floor(100_000 + Math.random() * 900_000);
+  depositReceipt.value = `DEP-${randomNum}`;
+  depositReceiptError.value = '';
+}
+
+function onDepositAmountChanged(amountMinor: number | null): void {
+  initialDepositMinor.value = amountMinor;
+  if (depositVerified.value) {
+    depositVerified.value = false;
+  }
+  if (errors.value.initialDeposit) {
+    delete errors.value.initialDeposit;
+  }
+}
+
+async function verifyDeposit(): Promise<void> {
+  depositReceiptError.value = '';
+  if (!depositReceipt.value.trim()) {
+    generateSimulatedReceipt();
+  }
+
+  const min = minimumDepositMinor.value ?? 10_000;
+  if (initialDepositMinor.value === null || initialDepositMinor.value < min) {
+    errors.value = {
+      ...errors.value,
+      initialDeposit: `El depósito inicial debe ser de al menos ${formatQuetzales(min)}.`,
+    };
+    return;
+  }
+
+  isVerifyingDeposit.value = true;
+  await new Promise((resolve) => setTimeout(resolve, 750));
+  isVerifyingDeposit.value = false;
+  depositVerified.value = true;
+  delete errors.value.initialDeposit;
+}
 
 watch(isStaff, (val) => {
   if (val) {
@@ -104,7 +157,7 @@ const customerSelectItems = computed(() =>
     const isVerified = c.identityStatus === 'VALIDATED' && c.kycStatus === 'VERIFIED';
     return {
       value: c.customerId,
-      label: `${c.fullName} · DPI: ${c.documentNumber} [${isVerified ? '✓ Verificado' : '⚠️ No verificado'}]`,
+      label: `${c.fullName} · DPI: ${c.documentNumber} [${isVerified ? 'Verificado' : 'No verificado'}]`,
     };
   }),
 );
@@ -205,11 +258,13 @@ function validate(): boolean {
 
   if (accountType.value === null) {
     found.accountType = 'Elige el tipo de cuenta.';
-  } else if (
-    minimumDepositMinor.value !== null &&
-    (initialDepositMinor.value === null || initialDepositMinor.value < minimumDepositMinor.value)
-  ) {
-    found.initialDeposit = `El depósito inicial debe ser de al menos ${formatQuetzales(minimumDepositMinor.value)}.`;
+  } else if (accountType.value === 'AHORRO') {
+    const min = minimumDepositMinor.value ?? 10_000;
+    if (initialDepositMinor.value === null || initialDepositMinor.value < min) {
+      found.initialDeposit = `El depósito inicial debe ser de al menos ${formatQuetzales(min)}.`;
+    } else if (!depositVerified.value) {
+      found.initialDeposit = 'Debes verificar el comprobante del depósito de apertura antes de continuar.';
+    }
   }
 
   if (isStaff.value) {
@@ -263,6 +318,10 @@ function openAnother(): void {
   step.value = 'FORM';
   accountType.value = null;
   initialDepositMinor.value = null;
+  depositVerified.value = false;
+  depositReceipt.value = '';
+  depositReceiptError.value = '';
+  isVerifyingDeposit.value = false;
   customerId.value = '';
   forSomebodyElse.value = isStaff.value;
   errors.value = {};
@@ -315,17 +374,124 @@ async function copyAccountId(): Promise<void> {
         </p>
       </div>
 
-      <div v-if="minimumDepositMinor !== null">
-        <SharedMoneyInput
-          label="Depósito inicial"
-          name="initialDeposit"
-          @update:amount-minor="initialDepositMinor = $event"
-        />
-        <p v-if="errors.initialDeposit" class="mt-2 text-[13px] text-[#B01B1B]">
-          {{ errors.initialDeposit }}
-        </p>
-        <p v-else class="mt-2 text-[13px] text-[#5A5B63]">
-          Mínimo {{ formatQuetzales(minimumDepositMinor) }}.
+      <!-- Fondefondeo y verificación de depósito para cuenta de Ahorro -->
+      <div v-if="accountType === 'AHORRO'" class="flex flex-col gap-4 rounded-2xl bg-[#F8F9FA] p-5 border border-[#E2E4E8]">
+        <div>
+          <h3 class="text-[15px] font-semibold text-[#23242A]">Depósito inicial de apertura</h3>
+          <p class="mt-1 text-[13px] text-[#5A5B63] leading-relaxed">
+            Las cuentas de ahorro requieren un depósito inicial de al menos <strong>{{ formatQuetzales(minimumDepositMinor ?? 10000) }}</strong>. Realiza la transferencia o depósito a la cuenta concentradora de Bank USAC y verifica el comprobante a continuación:
+          </p>
+        </div>
+
+        <!-- Ficha de cuenta receptora de Bank USAC -->
+        <div class="rounded-xl bg-white p-3.5 border border-[#DCDCE0] flex flex-col gap-2">
+          <div class="flex items-center justify-between text-[11px] font-semibold tracking-wider text-[#75767F] uppercase">
+            <span>Cuenta Receptora de Aperturas</span>
+            <span>Bank USAC (Banca Central)</span>
+          </div>
+          <div class="flex items-baseline justify-between gap-2 flex-wrap">
+            <div class="font-mono text-[14px] font-bold text-[#1F2937]" style="font-variant-numeric: tabular-nums lining-nums">
+              001-00000000-01 <span class="text-[12px] font-normal text-[#5A5B63]">(GT00-BANK-0001-FONDO-APERTURA)</span>
+            </div>
+            <div class="text-[12px] font-semibold text-[#047857]">
+              Mínimo: {{ formatQuetzales(minimumDepositMinor ?? 10000) }}
+            </div>
+          </div>
+          <div class="text-[12px] text-[#5A5B63]">
+            Titular: <strong>Bank USAC S.A. · Bóveda de Fondos Iniciales</strong>
+          </div>
+        </div>
+
+        <!-- Campos de monto y comprobante -->
+        <div class="flex flex-col gap-3">
+          <SharedMoneyInput
+            label="Monto depositado"
+            name="initialDeposit"
+            :disabled="depositVerified || isVerifyingDeposit"
+            @update:amount-minor="onDepositAmountChanged"
+          />
+
+          <UFormField
+            label="Número de boleta o comprobante de depósito"
+            name="depositReceipt"
+            :error="depositReceiptError"
+            help="Ingresa el identificador de la boleta o comprobante bancario emitido."
+          >
+            <div class="flex gap-2">
+              <UInput
+                v-model="depositReceipt"
+                :disabled="depositVerified || isVerifyingDeposit"
+                placeholder="Ej. DEP-748291"
+                class="flex-1 font-mono"
+              />
+              <UButton
+                v-if="!depositVerified"
+                type="button"
+                variant="outline"
+                color="neutral"
+                size="sm"
+                :disabled="isVerifyingDeposit"
+                @click="generateSimulatedReceipt"
+              >
+                Generar boleta
+              </UButton>
+            </div>
+          </UFormField>
+
+          <p v-if="errors.initialDeposit" class="text-[13px] text-[#B01B1B]">
+            {{ errors.initialDeposit }}
+          </p>
+
+          <!-- Botón de verificación simulada -->
+          <div v-if="!depositVerified" class="pt-1">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="subtle"
+              block
+              :loading="isVerifyingDeposit"
+              :disabled="isCustomerUnverified || !initialDepositMinor || initialDepositMinor < (minimumDepositMinor ?? 10000)"
+              @click="verifyDeposit"
+            >
+              {{ isVerifyingDeposit ? 'Verificando acreditación con compensación...' : 'Verificar depósito (simulado)' }}
+            </UButton>
+            <p class="mt-1.5 text-center text-[11px] text-[#75767F]">
+              Comprueba la acreditación de fondos antes de continuar con la apertura.
+            </p>
+          </div>
+
+          <!-- Estado confirmado cuando está verificado -->
+          <div
+            v-else
+            class="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-emerald-950 flex flex-col gap-2"
+          >
+            <div class="flex items-center justify-between">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-900 border border-emerald-300">
+                Depósito verificado exitosamente
+              </span>
+              <button
+                type="button"
+                class="text-[12px] text-emerald-800 underline hover:text-emerald-950 font-medium cursor-pointer"
+                @click="depositVerified = false"
+              >
+                Modificar depósito
+              </button>
+            </div>
+            <p class="text-[13px] leading-relaxed">
+              Fondos por <strong>{{ formatQuetzales(initialDepositMinor ?? 0) }}</strong> confirmados bajo comprobante <strong>#{{ depositReceipt }}</strong> hacia la cuenta concentradora de Bank USAC. El monto estará disponible inmediatamente al completar la apertura.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cuenta Monetaria informativa -->
+      <div
+        v-else-if="accountType === 'MONETARIA'"
+        class="rounded-2xl bg-[#F8F9FA] border border-[#E9E9EC] p-4 text-[13px] text-[#5A5B63] flex flex-col gap-1"
+      >
+        <div class="font-semibold text-[#23242A]">Tipo de cuenta: Monetaria (Sin depósito mínimo)</div>
+        <p class="leading-relaxed">
+          Esta cuenta no requiere depósito inicial previo para su apertura y nace activa con un saldo disponible de <strong>Q 0.00</strong>. Podrás transferir o depositar fondos en ventanilla una vez creada.
         </p>
       </div>
 
@@ -367,9 +533,17 @@ async function copyAccountId(): Promise<void> {
           />
         </UFormField>
 
-        <p v-if="selectedCustomer" class="text-[13px] text-[#186A32] font-medium">
-          ✓ Cliente: <strong>{{ selectedCustomer.fullName }}</strong> (DPI: {{ selectedCustomer.documentNumber }})
-        </p>
+        <div v-if="selectedCustomer" class="flex items-center gap-2 text-[13px] font-medium mt-1">
+          <span
+            class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase"
+            :class="isCustomerUnverified ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-900 border border-emerald-300'"
+          >
+            {{ isCustomerUnverified ? 'No verificado' : 'Verificado' }}
+          </span>
+          <span class="text-[#23242A]">
+            Cliente: <strong>{{ selectedCustomer.fullName }}</strong> (DPI: {{ selectedCustomer.documentNumber }})
+          </span>
+        </div>
       </div>
 
       <p v-else class="text-[13px] leading-5 text-[#5A5B63]">
@@ -385,9 +559,17 @@ async function copyAccountId(): Promise<void> {
           color="primary"
           size="lg"
           block
-          :disabled="isCustomerUnverified"
+          :disabled="isCustomerUnverified || accountType === null || (accountType === 'AHORRO' && !depositVerified)"
         >
-          {{ isCustomerUnverified ? 'Apertura bloqueada (cliente no verificado)' : 'Continuar' }}
+          {{
+            isCustomerUnverified
+              ? 'Apertura bloqueada (cliente no verificado)'
+              : accountType === null
+              ? 'Elige el tipo de cuenta'
+              : (accountType === 'AHORRO' && !depositVerified)
+              ? 'Pendiente de verificar comprobante de depósito'
+              : 'Continuar'
+          }}
         </UButton>
       </ClientOnly>
     </form>
@@ -416,6 +598,18 @@ async function copyAccountId(): Promise<void> {
             class="text-[13px] font-semibold"
             style="font-variant-numeric: tabular-nums lining-nums"
           >{{ formatQuetzales(initialDepositMinor ?? 0) }}</dd>
+        </div>
+        <div v-if="accountType === 'AHORRO' && depositReceipt" class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+          <dt class="text-[13px] text-[#75767F]">Comprobante de depósito</dt>
+          <dd
+            class="font-mono text-[13px] font-medium text-[#23242A]"
+          >{{ depositReceipt }}</dd>
+        </div>
+        <div v-if="accountType === 'AHORRO'" class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+          <dt class="text-[13px] text-[#75767F]">Origen de fondos</dt>
+          <dd class="text-[13px] font-medium text-[#23242A]">
+            Cuenta concentradora Bank USAC (001-00000000-01)
+          </dd>
         </div>
       </dl>
 
