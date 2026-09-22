@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: minio
-          image: "minio/minio:RELEASE.2024-11-07T00-52-20Z"
+          image: "quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z"
           args: ["server", "/data", "--console-address", ":9001"]
           ports:
             - name: s3

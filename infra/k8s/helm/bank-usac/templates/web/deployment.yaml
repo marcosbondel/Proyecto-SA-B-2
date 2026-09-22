@@ -3,6 +3,7 @@
 # NITRO_HOST/NITRO_PORT are baked into the image at build time (they select
 # which interface the Nitro preset binds, not a deployment), so they are
 # deliberately not set here.
+{{- if ne .Values.web.enabled false }}
 {{- $component := .Values.web.component }}
 {{- $ctx := dict "root" $ "component" $component }}
 {{- $cfg := .Values.web }}
@@ -59,3 +60,4 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml ($cfg.resources | default .Values.resources) | nindent 12 }}
+{{- end }}
