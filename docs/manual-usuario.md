@@ -283,19 +283,16 @@ Aquí revisas todo lo que escribiste y creas la contraseña.
 Pulsa **Crear cuenta**. Si algo quedó mal, el asistente te devuelve al paso
 donde está el error.
 
-**Qué pasa después.** El sistema responde *«Registro enviado»* y te dice a qué
-correo envió el enlace. Fíjate en lo que dice y en lo que **no** dice: la
-solicitud fue **recibida**, no completada. Tu cuenta todavía no existe como
-cuenta activa. En esa pantalla aparecen dos datos que conviene copiar:
+**Qué pasa después.** El sistema responde *«Solicitud de registro recibida»* y te confirma que envió de inmediato el correo de activación a tu bandeja de entrada. En esa pantalla aparecen tres datos importantes que conviene copiar:
 
-- el **customerId**, que es tu identificador como cliente, y
-- el **identificador de correlación**, que sirve para rastrear esta operación si
-  algo sale mal.
+- el **Número de cliente** (`customerId`), que es tu identificador único,
+- el **Usuario** generado por el sistema, y
+- el **Código de seguimiento** (`correlationId`), útil para rastrear la operación si requieres soporte.
 
 ### 2.2 Activar la cuenta desde el correo
 
-La cuenta nace **inactiva**. Para activarla hay que abrir el enlace que el
-sistema envía por correo.
+La cuenta nace en estado `PENDING_ACTIVATION`. Para activarla hay que abrir el enlace que el
+sistema te envió por correo electrónico.
 
 Al abrirlo llegas a la pantalla de **Activación de cuenta**, que te da uno de
 estos tres resultados:
@@ -306,15 +303,13 @@ estos tres resultados:
 | «El enlace de activación no es válido o ya fue utilizado.» | El enlace ya se usó, venció, o no es el correcto. | Regístrate de nuevo o pide ayuda. |
 | «No pudimos confirmar el resultado» | El sistema tardó demasiado en responder. **No significa que falló.** | Espera unos segundos y vuelve a abrir el enlace. |
 
-El mensaje de éxito añade algo importante: tu cuenta de acceso ya está activa,
-pero **para abrir cuentas bancarias un cajero debe validar la foto de tu
-documento**.
+**Estado de verificación de identidad (KYC) y operaciones:**
 
-> **En una instalación local no sale ningún correo de verdad.** El canal de
-> correo está simulado. El enlace de activación queda escrito en el registro
-> técnico del sistema, y quien instaló el sistema sabe cómo leerlo. Si estás
-> haciendo una demostración local y no te llega ningún correo, no es un error:
-> pide el enlace al equipo técnico.
+- **Registro público autoservicio:** Una vez activada la cuenta por correo, puedes iniciar sesión inmediatamente. Podrás explorar tu perfil y consultar tus cuentas. Sin embargo, por normativas de seguridad bancaria, las operaciones transaccionales (**transferencias** y **pagos de servicios**) permanecerán bloqueadas mostrando una advertencia de *«Verificación de identidad pendiente»* hasta que un cajero o administrador valide tu documento de identidad en el sistema.
+- **En caso de rechazo del documento:** Si el expediente digital es rechazado, recibirás un correo electrónico notificándote del rechazo y solicitándote acudir a cualquier agencia bancaria de Bank USAC con tu DPI físico original para validar tu identidad presencialmente.
+- **Registro presencial en agencia (por Cajero o Administrador):** Si el cliente es dado de alta directamente en ventanilla por un cajero receptor o administrador (desde el menú *Clientes → Nuevo cliente*), el empleado valida el documento físico en mano; por lo tanto, la cuenta queda **activa** y **verificada** de inmediato, permitiendo operar sin bloqueos desde el primer momento.
+
+> **Envíos de correo:** En despliegues locales, el servicio de notificaciones envía los correos reales si se encuentra configurada la clave de proveedor (Resend), o registra el enlace en los logs de `customer-service` y `notification-audit-service` para fácil acceso en pruebas.
 
 ### 2.3 Iniciar sesión
 

@@ -60,15 +60,18 @@ const isStaff = computed(() => role.value !== null && role.value !== 'CLIENTE');
  * skipped for them entirely.
  */
 const ownKycStatus = ref<'PENDING' | 'VERIFIED' | 'REJECTED' | null>(null);
+const ownKycLoading = ref(false);
 
 async function loadOwnKyc(): Promise<void> {
   if (isStaff.value || session.value === null) {
     return;
   }
 
+  ownKycLoading.value = true;
   const result = await api.call<{ kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' }>(
     `/api/customers/${session.value.customerId}`,
   );
+  ownKycLoading.value = false;
 
   if (result.ok) {
     ownKycStatus.value = result.data.kycStatus;
@@ -142,8 +145,19 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(load);
-onMounted(loadOwnKyc);
+onMounted(() => {
+  load();
+  loadOwnKyc();
+  if (import.meta.client) {
+    window.addEventListener('focus', loadOwnKyc);
+  }
+});
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('focus', loadOwnKyc);
+  }
+});
 
 const source = computed(
   () => accounts.value.find((account) => account.accountId === sourceAccount.value) ?? null,
@@ -350,14 +364,27 @@ async function submit(): Promise<void> {
 
     <!-- Paso 1: los datos. -->
     <form v-else-if="step === 'FORM'" class="flex flex-col gap-5" @submit.prevent="review">
-      <UAlert
-        v-if="kycBlocksSubmission"
-        color="warning"
-        variant="subtle"
-        title="Verificación de identidad pendiente"
-        description="Tu expediente se encuentra pendiente de verificación de identidad. No es posible realizar transferencias hasta que tu documento sea aprobado por un cajero o administrador."
-        data-testid="transfer-kyc-blocked"
-      />
+      <div v-if="kycBlocksSubmission" class="flex flex-col gap-2">
+        <UAlert
+          color="warning"
+          variant="subtle"
+          title="Verificación de identidad pendiente"
+          description="Tu expediente se encuentra pendiente de verificación de identidad. No es posible realizar transferencias hasta que tu documento sea aprobado por un cajero o administrador."
+          data-testid="transfer-kyc-blocked"
+        />
+        <div class="flex justify-end">
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            :loading="ownKycLoading"
+            icon="i-lucide-refresh-cw"
+            @click="loadOwnKyc"
+          >
+            ¿Ya fue aprobada tu verificación? Actualizar estado
+          </UButton>
+        </div>
+      </div>
 
       <UFormField
         label="Cuenta de origen"
