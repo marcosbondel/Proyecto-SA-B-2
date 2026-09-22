@@ -225,9 +225,12 @@ useHead({ title: 'Depósito en ventanilla · bonking' });
             />
           </UFormField>
 
-          <p v-if="selectedAccount" class="text-[13px] text-[#186A32] font-medium">
-            ✓ Cuenta destino: <strong>{{ describeAccount(selectedAccount) }}</strong>
-          </p>
+          <div v-if="selectedAccount" class="flex items-center gap-2 text-[13px] text-[#186A32] font-medium">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-900 border border-emerald-300">
+              Cuenta seleccionada
+            </span>
+            <span><strong>{{ describeAccount(selectedAccount) }}</strong></span>
+          </div>
 
           <SharedMoneyInput label="Monto" name="amount" @update:amount-minor="amountMinor = $event" />
 

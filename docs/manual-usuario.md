@@ -481,25 +481,21 @@ te ofrece abrir la primera.
 
 ### 5.2 Abrir una cuenta
 
-Botón **Abrir cuenta**. Se hace en tres pasos:
+Botón **Abrir cuenta**. Se hace en los siguientes pasos:
 
 1. **Elige el tipo de cuenta.** Hay dos:
 
-   | Tipo | Para qué |
-   | --- | --- |
-   | **Monetaria** | Uso diario: transferencias y pagos sin límite de movimientos. |
-   | **Ahorro** | Para guardar dinero. Hoy no tiene reglas distintas a la monetaria. |
+   | Tipo | Para qué | Regla de apertura y depósito |
+   | --- | --- | --- |
+   | **Monetaria** | Uso diario: transferencias y pagos sin límite de movimientos. | Nace activa con saldo inicial de **Q 0.00**; no requiere depósito previo. |
+   | **Ahorro** | Para guardar dinero. Cobra Q 3.00 de comisión por transferencia saliente. | Requiere un depósito inicial mínimo de **Q 100.00**. |
 
-   Las dos se comportan igual: **la cuenta de ahorro no genera intereses** y no
-   tiene reglas propias todavía.
-
-2. **Confirma.** Verás el titular, el tipo y el saldo inicial.
-3. **Recibe el identificador.** La cuenta se abre con **Q 0.00** y en estado
-   **activa**.
-
-Si eres **Cajero receptor** o **Administrador** puedes seleccionar al cliente titular
-desde el buscador con autocompletado o escribir su identificador `customerId`. Un **Cliente**
-solo puede abrir cuentas a su propio nombre.
+2. **Acreditación y verificación de fondos (solo Ahorro):**
+   Para fondear la cuenta de ahorro con su saldo inicial, el sistema presenta la cuenta concentradora de Bank USAC (`001-00000000-01 / GT00-BANK-0001-FONDO-APERTURA`) a la cual se acredita el depósito. El usuario ingresa el monto depositado (mínimo Q 100.00) y su comprobante o boleta (pudiendo generar una boleta de prueba con el botón correspondiente). Al hacer clic en **Verificar depósito**, el sistema simula la comprobación de fondos con la compensación bancaria y confirma la acreditación del comprobante.
+3. **Selección del titular (solo personal bancario):**
+   Si eres **Cajero receptor** o **Administrador**, puedes seleccionar al cliente titular desde el buscador por nombre o DPI, visualizando su estado de verificación en texto limpio (`[Verificado]` o `[No verificado]`), o ingresar su `customerId` (UUID). Un **Cliente** abre la cuenta a su propio nombre.
+4. **Confirma.** Verás el titular, el tipo, el saldo inicial verificado y el comprobante de apertura.
+5. **Recibe el identificador.** La cuenta se abre y queda en estado **activa** con su saldo acreditado.
 
 > [!IMPORTANT]
 > **Requisito estricto de verificación:** El sistema prohíbe la apertura de cuentas bancarias
@@ -511,8 +507,7 @@ solo puede abrir cuentas a su propio nombre.
 > el saldo y con lo que se envían transferencias, y no hay forma de buscarlo por
 > nombre.
 
-**No existe un campo de depósito inicial.** Una cuenta nueva empieza en Q 0.00.
-Para ingresarle dinero hay dos caminos: **recibir una transferencia**, o que un
+Para ingresar más dinero a una cuenta ya existente hay dos caminos: **recibir una transferencia**, o que un
 Cajero receptor o un Administrador registre un **depósito en ventanilla** desde
 *Cuentas → Depósito*. Ese depósito responde en el momento —no hay nada que
 esperar— y **reactiva la cuenta si estaba inactiva**.

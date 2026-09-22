@@ -508,9 +508,12 @@ async function submit(): Promise<void> {
             data-testid="target-account"
             @update:model-value="otherTarget = $event && $event.trim().length > 0 ? $event.trim() : undefined"
           />
-          <p v-if="target" class="text-[13px] text-[#186A32] font-medium">
-            ✓ Cuenta destino: <strong>{{ describe(target) }}</strong>
-          </p>
+          <div v-if="target" class="flex items-center gap-2 text-[13px] text-[#186A32] font-medium">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-900 border border-emerald-300">
+              Destino confirmado
+            </span>
+            <span><strong>{{ describe(target) }}</strong></span>
+          </div>
         </div>
       </UFormField>
 
