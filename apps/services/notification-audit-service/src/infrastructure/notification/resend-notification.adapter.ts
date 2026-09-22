@@ -154,41 +154,119 @@ function htmlBody(subject: string, link: string | undefined, type?: string): str
   const safeSubject = escapeHtml(subject);
   let content = '';
 
-  if (type === 'identity.rejected') {
+  if (type === 'identity.rejected' || type === 'kyc.rejected') {
     content =
-      `<p style="color:#5A5B63;font-size:14px;line-height:1.5">` +
-      `Tu solicitud de registro en Bank USAC fue revisada pero no pudo ser aprobada ` +
-      `debido a que la fotografía de tu documento de identificación no era legible o no cumplía con los requisitos.` +
+      `<div style="display:inline-block;background-color:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;margin-bottom:18px;">` +
+      `Verificación de identidad no aprobada` +
+      `</div>` +
+      `<p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 16px 0;">` +
+      `Estimado cliente, te informamos que la verificación digital de tu documento de identificación no pudo ser aprobada.` +
       `</p>` +
-      `<p style="color:#5A5B63;font-size:14px;line-height:1.5">` +
-      `Puedes ingresar nuevamente a registrarte asegurándote de subir una fotografía clara y nítida de tu DPI.` +
-      `</p>`;
-  } else if (link !== undefined) {
+      `<p style="color:#64748B;font-size:14px;line-height:1.5;margin:0 0 20px 0;">` +
+      `Para garantizar la seguridad de tu cuenta y en cumplimiento con la normativa bancaria, las funciones de transferencias y pagos se encuentran inhabilitadas de momento.` +
+      `</p>` +
+      `<div style="background-color:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:16px 20px;margin:20px 0;">` +
+      `<p style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#92400E;">¿Cómo validar tu identidad?</p>` +
+      `<p style="margin:0;font-size:13px;color:#78350F;line-height:1.6;">` +
+      `Por favor acércate a cualquier agencia bancaria de <strong>Bank USAC</strong> presentando tu <strong>Documento Personal de Identificación (DPI) en físico</strong>. Un cajero receptor o administrador validará tu identidad de inmediato en ventanilla para habilitar todas las operaciones de tu cuenta.` +
+      `</p>` +
+      `</div>`;
+  } else if (type === 'customer.password-changed') {
     content =
-      `<p style="margin:24px 0"><a href="${escapeHtml(link)}" ` +
-      `style="background:#111;color:#fff;padding:12px 20px;border-radius:8px;` +
-      `text-decoration:none;display:inline-block">Continuar</a></p>` +
-      `<p style="color:#5A5B63;font-size:13px">Si el botón no funciona, copia este enlace:<br>` +
-      `<span style="word-break:break-all">${escapeHtml(link)}</span></p>`;
+      `<div style="display:inline-block;background-color:#FEF3C7;color:#D97706;border:1px solid #FCD34D;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;margin-bottom:18px;">` +
+      `Alerta de Seguridad` +
+      `</div>` +
+      `<p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 16px 0;">` +
+      `Estimado cliente, te informamos que la contraseña de acceso a tu banca en línea <strong>bonking</strong> ha sido modificada exitosamente.` +
+      `</p>` +
+      `<div style="background-color:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px 20px;margin:20px 0;">` +
+      `<p style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#991B1B;">¿No reconoces esta actividad?</p>` +
+      `<p style="margin:0;font-size:13px;color:#7F1D1D;line-height:1.6;">` +
+      `Si tú no realizaste este cambio, tu cuenta podría estar comprometida. Por favor comunícate de inmediato con soporte de <strong>Bank USAC</strong> o utiliza la opción de restablecer contraseña en la pantalla de ingreso.` +
+      `</p>` +
+      `</div>`;
+  } else if (link !== undefined) {
+    const safeLink = escapeHtml(link);
+    content =
+      `<p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 20px 0;">` +
+      `¡Bienvenido a <strong>bonking</strong>! Gracias por registrarte en la banca digital de Bank USAC. Para comenzar a utilizar tu cuenta y acceder a la plataforma, pulsa el botón siguiente para confirmar tu correo:` +
+      `</p>` +
+      `<div style="text-align:center;margin:32px 0;">` +
+      `<a href="${safeLink}" target="_blank" style="background-color:#0F172A;color:#FFFFFF !important;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;display:inline-block;letter-spacing:0.02em;box-shadow:0 2px 4px rgba(15,23,42,0.15);">` +
+      `Activar mi cuenta` +
+      `</a>` +
+      `</div>` +
+      `<p style="color:#64748B;font-size:13px;line-height:1.5;margin:24px 0 12px 0;">` +
+      `Una vez activada tu cuenta, podrás ingresar al sistema de inmediato. Mientras el personal valida tu documento de identidad, podrás explorar tu cuenta; las transferencias y pagos se habilitarán tan pronto concluya la verificación.` +
+      `</p>` +
+      `<div style="background-color:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px 16px;margin-top:20px;">` +
+      `<p style="margin:0 0 6px 0;font-size:12px;font-weight:600;color:#64748B;">¿El botón no funciona? Copia y pega este enlace en tu navegador:</p>` +
+      `<p style="margin:0;font-size:12px;color:#0284C7;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;">${safeLink}</p>` +
+      `</div>`;
   }
 
   return (
-    `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto">` +
-    `<h1 style="font-size:20px">bonking · Bank USAC</h1>` +
-    `<h2 style="font-size:16px;font-weight:600">${safeSubject}</h2>` +
+    `<!DOCTYPE html>` +
+    `<html lang="es">` +
+    `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>` +
+    `<body style="margin:0;padding:0;background-color:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">` +
+    `<div style="width:100%;max-width:560px;margin:32px auto;padding:0 16px;box-sizing:border-box;">` +
+    `<div style="background-color:#FFFFFF;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.06);">` +
+    `<div style="background-color:#0F172A;padding:24px 32px;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+    `<td>` +
+    `<span style="display:inline-block;background-color:#FFFFFF;color:#0F172A;font-weight:800;font-size:12px;padding:3px 8px;border-radius:6px;margin-right:10px;font-family:monospace;">bk</span>` +
+    `<span style="color:#FFFFFF;font-weight:700;font-size:18px;letter-spacing:-0.02em;">bonking</span>` +
+    `<span style="color:#64748B;font-size:14px;margin-left:8px;">· Bank USAC</span>` +
+    `</td>` +
+    `</tr></table>` +
+    `</div>` +
+    `<div style="padding:32px 32px 28px 32px;">` +
+    `<h1 style="font-size:20px;font-weight:700;color:#0F172A;margin:0 0 16px 0;line-height:1.3;">${safeSubject}</h1>` +
     content +
-    `<hr style="border:none;border-top:1px solid #eee;margin:24px 0">` +
-    `<p style="color:#9095a0;font-size:12px">Este correo se envió de forma automática. ` +
-    `Si no reconoces esta solicitud, puedes ignorarlo.</p>` +
-    `</div>`
+    `<hr style="border:none;border-top:1px solid #E2E8F0;margin:28px 0 20px 0;">` +
+    `<p style="color:#94A3B8;font-size:12px;line-height:1.5;margin:0;text-align:center;">` +
+    `Bank USAC · Proyecto de Software Avanzado<br>` +
+    `Este correo fue generado automáticamente. Por favor no respondas a este mensaje.` +
+    `</p>` +
+    `</div>` +
+    `</div>` +
+    `</div>` +
+    `</body></html>`
   );
 }
 
 function textBody(subject: string, link: string | undefined, type?: string): string {
-  if (type === 'identity.rejected') {
-    return `${subject}\n\nTu solicitud de registro en Bank USAC fue revisada pero no pudo ser aprobada debido a que la fotografía de tu documento de identificación no era legible o no cumplía con los requisitos.\n\nPuedes ingresar nuevamente a registrarte asegurándote de subir una fotografía clara y nítida de tu DPI.`;
+  if (type === 'identity.rejected' || type === 'kyc.rejected') {
+    return (
+      `${subject}\n\n` +
+      `Estimado cliente,\n\n` +
+      `Te informamos que la verificación digital de tu documento de identificación no pudo ser aprobada.\n\n` +
+      `Por favor acércate a cualquier agencia bancaria de Bank USAC presentando tu Documento Personal de Identificación (DPI) en físico. ` +
+      `Un cajero receptor o administrador validará tu identidad de inmediato en ventanilla para habilitar todas las operaciones de tu cuenta (transferencias y pagos).\n\n` +
+      `Bank USAC · Proyecto de Software Avanzado`
+    );
   }
-  return link === undefined ? subject : `${subject}\n\nEnlace: ${link}`;
+  if (type === 'customer.password-changed') {
+    return (
+      `${subject}\n\n` +
+      `Estimado cliente,\n\n` +
+      `Te informamos que la contraseña de acceso a tu banca en línea bonking ha sido modificada exitosamente.\n\n` +
+      `¿No reconoces esta actividad?\n` +
+      `Si tú no realizaste este cambio, tu cuenta podría estar comprometida. Comunícate de inmediato con soporte de Bank USAC o utiliza la opción de restablecer contraseña.\n\n` +
+      `Bank USAC · Proyecto de Software Avanzado`
+    );
+  }
+  if (link !== undefined) {
+    return (
+      `${subject}\n\n` +
+      `¡Bienvenido a bonking! Gracias por registrarte en la banca digital de Bank USAC.\n\n` +
+      `Para activar tu cuenta, ingresa al siguiente enlace:\n${link}\n\n` +
+      `Una vez activada tu cuenta, podrás ingresar al sistema de inmediato.\n\n` +
+      `Bank USAC · Proyecto de Software Avanzado`
+    );
+  }
+  return subject;
 }
 
 function escapeHtml(value: string): string {

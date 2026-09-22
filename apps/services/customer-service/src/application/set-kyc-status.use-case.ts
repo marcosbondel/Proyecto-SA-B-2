@@ -1,4 +1,9 @@
-import { customerKycRejectedV1, customerKycVerifiedV1 } from '@bank/contracts';
+import {
+  customerIdentityRejectedV1,
+  customerIdentityValidatedV1,
+  customerKycRejectedV1,
+  customerKycVerifiedV1,
+} from '@bank/contracts';
 import type { CustomerSetKycStatusV1, Identity } from '@bank/contracts';
 
 import { DomainRejection, mayManageKyc, setKycStatus } from '../domain/customer';
@@ -97,6 +102,15 @@ export class SetKycStatusUseCase {
           verifiedAt: now.toISOString(),
         },
       });
+
+      await this.#publisher.publish({
+        messageType: customerIdentityValidatedV1.name,
+        payload: {
+          customerId: updated.customerId,
+          identityStatus: 'VALIDATED',
+          validatedAt: now.toISOString(),
+        },
+      });
       return;
     }
 
@@ -106,6 +120,18 @@ export class SetKycStatusUseCase {
         customerId: updated.customerId,
         kycStatus: 'REJECTED',
         rejectedAt: now.toISOString(),
+      },
+    });
+
+    await this.#publisher.publish({
+      messageType: customerIdentityRejectedV1.name,
+      payload: {
+        customerId: updated.customerId,
+        identityStatus: 'REJECTED',
+        reason: 'IDENTITY_DOCUMENT_UNREADABLE',
+        rejectedAt: now.toISOString(),
+        email: existing.email,
+        fullName: existing.fullName,
       },
     });
   }

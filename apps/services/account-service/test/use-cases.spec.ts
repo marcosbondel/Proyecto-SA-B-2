@@ -594,13 +594,47 @@ describe('an administrator changing the status by hand', () => {
    * check because that guard protects an HTTP route while this message could
    * arrive from anywhere on the broker.
    */
-  it('ignores a teller, whatever the Gateway did or did not check', async () => {
+  it('allows a teller to change the status of any account', async () => {
     const { repository, publisher, dependencies } = fixture();
     seed(repository);
 
     await new SetAccountStatusUseCase(dependencies).execute(
-      { accountId: ACCOUNT, status: 'INACTIVE', reason: 'No debería poder' },
+      { accountId: ACCOUNT, status: 'INACTIVE', reason: 'Solicitud en ventanilla' },
       TELLER,
+      'key-1',
+    );
+
+    expect(repository.accounts.get(ACCOUNT)?.status).toBe('INACTIVE');
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.deactivated.v1',
+      payload: { cause: 'TELLER' },
+    });
+  });
+
+  it('allows a customer to deactivate their own account', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { customerId: CLIENT.customerId });
+
+    await new SetAccountStatusUseCase(dependencies).execute(
+      { accountId: ACCOUNT, status: 'INACTIVE', reason: 'Congelamiento voluntario' },
+      CLIENT,
+      'key-1',
+    );
+
+    expect(repository.accounts.get(ACCOUNT)?.status).toBe('INACTIVE');
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.deactivated.v1',
+      payload: { cause: 'CUSTOMER' },
+    });
+  });
+
+  it('ignores a customer trying to change someone else\'s account', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { customerId: 'different-customer-id' });
+
+    await new SetAccountStatusUseCase(dependencies).execute(
+      { accountId: ACCOUNT, status: 'INACTIVE', reason: 'Intento no autorizado' },
+      CLIENT,
       'key-1',
     );
 

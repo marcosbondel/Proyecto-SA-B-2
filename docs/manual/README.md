@@ -1,39 +1,165 @@
-# Manual de usuario — Bank USAC
-
-Este manual explica cómo usar Bank USAC desde el navegador. Está escrito para
-las personas que operan el sistema —clientes, cajeros y administradores—, no
-para quien lo programa o lo instala. No hace falta saber nada de tecnología para
-seguirlo.
-
-Si lo que buscas es cómo levantar el sistema, compilarlo o modificarlo, ese no
-es este documento: eso vive en el [README del
-repositorio](../../README.md) y en
-[docs/operations/CONTAINERS.md](../operations/CONTAINERS.md).
+# Manual de Usuario — Bank USAC
 
 ## Índice
+- [Manual de Usuario — Bank USAC](#manual-de-usuario--bank-usac)
+  - [Índice](#índice)
+  - [Objetivos](#objetivos)
+    - [General](#general)
+    - [Específicos](#específicos)
+  - [Introducción](#introducción)
+  - [Requisitos del Sistema](#requisitos-del-sistema)
+    - [Requisitos de Hardware](#requisitos-de-hardware)
+    - [Requisitos de Software](#requisitos-de-software)
+    - [Navegadores Web Compatibles](#navegadores-web-compatibles)
+    - [Requisitos de Red y Conectividad](#requisitos-de-red-y-conectividad)
+  - [Flujo de Funcionalidades del Programa](#flujo-de-funcionalidades-del-programa)
+    - [1. Registro y Verificación de Identidad](#1-registro-y-verificación-de-identidad)
+    - [2. Control de Acceso y Gestión de Sesión](#2-control-de-acceso-y-gestión-de-sesión)
+    - [3. Gestión Integral de Cuentas](#3-gestión-integral-de-cuentas)
+    - [4. Transferencias Monetarias y Orquestación Saga](#4-transferencias-monetarias-y-orquestación-saga)
+    - [5. Pago de Servicios Básicos](#5-pago-de-servicios-básicos)
+    - [6. Auditoría y Trazabilidad Forense](#6-auditoría-y-trazabilidad-forense)
+    - [7. Centro de Notificaciones](#7-centro-de-notificaciones)
+  - [Guías Especializadas por Rol](#guías-especializadas-por-rol)
+  - [Recorrido Visual Paso a Paso](#recorrido-visual-paso-a-paso)
+- [1. Antes de empezar](#1-antes-de-empezar)
+  - [1.1 Qué necesitas](#11-qué-necesitas)
+  - [1.2 Los tres roles](#12-los-tres-roles)
+  - [1.3 Usuarios de prueba](#13-usuarios-de-prueba)
+- [2. Cómo entrar al sistema](#2-cómo-entrar-al-sistema)
+  - [2.1 Crear tu cuenta](#21-crear-tu-cuenta)
+  - [2.2 Activar la cuenta](#22-activar-la-cuenta)
+  - [2.3 Iniciar sesión](#23-iniciar-sesión)
+  - [2.4 Cerrar sesión](#24-cerrar-sesión)
+  - [2.5 Si olvidaste tu contraseña](#25-si-olvidaste-tu-contraseña)
+- [3. Cómo leer lo que el sistema te responde](#3-cómo-leer-lo-que-el-sistema-te-responde)
+  - [3.1 Los estados de una operación](#31-los-estados-de-una-operación)
+  - [3.2 Mensajes de confirmación](#32-mensajes-de-confirmación)
+  - [3.3 Mensajes de error](#33-mensajes-de-error)
+- [4. Clientes](#4-clientes)
+  - [4.1 Registrar un cliente nuevo](#41-registrar-un-cliente-nuevo)
+  - [4.2 Ver la información de un cliente](#42-ver-la-información-de-un-cliente)
+  - [4.3 Validar la identidad de un cliente](#43-validar-la-identidad-de-un-cliente)
+- [5. Cuentas](#5-cuentas)
+  - [5.1 Abrir una cuenta](#51-abrir-una-cuenta)
+  - [5.2 Ver el detalle y movimientos de una cuenta](#52-ver-el-detalle-y-movimientos-de-una-cuenta)
+  - [5.3 Recibir un depósito en ventanilla](#53-recibir-un-depósito-en-ventanilla)
+  - [5.4 Activar o desactivar una cuenta](#54-activar-o-desactivar-una-cuenta)
+- [6. Transferencias](#6-transferencias)
+  - [6.1 Enviar una transferencia](#61-enviar-una-transferencia)
+  - [6.2 Ver el estado de una transferencia en curso](#62-ver-el-estado-de-una-transferencia-en-curso)
+  - [6.3 Ver el historial de transferencias](#63-ver-el-historial-de-transferencias)
+- [7. Pagos](#7-pagos)
+  - [7.1 Pagar un servicio](#71-pagar-un-servicio)
+  - [7.2 Consultar el historial de pagos](#72-consultar-el-historial-de-pagos)
+  - [7.3 Monitorear los pagos del banco](#73-monitorear-los-pagos-del-banco)
+- [8. Auditoría y notificaciones](#8-auditoría-y-notificaciones)
+  - [8.1 Explorador general de eventos y rastro por operación](#81-explorador-general-de-eventos-y-rastro-por-operación)
+  - [8.2 Notificaciones](#82-notificaciones)
+- [9. Lo que el sistema todavía no puede hacer](#9-lo-que-el-sistema-todavía-no-puede-hacer)
+- [10. Preguntas frecuentes](#10-preguntas-frecuentes)
 
-1. [Antes de empezar](#1-antes-de-empezar)
-2. [Cómo entrar al sistema](#2-cómo-entrar-al-sistema)
-3. [Cómo leer lo que el sistema te responde](#3-cómo-leer-lo-que-el-sistema-te-responde)
-4. [Clientes](#4-clientes)
-5. [Cuentas](#5-cuentas)
-6. [Transferencias](#6-transferencias)
-7. [Pagos](#7-pagos)
-8. [Auditoría y notificaciones](#8-auditoría-y-notificaciones)
-9. [Lo que el sistema todavía no puede hacer](#9-lo-que-el-sistema-todavía-no-puede-hacer)
-10. [Preguntas frecuentes](#10-preguntas-frecuentes)
+---
 
-**Guías por rol** — el recorrido completo de cada puesto, paso a paso:
+## Objetivos
 
-- [Manual del Cliente](rol-cliente.md)
-- [Manual del Cajero Receptor](rol-cajero-receptor.md)
-- [Manual del Administrador](rol-administrador.md)
+### General
+Instruir de forma clara, didáctica y exhaustiva a los usuarios finales (Cuentahabientes, Cajeros Receptores y Administradores de Operaciones) sobre el manejo, la interacción y el flujo operativo completo de la plataforma bancaria **Bank USAC**, garantizando un uso correcto, seguro y eficiente de todas las funcionalidades financieras y administrativas.
 
-**[Recorrido visual](recorrido-visual.md)** — los mismos flujos, pero con una
-captura de pantalla por paso: 78 pasos que atraviesan los tres roles sobre un
-único ejemplo con datos concretos, desde el registro del cliente hasta el pago
-de un servicio. Úsalo cuando quieras *ver* la pantalla en lugar de leer su
-descripción.
+### Específicos
+1. **Guiar en los procesos de onboarding y acceso**: Detallar los pasos requeridos para el autorregistro de clientes, la carga de documento de identificación (DPI), la activación de credenciales y el inicio de sesión seguro.
+2. **Capacitar en la operativa bancaria diaria**: Describir con precisión la apertura de cuentas monetarias y de ahorro, depósitos en ventanilla, transferencias entre cuentas y pagos de servicios esenciales.
+3. **Transparentar el modelo transaccional y estados Saga**: Explicar la interpretación de saldos, débitos, créditos, estados de transferencias en tiempo real y el mecanismo de compensación automática en caso de fallos.
+4. **Instruir en el control y seguridad de cuentas**: Documentar los procedimientos de activación y desactivación (congelamiento preventivo) de cuentas por parte del propio cliente, del cajero receptor y del administrador.
+5. **Orientar sobre las herramientas de auditoría y monitoreo**: Facilitar a los administradores la consulta de eventos distribuidos, rastro por identificador de correlación y supervisión de notificaciones.
+
+---
+
+## Introducción
+
+El sistema **Bank USAC** es una solución bancaria integral desarrollada bajo una arquitectura de microservicios distribuidos orientada a eventos. Su diseño simula con alto rigor técnico la operativa de una entidad financiera moderna en Guatemala, combinando consistencia financiera estricta, alta disponibilidad, segregación estricta de responsabilidades y trazabilidad forense inmutable.
+
+A través de una interfaz web intuitiva, reactiva y elegante, Bank USAC conecta a tres actores fundamentales:
+- **Clientes (Cuentahabientes)**: Personas individuales que autogestionan sus finanzas, monitorean sus cuentas en Quetzales (GTQ), efectúan transferencias interbancarias/internas, pagan servicios domiciliarios y controlan el estado de sus productos bancarios.
+- **Cajeros Receptores**: Personal operativo de ventanilla responsable de atender al público presencial, validar identidades contra documentos oficiales, aperturar cuentas bancarias, registrar depósitos monetarios en efectivo y asistir en transferencias asistidas.
+- **Administradores del Sistema**: Supervisores de operaciones encargados del gobierno de la plataforma, control global de estados de cuentas, observabilidad transaccional en tiempo real y análisis forense del bus de eventos.
+
+La plataforma implementa el patrón **Saga Coreografiada**, lo que garantiza que ante cualquier fallo técnico o rechazo de una entidad externa (por ejemplo, pasarela de pago o servicios no disponibles), el sistema revierte automáticamente cualquier movimiento de fondos, protegiendo en todo instante la integridad del dinero del cuentahabiente y cumpliendo la regla fundamental de saldo no negativo (`balance >= 0`).
+
+---
+
+## Requisitos del Sistema
+
+Para interactuar con la plataforma Bank USAC, el equipo cliente o terminal de ventanilla debe cumplir con los siguientes requerimientos mínimos:
+
+### Requisitos de Hardware
+- **Procesador (CPU)**: 1.5 GHz de doble núcleo (x86_64 o ARM64) o superior.
+- **Memoria RAM**: 2 GB de RAM mínima disponible (se recomiendan 4 GB para una experiencia fluida con múltiples pestañas).
+- **Pantalla**: Resolución mínima recomendada de 1280 x 720 píxeles (diseño responsive adaptable a portátiles, escritorios y tablets).
+- **Dispositivos de Entrada**: Teclado y ratón (o panel táctil).
+
+### Requisitos de Software
+- **Sistema Operativo**: Cualquier sistema operativo con soporte para navegadores modernos (Microsoft Windows 10/11, macOS 12+, GNU/Linux Ubuntu/Debian/Fedora, o ChromeOS).
+- **Lector de Documentos (Opcional)**: Visor de archivos PDF o visores de imágenes (JPG, PNG) para verificar comprobantes descargados y fotos de documentos de identidad.
+
+### Navegadores Web Compatibles
+El sistema hace uso de estándares web modernos (HTML5, CSS3, ECMAScript 2022, WebSocket/SSE y Fetch API). Se garantiza compatibilidad en las siguientes versiones o superiores:
+- **Google Chrome**: Versión 110 o superior (Recomendado).
+- **Mozilla Firefox**: Versión 115 o superior.
+- **Microsoft Edge**: Versión 110 o superior.
+- **Apple Safari**: Versión 16 o superior.
+- *Nota*: Es indispensable tener habilitada la ejecución de JavaScript y permitir cookies/almacenamiento de sesión para el token JWT de autenticación.
+
+### Requisitos de Red y Conectividad
+- **Conexión de Red**: Conexión a Internet o red local corporativa con un ancho de banda mínimo de 1 Mbps simétrico.
+- **Latencia**: Latencia de red inferior a 300 ms hacia los servidores de la aplicación.
+- **Protocolos y Puertos**: Acceso HTTP/HTTPS estándar (puerto `3010` para interfaz web en entorno local, puerto `3000` para API Gateway, o puertos estándar `80`/`443` en despliegues cloud).
+
+---
+
+## Flujo de Funcionalidades del Programa
+
+El sistema se estructura en 7 grandes flujos de funcionalidad interconectados, diseñados para garantizar una navegación fluida y segura:
+
+### 1. Registro y Verificación de Identidad
+Permite a cualquier ciudadano mayor de edad registrarse en la plataforma proporcionando datos personales, dirección física, correo electrónico y fotografía digital de su Documento Personal de Identificación (DPI). El sistema valida el formato de la imagen, almacena el archivo de forma segura en almacenamiento de objetos (MinIO/Cloud Storage) y genera un token criptográfico de activación enviado al usuario. El cajero o administrador puede posteriormente verificar la concordancia visual y digital de la identificación en la cola de validación.
+
+### 2. Control de Acceso y Gestión de Sesión
+Autenticación basada en credenciales robustas (correo y contraseña protegida mediante hash scrypt). El sistema emite un token JWT con vigencia temporal que encapsula el rol (`CLIENTE`, `CAJERO_RECEPTOR` o `ADMINISTRADOR`), delimitando de forma estricta los privilegios en la barra de navegación y en las APIs internas. Incluye recuperación de contraseña por token firmado y cierre de sesión seguro en un clic.
+
+### 3. Gestión Integral de Cuentas
+Apertura de cuentas monetarias y de ahorro en Quetzales, generación de números de cuenta de 10 dígitos algorítmicamente validados, consulta de saldo en tiempo real con precisión decimal exacta (`NUMERIC(14,2)`), historial de movimientos (débitos y créditos) y módulo de depósitos en efectivo en ventanilla. Adicionalmente, cuenta con el mecanismo de **congelamiento y reactivación** (activar/desactivar estado `ACTIVA` / `INACTIVA`) disponible tanto para el cuentahabiente como para el personal bancario.
+
+### 4. Transferencias Monetarias y Orquestación Saga
+Transferencias inmediatas entre cuentas bancarias. Cada transferencia se ejecuta bajo una Saga de transacciones compensatorias:
+1. Verificación de titularidad y existencia de cuentas.
+2. Débito atómico con bloqueo concurrente en la cuenta origen.
+3. Intento de crédito en la cuenta destino.
+4. Si la cuenta destino no existe, está inactiva o el sistema de pago rechaza la operación, se ejecuta la compensación devolviendo íntegramente el dinero a la cuenta origen sin intervención manual.
+La interfaz ofrece un monitor en vivo con barra de progreso visual de las etapas de la Saga.
+
+### 5. Pago de Servicios Básicos
+Convenios directos para el pago de servicios públicos esenciales (Empresa Eléctrica EEGSA, Servicio de Agua Empagua, Telecomunicaciones Claro). El usuario selecciona el proveedor, ingresa su número de suministro o contrato y realiza el pago con cargo directo a su cuenta de cheques o ahorro, obteniendo comprobante digital y rastro de operación.
+
+### 6. Auditoría y Trazabilidad Forense
+Exclusivo para el rol Administrador. Permite consultar la bitácora distribuida de eventos emitidos por todos los microservicios en el broker RabbitMQ. Permite rastrear cualquier transacción introduciendo su `correlationId` para auditar la cronología exacta: qué servicio procesó el comando, en qué microsegundo y con qué resultado, garantizando cumplimiento regulatorio bancario con ofuscación de datos sensibles.
+
+### 7. Centro de Notificaciones
+Buzón accesible mediante icono de campana en el encabezado superior. Muestra al usuario notificaciones en tiempo real sobre transacciones exitosas, transferencias recibidas, débitos realizados, activaciones de cuenta y cambios de seguridad. Incluye filtros por estado (leídas/no leídas) y marcación rápida.
+
+---
+
+## Guías Especializadas por Rol
+
+Para una descripción operativa paso a paso orientada específicamente a su puesto de trabajo o perfil, consulte los manuales dedicados:
+
+- **[Manual del Cliente](rol-cliente.md)**: Guía completa para el cuentahabiente (apertura de productos, gestión de saldos, congelamiento de cuenta, transferencias y pagos).
+- **[Manual del Cajero Receptor](rol-cajero-receptor.md)**: Operaciones de ventanilla, recepción de depósitos, validación de DPIs y apertura de cuentas asistidas.
+- **[Manual del Administrador](rol-administrador.md)**: Gobierno de cuentas, auditoría forense, monitoreo de la Saga y supervisión global del sistema.
+
+## Recorrido Visual Paso a Paso
+
+- **[Recorrido visual interactivo](recorrido-visual.md)**: 78 capturas de pantalla secuenciales con datos concretos que ilustran cada una de las pantallas de la plataforma en funcionamiento.
 
 ---
 
@@ -411,32 +537,34 @@ estado de cuenta con una fila por movimiento:
 
 | Estado | Qué significa |
 | --- | --- |
-| **Activa** | La cuenta opera con normalidad. |
-| **Inactiva** | No se puede sacar dinero de ella. Un depósito la reactiva automáticamente, o un administrador puede reactivarla a mano. |
+| **Activa** | La cuenta opera con normalidad: recibe depósitos, transferencias y permite debitar fondos para pagos y envíos. |
+| **Inactiva** | La cuenta queda congelada. No se puede transferir dinero fuera de ella ni pagar servicios. Un depósito la reactiva automáticamente, o puede ser reactivada por el propio cliente, por un cajero o por un administrador. |
 
-El banco **desactiva cuentas solo**: si una cuenta pasa **seis meses sin
+El banco **desactiva cuentas automáticamente**: si una cuenta pasa **seis meses sin
 movimientos con un saldo menor a Q 50.00**, un proceso automático la desactiva.
 Cuando una cuenta se acerca a esa condición, su pantalla muestra un aviso
 ámbar que dice cuántos días faltan. Para conservarla activa basta con
 registrar un movimiento — recibir una transferencia es suficiente.
 
+**Control de activación / desactivación por parte del usuario:**
+- **El Cliente**: Desde el detalle de su cuenta (`/cuentas/[id]`), el cuentahabiente dispone de un interruptor de **Seguridad de la Cuenta** que le permite **congelar preventivamente** su cuenta en caso de sospecha de fraude, extravío de tarjeta o preferencia personal, o reactivarla cuando lo requiera, indicando el motivo.
+- **El Cajero Receptor y el Administrador**: Disponen del panel de **Gestión de cuentas** en `/cuentas`, donde pueden buscar cualquier cuenta bancaria y cambiar su estado (`Activa` / `Inactiva`) ingresando la justificación administrativa correspondiente.
+
 ### 5.5 Gestión de cuentas
 
-**Quién lo ve:** solo el Administrador. Botón **Gestión de cuentas** en
-`/cuentas`.
+**Quién lo ve:** Administrador y Cajero Receptor (acceso completo a todas las cuentas); Clientes (gestión directa desde la ficha de su propia cuenta). Botón **Gestión de cuentas** en `/cuentas`.
 
 Muestra **todas** las cuentas del sistema, con filtros por estado y por tipo, y
 una búsqueda por número de cuenta o titular. Arriba aparece un aviso cuando hay
 cuentas activas con saldo menor a Q 50.00, que son las candidatas a
 desactivación automática.
 
-Cada fila tiene un botón **Desactivar** o **Reactivar** según su estado. Al
-pulsarlo se abre un panel que pide un **motivo** — obligatorio, porque es el
-único registro de por qué se hizo el cambio — y luego **Confirmar**.
+Cada fila tiene un botón **Desactivar** o **Reactivar** según su estado actual. Al
+pulsarlo se abre un panel modal que solicita obligatoriamente el **motivo** del cambio
+—el cual queda registrado en la bitácora de auditoría para trazabilidad— y el botón **Confirmar**.
 
-El cambio no es inmediato: la pantalla te dirá que la solicitud fue aceptada y
-recargará la lista. Si el estado todavía no cambió, vuelve a actualizar en unos
-segundos.
+El cambio se procesa mediante el bus de mensajería: la pantalla te indicará que la solicitud fue aceptada y
+recargará el estado de la cuenta.
 
 > En esta tabla, la columna **Titular** muestra el **nombre** del cliente, con su
 > identificador debajo. El nombre no lo guarda el servicio de cuentas —son dos
@@ -715,9 +843,7 @@ En *Cuentas → Ver detalle*, con el botón **Copiar**. También aparece al term
 de abrir una cuenta.
 
 **Mi cuenta aparece como «Inactiva».**
-Pasó seis meses sin movimientos con menos de Q 50.00. Recibir una transferencia
-la reactiva automáticamente, o un administrador puede reactivarla desde *Gestión
-de cuentas*.
+Puede haber sido desactivada automáticamente si pasó seis meses sin movimientos con menos de Q 50.00, o por congelamiento de seguridad. Recibir una transferencia o depósito en ventanilla la reactiva automáticamente; también puedes reactivarla tú mismo desde el detalle de tu cuenta (`/cuentas/[id]`), o solicitar a un cajero o administrador que la reactive desde *Gestión de cuentas*.
 
 ---
 

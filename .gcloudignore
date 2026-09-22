@@ -1,0 +1,12 @@
+.gcloudignore
+.git/
+.gitignore
+node_modules/
+**/node_modules/
+.turbo/
+dist/
+**/dist/
+.output/
+.nuxt/
+.data/
+*.tfstate*

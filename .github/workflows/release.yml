@@ -1,0 +1,120 @@
+name: Release & Delivery
+
+# Fase de Entrega (Delivery / Release) — Requisito Enunciado Fase 2 (§4.1, p. 7):
+# "La fase de entrega se ejecuta en ramas de tipo: release/<version> o mediante
+# la creacion de un tag: vX.X.X"
+# Jobs obligatorios:
+# 1. Generacion de version: Registro formal de la version del sistema.
+# 2. Build y publicacion de imagenes: Construccion de imagenes Docker finales y
+#    etiquetado versionado (prohibido usar latest).
+
+on:
+  push:
+    branches:
+      - 'release/**'
+      - 'release-*'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version del release (ej. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  # Job obligatorio 1: Generacion de version
+  version:
+    name: '1. Generacion de Version'
+    runs-on: ubuntu-latest
+    outputs:
+      release_version: ${{ steps.calc_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Calcular version formal del sistema
+        id: calc_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" =~ ^refs/tags/v ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/release/ ]]; then
+            VERSION="v${GITHUB_REF#refs/heads/release/}"
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/release- ]]; then
+            VERSION="v${GITHUB_REF#refs/heads/release-}"
+          else
+            VERSION="v$(node -p "require('./package.json').version")-${GITHUB_SHA::8}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "=== Version formal generada: $VERSION ==="
+
+      - name: Registrar formalmente version del release
+        run: |
+          echo "Registro formal del sistema Bank USAC" > release-manifest.txt
+          echo "Version: ${{ steps.calc_version.outputs.version }}" >> release-manifest.txt
+          echo "Commit: ${{ github.sha }}" >> release-manifest.txt
+          echo "Fecha: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> release-manifest.txt
+          cat release-manifest.txt
+
+  # Job obligatorio 2: Build y publicacion de imagenes
+  build-and-publish:
+    name: '2. Build y Publicacion de Imagenes'
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build y publicar imagenes de los 7 componentes
+        run: |
+          VERSION="${{ needs.version.outputs.release_version }}"
+          echo "Construyendo y publicando imagenes con version formal: $VERSION (no latest)"
+
+          COMPONENTS=(
+            "customer-service:apps/services/customer-service/Dockerfile"
+            "account-service:apps/services/account-service/Dockerfile"
+            "transaction-service:apps/services/transaction-service/Dockerfile"
+            "payment-service:apps/services/payment-service/Dockerfile"
+            "notification-audit-service:apps/services/notification-audit-service/Dockerfile"
+            "gateway:apps/gateway/Dockerfile"
+            "web:apps/web/Dockerfile"
+          )
+
+          for comp in "${COMPONENTS[@]}"; do
+            NAME="${comp%%:*}"
+            DOCKERFILE="${comp##*:}"
+            TAG_NAME="${REGISTRY}/${IMAGE_PREFIX}/${NAME}:${VERSION}"
+            echo "--> Construyendo $NAME desde $DOCKERFILE con tag $TAG_NAME"
+            docker build \
+              -f "$DOCKERFILE" \
+              -t "$TAG_NAME" \
+              --label "org.opencontainers.image.version=${VERSION}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              .
+            echo "--> Imagen $NAME construida exitosamente con version $VERSION"
+          done

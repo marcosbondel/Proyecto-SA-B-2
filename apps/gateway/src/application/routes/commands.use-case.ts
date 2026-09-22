@@ -63,6 +63,8 @@ export interface TransferRequest extends CommandContext {
   readonly sourceAccount: string;
   readonly targetAccount: string;
   readonly amount: Money;
+  /** Carried when staff initiates on behalf of customer. */
+  readonly customerId?: string;
   /** Carried when the target is a biller's collection account. Never read here. */
   readonly reference?: string;
   readonly paymentScenario?: PaymentScenario;
@@ -185,7 +187,8 @@ export class CommandsUseCase {
         sourceAccount: request.sourceAccount,
         targetAccount: request.targetAccount,
         amount: request.amount,
-        // Carried and never read: whose bill this pays is the biller's business.
+        ...(request.customerId === undefined ? {} : { customerId: request.customerId }),
+        // Carried when the target is a biller's collection account. Never read here.
         ...(request.reference === undefined ? {} : { reference: request.reference }),
         // Carried, never obeyed. Acting on it is Transaction Service's job.
         ...(request.paymentScenario === undefined

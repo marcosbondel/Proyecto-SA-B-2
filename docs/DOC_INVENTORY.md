@@ -96,9 +96,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/diagrams/cdu/README.md` | project | Enner Mendizabal | current | 2026-09-09 |
 | `docs/architecture/diagrams/er/README.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/generated/db-schema.md` | project | Enner Mendizabal | current | 2026-09-03 |
-| `docs/sre/sli.md` | project | Marcos Bonifasi | current | 2026-09-05 |
-| `docs/sre/slo.md` | project | Marcos Bonifasi | current | 2026-09-05 |
-| `docs/sre/sla.md` | project | Marcos Bonifasi | current | 2026-09-05 |
+| `docs/sre/sli-slo-sla.md` | project | Marcos Bonifasi | current | 2026-09-20 |
 | `docs/manual/recorrido-visual.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/qa/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
 | `docs/qa/happypath.md` | project | Enner Mendizabal | current | 2026-09-09 |
