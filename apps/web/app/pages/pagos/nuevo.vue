@@ -43,15 +43,18 @@ const { role, session } = useSession();
  * through the same KYC gate; staff are never gated by it.
  */
 const ownKycStatus = ref<'PENDING' | 'VERIFIED' | 'REJECTED' | null>(null);
+const ownKycLoading = ref(false);
 
 async function loadOwnKyc(): Promise<void> {
   if (role.value === null || role.value !== 'CLIENTE' || session.value === null) {
     return;
   }
 
+  ownKycLoading.value = true;
   const result = await api.call<{ kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' }>(
     `/api/customers/${session.value.customerId}`,
   );
+  ownKycLoading.value = false;
 
   if (result.ok) {
     ownKycStatus.value = result.data.kycStatus;
@@ -110,8 +113,19 @@ async function load(): Promise<void> {
   state.value = 'READY';
 }
 
-onMounted(load);
-onMounted(loadOwnKyc);
+onMounted(() => {
+  load();
+  loadOwnKyc();
+  if (import.meta.client) {
+    window.addEventListener('focus', loadOwnKyc);
+  }
+});
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('focus', loadOwnKyc);
+  }
+});
 
 function describe(account: AccountSummary): string {
   const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
@@ -237,14 +251,27 @@ useHead({ title: 'Nuevo pago · bonking' });
     <div v-else class="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr]">
       <UCard>
         <form class="flex flex-col gap-5" @submit.prevent="send">
-          <UAlert
-            v-if="kycBlocksSubmission"
-            color="warning"
-            variant="subtle"
-            title="Verificación de identidad pendiente"
-            description="Tu expediente se encuentra pendiente de verificación de identidad. No es posible realizar pagos de servicios hasta que tu documento sea aprobado por un cajero o administrador."
-            data-testid="payment-kyc-blocked"
-          />
+          <div v-if="kycBlocksSubmission" class="flex flex-col gap-2">
+            <UAlert
+              color="warning"
+              variant="subtle"
+              title="Verificación de identidad pendiente"
+              description="Tu expediente se encuentra pendiente de verificación de identidad. No es posible realizar pagos de servicios hasta que tu documento sea aprobado por un cajero o administrador."
+              data-testid="payment-kyc-blocked"
+            />
+            <div class="flex justify-end">
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="ownKycLoading"
+                icon="i-lucide-refresh-cw"
+                @click="loadOwnKyc"
+              >
+                ¿Ya fue aprobada tu verificación? Actualizar estado
+              </UButton>
+            </div>
+          </div>
 
           <UFormField label="Cuenta origen" name="sourceAccount">
             <USelectMenu

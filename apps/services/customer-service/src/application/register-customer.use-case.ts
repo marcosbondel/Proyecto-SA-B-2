@@ -4,6 +4,7 @@ import {
   customerActivationRequestedV1,
   customerIdentityRejectedV1,
   customerIdentityValidatedV1,
+  customerKycRejectedV1,
   customerKycVerifiedV1,
   customerRegisterRejectedV1,
   customerRegisteredV1,
@@ -11,7 +12,7 @@ import {
 import type { CustomerRegisterV1, Identity, PhotoReference } from '@bank/contracts';
 
 import { DomainRejection, mayRegisterWithRole } from '../domain/customer';
-import type { IdentityStatus } from '../domain/customer';
+import type { Customer, IdentityStatus } from '../domain/customer';
 import { judgeIdentityPhoto } from '../domain/identity-validation';
 import type { IdentityVerdict } from '../domain/identity-validation';
 import { usernameCandidates } from '../domain/username';
@@ -128,16 +129,20 @@ export class RegisterCustomerUseCase {
       identity !== null &&
       (identity.role === 'CAJERO_RECEPTOR' || identity.role === 'ADMINISTRADOR');
 
-    // An uploaded document that passes basic structure remains PENDING until a
-    // teller or administrator manually reviews and approves it in the validation queue.
-    // However, if the registration is performed directly by a teller or administrator
-    // at the counter, the identity is physically verified at creation.
-    const identityStatus: IdentityStatus =
-      verdict !== null && verdict.outcome === 'REJECTED'
+    // When registered directly by a teller or administrator at the counter,
+    // the identity is physically verified at creation. They do not undergo
+    // automated rejection or subsequent approval queues.
+    const identityStatus: IdentityStatus = registeredByStaff
+      ? 'VALIDATED'
+      : verdict !== null && verdict.outcome === 'REJECTED'
         ? 'REJECTED'
-        : registeredByStaff
-          ? 'VALIDATED'
-          : 'PENDING';
+        : 'PENDING';
+
+    const customerStatus: Customer['status'] = registeredByStaff
+      ? 'ACTIVE'
+      : 'PENDING_ACTIVATION';
+
+    const emailVerifiedAt = registeredByStaff ? now.toISOString() : null;
 
     const activation = this.#tokens.issue();
     const expiresAt = new Date(now.getTime() + ACTIVATION_TTL_MS).toISOString();
@@ -173,6 +178,8 @@ export class RegisterCustomerUseCase {
               },
         activation: { tokenHash: activation.tokenHash, expiresAt },
         identityStatus,
+        status: customerStatus,
+        emailVerifiedAt,
         idempotency: {
           idempotencyKey,
           messageType: MESSAGE_TYPE,
@@ -202,19 +209,21 @@ export class RegisterCustomerUseCase {
       },
     });
 
-    // Activation email is sent immediately for ALL registrations so clients can verify
-    // their email and sign in right away without waiting for staff approval.
-    await this.#publisher.publish({
-      messageType: customerActivationRequestedV1.name,
-      payload: {
-        customerId: customer.customerId,
-        email: customer.email,
-        expiresAt,
-        // The clear value travels here and nowhere else; the database holds
-        // only its digest.
-        activationToken: activation.token,
-      },
-    });
+    if (!registeredByStaff) {
+      // Activation email is sent immediately for public registrations so clients can verify
+      // their email and sign in right away.
+      await this.#publisher.publish({
+        messageType: customerActivationRequestedV1.name,
+        payload: {
+          customerId: customer.customerId,
+          email: customer.email,
+          expiresAt,
+          // The clear value travels here and nowhere else; the database holds
+          // only its digest.
+          activationToken: activation.token,
+        },
+      });
+    }
 
     if (registeredByStaff && identityStatus === 'VALIDATED') {
       await this.#publisher.publish({
@@ -234,8 +243,8 @@ export class RegisterCustomerUseCase {
           verifiedAt: now.toISOString(),
         },
       });
-    } else if (verdict !== null && verdict.outcome === 'REJECTED') {
-      await this.#publishVerdict(customer.customerId, verdict, now);
+    } else if (!registeredByStaff && verdict !== null && verdict.outcome === 'REJECTED') {
+      await this.#publishVerdict(customer, verdict, now);
     }
   }
 
@@ -284,12 +293,12 @@ export class RegisterCustomerUseCase {
     });
   }
 
-  async #publishVerdict(customerId: string, verdict: IdentityVerdict, now: Date): Promise<void> {
+  async #publishVerdict(customer: Customer, verdict: IdentityVerdict, now: Date): Promise<void> {
     if (verdict.outcome === 'VALIDATED') {
       await this.#publisher.publish({
         messageType: customerIdentityValidatedV1.name,
         payload: {
-          customerId,
+          customerId: customer.customerId,
           identityStatus: 'VALIDATED',
           validatedAt: now.toISOString(),
         },
@@ -300,9 +309,20 @@ export class RegisterCustomerUseCase {
     await this.#publisher.publish({
       messageType: customerIdentityRejectedV1.name,
       payload: {
-        customerId,
+        customerId: customer.customerId,
         identityStatus: 'REJECTED',
         reason: verdict.reason,
+        rejectedAt: now.toISOString(),
+        email: customer.email,
+        fullName: customer.fullName,
+      },
+    });
+
+    await this.#publisher.publish({
+      messageType: customerKycRejectedV1.name,
+      payload: {
+        customerId: customer.customerId,
+        kycStatus: 'REJECTED',
         rejectedAt: now.toISOString(),
       },
     });

@@ -76,6 +76,8 @@ export class PostgresCustomerRepository implements CustomerRepository {
     readonly document: Omit<StoredIdentityDocument, 'documentId' | 'customerId'> | null;
     readonly activation: { readonly tokenHash: string; readonly expiresAt: string } | null;
     readonly identityStatus: IdentityStatus;
+    readonly status?: Customer['status'];
+    readonly emailVerifiedAt?: string | null;
     readonly idempotency: ProcessedMessage;
     readonly now: Date;
   }): Promise<Customer> {
@@ -96,11 +98,15 @@ export class PostgresCustomerRepository implements CustomerRepository {
               ? 'REJECTED'
               : 'PENDING';
 
+        const status = input.status ?? shape.status;
+        const emailVerifiedAt = input.emailVerifiedAt ?? null;
+
         const inserted = await client.query<CustomerRow>(
           `INSERT INTO customers (
              customer_id, full_name, document_number, email, birth_date, address,
-             username, role, status, identity_status, kyc_status, password_hash, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+             username, role, status, identity_status, kyc_status, password_hash,
+             email_verified_at, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
            RETURNING *`,
           [
             shape.customerId,
@@ -111,10 +117,11 @@ export class PostgresCustomerRepository implements CustomerRepository {
             shape.address,
             username,
             shape.role,
-            shape.status,
+            status,
             input.identityStatus,
             kycStatus,
             input.credentialHash,
+            emailVerifiedAt,
             input.now.toISOString(),
           ],
         );
