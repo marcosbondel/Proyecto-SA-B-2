@@ -88,6 +88,10 @@ export class TransferDto {
   @IsOptional()
   @IsIn(SCENARIOS, { message: `El escenario de pago debe ser uno de: ${SCENARIOS.join(', ')}.` })
   public paymentScenario?: (typeof SCENARIOS)[number];
+
+  @IsOptional()
+  @IsUUID('4', { message: 'El customerId debe ser un UUID v4.' })
+  public customerId?: string;
 }
 
 /**

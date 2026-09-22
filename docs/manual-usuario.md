@@ -497,9 +497,15 @@ Botón **Abrir cuenta**. Se hace en tres pasos:
 3. **Recibe el identificador.** La cuenta se abre con **Q 0.00** y en estado
    **activa**.
 
-Si eres **Cajero receptor** o **Administrador** puedes marcar *«La cuenta es
-para otro cliente»* y escribir el customerId del titular. Un **Cliente** solo
-puede abrir cuentas a su propio nombre.
+Si eres **Cajero receptor** o **Administrador** puedes seleccionar al cliente titular
+desde el buscador con autocompletado o escribir su identificador `customerId`. Un **Cliente**
+solo puede abrir cuentas a su propio nombre.
+
+> [!IMPORTANT]
+> **Requisito estricto de verificación:** El sistema prohíbe la apertura de cuentas bancarias
+> para clientes que no cuenten con su expediente de identidad y KYC aprobado (`VALIDATED` y `VERIFIED`).
+> Si un cliente no está verificado, la interfaz inhabilita la apertura mostrando un aviso de bloqueo,
+> impidiendo la creación tanto al propio cliente como al personal bancario (cajero y administrador).
 
 > **Guarda el número de cuenta** que aparece al final. Es con lo que se consulta
 > el saldo y con lo que se envían transferencias, y no hay forma de buscarlo por
@@ -542,8 +548,9 @@ Cuando una cuenta se acerca a esa condición, su pantalla muestra un aviso
 registrar un movimiento — recibir una transferencia es suficiente.
 
 **Control de activación / desactivación por parte del usuario:**
-- **El Cliente**: Desde el detalle de su cuenta (`/cuentas/[id]`), el cuentahabiente dispone de un interruptor de **Seguridad de la Cuenta** que le permite **congelar preventivamente** su cuenta en caso de sospecha de fraude, extravío de tarjeta o preferencia personal, o reactivarla cuando lo requiera, indicando el motivo.
-- **El Cajero Receptor y el Administrador**: Disponen del panel de **Gestión de cuentas** en `/cuentas`, donde pueden buscar cualquier cuenta bancaria y cambiar su estado (`Activa` / `Inactiva`) ingresando la justificación administrativa correspondiente.
+- **El Cliente**: Desde el detalle de su cuenta (`/cuentas/[id]`), el cuentahabiente dispone del botón dinámico **«Desactivar cuenta»** o **«Activar cuenta»**. Esto le permite suspender preventivamente su cuenta en caso de sospecha de fraude, extravío de tarjeta o preferencia personal, o reactivarla cuando lo requiera, indicando el motivo correspondiente. La interfaz actualiza el estado de forma inmediata y sincroniza el saldo.
+- **El Cajero Receptor y el Administrador**: Disponen del panel de **Gestión de cuentas** en `/cuentas`, donde pueden buscar cualquier cuenta bancaria y cambiar su estado (`Activa` / `Desactivada`) ingresando la justificación administrativa correspondiente.
+- **Notificación de seguridad al cliente:** Cada vez que una cuenta bancaria es desactivada o reactivada (manual o automáticamente), el sistema emite una notificación de seguridad con severidad **`WARNING`** dirigida al buzón del titular para mantenerlo informado del cambio de estado.
 
 ### 5.5 Gestión de cuentas
 
@@ -591,6 +598,17 @@ se reintenta, o provocar que el proveedor no responda (timeout, que sube la
 misma escalera de reintentos que el fallo transitorio pero se distingue de él
 en la ficha de cada intento)— están ahí para poder demostrar los cuatro finales
 posibles de una transferencia sin esperar a que ocurran solos.
+
+> [!IMPORTANT]
+> **Bloqueo para clientes no verificados:** No es posible iniciar transferencias desde cuentas
+> pertenecientes a clientes que no hayan completado su validación de identidad y KYC. Si un cliente
+> (o un miembro del personal bancario en ventanilla) intenta transferir desde una cuenta no verificada,
+> el formulario bloquea el botón de envío y muestra una alerta informativa.
+>
+> **Visibilidad de transferencias realizadas por ventanilla:** Cuando un cajero o administrador ejecuta
+> una transferencia en ventanilla a nombre de un cliente, la operación se asocia al titular de la cuenta origen
+> (`customerId`), asegurando que aparezca inmediatamente en el historial de transferencias (`/transferencias`) del cliente.
+> Asimismo, en las vistas del personal bancario se muestran los nombres de los titulares origen y destino.
 
 **La pantalla no comprueba tu saldo antes de enviar.** Esa decisión la toma el
 servicio de cuentas en el momento del cobro, que es el único que puede tomarla
@@ -730,17 +748,15 @@ permanente** no se reintenta, porque el resultado sería el mismo.
 
 El módulo de auditoría ofrece dos vistas fundamentales para el Administrador:
 
-1. **Bitácora general de eventos**: Permite paginar e inspeccionar los eventos registrados en el bus de mensajería (RabbitMQ) con sus metadatos (`eventId`, tipo de mensaje, productor, consumidor y estado de procesamiento) con cuerpo de payload redactado.
-2. **Rastro de una operación**: Permite ingresar el **identificador de correlación** (`correlationId`) de una transacción o flujo específico para armar la historia secuencial completa: qué se publicó, qué servicio lo procesó, en qué orden y qué notificaciones derivaron.
+1. **Bitácora general de eventos**: Permite paginar e inspeccionar los eventos registrados en el bus de mensajería (RabbitMQ) con sus metadatos (`eventId`, tipo de mensaje, productor, consumidor, severidad `INFO` / `WARNING` / `ERROR`, y estado de procesamiento) con cuerpo de payload redactado. Cada fila incluye el botón **«Ver rastro»**.
+2. **Rastro de la operación seleccionada**: Al pulsar *«Ver rastro»* en cualquier evento reciente o al escribir un código de seguimiento (`correlationId`), la pantalla despliega una tarjeta destacada: **«🧭 Rastro del Evento / Operación Seleccionada»**, con el Correlation ID en cabecera, botón para **Cerrar rastro**, métricas de servicios involucrados y duración del flujo, timeline distribuido de mensajes, y el desglose de notificaciones generadas.
 
-Pega el identificador y pulsa **Consultar**. Arriba aparece el resumen —cuántos
-eventos, cuántos servicios participaron y cuánto duró la operación— y debajo la
-tabla de eventos, que se puede filtrar por servicio y por tipo.
+Cada fila muestra el momento, el tipo de evento, el servicio que lo produjo y su severidad:
+- **INFO**: Operaciones habituales del sistema (ej. transferencias exitosas, apertura de cuentas, inicios de sesión).
+- **WARNING**: Eventos de seguridad o cambios críticos sobre perfiles y cuentas (ej. cambio de contraseña, actualización de datos personales, activación o desactivación de cuentas). En el caso de cambio de contraseña, el sistema además envía un correo de alerta inmediata al cliente.
+- **ERROR**: Fallos críticos o compensaciones monetarias (ej. `transaction.compensated.v1`, `account.debit.compensated.v1`, `payment.attempt.failed.v1` terminal).
 
-Cada fila muestra el momento, el tipo de evento, el servicio que lo produjo y si
-el evento quedó **Registrado**, **Inválido** (llegó pero no coincidía con su
-contrato; se registró igual) o con **Error**. El botón **Detalle** abre el
-contenido completo del evento.
+El botón **Detalle** abre el contenido completo del evento inspeccionado.
 
 > **Los datos sensibles no están aquí.** El contenido de los eventos se guarda ya
 > oculto: los montos, los documentos y los correos aparecen como `[redactado]`.
@@ -748,7 +764,7 @@ contenido completo del evento.
 
 Si no aparece nada, la pantalla lo explica sin adivinar: puede ser que la
 operación nunca existió, que todavía está en curso, o que el servicio de
-auditoría estaba caído. Si acabas de enviar la operación, espera unos segundos y
+auditoria estaba caído. Si acabas de enviar la operación, espera unos segundos y
 vuelve a consultar.
 
 ### 8.2 Notificaciones

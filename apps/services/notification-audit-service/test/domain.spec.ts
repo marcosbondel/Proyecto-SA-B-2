@@ -333,7 +333,7 @@ describe('classifying events (§4.1 — INFO/WARNING/ERROR)', () => {
       classify({ messageType: 'transaction.completed.v1', processingStatus: 'PROCESSED' }),
     ).toBe('INFO');
     expect(
-      classify({ messageType: 'account.deactivated.v1', processingStatus: 'PROCESSED' }),
+      classify({ messageType: 'account.opened.v1', processingStatus: 'PROCESSED' }),
     ).toBe('INFO');
   });
 
@@ -346,6 +346,12 @@ describe('classifying events (§4.1 — INFO/WARNING/ERROR)', () => {
     ).toBe('WARNING');
     expect(
       classify({ messageType: 'payment.attempt.failed.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('WARNING');
+    expect(
+      classify({ messageType: 'account.deactivated.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('WARNING');
+    expect(
+      classify({ messageType: 'customer.password-changed.v1', processingStatus: 'PROCESSED' }),
     ).toBe('WARNING');
   });
 

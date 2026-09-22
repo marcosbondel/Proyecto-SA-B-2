@@ -90,21 +90,45 @@ interface CustomerSummary {
   readonly username: string;
   readonly role: string;
   readonly email: string;
+  readonly identityStatus?: 'PENDING' | 'VALIDATED' | 'REJECTED';
+  readonly kycStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  readonly status?: string;
 }
 
 const customerList = ref<readonly CustomerSummary[]>([]);
 const customerSearchLoading = ref(false);
+const staffFetchedCustomer = ref<CustomerIdentityRecord | null>(null);
 
 const customerSelectItems = computed(() =>
-  customerList.value.map((c) => ({
-    value: c.customerId,
-    label: `${c.fullName} · DPI: ${c.documentNumber} · (${c.customerId.slice(-6)})`,
-  })),
+  customerList.value.map((c) => {
+    const isVerified = c.identityStatus === 'VALIDATED' && c.kycStatus === 'VERIFIED';
+    return {
+      value: c.customerId,
+      label: `${c.fullName} · DPI: ${c.documentNumber} [${isVerified ? '✓ Verificado' : '⚠️ No verificado'}]`,
+    };
+  }),
 );
 
 const selectedCustomer = computed(() =>
   customerList.value.find((c) => c.customerId === customerId.value.trim()) ?? null,
 );
+
+watch(customerId, async (id) => {
+  const cleanId = id.trim();
+  if (isStaff.value && isUuidV4(cleanId)) {
+    const inList = customerList.value.find((c) => c.customerId === cleanId);
+    if (!inList) {
+      const res = await api.call<CustomerIdentityRecord>(`/api/customers/${cleanId}`);
+      if (res.ok) {
+        staffFetchedCustomer.value = res.data;
+      } else {
+        staffFetchedCustomer.value = null;
+      }
+    } else {
+      staffFetchedCustomer.value = null;
+    }
+  }
+});
 
 onMounted(async () => {
   if (typeof route.query.customerId === 'string' && route.query.customerId.trim().length > 0) {
@@ -128,13 +152,30 @@ onMounted(async () => {
   }
 });
 
-const isIdentityPending = computed(
-  () =>
-    role.value === 'CLIENTE' &&
-    customerRecord.value !== null &&
-    (customerRecord.value.identityStatus !== 'VALIDATED' ||
-      customerRecord.value.kycStatus !== 'VERIFIED'),
-);
+const isCustomerUnverified = computed(() => {
+  if (role.value === 'CLIENTE') {
+    return (
+      customerRecord.value !== null &&
+      (customerRecord.value.identityStatus !== 'VALIDATED' ||
+        customerRecord.value.kycStatus !== 'VERIFIED')
+    );
+  }
+  if (isStaff.value) {
+    if (selectedCustomer.value) {
+      return (
+        selectedCustomer.value.identityStatus !== 'VALIDATED' ||
+        selectedCustomer.value.kycStatus !== 'VERIFIED'
+      );
+    }
+    if (staffFetchedCustomer.value) {
+      return (
+        staffFetchedCustomer.value.identityStatus !== 'VALIDATED' ||
+        staffFetchedCustomer.value.kycStatus !== 'VERIFIED'
+      );
+    }
+  }
+  return false;
+});
 
 const subject = computed(() =>
   isStaff.value || forSomebodyElse.value ? customerId.value.trim() : (session.value?.customerId ?? ''),
@@ -150,9 +191,14 @@ const subject = computed(() =>
 function validate(): boolean {
   const found: Record<string, string> = {};
 
-  if (isIdentityPending.value) {
-    found.accountType =
-      'Tu documento de identidad está pendiente de validación por un cajero o administrador.';
+  if (isCustomerUnverified.value) {
+    if (role.value === 'CLIENTE') {
+      found.accountType =
+        'Tu documento de identidad o expediente KYC está pendiente de validación por un cajero o administrador.';
+    } else {
+      found.customerId =
+        'El cliente titular seleccionado no se encuentra verificado (identidad o KYC pendiente). No se le puede abrir una cuenta hasta que sea validado.';
+    }
     errors.value = found;
     return false;
   }
@@ -253,11 +299,13 @@ async function copyAccountId(): Promise<void> {
     <!-- Step 1 -->
     <form v-if="step === 'FORM'" class="flex flex-col gap-5" @submit.prevent="review">
       <UAlert
-        v-if="isIdentityPending"
+        v-if="isCustomerUnverified"
         color="warning"
         variant="subtle"
-        title="Validación de identidad requerida"
-        description="Tu documento de identificación aún no ha sido aprobado por un cajero receptor o administrador. Debes esperar a que el personal bancario valide tu documento en ventanilla antes de poder abrir cuentas bancarias."
+        :title="isStaff ? 'Cliente no verificado' : 'Validación de identidad requerida'"
+        :description="isStaff
+          ? 'El cliente titular seleccionado aún no cuenta con su verificación de identidad y KYC completada. No es posible aperturarle cuentas bancarias hasta que sea validado.'
+          : 'Tu documento de identificación aún no ha sido aprobado por un cajero receptor o administrador. Debes esperar a que el personal bancario valide tu documento en ventanilla antes de poder abrir cuentas bancarias.'"
       />
 
       <div>
@@ -337,9 +385,9 @@ async function copyAccountId(): Promise<void> {
           color="primary"
           size="lg"
           block
-          :disabled="isIdentityPending"
+          :disabled="isCustomerUnverified"
         >
-          {{ isIdentityPending ? 'Apertura bloqueada (requiere validación de cajero)' : 'Continuar' }}
+          {{ isCustomerUnverified ? 'Apertura bloqueada (cliente no verificado)' : 'Continuar' }}
         </UButton>
       </ClientOnly>
     </form>

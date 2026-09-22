@@ -19,6 +19,7 @@ import type { AsyncState } from '../../lib/gateway-error';
  */
 const route = useRoute();
 const api = useGatewayApi();
+const { role } = useSession();
 
 const accountId = computed(() => String(route.params.id ?? ''));
 
@@ -133,8 +134,8 @@ function beginStatusChange(): void {
   showStatusForm.value = true;
   statusReason.value =
     account.value?.status === 'ACTIVE'
-      ? 'Desactivación/congelamiento voluntario por parte del titular'
-      : 'Reactivación voluntaria por parte del titular';
+      ? 'Desactivación administrativa de la cuenta'
+      : 'Reactivación de la cuenta';
   statusChangeState.value = 'IDLE';
   statusChangeMessage.value = undefined;
 }
@@ -173,8 +174,24 @@ async function confirmStatusChange(): Promise<void> {
     ...account.value,
     status: next,
   };
+
+  // Wait 450ms for account-service to commit the status before querying balance
+  await new Promise((resolve) => setTimeout(resolve, 450));
   await refresh();
+  if (account.value) {
+    account.value = {
+      ...account.value,
+      status: next,
+    };
+  }
 }
+
+watch(accountId, async (newId) => {
+  if (isUuidV4(newId)) {
+    await loadContext();
+    await refresh();
+  }
+});
 
 onMounted(async () => {
   if (malformed.value) {
@@ -193,6 +210,22 @@ useHead({ title: 'Cuenta · bonking' });
 
 <template>
   <section class="flex flex-col gap-4">
+    <!-- Breadcrumb navigation to easily switch tabs/pages in Cuentas -->
+    <div class="flex items-center justify-between gap-3 text-[13px] text-[#5A5B63] pb-2 border-b border-[#E9E9EC]">
+      <nav class="flex items-center gap-2">
+        <NuxtLink to="/cuentas" class="font-medium text-primary-600 hover:text-primary-700 transition-colors">
+          ← Volver a Cuentas
+        </NuxtLink>
+        <span>/</span>
+        <span class="font-mono text-[#23242A]">···{{ accountId.slice(-8) }}</span>
+        <span v-if="account?.holderName" class="text-[#75767F]">({{ account.holderName }})</span>
+      </nav>
+      <div v-if="role === 'ADMINISTRADOR'" class="flex items-center gap-2">
+        <UButton to="/cuentas/administracion" size="xs" variant="outline" color="neutral">
+          Gestión de cuentas
+        </UButton>
+      </div>
+    </div>
     <SharedAsyncStateAlert
       v-if="malformed"
       state="VALIDATION_ERROR"
@@ -242,29 +275,29 @@ useHead({ title: 'Cuenta · bonking' });
           <p class="text-[14px] font-semibold text-[#1B1B1F]">
             Estado actual:
             <span :class="account.status === 'ACTIVE' ? 'text-emerald-600 font-bold' : 'text-red-500 font-bold'">
-              {{ account.status === 'ACTIVE' ? 'ACTIVA' : 'INACTIVA / CONGELADA' }}
+              {{ account.status === 'ACTIVE' ? 'ACTIVA' : 'DESACTIVADA' }}
             </span>
           </p>
           <p class="mt-1 text-[13px] text-[#5A5B63]">
             {{ account.status === 'ACTIVE'
-              ? 'Puedes congelar o desactivar tu cuenta por seguridad si deseas suspender las transferencias salientes.'
-              : 'Tu cuenta está inactiva. Puedes reactivarla de inmediato para volver a operar.' }}
+              ? 'La cuenta se encuentra operativa. Puedes desactivarla si deseas suspender sus operaciones y transferencias.'
+              : 'La cuenta se encuentra desactivada. Puedes reactivarla de inmediato para volver a operar.' }}
           </p>
         </div>
         <UButton
           size="sm"
           :variant="account.status === 'ACTIVE' ? 'outline' : 'solid'"
-          :color="account.status === 'ACTIVE' ? 'neutral' : 'primary'"
+          :color="account.status === 'ACTIVE' ? 'error' : 'primary'"
           @click="beginStatusChange"
         >
-          {{ account.status === 'ACTIVE' ? 'Congelar / Desactivar cuenta' : 'Reactivar cuenta' }}
+          {{ account.status === 'ACTIVE' ? 'Desactivar cuenta' : 'Activar cuenta' }}
         </UButton>
       </div>
 
       <UCard v-if="showStatusForm && account !== null" class="mt-2" data-testid="customer-status-change">
         <template #header>
           <h3 class="text-[16px] font-semibold">
-            {{ account.status === 'ACTIVE' ? 'Desactivar / Congelar' : 'Reactivar' }} cuenta
+            {{ account.status === 'ACTIVE' ? 'Desactivar' : 'Activar' }} cuenta
           </h3>
           <p class="mt-1 break-all font-mono text-[12px] text-[#5A5B63]">{{ account.accountId }}</p>
         </template>
@@ -289,11 +322,11 @@ useHead({ title: 'Cuenta · bonking' });
             <UButton variant="outline" color="neutral" @click="showStatusForm = false">Cancelar</UButton>
             <UButton
               type="submit"
-              color="primary"
+              :color="account.status === 'ACTIVE' ? 'error' : 'primary'"
               :loading="statusChanging"
               :disabled="statusChanging || statusReason.trim().length === 0"
             >
-              Confirmar cambio
+              {{ account.status === 'ACTIVE' ? 'Confirmar desactivación' : 'Confirmar activación' }}
             </UButton>
           </div>
         </form>

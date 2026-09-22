@@ -98,6 +98,7 @@ export class SetAccountStatusUseCase {
             messageType: accountDeactivatedV1.name,
             payload: {
               accountId: account.accountId,
+              customerId: account.customerId,
               cause,
               balanceAtDeactivation: quetzales(account.balanceMinor),
               lastActivityAt: account.lastActivityAt?.toISOString() ?? null,
@@ -109,6 +110,7 @@ export class SetAccountStatusUseCase {
             messageType: accountReactivatedV1.name,
             payload: {
               accountId: account.accountId,
+              customerId: account.customerId,
               cause,
               reactivatedAt: now,
             },

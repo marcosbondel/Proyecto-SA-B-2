@@ -171,6 +171,20 @@ function htmlBody(subject: string, link: string | undefined, type?: string): str
       `Por favor acércate a cualquier agencia bancaria de <strong>Bank USAC</strong> presentando tu <strong>Documento Personal de Identificación (DPI) en físico</strong>. Un cajero receptor o administrador validará tu identidad de inmediato en ventanilla para habilitar todas las operaciones de tu cuenta.` +
       `</p>` +
       `</div>`;
+  } else if (type === 'customer.password-changed') {
+    content =
+      `<div style="display:inline-block;background-color:#FEF3C7;color:#D97706;border:1px solid #FCD34D;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;margin-bottom:18px;">` +
+      `Alerta de Seguridad` +
+      `</div>` +
+      `<p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 16px 0;">` +
+      `Estimado cliente, te informamos que la contraseña de acceso a tu banca en línea <strong>bonking</strong> ha sido modificada exitosamente.` +
+      `</p>` +
+      `<div style="background-color:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px 20px;margin:20px 0;">` +
+      `<p style="margin:0 0 8px 0;font-size:14px;font-weight:700;color:#991B1B;">¿No reconoces esta actividad?</p>` +
+      `<p style="margin:0;font-size:13px;color:#7F1D1D;line-height:1.6;">` +
+      `Si tú no realizaste este cambio, tu cuenta podría estar comprometida. Por favor comunícate de inmediato con soporte de <strong>Bank USAC</strong> o utiliza la opción de restablecer contraseña en la pantalla de ingreso.` +
+      `</p>` +
+      `</div>`;
   } else if (link !== undefined) {
     const safeLink = escapeHtml(link);
     content =
@@ -230,6 +244,16 @@ function textBody(subject: string, link: string | undefined, type?: string): str
       `Te informamos que la verificación digital de tu documento de identificación no pudo ser aprobada.\n\n` +
       `Por favor acércate a cualquier agencia bancaria de Bank USAC presentando tu Documento Personal de Identificación (DPI) en físico. ` +
       `Un cajero receptor o administrador validará tu identidad de inmediato en ventanilla para habilitar todas las operaciones de tu cuenta (transferencias y pagos).\n\n` +
+      `Bank USAC · Proyecto de Software Avanzado`
+    );
+  }
+  if (type === 'customer.password-changed') {
+    return (
+      `${subject}\n\n` +
+      `Estimado cliente,\n\n` +
+      `Te informamos que la contraseña de acceso a tu banca en línea bonking ha sido modificada exitosamente.\n\n` +
+      `¿No reconoces esta actividad?\n` +
+      `Si tú no realizaste este cambio, tu cuenta podría estar comprometida. Comunícate de inmediato con soporte de Bank USAC o utiliza la opción de restablecer contraseña.\n\n` +
       `Bank USAC · Proyecto de Software Avanzado`
     );
   }

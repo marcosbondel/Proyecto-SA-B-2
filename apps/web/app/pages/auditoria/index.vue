@@ -435,79 +435,106 @@ useHead({ title: 'Auditoría · bonking' });
     </div>
 
     <template v-else-if="state === 'READY'">
-      <template v-if="events.length > 0 || notifications.length > 0">
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl bg-[#E9E9EC] px-5 py-4">
-          <span class="text-[13px] text-[#5A5B63]">
-            <strong class="font-semibold text-[#23242A]">{{ summary.events }}</strong>
-            {{ summary.events === 1 ? 'evento' : 'eventos' }}
-          </span>
-          <span class="text-[13px] text-[#5A5B63]">
-            <strong class="font-semibold text-[#23242A]">{{ summary.producers }}</strong>
-            {{ summary.producers === 1 ? 'servicio' : 'servicios' }}
-          </span>
-          <span v-if="summary.spanMs !== null" class="text-[13px] text-[#5A5B63]">
-            duración
-            <strong class="font-semibold text-[#23242A]">{{ formatSpan(summary.spanMs) }}</strong>
-          </span>
-          <!--
-            The one number worth interrupting for. A message the audit service
-            could not read is criterion 3, and it is exactly the row somebody
-            scrolls past.
-          -->
-          <span
-            v-if="summary.invalid > 0"
-            class="rounded-full bg-[#F7DCD7] px-3 py-1 text-[13px] font-semibold text-[#8A1010]"
-            data-testid="audit-invalid-count"
+      <UCard
+        v-if="events.length > 0 || notifications.length > 0"
+        class="border-2 border-[#DCDCE0] bg-white shadow-md rounded-2xl overflow-hidden"
+      >
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="grid h-10 w-10 place-items-center rounded-xl bg-[#E9E9EC] text-[#23242A] font-bold text-[18px]">
+                🧭
+              </div>
+              <div>
+                <h2 class="text-[18px] font-bold text-[#17191F] tracking-tight">
+                  Rastro del Evento / Operación Seleccionada
+                </h2>
+                <p class="text-[13px] text-[#5A5B63]">
+                  Traza distribuida de mensajes y eventos registrados a través de los microservicios para este flujo.
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <SharedCorrelationIdBadge
+                v-if="asked"
+                :correlation-id="asked"
+                label="Código de seguimiento"
+              />
+              <UButton
+                variant="outline"
+                color="neutral"
+                size="xs"
+                @click="state = 'IDLE'; asked = null; events = []; notifications = []"
+              >
+                ✕ Cerrar rastro
+              </UButton>
+            </div>
+          </div>
+        </template>
+
+        <div class="flex flex-col gap-5">
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl bg-[#F6F6F7] px-5 py-4 border border-[#E9E9EC]">
+            <span class="text-[13px] text-[#5A5B63]">
+              <strong class="font-semibold text-[#23242A]">{{ summary.events }}</strong>
+              {{ summary.events === 1 ? 'evento' : 'eventos' }}
+            </span>
+            <span class="text-[13px] text-[#5A5B63]">
+              <strong class="font-semibold text-[#23242A]">{{ summary.producers }}</strong>
+              {{ summary.producers === 1 ? 'servicio' : 'servicios' }}
+            </span>
+            <span v-if="summary.spanMs !== null" class="text-[13px] text-[#5A5B63]">
+              duración
+              <strong class="font-semibold text-[#23242A]">{{ formatSpan(summary.spanMs) }}</strong>
+            </span>
+            <span
+              v-if="summary.invalid > 0"
+              class="rounded-full bg-[#F7DCD7] px-3 py-1 text-[13px] font-semibold text-[#8A1010]"
+              data-testid="audit-invalid-count"
+            >
+              {{ summary.invalid }}
+              {{ summary.invalid === 1 ? 'mensaje no pudo leerse' : 'mensajes no pudieron leerse' }}
+            </span>
+          </div>
+
+          <div v-if="events.length > 0" class="flex flex-wrap items-center gap-2">
+            <USelect
+              v-model="producerFilter"
+              :items="producerItems"
+              value-key="value"
+              class="w-[220px]"
+              aria-label="Filtrar por servicio origen"
+            />
+            <USelect
+              v-model="typeFilter"
+              :items="typeItems"
+              value-key="value"
+              class="w-[280px]"
+              aria-label="Filtrar por tipo de evento"
+            />
+            <span
+              v-if="visible.length !== events.length"
+              class="text-[13px] text-[#5A5B63]"
+            >{{ visible.length }} de {{ events.length }}</span>
+          </div>
+
+          <AuditEventTable
+            v-if="visible.length > 0"
+            :events="visible"
+            @inspect="inspected = $event"
+          />
+
+          <div
+            v-else-if="events.length > 0"
+            class="rounded-2xl border border-dashed border-[#C6C6CC] bg-white px-8 py-10 text-center"
           >
-            {{ summary.invalid }}
-            {{ summary.invalid === 1 ? 'mensaje no pudo leerse' : 'mensajes no pudieron leerse' }}
-          </span>
-          <SharedCorrelationIdBadge
-            v-if="asked"
-            class="ml-auto"
-            :correlation-id="asked"
-            label="Código de seguimiento consultado"
-          />
+            <p class="text-[14px] leading-5 text-[#5A5B63]">
+              Hay {{ events.length }} eventos en este flujo, pero ninguno coincide con los filtros.
+            </p>
+          </div>
+
+          <AuditNotificationList :notifications="notifications" :correlation-id="asked" />
         </div>
-
-        <div v-if="events.length > 0" class="flex flex-wrap items-center gap-2">
-          <USelect
-            v-model="producerFilter"
-            :items="producerItems"
-            value-key="value"
-            class="w-[220px]"
-            aria-label="Filtrar por servicio origen"
-          />
-          <USelect
-            v-model="typeFilter"
-            :items="typeItems"
-            value-key="value"
-            class="w-[280px]"
-            aria-label="Filtrar por tipo de evento"
-          />
-          <span
-            v-if="visible.length !== events.length"
-            class="text-[13px] text-[#5A5B63]"
-          >{{ visible.length }} de {{ events.length }}</span>
-        </div>
-
-        <AuditEventTable
-          v-if="visible.length > 0"
-          :events="visible"
-          @inspect="inspected = $event"
-        />
-
-        <div
-          v-else-if="events.length > 0"
-          class="rounded-2xl border border-dashed border-[#C6C6CC] bg-white px-8 py-10 text-center"
-        >
-          <p class="text-[14px] leading-5 text-[#5A5B63]">
-            Hay {{ events.length }} eventos en este flujo, pero ninguno coincide con los filtros.
-          </p>
-        </div>
-
-        <AuditNotificationList :notifications="notifications" :correlation-id="asked" />
-      </template>
+      </UCard>
 
       <!--
         Nothing found. Three different situations produce this and the service

@@ -23,6 +23,8 @@ export const customerPasswordChangedV1 = defineContract({
   consumers: ['notification-audit-service'],
   schema: z.object({
     customerId: uuidV4,
+    email: z.string().email().optional(),
+    fullName: z.string().optional(),
     changedAt: isoTimestamp,
   }),
 });
