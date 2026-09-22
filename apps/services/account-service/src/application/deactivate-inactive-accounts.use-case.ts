@@ -76,6 +76,7 @@ export class DeactivateInactiveAccountsUseCase {
           messageType: accountDeactivatedV1.name,
           payload: {
             accountId: account.accountId,
+            customerId: account.customerId,
             cause: 'AUTOMATIC_INACTIVITY',
             balanceAtDeactivation: quetzales(account.balanceMinor),
             lastActivityAt: account.lastActivityAt?.toISOString() ?? null,

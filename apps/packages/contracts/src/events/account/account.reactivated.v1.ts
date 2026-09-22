@@ -11,6 +11,7 @@ export const accountReactivatedV1 = defineContract({
   consumers: ['notification-audit-service'],
   schema: z.object({
     accountId: uuidV4,
+    customerId: uuidV4.optional(),
     cause: z.enum(['CREDIT_RECEIVED', 'ADMINISTRATOR', 'CUSTOMER', 'TELLER']),
     reactivatedAt: isoTimestamp,
   }),

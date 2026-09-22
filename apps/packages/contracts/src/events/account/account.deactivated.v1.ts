@@ -18,6 +18,7 @@ export const accountDeactivatedV1 = defineContract({
   consumers: ['notification-audit-service'],
   schema: z.object({
     accountId: uuidV4,
+    customerId: uuidV4.optional(),
     cause: z.enum(['AUTOMATIC_INACTIVITY', 'ADMINISTRATOR', 'CUSTOMER', 'TELLER']),
     balanceAtDeactivation: money,
     lastActivityAt: isoTimestamp.nullable(),

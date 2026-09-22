@@ -110,7 +110,7 @@ useHead({ title: 'Cuentas · bonking' });
       <UButton variant="outline" color="neutral" @click="load">Reintentar</UButton>
     </div>
 
-    <AccountList v-else-if="accounts.length > 0" :accounts="accounts" />
+    <AccountList v-else-if="accounts.length > 0" :accounts="accounts" :show-holder="isStaff" />
 
     <div
       v-else
