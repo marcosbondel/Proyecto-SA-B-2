@@ -4,6 +4,7 @@ import {
   customerActivationRequestedV1,
   customerIdentityRejectedV1,
   customerIdentityValidatedV1,
+  customerKycVerifiedV1,
   customerRegisterRejectedV1,
   customerRegisteredV1,
 } from '@bank/contracts';
@@ -201,33 +202,38 @@ export class RegisterCustomerUseCase {
       },
     });
 
-    if (registeredByStaff) {
-      /**
-       * In-person registration at the counter by bank staff:
-       * Identity is physically verified, so the activation email is sent immediately.
-       */
+    // Activation email is sent immediately for ALL registrations so clients can verify
+    // their email and sign in right away without waiting for staff approval.
+    await this.#publisher.publish({
+      messageType: customerActivationRequestedV1.name,
+      payload: {
+        customerId: customer.customerId,
+        email: customer.email,
+        expiresAt,
+        // The clear value travels here and nowhere else; the database holds
+        // only its digest.
+        activationToken: activation.token,
+      },
+    });
+
+    if (registeredByStaff && identityStatus === 'VALIDATED') {
       await this.#publisher.publish({
-        messageType: customerActivationRequestedV1.name,
+        messageType: customerIdentityValidatedV1.name,
         payload: {
           customerId: customer.customerId,
-          email: customer.email,
-          expiresAt,
-          // The clear value travels here and nowhere else; the database holds
-          // only its digest.
-          activationToken: activation.token,
+          identityStatus: 'VALIDATED',
+          validatedAt: now.toISOString(),
         },
       });
 
-      if (identityStatus === 'VALIDATED') {
-        await this.#publisher.publish({
-          messageType: customerIdentityValidatedV1.name,
-          payload: {
-            customerId: customer.customerId,
-            identityStatus: 'VALIDATED',
-            validatedAt: now.toISOString(),
-          },
-        });
-      }
+      await this.#publisher.publish({
+        messageType: customerKycVerifiedV1.name,
+        payload: {
+          customerId: customer.customerId,
+          kycStatus: 'VERIFIED',
+          verifiedAt: now.toISOString(),
+        },
+      });
     } else if (verdict !== null && verdict.outcome === 'REJECTED') {
       await this.#publishVerdict(customer.customerId, verdict, now);
     }

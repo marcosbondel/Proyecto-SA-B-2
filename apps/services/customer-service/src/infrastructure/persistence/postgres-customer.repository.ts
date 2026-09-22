@@ -89,11 +89,18 @@ export class PostgresCustomerRepository implements CustomerRepository {
       try {
         await client.query('BEGIN');
 
+        const kycStatus =
+          input.identityStatus === 'VALIDATED'
+            ? 'VERIFIED'
+            : input.identityStatus === 'REJECTED'
+              ? 'REJECTED'
+              : 'PENDING';
+
         const inserted = await client.query<CustomerRow>(
           `INSERT INTO customers (
              customer_id, full_name, document_number, email, birth_date, address,
-             username, role, status, identity_status, password_hash, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+             username, role, status, identity_status, kyc_status, password_hash, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
            RETURNING *`,
           [
             shape.customerId,
@@ -106,6 +113,7 @@ export class PostgresCustomerRepository implements CustomerRepository {
             shape.role,
             shape.status,
             input.identityStatus,
+            kycStatus,
             input.credentialHash,
             input.now.toISOString(),
           ],
@@ -314,6 +322,7 @@ export class PostgresCustomerRepository implements CustomerRepository {
         ? await client.query(
             `UPDATE customers
                 SET identity_status = $2,
+                    kyc_status = $5,
                     document_number = document_number || '#rejected#' || customer_id,
                     email = email || '#rejected#' || customer_id,
                     username = username || '#rejected#' || customer_id,
@@ -325,17 +334,19 @@ export class PostgresCustomerRepository implements CustomerRepository {
               input.customer.identityStatus,
               input.customer.updatedAt,
               input.customer.version,
+              input.customer.kycStatus,
             ],
           )
         : await client.query(
             `UPDATE customers
-                SET identity_status = $2, updated_at = $3, version = version + 1
+                SET identity_status = $2, kyc_status = $5, updated_at = $3, version = version + 1
               WHERE customer_id = $1 AND version = $4`,
             [
               input.customer.customerId,
               input.customer.identityStatus,
               input.customer.updatedAt,
               input.customer.version,
+              input.customer.kycStatus,
             ],
           );
 
@@ -365,13 +376,14 @@ export class PostgresCustomerRepository implements CustomerRepository {
        */
       const written = await client.query(
         `UPDATE customers
-            SET kyc_status = $2, updated_at = $3, version = version + 1
+            SET kyc_status = $2, identity_status = $5, updated_at = $3, version = version + 1
           WHERE customer_id = $1 AND version = $4`,
         [
           input.customer.customerId,
           input.customer.kycStatus,
           input.customer.updatedAt,
           input.customer.version,
+          input.customer.identityStatus,
         ],
       );
 

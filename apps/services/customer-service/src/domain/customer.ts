@@ -239,7 +239,8 @@ export function recordIdentityVerdict(
     throw new DomainRejection('ILLEGAL_TRANSITION', 'the identity was already validated');
   }
 
-  return { ...customer, identityStatus: verdict, updatedAt: now.toISOString() };
+  const kycStatus = verdict === 'VALIDATED' ? 'VERIFIED' : 'REJECTED';
+  return { ...customer, identityStatus: verdict, kycStatus, updatedAt: now.toISOString() };
 }
 
 /** Only `CLIENTE` holds accounts and therefore needs a validated identity (C-6). */
@@ -264,7 +265,8 @@ export function setKycStatus(
     throw new DomainRejection('ILLEGAL_TRANSITION', 'the KYC status was already verified');
   }
 
-  return { ...customer, kycStatus: status, updatedAt: now.toISOString() };
+  const identityStatus = status === 'VERIFIED' ? 'VALIDATED' : 'REJECTED';
+  return { ...customer, kycStatus: status, identityStatus, updatedAt: now.toISOString() };
 }
 
 /**

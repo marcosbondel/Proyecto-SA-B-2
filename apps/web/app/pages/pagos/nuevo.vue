@@ -164,6 +164,7 @@ const localProblem = computed(() => {
 
 const canSend = computed(
   () =>
+    !kycBlocksSubmission.value &&
     sourceAccount.value !== undefined &&
     targetAccount.value !== '' &&
     reference.value.trim() !== '' &&
@@ -174,7 +175,7 @@ const canSend = computed(
 );
 
 async function send(): Promise<void> {
-  if (amountMinor.value === null || sourceAccount.value === undefined) {
+  if (kycBlocksSubmission.value || amountMinor.value === null || sourceAccount.value === undefined) {
     return;
   }
 
@@ -240,8 +241,8 @@ useHead({ title: 'Nuevo pago · bonking' });
             v-if="kycBlocksSubmission"
             color="warning"
             variant="subtle"
-            title="Verificación de cumplimiento (KYC) pendiente"
-            description="Un cajero receptor debe verificar tu identidad para cumplimiento antes de que puedas pagar. Puedes revisar el formulario, pero el envío se rechazará mientras tanto."
+            title="Verificación de identidad pendiente"
+            description="Tu expediente se encuentra pendiente de verificación de identidad. No es posible realizar pagos de servicios hasta que tu documento sea aprobado por un cajero o administrador."
             data-testid="payment-kyc-blocked"
           />
 
@@ -315,7 +316,7 @@ useHead({ title: 'Nuevo pago · bonking' });
               :loading="sending"
               :disabled="!canSend"
             >
-              Pagar servicio
+              {{ kycBlocksSubmission ? 'Pagos bloqueados (requiere verificación)' : 'Pagar servicio' }}
             </UButton>
             <SharedCorrelationIdBadge :correlation-id="correlationId" />
           </div>
