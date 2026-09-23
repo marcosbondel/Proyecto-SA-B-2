@@ -126,15 +126,15 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 *Login Rechazado por Cuenta Inactiva — captura pendiente de recapturar*
 
-### 3.2 Activación Exitosa por Token
-- **URL**: `http://localhost:3010/activar?token=<token_hash>`
-- **Flujo**: Notification Service genera el enlace con token temporal de 24 horas. Al ser visitado, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para que el usuario pueda iniciar sesión formalmente.
-- **URL**: `http://localhost:3010/activar?token=<token_hash>`
-- **Flujo**: Notification Service emite el enlace con token temporal de 24 horas. Al ser visitado, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para operar.
+### 3.2 Activación Exitosa por Token y Correo Real
+- **URL**: `https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/activar?token=<token_hash>`
+- **Flujo**: Notification Service despacha el correo transaccional real a través de Resend (`bonking <no-reply@guatechnology.com>`) con token criptográfico temporal. Al hacer clic, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para que el usuario pueda iniciar sesión formalmente.
 
-*Activación Exitosa — captura pendiente de recapturar*
+| Correo Transaccional Recibido (Resend) | Confirmación de Activación Exitosa |
+| :--- | :--- |
+| ![Correo de Activación](screenshots/hp-19-correo-activacion.png) | ![Activación Exitosa](screenshots/hp-20-activacion-exitosa.png) |
 
-### 3.2 Caminos de Error en Activación
+### 3.3 Caminos de Error en Activación
 1. **Token Reusado (Single-Use)**: Por la decisión **D-05**, un token consumido no puede volver a utilizarse (`ACTIVATION_TOKEN_INVALID`).
 2. **Token Fabricado/Inválido**: Un token no registrado en la base de datos es rechazado de inmediato.
 
@@ -150,28 +150,28 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 - **Credenciales**: `cliente@bankusac.gt` / `BankUsac#2026`
 - **Dashboard**: Muestra la bienvenida personalizada, las métricas de saldo acumulado, el acceso rápido a transferencias y la lista de cuentas.
 
-| Dashboard de Bienvenida | Mi Perfil | Bandeja de Notificaciones |
+| Dashboard de Bienvenida | Mi Perfil (KYC Pendiente) | Mi Perfil (KYC Verificado) |
 | :--- | :--- | :--- |
-| ![Dashboard Cliente](screenshots/hp-22-dashboard-cliente-nuevo.png) | ![Perfil Cliente](screenshots/hp-23-perfil-cliente.png) | ![Notificaciones](screenshots/hp-24-notificaciones-cliente.png) |
+| ![Dashboard Cliente](screenshots/hp-22-dashboard-cliente-nuevo.png) | ![Perfil Cliente](screenshots/hp-23-perfil-cliente.png) | ![Perfil Cliente Verificado](screenshots/hp-23b-perfil-cliente-kyc-verificado.png) |
 
 ---
 
 ## Módulo 5: Apertura y Administración de Cuentas Bancarias
 
 ### 5.1 Apertura de Cuenta Monetaria y de Ahorro
-- **URL**: `http://localhost:3010/cuentas/nueva`
-- **Flujo**: Selección de tipo (`MONETARIA` o `AHORRO`), confirmación y emisión de identificador UUID inmutable generado por Account Service con saldo inicial `Q0.00`.
+- **URL**: `https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/cuentas/nueva`
+- **Flujo**: Selección de tipo (`MONETARIA` o `AHORRO`), verificación en vivo del depósito inicial de apertura (boleta validada) y emisión de identificador UUID inmutable por Account Service.
 - **Regla de Negocio (Validación de Identidad)**: Un cliente solo puede aperturar cuentas si su documento de identidad ha sido validado previamente por un cajero receptor o administrador.
 
-| Selección de Tipo Ahorro | Confirmación de Apertura | Cuenta Creada Exitosamente (`accountId`) |
+| Selección de Tipo Ahorro (Depósito Verificado) | Confirmación de Apertura | Cuenta Creada Exitosamente (`accountId`) |
 | :--- | :--- | :--- |
 | ![Tipo Ahorro](screenshots/hp-29-cuenta-nueva-tipo-ahorro.png) | ![Confirmación](screenshots/hp-27-cuenta-nueva-confirmacion.png) | ![Cuenta Creada](screenshots/hp-30-cuenta-ahorro-creada.png) |
 
 ### 5.2 Listado y Detalle Individual de Cuentas
 
-| Cuentas Activas del Cliente | Detalle de Cuenta Individual (Movimientos y Balance) |
+| Detalle de Cuenta Activa (Saldo Inicial Q100) | Cuenta Desactivada / Inactiva |
 | :--- | :--- |
-| ![Lista de Cuentas](screenshots/hp-31-lista-cuentas-cliente.png) | ![Detalle Cuenta](screenshots/hp-32-detalle-cuenta.png) |
+| ![Detalle Cuenta Activa](screenshots/hp-32-detalle-cuenta.png) | ![Cuenta Desactivada](screenshots/hp-32b-cuenta-desactivada.png) |
 
 ---
 
@@ -217,29 +217,30 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 ### 7.1 Creación y Validación de la Transferencia
 
-#### A. Camino Exitoso (`Q250.00`)
-- **Actor**: `cliente@bankusac.gt` (Cuenta con saldo disponible).
-- **Destino**: Cuenta receptora monetaria.
+#### A. Camino Exitoso (`Q30.00`)
+- **Actor**: `juanita@bankusac.gt` / `ennermendizabal` (Cuenta de Ahorro activa con saldo disponible de Q 57.00).
+- **Destino**: Cuenta receptora registrada (`b0000000-0002-4000-8000-000000000004`).
+- **Escenario**: `Sin escenario (comportamiento real)`.
 
-| Formulario de Transferencia | Revisión con Idempotency-Key |
+| Formulario de Transferencia Exitosa | Revisión con Idempotency-Key |
 | :--- | :--- |
-| ![Formulario Transferencia](screenshots/hp-44-transferencia-formulario-lleno.png) | ![Revisión Transferencia](screenshots/hp-45-transferencia-confirmacion.png) |
+| ![Formulario Transferencia](screenshots/hp-43-transferencia-formulario.png) | ![Revisión Transferencia](screenshots/hp-45-transferencia-confirmacion.png) |
 
 #### B. Caminos de Error en Formulario y Parámetros
 - **Auto-Transferencia (Misma Cuenta)**: Bloqueado con error `SAME_ACCOUNT_TRANSFER`.
 - **Monto Cero o Negativo**: Rechazado con `INVALID_AMOUNT`.
 - **Destino Inválido**: Validación local en formulario antes del envío.
 
-| Destino Inválido en UI | Fallo de Saga por Fondos Insuficientes |
+| Destino Inválido en UI | Simulación de Rechazo en Demostración |
 | :--- | :--- |
-| *Destino Inválido — captura pendiente de recapturar* | *Fondos Insuficientes — captura pendiente de recapturar* |
+| *Destino Inválido — validación UI* | ![Simulación de Rechazo](screenshots/hp-44-transferencia-formulario-lleno.png) |
 
 ---
 
 ### 7.2 Ejecución de la Saga: Éxito vs. Compensación / Fallo
 
 #### A. Transición Exitosa (`COMPLETED`)
-La Saga coreografiada avanza a través de 4 eventos asíncronos por RabbitMQ:
+La Saga coreografiada avanza a través de los eventos asíncronos orquestados por RabbitMQ:
 
 ```mermaid
 sequenceDiagram
@@ -261,17 +262,25 @@ sequenceDiagram
     Note over TX: Estado Final: COMPLETED ✅
 ```
 
-#### B. Fallo por Fondos Insuficientes (`DEBIT_REJECTED` ➔ `FAILED`)
-- **Escenario de Falla**: Intento de transferir `Q999,999.00` desde una cuenta sin saldo suficiente.
-- **Comportamiento**: Account Service evalúa la regla `CHECK (balance >= 0)` bajo `SELECT ... FOR UPDATE` y emite `account.debit.rejected.v1`. Transaction Service transiciona limpiamente a estado terminal `FAILED`. **El dinero nunca sale de la cuenta**.
+| Monitor de Saga Completada (Q30.00) | Resultado de Pago Aprobado |
+| :--- | :--- |
+| ![Saga Completada](screenshots/hp-46-saga-completada.png) | Operación `61457774-8ee2-4448-8c5d-15ca44281cb7` con 6 hitos validados |
+
+#### B. Demostración de Resiliencia y Compensación de la Saga
+- **Rechazo de Pago Inmediato**: Débito efectuado pero pago rechazado ➔ compensación automática inmediata (devolución del dinero al origen).
+- **Caída de Proveedor (Timeout con Escalera de Reintentos)**: El sistema escala de forma exponencial (1s, 5s, 30s) para reintentar hasta 4 veces antes de liquidar o compensar.
+
+| Formulario Timeout (Escalera) | Revisión Q40.00 | Monitor Reintentando | Monitor Compensada |
+| :--- | :--- | :--- | :--- |
+| ![Formulario Timeout](screenshots/hp-44b-transferencia-timeout.png) | ![Revisión Q40](screenshots/hp-45b-transferencia-confirmacion-q40.png) | ![Monitor Sagas Reintentando](screenshots/hp-48-saga-monitor.png) | ![Saga Compensada](screenshots/hp-46b-saga-compensada.png) |
 
 ---
 
-### 7.3 Historial de Movimientos y Monitor de Sagas en Tiempo Real
+### 7.3 Historial de Movimientos y Filtrado Reactivo
 
-| Historial de Transferencias del Cliente | Monitor de Sagas en Tiempo Real |
-| :--- | :--- |
-| ![Historial](screenshots/hp-47-historial-transferencias.png) | ![Monitor Sagas](screenshots/hp-48-saga-monitor.png) |
+| Historial en Proceso (Reintento en Vivo) | Historial Consolidado (3 Transacciones) | Historial Filtrado por Estado (Aprobada) |
+| :--- | :--- | :--- |
+| ![Historial en Proceso](screenshots/hp-47b-transferencias-historial-en-proceso.png) | ![Historial Consolidado](screenshots/hp-47-historial-transferencias.png) | ![Historial Filtrado](screenshots/hp-47c-transferencias-historial-filtrado.png) |
 
 ---
 
