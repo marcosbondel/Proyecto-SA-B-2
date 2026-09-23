@@ -267,43 +267,24 @@ Una vez enviada la solicitud, el sistema presenta la confirmación del registro 
 
 #### Paso 7: Recepción del Correo de Activación de Cuenta (`enneresamen@gmail.com`)
 
-Una vez que el cajero receptor aprueba la identidad del cliente (como se detalla en el Paso 39 en la mesa de revisión), el microservicio de notificaciones despacha automáticamente un correo real a la bandeja del solicitante con un token criptográfico de un solo uso.
+Inmediatamente al enviar la solicitud de registro público, el microservicio de notificaciones despacha un correo transaccional real a través de Resend a la bandeja del solicitante con un token criptográfico de un solo uso.
 
 ![Correo de activación del cliente](../images/user-manual/06b-correo-activacion-cliente.png)
 
 ##### Datos del Correo Electrónico Recibido:
 * **De**: `bonking <no-reply@guatechnology.com>`
 * **Para**: `enneresamen@gmail.com`
-* **Asunto**: *"Activa tu cuenta de bonking"*
-* **Enlace de activación**: `http://localhost:3010/activar?token=01943f3a-6b90-4c69-86bb-38160087323949378c3739361067b6eb84fdf5b5a51cf13e03e5f2b2538ab61f59b6700f3f92`
+* **Asunto**: *"Activa tu cuenta de Bank USAC"*
+* **Enlace de activación**: `https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/activar?token=c56f2cc3-2f7d-4761-9e98-c360a70e097f4e15058e374b729668a9d7cc4b02e74c09b656b9029cd7bd00fe4ef16173f940`
 
 ##### Efecto en el Sistema:
-Al pulsar en **"Continuar"** o abrir el enlace, el sistema activa la cuenta del cliente (`status = ACTIVE`), permitiéndole a **Enner Esai Mendizabal Castro** iniciar sesión formalmente y operar sus cuentas.
+Al pulsar sobre el botón **"Activar mi cuenta"** o abrir el enlace, el sistema marca el correo como verificado (`status = ACTIVE`), permitiéndole a **Enner Esai Mendizabal Castro** iniciar sesión de inmediato. Las validaciones de identidad (KYC) para aperturar cuentas o transferir se gestionan por el personal del banco posteriormente.
 
 ---
 
-#### Paso 8: Activación de Cuenta en Línea — Validación de Token en Proceso (`/activar`)
+#### Paso 8: Activación de Cuenta Exitosa (`/activar`)
 
-Al pulsar sobre el enlace recibido en el correo electrónico de activación, el navegador abre el asistente de activación (`http://localhost:3010/activar?token=...`). De forma asíncrona, el frontend envía el token criptográfico al API Gateway para su cotejo en `customer-service`.
-
-![Activación de cuenta en proceso](../images/user-manual/cliente-08-activacion-en-proceso.png)
-
-##### Elementos y Estados Observados:
-1. **Tarjeta de Activación**:
-   * **Título**: *"Activación de cuenta"*
-   * **Alerta en Estado de Espera (Ámbar)**:
-     * **Título**: *"Solicitud en proceso"*
-     * **Mensaje**: *"Tu solicitud ha sido recibida y está siendo procesada por el sistema."*
-2. **Acción Alternativa**:
-   * Enlace inferior: **"Ir a iniciar sesión"** (`/login`).
-3. **Pie de Página**:
-   * Identidad institucional: `Bank USAC · Proyecto de Software Avanzado`.
-
----
-
-#### Paso 9: Activación de Cuenta Exitosa (`/activar`)
-
-En cuestión de milisegundos, `customer-service` valida el hash del token contra la base de datos, confirma que no haya expirado, marca el cliente como activo (`status = ACTIVE`, `email_verified_at = now()`) y notifica al frontend la confirmación definitiva.
+Al ingresar al enlace, `customer-service` valida el hash del token contra PostgreSQL, confirma que no haya expirado, marca el cliente como activo (`status = ACTIVE`, `email_verified_at = now()`) y notifica al frontend la confirmación definitiva.
 
 ![Activación de cuenta completada](../images/user-manual/cliente-09-activacion-completada.png)
 
@@ -311,9 +292,9 @@ En cuestión de milisegundos, `customer-service` valida el hash del token contra
 1. **Alerta de Éxito (Verde)**:
    * **Título**: *"Operación completada"*
    * **Mensaje Informativo**: *"Tu cuenta está activa. Ya puedes iniciar sesión. Para abrir cuentas bancarias, un cajero debe validar la foto de tu documento."*
-   * **CÓDIGO DE SEGUIMIENTO (Trazabilidad)**: `2eaaeade-7fee-482c-be58-4c268a55c4cc` [Copiar].
+   * **CÓDIGO DE SEGUIMIENTO (Trazabilidad)**: `67496b3f-fa53-441a-a73d-49cf3b562537` [Copiar].
 2. **Navegación**:
-   * Enlace destacado: **"Ir a iniciar sesión"**, que traslada al cliente al formulario de login para autenticarse formalmente con su nuevo usuario (`emendizabal`) y contraseña (`ennero123`).
+   * Enlace destacado: **"Ir a iniciar sesión"**, que traslada al cliente al formulario de login para autenticarse formalmente con su nuevo usuario (`emendizabal`) y contraseña.
 
 ---
 
@@ -407,21 +388,23 @@ Al navegar a la sección de **Cuentas** desde el menú lateral (`http://localhos
    * **CÓDIGO DE SEGUIMIENTO**: `1eefa78d-cb54-421c-a5e4-8ce73c7296b0` [Copiar].
 
 ---
-#### Paso 14: Solicitud de Apertura de Nueva Cuenta Bancaria — Selección de Cuenta de Ahorro (`/cuentas/nueva`)
+#### Paso 14: Solicitud de Apertura de Nueva Cuenta Bancaria — Selección de Cuenta de Ahorro y Depósito Inicial (`/cuentas/nueva`)
 
-Desde la vista de sus cuentas (`/cuentas`), el cliente hace clic en el botón superior **"Abrir cuenta"** (`http://localhost:3010/cuentas/nueva`) para solicitar un nuevo producto financiero de ahorro sin acudir a ventanilla.
+Desde la vista de sus cuentas (`/cuentas`), el cliente hace clic en el botón superior **"Abrir cuenta"** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/cuentas/nueva`) para solicitar un nuevo producto financiero de ahorro.
 
 ![Selección de tipo de cuenta Ahorro](../images/user-manual/cliente-18-abrir-cuenta-ahorro-seleccion.png)
 
 ##### Opciones y Reglas Bancarias del Formulario:
 1. **Tipos de Cuenta Disponibles**:
-   * **Monetaria**: *"Uso diario, transferencias y pagos sin límite de movimientos."*
-   * **Ahorro (Seleccionada)**: *"Para guardar dinero y acumular fondos."* (Se resalta con borde activo).
-2. **Regla de Negocio y Ciclo de Vida**:
-   * *"Toda cuenta bancaria (Monetaria o Ahorro) se desactiva automáticamente si permanece inactiva por 6 meses con saldo menor a Q 50.00."*
-   * *"La cuenta se abrirá a tu nombre. Solo el personal del banco puede abrir cuentas para otras personas."*
+   * **Monetaria**: *"Uso diario, transferencias y pagos sin límite de movimientos ni saldo mínimo."*
+   * **Ahorro (Seleccionada)**: *"Para guardar dinero. Requiere un depósito inicial de al menos Q 100.00 y cobra Q 3.00 de comisión por cada transferencia."* (Se resalta con borde activo).
+2. **Depósito Inicial de Apertura Obligatorio**:
+   * Para aperturar la cuenta de ahorro, el cliente registra el comprobante de depósito previo hacia la cuenta concentradora de Bank USAC (`001-00000200-01 / GT00-BANK-0001-FONDO-APERTURA`).
+   * **Monto depositado**: `Q 100.00`.
+   * **Número de boleta o comprobante**: `DEP-201744`.
+   * **Caja de Verificación en Vivo (Verde)**: *"DEPÓSITO VERIFICADO EXITOSAMENTE — Fondos por Q 100.00 confirmados bajo comprobante #DEP-201744 hacia la cuenta concentradora de Bank USAC. El monto estará disponible inmediatamente al completar la apertura."*
 3. **Idempotencia Técnica**:
-   * `CÓDIGO DE ESTA OPERACIÓN`: `cb9cb120-e071-4dd1-a14f-d9501ca1025b` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación."*).
+   * `CÓDIGO DE ESTA OPERACIÓN`: `fc278917-208e-4bde-9275-9c92fe7ca969` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación."*).
 4. **Acción**:
    * Botón: **"Continuar"**.
 
@@ -434,25 +417,25 @@ El asistente presenta la pantalla de resumen y confirmación para que el cliente
 ![Confirmación de apertura de cuenta de ahorro](../images/user-manual/cliente-19-abrir-cuenta-ahorro-confirmar.png)
 
 ##### Datos de la Confirmación:
-* **Titular**: `b165d73d-8f09-44d6-9620-688ea75219a3` (Identificador único de Enner Mendizabal).
+* **Titular**: Identificador único de Enner Mendizabal.
 * **Tipo de cuenta**: `Ahorro`.
-* **Saldo inicial**: `Q 0.00`.
+* **Saldo inicial fondeado**: `Q 100.00`.
 * **Navegación**: Botón **"Volver"** para cambiar el tipo y botón principal **"Crear la cuenta"**.
 
 ---
 
 #### Paso 16: Emisión Exitosa de Cuenta de Ahorro e Identificador Asignado (`/cuentas/nueva`)
 
-Al confirmar, el sistema registra la cuenta en estado activo (`status = ACTIVE`) con saldo contable inicial de `Q 0.00` y emite el nuevo UUID bancario.
+Al confirmar, el sistema registra la cuenta en estado activo (`status = ACTIVE`) con su saldo contable inicial de `Q 100.00` disponible y emite el nuevo UUID bancario.
 
 ![Cuenta de ahorro creada exitosamente](../images/user-manual/cliente-20-abrir-cuenta-ahorro-exitosa.png)
 
 ##### Elementos del Comprobante:
 1. **Alerta de Éxito (Verde)**:
    * Título: **"¡Cuenta bancaria creada exitosamente!"**
-   * Detalle: *"La cuenta ha sido procesada y registrada en el sistema bancario con saldo inicial de Q 0.00."*
+   * Detalle: *"La cuenta ha sido procesada y registrada en el sistema bancario con saldo inicial de Q 100.00."*
 2. **Identificador del Producto**:
-   * **ACCOUNTID**: `afd97145-831e-40f7-92b6-a167b28c511a` [Copiar].
+   * **ACCOUNTID**: `c3f38dab-12cd-4c55-ac9f-b2c61f02c83a` [Copiar].
    * Nota: *"Guarda este identificador: es con lo que se consulta el saldo, se reciben depósitos en ventanilla y se realizan transferencias."*
 3. **Acciones Disponibles**:
    * **"Ver la cuenta"** (botón principal para acceder a la ficha técnica).
@@ -460,23 +443,30 @@ Al confirmar, el sistema registra la cuenta en estado activo (`status = ACTIVE`)
 
 ---
 
-#### Paso 17: Ficha de Cuenta de Ahorro y Regla de Desactivación Automática (`/cuentas/[id]`)
+#### Paso 17: Ficha de Cuenta de Ahorro y Gestión de Estado Activa/Desactivada (`/cuentas/[id]`)
 
-Al pulsar en **"Ver la cuenta"**, el cliente visualiza la cartola individual de su nueva cuenta de ahorro (`http://localhost:3010/cuentas/afd97145-831e-40f7-92b6-a167b28c511a`).
+Al pulsar en **"Ver la cuenta"**, el cliente visualiza la cartola individual de su nueva cuenta de ahorro (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/cuentas/c3f38dab-12cd-4c55-ac9f-b2c61f02c83a`).
 
 ![Detalle de cuenta de ahorro con advertencia de desactivación](../images/user-manual/cliente-21-cuenta-ahorro-detalle-regla-desactivacion.png)
 
-##### Elementos y Alerta Proactiva del Sistema:
+##### Elementos de la Cuenta Activa:
 1. **Tarjeta Principal del Producto**:
    * Encabezado: `Cuenta Ahorro` [Badge verde: `ACTIVA`].
-   * **Saldo disponible**: **Q 0.00**.
-   * Identificador: `afd97145-831e-40f7-92b6-a167b28c511a` [Copiar].
-   * Marca temporal: `Último movimiento: 3/09/2026, 9:41 p. m.`.
+   * **Saldo disponible**: **Q 100.00**.
+   * Identificador: `c3f38dab-12cd-4c55-ac9f-b2c61f02c83a` [Copiar].
    * Botones: **"Actualizar"** y **"Volver"**.
-2. **Alerta Preventiva de Desactivación Automática (Tarjeta Ámbar)**:
-   * **Título**: *"Esta cuenta está en riesgo de desactivación automática"*
-   * **Explicación del Algoritmo del Demonio**: *"Lleva sin movimientos con un saldo de Q 0.00. Al cumplir 6 meses inactiva con saldo menor a Q 50.00, el banco la desactivará automáticamente. Faltan 181 días (3/03/2027, 9:41 p. m.)."*
-   * **Recomendación Operativa**: *"Registra un movimiento —una transferencia recibida basta— para conservarla activa."*
+2. **Control de Estado Operativo**:
+   * Estado actual: `ACTIVA`. *"La cuenta se encuentra operativa. Puedes desactivarla si deseas suspender sus operaciones y transferencias."*
+   * Botón de acción: **"Desactivar cuenta"**.
+
+##### Suspensión Voluntaria y Reactivación de Cuenta:
+Si el cliente decide suspender la cuenta para evitar débitos o movimientos no deseados, pulsa en **"Desactivar cuenta"**:
+
+![Cuenta de ahorro desactivada](../images/user-manual/cliente-21b-cuenta-ahorro-desactivada.png)
+
+* El estado pasa a `DESACTIVADA` (en rojo) y el badge cambia a `INACTIVA`.
+* El botón cambia automáticamente a **"Activar cuenta"**, permitiendo reactivarla con un solo clic en cuanto el cliente lo requiera.
+* **CÓDIGO DE SEGUIMIENTO**: `ad63aa1c-cca1-41cb-8ad2-bf45de1bcfab` [Copiar].
 3. **Historial de Movimientos**:
    * *"Esta cuenta todavía no tiene movimientos. Aparecerán aquí en cuanto reciba o envíe una transferencia."*
 4. **Trazabilidad**:
@@ -501,60 +491,63 @@ Al volver a la vista general de cuentas (`http://localhost:3010/cuentas`), el cl
 * **CÓDIGO DE SEGUIMIENTO**: `f9d484fc-cefc-43c6-9645-dd21b72bbe4c` [Copiar].
 
 ---
-#### Paso 19: Transferencia entre Cuentas Propias — Formulario de Traslado (`/transferencias/nueva`)
+#### Paso 19: Transferencia Inmediata — Formulario de Envío de Fondos (`/transferencias/nueva`)
 
-Para fondear su cuenta de ahorro recién abierta y protegerla de la regla de desactivación automática por inactividad, el cliente pulsa el botón **"Transferir"** e inicia un traslado de fondos entre sus propias cuentas bancarias (`http://localhost:3010/transferencias/nueva`).
+Para transferir fondos a otra cuenta de forma inmediata y segura, el cliente pulsa el botón **"Nueva transferencia"** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias/nueva`).
 
 ![Formulario de transferencia propia](../images/user-manual/cliente-23-transferencia-propia-formulario.png)
 
 ##### Datos y Campos del Formulario:
-1. **Cuenta de origen**: `Monetaria ···d6e822 · Q 1,400.00` (*"De aquí sale el dinero."*).
-2. **Destino de los fondos**: Opción seleccionada: **`(*) A otra de mis cuentas`**.
-3. **Cuenta de destino**: Selector desplegable con la cuenta recién aperturada: `Ahorro ···8c511a · Q 0.00` (*"Aquí entra el dinero."*).
-4. **Monto**: **Q 700.00** (ajustado mediante los botones `-` / `+`).
-5. **Panel de Pruebas y Simulación (Sandbox)**:
+1. **Cuenta de origen**: `Ahorro ····02c83a · Q 57.00` (*"De aquí sale el dinero."*).
+2. **Destino de los fondos**: Opción seleccionada: **`(*) A la cuenta de otra persona`** (*"Solo tienes una cuenta activa, así que el dinero tiene que ir a la cuenta de otra persona."*).
+3. **Cuenta de destino**: Identificador UUID de la cuenta receptora: `b0000000-0002-4000-8000-000000000004` (*"Selecciona una cuenta registrada o escribe el identificador (UUID)."*).
+4. **Monto**: **Q 30.00** (ajustable mediante los controles `-` / `+` o ingreso directo).
+5. **Panel de Demostración y Simulación (Sandbox)**:
    * Badge: `SOLO PARA DEMOSTRACIÓN` (*"Fuerza cómo termina el pago. No existe en un banco real."*).
-   * **Escenario de pago**: `Aprobar el pago` (*"La transferencia se completa. Es el camino normal."*).
+   * **Escenario de pago**: **`Sin escenario (comportamiento real)`** (*"Sin escenario, el pago se procesa como lo haría normalmente."*).
 6. **Navegación**:
    * Botón principal: **"Continuar"**.
    * Enlace lateral: **"Ver mis cuentas"**.
 
 ---
 
-#### Paso 20: Transferencia entre Cuentas Propias — Revisión y Confirmación (`/transferencias/nueva`)
+#### Paso 20: Transferencia Inmediata — Revisión y Confirmación (`/transferencias/nueva`)
 
-El sistema despliega la tarjeta de validación para corroborar los saldos y cuentas involucradas antes de disparar la orquestación distribuida.
+El sistema despliega la tarjeta de validación para corroborar los saldos y cuentas involucradas antes de someter la orden a la orquestación distribuida de la Saga.
 
 ![Confirmación de transferencia entre cuentas propias](../images/user-manual/cliente-24-transferencia-propia-confirmacion.png)
 
 ##### Datos en Pantalla:
-* **Sale de**: `Monetaria ···d6e822 · Q 1,400.00`.
-* **Entra a**: `Ahorro ···8c511a · Q 0.00`.
-* **Monto a transferir**: **Q 700.00**.
-* **CÓDIGO DE ESTA OPERACIÓN (Idempotencia)**: `0096180f-f4b8-40e1-919f-9cff9c0cfcc3` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación."*).
+* **Sale de**: Cuenta de ahorro seleccionada.
+* **Entra a**: Cuenta de destino indicada (`000000000004`).
+* **Monto a transferir**: **Q 30.00**.
+* **CÓDIGO DE ESTA OPERACIÓN (Idempotencia)**: Token criptográfico único que se mantiene estable durante reintentos para asegurar que la transferencia se procese exactamente una vez.
 * **Acciones**: Botón **"Confirmar y enviar"** y enlace **"Corregir"**.
 
 ---
 
-#### Paso 21: Monitor de la Saga — Transferencia Propia Completada (`/transferencias/[id]`)
+#### Paso 21: Monitor de la Saga — Transferencia Completada Exitosamente (`/transferencias/[id]`)
 
-Al confirmar, el API Gateway somete la transferencia al broker RabbitMQ y redirige al monitor transaccional (`http://localhost:3010/transferencias/5ab64918-8ae0-47fb-abe5-f0a8110fce64`), donde la Saga coreografiada avanza y finaliza de forma exitosa.
+Al confirmar, el API Gateway somete la transferencia al broker RabbitMQ y redirige inmediatamente al monitor transaccional en tiempo real (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias/61457774-8ee2-4448-8c5d-15ca44281cb7`), donde la Saga coreografiada avanza por todos sus hitos y finaliza en estado `COMPLETADA`.
 
 ![Monitor de la Saga completada entre cuentas propias](../images/user-manual/cliente-25-transferencia-propia-saga-completada.png)
 
 ##### Resumen de la Operación y Hitos de la Saga:
-* **Identificador de Transferencia**: `5ab64918-8ae0-47fb-abe5-f0a8110fce64`.
-* **MONTO**: **Q 700.00**.
-* **Marca Temporal**: Solicitada y completada el `3/09/2026, 9:42 p. m.`.
-* **Avance de la Transferencia (Badge Verde: `COMPLETADA`)**:
-  * `(✓) Solicitada`: El sistema aceptó la solicitud.
-  * `(✓) Débito`: Se descuentan Q 700.00 de la cuenta monetaria.
-  * `(✓) Pago`: Se procesa la compensación interna entre cuentas.
-  * `(✓) Completada`: Se acreditan Q 700.00 en la cuenta de ahorro.
+* **Identificador de Transferencia**: `61457774-8ee2-4448-8c5d-15ca44281cb7`.
+* **MONTO**: **Q 30.00**.
+* **Marcas Temporales**: Solicitada y resuelta el `22/09/2026, 6:01 p. m.`.
+* **Avance de la Transferencia (Badge Verde: `COMPLETADA`)**: *"El dinero llegó a la cuenta de destino."*
+  * `(✓) Se aceptó la solicitud` (22-sept, 06:01 p. m.)
+  * `(✓) Se solicitó la verificación de cumplimiento (KYC)` (22-sept, 06:01 p. m.)
+  * `(✓) Se resolvió la verificación de cumplimiento (KYC)` (22-sept, 06:01 p. m.)
+  * `(✓) Se debitó la cuenta de origen` (22-sept, 06:01 p. m.)
+  * `(✓) El pago se aprobó` (22-sept, 06:01 p. m.)
+  * `(✓) Se acreditó la cuenta de destino` (22-sept, 06:01 p. m.)
 * **Tarjeta Resultado del Pago (Badge Verde: `APROBADO`)**:
   * *"El pago se aprobó — Se ordenó el crédito a la cuenta de destino."*
-  * **Número del pago**: `92344795-df2c-4ec0-bb5b-b4a2b48d7d2b`.
-  * Resuelto: `3/09/2026, 9:42 p. m.`.
+  * **Número del pago**: `5fecf9a2-f7e1-4a06-b8ad-33ab7a58d6bb`.
+  * **Resuelto**: `22/09/2026, 6:01 p. m.`.
+* **CÓDIGO DE SEGUIMIENTO DE LA TRANSFERENCIA**: `a2c46deb-cd3b-41a4-9aeb-dff5ee54ea4d` [Copiar].
 * Enlace inferior: **"Ver mis cuentas"**.
 
 ---
@@ -578,19 +571,22 @@ Al regresar a la pantalla general de cuentas (`http://localhost:3010/cuentas`), 
 
 ---
 
-#### Paso 23: Historial de Transferencias del Cliente (`/transferencias`)
+#### Paso 23: Historial Consolidado de Transferencias del Cliente (`/transferencias`)
 
-En la sección de **Transferencias** (`http://localhost:3010/transferencias`), la bitácora histórica personal del cliente documenta la operación propia liquidada.
+En la sección de **Transferencias** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias`), la bitácora histórica personal del cliente documenta todas las transacciones realizadas, reflejando su estado actual y trazabilidad.
 
 ![Historial de transferencias del cliente](../images/user-manual/cliente-27-transferencias-historial-cliente.png)
 
-##### Fila Liquidada en el Historial:
+##### Registro de Operaciones en la Bitácora:
 | FECHA | ORIGEN → DESTINO | ESTADO | MONTO | ACCIÓN |
 | :--- | :--- | :---: | :---: | :--- |
-| `3/09/2026, 9:42 p. m.` | `229cc6d6e822 → a167b28c511a` | `Completada` | **Q 700.00** | [Ver →] |
+| `22/09/2026, 6:01 p. m.` | `b2c61f02c83a → 000000000004` | `Completada` (Badge Verde) | **Q 30.00** | [Ver →] |
+| `22/09/2026, 6:01 p. m.` | `b2c61f02c83a → 000000000004` | `Compensada` (Badge Rosa) | **Q 40.00** | [Ver →] |
+| `22/09/2026, 6:00 p. m.` | `b2c61f02c83a → 000000000004` | `Compensada` (Badge Rosa) | **Q 30.00** | [Ver →] |
 
-##### Metadatos de la Operación:
-* **CÓDIGO DE SEGUIMIENTO**: `6f6bcef4-1d9b-4331-b2da-afd0f52c9c5a` [Copiar].
+##### Metadatos y Capacidades de la Bitácora:
+* **CÓDIGO DE SEGUIMIENTO**: `ce4e1685-c482-405a-91bb-e45e98a2d9f9` [Copiar].
+* **Buscador Directo**: Permite consultar cualquier operación histórica por su identificador UUID (`Número de operación`).
 
 ---
 #### Paso 24: Demostración de Resiliencia — Transferencia con Simulación de Rechazo de Pago (`/transferencias/nueva`)
@@ -623,51 +619,90 @@ Al procesar la solicitud, el sistema efectúa el débito inicial pero, al ser re
 
 ##### Análisis del Flujo de Compensación en Pantalla:
 * **Identificador de Transferencia**: `73abad28-05c7-420a-9273-f3f92facbad3`.
-* **MONTO**: **Q 200.00**.
+* **MONTO**: **Q 30.00**.
 * **Estado de la Transferencia (Badge Rosa: `COMPENSADA`)**:
   * Explicación al usuario: *"La transferencia no se completó. El dinero había salido de tu cuenta y fue devuelto automáticamente, así que verás dos movimientos en el estado de cuenta."*
   * **Hitos Auditables de la Saga**:
-    1. `(✓) Solicitada`: La solicitud fue aceptada formalmente.
-    2. `(✓) Débito`: `account-service` debitó inicialmente los Q 200.00 de la cuenta de ahorro.
-    3. `(✕ Rojo) Pago`: `payment-service` emitió `payment.rejected.v1` simulando el rechazo de la red externa.
-    4. `(✕ Rojo) Compensada`: `transaction-service` ordenó la compensación y `account-service` acreditó de vuelta los Q 200.00 a la cuenta de ahorro.
+    1. `(✓) Se aceptó la solicitud`.
+    2. `(✓) Se solicitó la verificación de cumplimiento (KYC)`.
+    3. `(✓) Se resolvió la verificación de cumplimiento (KYC)`.
+    4. `(✓) Se debitó la cuenta de origen`.
+    5. `(✕ Rojo) El pago falló`.
+    6. `(✕ Rojo) Se devolvió el dinero a la cuenta de origen` (Compensación atómica).
 * **Tarjeta de Diagnóstico ("Por qué no se completó")**:
   * *"El pago fue rechazado. El dinero se devolvió a la cuenta de origen."*
 * **Resultado del Pago (Badge Rojo: `RECHAZADO`)**:
   * *"El pago fue rechazado. El dinero se devolvió a la cuenta de origen."*
-  * **Número del pago**: `cd266092-23df-428b-bc26-082f15b4bc03`.
-  * Resuelto: `3/09/2026, 9:43 p. m.`.
 
 ---
 
-#### Paso 26: Directorio "Mis Cuentas" — Verificación de Saldos Intactos (`/cuentas`)
+#### Paso 26: Demostración de Resiliencia — Manejo de Caídas Temporales con Escalera de Reintentos (`/transferencias/nueva`)
 
-El cliente regresa a **Mis Cuentas** (`http://localhost:3010/cuentas`) para constatar que, gracias a la compensación automática, sus fondos no sufrieron ninguna merma contable.
+Para demostrar la capacidad de recuperación ante fallos transitorios en pasarelas externas sin compensar inmediatamente, el cliente envía una transferencia seleccionando el escenario **"El proveedor no responde (timeout)"**.
 
-![Mis cuentas con saldo intacto post compensación](../images/user-manual/cliente-30-mis-cuentas-saldo-intacto-post-compensacion.png)
+![Formulario de transferencia con timeout](../images/user-manual/cliente-28b-transferencia-timeout-escalera.png)
 
-##### Integridad de la Posición Financiera:
-* **`AH` Ahorro** (`afd97145...`): **`Q 700.00`** (Intacto: se debitaron Q 200.00 y se acreditaron de vuelta Q 200.00 en la misma Saga).
-* **`MO` Monetaria** (`e80bd8e9...`): **`Q 700.00`** (Intacto).
-* **Total Consolidado**: **`Q 1,400.00`** (Conservación total de los activos en custodia).
-* **CÓDIGO DE SEGUIMIENTO**: `9efc3bf3-c8b6-44f8-ac71-83dd9d717b7f` [Copiar].
+##### Características de la Escalera de Reintentos:
+1. **Configuración del Escenario**:
+   * Monto: `Q 40.00`.
+   * Escenario: **`El proveedor no responde (timeout)`**.
+   * Regla bancaria: El sistema aplica una escalera de reintentos exponenciales (1s, 5s, 30s) para un total de hasta 4 intentos antes de decidir si compensa o completa la operación.
+2. **Revisión y Envío**:
+   * El cliente revisa los datos antes de emitir la orden:
+
+![Confirmación de transferencia Q40](../images/user-manual/cliente-24b-transferencia-confirmacion-q40.png)
+
+* CÓDIGO DE ESTA OPERACIÓN: `87485a4e-c851-4b79-b478-ab453fdbd8b` [Copiar].
 
 ---
 
-#### Paso 27: Historial de Transferencias — Registro Auditable de la Compensación (`/transferencias`)
+#### Paso 27: Monitor de la Saga en Tiempo Real — Observabilidad de la Escalera (`/transferencias/[id]`)
 
-En la bitácora histórica de transferencias (`http://localhost:3010/transferencias`), el sistema preserva la traza inmutable del intento fallido y compensado para fines de auditoría y conciliación.
+Al emitir la orden, el monitor de la Saga refleja el avance dinámico y expone la escalera de reintentos en vivo:
 
-![Historial de transferencias con fila compensada](../images/user-manual/cliente-31-historial-transferencia-compensada.png)
+![Monitor de la Saga reintentando](../images/user-manual/29-transferencia-saga-procesando-pago.png)
 
-##### Registro en la Bitácora de Transferencias:
+##### Observabilidad en Vivo del Pago:
+* **Estado**: `PROCESANDO PAGO`.
+* **Badge Dinámico**: `REINTENTANDO` | `Intento 2 de 4` | `Fallo transitorio`.
+* **Diagnóstico Operativo**: *"El intento anterior falló. El siguiente sale en 5 segundos. Un fallo pasajero. El sistema lo reintenta hasta agotar la escalera de espera."*
+
+---
+
+#### Paso 28: Historial de Transferencias — Registro Auditable y Filtrado Reactivo (`/transferencias`)
+
+En la bitácora histórica de transferencias (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias`), el sistema preserva la traza inmutable de todas las operaciones realizadas para fines de auditoría y conciliación.
+
+##### A. Estado Intermedio en Vivo (Durante la Escalera de Reintentos):
+Cuando una transferencia transitoria se encuentra ascendiendo la escalera de reintentos en el microservicio de pagos, el historial refleja en tiempo real el badge reactivo `Procesando pago`:
+
+![Historial con transferencia en proceso](../images/user-manual/cliente-27b-transferencias-historial-en-proceso.png)
+
+* Fila 1: `22/09/2026, 6:01 p. m.` | `Procesando pago` (Badge Amarillo) | `Q 40.00`
+* Fila 2: `22/09/2026, 6:00 p. m.` | `Compensada` (Badge Rosa) | `Q 30.00`
+
+##### B. Bitácora Consolidada (Transacciones Completadas y Compensadas):
+Una vez culminados los flujos distribuidos, el historial documenta con absoluta precisión cada uno de los resultados terminales:
+
+![Historial consolidado de transferencias](../images/user-manual/cliente-27-transferencias-historial-cliente.png)
+
 | FECHA | ORIGEN → DESTINO | ESTADO | MONTO | ACCIÓN |
 | :--- | :--- | :---: | :---: | :--- |
-| `3/09/2026, 9:43 p. m.` | `a167b28c511a → 229cc6d6e822` | `Compensada` (Badge Rosa) | **Q 200.00** | [Ver →] |
-| `3/09/2026, 9:42 p. m.` | `229cc6d6e822 → a167b28c511a` | `Completada` (Badge Verde) | **Q 700.00** | [Ver →] |
+| `22/09/2026, 6:01 p. m.` | `b2c61f02c83a → 000000000004` | `Completada` (Badge Verde) | **Q 30.00** | [Ver →] |
+| `22/09/2026, 6:01 p. m.` | `b2c61f02c83a → 000000000004` | `Compensada` (Badge Rosa) | **Q 40.00** | [Ver →] |
+| `22/09/2026, 6:00 p. m.` | `b2c61f02c83a → 000000000004` | `Compensada` (Badge Rosa) | **Q 30.00** | [Ver →] |
 
-##### Metadatos de la Bitácora:
-* **CÓDIGO DE SEGUIMIENTO**: `b8ea55bc-3bcc-48ca-a5b8-080cffcd4c20` [Copiar].
+* **CÓDIGO DE SEGUIMIENTO**: `ce4e1685-c482-405a-91bb-e45e98a2d9f9` [Copiar].
+
+##### C. Filtrado Reactivo por Estado:
+El usuario puede filtrar la bitácora según el estado de la operación (`Aprobada`, `Compensada`, `Fallida`, etc.), permitiendo una visualización limpia e inmediata:
+
+![Historial de transferencias filtrado por estado](../images/user-manual/cliente-27c-transferencias-historial-filtrado-aprobada.png)
+
+* Filtro aplicado: **"Aprobada"**.
+* Fila filtrada: Únicamente la transferencia completada exitosamente de **Q 30.00**.
+* Acción disponible: Botón **"Limpiar filtros"** para restaurar la vista completa.
+* Buscador: Permite rastrear cualquier transacción mediante su UUID histórico (`Número de operación`).
 
 ---
 
@@ -796,44 +831,40 @@ El cliente accede a su módulo de autogestión de perfil (`http://localhost:3010
 ##### Elementos y Secciones en Pantalla:
 1. **Tarjeta de Datos Personales (Panel Izquierdo)**:
    * Nota explicativa: *"Escribe solo lo que quieras cambiar: un campo vacío se deja como está. El correo y el usuario no se pueden modificar."*
-   * **Ficha de Lectura (Valores Originales)**:
+   * **Ficha de Lectura (Valores Registrados)**:
      * Nombre: `Enner Esai Mendizabal Castro` | Usuario: `ennermendizabal`
-     * Correo: `enneresamen@gmail.com` | Documento: `1212121212121`
-     * Nacimiento: `2005-06-01` | Dirección: `chayanne`
-     * Rol: `Cliente` | Identidad: `Identidad verificada`
-   * **Campos Editables con Nuevos Valores**:
-     * **Nombre completo**: `Ennercito`
-     * **Dirección**: `mi casa`
-     * **Fecha de nacimiento**: `04/11/2003` (mediante selector de fecha integrado).
+     * Correo: `enneresamen@gmail.com` | Documento: `2222222222222`
+     * Nacimiento: `2000-07-05` | Dirección: `dsfsdo Flores`
+     * Rol: `Cliente` | Identidad: `Pendiente de revisión`
+   * **Campos Editables**:
+     * **Nombre completo**, **Dirección** y **Fecha de nacimiento** (mediante selector de fecha integrado).
    * **Idempotencia Técnica**:
-     * `CÓDIGO DE ESTA OPERACIÓN`: `88ef2df7-d9ad-42af-9cab-bbae2d7883fb` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación."*).
+     * `CÓDIGO DE ESTA OPERACIÓN`: `75c922a4-0187-4c71-b17a-24cd2babd918` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación."*).
    * Botón: **"Guardar cambios"**.
 2. **Tarjeta de Identificación (Panel Derecho Superior)**:
    * Usuario: `ennermendizabal`.
    * Correo: `enneresamen@gmail.com` (*"El correo es tu identificador de acceso y no se cambia desde aquí."*).
    * Rol: `Cliente`.
-   * Número de cliente (`customerId`): `b165d73d-a709-4dd4-9620-688ea75219a3`.
-3. **Tarjeta de Validación de Identidad (Panel Derecho Inferior)**:
-   * Badge verde: `Identidad verificada`.
-   * Leyenda: *"El documento de identificación ha sido verificado satisfactoriamente."*
+   * Número de cliente (`customerId`): `3981328c-26f6-4064-ad7d-81af5362ff37`.
+3. **Estado de Verificación KYC Inicial (Panel Derecho Inferior)**:
+   * Badge naranja: `KYC pendiente`.
+   * Leyenda: *"Un cajero receptor debe verificar tu identidad para cumplimiento antes de que puedas transferir. Un cajero receptor o administrador debe verificar tu identidad antes de que puedas realizar transferencias o pagos."*
 
 ---
 
-#### Paso 33: Perfil de Usuario — Confirmación de Datos Actualizados (`/perfil`)
+#### Paso 33: Perfil de Usuario con Identidad Validada (KYC Verificado) (`/perfil`)
 
-Al presionar el botón **"Guardar cambios"**, el microservicio `customer-service` procesa la actualización atómica en PostgreSQL y devuelve la confirmación inmediata en pantalla.
+Una vez que el personal del banco revisa y aprueba el documento DPI del cliente en la mesa de validación de identidades, el cliente consulta su perfil y observa la confirmación oficial del estado de cumplimiento normativo.
 
 ![Datos de perfil actualizados](../images/user-manual/cliente-14-perfil-datos-actualizados.png)
 
 ##### Efectos Inmediatos:
-1. **Alerta de Éxito (Verde)**:
-   * **Mensaje**: *"Tus datos personales han sido actualizados en el sistema."*
-   * **CÓDIGO DE SEGUIMIENTO (Trazabilidad)**: `e48421c0-f67f-4e59-86fc-9a6c9b3fb533` [Copiar].
-2. **Actualización en Tiempo Real de la Ficha Superior**:
-   * **Nombre**: Pasa de `Enner Esai Mendizabal Castro` a **`Ennercito`**.
-   * **Nacimiento**: Se actualiza a **`2003-11-04`**.
-   * **Dirección**: Se actualiza a **`mi casa`**.
-   * Los identificadores de acceso (correo, documento DPI y número de cliente) se mantienen inalterados por diseño de seguridad.
+1. **Estado de Verificación KYC Aprobado**:
+   * Badge verde: `KYC verificado`.
+   * Leyenda: *"Tu identidad fue verificada para cumplimiento. Puedes transferir con normalidad."*
+2. **Habilitación de Operaciones**:
+   * El cliente queda totalmente autorizado para emitir transferencias bancarias, aperturar cuentas adicionales y pagar servicios en línea sin restricciones de ventanilla.
+   * La ficha del cliente muestra la identidad como `Identidad verificada`.
 
 ---
 
