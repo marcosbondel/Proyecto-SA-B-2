@@ -330,23 +330,31 @@ Una vez completadas las operaciones de ventanilla (validación de identidad, ape
 
 ---
 
-#### Paso 11: Centro de Notificaciones del Cliente — Bandeja de Mensajes Sin Leer (`/notificaciones`)
+#### Paso 11: Centro de Notificaciones del Cliente — Bandeja de Mensajes en Vivo (`/notificaciones`)
 
-Al hacer clic en el icono de la campana en la barra superior (`http://localhost:3010/notificaciones`), el cliente visualiza su bandeja de notificaciones generadas automáticamente por los microservicios del banco a lo largo de su interacción con el sistema.
+Al hacer clic en el icono de la campana en la barra superior (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/notificaciones`), el cliente visualiza su bandeja de notificaciones generadas automáticamente por el microservicio de auditoría y mensajería a lo largo de cada una de sus operaciones en el sistema.
 
 ![Bandeja de notificaciones sin leer](../images/user-manual/cliente-11-notificaciones-sin-leer.png)
 
-##### Elementos de la Bandeja:
-1. **Encabezado**:
+##### Elementos y Traza de Eventos en la Bandeja:
+1. **Encabezado y Acciones**:
    * Título: **"Notificaciones"** (*"Lo que el banco te ha comunicado."*).
    * Botón de acción masiva: **"Marcar todas como leídas"**.
-2. **Bandeja de Entrada (Badge Rojo: `5 sin leer`)**:
-   Las notificaciones se presentan en orden cronológico inverso, cada una con un punto rojo indicador de no leída:
-   * **Punto Rojo** · **"Tu cuenta quedó activa"**: Emitida tras procesar la activación por correo (`Cuenta activada · 3/09/2026, 9:38 p. m.`). [Ver →]
-   * **Punto Rojo** · **"Tu cuenta fue creada"**: Emitida cuando el cajero aperturó la cuenta bancaria en ventanilla (`Cuenta creada · 3/09/2026, 9:31 p. m.`). [Ver →]
-   * **Punto Rojo** · **"Activa tu cuenta de bonking"**: Notificación con el enlace y token de seguridad (`Activación de cuenta · 3/09/2026, 9:26 p. m.`). [Ver →]
-   * **Punto Rojo** · **"Tu identidad fue verificada"**: Emitida cuando el cajero aprobó el DPI en la mesa de control (`Identidad verificada · 3/09/2026, 9:26 p. m.`). [Ver →]
-   * **Punto Rojo** · **"Recibimos tu registro"**: Confirmación inicial al completar el formulario web (`Registro recibido · 3/09/2026, 9:22 p. m.`). [Ver →]
+2. **Bandeja de Entrada (Badge Rojo: `13 sin leer`)**:
+   Las notificaciones se presentan en estricto orden cronológico inverso con sus etiquetas semánticas (`Info`, `Advertencia`, `Error`), permitiendo auditar visualmente todo el ciclo de vida del usuario y de sus fondos:
+   * **`Info`** · **"Tu transferencia se completó"**: Liquidación exitosa del pago de servicios Claro (`22/09/2026, 6:03 p. m.`). [Ver →]
+   * **`Error`** · **"Tu transferencia fue revertida y el monto regresó a tu cuenta"**: Compensación automática tras ladder de reintentos (`22/09/2026, 6:01 p. m.`). [Ver →]
+   * **`Info`** · **"Tu transferencia se completó"**: Transferencia exitosa completada (`22/09/2026, 6:01 p. m.`). [Ver →]
+   * **`Error`** · **"Tu transferencia fue revertida y el monto regresó a tu cuenta"**: Compensación de la Saga por simulación de rechazo (`22/09/2026, 6:00 p. m.`). [Ver →]
+   * **`Advertencia`** · **"Tu cuenta volvió a estar activa"**: Reactivación contable de la cuenta (`22/09/2026, 5:59 p. m.`). [Ver →]
+   * **`Advertencia`** · **"Tu cuenta fue desactivada por inactividad"**: Demonio de inactividad ejecutado (`22/09/2026, 5:58 p. m.`). [Ver →]
+   * **`Info`** · **"Tu cuenta fue creada"**: Apertura de la cuenta de ahorro (`22/09/2026, 5:58 p. m.`). [Ver →]
+   * **`Info`** · **"Verificamos tu identidad para operaciones (KYC)"**: Aprobación de cumplimiento normativo (`22/09/2026, 5:57 p. m.`). [Marcar leída]
+   * **`Info`** · **"Tu identidad fue verificada"**: Validación de documento DPI (`22/09/2026, 5:57 p. m.`). [Ver →]
+   * **`Advertencia`** · **"Tus datos personales fueron actualizados"**: Edición de perfil en autoservicio (`22/09/2026, 5:56 p. m.`). [Ver →]
+   * **`Info`** · **"Tu cuenta quedó activa"**: Activación exitosa vía token por correo (`22/09/2026, 5:53 p. m.`). [Ver →]
+   * **`Info`** · **"Activa tu cuenta de bonking"**: Enlace de activación enviado vía Resend (`22/09/2026, 5:46 p. m.`). [Ver →]
+   * **`Info`** · **"Recibimos tu registro"**: Registro público inicial completado. [Ver →]
 
 ---
 
@@ -729,74 +737,67 @@ El cliente accede a la sección de **Pagos** (`http://localhost:3010/pagos`) des
 
 
 
-#### Paso 29: Formulario de Pago de Servicios en Autoservicio — Factura de Electricidad EEGSA (`/pagos/nuevo`)
+#### Paso 29: Formulario de Pago de Servicios en Autoservicio — Factura de Claro Telefonía (`/pagos/nuevo`)
 
-Desde el módulo de pagos (`/pagos`), el cliente pulsa el botón **"Nuevo pago"** (o **"Pagar un servicio"**) para liquidar una factura de servicios públicos mediante débito directo a sus cuentas bancarias. En este flujo, el titular programa el pago de su factura de energía eléctrica a favor de **EEGSA**.
+Desde el módulo de pagos (`/pagos`), el cliente pulsa el botón **"Nuevo pago"** (o **"Pagar un servicio"**) para liquidar una factura de servicios públicos mediante débito directo a sus cuentas bancarias (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/pagos/nuevo`). En este flujo, el titular realiza el pago de servicios de telecomunicaciones a favor de **Claro**.
 
-![Formulario de pago de servicios EEGSA](../images/user-manual/cliente-33-pago-eegsa-formulario.png)
+![Formulario de pago de servicios Claro](../images/user-manual/cliente-33-pago-eegsa-formulario.png)
 
 ##### Elementos y Valores del Formulario en Pantalla:
 1. **Selección de Cuenta de Origen**:
-   * **Cuenta origen**: Selector desplegable donde se selecciona la cuenta Monetaria `Monetaria · ****d6e822 · Q 700.00`.
-   * **Saldo disponible**: Indicador reactivo que confirma `Q 700.00` disponibles (tras la distribución de fondos realizada en transferencias anteriores).
+   * **Cuenta origen**: `Ahorro ····02c83a · Q 87.00`.
+   * **Saldo disponible**: Indicador reactivo que confirma **`Q 87.00`** disponibles.
 2. **Parámetros de la Factura**:
-   * **Servicio público o factura**: Selector desplegable con el catálogo de entidades recaudadoras; se selecciona **`EEGSA · Energía eléctrica`**.
-   * **Monto**: Selector numérico con controles de incremento y decremento (`- / +`), fijado en **`Q 300.00`**.
-   * **Número de contrato o referencia**: Campo de texto libre donde el cliente ingresa la referencia de cobro: **`Esta cara la luz`** (descripción institucional: *"Número de contrato, de medidor o de línea. Es lo que le dice al prestador de quién es el pago"*).
+   * **Servicio público o factura**: Selector desplegable con el catálogo de empresas recaudadoras; se selecciona **`Claro · Telefonía`**.
+   * **Monto**: **`Q 55.00`** (ajustado con controles `-` / `+`).
+   * **Número de contrato o referencia**: Referencia de contrato ingresada: **`3233`** (*"Número de contrato, de medidor o de línea. Es lo que le dice al prestador de quién es el pago"*).
 3. **Idempotencia y Trazabilidad Transaccional**:
-   * `CÓDIGO DE ESTA OPERACIÓN`: `21d5b01d-0103-427c-a902-3cc402cbb40f` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación"*). Previene que clics duplicados en la red generen dobles cobros de la misma factura.
-4. **Tarjeta Informativa Lateral ("Qué pasa al pagar")**:
+   * `CÓDIGO DE ESTA OPERACIÓN`: `d11ae475-ca5c-4085-b597-212a783c1edd` (*"Se mantiene igual mientras reintentas, para que el sistema reconozca que es la misma operación"*).
+4. **Sandbox de Demostración**:
+   * Escenario: **`Sin escenario (comportamiento real)`** (*"Sin escenario, el pago se procesa como lo haría normalmente"*).
+5. **Tarjeta Informativa Lateral ("Qué pasa al pagar")**:
    * *"Un pago de servicio es una transferencia a la cuenta recaudadora del prestador (luz, agua, teléfono), y pasa por los mismos pasos: se descuenta de tu cuenta, se procesa el pago y se acredita al prestador."*
    * *"Si algo falla después del débito, el dinero se devuelve automáticamente mediante la compensación de la Saga."*
-   * *"El saldo mostrado es el de la última consulta. Si alcanza o no se decide en el momento del cobro."*
    * *"Al terminar te llevamos al seguimiento de la transferencia, que es donde se ve cada paso."*
-5. **Fundamento del Enunciado y Arquitectura de Resiliencia**:
-   * **Especificación de Payment Service en el Enunciado**: El enunciado del proyecto define para `Payment Service` la responsabilidad de:
-     * *Procesamiento de pagos externos o internos.*
-     * *Validar operaciones financieras e integración con sistemas externos.*
-     * *Notas SRE: Separación de la lógica de pagos, manejo de fallos externos y **simulación de sistemas bancarios reales**.*
-   * **Diferenciación Fundamental respecto al Flujo de Compensación (Paso 25)**:
-     * En los Pasos 24 y 25 se utilizó expresamente el sandbox de demostración (*"Rechazar el pago"*) para simular una caída catastrófica de la pasarela y verificar la ejecución de la **compensación contable de la Saga** (devolución íntegra de fondos).
-     * En este pago de EEGSA, se procesa el **camino feliz (*Happy Path*) de liquidación real**: el procesador financiero aprueba la operación (`APROBADO`). Por consiguiente, la compensación **no** entra en ejecución; el débito se consolida legítimamente y los fondos pasan a la cuenta recaudadora de EEGSA sin reversiones.
-6. **Acción**:
-   * Botón principal: **"Pagar servicio"**.
+6. **Acción**: Botón principal **"Pagar servicio"**.
 
 ---
 
-#### Paso 30: Monitor de la Saga del Pago de Electricidad — Liquidación Exitosa y Aprobación (`/transferencias/[id]`)
+#### Paso 30: Monitor de la Saga del Pago de Servicios — Liquidación Exitosa y Aprobación (`/transferencias/[id]`)
 
-Al ordenar el pago, el frontend redirige automáticamente al monitor en tiempo real de la transferencia distribuida (`http://localhost:3010/transferencias/983b187b-38c9-4738-8789-8775b2862293`), permitiendo auditar la ejecución de cada fase de la Saga coreografiada.
+Al ordenar el pago, el frontend redirige automáticamente al monitor en tiempo real de la transferencia distribuida (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias/7ec1925b-2004-45de-a55f-fda3912b7eaf`), permitiendo auditar la ejecución de cada fase de la Saga coreografiada.
 
-![Monitor de la Saga del pago de electricidad completado](../images/user-manual/cliente-34-pago-eegsa-saga-completada.png)
+![Monitor de la Saga del pago de Claro completado](../images/user-manual/cliente-34-pago-eegsa-saga-completada.png)
 
 ##### Análisis del Flujo y Métricas en Pantalla:
 1. **Encabezado y Metadatos de la Operación**:
-   * **Identificador de Transacción**: `983b187b-38c9-4738-8789-8775b2862293`.
-   * Botón de acción rápida: **"Nueva transferencia"**.
-   * **MONTO**: **`Q 300.00`**.
-   * **Solicitada**: `3/09/2026, 9:44 p. m.` | **Última actualización**: `3/09/2026, 9:44 p. m.`.
+   * **Identificador de Transacción**: `7ec1925b-2004-45de-a55f-fda3912b7eaf`.
+   * **MONTO**: **`Q 55.00`**.
+   * **Solicitada**: `22/09/2026, 6:03 p. m.` | **Última actualización**: `22/09/2026, 6:03 p. m.`.
 2. **Tarjeta "Avance de la transferencia" (Orquestación Saga)**:
    * Badge superior derecho: en color verde **`COMPLETADA`**.
    * Leyenda de éxito: *"El dinero llegó a la cuenta de destino."*
-   * **Línea de tiempo secuencial (Stepper con checks negros)**:
-     * `(✓) Solicitada`: *El sistema aceptó la solicitud.* `transaction-service` verificó parámetros e inició la Saga.
-     * `(✓) Débito`: *Se descuenta de la cuenta de origen.* `account-service` debitó `Q 300.00` bajo `SELECT ... FOR UPDATE` de la cuenta monetaria `...d6e822`.
-     * `(✓) Pago`: *Se procesa el pago entre cuentas.* `payment-service` validó la transacción con el proveedor externo de energía.
-     * `(✓) Completada`: *El dinero llegó al destino.* Se acreditó el monto a la cuenta recaudadora del facturador EEGSA.
+   * **Línea de tiempo secuencial (Stepper con checks)**:
+     * `(✓) Se aceptó la solicitud` (22-sept, 06:03 p. m.)
+     * `(✓) Se solicitó la verificación de cumplimiento (KYC)` (22-sept, 06:03 p. m.)
+     * `(✓) Se resolvió la verificación de cumplimiento (KYC)` (22-sept, 06:03 p. m.)
+     * `(✓) Se debitó la cuenta de origen` (22-sept, 06:03 p. m.)
+     * `(✓) El pago se aprobó` (22-sept, 06:03 p. m.)
+     * `(✓) Se acreditó la cuenta de destino` (22-sept, 06:03 p. m.)
 3. **Tarjeta "RESULTADO DEL PAGO" (Resolución Externa)**:
    * Badge verde: **`APROBADO`**.
    * Título y detalle: **"El pago se aprobó"** (*"Se ordenó el crédito a la cuenta de destino."*).
-   * **Número del pago (`paymentId`)**: `627f542a-8133-4900-8d13-36547c85cc76`.
-   * **Resuelto**: `3/09/2026, 9:44 p. m.`.
+   * **Número del pago (`paymentId`)**: `418285fe-fb8f-4b33-b4e7-ff03224ed355`.
+   * **Resuelto**: `22/09/2026, 6:03 p. m.`.
 4. **Trazabilidad y Enlaces**:
    * Enlace: **"Ver mis cuentas"**.
-   * **CÓDIGO DE SEGUIMIENTO DE LA TRANSFERENCIA**: `17925a72-913c-4cb4-96e8-08febcebea7e` [Copiar].
+   * **CÓDIGO DE SEGUIMIENTO DE LA TRANSFERENCIA**: `9a5972f8-b82e-41cc-815b-02bd4ce8dc26` [Copiar].
 
 ---
 
 #### Paso 31: Historial de Pagos de Servicios del Cliente con Factura Liquidada (`/pagos`)
 
-El cliente regresa a la vista principal de **Pagos** (`http://localhost:3010/pagos`) para constatar que su factura ha sido formalmente registrada en el historial histórico de servicios.
+El cliente regresa a la vista principal de **Pagos** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/pagos`) para constatar que su factura ha sido formalmente registrada en el historial histórico de servicios.
 
 ![Historial de pagos del cliente con servicio completado](../images/user-manual/cliente-35-pago-eegsa-historial.png)
 
@@ -805,20 +806,16 @@ El cliente regresa a la vista principal de **Pagos** (`http://localhost:3010/pag
    * Título: **Pagos** (*"Paga servicios y consulta los pagos que ya hiciste."*).
    * Botón superior: **"Nuevo pago"**.
 2. **Tabla "Historial de pagos"**:
-   * **FECHA**: `3/09/2026, 9:44 p. m.`
-   * **SERVICIO**: `EEGSA · Energía eléctrica` acompañado del badge amarillo **`Externo`**, certificando que la liquidación se ejecutó hacia una empresa prestadora externa de servicios.
+   * **FECHA**: `22/09/2026, 6:03 p. m.`
+   * **SERVICIO**: `Claro · Telefonía` acompañado del badge amarillo **`Externo`**, certificando la liquidación hacia el proveedor externo.
    * **ESTADO**: Badge verde **`Completada`**.
-   * **MONTO**: **`Q 300.00`**.
-   * **Acción**: Enlace **`Ver →`** que permite abrir en cualquier momento el monitor y comprobante de la transferencia.
+   * **MONTO**: **`Q 55.00`**.
+   * **Acción**: Enlace **`Ver →`** para acceder a la trazabilidad completa.
 3. **Controles de Trazabilidad**:
-   * Botón **"Actualizar"** para refrescar la lista reactivamente sin recargar la página.
-   * **CÓDIGO DE SEGUIMIENTO**: `0bc550dc-3ce8-4d9b-a228-158a5c80840a` [Copiar].
+   * Botón **"Actualizar"** para refrescar la lista reactivamente.
+   * **CÓDIGO DE SEGUIMIENTO**: `87a1abce-3ea4-45ac-b52b-a491d7972b7e` [Copiar].
 4. **Tarjeta Explicativa ("Por qué un pago aparece como transferencia")**:
    * *"Cada prestador tiene una cuenta recaudadora en este banco, así que pagar un servicio es transferirle dinero. Por eso el detalle de un pago se ve en la pantalla de la transferencia: es la misma operación, con los mismos pasos y con la misma devolución automática si el pago falla."*
-5. **Efecto Neto en el Balance del Cliente**:
-   * **Cuenta Monetaria (`...d6e822`)**: Saldo previo `Q 700.00` - `Q 300.00` = **`Q 400.00`**.
-   * **Cuenta de Ahorro (`afd97145...`)**: Saldo intacto en **`Q 700.00`** (sin afectación por tratarse de cuentas bancarias aisladas).
-   * **Patrimonio Consolidado**: **`Q 1,100.00`** en custodia institucional.
 
 ---
 
@@ -933,7 +930,7 @@ Al iniciar sesión con las credenciales de cajero receptor, el sistema presenta 
 
 #### Paso 37: Directorio Bancario de Clientes (`/clientes`)
 
-Al ingresar a la sección de **Clientes**, el cajero visualiza tanto las herramientas de gestión de expedientes como el listado completo de clientes registrados.
+Al ingresar a la sección de **Clientes** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/clientes`), el cajero visualiza las herramientas de gestión de expedientes y el listado consolidado de clientes registrados en el sistema.
 
 ![Directorio bancario de clientes](../images/user-manual/08-clientes-directorio-cajero.png)
 
@@ -943,55 +940,55 @@ Al ingresar a la sección de **Clientes**, el cajero visualiza tanto las herrami
 3. **Abrir la ficha de un cliente**: Campo de búsqueda por UUID para acceder directamente al expediente bancario de un titular.
 
 ##### Directorio de Clientes Registrados:
-* La tabla presenta el listado consolidado de titulares:
-  * **Fila 1 (Cliente del Ejemplo Principal)**:
-    * **Cliente / Nombre**: `Enner Esai Mendizabal Castro` (`@ennermendizabal`).
-    * **No. Cliente (UUID)**: `b165d73d-a709-4dd4-9620-688ea75219a3` (con botón de copia rápida).
-    * **Correo electrónico**: `enneresamen@gmail.com`.
-    * **Rol**: `CLIENTE`.
-    * **Estado de Identidad**: Badge en color amarillo **"Pendiente"**, confirmando que su documento aún no ha sido dictaminado.
-    * **Acciones disponibles**: Botones **"Ficha"** y **"Abrir cuenta"**.
-  * **Filas 2, 3 y 4 (Clientes Pre-sembrados y Staff)**:
-    * Muestra a `Clara Cliente`, `Marco Tulio Lopez Medina` y `Carlos Cajero` con su respectivo badge verde **"Verificada"**.
+La tabla presenta el listado consolidado de titulares con sus roles y estados de verificación:
+* **Juanita** (`@ennermendizabal`): `enneresamen@gmail.com` | `CLIENTE` | Badge verde **Verificado** | [Ficha] [Abrir cuenta]
+* **Luisito Comunica** (`@luisitocomunica`): `luisitocomunica@test.com` | `CLIENTE` | Badge verde **Verificado** | [Ficha] [Abrir cuenta]
+* **Clara Cliente** (`@clara`): `cliente@bankusac.gt` | `CLIENTE` | Badge verde **Verificado** | [Ficha] [Abrir cuenta]
+* **Marco Tulio Lopez Medina** (`@marcotulio`): `2895884051401@ingenieria.usac.edu.gt` | `CLIENTE` | Badge verde **Verificado** | [Ficha] [Abrir cuenta]
+* **Carlos Cajero** (`@cajero`): `cajero@bankusac.gt` | `CAJERO_RECEPTOR` | Badge verde **Verificado** | [Ficha]
+* **Ana Administradora** (`@admin`): `admin@bankusac.gt` | `ADMINISTRADOR` | Badge verde **Verificado** | [Ficha]
 
 ---
 
 #### Paso 38: Cola de Clientes en Espera de Validación (`/clientes/validaciones`)
 
-Al hacer clic en **"Revisar la cola"** o **"Ver la cola"**, el cajero ingresa a la bandeja de trabajo de verificación documental.
+Al hacer clic en **"Ver la cola"**, el cajero ingresa a la bandeja de trabajo de verificación documental (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/clientes/validaciones`).
 
 ![Cola de validación de identidad](../images/user-manual/09-clientes-validaciones-cola.png)
 
-##### Elementos y Acciones:
-1. **Título y Descripción**:
-   * **"Validación de identidad"** — *"Clientes registrados que esperan revisión de su documento."*
-2. **Tarjeta de Solicitud**:
-   * Muestra el nombre del solicitante: **Enner Esai Mendizabal Castro** y su correo registrado `enneresamen@gmail.com`.
-3. **Acción**:
-   * Botón **"Revisar →"**: Abre el expediente específico de validación (`/clientes/validaciones/b165d73d-a709-4dd4-9620-688ea75219a3`).
+##### Estado de la Cola de Trabajo:
+* **"No hay identidades por revisar"**: La cola se encuentra completamente al día tras procesar las solicitudes entrantes.
+* Leyenda operativa: *"Cuando un cliente complete su registro con foto de DPI aparecerá aquí para validación."*
 
 ---
 
 #### Paso 39: Mesa de Revisión y Veredicto de Identidad (`/clientes/validaciones/[id]`)
 
-En esta pantalla crítica de seguridad bancaria, el cajero realiza el cotejo entre la imagen del DPI almacenada en MinIO y los datos ingresados en el formulario.
+En esta pantalla crítica de seguridad bancaria, el cajero realiza el cotejo entre la imagen del DPI almacenada de forma segura en MinIO y los datos declarados por el cliente.
+
+##### A. Revisión Previa al Veredicto:
 
 ![Mesa de revisión de identidad](../images/user-manual/10-clientes-revision-identidad.png)
 
-##### Datos y Elementos en Pantalla:
-1. **Panel Izquierdo — "Documento cargado"**:
-   * Renderiza la imagen digitalizada del DPI enviada por el cliente desde el almacenamiento de objetos seguro (MinIO).
-2. **Panel Derecho — "Datos declarados"**:
-   * **Nombre completo**: `Enner Esai Mendizabal Castro`
-   * **Número de documento**: `1212121212121`
-   * **Fecha de nacimiento**: `2005-06-01`
-   * **Dirección**: `chayanne`
-   * **Usuario**: `ennermendizabal`
-   * **Estado de identidad**: Badge **"Pendiente de revisión"** (amarillo).
-3. **Acciones de Decisión Operativa**:
-   * **"Aprobar identidad"** (botón principal): Emite el evento `customer.identity.validated.v1`, actualiza el estado del cliente a `VALIDATED` y activa la emisión del token de activación por correo electrónico (recibido en el Paso 7).
-   * **"Rechazar"** (botón secundario rojo): Deniega la solicitud en caso de ilegibilidad o falsedad documental, notificando el motivo al cliente.
-   * **"Volver a validaciones"**: Permite regresar a la cola sin emitir veredicto.
+* **Documento cargado**: Visualizador seguro de la foto del documento subida por el titular.
+* **Datos declarados**:
+  * **Nombre completo**: `Luisito Comunica`
+  * **Número de documento**: `1111111111111`
+  * **Fecha de nacimiento**: `1995-08-22`
+  * **Dirección**: `Mexico`
+  * **Usuario**: `luisitocomunica`
+  * **Estado de identidad**: Badge amarillo **"Pendiente de revisión"**.
+* **Acciones de Decisión Operativa**: Botón **"Aprobar identidad"** y botón **"Rechazar"**.
+
+##### B. Confirmación de Identidad Aprobada:
+Al pulsar **"Aprobar identidad"**, el sistema emite el evento asíncrono de verificación y actualiza el expediente en tiempo real:
+
+![Identidad aprobada exitosamente](../images/user-manual/10b-clientes-identidad-aprobada-exito.png)
+
+* **Banner de Éxito**: *"Identidad aprobada — El veredicto de validación ha sido procesado exitosamente."*
+* **Estado de Identidad**: Badge verde **"Identidad verificada"**.
+* **Tarjeta de Confirmación**: *"El documento fue aprobado y se emitió el correo de activación para el cliente."*
+* **Navegación**: Botón **"Volver a la cola de validaciones"**.
 
 ---
 
@@ -1084,35 +1081,36 @@ Al ingresar al enlace, el cliente activa su cuenta y queda listo para iniciar se
 
 ---
 
-#### Paso 45: Ficha Técnica y Modificación de Datos del Cliente (`/clientes/[id]`)
+#### Paso 45: Ficha Técnica y Expediente KYC del Cliente (`/clientes/[id]`)
 
-Tanto los cajeros como los administradores pueden consultar el expediente individual de cualquier cliente registrado para revisar su estado de validación o actualizar datos de contacto permitidos.
+Tanto los cajeros como los administradores pueden consultar el expediente individual de cualquier cliente registrado para revisar su estado de verificación o actualizar datos de contacto permitidos (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/clientes/f24cd304-5936-4882-83f8-1ba0fae5523c`).
 
 ![Ficha técnica del cliente](../images/user-manual/16-ficha-cliente-ventanilla.png)
 
 ##### Datos y Estructura en Pantalla:
 1. **Panel Izquierdo — "Datos personales"**:
    * **Campos Inmutables por Seguridad**:
-     * **Correo**: `deennerparaprobar@gmail.com`
+     * **Correo**: `luisitocomunica@test.com`
      * **Usuario**: `luisitocomunica`
-     * *(Por normativa bancaria estricta, el correo y el nombre de usuario no son modificables desde la ficha para proteger la identidad del titular).*
+     * *(Por normativa bancaria estricta, el correo y el nombre de usuario no son modificables desde la ficha para proteger la trazabilidad de la identidad).*
    * **Datos Registrados**:
-     * **Nombre**: `luisito comunica`
-     * **Documento**: `3223322332323`
-     * **Nacimiento**: `1988-07-01`
-     * **Dirección**: `mexicocu`
+     * **Nombre**: `Luisito Comunica`
+     * **Documento**: `1111111111111`
+     * **Nacimiento**: `1995-08-22`
+     * **Dirección**: `Mexico`
      * **Rol**: `Cliente`
      * **Identidad**: `Identidad verificada`
    * **Formulario de Actualización**:
-     * Permite ingresar un nuevo **Nombre completo**, **Dirección** o **Fecha de nacimiento** con selector de calendario. Los campos vacíos preservan los datos actuales sin cambios.
+     * Permite ingresar un nuevo **Nombre completo**, **Dirección** o **Fecha de nacimiento** con selector de calendario. Los campos vacíos preservan los datos actuales sin modificaciones.
    * **Control de Idempotencia**:
-     * Código de operación: `45bd6735-01b4-4573-a36a-877b1c082a31`.
-     * Botón **"Guardar cambios"**: Aplica las modificaciones de forma segura.
-2. **Panel Derecho — "Validación de identidad"**:
-   * **Badge de Estado**: Verde **"Identidad verificada"**.
-   * **Descripción**: *"El documento de identificación ha sido verificado satisfactoriamente."*
-   * **Número de cliente**: `3809b1a4-0deb-4da3-8a12-e1bd8cfab72d`.
+     * Código de operación: `759cd85f-422d-4ed4-a625-b65a5772ca5a`.
+     * Botón **"Guardar cambios"**: Aplica las modificaciones atómicamente.
+2. **Panel Derecho — "Estado de Verificación (KYC)"**:
+   * **Badge de Estado**: Verde **"Verificado"**.
+   * **Dictamen Normativo**: *"Expediente e identidad aprobados. El cliente cuenta con acceso habilitado para operar transferencias, pagos y cuentas."*
+   * **Número de cliente**: `f24cd304-5936-4882-83f8-1ba0fae5523c`.
    * **Usuario**: `luisitocomunica`.
+   * **Acceso a Expediente**: Enlace *"Ver documento de identidad adjunto →"*.
 
 ---
 
@@ -1305,10 +1303,29 @@ El cajero accede a la sección de **Transferencias** en el menú lateral para co
 1. **Botones de Control Superior**:
    * **"Monitoreo"**: Enlace directo a la vista de seguimiento de la Saga coreografiada y estado de las colas de mensajería.
    * **"Nueva transferencia"**: Permite iniciar una nueva transferencia entre cuentas autorizadas.
-2. **Tarjeta "Historial de operaciones de clientes"**:
-   * En este momento inicial no se han efectuado transferencias entre clientes: *"No hay transferencias registradas. Aún no se han procesado movimientos de transferencia entre cuentahabientes en el sistema."*
-   * Botón interior: **"Registrar transferencia"**.
-   * CÓDIGO DE SEGUIMIENTO: `db13f64e-0fbf-4ded-b52b-5e6d7fe4f5ab` [Copiar].
+2. **Tabla "Historial de operaciones de clientes"**:
+   El cajero cuenta con visibilidad global de las transferencias ejecutadas por los cuentahabientes, permitiendo identificar estados terminales y transiciones de la Saga:
+
+| FECHA | ORIGEN → DESTINO | ESTADO | MONTO | ACCIÓN |
+| :--- | :--- | :---: | :---: | :--- |
+| `22/09/2026, 6:01 p. m.` | `Juanita → Clara Cliente` | `Completada` (Badge Verde) | **Q 30.00** | [Ver →] |
+| `22/09/2026, 6:01 p. m.` | `Juanita → Clara Cliente` | `Compensada` (Badge Rosa) | **Q 40.00** | [Ver →] |
+| `22/09/2026, 6:00 p. m.` | `Juanita → Clara Cliente` | `Compensada` (Badge Rosa) | **Q 30.00** | [Ver →] |
+| `22/09/2026, 5:41 p. m.` | `Clara Cliente → Clara Cliente` | `Fallida` (Badge Rojo) | **Q 999,900.00** | [Ver →] |
+| `22/09/2026, 7:38 a. m.` | `Marco Tulio Lopez Medina → Clara Cliente` | `Compensada` (Badge Rosa) | **Q 50.00** | [Ver →] |
+| `22/09/2026, 7:37 a. m.` | `Marco Tulio Lopez Medina → Clara Cliente` | `Completada` (Badge Verde) | **Q 150.00** | [Ver →] |
+
+   * **CÓDIGO DE SEGUIMIENTO**: `140fd19e-a891-4198-a094-0ed020a3d251` [Copiar].
+
+##### B. Filtrado Reactivo de Incidencias Operativas (Estado: "Fallida" / Compensaciones):
+El cajero puede aislar ágilmente aquellas transacciones que presentaron anomalías (fondos insuficientes o fallos de pago con compensación automática):
+
+![Historial de transferencias filtrado por fallida](../images/user-manual/25b-transferencias-cajero-filtrado-fallida.png)
+
+* **Filtro seleccionado**: **"Fallida"**.
+* **Transacciones aisladas**: Muestra las 3 compensaciones de la Saga (`Q 40.00`, `Q 30.00` y `Q 50.00`) y el intento fallido por fondos insuficientes de `Q 999,900.00`.
+* **Control**: Botón **"Limpiar filtros"** para restaurar la vista global de transferencias.
+
 3. **Tarjeta "Consultar una transferencia"**:
    * Herramienta de soporte rápido para ventanilla: permite ingresar un **Número de operación** (UUID de 36 caracteres) para verificar si una transacción enviada por un cliente fue completada, compensada por fallo de débito o se encuentra pendiente de liquidación.
    * Botón: **"Ver el estado"**.
@@ -1561,7 +1578,7 @@ Este módulo cubre la supervisión global de la plataforma bancaria, la gestión
 
 #### Paso 66: Panel de Control del Administrador (Dashboard) — Métricas Institucionales y Alertas Operativas (`/`)
 
-Al autenticarse con el rol de Administrador (`http://localhost:3010`), el sistema despliega el centro de mando y telemetría global del banco, consolidando los indicadores de todos los microservicios en tiempo real.
+Al autenticarse con el rol de Administrador (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app`), el sistema despliega el centro de mando y telemetría global del banco, consolidando los indicadores de todos los microservicios en tiempo real.
 
 ![Dashboard del Administrador](../images/user-manual/admin-01-dashboard.png)
 
@@ -1570,32 +1587,32 @@ Al autenticarse con el rol de Administrador (`http://localhost:3010`), el sistem
    * Saludo de sesión: *"Hola, admin. Estás operando como Administrador."*
    * Avatar superior con indicación de rol `A admin` y barra lateral completa con acceso a: **Inicio**, **Usuarios**, **Cuentas**, **Transferencias**, **Pagos** y **Auditoría**.
 2. **Fila de Indicadores Clave de Desempeño (KPIs)**:
-   * **CLIENTES REGISTRADOS**: Contador en **`6`** (`0 sin validar`). Confirma que todos los expedientes procesados (Enner, Luisito, Clara, Marco Tulio, etc.) se encuentran debidamente validados y verificados documentalmente.
-   * **CUENTAS ACTIVAS**: Contador en **`6`** (`0 inactivas`), reflejando la totalidad de cuentas monetarias y de ahorro operativas en el sistema.
-   * **TRANSFERENCIAS HOY**: **`5`** operaciones registradas (`4 completadas`).
-   * **PAGOS PROCESADOS**: **`5`** transacciones tramitadas (`4 exitosos`).
+   * **CLIENTES REGISTRADOS**: Contador en **`6`** (`0 sin validar`). Confirma que todos los expedientes procesados (Juanita, Luisito Comunica, Clara Cliente, Marco Tulio, etc.) se encuentran validados con KYC verificado.
+   * **CUENTAS ACTIVAS**: Contador en **`5`** (`0 inactivas`), reflejando la totalidad de cuentas monetarias y de ahorro operativas en el sistema.
+   * **TRANSFERENCIAS HOY**: **`4`** operaciones registradas (`2 completadas`).
+   * **PAGOS PROCESADOS**: **`4`** transacciones tramitadas (`2 exitosos`).
 3. **Tarjeta "Estados de operaciones"**:
    * Desglose transaccional del día:
-     * **`4` Completadas hoy** (en verde): Transferencias directas y pagos de servicios aprobados.
+     * **`2` Completadas hoy** (en verde): Transferencias directas liquidadas con éxito.
      * **`0` En proceso** (en amarillo): Ninguna operación retenida en la cola asíncrona de RabbitMQ.
-     * **`1` Fallidas y compensadas hoy** (en rojo): Registra con precisión la transacción de prueba evaluada en el Paso 25, donde el rechazo forzado del cobro activó la compensación automática de la Saga.
+     * **`2` Fallidas y compensadas hoy** (en rojo): Registra con precisión las transacciones de prueba donde la simulación de falla o timeout activó la compensación automática de la Saga.
 4. **Tarjeta "Alertas operativas" (Detección de Compensaciones)**:
    * Acceso directo: **"Ir a auditoría →"** (`/auditoria`).
-   * Alerta ámbar activa: **`1 transferencias compensadas hoy`**.
+   * Alerta ámbar activa: **`2 transferencias compensadas hoy`**.
    * Regla de negocio visible en pantalla: *"El dinero salió y volvió. Cada una deja dos movimientos en el estado de cuenta del cliente, que probablemente los vea antes que nosotros."*
    * Enlace: **"Ver →"** para inspeccionar la traza del incidente.
 5. **Auditoría de Actividad Global y Telemetría**:
-   * Contador: **`51 Eventos registrados hoy`** en el servicio de auditoría inmutable (`notification-audit-service`).
-   * Registro más reciente en tiempo real: `Último: customer.login.succeeded.v1 · 3/09/2026, 9:45 p. m.`
+   * Contador: **`91 Eventos registrados hoy`** en el servicio de auditoría inmutable (`notification-audit-service`).
+   * Registro más reciente en tiempo real: `Último: customer.login.succeeded.v1 · 22/09/2026, 6:07 p. m.`
 6. **Trazabilidad**:
    * Botón: **"Actualizar"** para sondeo dinámico sin refrescar la página.
-   * **CÓDIGO DE SEGUIMIENTO**: `204c5724-52d9-4957-a158-ce74e5b77813` [Copiar].
+   * **CÓDIGO DE SEGUIMIENTO**: `dc1b5ee4-d4d8-4617-8439-7862c90cd7a1` [Copiar].
 
 ---
 
 #### Paso 67: Directorio Administrativo de Usuarios del Sistema (`/clientes` o `/usuarios`)
 
-El administrador hace clic en **"Usuarios"** en el menú lateral (`http://localhost:3010/clientes`) para gestionar el padrón de usuarios, revisar expedientes y supervisar la jerarquía de roles bancarios.
+El administrador hace clic en **"Usuarios"** en el menú lateral (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/usuarios`) para gestionar el padrón de usuarios, revisar expedientes y supervisar la jerarquía de roles bancarios.
 
 ![Directorio administrativo de usuarios](../images/user-manual/admin-02-usuarios-directorio.png)
 
@@ -1606,11 +1623,11 @@ El administrador hace clic en **"Usuarios"** en el menú lateral (`http://localh
 
 ##### Directorio Bancario de Usuarios Registrados:
 La tabla exhibe el catálogo íntegro de identidades del sistema con su estado de verificación:
-* **Fila 1 (`luisito comunica`)**: `@luisitocomunica` | UUID: `3809b1a4-0deb-4da3-8a12-e1bd8cfab72d` | Correo: `deennerparaprobar@gmail.com` | Rol: `CLIENTE` | Identidad: `Verificada` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
-* **Fila 2 (`Ennercito`)**: `@ennermendizabal` (refleja el cambio de nombre efectuado en el Paso 33) | UUID: `b165d73d-a709-4dd4-9620-688ea75219a3` | Correo: `enneresamen@gmail.com` | Rol: `CLIENTE` | Identidad: `Verificada` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
-* **Fila 3 (`Clara Cliente`)**: `@cliente` | UUID: `a0000000-0000-4000-8000-000000000005` | Correo: `cliente@bankusac.gt` | Rol: `CLIENTE` | Identidad: `Verificada` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
-* **Fila 4 (`Marco Tulio Lopez Medina`)**: `@marcotulio` | UUID: `a0000000-0000-4000-8000-000000000003` | Correo: `2895884051401@ingenieria.usac.edu.gt` | Rol: `CLIENTE` | Identidad: `Verificada` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
-* **Fila 5 (`Carlos Cajero`)**: `@cajero` | UUID: `a0000000-0000-4000-8000-000000000002` | Correo: `cajero@bankusac.gt` | Rol: `CAJERO_RECEPTOR` | Identidad: `Verificada` (verde) | Acción: `Ficha`.
+* **Fila 1 (`Juanita`)**: `@ennermendizabal` | UUID: `b165d73d-26f6-406d-ad7d-01a45362ff37` [Copiar] | Correo: `enneresamen@gmail.com` | Rol: `CLIENTE` | Identidad: `Verificado` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
+* **Fila 2 (`Luisito Comunica`)**: `@luisitocomunica` | UUID: `f1933d0e-3396-4502-81f8-1ba06ec9529c` [Copiar] | Correo: `luisitocomunica@test.com` | Rol: `CLIENTE` | Identidad: `Verificado` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
+* **Fila 3 (`Clara Cliente`)**: `@cliente` | UUID: `a0000000-0000-4000-8000-000000000005` [Copiar] | Correo: `cliente@bankusac.gt` | Rol: `CLIENTE` | Identidad: `Verificado` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
+* **Fila 4 (`Marco Tulio Lopez Medina`)**: `@marcotulio` | UUID: `a0000000-0000-4000-8000-000000000003` [Copiar] | Correo: `2895884051401@ingenieria.usac.edu.gt` | Rol: `CLIENTE` | Identidad: `Verificado` (verde) | Acciones: `Ficha`, `Abrir cuenta`.
+* **Fila 5 (`Carlos Cajero`)**: `@cajero` | UUID: `a0000000-0000-4000-8000-000000000002` [Copiar] | Correo: `cajero@bankusac.gt` | Rol: `CAJERO_RECEPTOR` | Identidad: `Verificado` (verde) | Acción: `Ficha`.
 * **Fila 6 (`Ana Administradora`)**: `@admin` | Rol: `ADMINISTRADOR`.
 
 ---
@@ -1717,7 +1734,7 @@ Al presionar **"Crear cuenta"**, `customer-service` procesa el registro, asigna 
 
 #### Paso 72: Directorio General de Usuarios con Nuevo Agente Cajero Incorporado (`/clientes` o `/usuarios`)
 
-Al retornar al directorio de **Usuarios** (`http://localhost:3010/clientes`), el administrador constata que el nuevo agente cajero ha sido dado de alta formalmente en la nómina del banco y se encuentra listo para operar una vez active sus credenciales.
+Al retornar al directorio de **Usuarios** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/usuarios`), el administrador constata que el nuevo agente cajero ha sido dado de alta formalmente en la nómina del banco y se encuentra listo para operar una vez active sus credenciales.
 
 ![Directorio de usuarios con nuevo cajero Luquitas](../images/user-manual/admin-07-usuarios-directorio-con-cajero-luquitas.png)
 
@@ -1736,7 +1753,7 @@ Al retornar al directorio de **Usuarios** (`http://localhost:3010/clientes`), el
 
 #### Paso 73: Directorio General de Cuentas y Supervisión Administrativa del Saldo Custodiado (`/cuentas`)
 
-Al ingresar a la sección de **Cuentas** (`http://localhost:3010/cuentas`), el administrador accede al inventario consolidado de productos financieros del banco.
+Al ingresar a la sección de **Cuentas** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/cuentas`), el administrador accede al inventario consolidado de productos financieros del banco.
 
 > **Principio de Jerarquía Operativa**: El administrador cuenta con todas las facultades operativas del cajero receptor (puede registrar depósitos con **"Depósito"** y abrir cuentas con **"Abrir cuenta"**), pero dispone adicionalmente de herramientas de gobierno institucional como el botón de **"Gestión de cuentas"** para el control de estados y supervisión global del pasivo bancario.
 
@@ -1745,27 +1762,25 @@ Al ingresar a la sección de **Cuentas** (`http://localhost:3010/cuentas`), el a
 ##### Elementos y Métricas Observadas en Pantalla:
 1. **Encabezado y Saldo Institucional**:
    * **Título**: **"Cuentas de clientes"** (*"Cuentas monetarias y de ahorro de los clientes del banco."*).
-   * **Saldo total custodiado**: Muestra en tiempo real **`Q 10,500.00`**, reflejando con estricta exactitud matemática el balance acumulado de todos los depósitos, transferencias y pagos de servicios liquidables ejecutados en los módulos anteriores.
+   * **Saldo total custodiado**: Muestra en tiempo real **`Q 10,369.00`**, reflejando con estricta exactitud matemática el balance acumulado de todos los depósitos, transferencias y pagos de servicios liquidables ejecutados en el sistema.
    * **Herramientas de Ventanilla Disponibles**:
      * Botón **"Depósito"**: Permite al administrador captar fondos y fondear cuentas en efectivo directamente.
      * Botón **"Abrir cuenta"**: Permite aperturar cuentas monetarias o de ahorro para clientes verificados.
 2. **Inventario de Cuentas Bancarias Registradas**:
-   * **Fila 1 (Cuenta de Ahorro de Enner)**: `AH Ahorro` | No. `afd97145-831e-40f7-92b6-a167b28c511a` | Estado: `ACTIVA` (verde) | Saldo: **`Q 700.00`** | [Ver detalle].
-   * **Fila 2 (Cuenta Monetaria de Enner)**: `MO Monetaria` | No. `e80bd8e9-930a-4f5a-9f34-229cc6d6e822` | Estado: `ACTIVA` (verde) | Saldo: **`Q 400.00`** (saldo resultante exacto tras descontar la transferencia a ahorro de Q 700.00 y el pago de electricidad EEGSA de Q 300.00) | [Ver detalle].
-   * **Filas 3 a 6 (Cuentas Institucionales y de Otros Clientes)**:
-     * Ahorro `...0004`: `Q 400.00` (Clara Cliente).
-     * Monetaria `...0005`: `Q 2,500.00`.
-     * Ahorro `...0002`: `Q 1,500.00`.
-     * Monetaria `...0001`: `Q 5,000.00`.
+   * **Fila 1 (Cuenta de Ahorro de Juanita)**: `AH Ahorro` | No. `c3f38dab-12cd-4c55-ac9f-b2c61f02c83a` | Titular: Juanita (`b165d73d-26f6-406d-ad7d-01a45362ff37`) | Estado: `ACTIVA` (verde) | Saldo: **`Q 9.00`** | [Ver detalle].
+   * **Fila 2 (Cuenta de Ahorro de Clara Cliente)**: `AH Ahorro` | No. `b0000000-0000-4000-8000-000000000004` | Titular: Clara Cliente (`a0000000-0000-4000-8000-000000000005`) | Estado: `ACTIVA` (verde) | Saldo: **`Q 980.00`** | [Ver detalle].
+   * **Fila 3 (Cuenta Monetaria de Clara Cliente)**: `MO Monetaria` | No. `b0000000-0000-4000-8000-000000000003` | Titular: Clara Cliente (`a0000000-0000-4000-8000-000000000005`) | Estado: `ACTIVA` (verde) | Saldo: **`Q 2,650.00`** | [Ver detalle].
+   * **Fila 4 (Cuenta de Ahorro de Marco Tulio Lopez Medina)**: `AH Ahorro` | No. `b0000000-0000-4000-8000-000000000002` | Titular: Marco Tulio Lopez Medina (`a0000000-0000-4000-8000-000000000003`) | Estado: `ACTIVA` (verde) | Saldo: **`Q 1,500.00`** | [Ver detalle].
+   * **Fila 5 (Cuenta Monetaria de Marco Tulio Lopez Medina)**: `MO Monetaria` | No. `b0000000-0000-4000-8000-000000000001` | Titular: Marco Tulio Lopez Medina (`a0000000-0000-4000-8000-000000000003`) | Estado: `ACTIVA` (verde) | Saldo: **`Q 5,230.00`** | [Ver detalle].
 3. **Control Exclusivo del Administrador**:
    * Botón **"Gestión de cuentas"**: Redirige al submódulo administrativo (`/cuentas/administracion`) para aplicar bloqueos, reactivaciones o cierres preventivos de cuentas según requerimientos regulatorios.
-   * Botón **"Actualizar"** con código de seguimiento `0f1d9f6b-eb02-4d0e-b15a-b949cd97fb7e` [Copiar].
+   * Botón **"Actualizar"** con código de seguimiento `9de2751b-b8cd-4027-8fc5-fdab81eeb454` [Copiar].
 
 ---
 
 #### Paso 74: Consola Administrativa de Transferencias y Monitor de Operaciones (`/transferencias`)
 
-Al navegar a **Transferencias** en el menú lateral (`http://localhost:3010/transferencias`), el administrador visualiza la bitácora histórica de operaciones interbancarias y cuenta con herramientas avanzadas de fiscalización.
+Al navegar a **Transferencias** en el menú lateral (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias`), el administrador visualiza la bitácora histórica de operaciones interbancarias y cuenta con herramientas avanzadas de fiscalización.
 
 ![Historial de transferencias del administrador](../images/user-manual/admin-09-transferencias-historial.png)
 
@@ -1773,59 +1788,70 @@ Al navegar a **Transferencias** en el menú lateral (`http://localhost:3010/tran
 1. **Capacidades Operativas y Supervisoras**:
    * Botón **"Nueva transferencia"**: Al igual que un cajero, el administrador puede iniciar órdenes de traslado de fondos entre cuentas de clientes.
    * Botón **"Monitoreo"** (Función avanzada): Acceso directo al monitor de la Saga distribuida para inspeccionar la máquina de estados coreografiada y los eventos asíncronos en RabbitMQ.
+   * Filtro general desplegable: `Todos los estados`, con campos de fecha `Desde` y `Hasta` y botón `Limpiar filtros`.
 2. **Tabla "Historial de operaciones de clientes"**:
-   * **Fila 1 (Demostración de Falla y Compensación)**:
-     * Fecha: `3/09/2026, 9:43 p. m.`
-     * Origen $
-ightarrow$ Destino: `a167b28c511a -> 229cc6d6e822` (Ahorro Enner $
-ightarrow$ Monetaria Enner).
-     * Estado: Badge rosa/rojo **`Compensada`** (reflejo fiel de la transacción revertida en el Paso 25).
-     * Monto: **`Q 200.00`** | Enlace: **`Ver →`**.
-   * **Fila 2 (Traslado entre Cuentas Propias)**:
-     * Fecha: `3/09/2026, 9:42 p. m.`
-     * Origen $
-ightarrow$ Destino: `229cc6d6e822 -> a167b28c511a` (Monetaria $
-ightarrow$ Ahorro).
+   * **Fila 1 (Transferencia Exitosa Reciente)**:
+     * Fecha: `22/09/2026, 6:01 p. m.`
+     * Origen $\rightarrow$ Destino: `Juanita → Clara Cliente` (`...-b2c61f02c83a → ...-000000000004`).
      * Estado: Badge verde **`Completada`**.
-     * Monto: **`Q 700.00`** | Enlace: **`Ver →`**.
-   * **Fila 3 (Transferencia de Terceros)**:
-     * Fecha: `3/09/2026, 9:33 p. m.`
-     * Origen $
-ightarrow$ Destino: `000000000004 -> 229cc6d6e822` (Clara Cliente $
-ightarrow$ Enner Mendizabal).
+     * Monto: **`Q 30.00`** | Enlace: **`Ver →`**.
+   * **Fila 2 (Demostración de Reintento y Compensación)**:
+     * Fecha: `22/09/2026, 6:01 p. m.`
+     * Origen $\rightarrow$ Destino: `Juanita → Clara Cliente` (`...-b2c61f02c83a → ...-000000000004`).
+     * Estado: Badge rosa/rojo **`Compensada`**.
+     * Monto: **`Q 40.00`** | Enlace: **`Ver →`**.
+   * **Fila 3 (Compensación por Rechazo Forzado de Pago)**:
+     * Fecha: `22/09/2026, 6:00 p. m.`
+     * Origen $\rightarrow$ Destino: `Juanita → Clara Cliente` (`...-b2c61f02c83a → ...-000000000004`).
+     * Estado: Badge rosa/rojo **`Compensada`**.
+     * Monto: **`Q 30.00`** | Enlace: **`Ver →`**.
+   * **Fila 4 (Transferencia Rechazada por Saldo Insuficiente)**:
+     * Fecha: `22/09/2026, 5:41 p. m.`
+     * Origen $\rightarrow$ Destino: `Clara Cliente → Clara Cliente` (`...-000000000003 → ...-000000000004`).
+     * Estado: Badge rojo **`Fallida`**.
+     * Monto: **`Q 999,990.00`** | Enlace: **`Ver →`**.
+   * **Fila 5 (Transferencia Previa Compensada)**:
+     * Fecha: `22/09/2026, 7:38 a. m.`
+     * Origen $\rightarrow$ Destino: `Marco Tulio Lopez Medina → Clara Cliente` (`...-000000000001 → ...-000000000003`).
+     * Estado: Badge rosa/rojo **`Compensada`**.
+     * Monto: **`Q 50.00`** | Enlace: **`Ver →`**.
+   * **Fila 6 (Transferencia Previa Completada)**:
+     * Fecha: `22/09/2026, 7:37 a. m.`
+     * Origen $\rightarrow$ Destino: `Marco Tulio Lopez Medina → Clara Cliente` (`...-000000000001 → ...-000000000003`).
      * Estado: Badge verde **`Completada`**.
-     * Monto: **`Q 400.00`** | Enlace: **`Ver →`**.
+     * Monto: **`Q 150.00`** | Enlace: **`Ver →`**.
 3. **Buscador Directo de Operaciones**:
    * Tarjeta **"Consultar una transferencia"**: Permite ingresar un `transactionId` arbitrario (`00000000-0000-4000-8000-000000000000`) para consultar el estado en curso de transferencias que aún no se reflejen en la vista paginada.
    * Botón **"Ver el estado"**.
 4. **Trazabilidad**:
-   * **CÓDIGO DE SEGUIMIENTO**: `236d290e-165f-4328-9781-b12970fc88cc` [Copiar].
+   * Botón: **"Actualizar"**.
+   * **CÓDIGO DE SEGUIMIENTO**: `61193021-339b-4222-869c-6cc10fc150d8` [Copiar].
 
 ---
 
-#### Paso 75: Módulo Administrativo de Pagos de Servicios y Supervisión de Facturadores (`/pagos`)
+#### Paso 75: Módulo de Pagos de Servicios y Supervisión de Facturadores (`/pagos`)
 
-El administrador ingresa a **Pagos** (`http://localhost:3010/pagos`) para fiscalizar la liquidación de facturas hacia entidades externas (telefonía, electricidad, agua).
+El personal del banco ingresa a **Pagos** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/pagos`) para fiscalizar la liquidación de facturas hacia entidades externas (telefonía, electricidad, agua).
 
 ![Historial de pagos del administrador](../images/user-manual/admin-10-pagos-historial.png)
 
 ##### Funciones y Registros en Pantalla:
 1. **Acciones Operativas y Supervisión**:
    * Botón **"Nuevo pago"**: Capacidad de procesar el pago de cualquier factura pública cargada a cuentas bancarias institucionales o de clientes.
-   * Botón **"Monitoreo"** (Función exclusiva): Permite abrir el panel de observabilidad de `payment-service` para verificar los cobros procesados, las respuestas de los proveedores y la escalera de reintentos.
+   * Botón **"Monitoreo"**: Abre el panel de observabilidad de `payment-service` para verificar los cobros procesados, las respuestas de los proveedores y la escalera de reintentos.
 2. **Tabla "Historial de pagos"**:
-   * **Fila 1 (Factura de Electricidad EEGSA)**:
-     * Fecha: `3/09/2026, 9:44 p. m.`
-     * Servicio: `EEGSA · Energía eléctrica` con etiqueta amarilla **`Externo`**.
-     * Estado: Badge verde **`Completada`**.
-     * Monto: **`Q 300.00`** | Enlace: **`Ver →`**.
-   * **Fila 2 (Factura de Telefonía Claro)**:
-     * Fecha: `3/09/2026, 9:38 p. m.`
+   * **Fila 1 (Factura de Telefonía Claro)**:
+     * Fecha: `22/09/2026, 6:03 p. m.`
      * Servicio: `Claro · Telefonía` con etiqueta amarilla **`Externo`**.
      * Estado: Badge verde **`Completada`**.
-     * Monto: **`Q 500.00`** | Enlace: **`Ver →`**.
+     * Monto: **`Q 55.00`** | Enlace: **`Ver →`**.
+   * **Fila 2 (Factura de Electricidad EEGSA)**:
+     * Fecha: `22/09/2026, 7:38 a. m.`
+     * Servicio: `EEGSA · Energía eléctrica` con etiqueta amarilla **`Externo`**.
+     * Estado: Badge verde **`Completada`**.
+     * Monto: **`Q 120.00`** | Enlace: **`Ver →`**.
 3. **Trazabilidad**:
-   * **CÓDIGO DE SEGUIMIENTO**: `99c69db3-8b73-453b-805c-76bc9e08b54e` [Copiar].
+   * **CÓDIGO DE SEGUIMIENTO**: `e15a4079-8f38-4ebd-85e2-18e4b355d1c9` [Copiar].
 4. **Tarjeta Explicativa ("Por qué un pago aparece como transferencia")**:
    * Explica que cada proveedor externo posee una cuenta recaudadora en el banco, por lo que las facturas se liquidan como transferencias bajo el patrón Saga con reversión automática garantizada en caso de error.
 
@@ -1833,7 +1859,7 @@ El administrador ingresa a **Pagos** (`http://localhost:3010/pagos`) para fiscal
 
 #### Paso 76: Pista de Auditoría Transversal de Eventos del Sistema (`/auditoria`)
 
-Al acceder a la sección de **Auditoría** (`http://localhost:3010/auditoria`), el administrador ingresa a la herramienta forense y de cumplimiento más potente del sistema, exclusiva de este rol.
+Al acceder a la sección de **Auditoría** (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/auditoria`), el administrador ingresa a la herramienta forense y de cumplimiento más potente del sistema, exclusiva de este rol.
 
 ![Pista de auditoría transversal](../images/user-manual/admin-11-auditoria-eventos-inicio.png)
 
@@ -1842,44 +1868,60 @@ Al acceder a la sección de **Auditoría** (`http://localhost:3010/auditoria`), 
    * **Título**: **"Auditoría de eventos"** (*"El rastro completo de una operación, por su código de seguimiento."*).
    * Botón superior derecho: **"Consola de notificaciones"** para auditar el canal de entrega de correos y alertas emitidas a los usuarios.
 2. **Búsqueda Forense por Código de Seguimiento (`correlationId`)**:
-   * Campo de consulta con el identificador ingresado: `7d41e8b2-9a3f-4c15-8ee8-1b2f9a4c7d18`.
+   * Campo de consulta con el identificador ingresado: `7d41c8b2-9a3f-4c15-8cc0-1b2f9a4c7d10`.
    * Botón: **"Consultar"**.
    * Descripción técnica: *"Es el identificador que acompaña a cada operación: aparece en la pantalla de la transferencia, en el registro de un pago y en cada aviso de error."*
-3. **Registro Cronológico Global**:
+3. **Tarjetas de Severidad Global**:
+   * **Info hoy**: **`70`** eventos de severidad informativa procesados.
+   * **Advertencia hoy**: **`12`** eventos de advertencia detectados.
+   * **Error hoy**: **`9`** eventos de error capturados y aislados sin afectación en cascada.
+4. **Registro Cronológico Global**:
    * Tarjeta **"Últimos eventos del sistema"**: Navegación paginada con 10 eventos por página que consulta directamente los registros inmutables de `notification-audit-service`.
+   * Filtro por severidad: Desplegable `Todas las severidades`.
    * Botón: **"Actualizar"**.
-4. **Principio de Trazabilidad de Extremo a Extremo**:
-   * Tarjeta informativa: *"Cada operación del sistema —un registro, una transferencia, un pago— lleva un identificador que la acompaña por los cinco servicios. Con él, esta pantalla arma la historia completa: qué se publicó, quién lo publicó, en qué orden y qué se le avisó al cliente."*
-   * **Privacidad y Redacción**: Ningún payload expone contraseñas en claro, tokens desprotegidos ni información confidencial; los eventos se almacenan previamente redactados para cumplir con normativas de seguridad financiera.
+   * Desglose de eventos procesados en pantalla:
+     1. `customer.login.succeeded.v1` (`customer-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     2. `customer.kyc.verified.v1` (`customer-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     3. `customer.identity.validated.v1` (`customer-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     4. `transaction.completed.v1` (`transaction-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     5. `account.credited.v1` (`account-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     6. `payment.succeeded.v1` (`payment-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     7. `account.commission.charged.v1` (`account-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     8. `account.debited.v1` (`account-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     9. `customer.kyc.checked.v1` (`customer-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
+     10. `transaction.initiated.v1` (`transaction-service`) | Estado: `PROCESSED` | Severidad: `info` | [Ver rastro].
 
 ---
 
 #### Paso 77: Búsqueda Forense y Consulta de Eventos por Identificador de Correlación (`/auditoria`)
 
-Al ingresar un código de seguimiento (`correlationId`) y presionar **"Consultar"**, el sistema reconstruye toda la traza de eventos distribuidos de la operación a través del intercambio de mensajería asíncrona en RabbitMQ.
+Al presionar **"Ver rastro"** o ingresar un código de seguimiento (`correlationId`) y presionar **"Consultar"**, el sistema despliega el rastro distribuido completo de la operación seleccionada a través del intercambio de mensajería asíncrona.
 
 ![Búsqueda y consulta forense de eventos](../images/user-manual/admin-12-auditoria-eventos-consulta.png)
 
 ##### Capacidades Forenses y Elementos en Pantalla:
-1. **Entrada de Consulta Forense**:
-   * Campo de búsqueda con el código ingresado: `7d41e8b2-9a3f-4c15-8ee8-1b2f9a4c7d18`.
-   * Botón interactivo **"Consultar"**: Emite la consulta asíncrona hacia el servicio de auditoría para recolectar cronológicamente cada mensaje emitido por los 5 microservicios (`Customer`, `Account`, `Transaction`, `Payment`, `Notification`).
-2. **Paginación Global y Monitoreo de Eventos**:
-   * Módulo **"Últimos eventos del sistema"** (*"Registro cronológico global con navegación paginada (10 eventos por página)"*).
-   * Botón **"Actualizar"**: Refresca en caliente la lista de eventos conforme ocurren transferencias, aperturas o pagos concurrentes en el banco.
-   * Paginador: Navegación ordenada con controles de página anterior y siguiente para examinar auditorías históricas.
-3. **Tarjeta de Orientación al Auditor**:
-   * Tarjeta inferior instructiva **"Ingresa un código de seguimiento"**:
-     * Detalla cómo cada operación (un registro, una transferencia o un pago) nace con un identificador único e inmutable en el API Gateway.
-     * Esta pantalla arma la historia completa: qué evento se publicó en el broker, qué servicio lo produjo (`customer-service`, `transaction-service`, etc.), la marca de tiempo precisa en milisegundos y la notificación final despachada al cliente.
-4. **Depuración de Tiempos y Resiliencia**:
-   * En caso de incidencias de red o timeouts momentáneos en los microservicios, la herramienta de auditoría permite detectar rápidamente cuellos de botella en la respuesta de los consumidores RabbitMQ sin alterar el estado de las transacciones financieras.
+1. **Entrada de Consulta Forense y Traza Seleccionada**:
+   * Panel superior con paginación: *"Página 1 de 10 (91 eventos registrados)"* con botones `Anterior` y `Siguiente →`.
+   * Tarjeta **"Rastro del Evento / Operación Seleccionada"** (*"Traza distribuida de mensajes y eventos registrados a través de los microservicios para este flujo."*).
+   * **CÓDIGO DE SEGUIMIENTO**: `e71f4bb0-1423-4bc4-bf7f-3a455043dea0` [Copiar] y botón `✕ Cerrar rastro`.
+   * Resumen de alcance: Indicadores de **`1 evento`** y **`1 servicio`** involucrado.
+2. **Filtros de Inspección Forense**:
+   * Selectores desplegables: `Todos los servicios` y `Todos los tipos` para acotar operaciones multi-servicio complejas.
+3. **Línea de Vida Transaccional**:
+   * **Momento**: `22/09/2026, 6:07 p. m.`.
+   * **Tipo de Evento**: `customer.login.succeeded.v1` (*"Inicio de sesión exitoso iniciado por b4654cba..."*).
+   * **Servicio Origen**: `customer-service`.
+   * **EventID**: `622fe858-6a6e-4378-9f4a-a1ad6ba67561`.
+   * **Registro**: Badge verde **`Registrado`**.
+   * **Severidad**: Badge azul **`Info`** | Botón: **`Detalle`**.
+4. **Inspección de Notificaciones Asociadas**:
+   * Tarjeta **"Notificaciones"**: *"Este flujo no generó ninguna notificación. No todas lo hacen: el sistema avisa cuando una transferencia termina, se revierte o falla, y cuando cambia algo de la cuenta o de la identidad de un cliente — no por cada paso interno."*
 
 ---
 
 #### Paso 78: Consola de Supervisión y Entrega de Notificaciones del Sistema (`/auditoria/notificaciones`)
 
-Al presionar el botón **"Consola de notificaciones"** en la pantalla de auditoría, el administrador accede a la bitácora operativa de todos los comunicados, alertas y correos generados por el banco (`http://localhost:3010/auditoria/notificaciones`).
+Al presionar el botón **"Consola de notificaciones"** en la pantalla de auditoría, el administrador accede a la bitácora operativa de todos los comunicados, alertas y notificaciones generadas por el banco (`https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/auditoria/notificaciones`).
 
 ![Consola de supervisión de notificaciones](../images/user-manual/admin-13-auditoria-notificaciones-consola.png)
 
@@ -1890,26 +1932,28 @@ Al presionar el botón **"Consola de notificaciones"** en la pantalla de auditor
    * Botón superior derecho: **"Actualizar"** para refrescar la lista de mensajes en tiempo real.
 2. **Filtros de Estado de Entrega**:
    * Selector desplegable **"Todos los estados"**: Permite filtrar las notificaciones según su condición operativa (`Enviada`, `Pendiente`, `Fallida`).
-3. **Registro Cronológico de Notificaciones Emitidas**:
-   * **Notificación 1 (Activación de Cuenta)**:
-     * Asunto: **`Activa tu cuenta de bonking`** | Badge verde **`Enviada`**.
-     * Evento origen: `customer.activation` hacia destinatario protegido `cliente-03618920@simulado.bonking.gt`.
-     * Fecha y resolución: `3/09/2026, 8:47 p. m.` (resuelta a las `9:47 p. m.`).
-     * Detalle: *"El canal simulado la dio por entregada."* | Enlace: **`Ver el flujo completo →`**.
+3. **Registro Cronológico de Notificaciones Emitidas en Producción**:
+   * **Notificación 1 (Verificación KYC)**:
+     * Asunto: **`Verificamos tu identidad para operaciones (KYC)`** | Badge verde **`Enviada`** | Badge azul **`Info`**.
+     * Evento origen: `kyc.verified · cliente-f1933d0e@simulado.bonking.gt` | Fecha: `22/09/2026, 6:05 p. m.` (resuelta `22/09/2026, 6:05 p. m.`) | Enlace: **`Ver el flujo completo →`**.
    * **Notificación 2 (Validación de Identidad)**:
-     * Asunto: **`Tu identidad fue verificada`** | Badge verde **`Enviada`**.
-     * Evento origen: `identity.validated` hacia `cliente-03618920@simulado.bonking.gt`.
-     * Fecha: `3/09/2026, 9:47 p. m.`.
-   * **Notificación 3 (Confirmación de Solicitud de Registro)**:
-     * Asunto: **`Recibimos tu registro`** | Badge verde **`Enviada`**.
-     * Evento origen: `customer.registered` hacia `cliente-03618920@simulado.bonking.gt`.
-   * **Notificación 4 (Transferencia Exitosa)**:
-     * Asunto: **`Tu transferencia se completó`** | Badge verde **`Enviada`**.
-     * Evento origen: `transfer.completed` hacia `cliente-b165d73d@simulado.bonking.gt` (`3/09/2026, 9:44 p. m.`).
-   * **Notificación 5 (Compensación Saga y Reversión de Fondos)**:
-     * Asunto: **`Tu transferencia fue revertida y el monto regresó a tu cuenta`** | Badge verde **`Enviada`**.
-     * Evento origen: `transfer.compensated` hacia `cliente-b165d73d@simulado.bonking.gt` (`3/09/2026, 8:43 p. m.`).
-     * Evidencia en vivo de la ejecución del patrón Saga: cuando un pago o transferencia no puede concretarse en el proveedor o banco destino, el sistema notifica inmediatamente al usuario que el débito fue revertido íntegramente.
+     * Asunto: **`Tu identidad fue verificada`** | Badge verde **`Enviada`** | Badge azul **`Info`**.
+     * Evento origen: `identity.validated · cliente-f1933d0e@simulado.bonking.gt` | Fecha: `22/09/2026, 6:05 p. m.` (resuelta `22/09/2026, 6:05 p. m.`) | Enlace: **`Ver el flujo completo →`**.
+   * **Notificación 3 (Transferencia Completada)**:
+     * Asunto: **`Tu transferencia se completó`** | Badge verde **`Enviada`** | Badge azul **`Info`**.
+     * Evento origen: `transfer.completed · cliente-3981320c@simulado.bonking.gt` | Fecha: `22/09/2026, 6:03 p. m.` (resuelta `22/09/2026, 6:03 p. m.`) | Enlace: **`Ver el flujo completo →`**.
+   * **Notificación 4 (Transferencia Revertida y Compensada)**:
+     * Asunto: **`Tu transferencia fue revertida y el monto regresó a tu cuenta`** | Badge verde **`Enviada`** | Badge rojo **`Error`**.
+     * Evento origen: `transfer.compensated · cliente-3981320c@simulado.bonking.gt` | Fecha: `22/09/2026, 6:01 p. m.` (resuelta `22/09/2026, 6:01 p. m.`) | Enlace: **`Ver el flujo completo →`**.
+   * **Notificación 5 (Transferencia Completada Previa)**:
+     * Asunto: **`Tu transferencia se completó`** | Badge verde **`Enviada`** | Badge azul **`Info`**.
+     * Evento origen: `transfer.completed · cliente-3981320c@simulado.bonking.gt` | Fecha: `22/09/2026, 6:01 p. m.` (resuelta `22/09/2026, 6:01 p. m.`) | Enlace: **`Ver el flujo completo →`**.
+   * **Notificación 6 (Transferencia Revertida Previa)**:
+     * Asunto: **`Tu transferencia fue revertida y el monto regresó a tu cuenta`** | Badge verde **`Enviada`** | Badge rojo **`Error`**.
+     * Evento origen: `transfer.compensated · cliente-3981320c@simulado.bonking.gt` | Fecha: `22/09/2026, 6:00 p. m.` (resuelta `22/09/2026, 6:00 p. m.`) | Enlace: **`Ver el flujo completo →`**.
+   * **Notificación 7 (Cuenta Reactivada)**:
+     * Asunto: **`Tu cuenta volvió a estar activa`** | Badge verde **`Enviada`** | Badge amarillo **`Advertencia`**.
+     * Evento origen: `account.reactivated · cliente-3981320c@simulado.bonking.gt` | Fecha: `22/09/2026, 5:59 p. m.` (resuelta `22/09/2026, 5:59 p. m.`) | Enlace: **`Ver el flujo completo →`**.
 4. **Navegación Cruzada a Auditoría ("Ver el flujo completo →")**:
    * Cada fila dispone de un acceso directo que abre la auditoría de eventos filtrada por el `correlationId` exacto que generó esa notificación, cerrando el ciclo de trazabilidad técnica y operativa.
 
@@ -1920,4 +1964,3 @@ Al presionar el botón **"Consola de notificaciones"** en la pantalla de auditor
 ---
 
 Para guías específicas por pantalla y capturas paso a paso adicionales, consulte el [Directorio Detallado de Manuales](README.md).
-

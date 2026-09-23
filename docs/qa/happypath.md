@@ -150,9 +150,9 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 - **Credenciales**: `cliente@bankusac.gt` / `BankUsac#2026`
 - **Dashboard**: Muestra la bienvenida personalizada, las métricas de saldo acumulado, el acceso rápido a transferencias y la lista de cuentas.
 
-| Dashboard de Bienvenida | Mi Perfil (KYC Pendiente) | Mi Perfil (KYC Verificado) |
-| :--- | :--- | :--- |
-| ![Dashboard Cliente](screenshots/hp-22-dashboard-cliente-nuevo.png) | ![Perfil Cliente](screenshots/hp-23-perfil-cliente.png) | ![Perfil Cliente Verificado](screenshots/hp-23b-perfil-cliente-kyc-verificado.png) |
+| Dashboard de Bienvenida | Mi Perfil (KYC Pendiente) | Mi Perfil (KYC Verificado) | Notificaciones (13 Eventos Auditados) |
+| :--- | :--- | :--- | :--- |
+| ![Dashboard Cliente](screenshots/hp-22-dashboard-cliente-nuevo.png) | ![Perfil Cliente](screenshots/hp-23-perfil-cliente.png) | ![Perfil Cliente Verificado](screenshots/hp-23b-perfil-cliente-kyc-verificado.png) | ![Notificaciones](screenshots/hp-24-notificaciones-cliente.png) |
 
 ---
 
@@ -181,9 +181,13 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 - **Credenciales**: `cajero@bankusac.gt` / `BankUsac#2026`
 - **Cola de Validaciones**: `GET /api/customers/pending-validation`. Permite inspeccionar las fotos de DPI subidas a MinIO y emitir veredicto de aprobación.
 
-| Dashboard del Cajero Receptor | Cola de Validaciones de Identidad | Detalle de Documento DPI |
+| Directorio de Clientes (`/clientes`) | Cola de Validaciones (`/clientes/validaciones`) |
+| :--- | :--- |
+| ![Directorio Clientes](screenshots/hp-33b-directorio-clientes.png) | ![Cola Validaciones](screenshots/hp-34-cola-validaciones.png) |
+
+| Revisión de Identidad Pendiente | Identidad Aprobada Exitosamente | Ficha de Cliente y Expediente KYC |
 | :--- | :--- | :--- |
-| ![Dashboard Cajero](screenshots/hp-33-dashboard-cajero.png) | ![Cola Validaciones](screenshots/hp-34-cola-validaciones.png) | ![Detalle DPI](screenshots/hp-34-cola-validaciones.png) |
+| ![Revisión Identidad](screenshots/hp-35-revision-identidad-formulario.png) | ![Identidad Aprobada](screenshots/hp-35b-identidad-aprobada-exito.png) | ![Ficha Cliente](screenshots/hp-35c-ficha-cliente-ventanilla.png) |
 
 ---
 
@@ -282,6 +286,10 @@ sequenceDiagram
 | :--- | :--- | :--- |
 | ![Historial en Proceso](screenshots/hp-47b-transferencias-historial-en-proceso.png) | ![Historial Consolidado](screenshots/hp-47-historial-transferencias.png) | ![Historial Filtrado](screenshots/hp-47c-transferencias-historial-filtrado.png) |
 
+| Supervisión General de Operaciones (Rol Cajero) | Supervisión Filtrada por Incidencias ("Fallida" / Compensadas) |
+| :--- | :--- |
+| ![Supervisión Cajero](screenshots/hp-48b-cajero-transferencias-historial.png) | ![Supervisión Cajero Filtrado](screenshots/hp-48c-cajero-transferencias-filtradas.png) |
+
 ---
 
 ## Módulo 8: Administración, Auditoría Global y Observabilidad
@@ -289,39 +297,47 @@ sequenceDiagram
 ### 8.1 Dashboard y Herramientas del Administrador
 - **Credenciales**: `admin@bankusac.gt` / `BankUsac#2026`
 
-| Login Administrador | Dashboard Administrativo Global | Perfil del Administrador |
-| :--- | :--- | :--- |
-| ![Login Admin](screenshots/hp-52-dashboard-admin.png) | ![Dashboard Admin](screenshots/hp-52-dashboard-admin.png) | ![Perfil Admin](screenshots/hp-56-perfil-admin.png) |
+| Dashboard Administrativo Global | Perfil del Administrador |
+| :--- | :--- |
+| ![Dashboard Admin](screenshots/hp-52-dashboard-admin.png) | ![Perfil Admin](screenshots/hp-56-perfil-admin.png) |
 
 ---
 
 ### 8.2 Auditoría Distribuida por `correlationId`
-- **URL**: `http://localhost:3010/auditoria`
+- **URL**: `https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/auditoria`
 - **Capacidad**: Rastreo de todos los eventos emitidos en RabbitMQ asociados al `correlationId` de una transacción, garantizando inmutabilidad y redacción de datos sensibles.
 
-| Consulta de Auditoría por Correlation ID | Bandeja de Notificaciones Centralizada |
-| :--- | :--- |
-| ![Auditoría](screenshots/hp-53-auditoria-consulta.png) | ![Notificaciones Admin](screenshots/hp-54-auditoria-notificaciones.png) |
+| Pista de Auditoría Global de Eventos | Rastro Forense de Operación Seleccionada | Bandeja de Notificaciones Centralizada |
+| :--- | :--- | :--- |
+| ![Auditoría Global](screenshots/hp-53-auditoria-consulta.png) | ![Rastro Forense](screenshots/hp-53b-auditoria-rastro-operacion.png) | ![Notificaciones Admin](screenshots/hp-54-auditoria-notificaciones.png) |
 
 ---
 
 ### 8.3 Monitoreo de Pagos y Gestión de Cuentas
 
-| Monitoreo de Pagos a Proveedores (`/pagos`) | Administración de Estado de Cuentas (`/cuentas/administracion`) |
+| Monitoreo de Pagos a Proveedores (`/pagos`) | Historial Global de Transferencias (`/transferencias`) |
 | :--- | :--- |
-| ![Monitoreo Pagos](screenshots/hp-55-pagos-monitor.png) | ![Gestión Cuentas](screenshots/hp-60-admin-gestion-cuentas.png) |
+| ![Monitoreo Pagos](screenshots/hp-55-pagos-monitor.png) | ![Transferencias Admin](screenshots/hp-59b-admin-transferencias-historial.png) |
 
-| Lista Global de Cuentas (Todos los Clientes) | Cola de Validaciones (Vista Administrador) |
+| Lista Global de Cuentas (Saldo Custodiado) | Directorio de Usuarios del Sistema (`/usuarios`) |
 | :--- | :--- |
-| ![Admin Cuentas](screenshots/hp-57-admin-lista-cuentas.png) | ![Admin Validaciones](screenshots/hp-58-admin-cola-validaciones.png) |
+| ![Admin Cuentas](screenshots/hp-57-admin-lista-cuentas.png) | ![Directorio Usuarios](screenshots/hp-58b-admin-directorio-usuarios.png) |
+
+| Administración de Estado de Cuentas (`/cuentas/administracion`) | Cola de Validaciones (Vista Administrador) |
+| :--- | :--- |
+| ![Gestión Cuentas](screenshots/hp-60-admin-gestion-cuentas.png) | ![Admin Validaciones](screenshots/hp-58-admin-cola-validaciones.png) |
 
 ---
 
 ### 8.4 Servicios Públicos y Casos Especiales
 
-| Recuperación de Contraseña (`/recuperar`) | Pantalla de Error 404 Amigable | Pago de Servicios a Terceros (`/pagos/nuevo`) |
+| Formulario Pago de Servicios (`/pagos/nuevo`) | Saga del Pago Completada (`/transferencias/[id]`) | Historial de Pagos (`/pagos`) |
 | :--- | :--- | :--- |
-| ![Recuperar](screenshots/hp-61-recuperar-password.png) | ![404](screenshots/hp-62-pagina-404.png) | ![Pago Servicio](screenshots/hp-63-pago-servicio.png) |
+| ![Pago Servicio](screenshots/hp-63-pago-servicio.png) | ![Pago Saga Completada](screenshots/hp-64-pago-saga-completada.png) | ![Historial Pagos](screenshots/hp-65-pagos-historial.png) |
+
+| Recuperación de Contraseña (`/recuperar`) | Pantalla de Error 404 Amigable |
+| :--- | :--- |
+| ![Recuperar](screenshots/hp-61-recuperar-password.png) | ![404](screenshots/hp-62-pagina-404.png) |
 
 ---
 
