@@ -71,6 +71,16 @@ spec:
                 secretKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: OBJECT_STORAGE_REGION
+            - name: SEED_DEMO_DATA
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: SEED_DEMO_DATA
+            - name: SEED_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: SEED_PASSWORD
           # The port opens before migrations/broker attach (T-21), so
           # liveness can probe almost immediately; readiness is what waits
           # for the database, the broker and its queues.

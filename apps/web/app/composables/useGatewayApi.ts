@@ -53,9 +53,22 @@ export function useGatewayApi() {
       headers['X-Correlation-Id'] = options.correlationId;
     }
 
+    // In browser client on HTTPS, calling an HTTP endpoint causes browser Mixed Content blocking.
+    // In that case, use relative same-origin (baseURL: '') so Nitro proxies /api transparently.
+    const isHttpsBrowser =
+      import.meta.client &&
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:';
+
+    const configuredBase = config.public.apiBaseUrl;
+    const baseURL =
+      isHttpsBrowser && typeof configuredBase === 'string' && configuredBase.startsWith('http://')
+        ? ''
+        : configuredBase;
+
     try {
       const response = await $fetch.raw<T>(path, {
-        baseURL: config.public.apiBaseUrl,
+        baseURL,
         method: options.method ?? 'GET',
         headers,
         ...(options.body === undefined ? {} : { body: options.body as Record<string, unknown> }),
