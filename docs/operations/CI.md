@@ -165,7 +165,7 @@ deployment phases, and they are wired differently from each other on purpose.
 
 | Workflow | Fires on | What it does |
 | --- | --- | --- |
-| `ci.yml` | push to `feature/**`, PR into `develop` | Build → Test → Validación |
+| `ci.yml` | push to `feature/**`, PR into `develop` or `main` | Build → Test → Validación |
 | `release.yml` | push to `release/**`, tag `v*` | Generates the version, **publishes** seven versioned images to `ghcr.io` |
 | `cd.yml` | push to `develop` / `main` | Deploys to GKE: namespace `dev` from `develop`, namespace `prod` from `main` |
 
@@ -217,3 +217,18 @@ oversight: besides consuming its queue it runs the inactive-account sweep on an
 interval with no leader election, so N replicas would make the sweep run N
 times. Six of the seven components autoscale at 80% CPU; this one is pinned to
 a single replica until that job has an owner.
+
+### Why CI also fires on pull requests into `main`
+
+The assignment only asks for Build and Test to repeat on the way into
+`develop`, and that is what happens. `main` is listed as a trigger anyway
+because the `main_protection` ruleset requires all three phase checks to report
+before a merge is allowed, and it covers `main` as well as `develop`. Without
+that trigger a pull request into `main` runs no CI at all, the three required
+checks never report, and the merge sits blocked in `pending` forever — it does
+not fail, which would be easier to diagnose; it simply never advances.
+
+Validación does run on a pull request into `main`, unlike one into `develop`.
+That branch is the last gate before a production deploy, and skipping lint, the
+typecheck and the tracked-`.env` guard precisely there would be the worst
+possible moment to save two minutes.

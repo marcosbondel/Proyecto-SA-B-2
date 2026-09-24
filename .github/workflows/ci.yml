@@ -14,6 +14,15 @@ on:
   pull_request:
     branches:
       - develop
+      # `main` tiene que estar aqui aunque el enunciado solo hable de develop.
+      # La regla `main_protection` exige que las tres fases reporten antes de
+      # permitir un merge, y cubre tanto develop como la rama por defecto. Sin
+      # esta linea, un pull request hacia main no dispara CI, los tres checks
+      # obligatorios no reportan nunca y el merge se queda bloqueado en
+      # `pending` de forma permanente — no falla, que seria mas facil de
+      # diagnosticar: simplemente no avanza.
+      - main
+      - master
   workflow_dispatch:
 
 permissions:
@@ -98,12 +107,20 @@ jobs:
         run: pnpm test:contract
 
   # Fase 3: Validacion — verificacion basica del sistema (sanity check).
-  # No se repite en un pull request hacia develop: el enunciado y el ticket
-  # solo piden repetir Build y Test en ese punto del flujo.
+  #
+  # No se repite en un pull request hacia `develop`: el enunciado pide ahi
+  # "Build, Test" y nada mas. Si se repite en uno hacia `main`, que el enunciado
+  # no cubre porque no contempla revisar lo que entra a produccion: es la ultima
+  # puerta antes del despliegue productivo, y saltarse el lint, el typecheck y
+  # el guard de `.env` justo ahi seria la peor eleccion posible de momento para
+  # ahorrarse dos minutos.
   validate:
     name: 'Fase 3: Validacion'
     needs: [build, test]
-    if: github.event_name != 'pull_request'
+    if: >-
+      github.event_name != 'pull_request'
+      || github.base_ref == 'main'
+      || github.base_ref == 'master'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
