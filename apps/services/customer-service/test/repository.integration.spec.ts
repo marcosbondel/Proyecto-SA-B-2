@@ -250,7 +250,19 @@ describeIntegration('PostgresCustomerRepository', () => {
     expect(['VALIDATED', 'REJECTED']).toContain(after?.identityStatus);
   });
 
-  it('persists a KYC verdict, independent of identity_status (C-8)', async () => {
+  /**
+   * A KYC verdict carries `identity_status` with it: `VERIFIED` also validates
+   * the document review, `REJECTED` also rejects it. The two columns are
+   * written by one statement because the verdict is one decision — a teller who
+   * accepts a customer's compliance review has, by that act, accepted the
+   * document it was based on.
+   *
+   * This test used to assert the opposite (`PENDING`, "independent of
+   * identity_status") and never ran: the suite skips itself without
+   * `DATABASE_URL`, which CI did not provide until TD-069 was closed. The
+   * contradiction with `domain.spec.ts` sat unnoticed for exactly that long.
+   */
+  it('persists a KYC verdict, carrying identity_status with it (C-8)', async () => {
     const stored = await repository.registerCustomer(inputFor(registration()));
     const base = await repository.findById(stored.customerId);
     expect(base?.kycStatus).toBe('PENDING');
@@ -268,7 +280,7 @@ describeIntegration('PostgresCustomerRepository', () => {
 
     const after = await repository.findById(stored.customerId);
     expect(after?.kycStatus).toBe('VERIFIED');
-    expect(after?.identityStatus).toBe('PENDING');
+    expect(after?.identityStatus).toBe('VALIDATED');
     expect(after?.version).toBe(1);
   });
 
