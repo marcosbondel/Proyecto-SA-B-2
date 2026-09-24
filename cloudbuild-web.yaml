@@ -5,11 +5,18 @@ steps:
       - '-f'
       - 'apps/web/Dockerfile'
       - '-t'
-      - 'us-central1-docker.pkg.dev/project-0d3c28c7-a4e0-44ad-a4e/bank-images/web:latest'
+      - 'us-central1-docker.pkg.dev/project-0d3c28c7-a4e0-44ad-a4e/bank-images/web:$_IMAGE_TAG'
       - '.'
 
 images:
-  - 'us-central1-docker.pkg.dev/project-0d3c28c7-a4e0-44ad-a4e/bank-images/web:latest'
+  - 'us-central1-docker.pkg.dev/project-0d3c28c7-a4e0-44ad-a4e/bank-images/web:$_IMAGE_TAG'
+
+# Etiqueta versionada de las imagenes. El enunciado de la Fase 2 prohibe las
+# imagenes no versionadas, asi que no hay valor por defecto `latest`: si nadie
+# pasa `_IMAGE_TAG`, Cloud Build usa el SHA corto del commit que esta
+# construyendo, que es versionado y trazable.
+substitutions:
+  _IMAGE_TAG: ${SHORT_SHA}
 
 options:
   machineType: 'E2_HIGHCPU_8'
