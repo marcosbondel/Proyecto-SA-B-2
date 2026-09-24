@@ -157,3 +157,78 @@ pnpm typecheck
 To also exercise the suites the pipeline skips, follow the "Check the ports
 before trusting them" section of [`AGENTS.md`](../../AGENTS.md#commands) —
 `pnpm dev:infra` plus a `DATABASE_URL`/`RABBITMQ_URL` per service.
+
+## Delivery and Deployment
+
+CI is one of three workflows. The other two carry the assignment's delivery and
+deployment phases, and they are wired differently from each other on purpose.
+
+| Workflow | Fires on | What it does |
+| --- | --- | --- |
+| `ci.yml` | push to `feature/**`, PR into `develop` or `main` | Build → Test → Validación |
+| `release.yml` | push to `release/**`, tag `v*` | Generates the version, **publishes** seven versioned images to `ghcr.io` |
+| `cd.yml` | push to `develop` / `main` | Deploys to GKE: namespace `dev` from `develop`, namespace `prod` from `main` |
+
+**Production never builds an image.** `cd.yml`'s production job resolves the
+newest `v*` tag and deploys the images `release.yml` already published, which is
+what the assignment means by "el pipeline utilizará las imágenes previamente
+generadas". If no tag exists the job fails rather than inventing one — a
+production deploy of an unpublished artifact is the thing the release phase
+exists to prevent.
+
+**No tag is ever `latest`.** `release.yml` tags with the version, `cd.yml`'s dev
+job tags with `dev-<sha12>`, and `helm-deploy.sh` refuses `latest` outright so
+the rule holds even when the script is run by hand.
+
+### What `cd.yml` needs before it can deploy
+
+`cd.yml` starts with a `preflight` job that **fails** when the configuration
+below is missing, naming what is absent in the run summary. That is deliberate:
+a deployment workflow that prints success without deploying hides the problem
+from the only person who could fix it.
+
+Under *Settings → Secrets and variables → Actions*:
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Variable | `GCP_PROJECT_ID` | the GCP project id |
+| Variable | `GKE_CLUSTER` | `bank-usac-vpc-gke` (see `infra/terraform/gcp/gke.tf`) |
+| Variable | `GKE_ZONE` | `us-central1-a` (see `variables.tf`) |
+| Variable | `ARTIFACT_REPO` | the Artifact Registry repository, e.g. `bank-images` |
+| Secret | `GCP_SA_KEY` | service-account JSON with `container.developer` and `artifactregistry.writer` |
+| Secret | `HELM_SECRETS` | the eleven `secrets.*` values the chart marks `required`, one `key=value` per line |
+| Secret | `INFRA_ADDRESSES` | the seven `external.*.dockerNetwork.host` addresses, one per line |
+
+`HELM_SECRETS` and `INFRA_ADDRESSES` are multi-line on purpose. Eighteen
+separate GitHub secrets for one consumer is the same problem spread across
+eighteen places, and the chart already treats them as one set — the same set
+`infra/k8s/scripts/install.sh` assembles for the local kind cluster.
+
+`INFRA_ADDRESSES` holds the private IPs of the machines Terraform provisions
+(`terraform output` in `infra/terraform/gcp/`). The databases run on Compute
+Engine VMs rather than inside the cluster, so the chart has to be told where
+they are; `external.mode` stays `dockerNetwork`, which despite its name means
+"an explicit host and port" and is exactly what a VM address is.
+
+### The one component without an HPA
+
+`account-service` ships with `autoscaling.enabled: false`. It is not an
+oversight: besides consuming its queue it runs the inactive-account sweep on an
+interval with no leader election, so N replicas would make the sweep run N
+times. Six of the seven components autoscale at 80% CPU; this one is pinned to
+a single replica until that job has an owner.
+
+### Why CI also fires on pull requests into `main`
+
+The assignment only asks for Build and Test to repeat on the way into
+`develop`, and that is what happens. `main` is listed as a trigger anyway
+because the `main_protection` ruleset requires all three phase checks to report
+before a merge is allowed, and it covers `main` as well as `develop`. Without
+that trigger a pull request into `main` runs no CI at all, the three required
+checks never report, and the merge sits blocked in `pending` forever — it does
+not fail, which would be easier to diagnose; it simply never advances.
+
+Validación does run on a pull request into `main`, unlike one into `develop`.
+That branch is the last gate before a production deploy, and skipping lint, the
+typecheck and the tracked-`.env` guard precisely there would be the worst
+possible moment to save two minutes.
