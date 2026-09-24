@@ -54,9 +54,20 @@ photo is uploaded.
 `kycStatus` (Fase 2): `PENDING` → `VERIFIED` \| `REJECTED`, and `REJECTED` → `PENDING` when a new
 review reopens it. `VERIFIED` is terminal, for the same reason `VALIDATED` is on `identityStatus`
 — re-verifying an already-verified customer would let a later, weaker review silently replace an
-accepted one. Distinct from `identityStatus`: that axis is Fase 1's review of the document photo;
-this one is the broader compliance decision a teller or administrator registers directly
-(`customer.set-kyc-status.v1`), and it is what C-8 ties to initiating a transaction.
+accepted one. A distinct concept from `identityStatus`: that axis is Fase 1's review of the
+document photo; this one is the broader compliance decision a teller or administrator registers
+directly (`customer.set-kyc-status.v1`), and it is what C-8 ties to initiating a transaction.
+
+**A KYC verdict carries `identityStatus` with it**, even though the two are distinct concepts:
+`VERIFIED` also sets `identityStatus = VALIDATED`, and `REJECTED` also sets it to `REJECTED`
+(`setKycStatus`, one `UPDATE` in `saveKycVerdict`). The reasoning is that a teller who registers a
+compliance verdict has, by that act, ruled on the document the verdict was based on — leaving the
+photo review behind at `PENDING` would show an accepted customer with an unreviewed document.
+
+The consequence is worth stating out loud, because it is the cost of that choice: a document
+review already recorded as `REJECTED` is overwritten by a later `VERIFIED` KYC verdict, without
+anybody looking at the photo again. Registering the two separately is what
+`POST /api/customers/:id/identity-verdict` is for.
 
 **The two axes are independent.** Email verification (which enables signing in) and
 identity-document validation (which reviews the photo) are different flows and neither implies
