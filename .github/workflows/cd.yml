@@ -22,6 +22,10 @@ name: CD
 #   var    GKE_CLUSTER       nombre del cluster  (terraform: bank-usac-vpc-gke)
 #   var    GKE_ZONE          zona del cluster    (terraform: us-central1-a)
 #   var    ARTIFACT_REPO     repositorio de Artifact Registry (ej. bank-images)
+#   var    GATEWAY_PUBLIC_URL  la direccion del Gateway tal como la alcanza el
+#                            navegador (terraform: gateway_public_url)
+#   var    WEB_PUBLIC_URL    opcional — origen del frontend, para el CORS del
+#                            Gateway
 #   secret HELM_SECRETS      valores `--set` de secrets.* que pide el chart,
 #                            uno por linea (ver infra/k8s/scripts/install.sh)
 #   secret INFRA_ADDRESSES   direcciones de la infraestructura fuera del
@@ -70,6 +74,7 @@ jobs:
           GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
           GKE_ZONE: ${{ vars.GKE_ZONE }}
           ARTIFACT_REPO: ${{ vars.ARTIFACT_REPO }}
+          GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
         run: |
@@ -80,6 +85,7 @@ jobs:
           [ -n "${GKE_CLUSTER}"     ] || missing+=("variable GKE_CLUSTER")
           [ -n "${GKE_ZONE}"        ] || missing+=("variable GKE_ZONE")
           [ -n "${ARTIFACT_REPO}"   ] || missing+=("variable ARTIFACT_REPO")
+          [ -n "${GATEWAY_PUBLIC_URL}" ] || missing+=("variable GATEWAY_PUBLIC_URL")
           [ -n "${HELM_SECRETS}"    ] || missing+=("secret HELM_SECRETS")
           [ -n "${INFRA_ADDRESSES}" ] || missing+=("secret INFRA_ADDRESSES")
 
@@ -196,6 +202,8 @@ jobs:
           IMAGE_REGISTRY: ${{ steps.tag.outputs.registry }}
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
+          GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
+          WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
 
       - name: Resumen del despliegue
         if: always()
@@ -270,6 +278,8 @@ jobs:
           IMAGE_TAG: ${{ steps.version.outputs.value }}
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
+          GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
+          WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
 
       - name: Resumen del despliegue
         if: always()
