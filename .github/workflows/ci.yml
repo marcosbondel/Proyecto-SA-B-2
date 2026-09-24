@@ -77,7 +77,43 @@ jobs:
     name: 'Fase 2: Test'
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    # PostgreSQL y RabbitMQ de verdad, para que corran las suites que hasta
+    # ahora se saltaban (TD-069). Sin ellos, `describe.skip` dejaba fuera
+    # precisamente lo que mas necesita una prueba: la concurrencia con bloqueo
+    # de fila, la idempotencia contra una restriccion unica real y los
+    # CHECK de la base. Esas suites pasaban a ser verdes sin ejecutarse, que es
+    # la peor clase de verde.
+    #
+    # Las versiones son las mismas de infra/docker/docker-compose.yml: una
+    # prueba contra una version de PostgreSQL distinta de la de produccion
+    # comprueba algo que nadie va a desplegar.
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: bank_test
+          POSTGRES_PASSWORD: bank_test
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bank_test -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      rabbitmq:
+        image: rabbitmq:4.3.4-management
+        env:
+          RABBITMQ_DEFAULT_USER: bank_test
+          RABBITMQ_DEFAULT_PASS: bank_test
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -105,6 +141,65 @@ jobs:
 
       - name: Contract tests
         run: pnpm test:contract
+
+      # Una base por servicio, no una compartida: cada servicio corre sus
+      # propias migraciones y las cinco escribirian en la misma tabla
+      # `schema_migrations`. Son cinco bases dentro de la misma instancia, que
+      # es barato, y no cinco instancias.
+      - name: Preparar una base de datos por servicio
+        env:
+          PGPASSWORD: bank_test
+        run: |
+          set -euo pipefail
+          for db in customer account transaction payment notification_audit; do
+            psql -h localhost -U bank_test -d postgres -c "CREATE DATABASE $db;"
+          done
+          psql -h localhost -U bank_test -d postgres -c '\l'
+
+      # Las suites que `describe.skip` dejaba fuera sin una base y un broker
+      # reales: concurrencia con bloqueo de fila, idempotencia contra una
+      # restriccion unica, los CHECK de la base y el broker de `@bank/messaging`.
+      #
+      # `pnpm --filter` en vez de `turbo run`: se salta la cache de Turbo por
+      # completo, asi que estas suites se ejecutan siempre. Depende de que el
+      # paso `Test` de arriba ya haya compilado las dependencias.
+      - name: 'Suites de integracion (PostgreSQL y RabbitMQ reales)'
+        env:
+          RABBITMQ_URL: amqp://bank_test:bank_test@localhost:5672
+        run: |
+          set -euo pipefail
+
+          # Las suites asumen una base virgen: crean sus datos y comprueban
+          # restricciones unicas contra ellos. Correrlas dos veces sobre la
+          # misma base falla por su propio rastro, asi que la comprobacion de
+          # "no se salto" se hace sobre la salida de ESTA corrida y no
+          # repitiendola.
+          run_suite() { # run_suite <paquete> <base de datos>
+            echo "::group::$1"
+            local output
+            output="$(DATABASE_URL="postgresql://bank_test:bank_test@localhost:5432/$2" \
+              pnpm --filter "$1" test 2>&1)" || { echo "$output"; echo "::endgroup::"; return 1; }
+            echo "$output"
+            echo "::endgroup::"
+
+            # Una suite que se salta sola sigue contando como verde. Sin esto,
+            # este paso pasaria igual si las variables no hubieran llegado a
+            # Jest, y TD-069 quedaria cerrado solo en apariencia.
+            if echo "$output" | grep -qE "Test Suites:.*skipped"; then
+              echo "::error::$1 salto suites pese a haber PostgreSQL disponible."
+              return 1
+            fi
+          }
+
+          run_suite customer-service            customer
+          run_suite account-service             account
+          run_suite transaction-service         transaction
+          run_suite payment-service             payment
+          run_suite notification-audit-service  notification_audit
+
+          echo "::group::@bank/messaging"
+          pnpm --filter @bank/messaging test
+          echo "::endgroup::"
 
   # Fase 3: Validacion — verificacion basica del sistema (sanity check).
   #
