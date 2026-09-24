@@ -25,6 +25,21 @@
 #                    exige (`external.*.dockerNetwork.host`) y falla el render
 #                    si faltan, que es preferible a desplegar siete pods que no
 #                    pueden alcanzar su base de datos.
+#   GATEWAY_PUBLIC_URL  la direccion del Gateway tal como la alcanza el
+#                    NAVEGADOR de una persona, no un nombre de Service interno.
+#                    El chart la tiene por defecto en `http://localhost:3000`,
+#                    que es correcto para kind con port-forward y silenciosamente
+#                    inservible en GKE: el despliegue tendria exito y entregaria
+#                    un frontend que no puede hablar con su backend. Se exige
+#                    aqui para que ese caso no exista.
+#
+# Variable opcional:
+#   WEB_PUBLIC_URL   el origen desde el que el navegador carga el frontend, para
+#                    `gateway.corsAllowedOrigins`. Opcional y sin valor por
+#                    defecto derivado a proposito: es el origen del *frontend*,
+#                    no el del Gateway, y adivinarlo mal abre CORS a la lista
+#                    equivocada sin que nadie lo note hasta que una peticion
+#                    legitima sea rechazada.
 #
 set -euo pipefail
 
@@ -32,6 +47,7 @@ set -euo pipefail
 : "${RELEASE_NAME:?RELEASE_NAME no definido}"
 : "${IMAGE_TAG:?IMAGE_TAG no definido}"
 : "${IMAGE_REGISTRY:?IMAGE_REGISTRY no definido}"
+: "${GATEWAY_PUBLIC_URL:?GATEWAY_PUBLIC_URL no definido — sin el, el frontend se despliega apuntando a localhost}"
 
 CHART_PATH="${CHART_PATH:-infra/k8s/helm/bank-usac}"
 
@@ -100,6 +116,8 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   --namespace "$NAMESPACE" \
   --create-namespace \
   --set-string "imagePullPolicy=IfNotPresent" \
+  --set-string "web.apiBaseUrl=${GATEWAY_PUBLIC_URL}" \
+  ${WEB_PUBLIC_URL:+--set-string "gateway.corsAllowedOrigins=${WEB_PUBLIC_URL}"} \
   "${SECRET_ARGS[@]}" \
   "${INFRA_ARGS[@]}" \
   "${IMAGE_ARGS[@]}" \

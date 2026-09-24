@@ -195,6 +195,8 @@ Under *Settings → Secrets and variables → Actions*:
 | Variable | `GKE_CLUSTER` | `bank-usac-vpc-gke` (see `infra/terraform/gcp/gke.tf`) |
 | Variable | `GKE_ZONE` | `us-central1-a` (see `variables.tf`) |
 | Variable | `ARTIFACT_REPO` | the Artifact Registry repository, e.g. `bank-images` |
+| Variable | `GATEWAY_PUBLIC_URL` | the Gateway address **as a browser reaches it** (Terraform's `gateway_public_url`) |
+| Variable | `WEB_PUBLIC_URL` | *optional* — the frontend's origin, for the Gateway's `CORS_ALLOWED_ORIGINS` |
 | Secret | `GCP_SA_KEY` | service-account JSON with `container.developer` and `artifactregistry.writer` |
 | Secret | `HELM_SECRETS` | the eleven `secrets.*` values the chart marks `required`, one `key=value` per line |
 | Secret | `INFRA_ADDRESSES` | the seven `external.*.dockerNetwork.host` addresses, one per line |
@@ -232,3 +234,17 @@ Validación does run on a pull request into `main`, unlike one into `develop`.
 That branch is the last gate before a production deploy, and skipping lint, the
 typecheck and the tracked-`.env` guard precisely there would be the worst
 possible moment to save two minutes.
+
+### Why `GATEWAY_PUBLIC_URL` is required and not defaulted
+
+The chart defaults `web.apiBaseUrl` to `http://localhost:3000`, which is right
+for a kind cluster reached through `kubectl port-forward` and silently useless
+on GKE. Left at the default, a deploy **succeeds** and hands back a frontend
+that cannot reach its own backend — the deployment is green, the pods are
+`Ready`, and the application does not work. `helm-deploy.sh` refuses to run
+without it so that outcome has no way to happen.
+
+`WEB_PUBLIC_URL` is optional and deliberately has no derived default. It is the
+origin the *browser* loads the frontend from, not the Gateway's own address, and
+guessing it wrong would open CORS to the wrong list without anyone noticing
+until a legitimate request is refused.
