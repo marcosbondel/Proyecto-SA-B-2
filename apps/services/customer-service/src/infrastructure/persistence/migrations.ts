@@ -163,10 +163,15 @@ export const MIGRATIONS: readonly Migration[] = [
   },
   {
     /*
-     * Fase 2's KYC verdict (§4.1, p. 4), C-8. Additive and distinct from
-     * `identity_status`: that column is Fase 1's document-photo review, this
-     * one is the broader compliance decision a teller or administrator
+     * Fase 2's KYC verdict (§4.1, p. 4), C-8. Additive, and a distinct concept
+     * from `identity_status`: that column is Fase 1's document-photo review,
+     * this one is the broader compliance decision a teller or administrator
      * registers directly and that gates initiating a transaction.
+     *
+     * Distinct, but not written separately: `saveKycVerdict` sets both columns
+     * in one statement, because a teller registering a compliance verdict has
+     * by that act ruled on the document behind it. See `docs/domain/entities.md`
+     * for the trade-off that carries.
      */
     name: '007_customers_kyc_status',
     statements: [

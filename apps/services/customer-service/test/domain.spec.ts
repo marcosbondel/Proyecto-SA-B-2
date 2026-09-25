@@ -191,12 +191,20 @@ describe('the KYC verdict (Fase 2, C-8)', () => {
     expect(() => setKycStatus(verified, 'REJECTED', NOW)).toThrow(DomainRejection);
   });
 
-  it('updates updatedAt and leaves every other field untouched', () => {
+  // The name used to say "leaves every other field untouched" while asserting
+  // that `identityStatus` had changed — the assertion contradicted the title it
+  // was written under, which is how the disagreement with the integration suite
+  // stayed invisible.
+  it('carries identityStatus with the verdict, and touches nothing else', () => {
     const verified = setKycStatus(customer, 'VERIFIED', NOW);
 
     expect(verified.updatedAt).toBe(NOW.toISOString());
     expect(verified.customerId).toBe(customer.customerId);
     expect(verified.identityStatus).toBe('VALIDATED');
+  });
+
+  it('rejects the document review too when the KYC verdict is REJECTED', () => {
+    expect(setKycStatus(customer, 'REJECTED', NOW).identityStatus).toBe('REJECTED');
   });
 });
 
