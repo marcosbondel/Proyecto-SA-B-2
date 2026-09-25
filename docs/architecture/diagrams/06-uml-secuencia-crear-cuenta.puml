@@ -82,20 +82,21 @@
   Broker ->> Account : Entregar comando "crear cuenta" - CreateAccountHandler.handle(envelope)
   activate Account
 
-  alt tipo de cuenta válido (MONETARIA | AHORRO)
-      Account -> Account : Validar la solicitud, aún sin guardar\n- openingRefusal(identity, customerId) devuelve null
-      Account -> AccountDB : Guardar la cuenta nueva\nestado inicial: ACTIVA, saldo Q0.00\n- repository.openAccount({ account, idempotency })
+  alt tipo de cuenta válido (MONETARIA | AHORRO) y depósito suficiente
+      Account -> Account : Validar la solicitud y saldo mínimo de apertura\n- openingRefusal(identity, customerId) == null\n- openingDepositRefusal(accountType, initialDeposit) == null
+      Account -> AccountDB : Guardar la cuenta nueva\nestado inicial: ACTIVA, saldo inicial (Q0.00 o depósito)\n- repository.openAccount({ account, idempotency })
       activate AccountDB
       AccountDB -->> Account : Confirmar guardado - { account, created }
       deactivate AccountDB
       note over Account
-        Cuenta creada — activa,
-        con saldo inicial de Q0.00
+        Cuenta creada — activa.
+        MONETARIA saldo Q0.00 (o depósito).
+        AHORRO exige mínimo Q50.00.
       end note
       Account ->> Broker : Publicar evento "cuenta abierta" - publisher.publish(account.opened.v1)
       Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nDESPUÉS de guardar - channel.ack(message)
-  else tipo de cuenta ausente o no reconocido
-      Account -> Account : Rechazar la solicitud, sin guardar\n- openingRefusal(identity, customerId) devuelve el motivo
+  else tipo de cuenta inválido, rol no elegible o saldo inicial insuficiente
+      Account -> Account : Rechazar la solicitud, sin guardar\n- openingRefusal o openingDepositRefusal devuelve motivo
       Account ->> Broker : Publicar evento "apertura rechazada" - publisher.publish(account.open.rejected.v1)
       Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nrechazo registrado - channel.ack(message)
   end

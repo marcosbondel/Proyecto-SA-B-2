@@ -1,5 +1,5 @@
 @startuml CDU003.1-transferir-fondos
-title CDU003.1 - Transferir fondos
+title CDU003.1 - Transferir fondos (Saga extendida con Gate KYC)
 
 skinparam shadowing false
 skinparam activity {
@@ -8,34 +8,106 @@ skinparam activity {
     FontColor #1168BD
 }
 
-|Cliente, Cajero o Administrador|
+|Cliente, Cajero o Admin|
 start
-:Solicitar transferencia;
+:Solicitar transferencia con cuenta origen, destino y monto;
 |Transaction Service|
-:Validar monto, cuentas distintas e idempotencia;
+:Validar formato, cuentas distintas e idempotencia;
 if (¿Solicitud válida?) then (No)
-    :Rechazar sin crear transacción;
+    :Rechazar petición (sin crear transacción);
+    stop
 else (Sí)
-    :Crear Transaction PENDING y pasar a DEBITING;
-    :Solicitar débito a Account Service;
-    if (¿Débito aplicado?) then (No)
-        :Cerrar en FAILED;
-    else (Sí)
-        :Solicitar pago a Payment Service;
-        if (¿Pago exitoso?) then (No)
-            :Solicitar compensación del débito;
-            :Cerrar en COMPENSATED;
-        else (Sí)
-            :Solicitar crédito a Account Service;
-            if (¿Crédito aplicado?) then (No)
-                :Solicitar compensación del débito;
-                :Cerrar en COMPENSATED;
-            else (Sí)
-                :Cerrar en COMPLETED;
-            endif
-        endif
-    endif
+    :Crear Transaction en estado PENDING;
+    :Publicar customer.kyc.check.requested;
 endif
-:Publicar el evento del cierre;
+
+|Customer Service|
+:Consultar kycStatus del cuentahabiente;
+if (¿Cliente con KYC VERIFIED?) then (No)
+    :Responder customer.kyc.checked (verified: false);
+    |Transaction Service|
+    :Transición PENDING -> FAILED;
+    :Publicar transaction.failed (motivo: KYC no verificado);
+    stop
+else (Sí)
+    :Responder customer.kyc.checked (verified: true);
+endif
+
+|Transaction Service|
+:Transición PENDING -> DEBITING;
+:Solicitar débito a Account Service (account.debit.requested);
+
+|Account Service|
+:Verificar saldo disponible y estado ACTIVE;
+note right
+  Si cuenta es AHORRO:
+  aplica comisión por retiro.
+  Si MONETARIA: sin comisión.
+end note
+if (¿Fondos suficientes y activa?) then (No)
+    :Publicar account.debit.rejected;
+    |Transaction Service|
+    :Transición DEBITING -> FAILED;
+    :Publicar transaction.failed;
+    stop
+else (Sí)
+    :Debitar monto (+ comisión si aplica);
+    :Publicar account.debited;
+endif
+
+|Transaction Service|
+:Transición DEBITING -> PAYMENT_PENDING;
+:Solicitar autorización de pago a Payment Service;
+
+|Payment Service|
+:Ejecutar intento de pago externo (simulado);
+while (¿Error temporal / timeout y quedan reintentos?) is (Sí)
+    :Publicar payment.attempt.failed (observable);
+    :Esperar siguiente intento según escalera;
+    :Reintentar cobro externo;
+endwhile (No)
+
+if (¿Pago autorizado exitosamente?) then (No)
+    :Publicar payment.failed (terminal);
+    |Transaction Service|
+    :Ordenar compensación (account.debit.compensation.requested);
+    |Account Service|
+    :Acreditar el monto debitado (+ comisión revertida);
+    :Publicar account.debit.compensated;
+    |Transaction Service|
+    :Transición PAYMENT_PENDING -> COMPENSATED;
+    :Publicar transaction.compensated;
+    stop
+else (Sí)
+    :Publicar payment.succeeded;
+endif
+
+|Transaction Service|
+:Ordenar crédito en cuenta destino (account.credit.requested);
+
+|Account Service|
+if (¿Crédito aplicado exitosamente?) then (No)
+    :Publicar account.credit.rejected;
+    |Transaction Service|
+    :Ordenar compensación del débito origen;
+    |Account Service|
+    :Revertir fondos al origen;
+    :Publicar account.debit.compensated;
+    |Transaction Service|
+    :Cerrar en COMPENSATED;
+    :Publicar transaction.compensated;
+    stop
+else (Sí)
+    :Acreditar cuenta destino (sin cobrar comisión);
+    :Publicar account.credited;
+endif
+
+|Transaction Service|
+:Transición final a COMPLETED;
+:Publicar transaction.completed;
+
+|Notification & Audit|
+:Registrar evento en auditoría (clasificación INFO/WARN/ERROR);
+:Emitir notificación al usuario;
 stop
 @enduml
