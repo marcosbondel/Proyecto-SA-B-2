@@ -309,3 +309,34 @@ echo "WIF_SERVICE_ACCOUNT=$SA"
 
 The last two lines print the two repository **variables** to set. There is no
 secret to store, which is the point.
+
+### The registry the release publishes to
+
+`release.yml` publishes to the **same Artifact Registry the deployment pulls
+from** — `<region>-docker.pkg.dev/<project>/<ARTIFACT_REPO>` — derived from the
+same `GKE_ZONE`, `GCP_PROJECT_ID` and `ARTIFACT_REPO` the CD workflow uses.
+
+It published to `ghcr.io` once, and the production deploy failed against
+`v1.1.0` with `context deadline exceeded`: the images existed, verifiably, in a
+registry nobody was pulling from. A delivery phase that hands over artifacts the
+deployment cannot reach has not delivered anything. Both halves now read the
+same three variables, so they cannot drift apart again.
+
+### Environment separation, and what is *not* separated
+
+`dev` and `prod` are two namespaces in the same GKE cluster. Each gets its own
+pods, its own in-cluster RabbitMQ and its own MinIO, so compute and messaging
+are genuinely independent.
+
+**The five PostgreSQL databases are shared.** Both environments read the same
+`INFRA_ADDRESSES` and the same `HELM_SECRETS`, so a deploy to `dev` writes to
+production's rows and a migration that lands there alters production's schema.
+This is a known, accepted deviation from the assignment's "mantener separación
+entre entornos" — recorded as **TD-070** with the reason and the remedy.
+
+The remedy is databases per environment on the same VMs, which the assignment
+allows: it asks for databases *on VMs*, not for a VM per environment. It is not
+applied because it cannot be applied from the pipeline — Terraform gives the VMs
+no public IP, `pg_hba.conf` admits only `10.0.0.0/8`, and each service's role is
+created without `CREATEDB`. Creating those databases needs a person with access
+to the machines. See TD-070 for the exact commands.
