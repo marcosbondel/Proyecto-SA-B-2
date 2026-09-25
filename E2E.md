@@ -22,6 +22,66 @@ Este documento consolida la ejecución, metodología, cobertura y resultados de 
 
 ---
 
+## 1.b La pirámide de pruebas
+
+El E2E de este informe es **la punta** de una pirámide que el repositorio mide
+sola. No es una cifra que alguien escribió aquí: sale de `pnpm test:pyramid`,
+que ejecuta cada runner, cuenta los casos que de verdad corrieron y falla si
+alguna aplicación se sale de proporción. El informe vivo queda en
+[`docs/qa/pyramid.md`](docs/qa/pyramid.md) y [`docs/qa/pyramid.json`](docs/qa/pyramid.json).
+
+### Qué cuenta como cada capa
+
+Una sola regla, deliberadamente roma para que nadie tenga que discutirla en una
+revisión:
+
+- **Integración** — la prueba cruza un **proceso real**: PostgreSQL, RabbitMQ,
+  MinIO o un servidor Nitro de verdad. El archivo **tiene que** terminar en
+  `.integration.spec.ts`; ese sufijo es todo el mecanismo de clasificación
+  (`test/pyramid.manifest.json`).
+- **Unitaria** — todo lo demás que corre en proceso, por mucho framework que
+  levante. Las suites de Supertest del Gateway son unitarias: ejecutan los
+  controladores, los guards, el filtro y el middleware reales, pero
+  `test/support/harness.ts` dobla **todos** los puertos, así que del otro lado
+  no hay nada real.
+- **E2E** — `test/e2e/`, los siete componentes desplegados.
+
+### La proporción por aplicación
+
+Una prueba E2E atraviesa los siete componentes: no pertenece a ningún paquete.
+Por eso la proporción por aplicación se mide sobre sus pruebas propias —
+70 : 20, es decir **22.2 % de integración** — y el 70/20/10 completo se mide
+sobre el sistema.
+
+| Paquete | Unitarias | Integración | % integ | Estado |
+| --- | ---: | ---: | ---: | --- |
+| `gateway` | 321 | 95 | 22.8 % | ok |
+| `web` | 272 | 84 | 23.6 % | ok |
+| `customer-service` | 137 | 40 | 22.6 % | ok |
+| `account-service` | 130 | 37 | 22.2 % | ok |
+| `transaction-service` | 173 | 48 | 21.7 % | ok |
+| `payment-service` | 60 | 17 | 22.1 % | ok |
+| `notification-audit-service` | 130 | 39 | 23.1 % | ok |
+| `@bank/messaging` | 42 | 12 | 22.2 % | ok |
+| `@bank/contracts` | 775 | 0 | — | excepción |
+
+`@bank/contracts` es una **excepción permanente y documentada**: es un paquete
+de esquemas con cero E/S — no abre un socket, no toca un disco — así que no
+tiene proceso que cruzar. Integración y E2E no son difíciles ahí, son
+imposibles, y fabricar una prueba para mover un porcentaje sería justo lo que
+esta medición existe para evitar.
+
+### Declarado no es ejecutado
+
+El informe distingue las dos cosas. Una suite cerrada tras `describe.skip` por
+falta de `DATABASE_URL` o `RABBITMQ_URL` cuenta para la proporción —las pruebas
+existen— pero el informe dice cuántas no llegaron a correr. En CI, donde la
+infraestructura está garantizada, el paso usa `--require-executed` y eso pasa de
+ser una nota al pie a ser un fallo. Es la lección de TD-069 escrita en un
+comando: un verde que no se ejecutó es la peor clase de verde.
+
+---
+
 ## 2. Fase Previa: Auditoría y Sincronización de Documentación
 
 Antes de iniciar las pruebas de navegador de larga duración, se ejecutó una auditoría exhaustiva sobre todos los archivos del directorio `docs/`:
