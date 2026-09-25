@@ -206,6 +206,7 @@ pnpm build          # shared packages, then the seven applications
 pnpm lint           # style *and* the executable isolation rules
 pnpm test           # unit tests everywhere
 pnpm test:contract  # contract tests over @bank/contracts
+pnpm test:pyramid   # the 70/20/10 shape, measured per package and for the system
 pnpm typecheck
 pnpm format
 pnpm dev            # whole stack in Docker (infra/docker/docker-compose.dev.yml)
@@ -232,11 +233,28 @@ Three things worth knowing before you claim anything passed:
   `domain`, or an `infrastructure` import in `application` fails `pnpm lint`.
   The rules live in `apps/packages/tooling/eslint.base.mjs`. If one blocks you,
   the design is wrong — do not add an exception to make it pass.
-- **`apps/web` has no component test framework.** Its `test` script is one
-  `node --test` suite over `app/lib/`, not a Vue suite (TD-010). Do not claim
-  component coverage — but note that everything in the shell that *decides*
-  something lives in `app/lib/` as a pure function precisely so it stays
-  testable despite TD-010. The six NestJS applications use Jest and do have real tests.
+- **The test pyramid is enforced, not aspirational.** `pnpm test:pyramid`
+  measures 70/20/10 by counting cases the runners actually executed, and exits
+  non-zero on drift. One rule sets the layer: **integration means the test
+  crosses a real process** (PostgreSQL, RabbitMQ, MinIO, a real Nitro server),
+  and its file name must end in `.integration.spec.ts`, which is the entire
+  classification mechanism. Everything else in-process is unit — including the
+  gateway's Supertest suites, whose `test/support/harness.ts` doubles every
+  port. `@bank/contracts` is a permanent exception: a schema package with no
+  I/O has no process to cross. See AGENTS.md for the full rule.
+- **`apps/web` has a second test runner.** `node --test` still owns the pure
+  functions in `app/lib/`; Vitest with `@nuxt/test-utils` owns the suites that
+  boot a real Nitro server, which is what finally closed TD-010. `pnpm --filter
+  web test` runs both.
+  Everything in the shell that *decides* something still lives in `app/lib/` as
+  a pure function, which is why 272 of web's cases are on `node --test` and why
+  that was worth doing before a Vue runner existed. What the Nitro suites add is
+  the part a pure function cannot reach: the `.vue` files are **rendered**, by a
+  real server, which is the first automated evidence this repository has that a
+  screen draws at all (TD-054). Mounted component tests are now possible too,
+  but they run in-process and therefore count as *unit* — adding them raises
+  web's own integration target, so weigh them. The six NestJS applications use
+  Jest and do have real tests.
 
 ## Spec Workflow
 

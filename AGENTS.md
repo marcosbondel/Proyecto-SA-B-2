@@ -198,6 +198,7 @@ pnpm build          # turbo: shared packages, then the seven applications
 pnpm lint           # includes the executable isolation rules
 pnpm test           # unit tests for every application and package
 pnpm test:contract  # contract tests over @bank/contracts
+pnpm test:pyramid   # the 70/20/10 shape, measured per package and for the system
 pnpm typecheck      # tsc --noEmit everywhere
 pnpm format         # prettier
 pnpm dev            # the whole stack in Docker, applications included
@@ -233,13 +234,30 @@ Two consequences worth knowing:
 most for this assignment's rubric.** Each service's
 `test/repository.integration.spec.ts` is gated `describe.skip` when
 `DATABASE_URL` is unset, and `apps/packages/messaging/test/broker.integration.spec.ts`
-is gated the same way on `RABBITMQ_URL`. Skipped, not failed — so the run
-still reports green while never touching the row lock a concurrent debit
-relies on, the optimistic `version` that rejects a stale write, the balance
-`CHECK`, deduplication by `(idempotency_key, type)` or by the envelope's
-`messageId`, or the outbox that survives a crash between commit and publish.
-Those are exactly the idempotency and failure-handling claims this project is
-judged on, so a passing `pnpm test` alone is not evidence for them.
+is gated the same way on `RABBITMQ_URL` — and so are the gateway's suites
+against a real broker. Skipped, not failed — so the run still reports green
+while never touching the row lock a concurrent debit relies on, the optimistic
+`version` that rejects a stale write, the balance `CHECK`, deduplication by
+`(idempotency_key, type)` or by the envelope's `messageId`, or the outbox that
+survives a crash between commit and publish. Those are exactly the idempotency
+and failure-handling claims this project is judged on, so a passing `pnpm test`
+alone is not evidence for them.
+
+CI **does** run them (TD-069), against real service containers, and fails if
+Jest reports any suite as `skipped`. The gap is local, not in the pipeline.
+
+`pnpm test:pyramid` tells you which suites did not execute in the run you just
+did, and `--require-executed` turns that into a failure — which is how CI calls
+it, where the infrastructure is guaranteed to be there.
+
+> **Estas suites vacían la base a la que las apuntes.** Cada
+> `repository.integration.spec.ts` hace `TRUNCATE` en su `beforeEach`, y las
+> URLs de abajo son las **mismas** que usa el stack de desarrollo. Correrlas
+> mientras `pnpm dev` o `pnpm dev:host` están arriba borra los datos vivos —
+> incluidas las tres cuentas de cobro (EEGSA, EMPAGUA, CLARO), que sólo se
+> siembran al arrancar `account-service` y por tanto **no vuelven** hasta que
+> reinicies el servicio. Baja el stack primero, o usa bases aparte como hace
+> CI, que crea una por servicio. Registrado como TD-077.
 
 To run them for real, bring up the infrastructure and point each suite at its
 own database:
@@ -264,7 +282,37 @@ DATABASE_URL=postgresql://notification_audit_app:changeme@localhost:5437/notific
 
 RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
   turbo run test --filter=@bank/messaging
+
+RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
+  turbo run test --filter=gateway
 ```
+
+### Which layer a new test belongs to
+
+The repository targets **70 / 20 / 10**, and `pnpm test:pyramid` enforces it.
+One rule decides the layer, and it is deliberately blunt so nobody has to
+argue it in review:
+
+- **Integration** — the test crosses a **real process**: PostgreSQL, RabbitMQ,
+  MinIO, or a real Nitro server. Its file name **must** end in
+  `.integration.spec.ts`; that suffix is the whole classification mechanism
+  (`test/pyramid.manifest.json`), so a suite that crosses a process and is not
+  named that way is silently counted as a unit test.
+- **Unit** — everything else that runs in-process, however much of the
+  framework it boots. The gateway's Supertest suites are unit tests: they run
+  the real controllers, guards, filter and middleware, but
+  `test/support/harness.ts` doubles every port, so nothing real is on the other
+  side.
+- **E2E** — `test/e2e/`, the seven components deployed, driven through the
+  browser or the Gateway.
+
+`@bank/contracts` is exempt and always will be: it is a schema package with no
+I/O, so there is no process for it to cross. Do not manufacture an integration
+test there to move a percentage.
+
+Note the arithmetic before adding unit tests in bulk: each app's integration
+target is 2/7 of its unit count, so a hundred new unit tests ask for
+twenty-nine new integration tests to keep the shape.
 
 **Check the ports before trusting them**, with `docker ps --format '{{.Names}}\t{{.Ports}}'`.
 The five databases land on 5433–5437, but the broker and MinIO are shifted off
