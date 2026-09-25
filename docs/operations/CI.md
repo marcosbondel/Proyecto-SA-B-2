@@ -195,7 +195,11 @@ Under *Settings → Secrets and variables → Actions*:
 | Variable | `GKE_CLUSTER` | `bank-usac-vpc-gke` (see `infra/terraform/gcp/gke.tf`) |
 | Variable | `GKE_ZONE` | `us-central1-a` (see `variables.tf`) |
 | Variable | `ARTIFACT_REPO` | the Artifact Registry repository, e.g. `bank-images` |
-| Secret | `GCP_SA_KEY` | service-account JSON with `container.developer` and `artifactregistry.writer` |
+| Variable | `GATEWAY_PUBLIC_URL` | the Gateway address **as a browser reaches it** (Terraform's `gateway_public_url`) |
+| Variable | `WEB_PUBLIC_URL` | *optional* — the frontend's origin, for the Gateway's `CORS_ALLOWED_ORIGINS` |
+| Variable | `WIF_PROVIDER` | *(preferred)* the Workload Identity provider resource name |
+| Variable | `WIF_SERVICE_ACCOUNT` | the service account WIF impersonates |
+| Secret | `GCP_SA_KEY` | *(alternative)* service-account JSON — see the note below before creating one |
 | Secret | `HELM_SECRETS` | the eleven `secrets.*` values the chart marks `required`, one `key=value` per line |
 | Secret | `INFRA_ADDRESSES` | the seven `external.*.dockerNetwork.host` addresses, one per line |
 
@@ -232,3 +236,76 @@ Validación does run on a pull request into `main`, unlike one into `develop`.
 That branch is the last gate before a production deploy, and skipping lint, the
 typecheck and the tracked-`.env` guard precisely there would be the worst
 possible moment to save two minutes.
+
+### Why `GATEWAY_PUBLIC_URL` is required and not defaulted
+
+The chart defaults `web.apiBaseUrl` to `http://localhost:3000`, which is right
+for a kind cluster reached through `kubectl port-forward` and silently useless
+on GKE. Left at the default, a deploy **succeeds** and hands back a frontend
+that cannot reach its own backend — the deployment is green, the pods are
+`Ready`, and the application does not work. `helm-deploy.sh` refuses to run
+without it so that outcome has no way to happen.
+
+`WEB_PUBLIC_URL` is optional and deliberately has no derived default. It is the
+origin the *browser* loads the frontend from, not the Gateway's own address, and
+guessing it wrong would open CORS to the wrong list without anyone noticing
+until a legitimate request is refused.
+
+### Authentication: Workload Identity Federation, or a key
+
+The CD workflow accepts either, and `preflight` is satisfied by whichever is
+present. **Prefer Workload Identity Federation.**
+
+A downloaded service-account key is a permanent credential: it does not expire,
+it lives in a secret store forever, and a copy of it is a copy of the account.
+Workload Identity Federation instead trades the OIDC token GitHub mints for
+*this run* for short-lived GCP credentials. Nothing is stored, so nothing can
+leak.
+
+It is also, frequently, the only option available. Many organisations — USAC's
+Google Workspace domain among them — enforce
+`constraints/iam.disableServiceAccountKeyCreation`, which makes
+`gcloud iam service-accounts keys create` fail outright. That policy is applied
+at the organisation level and is not something a project owner can waive.
+
+Setting it up creates no key at all:
+
+```bash
+PROJECT_ID=<tu-proyecto>
+PROJECT_NUM="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+REPO=marcosbondel/Proyecto-SA-B-2
+SA=github-actions-cd@"$PROJECT_ID".iam.gserviceaccount.com
+
+gcloud services enable iamcredentials.googleapis.com sts.googleapis.com --project="$PROJECT_ID"
+
+gcloud iam service-accounts create github-actions-cd \
+  --display-name="GitHub Actions CD" --project="$PROJECT_ID"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$SA" --role="roles/container.developer"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$SA" --role="roles/artifactregistry.writer"
+
+gcloud iam workload-identity-pools create github \
+  --location=global --display-name="GitHub Actions" --project="$PROJECT_ID"
+
+# `attribute-condition` is not optional: without it, any repository on GitHub
+# could mint a token this provider accepts.
+gcloud iam workload-identity-pools providers create-oidc github-provider \
+  --location=global --workload-identity-pool=github \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition="assertion.repository=='$REPO'" \
+  --project="$PROJECT_ID"
+
+gcloud iam service-accounts add-iam-policy-binding "$SA" \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUM/locations/global/workloadIdentityPools/github/attribute.repository/$REPO" \
+  --project="$PROJECT_ID"
+
+echo "WIF_PROVIDER=projects/$PROJECT_NUM/locations/global/workloadIdentityPools/github/providers/github-provider"
+echo "WIF_SERVICE_ACCOUNT=$SA"
+```
+
+The last two lines print the two repository **variables** to set. There is no
+secret to store, which is the point.
