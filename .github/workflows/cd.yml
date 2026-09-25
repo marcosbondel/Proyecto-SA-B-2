@@ -134,6 +134,166 @@ jobs:
           echo "configured=true" >> "$GITHUB_OUTPUT"
           echo "Credenciales presentes. Continuando con el despliegue."
   # ===========================================================================
+  # Que componentes cambiaron. Lo decide un workflow reutilizable para que la
+  # lista de rutas viva en un solo sitio (.github/workflows/changes.yml).
+  # ===========================================================================
+  changes:
+    name: 'Componentes modificados'
+    needs: preflight
+    if: github.ref == 'refs/heads/develop'
+    uses: ./.github/workflows/changes.yml
+  # ===========================================================================
+  # Construccion selectiva: una imagen por componente MODIFICADO, en paralelo.
+  #
+  # Antes se construian los siete en un bucle secuencial, en cada merge. Con la
+  # matriz sobre `needs.changes`, un cambio en `payment-service` construye una
+  # imagen en vez de siete; y cuando una falla, el nombre del job dice cual sin
+  # tener que leer el log entero.
+  # ===========================================================================
+  build-development:
+    name: 'Construir ${{ matrix.component }}'
+    needs: [preflight, changes]
+    if: github.ref == 'refs/heads/develop' && needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJSON(needs.changes.outputs.components) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
+        if: vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
+        if: vars.WIF_PROVIDER == ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Calcular registry, etiqueta y Dockerfile
+        id: meta
+        run: |
+          set -euo pipefail
+          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
+          REGISTRY="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}"
+          COMPONENT='${{ matrix.component }}'
+
+          case "$COMPONENT" in
+            gateway) DOCKERFILE='apps/gateway/Dockerfile' ;;
+            web)     DOCKERFILE='apps/web/Dockerfile' ;;
+            *)       DOCKERFILE="apps/services/${COMPONENT}/Dockerfile" ;;
+          esac
+
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+          echo "image=${REGISTRY}/${COMPONENT}:dev-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=$DOCKERFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # `cache-from`/`cache-to` con alcance por componente: cada imagen reusa
+      # sus propias capas y no invalida las de las otras seis.
+      - name: Construir y publicar la imagen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.meta.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=dev-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+  # ===========================================================================
+  # Despliegue al entorno de desarrollo (merge a develop -> namespace `dev`).
+  #
+  # Las imagenes de los componentes que NO cambiaron ya estan en el registry de
+  # corridas anteriores; el chart las referencia por la misma etiqueta
+  # `dev-<sha>` solo para los que se acaban de construir, y conserva la que
+  # tuviera cada uno de los demas. Eso es lo que hace selectivo al despliegue y
+  # no solo a la construccion.
+  # ===========================================================================
+  deploy-development:
+    name: 'Despliegue a Entorno de Desarrollo (dev)'
+    needs: [preflight, changes, build-development]
+    if: github.ref == 'refs/heads/develop' && needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: development
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
+        if: vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
+        if: vars.WIF_PROVIDER == ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Obtener credenciales del cluster
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GKE_ZONE }}
+
+      - name: Desplegar en Kubernetes (namespace dev)
+        run: |
+          set -euo pipefail
+          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
+          IMAGE_REGISTRY="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}" \
+            bash .github/scripts/helm-deploy.sh
+        env:
+          NAMESPACE: dev
+          RELEASE_NAME: bank-usac-dev
+          IMAGE_TAG: dev-${{ github.sha }}
+          UPDATED_COMPONENTS: ${{ join(fromJSON(needs.changes.outputs.components), ' ') }}
+          HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
+          INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
+          GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
+          WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
+
+      - name: Resumen del despliegue
+        if: always()
+        run: |
+          {
+            echo "## Despliegue a \`dev\`"
+            echo ""
+            echo "${{ needs.changes.outputs.reason }}"
+            echo ""
+            echo "Componentes actualizados: \`${{ join(fromJSON(needs.changes.outputs.components), '`, `') }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+
+
+
+  # ===========================================================================
   # Retirada del entorno de desarrollo.
   #
   # Este workflow desplegaba en el namespace `dev` al mergear a develop, como

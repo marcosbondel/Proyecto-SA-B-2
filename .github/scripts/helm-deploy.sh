@@ -25,6 +25,9 @@
 #                    exige (`external.*.dockerNetwork.host`) y falla el render
 #                    si faltan, que es preferible a desplegar siete pods que no
 #                    pueden alcanzar su base de datos.
+#   UPDATED_COMPONENTS  opcional — los componentes que cambiaron, separados por
+#                    espacios. Solo esos reciben la etiqueta nueva; el resto
+#                    conserva la suya. Sin definir, todos se actualizan.
 #   GATEWAY_PUBLIC_URL  la direccion del Gateway tal como la alcanza el
 #                    NAVEGADOR de una persona, no un nombre de Service interno.
 #                    El chart la tiene por defecto en `http://localhost:3000`,
@@ -97,10 +100,55 @@ fi
 # Los siete componentes, con el nombre que usan tanto el registry como el chart.
 # El chart trata `image.repository` como la ruta completa de la imagen, asi que
 # apuntarlo al registry es todo lo que hace falta para que GKE la encuentre.
+#
+# `UPDATED_COMPONENTS` es lo que hace SELECTIVO al despliegue y no solo a la
+# construccion. Cuando esta definido, solo esos componentes reciben la etiqueta
+# nueva; los demas conservan exactamente la que ya tenian en el release, leida
+# de `helm get values`. Sin esa lectura, no pasar el valor haria que helm
+# cayera al `tag: dev` por defecto del chart — una etiqueta que no existe en el
+# registry — y el despliegue "selectivo" acabaria rompiendo los seis servicios
+# que nadie toco.
+#
+# En la primera instalacion no hay release del que leer, asi que todos reciben
+# la etiqueta nueva.
+RELEASE_EXISTE=false
+if helm status "$RELEASE_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
+  RELEASE_EXISTE=true
+  VALORES_ACTUALES="$(helm get values "$RELEASE_NAME" --namespace "$NAMESPACE" -o json 2>/dev/null || echo '{}')"
+fi
+
+etiqueta_previa() { # etiqueta_previa <ruta en values, ej: services.customer>
+  [ "$RELEASE_EXISTE" = true ] || { echo ""; return; }
+  echo "$VALORES_ACTUALES" | jq -r --arg p "$1" '
+    ($p | split(".")) as $ruta
+    | getpath($ruta + ["image","tag"]) // ""
+  ' 2>/dev/null || echo ""
+}
+
+esta_actualizado() { # esta_actualizado <nombre del componente>
+  [ -z "${UPDATED_COMPONENTS:-}" ] && return 0   # sin lista: todos
+  case " $UPDATED_COMPONENTS " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
 declare -a IMAGE_ARGS=()
+declare -a SIN_TOCAR=()
 add_image() { # add_image <clave en values.yaml> <nombre del componente>
   IMAGE_ARGS+=(--set-string "$1.image.repository=${IMAGE_REGISTRY}/$2")
-  IMAGE_ARGS+=(--set-string "$1.image.tag=${IMAGE_TAG}")
+
+  if esta_actualizado "$2"; then
+    IMAGE_ARGS+=(--set-string "$1.image.tag=${IMAGE_TAG}")
+    return
+  fi
+
+  local previa; previa="$(etiqueta_previa "$1")"
+  if [ -n "$previa" ] && [ "$previa" != "dev" ]; then
+    IMAGE_ARGS+=(--set-string "$1.image.tag=${previa}")
+    SIN_TOCAR+=("$2@${previa}")
+  else
+    # No cambio, pero tampoco hay una etiqueta previa utilizable: se despliega
+    # la nueva. Preferible a dejarlo apuntando al `dev` por defecto del chart.
+    IMAGE_ARGS+=(--set-string "$1.image.tag=${IMAGE_TAG}")
+  fi
 }
 
 add_image services.customer          customer-service
@@ -110,6 +158,10 @@ add_image services.payment           payment-service
 add_image services.notificationAudit notification-audit-service
 add_image gateway                    gateway
 add_image web                        web
+
+if [ ${#SIN_TOCAR[@]} -gt 0 ]; then
+  echo "Sin cambios, conservan su etiqueta: ${SIN_TOCAR[*]}"
+fi
 
 # El despliegue se lanza SIN `--atomic` y en segundo plano, a proposito.
 #
