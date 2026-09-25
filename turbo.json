@@ -80,9 +80,16 @@
     // `@bank/messaging`'s `broker.integration.spec.ts` skips itself without it,
     // so a run with a broker could restore a cached run without one and report
     // a pass for a suite that never executed.
+    //
+    // `GATEWAY_URL` y `NUXT_PUBLIC_API_BASE_URL` entran por el mismo motivo, y
+    // llegaron con la capa de integracion de `apps/web`: sus suites de Vitest
+    // levantan un Nitro real y lo apuntan a un upstream de prueba, asi que el
+    // mismo codigo produce dos resultados distintos segun esten puestas. Sin
+    // declararlas, una corrida con servidor podria restaurar de cache una
+    // corrida sin el.
     "test": {
       "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "RABBITMQ_URL"],
+      "env": ["DATABASE_URL", "RABBITMQ_URL", "GATEWAY_URL", "NUXT_PUBLIC_API_BASE_URL"],
       // Nothing to restore: no `test` script asks Jest for coverage, so the
       // cached entry is the exit status and the log. `coverage/**` here would
       // only produce a "no output files found" warning on every run.
@@ -109,6 +116,15 @@
         "GATEWAY_INSTANCE_ID",
         "REPLY_TIMEOUT_MS",
         "OBJECT_STORAGE_*",
+        // Sin estas cuatro, `turbo run dev` en modo estricto las retira aunque
+        // el `.env` de la aplicacion las defina: la semilla no corre, el enlace
+        // de activacion no se revela y el canal de notificaciones se queda en
+        // el que trae el codigo. Se descubrio levantando el stack para el E2E,
+        // donde el sintoma fue que no habia enlace de activacion que leer.
+        "SEED_DEMO_DATA",
+        "SEED_PASSWORD",
+        "REVEAL_ACTIVATION_LINKS",
+        "NOTIFICATION_CHANNEL",
         "DEACTIVATION_*",
         "INACTIVITY_*",
         "NUXT_*",
