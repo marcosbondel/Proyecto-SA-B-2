@@ -46,6 +46,13 @@ skinparam node<<serverless>> {
     BorderColor #EA4335
     FontColor #C5221F
 }
+skinparam node<<namespace>> {
+    BackgroundColor #F5F0FF
+    BorderColor #7B4FBF
+    FontColor #4B2E83
+    BorderThickness 2
+}
+
 skinparam node<<pod>> {
     BackgroundColor #FFFFFF
     BorderColor #EF9425
@@ -92,21 +99,35 @@ node "Google Cloud Platform (GCP)" <<gcpCloud>> {
         }
 
         node "Subred GKE (10.10.0.0/20)" <<subnet>> {
-            node "GKE Managed Cluster" <<gkeCluster>> {
-                
-                node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
-                node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
-                node "Account Service Pods\n[1 Replica]" <<pod>> as podAccount
-                node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
-                node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
-                node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit
+            node "GKE Managed Cluster: bank-usac-vpc-gke" <<gkeCluster>> {
 
-                node "Broker RabbitMQ\nStatefulSet (:5672)" <<pod>> as brokerRabbit
-                node "MinIO Object Storage\nStatefulSet (:9000)" <<pod>> as storageMinio
+                node "Namespace: prod\nrelease bank-usac — imagenes vX.Y.Z" <<namespace>> {
+                    node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
+                    node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
+                    node "Account Service Pods\n[1 Replica — barrido sin leader election]" <<pod>> as podAccount
+                    node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
+                    node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
+                    node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit
+
+                    node "Broker RabbitMQ\n(:5672)" <<pod>> as brokerRabbit
+                    node "MinIO Object Storage\n(:9000)" <<pod>> as storageMinio
+                }
+
+                node "Namespace: dev\nrelease bank-usac-dev — imagenes dev-<sha>" <<namespace>> {
+                    node "Los mismos 7 componentes\n+ RabbitMQ y MinIO propios\n[HPA @ 80% CPU]" <<pod>> as podDev
+                }
             }
         }
     }
 }
+
+note bottom of podDev
+  Mismo cluster, namespaces separados: cada uno
+  levanta su propio RabbitMQ y su propio MinIO.
+  Las cinco VMs de PostgreSQL SI son compartidas
+  entre los dos entornos (TD-070) — el aislamiento
+  hoy es de computo y mensajeria, no de datos.
+end note
 
 ' Flujos de comunicación
 user --> cloudRunWeb : "HTTPS :443 (Interfaz Web)"

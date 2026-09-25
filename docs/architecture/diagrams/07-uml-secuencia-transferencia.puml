@@ -1,7 +1,10 @@
 @startuml
 ' Bank USAC - UML 2 Sequence Diagram - Transferencia bancaria
 ' Caso de uso 6 (docs/domain/use-cases.md). Saga por coreografia con compensacion
-' explicita, cuatro servicios, comunicados solo por RabbitMQ. Un solo diagrama:
+' explicita, cinco servicios, comunicados solo por RabbitMQ. Incluye la Saga
+' extendida de la Fase 2: el gate KYC antes de mover dinero (C-8), las reglas
+' del tipo de cuenta con su comision, el pago externo simulado con su escalera
+' de reintentos, y la notificacion final. Un solo diagrama:
 ' camino feliz, los tres finales (COMPLETED / FAILED / COMPENSATED) y la
 ' compensacion con sus dos disparadores.
 ' Notacion UML 2 nativa (OMG, Sequence Diagram §17.4.4 / §17.11 Message), misma
@@ -21,7 +24,7 @@
 ' (OutboxRelay.runOnce()) — no el handler que atendio el mensaje. Account
 ' Service y Notification & Audit no usan outbox: publican en el mismo `execute`.
 
-title UML 2 - Diagrama de Secuencia\nTransferencia bancaria - Saga por coreografia (Bank USAC)
+title UML 2 - Diagrama de Secuencia\nTransferencia bancaria - Saga extendida por coreografia (Bank USAC, Fase 2)\nKYC -> tipo de cuenta -> historial -> pago externo -> notificacion
 
 skinparam shadowing false
 skinparam defaultFontName "Segoe UI"
@@ -63,6 +66,7 @@ actor "Actor\n(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)" as Actor
 participant "Frontend" as Frontend
 participant "API Gateway" as Gateway
 queue "Message Broker\n(RabbitMQ)" as Broker
+participant "Customer Service" as Customer
 participant "Transaction Service" as Txn
 participant "Account Service" as Account
 participant "Payment Service" as Payment
@@ -102,11 +106,45 @@ else idempotencyKey repetida
 
 else datos válidos, idempotencyKey nueva
     Txn -> Txn : Crear la Transaction en PENDING\ny escribir transaction.initiated en el outbox\n- repository.start({ transaction, outbound })
-    Txn -> Txn : Decidir PENDING -> DEBITING\ny escribir el comando "debitar" en el outbox (misma transacción, TD-031)\n- saga.execute({ event: DEBIT_ORDERED }) invoca repository.applyEvent(...)
+    Txn -> Txn : Decidir PENDING -> PENDING (autotransición)\ny escribir la pregunta al gate KYC en el outbox\n- saga.execute({ event: KYC_CHECK_ORDERED })
     Txn ->> Broker : Confirmar (ack) — DESPUÉS de escribir el outbox\n- channel.ack(message)
     deactivate Txn
 
-    Txn ->> Broker : Publicar comando "debitar" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(account.debit.requested.v1)
+    ' ---- Paso 1b: el gate KYC (Fase 2, §4.1 p. 4 — C-8) ----
+    Txn ->> Broker : Preguntar si el cliente está verificado (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(customer.kyc.check.requested.v1)
+
+    Broker ->> Customer : Entregar customer.kyc.check.requested - CheckKycHandler.handle(envelope)
+    activate Customer
+    note over Customer
+      Responde con el veredicto, sin exponer la tabla
+      — mayInitiateTransactions(customer) decide, y
+      la respuesta viaja por el broker (invariante X-1:
+      Transaction Service nunca lee esta base)
+    end note
+    Customer ->> Broker : Publicar evento "KYC comprobado" - publisher.publish(customer.kyc.checked.v1)
+    Customer ->> Broker : Confirmar (ack) - channel.ack(message)
+    deactivate Customer
+
+    Broker ->> Txn : Entregar customer.kyc.checked - SagaEventHandler.handle(envelope)
+    activate Txn
+
+    alt kycStatus != VERIFIED — cierra en FAILED, sin mover un centavo
+        note over Txn
+          PENDING -> FAILED, reason KYC_NOT_VERIFIED
+          - AdvanceSagaUseCase.execute({ event: KYC_REJECTED })
+          Ningún débito llega a ordenarse
+        end note
+        Txn ->> Broker : Confirmar (ack) - channel.ack(message)
+        deactivate Txn
+        Txn ->> Broker : Publicar evento "transacción fallida" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(transaction.failed.v1)
+
+    else kycStatus == VERIFIED — sigue el flujo
+        Txn -> Txn : Decidir PENDING -> DEBITING\ny escribir el comando "debitar" en el outbox (misma transacción, TD-031)\n- saga.execute({ event: KYC_APPROVED }) invoca repository.applyEvent(...)
+        Txn ->> Broker : Confirmar (ack) — DESPUÉS de escribir el outbox\n- channel.ack(message)
+        deactivate Txn
+
+        Txn ->> Broker : Publicar comando "debitar" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(account.debit.requested.v1)
+    end
 
     ' ---- Paso 2 ----
     Broker ->> Account : Entregar account.debit.requested - DebitAccountHandler.handle(envelope)
@@ -139,6 +177,17 @@ else datos válidos, idempotencyKey nueva
 
     else débito aplicado
         Account -> Account : Aplicar el débito bajo el lock de fila\n- debit(account, amount, now) devuelve el movimiento
+        note over Account
+          Las reglas del tipo de cuenta (Fase 2, §4.1 p. 6)
+          se aplican aquí — ruleFor(accountType):
+          AHORRO cobra Q3.00 de comisión en el mismo lock,
+          MONETARIA no tiene regla de comisión.
+          El destino recibe el monto íntegro; la comisión
+          la paga el origen y se revierte si hay compensación
+        end note
+        opt accountType == AHORRO
+            Account ->> Broker : Publicar evento "comisión cobrada" - publisher.publish(account.commission.charged.v1)
+        end
         Account ->> Broker : Publicar evento "cuenta debitada" - publisher.publish(account.debited.v1)
         Account ->> Broker : Confirmar (ack) - channel.ack(message)
         deactivate Account
