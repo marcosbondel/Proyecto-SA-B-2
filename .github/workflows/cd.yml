@@ -16,8 +16,16 @@ name: CD
 # reporta verde sin desplegar es peor que uno rojo: esconde el problema.
 #
 # Secrets/variables que este workflow necesita (Settings > Secrets and variables):
+# Autenticacion — hace falta UNO de los dos caminos:
+#   var    WIF_PROVIDER      (preferido) el Workload Identity Provider, de la
+#                            forma projects/<num>/locations/global/workloadIdentityPools/<pool>/providers/<prov>
+#   var    WIF_SERVICE_ACCOUNT  el correo de la cuenta de servicio a suplantar
+#     — o bien —
 #   secret GCP_SA_KEY        JSON de una service account con roles
-#                            container.developer y artifactregistry.writer
+#                            container.developer y artifactregistry.writer.
+#                            Imposible de crear si la organizacion aplica
+#                            `constraints/iam.disableServiceAccountKeyCreation`;
+#                            en ese caso, usar WIF.
 #   var    GCP_PROJECT_ID    id del proyecto de GCP
 #   var    GKE_CLUSTER       nombre del cluster  (terraform: bank-usac-vpc-gke)
 #   var    GKE_ZONE          zona del cluster    (terraform: us-central1-a)
@@ -70,6 +78,8 @@ jobs:
         id: check
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ vars.WIF_SERVICE_ACCOUNT }}
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
           GKE_ZONE: ${{ vars.GKE_ZONE }}
@@ -80,7 +90,14 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          [ -n "${GCP_SA_KEY}"      ] || missing+=("secret GCP_SA_KEY")
+          # Basta con UNO de los dos caminos de autenticacion. Se prefiere
+          # Workload Identity Federation: no hay llave que guardar, y es el
+          # unico posible cuando la organizacion prohibe crearlas.
+          if [ -n "${WIF_PROVIDER}" ]; then
+            [ -n "${WIF_SERVICE_ACCOUNT}" ] || missing+=("variable WIF_SERVICE_ACCOUNT (requerida junto a WIF_PROVIDER)")
+          elif [ -z "${GCP_SA_KEY}" ]; then
+            missing+=("autenticacion: o bien las variables WIF_PROVIDER + WIF_SERVICE_ACCOUNT, o bien el secret GCP_SA_KEY")
+          fi
           [ -n "${GCP_PROJECT_ID}"  ] || missing+=("variable GCP_PROJECT_ID")
           [ -n "${GKE_CLUSTER}"     ] || missing+=("variable GKE_CLUSTER")
           [ -n "${GKE_ZONE}"        ] || missing+=("variable GKE_ZONE")
@@ -100,6 +117,9 @@ jobs:
               echo ""
               echo "Los valores del cluster estan en \`infra/terraform/gcp/\`:"
               echo "cluster \`bank-usac-vpc-gke\`, zona \`us-central1-a\`."
+              echo ""
+              echo "Si tu organizacion prohibe crear llaves de cuenta de servicio,"
+              echo "usa Workload Identity Federation: ver \`docs/operations/CI.md\`."
             } >> "$GITHUB_STEP_SUMMARY"
 
             echo "::error::CD sin credenciales de GCP. Faltan: ${missing[*]}"
@@ -123,7 +143,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Autenticar contra Google Cloud
+      # Dos caminos de autenticacion, y el primero es el preferido.
+      #
+      # Workload Identity Federation intercambia el token OIDC que GitHub emite
+      # para esta corrida por credenciales de GCP de corta vida. No hay ninguna
+      # llave que guardar, rotar ni filtrar — y es el unico camino disponible
+      # cuando la organizacion aplica `constraints/iam.disableServiceAccountKeyCreation`,
+      # que prohibe descargar llaves JSON. Necesita `id-token: write`, arriba.
+      - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
+        if: vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # El camino con llave, para un proyecto sin esa restriccion.
+      - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
+        if: vars.WIF_PROVIDER == ''
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -250,7 +286,23 @@ jobs:
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Desplegando la version publicada $VERSION"
 
-      - name: Autenticar contra Google Cloud
+      # Dos caminos de autenticacion, y el primero es el preferido.
+      #
+      # Workload Identity Federation intercambia el token OIDC que GitHub emite
+      # para esta corrida por credenciales de GCP de corta vida. No hay ninguna
+      # llave que guardar, rotar ni filtrar — y es el unico camino disponible
+      # cuando la organizacion aplica `constraints/iam.disableServiceAccountKeyCreation`,
+      # que prohibe descargar llaves JSON. Necesita `id-token: write`, arriba.
+      - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
+        if: vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # El camino con llave, para un proyecto sin esa restriccion.
+      - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
+        if: vars.WIF_PROVIDER == ''
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
