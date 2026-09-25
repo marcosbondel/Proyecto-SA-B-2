@@ -1054,4 +1054,126 @@ describeIntegration('PostgresTransactionRepository', () => {
       expect(transactions.map((t) => t.transactionId)).toEqual([debiting.transactionId]);
     });
   });
+
+  /**
+   * El historial con filtros (Fase 2, §4.1 p. 6: "Consultar historial por
+   * cuenta, Filtrar por fecha y estado").
+   *
+   * `listing-and-scope.spec.ts` ya prueba estas reglas contra un repositorio en
+   * memoria, y ahi es donde menos valen: lo que decide el filtrado es el SQL
+   * que arma `list()` — sus clausulas, su orden de parametros y como el
+   * `ownerId` se combina con el `customerId` que pidio quien llama. Un doble en
+   * memoria responde bien a una consulta que la base rechazaria.
+   */
+  describe('el historial y sus filtros, contra el SQL real', () => {
+    const CLIENTE_A = randomUUID();
+    const CLIENTE_B = randomUUID();
+    const CUENTA = randomUUID();
+
+    async function sembrar(overrides: Partial<Transaction> = {}): Promise<Transaction> {
+      const { transaction } = (await repository.start({
+        transaction: candidate(overrides),
+      })) as { transaction: Transaction };
+      return transaction;
+    }
+
+    it('filtra por cuenta mirando origen Y destino', async () => {
+      await sembrar({ sourceAccount: CUENTA, customerId: CLIENTE_A });
+      await sembrar({ targetAccount: CUENTA, customerId: CLIENTE_A });
+      await sembrar({ customerId: CLIENTE_A });
+
+      const { transactions } = await repository.list({
+        ownerId: null,
+        accountId: CUENTA,
+        limit: 50,
+      });
+
+      // Dos: la que salio de la cuenta y la que entro. Una transferencia
+      // aparece en el historial de las dos partes.
+      expect(transactions).toHaveLength(2);
+    });
+
+    it('filtra por estado, resolviendo la lista que el phaseStatus abre', async () => {
+      const completada = await sembrar({ customerId: CLIENTE_B });
+      await repository.applyEvent({
+        transactionId: completada.transactionId,
+        messageId: randomUUID(),
+        messageType: 'customer.kyc.checked.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
+        now: NOW,
+      });
+      await sembrar({ customerId: CLIENTE_B });
+
+      const { transactions } = await repository.list({
+        ownerId: null,
+        customerId: CLIENTE_B,
+        statuses: ['PENDING'],
+        limit: 50,
+      });
+
+      // La que avanzo a DEBITING ya no es PENDING; el filtro la deja fuera.
+      expect(transactions.every((t) => t.status === 'PENDING')).toBe(true);
+    });
+
+    it('acota por rango de fechas, incluyendo los extremos', async () => {
+      const dentro = await sembrar({ customerId: CLIENTE_A });
+
+      const antes = new Date(NOW.getTime() - 60_000);
+      const despues = new Date(NOW.getTime() + 60_000);
+
+      const conRango = await repository.list({
+        ownerId: null,
+        customerId: CLIENTE_A,
+        from: antes,
+        to: despues,
+        limit: 50,
+      });
+      const fueraDeRango = await repository.list({
+        ownerId: null,
+        customerId: CLIENTE_A,
+        from: despues,
+        limit: 50,
+      });
+
+      expect(conRango.transactions.map((t) => t.transactionId)).toContain(dentro.transactionId);
+      expect(fueraDeRango.transactions).toHaveLength(0);
+    });
+
+    it('devuelve vacio, nunca ensanchado, cuando el alcance y el filtro se contradicen', async () => {
+      await sembrar({ customerId: CLIENTE_A });
+
+      // Un CLIENTE pidiendo el historial de otro: el `ownerId` es lo que puede
+      // y el `customerId` lo que pidio. Dos condiciones contradictorias sobre
+      // la misma columna dan cero filas — que es exactamente lo que debe pasar,
+      // y la razon por la que son clausulas separadas en vez de una sola.
+      const { transactions, total } = await repository.list({
+        ownerId: CLIENTE_B,
+        customerId: CLIENTE_A,
+        limit: 50,
+      });
+
+      expect(transactions).toHaveLength(0);
+      expect(total).toBe(0);
+    });
+
+    it('cuenta el total completo aunque el limite recorte la pagina', async () => {
+      const cliente = randomUUID();
+      for (let i = 0; i < 4; i += 1) {
+        await sembrar({ customerId: cliente });
+      }
+
+      const { transactions, total } = await repository.list({
+        ownerId: null,
+        customerId: cliente,
+        limit: 2,
+      });
+
+      // `total` responde "cuantas hay", no "cuantas te di": sin eso, una
+      // interfaz paginada no puede decir cuantas faltan.
+      expect(transactions).toHaveLength(2);
+      expect(total).toBe(4);
+    });
+  });
+
 });
