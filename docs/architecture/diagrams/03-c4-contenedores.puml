@@ -23,11 +23,11 @@ System_Boundary(bankusac, "Bank USAC") {
         Container(frontend, "Frontend", "Nuxt 4 + @nuxt/ui", "Interfaz de los tres actores; sin lógica de negocio.", $tags="Web Browser")
         Container(gateway, "API Gateway", "NestJS", "Único entrypoint; valida JWT, traduce HTTP a AMQP y no tiene BD.", $tags="Server-Side Application")
 
-        Container(customer, "Customer Service", "NestJS", "Identidad del cliente.", $tags="Server-Side Application")
-        Container(account, "Account Service", "NestJS", "Cuentas y balances.", $tags="Server-Side Application")
-        Container(transaction, "Transaction Service", "NestJS", "Orquestación de transferencias y Saga.", $tags="Server-Side Application")
-        Container(payment, "Payment Service", "NestJS", "Procesamiento de pagos y reintentos.", $tags="Server-Side Application")
-        Container(notification, "Notification & Audit Service", "NestJS", "Auditoría y notificaciones; terminal.", $tags="Server-Side Application")
+        Container(customer, "Customer Service", "NestJS", "Identidad del cliente y estado KYC (PENDING/VERIFIED/REJECTED); responde el gate que autoriza transferir.", $tags="Server-Side Application")
+        Container(account, "Account Service", "NestJS", "Cuentas y balances. Tipos MONETARIA y AHORRO con saldo minimo de apertura y comision por debito.", $tags="Server-Side Application")
+        Container(transaction, "Transaction Service", "NestJS", "Orquestacion de la Saga e historial con filtros por cuenta, estado y fecha.", $tags="Server-Side Application")
+        Container(payment, "Payment Service", "NestJS", "Pagos externos simulados (SUCCESS/FAILURE/TIMEOUT) y escalera de reintentos.", $tags="Server-Side Application")
+        Container(notification, "Notification & Audit Service", "NestJS", "Clasifica cada evento INFO/WARNING/ERROR, notifica segun tipo y guarda el historial; terminal.", $tags="Server-Side Application")
     }
 
     Boundary(infrastructure, "Infraestructura externa al cluster: Docker en el host") {
