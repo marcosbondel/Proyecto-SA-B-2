@@ -1,0 +1,135 @@
+name: Detectar componentes modificados
+
+# Que componentes toco un cambio, para que el pipeline construya y despliegue
+# solo esos y no los siete cada vez.
+#
+# Es un workflow reutilizable (`workflow_call`) en vez de un job copiado en
+# cd.yml: la lista de rutas por componente es la definicion de la estrategia de
+# monorepo, y tenerla dos veces es como se llega a que un servicio se despliegue
+# desde un workflow y no desde el otro sin que nadie lo decida.
+#
+# **Lo compartido dispara todo, a proposito.** `apps/packages/**` son
+# `@bank/contracts`, `@bank/messaging` y `@bank/tooling`, que los siete
+# consumen desde `dist/`: un cambio de contrato que solo reconstruyera el
+# servicio que lo edito dejaria a los otros seis hablando la version anterior.
+# Lo mismo vale para el lockfile, `turbo.json` y los propios workflows.
+
+on:
+  workflow_call:
+    outputs:
+      components:
+        description: 'Arreglo JSON con los componentes a construir, listo para `matrix`'
+        value: ${{ jobs.detect.outputs.components }}
+      any:
+        description: '"true" si hay algo que construir'
+        value: ${{ jobs.detect.outputs.any }}
+      reason:
+        description: 'Por que se eligio esa lista, para el resumen de la corrida'
+        value: ${{ jobs.detect.outputs.reason }}
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: 'Componentes modificados'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      components: ${{ steps.decide.outputs.components }}
+      any: ${{ steps.decide.outputs.any }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # El paso siguiente compara contra el commit anterior, que sin esto
+          # no esta en el clon.
+          fetch-depth: 0
+
+      - name: Clasificar los archivos que cambiaron
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            shared:
+              - 'apps/packages/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'package.json'
+              - '.github/workflows/**'
+              - '.github/scripts/**'
+              - 'infra/k8s/helm/**'
+            customer-service:
+              - 'apps/services/customer-service/**'
+            account-service:
+              - 'apps/services/account-service/**'
+            transaction-service:
+              - 'apps/services/transaction-service/**'
+            payment-service:
+              - 'apps/services/payment-service/**'
+            notification-audit-service:
+              - 'apps/services/notification-audit-service/**'
+            gateway:
+              - 'apps/gateway/**'
+            web:
+              - 'apps/web/**'
+
+      - name: Decidir que se construye
+        id: decide
+        env:
+          SHARED: ${{ steps.filter.outputs.shared }}
+          CUSTOMER: ${{ steps.filter.outputs.customer-service }}
+          ACCOUNT: ${{ steps.filter.outputs.account-service }}
+          TRANSACTION: ${{ steps.filter.outputs.transaction-service }}
+          PAYMENT: ${{ steps.filter.outputs.payment-service }}
+          NOTIFICATION: ${{ steps.filter.outputs.notification-audit-service }}
+          GATEWAY: ${{ steps.filter.outputs.gateway }}
+          WEB: ${{ steps.filter.outputs.web }}
+        run: |
+          set -euo pipefail
+
+          TODOS='customer-service account-service transaction-service payment-service notification-audit-service gateway web'
+
+          if [ "$SHARED" = "true" ]; then
+            COMPONENTES="$TODOS"
+            RAZON='Cambio en codigo compartido (contratos, mensajeria, tooling, chart o el propio pipeline): se reconstruyen los siete.'
+          else
+            COMPONENTES=""
+            [ "$CUSTOMER"     = "true" ] && COMPONENTES="$COMPONENTES customer-service"
+            [ "$ACCOUNT"      = "true" ] && COMPONENTES="$COMPONENTES account-service"
+            [ "$TRANSACTION"  = "true" ] && COMPONENTES="$COMPONENTES transaction-service"
+            [ "$PAYMENT"      = "true" ] && COMPONENTES="$COMPONENTES payment-service"
+            [ "$NOTIFICATION" = "true" ] && COMPONENTES="$COMPONENTES notification-audit-service"
+            [ "$GATEWAY"      = "true" ] && COMPONENTES="$COMPONENTES gateway"
+            [ "$WEB"          = "true" ] && COMPONENTES="$COMPONENTES web"
+            COMPONENTES="$(echo "$COMPONENTES" | xargs || true)"
+            RAZON='Solo los componentes con cambios propios.'
+          fi
+
+          if [ -z "$COMPONENTES" ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "components=[]" >> "$GITHUB_OUTPUT"
+            echo "reason=Ningun componente cambio; no hay nada que construir." >> "$GITHUB_OUTPUT"
+            echo "## Sin componentes que construir" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Un arreglo JSON, que es lo que `strategy.matrix` sabe leer via
+          # fromJSON. Construirlo aqui evita la expresion ilegible que haria
+          # falta para convertir una cadena separada por espacios en el
+          # workflow que la consume.
+          JSON="$(printf '%s\n' $COMPONENTES | jq -R . | jq -sc .)"
+
+          echo "any=true" >> "$GITHUB_OUTPUT"
+          echo "components=$JSON" >> "$GITHUB_OUTPUT"
+          echo "reason=$RAZON" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Componentes a construir"
+            echo ""
+            echo "$RAZON"
+            echo ""
+            for c in $COMPONENTES; do echo "- \`$c\`"; done
+          } >> "$GITHUB_STEP_SUMMARY"
