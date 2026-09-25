@@ -237,4 +237,154 @@ describe('reading one transfer', () => {
     expect(mayReadTransaction(TELLER, { customerId: null })).toBe(true);
     expect(mayReadTransaction(null, { customerId: OWNER.customerId })).toBe(false);
   });
+
+  it('carries the real history, oldest first, only after the ownership check has already let the reader in', async () => {
+    const context = world();
+    const id = await transferBy(context, OWNER, '01');
+
+    await context.status.execute({ transactionId: id }, OWNER);
+    const found = context.publisher.replies.at(-1)!.payload as {
+      transitions: { from: string | null; to: string }[];
+    };
+
+    /**
+     * Two rows: the opening one `start()` writes, and the `KYC_CHECK_ORDERED`
+     * self-transition takes in the same call that accepted the request — the
+     * one transition with no message of its own (see `saga-transfer.md`). It
+     * stays `PENDING`: the gate's own verdict has not arrived in this test.
+     */
+    expect(found.transitions).toEqual([
+      {
+        from: null,
+        to: 'PENDING',
+        event: 'transfer.requested.v1',
+        reason: null,
+        occurredAt: expect.any(String),
+      },
+      {
+        from: 'PENDING',
+        to: 'PENDING',
+        event: 'transfer.requested.v1',
+        reason: null,
+        occurredAt: expect.any(String),
+      },
+    ]);
+  });
+
+  it('carries phaseStatus alongside status', async () => {
+    const context = world();
+    const id = await transferBy(context, OWNER, '01');
+
+    await context.status.execute({ transactionId: id }, OWNER);
+    const found = context.publisher.replies.at(-1)!.payload as { phaseStatus: string };
+
+    // PENDING (the status right after acceptance, awaiting the KYC verdict)
+    // is, unsurprisingly, the PENDING phase.
+    expect(found.phaseStatus).toBe('PENDING');
+  });
+});
+
+describe('filtering the history by date and phase (T-28)', () => {
+  const EARLY = new Date('2026-08-01T00:00:00.000Z');
+  const LATE = new Date('2026-08-30T00:00:00.000Z');
+
+  /** One transfer, backdated by rewriting `createdAt` after `transferBy` wrote it. */
+  async function transferOn(
+    context: ReturnType<typeof world>,
+    identity: Identity,
+    suffix: string,
+    createdAt: Date,
+  ): Promise<string> {
+    const id = await transferBy(context, identity, suffix);
+    const original = context.repository.transactions.get(id)!;
+
+    context.repository.transactions.set(id, { ...original, createdAt });
+
+    return id;
+  }
+
+  it('filters by date range alone', async () => {
+    const context = world();
+    await transferOn(context, OWNER, '01', EARLY);
+    await transferOn(context, OWNER, '02', LATE);
+
+    await context.list.execute(
+      { from: '2026-08-15T00:00:00.000Z', to: '2026-08-31T00:00:00.000Z' },
+      OWNER,
+    );
+
+    expect(rowsOf(context.publisher).total).toBe(1);
+  });
+
+  /**
+   * `transferBy` runs the request through `RequestTransferUseCase`, which
+   * orders `KYC_CHECK_ORDERED` in the same call that accepts the request — a
+   * self-transition, so by the time the row exists it still reads `PENDING`,
+   * with nobody's verdict having arrived in this test. `PENDING` is the
+   * `PENDING` phase (see `phase-status.ts`), which is what these tests filter
+   * by.
+   */
+  it('filters by status alone, unaffected by date', async () => {
+    const context = world();
+    await transferOn(context, OWNER, '01', EARLY);
+    await transferOn(context, OWNER, '02', LATE);
+
+    await context.list.execute({ status: 'PENDING' }, OWNER);
+
+    expect(rowsOf(context.publisher).total).toBe(2);
+  });
+
+  it('combines date and status: both must hold', async () => {
+    const context = world();
+    await transferOn(context, OWNER, '01', EARLY);
+    await transferOn(context, OWNER, '02', LATE);
+
+    await context.list.execute(
+      { status: 'PENDING', from: '2026-08-15T00:00:00.000Z' },
+      OWNER,
+    );
+
+    expect(rowsOf(context.publisher).total).toBe(1);
+  });
+
+  it('resolves phaseStatus to its member statuses', async () => {
+    const context = world();
+    await transferOn(context, OWNER, '01', EARLY);
+
+    await context.list.execute({ phaseStatus: 'PENDING' }, OWNER);
+
+    expect(rowsOf(context.publisher).total).toBe(1);
+
+    await context.list.execute({ phaseStatus: 'APPROVED' }, OWNER);
+
+    expect(rowsOf(context.publisher).total).toBe(0);
+  });
+
+  it('intersects status and phaseStatus rather than letting one override the other', async () => {
+    const context = world();
+    await transferOn(context, OWNER, '01', EARLY);
+
+    // PENDING is in the PENDING phase — the intersection is non-empty.
+    await context.list.execute({ status: 'PENDING', phaseStatus: 'PENDING' }, OWNER);
+
+    expect(rowsOf(context.publisher).total).toBe(1);
+
+    // PENDING is never APPROVED — the intersection is empty, not a widened match.
+    await context.list.execute({ status: 'PENDING', phaseStatus: 'APPROVED' }, OWNER);
+
+    expect(rowsOf(context.publisher).total).toBe(0);
+  });
+
+  it('replies with phaseStatus on every row', async () => {
+    const context = world();
+    await transferOn(context, OWNER, '01', EARLY);
+
+    await context.list.execute({}, OWNER);
+
+    const answer = rowsOf(context.publisher) as unknown as {
+      transactions: { phaseStatus: string }[];
+    };
+
+    expect(answer.transactions[0]!.phaseStatus).toBe('PENDING');
+  });
 });

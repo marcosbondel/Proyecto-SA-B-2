@@ -67,6 +67,11 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: INACTIVITY_MIN_BALANCE_MINOR
+            - name: SEED_DEMO_DATA
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: SEED_DEMO_DATA
           livenessProbe:
             httpGet:
               path: /health

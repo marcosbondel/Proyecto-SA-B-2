@@ -32,6 +32,7 @@ import {
   ChangePasswordDto,
   RegisterCustomerDto,
   SetIdentityVerdictDto,
+  SetKycStatusDto,
   UpdateCustomerDto,
   VerifyEmailDto,
 } from './dto/customer.dto';
@@ -284,6 +285,43 @@ export class CustomersController {
     return await this.#commands.setIdentityVerdict({
       customerId,
       verdict: body.verdict,
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+      idempotencyKey: request.idempotencyKey,
+    });
+  }
+
+  /**
+   * A teller's manual KYC verdict (Fase 2, §4.1 p. 4; T-31).
+   *
+   * Staff only, guarded here and re-checked by Customer Service. Distinct from
+   * `setIdentityVerdict` above: that is Fase 1's document-photo review; this
+   * is the broader compliance decision the transfer Saga's own KYC gate reads
+   * before ordering a debit. `202`: the verdict is applied asynchronously and
+   * the KYC event follows.
+   */
+  @ApiOperation({
+    summary: 'Veredicto KYC del cajero',
+    description:
+      'Publica customer.set-kyc-status.v1. VERIFIED es terminal: un segundo veredicto sobre ' +
+      'un cliente ya verificado no hace nada.',
+  })
+  @ApiBearerAuth('session')
+  @Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')
+  @Post(':customerId/kyc-status')
+  @HttpCode(202)
+  public async setKycStatus(
+    @Param('customerId') customerId: string,
+    @Body(validated(SetKycStatusDto)) body: SetKycStatusDto,
+    @Req() request: GatewayRequest,
+  ): Promise<{ readonly correlationId: string }> {
+    if (!isUuidV4(customerId)) {
+      throw GatewayError.validation('customerId debe ser un UUID v4', 'customerId');
+    }
+
+    return await this.#commands.setKycStatus({
+      customerId,
+      status: body.status,
       actor: actorOf(request),
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,

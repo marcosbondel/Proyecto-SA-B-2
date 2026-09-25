@@ -93,13 +93,24 @@ export class ChangePasswordUseCase {
       idempotency: {
         idempotencyKey,
         messageType: MESSAGE_TYPE,
-        resultSummary: { outcome: 'CHANGED', customerId: command.customerId, changedAt },
+        resultSummary: {
+          outcome: 'CHANGED',
+          customerId: command.customerId,
+          email: existing.email,
+          fullName: existing.fullName,
+          changedAt,
+        },
       },
     });
 
     await this.#publisher.publish({
       messageType: customerPasswordChangedV1.name,
-      payload: { customerId: command.customerId, changedAt },
+      payload: {
+        customerId: command.customerId,
+        email: existing.email,
+        fullName: existing.fullName,
+        changedAt,
+      },
     });
   }
 
@@ -129,6 +140,8 @@ export class ChangePasswordUseCase {
         messageType: customerPasswordChangedV1.name,
         payload: {
           customerId: String(summary.customerId),
+          ...(summary.email ? { email: String(summary.email) } : {}),
+          ...(summary.fullName ? { fullName: String(summary.fullName) } : {}),
           changedAt: String(summary.changedAt),
         },
       });

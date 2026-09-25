@@ -1,5 +1,5 @@
 import { IllegalTransition, afterTransition } from '../../src/domain/transaction';
-import type { Transaction, Transition } from '../../src/domain/transaction';
+import type { Transaction, TransactionStatus, Transition, TransitionRecord } from '../../src/domain/transaction';
 import type {
   AppliedEffects,
   EventOutcome,
@@ -35,6 +35,8 @@ export class InMemoryTransactionRepository implements TransactionRepository {
   public readonly processed = new Set<string>();
   /** What the Saga wrote to the outbox, in order — the durable form of `sent`/`published`. */
   public readonly outbox: OutboxMessage[] = [];
+  /** The real history (T-28), keyed by transaction, oldest first — mirrors `transaction_transitions`. */
+  public readonly transitions = new Map<string, TransitionRecord[]>();
   readonly #byKey = new Map<string, string>();
 
   public async start(input: {
@@ -49,6 +51,15 @@ export class InMemoryTransactionRepository implements TransactionRepository {
 
     this.transactions.set(input.transaction.transactionId, input.transaction);
     this.#byKey.set(input.transaction.idempotencyKey, input.transaction.transactionId);
+    this.transitions.set(input.transaction.transactionId, [
+      {
+        from: null,
+        to: input.transaction.status,
+        event: 'transfer.requested.v1',
+        failureReason: null,
+        occurredAt: input.transaction.createdAt,
+      },
+    ]);
 
     // Called only for the delivery that actually created the row — same rule
     // the real repository follows, so a test can trust `outbox` either way.
@@ -63,7 +74,9 @@ export class InMemoryTransactionRepository implements TransactionRepository {
     readonly ownerId: string | null;
     readonly customerId?: string;
     readonly accountId?: string;
-    readonly status?: Transaction['status'];
+    readonly statuses?: readonly TransactionStatus[];
+    readonly from?: Date;
+    readonly to?: Date;
     readonly limit: number;
   }): Promise<{ readonly transactions: readonly Transaction[]; readonly total: number }> {
     const matching = [...this.transactions.values()]
@@ -78,7 +91,11 @@ export class InMemoryTransactionRepository implements TransactionRepository {
           transaction.sourceAccount === input.accountId ||
           transaction.targetAccount === input.accountId,
       )
-      .filter((transaction) => input.status === undefined || transaction.status === input.status)
+      .filter(
+        (transaction) => input.statuses === undefined || input.statuses.includes(transaction.status),
+      )
+      .filter((transaction) => input.from === undefined || transaction.createdAt >= input.from)
+      .filter((transaction) => input.to === undefined || transaction.createdAt <= input.to)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
     return {
@@ -202,6 +219,15 @@ export class InMemoryTransactionRepository implements TransactionRepository {
       messageType: input.messageType,
       payload: input.payload,
     });
+    const trail = this.transitions.get(input.transactionId) ?? [];
+    trail.push({
+      from: transition.from,
+      to: transition.status,
+      event: input.messageType,
+      failureReason: transition.failureReason,
+      occurredAt: input.now,
+    });
+    this.transitions.set(input.transactionId, trail);
 
     /**
      * The same seam the real repository uses: whatever the transition implies is
@@ -340,6 +366,10 @@ export class InMemoryTransactionRepository implements TransactionRepository {
     }
 
     return outcome;
+  }
+
+  public async transitionsOf(transactionId: string): Promise<readonly TransitionRecord[]> {
+    return this.transitions.get(transactionId) ?? [];
   }
 
   public async isReachable(): Promise<boolean> {

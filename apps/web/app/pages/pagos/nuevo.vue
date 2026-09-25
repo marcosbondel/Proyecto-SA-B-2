@@ -4,6 +4,7 @@ import { asyncStateFor } from '../../lib/gateway-error';
 import type { LoadState } from '../../lib/gateway-error';
 import { formatQuetzales, MIN_AMOUNT_MINOR } from '../../lib/money';
 import type { Biller } from '../../lib/payment';
+import type { PaymentScenario } from '../../lib/transaction';
 
 /**
  * `G-01` — "Nuevo pago", and the screen that made this module a product rather
@@ -24,8 +25,45 @@ import type { Biller } from '../../lib/payment';
  * The catalogue is **asked for**, never compiled in. A biller's collection
  * account id in a browser bundle is an account id that is wrong the first time
  * anything is reseeded.
+ *
+ * **`PaymentScenarioSelect` (added by T-29's correction).** Since a service
+ * payment is the same `POST /api/transfers` a transfer is, it goes through the
+ * identical Payment Service simulation — but until this fix, this screen was
+ * the one place in the product that could never demonstrate it: a pago de
+ * servicio always ran with no scenario, so a timeout, a rejection or a
+ * transient failure could only ever be rehearsed from `/transferencias/nueva`,
+ * never from the external-payment screen the ticket is actually about.
  */
 const api = useGatewayApi();
+const { role, session } = useSession();
+
+/**
+ * A courtesy warning, not the rule itself (T-31) — see the identical notice in
+ * `TransactionTransferForm`. A service payment is a transfer, so it goes
+ * through the same KYC gate; staff are never gated by it.
+ */
+const ownKycStatus = ref<'PENDING' | 'VERIFIED' | 'REJECTED' | null>(null);
+const ownKycLoading = ref(false);
+
+async function loadOwnKyc(): Promise<void> {
+  if (role.value === null || role.value !== 'CLIENTE' || session.value === null) {
+    return;
+  }
+
+  ownKycLoading.value = true;
+  const result = await api.call<{ kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' }>(
+    `/api/customers/${session.value.customerId}`,
+  );
+  ownKycLoading.value = false;
+
+  if (result.ok) {
+    ownKycStatus.value = result.data.kycStatus;
+  }
+}
+
+const kycBlocksSubmission = computed(
+  () => ownKycStatus.value !== null && ownKycStatus.value !== 'VERIFIED',
+);
 
 /**
  * Format holder name to show first name and primary surname.
@@ -43,6 +81,7 @@ const sourceAccount = ref<string | undefined>(undefined);
 const billerCode = ref<string | undefined>(undefined);
 const amountMinor = ref<number | null>(null);
 const reference = ref('');
+const paymentScenario = ref<PaymentScenario | null>(null);
 const idempotencyKey = ref('');
 
 const accounts = ref<readonly AccountSummary[]>([]);
@@ -74,7 +113,19 @@ async function load(): Promise<void> {
   state.value = 'READY';
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  loadOwnKyc();
+  if (import.meta.client) {
+    window.addEventListener('focus', loadOwnKyc);
+  }
+});
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('focus', loadOwnKyc);
+  }
+});
 
 function describe(account: AccountSummary): string {
   const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
@@ -127,6 +178,7 @@ const localProblem = computed(() => {
 
 const canSend = computed(
   () =>
+    !kycBlocksSubmission.value &&
     sourceAccount.value !== undefined &&
     targetAccount.value !== '' &&
     reference.value.trim() !== '' &&
@@ -137,7 +189,7 @@ const canSend = computed(
 );
 
 async function send(): Promise<void> {
-  if (amountMinor.value === null || sourceAccount.value === undefined) {
+  if (kycBlocksSubmission.value || amountMinor.value === null || sourceAccount.value === undefined) {
     return;
   }
 
@@ -154,6 +206,7 @@ async function send(): Promise<void> {
         targetAccount: targetAccount.value,
         amount: { amountMinor: amountMinor.value, currency: 'GTQ' },
         reference: reference.value.trim(),
+        ...(paymentScenario.value === null ? {} : { paymentScenario: paymentScenario.value }),
       },
     },
   );
@@ -198,6 +251,28 @@ useHead({ title: 'Nuevo pago · bonking' });
     <div v-else class="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr]">
       <UCard>
         <form class="flex flex-col gap-5" @submit.prevent="send">
+          <div v-if="kycBlocksSubmission" class="flex flex-col gap-2">
+            <UAlert
+              color="warning"
+              variant="subtle"
+              title="Verificación de identidad pendiente"
+              description="Tu expediente se encuentra pendiente de verificación de identidad. No es posible realizar pagos de servicios hasta que tu documento sea aprobado por un cajero o administrador."
+              data-testid="payment-kyc-blocked"
+            />
+            <div class="flex justify-end">
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="ownKycLoading"
+                icon="i-lucide-refresh-cw"
+                @click="loadOwnKyc"
+              >
+                ¿Ya fue aprobada tu verificación? Actualizar estado
+              </UButton>
+            </div>
+          </div>
+
           <UFormField label="Cuenta origen" name="sourceAccount">
             <USelectMenu
               v-model="sourceAccount"
@@ -244,6 +319,8 @@ useHead({ title: 'Nuevo pago · bonking' });
             />
           </UFormField>
 
+          <PaymentScenarioSelect v-model="paymentScenario" />
+
           <p v-if="localProblem" class="text-[13px] text-[#B01B1B]" data-testid="payment-local-problem">
             {{ localProblem }}
           </p>
@@ -266,7 +343,7 @@ useHead({ title: 'Nuevo pago · bonking' });
               :loading="sending"
               :disabled="!canSend"
             >
-              Pagar servicio
+              {{ kycBlocksSubmission ? 'Pagos bloqueados (requiere verificación)' : 'Pagar servicio' }}
             </UButton>
             <SharedCorrelationIdBadge :correlation-id="correlationId" />
           </div>

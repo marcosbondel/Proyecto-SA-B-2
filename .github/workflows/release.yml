@@ -1,0 +1,198 @@
+name: Release & Delivery
+
+# Fase de Entrega (Delivery / Release) — Requisito Enunciado Fase 2 (§4.1, p. 7):
+# "La fase de entrega se ejecuta en ramas de tipo: release/<version> o mediante
+# la creacion de un tag: vX.X.X"
+#
+# Jobs obligatorios:
+#   1. Generacion de version: registro formal de la version del sistema.
+#   2. Build y publicacion de imagenes: construccion de las imagenes Docker
+#      finales y PUBLICACION en un registry de contenedores.
+#
+# "Estas imagenes seran las utilizadas en produccion": el job de produccion de
+# cd.yml no construye nada, consume la version que este workflow publico. Por eso
+# aqui se hace push de verdad (antes se construia y se descartaba) y por eso
+# ninguna etiqueta es `latest` — el enunciado lo prohibe explicitamente
+# ("No se permite usar imagenes no versionadas").
+
+on:
+  push:
+    branches:
+      - 'release/**'
+      - 'release-*'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version del release (ej. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: true
+  REGISTRY: ghcr.io
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job obligatorio 1: Generacion de version
+  # ---------------------------------------------------------------------------
+  version:
+    name: '1. Generacion de Version'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_version: ${{ steps.calc_version.outputs.version }}
+      image_prefix: ${{ steps.calc_version.outputs.image_prefix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Calcular version formal del sistema
+        id: calc_version
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          elif [[ "${GITHUB_REF}" =~ ^refs/heads/release/ ]]; then
+            VERSION="v${GITHUB_REF#refs/heads/release/}"
+          elif [[ "${GITHUB_REF}" =~ ^refs/heads/release- ]]; then
+            VERSION="v${GITHUB_REF#refs/heads/release-}"
+          else
+            VERSION="v$(node -p "require('./package.json').version")-${GITHUB_SHA::8}"
+          fi
+
+          # `v1.0.0` y `vv1.0.0` serian dos releases distintos para el registry.
+          VERSION="v${VERSION#v}"
+
+          # Una etiqueta de imagen no admite mayusculas; el nombre del repo si.
+          PREFIX="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image_prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+          echo "=== Version formal generada: $VERSION ==="
+
+      - name: Registrar formalmente la version del release
+        run: |
+          set -euo pipefail
+          {
+            echo "Registro formal del sistema Bank USAC"
+            echo "Version: ${{ steps.calc_version.outputs.version }}"
+            echo "Commit:  ${GITHUB_SHA}"
+            echo "Rama/Tag: ${GITHUB_REF}"
+            echo "Fecha:   $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } > release-manifest.txt
+          cat release-manifest.txt
+
+      - name: Publicar el manifiesto como artefacto de la corrida
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ steps.calc_version.outputs.version }}
+          path: release-manifest.txt
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # Job obligatorio 2: Build y publicacion de imagenes
+  # ---------------------------------------------------------------------------
+  # Una matriz en vez de un bucle: los siete componentes se construyen en
+  # paralelo y, cuando uno falla, el log dice cual sin tener que leer 2000
+  # lineas de un solo job.
+  build-and-publish:
+    name: '2. Publicar ${{ matrix.component }}'
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: customer-service
+            dockerfile: apps/services/customer-service/Dockerfile
+          - component: account-service
+            dockerfile: apps/services/account-service/Dockerfile
+          - component: transaction-service
+            dockerfile: apps/services/transaction-service/Dockerfile
+          - component: payment-service
+            dockerfile: apps/services/payment-service/Dockerfile
+          - component: notification-audit-service
+            dockerfile: apps/services/notification-audit-service/Dockerfile
+          - component: gateway
+            dockerfile: apps/gateway/Dockerfile
+          - component: web
+            dockerfile: apps/web/Dockerfile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `push: true` es la diferencia con la version anterior de este workflow,
+      # que construia las siete imagenes y las descartaba al terminar el job.
+      - name: Build y push de la imagen versionada
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ needs.version.outputs.image_prefix }}/${{ matrix.component }}:${{ needs.version.outputs.release_version }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.version.outputs.release_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+      - name: Confirmar que la imagen quedo publicada
+        run: |
+          set -euo pipefail
+          IMAGE="${REGISTRY}/${{ needs.version.outputs.image_prefix }}/${{ matrix.component }}:${{ needs.version.outputs.release_version }}"
+          echo "Verificando $IMAGE en el registry…"
+          docker buildx imagetools inspect "$IMAGE" > /dev/null
+          echo "OK: $IMAGE esta publicada y es accesible."
+
+  # ---------------------------------------------------------------------------
+  # Cierre: el registro formal de que las siete imagenes existen en el registry.
+  # ---------------------------------------------------------------------------
+  release-summary:
+    name: '3. Resumen del Release'
+    needs: [version, build-and-publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resumen
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.version.outputs.release_version }}"
+          PREFIX="${{ needs.version.outputs.image_prefix }}"
+
+          {
+            echo "## Release \`$VERSION\` publicado"
+            echo ""
+            echo "Imagenes disponibles en \`${REGISTRY}\` (ninguna etiquetada \`latest\`):"
+            echo ""
+            for c in customer-service account-service transaction-service \
+                     payment-service notification-audit-service gateway web; do
+              echo "- \`${REGISTRY}/${PREFIX}/${c}:${VERSION}\`"
+            done
+            echo ""
+            echo "Estas son las imagenes que el job de produccion de \`cd.yml\` consume al mergear a \`main\`."
+          } >> "$GITHUB_STEP_SUMMARY"

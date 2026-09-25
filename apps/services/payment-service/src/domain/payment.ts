@@ -1,4 +1,6 @@
 import type { Money } from './money';
+import { callProvider } from './provider';
+import type { ProviderResult } from './provider';
 
 /**
  * What a payment is, and what may become of one attempt at it.
@@ -43,8 +45,15 @@ export type PaymentFailureReason = 'PAYMENT_DECLINED' | 'PAYMENT_RETRIES_EXHAUST
  *
  * `undefined` means `APPROVE`. A transfer that says nothing about payment is a
  * transfer that expects to work.
+ *
+ * `TIMEOUT` was added by T-29, alongside `provider.ts`. Before it, "the
+ * provider did not answer" and "the provider answered no, try again" were the
+ * same value, `TRANSIENT_FAILURE` — which is accurate about what the Saga
+ * should do (retry the same ladder) but made a timeout impossible to rehearse
+ * on its own, and the criterion this ticket closes is exactly that the three
+ * external results — success, failure, timeout — each be triggerable.
  */
-export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE';
+export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE' | 'TIMEOUT';
 
 /** A payment, as this service holds it. */
 export interface Payment {
@@ -74,6 +83,11 @@ export interface PaymentAttempt {
   readonly result: 'SUCCEEDED' | 'FAILED';
   readonly errorType: PaymentErrorType | null;
   readonly failureReason: PaymentFailureReason | null;
+  /**
+   * What the simulated provider answered on this rung — added by T-29.
+   * `null` only for an attempt recorded before this column existed.
+   */
+  readonly providerResult: ProviderResult | null;
   readonly occurredAt: Date;
 }
 
@@ -105,35 +119,51 @@ export function maxAttempts(delays: readonly number[]): number {
  * the wire and opposite instructions to the Saga, and because "the ladder ran
  * out" has to be distinguishable from "the provider said no" in the trail
  * somebody reads afterwards.
+ *
+ * Every variant carries `providerResult` (T-29): what the simulated provider
+ * itself answered, kept alongside what the ladder decided to do about it. A
+ * `RETRY` or an `EXHAUSTED` outcome can come from either a `FAILURE` or a
+ * `TIMEOUT` answer — same policy, different provider story — and
+ * `payment.attempt.failed.v1` is what lets a reader tell the two apart.
  */
 export type AttemptOutcome =
-  | { readonly kind: 'SUCCEEDED'; readonly providerReference: string }
+  | { readonly kind: 'SUCCEEDED'; readonly providerResult: 'SUCCESS'; readonly providerReference: string }
   /** Refused. No retry could change it, so the Saga compensates now. */
   | {
       readonly kind: 'DECLINED';
+      readonly providerResult: 'FAILURE';
       readonly errorType: 'PERMANENT';
       readonly failureReason: 'PAYMENT_DECLINED';
     }
   /** No answer, and rungs left. The Saga is told, and told not to act. */
   | {
       readonly kind: 'RETRY';
+      readonly providerResult: 'FAILURE' | 'TIMEOUT';
       readonly errorType: 'TRANSIENT';
       readonly delayMs: number;
     }
   /** No answer, and no rungs left. Now the Saga compensates. */
   | {
       readonly kind: 'EXHAUSTED';
+      readonly providerResult: 'FAILURE' | 'TIMEOUT';
       readonly errorType: 'TRANSIENT';
       readonly failureReason: 'PAYMENT_RETRIES_EXHAUSTED';
     };
 
 /**
- * The provider, as a pure function.
+ * Asks the simulated provider, then applies the retry ladder to its answer.
  *
  * `attempt` is one-based: the first call is attempt 1. `reference` is passed in
  * rather than generated so that a test can assert on the identifier the payment
  * ends up carrying, which is the only thing a person can quote back when asking
  * what happened to their money.
+ *
+ * The provider call (`callProvider`) and the ladder policy are deliberately two
+ * functions: what the provider said is one fact, and how many times to ask
+ * again is a different one. A `FAILURE`/`TRANSIENT` answer and a `TIMEOUT`
+ * answer are treated identically by the ladder — both retry on the same
+ * schedule and both exhaust into `PAYMENT_RETRIES_EXHAUSTED` — because a real
+ * integration would not know, from a timeout alone, whether the money moved.
  */
 export function decideAttempt(input: {
   readonly scenario: PaymentScenario | null;
@@ -147,7 +177,17 @@ export function decideAttempt(input: {
     throw new Error(`An attempt is numbered from 1; got ${String(attempt)}.`);
   }
 
-  if (scenario === 'REJECT') {
+  const response = callProvider({ scenario, reference });
+
+  if (response.result === 'SUCCESS') {
+    return {
+      kind: 'SUCCEEDED',
+      providerResult: 'SUCCESS',
+      providerReference: response.providerReference,
+    };
+  }
+
+  if (response.result === 'FAILURE' && response.errorType === 'PERMANENT') {
     /**
      * Refused on the first attempt and every one after it. There is no ladder
      * for a refusal: asking a provider that declined to decline again is three
@@ -155,31 +195,35 @@ export function decideAttempt(input: {
      * seconds during which the money is debited and the customer is told
      * nothing.
      */
-    return { kind: 'DECLINED', errorType: 'PERMANENT', failureReason: 'PAYMENT_DECLINED' };
-  }
-
-  if (scenario === 'TRANSIENT_FAILURE') {
-    const remaining = maxAttempts(delays) - attempt;
-
-    if (remaining > 0) {
-      /**
-       * `delays[attempt - 1]` and not `delays[attempt]`: after attempt 1 the
-       * wait is the first rung. The off-by-one here would be invisible — every
-       * transfer would simply retry on the wrong schedule — which is why the
-       * indexing is spelled out rather than left to be re-derived.
-       */
-      return { kind: 'RETRY', errorType: 'TRANSIENT', delayMs: delays[attempt - 1]! };
-    }
-
     return {
-      kind: 'EXHAUSTED',
-      errorType: 'TRANSIENT',
-      failureReason: 'PAYMENT_RETRIES_EXHAUSTED',
+      kind: 'DECLINED',
+      providerResult: 'FAILURE',
+      errorType: 'PERMANENT',
+      failureReason: 'PAYMENT_DECLINED',
     };
   }
 
-  // `APPROVE`, and `null` — a transfer that said nothing about payment.
-  return { kind: 'SUCCEEDED', providerReference: reference };
+  // A transient failure or a timeout: no answer worth trusting, and the same
+  // ladder applies to both.
+  const providerResult: 'FAILURE' | 'TIMEOUT' = response.result === 'TIMEOUT' ? 'TIMEOUT' : 'FAILURE';
+  const remaining = maxAttempts(delays) - attempt;
+
+  if (remaining > 0) {
+    /**
+     * `delays[attempt - 1]` and not `delays[attempt]`: after attempt 1 the
+     * wait is the first rung. The off-by-one here would be invisible — every
+     * transfer would simply retry on the wrong schedule — which is why the
+     * indexing is spelled out rather than left to be re-derived.
+     */
+    return { kind: 'RETRY', providerResult, errorType: 'TRANSIENT', delayMs: delays[attempt - 1]! };
+  }
+
+  return {
+    kind: 'EXHAUSTED',
+    providerResult,
+    errorType: 'TRANSIENT',
+    failureReason: 'PAYMENT_RETRIES_EXHAUSTED',
+  };
 }
 
 /** Whether a payment has reached an answer nothing will change. */

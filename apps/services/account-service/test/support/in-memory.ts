@@ -76,11 +76,12 @@ export class InMemoryAccountRepository implements AccountRepository {
       return null;
     }
 
-    // Throws out of here exactly as the real one does, before anything is
-    // written, so a test can assert that a rejection changed nothing.
-    const decided = input.decide(account);
-
-    this.accounts.set(input.accountId, decided.account);
+    /**
+     * Mirrors the real repository's lookup (T-29 correction): a compensation
+     * marks the debit's own commission row `COMPENSATED` too, and hands its
+     * amount to `decide` so `compensate` can fold it into what comes back.
+     */
+    let commissionToReverse: AccountOperation['amount'] | null = null;
 
     if (input.compensates !== undefined) {
       for (const [index, operation] of this.operations.entries()) {
@@ -91,8 +92,24 @@ export class InMemoryAccountRepository implements AccountRepository {
         ) {
           this.operations[index] = { ...operation, status: 'COMPENSATED' };
         }
+
+        if (
+          operation.accountId === input.accountId &&
+          operation.transactionId === input.compensates.transactionId &&
+          operation.type === 'COMMISSION' &&
+          operation.status === 'APPLIED'
+        ) {
+          commissionToReverse = operation.amount;
+          this.operations[index] = { ...operation, status: 'COMPENSATED' };
+        }
       }
     }
+
+    // Throws out of here exactly as the real one does, before anything is
+    // written, so a test can assert that a rejection changed nothing.
+    const decided = input.decide(account, commissionToReverse);
+
+    this.accounts.set(input.accountId, decided.account);
 
     const operation: AccountOperation = {
       operationId: randomUUID(),
@@ -108,6 +125,25 @@ export class InMemoryAccountRepository implements AccountRepository {
 
     this.operations.push(operation);
 
+    const commission: AccountOperation | null =
+      decided.commission === null
+        ? null
+        : {
+            operationId: randomUUID(),
+            accountId: input.accountId,
+            type: 'COMMISSION',
+            amount: decided.commission.amount,
+            balanceAfter: decided.commission.balanceAfter,
+            transactionId: input.transactionId,
+            status: 'APPLIED',
+            idempotencyKey: input.idempotencyKey,
+            occurredAt: input.now,
+          };
+
+    if (commission !== null) {
+      this.operations.push(commission);
+    }
+
     await this.recordProcessed({
       idempotencyKey: input.idempotencyKey,
       messageType: input.messageType,
@@ -118,10 +154,14 @@ export class InMemoryAccountRepository implements AccountRepository {
         balanceAfter: decided.balanceAfter,
         reactivated: decided.reactivated,
         occurredAt: input.now.toISOString(),
+        commission:
+          commission === null
+            ? null
+            : { amount: commission.amount, balanceAfter: commission.balanceAfter },
       },
     });
 
-    return { account: decided.account, operation, reactivated: decided.reactivated };
+    return { account: decided.account, operation, reactivated: decided.reactivated, commission };
   }
 
   /** The billers this fake knows about. Empty unless a test puts one here. */

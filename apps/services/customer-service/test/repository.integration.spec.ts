@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { Pool } from 'pg';
 
-import { DomainRejection, applyChanges, recordIdentityVerdict } from '../src/domain/customer';
+import { DomainRejection, applyChanges, recordIdentityVerdict, setKycStatus } from '../src/domain/customer';
 import { usernameCandidates } from '../src/domain/username';
 import { migrate } from '../src/infrastructure/persistence/migrations';
 import { PostgresCustomerRepository } from '../src/infrastructure/persistence/postgres-customer.repository';
@@ -248,6 +248,76 @@ describeIntegration('PostgresCustomerRepository', () => {
     const after = await repository.findById(stored.customerId);
     expect(after?.version).toBe(1);
     expect(['VALIDATED', 'REJECTED']).toContain(after?.identityStatus);
+  });
+
+  /**
+   * A KYC verdict carries `identity_status` with it: `VERIFIED` also validates
+   * the document review, `REJECTED` also rejects it. The two columns are
+   * written by one statement because the verdict is one decision — a teller who
+   * accepts a customer's compliance review has, by that act, accepted the
+   * document it was based on.
+   *
+   * This test used to assert the opposite (`PENDING`, "independent of
+   * identity_status") and never ran: the suite skips itself without
+   * `DATABASE_URL`, which CI did not provide until TD-069 was closed. The
+   * contradiction with `domain.spec.ts` sat unnoticed for exactly that long.
+   */
+  it('persists a KYC verdict, carrying identity_status with it (C-8)', async () => {
+    const stored = await repository.registerCustomer(inputFor(registration()));
+    const base = await repository.findById(stored.customerId);
+    expect(base?.kycStatus).toBe('PENDING');
+
+    const verified = setKycStatus(base!, 'VERIFIED', NOW);
+
+    await repository.saveKycVerdict({
+      customer: verified,
+      idempotency: {
+        idempotencyKey: randomUUID(),
+        messageType: 'customer.set-kyc-status.v1',
+        resultSummary: { outcome: 'APPLIED' },
+      },
+    });
+
+    const after = await repository.findById(stored.customerId);
+    expect(after?.kycStatus).toBe('VERIFIED');
+    expect(after?.identityStatus).toBe('VALIDATED');
+    expect(after?.version).toBe(1);
+  });
+
+  it('refuses a concurrent KYC verdict instead of letting the last write win (optimistic version)', async () => {
+    const stored = await repository.registerCustomer(inputFor(registration()));
+    const base = await repository.findById(stored.customerId);
+
+    const verified = setKycStatus(base!, 'VERIFIED', NOW);
+    const rejected = setKycStatus(base!, 'REJECTED', NOW);
+
+    const settled = await Promise.allSettled([
+      repository.saveKycVerdict({
+        customer: verified,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'customer.set-kyc-status.v1',
+          resultSummary: { outcome: 'APPLIED', status: 'VERIFIED' },
+        },
+      }),
+      repository.saveKycVerdict({
+        customer: rejected,
+        idempotency: {
+          idempotencyKey: randomUUID(),
+          messageType: 'customer.set-kyc-status.v1',
+          resultSummary: { outcome: 'APPLIED', status: 'REJECTED' },
+        },
+      }),
+    ]);
+
+    const fulfilled = settled.filter((s) => s.status === 'fulfilled');
+    const rejectedSettlements = settled.filter((s) => s.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejectedSettlements).toHaveLength(1);
+
+    const after = await repository.findById(stored.customerId);
+    expect(after?.version).toBe(1);
+    expect(['VERIFIED', 'REJECTED']).toContain(after?.kycStatus);
   });
 
   it('records a processed message once, and reports it thereafter', async () => {

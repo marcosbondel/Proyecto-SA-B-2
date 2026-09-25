@@ -77,6 +77,7 @@ describeIntegration('PostgresPaymentRepository', () => {
       providerReference: randomUUID(),
       nextAttemptAt: null,
       attemptResult: 'SUCCEEDED',
+      providerResult: 'SUCCESS',
     },
     outbound: () => [
       {
@@ -245,6 +246,51 @@ describeIntegration('PostgresPaymentRepository', () => {
       expect(count).toBe(1);
       expect(delivered).toHaveLength(1);
       expect(await pendingCount()).toBe(0);
+    });
+  });
+
+  describe('the simulated provider result (T-29)', () => {
+    it('accepts TIMEOUT as a scenario', async () => {
+      const paid = payment({ scenario: 'TIMEOUT' });
+
+      await expect(repository.open({ payment: paid })).resolves.toMatchObject({ kind: 'CREATED' });
+    });
+
+    it('persists and reads back the provider result of each attempt', async () => {
+      const paid = payment({ scenario: 'TIMEOUT' });
+      await repository.open({ payment: paid });
+
+      await repository.attempt({
+        paymentId: paid.paymentId,
+        expectedAttempt: 1,
+        now: NOW,
+        decide: () => ({
+          status: 'PENDING',
+          errorType: 'TRANSIENT',
+          failureReason: null,
+          providerReference: null,
+          nextAttemptAt: new Date(NOW.getTime() + 1_000),
+          attemptResult: 'FAILED',
+          providerResult: 'TIMEOUT',
+        }),
+      });
+
+      const attempts = await repository.attemptsOf(paid.paymentId);
+
+      expect(attempts).toMatchObject([{ attemptNumber: 1, providerResult: 'TIMEOUT' }]);
+    });
+
+    it('rejects a provider result outside the closed set', async () => {
+      const paid = payment();
+      await repository.open({ payment: paid });
+
+      await expect(
+        pool.query(
+          `INSERT INTO payment_attempts (payment_id, attempt_number, result, provider_result)
+           VALUES ($1, 1, 'FAILED', 'BOGUS')`,
+          [paid.paymentId],
+        ),
+      ).rejects.toThrow();
     });
   });
 });

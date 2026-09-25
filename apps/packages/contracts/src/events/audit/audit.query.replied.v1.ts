@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   auditProcessingStatus,
+  eventSeverity,
   isoTimestamp,
   messageTypeName,
   notificationChannel,
@@ -45,6 +46,8 @@ export const auditQueryRepliedV1 = defineContract({
          * Optional because T-05 closed this reply without it.
          */
         processingStatus: auditProcessingStatus.optional(),
+        /** §4.1's classification (T-30). Absent for a row recorded before it existed. */
+        severity: eventSeverity.optional(),
         /**
          * The published payload with its sensitive fields removed.
          *

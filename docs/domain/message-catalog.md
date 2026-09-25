@@ -159,6 +159,70 @@ second pattern for the same situation.
 
 The payload of all forty-eight lives in [`../events/catalog.md`](../events/catalog.md).
 
+## Fase 2 extension: KYC (T-26)
+
+The assignment's Fase 2 (§4.1, p. 4) adds a KYC verdict to Customer Service — three more
+messages, distinct from the identity-document review above (that is a photo check; this is the
+broader compliance decision a teller or administrator registers directly, and the one C-8 ties to
+initiating a transaction).
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| command | `customer.set-kyc-status` | **Added by T-26.** Registers or updates a customer's `PENDING` \| `VERIFIED` \| `REJECTED` KYC status |
+| event | `customer.kyc.verified` | The verdict was `VERIFIED`. `VERIFIED` is terminal, mirroring `identityStatus`'s `VALIDATED` |
+| event | `customer.kyc.rejected` | The verdict was `REJECTED`. `REJECTED → PENDING` remains legal, unlike `VERIFIED` |
+
+Enforcing "a non-verified `CLIENTE` may not initiate a transaction" inside the live transfer Saga
+was **T-31**'s job — the two messages it added are documented below. T-26 owns the state, the
+transitions, the persistence and the three events above only.
+
+The payload of all three lives in [`../events/catalog.md`](../events/catalog.md#register-a-kyc-verdict-fase-2-t-26).
+
+## Fase 2 extension: account type rules (T-27)
+
+The assignment's Fase 2 (§4.1, p. 6) gives `AHORRO` and `MONETARIA` (the assignment's "Corriente")
+each their own rule (`account-type-rules.ts`) — both were pure classification until now
+(`entities.md`, "Account type"); this is the "new approval" that document said differentiated
+rules would need. The two rules apply at different moments: a minimum opening deposit
+(`AHORRO` only, Q100.00, checked once — never a floor `debit` re-enforces afterward) and a
+per-debit commission (`AHORRO` only, for the account's whole life).
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| event | `account.commission.charged` | **Added by T-27.** Published alongside `account.debited` — never folded into it — whenever the debited account's type charges a commission. Absent entirely for a type that does not, which is what makes "opcional" a fact about this event's presence |
+
+**One failure code was added with it.** `MINIMUM_BALANCE_VIOLATION` names the refusal an
+`AHORRO` opening gets when its `initialDeposit` does not reach the type's minimum —
+`account.open.rejected` is the contract that admits it. It is unrelated to `INSUFFICIENT_FUNDS`,
+which is a debit's own refusal when the account cannot cover the amount plus a commission it may
+carry.
+
+Enforcing account-type rules is entirely Account Service's own job — the opening minimum is
+checked once, before an account is created; the commission is applied atomically alongside the
+debit it accompanies — so no other service needed a change to consume this. Both rules live
+entirely inside the service the assignment names for them (§4.1, p. 6), same as T-17's original
+account invariants.
+
+The payload lives in [`../events/catalog.md`](../events/catalog.md#the-ahorro-commission-fase-2-t-27).
+
+## Fase 2 extension: the transfer Saga's KYC gate (T-31)
+
+T-26 built the KYC verdict; nothing enforced it inside the flow the assignment actually grades
+until this ticket. The Saga now asks the question as its own first step, over the broker rather
+than a shared table (X-1) — Transaction Service names the customer, Customer Service answers.
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| command | `customer.kyc.check.requested` | **Added by T-31.** Transaction Service asks whether the customer who requested this transfer may initiate one at all, before ordering any debit |
+| event | `customer.kyc.checked` | Customer Service's answer. Carries `allowed` explicitly — derived from `mayInitiateTransactions`, never re-derived by the consumer from `kycStatus` alone — so the verdict cannot drift from the rule that decided it |
+
+One failure code was added with it: `KYC_NOT_VERIFIED`, the reason `transaction.failed.v1` and
+`account.open.rejected`'s sibling `transaction.status.replied` carry when the gate refuses. The
+money never left, exactly like `SAME_ACCOUNT_TRANSFER` and `IDEMPOTENCY_KEY_CONFLICT` — none of
+the three ever reaches `DEBITING`.
+
+The payload of both lives in [`../events/catalog.md`](../events/catalog.md#the-transfer-sagas-kyc-gate-t-31).
+
 ---
 
 ## Coherence checks

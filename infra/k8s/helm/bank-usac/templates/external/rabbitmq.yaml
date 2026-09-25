@@ -3,4 +3,6 @@ The one broker every application-service publishes to and consumes from —
 outside the cluster per ADR-005. All six backend workloads (the five
 domain services and the gateway) reach it at this same in-cluster name.
 */}}
+{{- if not (and .Values.rabbitmq .Values.rabbitmq.inCluster) }}
 {{ include "bank-usac.externalDependency" (dict "root" $ "key" "rabbitmq" "dnsName" "rabbitmq" "portName" "amqp") }}
+{{- end }}

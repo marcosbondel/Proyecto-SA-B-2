@@ -35,6 +35,8 @@ export const transactionFailedV1 = defineContract({
       'INVALID_AMOUNT_PRECISION',
       'SAME_ACCOUNT_TRANSFER',
       'IDEMPOTENCY_KEY_CONFLICT',
+      // Added by T-31: the Saga's own KYC gate, refused before any debit.
+      'KYC_NOT_VERIFIED',
     ]),
     failedAt: isoTimestamp,
   }),

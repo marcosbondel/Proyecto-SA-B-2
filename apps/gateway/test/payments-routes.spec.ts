@@ -132,6 +132,7 @@ describe('the payment routes', () => {
             result: 'FAILED',
             errorType: 'TRANSIENT',
             failureReason: null,
+            providerResult: 'TIMEOUT',
             occurredAt: '2026-08-19T14:32:09.100Z',
           },
         ],

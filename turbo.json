@@ -75,9 +75,14 @@
     // two different results depending on it. Declaring it here puts it in the
     // cache key, so a run with a database never restores a cached run without
     // one.
+    //
+    // `RABBITMQ_URL` is here for exactly the same reason and was missing:
+    // `@bank/messaging`'s `broker.integration.spec.ts` skips itself without it,
+    // so a run with a broker could restore a cached run without one and report
+    // a pass for a suite that never executed.
     "test": {
       "dependsOn": ["^build"],
-      "env": ["DATABASE_URL"],
+      "env": ["DATABASE_URL", "RABBITMQ_URL"],
       // Nothing to restore: no `test` script asks Jest for coverage, so the
       // cached entry is the exit status and the log. `coverage/**` here would
       // only produce a "no output files found" warning on every run.

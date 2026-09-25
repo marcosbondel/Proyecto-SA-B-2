@@ -61,6 +61,7 @@ export class InMemoryAuditRepository implements AuditRepository {
       payload: redactPayload(event.payload),
       processingStatus: event.processingStatus,
       consumer: event.consumer,
+      severity: event.severity,
     });
 
     if (notification !== null) {
@@ -77,6 +78,7 @@ export class InMemoryAuditRepository implements AuditRepository {
         processedAt: null,
         customerId: notification.customerId,
         readAt: null,
+        severity: notification.intent.severity,
       });
     }
 
@@ -104,6 +106,7 @@ export class InMemoryAuditRepository implements AuditRepository {
         correlationId: notification.correlationId,
         createdAt: notification.createdAt.toISOString(),
         readAt: notification.readAt?.toISOString() ?? null,
+        severity: notification.severity,
       })),
       unread: mine.filter((notification) => notification.readAt === null).length,
     });
@@ -145,6 +148,9 @@ export class InMemoryAuditRepository implements AuditRepository {
     readonly notificationsToday: number;
     readonly lastEventType: string | null;
     readonly lastEventAt: string | null;
+    readonly infoToday: number;
+    readonly warningToday: number;
+    readonly errorToday: number;
   }> {
     const newest = this.events.at(-1);
 
@@ -154,6 +160,9 @@ export class InMemoryAuditRepository implements AuditRepository {
       notificationsToday: this.notifications.length,
       lastEventType: newest?.messageType ?? null,
       lastEventAt: newest?.occurredAt.toISOString() ?? null,
+      infoToday: this.events.filter((event) => event.severity === 'INFO').length,
+      warningToday: this.events.filter((event) => event.severity === 'WARNING').length,
+      errorToday: this.events.filter((event) => event.severity === 'ERROR').length,
     });
   }
 
@@ -194,6 +203,7 @@ export class InMemoryAuditRepository implements AuditRepository {
       .filter((n) => filter.correlationId === undefined || n.correlationId === filter.correlationId)
       .filter((n) => filter.status === undefined || n.status === filter.status)
       .filter((n) => filter.type === undefined || n.type === filter.type)
+      .filter((n) => filter.severity === undefined || n.severity === filter.severity)
       .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
 
     const page = matched.slice(0, filter.limit ?? 50);
@@ -204,13 +214,17 @@ export class InMemoryAuditRepository implements AuditRepository {
   public async listRecentEvents(input: {
     readonly limit: number;
     readonly offset: number;
+    readonly severity?: string;
   }): Promise<{ readonly events: readonly AuditEvent[]; readonly total: number }> {
-    const sorted = [...this.events].sort(
+    const matched = this.events.filter(
+      (event) => input.severity === undefined || event.severity === input.severity,
+    );
+    const sorted = [...matched].sort(
       (left, right) => right.occurredAt.getTime() - left.occurredAt.getTime(),
     );
     const page = sorted.slice(input.offset, input.offset + input.limit);
 
-    return await Promise.resolve({ events: page, total: this.events.length });
+    return await Promise.resolve({ events: page, total: matched.length });
   }
 
   public async isReachable(): Promise<boolean> {

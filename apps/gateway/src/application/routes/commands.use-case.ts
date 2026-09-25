@@ -5,6 +5,7 @@ import {
   accountCreateV1,
   accountSetStatusV1,
   customerSetIdentityVerdictV1,
+  customerSetKycStatusV1,
   customerUpdateV1,
   transferRequestedV1,
 } from '@bank/contracts';
@@ -39,10 +40,17 @@ export interface SetIdentityVerdictRequest extends CommandContext {
   readonly verdict: 'VALIDATED' | 'REJECTED';
 }
 
+export interface SetKycStatusRequest extends CommandContext {
+  readonly customerId: string;
+  readonly status: 'VERIFIED' | 'REJECTED';
+}
+
 export interface OpenAccountRequest extends CommandContext {
   readonly accountType: AccountType;
   /** The subject. Absent means "myself", which is the common case. */
   readonly customerId?: string;
+  /** AHORRO's minimum-opening-deposit rule (T-27) is Account Service's to enforce. */
+  readonly initialDeposit?: Money;
 }
 
 export interface SetAccountStatusRequest extends CommandContext {
@@ -55,6 +63,8 @@ export interface TransferRequest extends CommandContext {
   readonly sourceAccount: string;
   readonly targetAccount: string;
   readonly amount: Money;
+  /** Carried when staff initiates on behalf of customer. */
+  readonly customerId?: string;
   /** Carried when the target is a biller's collection account. Never read here. */
   readonly reference?: string;
   readonly paymentScenario?: PaymentScenario;
@@ -104,6 +114,22 @@ export class CommandsUseCase {
     return { correlationId: request.correlationId };
   }
 
+  /**
+   * A teller's manual KYC verdict (T-31, §4.1 p. 4). Distinct from
+   * `setIdentityVerdict`: this is the broader compliance decision the
+   * transfer Saga's own KYC gate reads, not Fase 1's document-photo review.
+   * Authorisation is the owning service's, made from the envelope identity.
+   */
+  public async setKycStatus(request: SetKycStatusRequest): Promise<AcceptedCommand> {
+    await this.#publish(
+      customerSetKycStatusV1,
+      { customerId: request.customerId, status: request.status },
+      request,
+    );
+
+    return { correlationId: request.correlationId };
+  }
+
   public async openAccount(
     request: OpenAccountRequest,
   ): Promise<AcceptedCommand & { readonly accountId: string }> {
@@ -117,6 +143,7 @@ export class CommandsUseCase {
         // whether they may operate on that person is Account Service's call.
         customerId: request.customerId ?? request.actor.customerId,
         accountType: request.accountType,
+        ...(request.initialDeposit === undefined ? {} : { initialDeposit: request.initialDeposit }),
       },
       request,
     );
@@ -160,7 +187,8 @@ export class CommandsUseCase {
         sourceAccount: request.sourceAccount,
         targetAccount: request.targetAccount,
         amount: request.amount,
-        // Carried and never read: whose bill this pays is the biller's business.
+        ...(request.customerId === undefined ? {} : { customerId: request.customerId }),
+        // Carried when the target is a biller's collection account. Never read here.
         ...(request.reference === undefined ? {} : { reference: request.reference }),
         // Carried, never obeyed. Acting on it is Transaction Service's job.
         ...(request.paymentScenario === undefined

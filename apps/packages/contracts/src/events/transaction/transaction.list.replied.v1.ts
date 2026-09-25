@@ -4,6 +4,7 @@ import {
   failureCode,
   isoTimestamp,
   money,
+  phaseStatus,
   transactionStatus,
   uuidV4,
 } from '../../schemas/primitives';
@@ -24,6 +25,12 @@ const row = z.object({
   targetAccount: uuidV4,
   amount: money,
   status: transactionStatus,
+  /**
+   * Fase 2's vocabulary (T-28), computed by `phaseStatusOf` and carried
+   * alongside `status` rather than instead of it. Optional by the repo's
+   * additive rule: a reply that omits it validates exactly as before.
+   */
+  phaseStatus: phaseStatus.optional(),
   reason: failureCode.nullable(),
   createdAt: isoTimestamp,
   completedAt: isoTimestamp.nullable(),

@@ -46,6 +46,8 @@ interface CustomerSummary {
   role: string;
   status: string;
   registeredAt: string;
+  /** Fase 2's compliance verdict (T-31). Absent on a reply from before T-26. */
+  kycStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
 }
 
 const api = useGatewayApi();
@@ -206,7 +208,7 @@ useHead({ title: isAdmin.value ? 'Usuarios · bonking' : 'Clientes · bonking' }
               <th class="pb-2 font-medium">{{ isAdmin ? 'No. Usuario (UUID)' : 'No. Cliente (UUID)' }}</th>
               <th class="pb-2 font-medium">Correo electrónico</th>
               <th class="pb-2 font-medium">Rol</th>
-              <th class="pb-2 font-medium">Identidad</th>
+              <th class="pb-2 font-medium">Estado de Verificación</th>
               <th class="pb-2 text-right font-medium">Acciones</th>
             </tr>
           </thead>
@@ -238,11 +240,28 @@ useHead({ title: isAdmin.value ? 'Usuarios · bonking' : 'Clientes · bonking' }
               </td>
               <td class="py-3">
                 <UBadge
-                  :color="c.identityStatus === 'VALIDATED' ? 'success' : c.identityStatus === 'REJECTED' ? 'error' : 'warning'"
+                  v-if="c.kycStatus === 'VERIFIED' || c.identityStatus === 'VALIDATED'"
+                  color="success"
                   variant="subtle"
                   size="sm"
                 >
-                  {{ c.identityStatus === 'VALIDATED' ? 'Verificada' : c.identityStatus === 'REJECTED' ? 'Rechazada' : 'Pendiente' }}
+                  Verificado
+                </UBadge>
+                <UBadge
+                  v-else-if="c.kycStatus === 'REJECTED' || c.identityStatus === 'REJECTED'"
+                  color="error"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Rechazado
+                </UBadge>
+                <UBadge
+                  v-else
+                  color="warning"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Pendiente
                 </UBadge>
               </td>
               <td class="py-3 text-right">

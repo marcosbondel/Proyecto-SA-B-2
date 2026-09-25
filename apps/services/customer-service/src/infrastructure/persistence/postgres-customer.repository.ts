@@ -3,7 +3,13 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 
 import { DomainRejection, registerCustomer } from '../../domain/customer';
-import type { Customer, IdentityStatus, RegistrationRequest, Role } from '../../domain/customer';
+import type {
+  Customer,
+  IdentityStatus,
+  KycStatus,
+  RegistrationRequest,
+  Role,
+} from '../../domain/customer';
 import type {
   CustomerRepository,
   ProcessedMessage,
@@ -24,6 +30,7 @@ interface CustomerRow {
   readonly role: string;
   readonly status: string;
   readonly identity_status: string;
+  readonly kyc_status: string;
   readonly email_verified_at: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
@@ -69,6 +76,8 @@ export class PostgresCustomerRepository implements CustomerRepository {
     readonly document: Omit<StoredIdentityDocument, 'documentId' | 'customerId'> | null;
     readonly activation: { readonly tokenHash: string; readonly expiresAt: string } | null;
     readonly identityStatus: IdentityStatus;
+    readonly status?: Customer['status'];
+    readonly emailVerifiedAt?: string | null;
     readonly idempotency: ProcessedMessage;
     readonly now: Date;
   }): Promise<Customer> {
@@ -82,11 +91,22 @@ export class PostgresCustomerRepository implements CustomerRepository {
       try {
         await client.query('BEGIN');
 
+        const kycStatus =
+          input.identityStatus === 'VALIDATED'
+            ? 'VERIFIED'
+            : input.identityStatus === 'REJECTED'
+              ? 'REJECTED'
+              : 'PENDING';
+
+        const status = input.status ?? shape.status;
+        const emailVerifiedAt = input.emailVerifiedAt ?? null;
+
         const inserted = await client.query<CustomerRow>(
           `INSERT INTO customers (
              customer_id, full_name, document_number, email, birth_date, address,
-             username, role, status, identity_status, password_hash, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+             username, role, status, identity_status, kyc_status, password_hash,
+             email_verified_at, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
            RETURNING *`,
           [
             shape.customerId,
@@ -97,9 +117,11 @@ export class PostgresCustomerRepository implements CustomerRepository {
             shape.address,
             username,
             shape.role,
-            shape.status,
+            status,
             input.identityStatus,
+            kycStatus,
             input.credentialHash,
+            emailVerifiedAt,
             input.now.toISOString(),
           ],
         );
@@ -307,6 +329,7 @@ export class PostgresCustomerRepository implements CustomerRepository {
         ? await client.query(
             `UPDATE customers
                 SET identity_status = $2,
+                    kyc_status = $5,
                     document_number = document_number || '#rejected#' || customer_id,
                     email = email || '#rejected#' || customer_id,
                     username = username || '#rejected#' || customer_id,
@@ -318,17 +341,19 @@ export class PostgresCustomerRepository implements CustomerRepository {
               input.customer.identityStatus,
               input.customer.updatedAt,
               input.customer.version,
+              input.customer.kycStatus,
             ],
           )
         : await client.query(
             `UPDATE customers
-                SET identity_status = $2, updated_at = $3, version = version + 1
+                SET identity_status = $2, kyc_status = $5, updated_at = $3, version = version + 1
               WHERE customer_id = $1 AND version = $4`,
             [
               input.customer.customerId,
               input.customer.identityStatus,
               input.customer.updatedAt,
               input.customer.version,
+              input.customer.kycStatus,
             ],
           );
 
@@ -340,6 +365,39 @@ export class PostgresCustomerRepository implements CustomerRepository {
 
       if (input.document !== null) {
         await this.#insertDocument(client, input.customer.customerId, input.document);
+      }
+
+      await this.#recordProcessed(client, input.idempotency);
+    });
+  }
+
+  public async saveKycVerdict(input: {
+    readonly customer: Customer;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void> {
+    await this.#inTransaction(async (client) => {
+      /**
+       * The same optimistic guard `saveIdentityVerdict` uses, and for the same
+       * reason: this verdict was decided against `input.customer.version`, and
+       * two verdicts read from that same version must not both land.
+       */
+      const written = await client.query(
+        `UPDATE customers
+            SET kyc_status = $2, identity_status = $5, updated_at = $3, version = version + 1
+          WHERE customer_id = $1 AND version = $4`,
+        [
+          input.customer.customerId,
+          input.customer.kycStatus,
+          input.customer.updatedAt,
+          input.customer.version,
+          input.customer.identityStatus,
+        ],
+      );
+
+      if (written.rowCount === 0) {
+        throw new Error(
+          `concurrent KYC verdict on customer ${input.customer.customerId} at version ${input.customer.version}`,
+        );
       }
 
       await this.#recordProcessed(client, input.idempotency);
@@ -756,6 +814,7 @@ function toCustomer(row: CustomerRow): Customer {
     role: row.role as Role,
     status: row.status as Customer['status'],
     identityStatus: row.identity_status as IdentityStatus,
+    kycStatus: row.kyc_status as KycStatus,
     emailVerifiedAt: row.email_verified_at === null ? null : row.email_verified_at.toISOString(),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),

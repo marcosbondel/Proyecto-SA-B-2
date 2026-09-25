@@ -1,0 +1,264 @@
+name: CI
+
+# Fases obligatorias del pipeline de CI (enunciado de la Fase 2, "Flujo de
+# Integracion y Despliegue Continuo"): Build, Test y Validacion, cada una un
+# job independiente y bloqueante. Un push a feature/** ejecuta las tres; un
+# pull request hacia develop repite unicamente Build y Test, tal como pide el
+# enunciado ("Se ejecutan nuevamente las fases de: Build, Test") y el ticket
+# T-32 ("Repetir build y tests para cambios hacia develop").
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+  pull_request:
+    branches:
+      - develop
+      # `main` tiene que estar aqui aunque el enunciado solo hable de develop.
+      # La regla `main_protection` exige que las tres fases reporten antes de
+      # permitir un merge, y cubre tanto develop como la rama por defecto. Sin
+      # esta linea, un pull request hacia main no dispara CI, los tres checks
+      # obligatorios no reportan nunca y el merge se queda bloqueado en
+      # `pending` de forma permanente — no falla, que seria mas facil de
+      # diagnosticar: simplemente no avanza.
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  TURBO_TELEMETRY_DISABLED: 1
+  DO_NOT_TRACK: 1
+
+jobs:
+  # Fase 1: Build — compilacion del proyecto.
+  build:
+    name: 'Fase 1: Build'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Comparte el resultado de la compilacion con las fases siguientes:
+      # Turborepo decide por el contenido de este cache si un job posterior
+      # necesita recompilar o puede reusar lo ya construido aqui, en vez de
+      # que cada fase repita la compilacion desde cero.
+      - name: Save Turborepo cache
+        uses: actions/cache/save@v6
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}
+
+  # Fase 2: Test — ejecucion de pruebas automatizadas.
+  test:
+    name: 'Fase 2: Test'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # PostgreSQL y RabbitMQ de verdad, para que corran las suites que hasta
+    # ahora se saltaban (TD-069). Sin ellos, `describe.skip` dejaba fuera
+    # precisamente lo que mas necesita una prueba: la concurrencia con bloqueo
+    # de fila, la idempotencia contra una restriccion unica real y los
+    # CHECK de la base. Esas suites pasaban a ser verdes sin ejecutarse, que es
+    # la peor clase de verde.
+    #
+    # Las versiones son las mismas de infra/docker/docker-compose.yml: una
+    # prueba contra una version de PostgreSQL distinta de la de produccion
+    # comprueba algo que nadie va a desplegar.
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: bank_test
+          POSTGRES_PASSWORD: bank_test
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bank_test -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      rabbitmq:
+        image: rabbitmq:4.3.4-management
+        env:
+          RABBITMQ_DEFAULT_USER: bank_test
+          RABBITMQ_DEFAULT_PASS: bank_test
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turborepo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}
+
+      - name: Test
+        run: pnpm test
+
+      - name: Contract tests
+        run: pnpm test:contract
+
+      # Una base por servicio, no una compartida: cada servicio corre sus
+      # propias migraciones y las cinco escribirian en la misma tabla
+      # `schema_migrations`. Son cinco bases dentro de la misma instancia, que
+      # es barato, y no cinco instancias.
+      - name: Preparar una base de datos por servicio
+        env:
+          PGPASSWORD: bank_test
+        run: |
+          set -euo pipefail
+          for db in customer account transaction payment notification_audit; do
+            psql -h localhost -U bank_test -d postgres -c "CREATE DATABASE $db;"
+          done
+
+          # SQL plano y no el macro `\l` del cliente: el psql del runner es mas
+          # antiguo que el servidor 18.4 de arriba, y su `\l` pide una columna
+          # (`d.daticulocale`) que PostgreSQL 18 ya no tiene. Una consulta
+          # explicita no depende de que ambas versiones coincidan.
+          psql -h localhost -U bank_test -d postgres \
+            -c "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname;"
+
+      # Las suites que `describe.skip` dejaba fuera sin una base y un broker
+      # reales: concurrencia con bloqueo de fila, idempotencia contra una
+      # restriccion unica, los CHECK de la base y el broker de `@bank/messaging`.
+      #
+      # `pnpm --filter` en vez de `turbo run`: se salta la cache de Turbo por
+      # completo, asi que estas suites se ejecutan siempre. Depende de que el
+      # paso `Test` de arriba ya haya compilado las dependencias.
+      - name: 'Suites de integracion (PostgreSQL y RabbitMQ reales)'
+        env:
+          RABBITMQ_URL: amqp://bank_test:bank_test@localhost:5672
+        run: |
+          set -euo pipefail
+
+          # Las suites asumen una base virgen: crean sus datos y comprueban
+          # restricciones unicas contra ellos. Correrlas dos veces sobre la
+          # misma base falla por su propio rastro, asi que la comprobacion de
+          # "no se salto" se hace sobre la salida de ESTA corrida y no
+          # repitiendola.
+          run_suite() { # run_suite <paquete> <base de datos>
+            echo "::group::$1"
+            local output
+            output="$(DATABASE_URL="postgresql://bank_test:bank_test@localhost:5432/$2" \
+              pnpm --filter "$1" test 2>&1)" || { echo "$output"; echo "::endgroup::"; return 1; }
+            echo "$output"
+            echo "::endgroup::"
+
+            # Una suite que se salta sola sigue contando como verde. Sin esto,
+            # este paso pasaria igual si las variables no hubieran llegado a
+            # Jest, y TD-069 quedaria cerrado solo en apariencia.
+            if echo "$output" | grep -qE "Test Suites:.*skipped"; then
+              echo "::error::$1 salto suites pese a haber PostgreSQL disponible."
+              return 1
+            fi
+          }
+
+          run_suite customer-service            customer
+          run_suite account-service             account
+          run_suite transaction-service         transaction
+          run_suite payment-service             payment
+          run_suite notification-audit-service  notification_audit
+
+          echo "::group::@bank/messaging"
+          pnpm --filter @bank/messaging test
+          echo "::endgroup::"
+
+  # Fase 3: Validacion — verificacion basica del sistema (sanity check).
+  #
+  # No se repite en un pull request hacia `develop`: el enunciado pide ahi
+  # "Build, Test" y nada mas. Si se repite en uno hacia `main`, que el enunciado
+  # no cubre porque no contempla revisar lo que entra a produccion: es la ultima
+  # puerta antes del despliegue productivo, y saltarse el lint, el typecheck y
+  # el guard de `.env` justo ahi seria la peor eleccion posible de momento para
+  # ahorrarse dos minutos.
+  validate:
+    name: 'Fase 3: Validacion'
+    needs: [build, test]
+    if: >-
+      github.event_name != 'pull_request'
+      || github.base_ref == 'main'
+      || github.base_ref == 'master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore Turborepo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}
+
+      # Sanity check: ningun archivo con secretos debe llegar a estar
+      # versionado (solo *.env.example esta permitido; ver .gitignore).
+      - name: No tracked .env files
+        run: |
+          tracked_env_files=$(git ls-files -- '*.env' ':!:*.env.example')
+          if [ -n "$tracked_env_files" ]; then
+            echo "::error::Tracked .env file(s) found — secrets must never be committed:"
+            echo "$tracked_env_files"
+            exit 1
+          fi
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck

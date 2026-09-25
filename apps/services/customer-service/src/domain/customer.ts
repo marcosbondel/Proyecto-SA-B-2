@@ -13,6 +13,15 @@
 export type Role = 'CLIENTE' | 'CAJERO_RECEPTOR' | 'ADMINISTRADOR';
 export type CustomerStatus = 'PENDING_ACTIVATION' | 'ACTIVE';
 export type IdentityStatus = 'PENDING' | 'VALIDATED' | 'REJECTED';
+/**
+ * The Fase 2 KYC decision (§4.1, p. 4): "PENDING", "VERIFIED", "REJECTED".
+ *
+ * Distinct from `identityStatus`, which is Fase 1's review of the document
+ * photo. `kycStatus` is the broader compliance verdict a teller or an
+ * administrator registers, and it is what gates initiating a transaction
+ * (`mayInitiateTransactions`) — the photo review gates opening an account.
+ */
+export type KycStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 
 /**
  * The two axes are **independent** (`docs/domain/entities.md`).
@@ -34,6 +43,7 @@ export interface Customer {
   readonly role: Role;
   readonly status: CustomerStatus;
   readonly identityStatus: IdentityStatus;
+  readonly kycStatus: KycStatus;
   readonly emailVerifiedAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -134,6 +144,7 @@ export function registerCustomer(
     role: request.role,
     status: 'PENDING_ACTIVATION',
     identityStatus: 'PENDING',
+    kycStatus: 'PENDING',
     emailVerifiedAt: null,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -228,12 +239,54 @@ export function recordIdentityVerdict(
     throw new DomainRejection('ILLEGAL_TRANSITION', 'the identity was already validated');
   }
 
-  return { ...customer, identityStatus: verdict, updatedAt: now.toISOString() };
+  const kycStatus = verdict === 'VALIDATED' ? 'VERIFIED' : 'REJECTED';
+  return { ...customer, identityStatus: verdict, kycStatus, updatedAt: now.toISOString() };
 }
 
 /** Only `CLIENTE` holds accounts and therefore needs a validated identity (C-6). */
 export function requiresIdentityValidation(customer: Pick<Customer, 'role'>): boolean {
   return customer.role === 'CLIENTE';
+}
+
+/**
+ * Records the KYC verdict (Fase 2, C-8).
+ *
+ * `REJECTED → PENDING` is legal — a new review reopens it — and `VERIFIED` is
+ * terminal, for the same reason `VALIDATED` is terminal on `identityStatus`:
+ * re-verifying an already-verified customer would let a later, weaker review
+ * silently replace an accepted one.
+ */
+export function setKycStatus(
+  customer: Customer,
+  status: 'VERIFIED' | 'REJECTED',
+  now: Date,
+): Customer {
+  if (customer.kycStatus === 'VERIFIED') {
+    throw new DomainRejection('ILLEGAL_TRANSITION', 'the KYC status was already verified');
+  }
+
+  const identityStatus = status === 'VERIFIED' ? 'VALIDATED' : 'REJECTED';
+  return { ...customer, kycStatus: status, identityStatus, updatedAt: now.toISOString() };
+}
+
+/**
+ * Whether this customer may initiate a transaction (§4.1, p. 4: "Validar que
+ * solo clientes verificados puedan realizar transacciones").
+ *
+ * Staff (`CAJERO_RECEPTOR`, `ADMINISTRADOR`) do not hold accounts and are not
+ * subject to this check — only a `CLIENTE` needs `kycStatus = VERIFIED`.
+ *
+ * This is the domain's source of truth for the rule; enforcing it inside the
+ * transfer Saga is T-31's job, once Transaction Service has a way to read this
+ * status (by consuming `customer.kyc.verified.v1` / `customer.kyc.rejected.v1`,
+ * or by request/reply) without querying this service's table (X-1).
+ */
+export function mayInitiateTransactions(customer: Pick<Customer, 'role' | 'kycStatus'>): boolean {
+  if (customer.role !== 'CLIENTE') {
+    return true;
+  }
+
+  return customer.kycStatus === 'VERIFIED';
 }
 
 /** The verified actor a command carries, reduced to what a domain rule needs. */
@@ -300,6 +353,15 @@ export function mayChangeOwnPassword(actor: Actor | null, subjectCustomerId: str
  */
 export function mayValidateIdentity(actor: Actor | null): boolean {
   return actor !== null && actor.role !== 'CLIENTE';
+}
+
+/**
+ * Who may register or update a customer's KYC status: staff only, the same
+ * scope as `mayValidateIdentity` — a `CLIENTE` decides nobody's compliance
+ * status, their own included.
+ */
+export function mayManageKyc(actor: Actor | null): boolean {
+  return mayValidateIdentity(actor);
 }
 
 /**

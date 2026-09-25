@@ -23,8 +23,16 @@ export type TransactionStatus =
   | 'FAILED'
   | 'COMPENSATED';
 
+/**
+ * Fase 2's three states (T-28) — a coarser reading of `TransactionStatus`,
+ * computed by Transaction Service and carried alongside `status`, never
+ * instead of it. `PENDING|DEBITING|PAYMENT_PENDING` read as `PENDING`,
+ * `COMPLETED` as `APPROVED`, `FAILED|COMPENSATED` as `FAILED`.
+ */
+export type PhaseStatus = 'PENDING' | 'APPROVED' | 'FAILED';
+
 /** The demonstration scenarios `POST /api/transfers` accepts. */
-export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE';
+export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE' | 'TIMEOUT';
 
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED';
 
@@ -45,11 +53,25 @@ export interface PaymentOutcome {
   readonly decidedAt: string | null;
 }
 
+/**
+ * One row of the real history (T-28), oldest first. `from` is `null` only on
+ * the opening row — the transfer's acceptance itself, which nothing preceded.
+ */
+export interface TransitionRow {
+  readonly from: TransactionStatus | null;
+  readonly to: TransactionStatus;
+  readonly event: string;
+  readonly reason: string | null;
+  readonly occurredAt: string;
+}
+
 /** A transfer as `GET /api/transfers/:transactionId` answers. */
 export interface TransferStatus {
   readonly outcome: 'FOUND';
   readonly transactionId: string;
   readonly status: TransactionStatus;
+  /** Fase 2's vocabulary (T-28). Absent on a reply from before this field existed. */
+  readonly phaseStatus?: PhaseStatus;
   readonly amount: WireMoney;
   readonly reason: string | null;
   readonly createdAt: string;
@@ -57,6 +79,12 @@ export interface TransferStatus {
   /** The correlation the transfer was **born** in, not the query's. */
   readonly originCorrelationId?: string;
   readonly payment?: PaymentOutcome;
+  /**
+   * The real history (T-28). `undefined` on an old reply, `[]` on a transfer
+   * this migration predates — both read the same to a caller: no trace to
+   * show, fall back to the line `timelineFor` draws from `status` alone.
+   */
+  readonly transitions?: readonly TransitionRow[];
   /** Added by the Gateway: the correlation of this particular question. */
   readonly correlationId?: string;
 }
@@ -125,6 +153,21 @@ export const STATUS_PRESENTATION: Readonly<Record<TransactionStatus, StatusPrese
       'automáticamente, así que verás dos movimientos en el estado de cuenta.',
   },
 };
+
+/** What each Fase 2 phase means, in the same three colors `StatusPresentation` uses. */
+export const PHASE_PRESENTATION: Readonly<Record<PhaseStatus, { label: string; color: StatusPresentation['color'] }>> = {
+  PENDING: { label: 'En proceso', color: 'warning' },
+  APPROVED: { label: 'Aprobada', color: 'success' },
+  FAILED: { label: 'Fallida', color: 'error' },
+};
+
+/** Fase 2's three phases, for a filter control — mirrors `statusFilterOptions`. */
+export function phaseFilterOptions(): readonly { readonly value: PhaseStatus; readonly label: string }[] {
+  return (Object.keys(PHASE_PRESENTATION) as PhaseStatus[]).map((value) => ({
+    value,
+    label: PHASE_PRESENTATION[value].label,
+  }));
+}
 
 export type StepState = 'done' | 'current' | 'pending' | 'failed' | 'skipped';
 
@@ -243,6 +286,90 @@ const REACHED: Readonly<Record<TimelineNode, Readonly<Record<TransactionStatus, 
   },
 };
 
+/** One step of the real history (T-28), ready to render. */
+export interface TraceStep {
+  readonly label: string;
+  readonly to: TransactionStatus;
+  readonly failed: boolean;
+  readonly occurredAt: string;
+}
+
+/**
+ * What each event that can appear in `transitions` means, in Spanish.
+ *
+ * Keyed by the event name Transaction Service records it under — the wire
+ * message type, not this file's own vocabulary — because that is what
+ * `transitions` actually carries. An event not in this table (a future one
+ * this file has not met yet) falls back to its raw name rather than throwing,
+ * the same defensive read `FAILURE_REASON_TEXT` uses below.
+ */
+const TRANSITION_EVENT_LABELS: Readonly<Record<string, string>> = {
+  'transfer.requested.v1': 'Se aceptó la solicitud',
+  // Added by T-31. Covers both KYC_APPROVED (to: DEBITING) and KYC_REJECTED
+  // (to: FAILED, with a reason) — the icon and the reason text tell them apart.
+  'customer.kyc.checked.v1': 'Se resolvió la verificación de cumplimiento (KYC)',
+  'account.debited.v1': 'Se debitó la cuenta de origen',
+  'account.debit.rejected.v1': 'Se rechazó el débito',
+  'payment.succeeded.v1': 'El pago se aprobó',
+  'payment.failed.v1': 'El pago falló',
+  'account.credited.v1': 'Se acreditó la cuenta de destino',
+  'account.credit.rejected.v1': 'Se rechazó el crédito',
+  'account.debit.compensated.v1': 'Se devolvió el dinero a la cuenta de origen',
+};
+
+/**
+ * The real trace (T-28), as it actually happened — as opposed to `timelineFor`,
+ * which draws a *prospective* line from the current status alone.
+ *
+ * `[]` in, `[]` out: a transfer this migration predates, or a reply from
+ * before the field existed, has no trace to show, and the caller is expected
+ * to fall back to `timelineFor` in that case rather than render an empty list
+ * as if it meant something.
+ */
+export function traceFor(transitions: readonly TransitionRow[]): readonly TraceStep[] {
+  return transitions.map((transition) => ({
+    label: labelFor(transition),
+    to: transition.to,
+    failed: transition.reason !== null,
+    occurredAt: transition.occurredAt,
+  }));
+}
+
+/**
+ * The one row `TRANSITION_EVENT_LABELS` cannot name by `event` alone (T-31):
+ * the Saga's KYC gate is asked through the same wire message that opened the
+ * transfer (`transfer.requested.v1`, `docs/events/saga-transfer.md`'s "no
+ * message of its own"), so both the opening row and this one share an event
+ * name. `from === to === 'PENDING'` is what tells them apart.
+ */
+function labelFor(transition: TransitionRow): string {
+  if (transition.from === 'PENDING' && transition.to === 'PENDING') {
+    return 'Se solicitó la verificación de cumplimiento (KYC)';
+  }
+
+  return TRANSITION_EVENT_LABELS[transition.event] ?? transition.event;
+}
+
+/**
+ * Why a date-range filter cannot be sent, or `undefined` when it can.
+ *
+ * The one thing worth catching before the request goes out: a reversed range
+ * would otherwise come back as a Gateway `400` the reader has to decode from a
+ * generic error banner instead of a message next to the field they typed in.
+ */
+export function historyFilterProblems(range: {
+  readonly from: string | null;
+  readonly to: string | null;
+}): string | undefined {
+  if (range.from === null || range.to === null) {
+    return undefined;
+  }
+
+  return new Date(range.to).getTime() < new Date(range.from).getTime()
+    ? 'La fecha inicial es posterior a la final.'
+    : undefined;
+}
+
 /**
  * What a failure code means, in Spanish, to the person it happened to.
  *
@@ -253,6 +380,8 @@ const REACHED: Readonly<Record<TimelineNode, Readonly<Record<TransactionStatus, 
  */
 export const FAILURE_REASON_TEXT: Readonly<Record<string, string>> = {
   INSUFFICIENT_FUNDS: 'La cuenta de origen no tenía saldo suficiente.',
+  MINIMUM_BALANCE_VIOLATION:
+    'El monto dejaría el saldo de la cuenta de origen por debajo del mínimo permitido para su tipo de cuenta.',
   ACCOUNT_INACTIVE: 'La cuenta de origen está inactiva, así que no se puede debitar de ella.',
   ACCOUNT_NOT_FOUND: 'Una de las dos cuentas no existe.',
   INVALID_AMOUNT: 'El monto debe ser mayor que cero.',
@@ -264,6 +393,11 @@ export const FAILURE_REASON_TEXT: Readonly<Record<string, string>> = {
   PAYMENT_DECLINED: 'El pago fue rechazado. El dinero se devolvió a la cuenta de origen.',
   PAYMENT_RETRIES_EXHAUSTED:
     'El pago no se pudo procesar tras varios intentos. El dinero se devolvió a la cuenta de origen.',
+  // Added by T-31: the Saga's own KYC gate, refused before any debit — the
+  // money never left, unlike every compensated outcome above.
+  KYC_NOT_VERIFIED:
+    'El cliente que origina la transferencia no tiene su verificación KYC completa. ' +
+    'Un cajero receptor debe verificarla antes de intentarlo de nuevo.',
 };
 
 /**
@@ -294,7 +428,7 @@ export interface ScenarioPresentation {
 }
 
 /**
- * The three endings a demonstration can ask for.
+ * The four endings a demonstration can ask for.
  *
  * They exist because the assignment's Saga is only interesting when it can be
  * shown failing and compensating on demand, and a payment provider cannot be
@@ -322,6 +456,14 @@ export const PAYMENT_SCENARIOS: readonly ScenarioPresentation[] = [
     description:
       'El pago falla y el sistema lo reintenta. Termina completada o, si se agotan los ' +
       'intentos, compensada con el dinero de vuelta.',
+  },
+  {
+    value: 'TIMEOUT',
+    label: 'El proveedor no responde (timeout)',
+    description:
+      'El proveedor simulado no contesta. El sistema reintenta con la misma escalera que un ' +
+      'fallo transitorio y termina completada o, si se agotan los intentos, compensada con el ' +
+      'dinero de vuelta.',
   },
 ];
 
@@ -429,6 +571,8 @@ export interface TransferRow {
   readonly targetAccount: string;
   readonly amount: WireMoney;
   readonly status: TransactionStatus;
+  /** Fase 2's vocabulary (T-28). Absent on a reply from before this field existed. */
+  readonly phaseStatus?: PhaseStatus;
   readonly reason: string | null;
   readonly createdAt: string;
   readonly completedAt: string | null;

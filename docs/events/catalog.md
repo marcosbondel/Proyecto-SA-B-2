@@ -1031,6 +1031,189 @@ The payload is an empty object. There is nothing to narrow: the question is the 
 
 ---
 
+## Register a KYC verdict (Fase 2, T-26)
+
+Distinct from "Validate identity" above: that flow is Fase 1's review of the document photo.
+This is the broader KYC compliance decision (§4.1, p. 4) that C-8 ties to initiating a
+transaction — a `CLIENTE` with `kycStatus != VERIFIED` may not start one. This service owns the
+state, the transitions and these two events; the transfer Saga's own KYC gate — the two messages
+below this section, `customer.kyc.check.requested.v1` and `customer.kyc.checked.v1` — is **T-31**.
+
+### `customer.set-kyc-status.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | customer-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `customer.set-kyc-status.v1` |
+| **Contract** | [`customer.set-kyc-status.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.set-kyc-status.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customerId` | UUID v4 | yes |
+| `status` | `VERIFIED` \| `REJECTED` | yes |
+
+**Preconditions.** The caller is staff (`CAJERO_RECEPTOR` or `ADMINISTRADOR`) — checked here and not only at the Gateway, the same reason `customer.set-identity-verdict.v1` re-checks.
+
+**Effects.** `kycStatus` becomes the verdict, and `customer.kyc.verified.v1` or `customer.kyc.rejected.v1` follows.
+
+**On error.** `VERIFIED` is terminal — the domain refuses to re-open an already-verified customer — so a second approval is a no-op rather than a way to swap in a different verdict.
+
+### `customer.kyc.verified.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | customer-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `customer.kyc.verified.v1` |
+| **Contract** | [`customer.kyc.verified.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.kyc.verified.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customerId` | UUID v4 | yes |
+| `kycStatus` | `VERIFIED` | yes |
+| `verifiedAt` | ISO-8601 timestamp | yes |
+
+### `customer.kyc.rejected.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | customer-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `customer.kyc.rejected.v1` |
+| **Contract** | [`customer.kyc.rejected.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.kyc.rejected.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `customerId` | UUID v4 | yes |
+| `kycStatus` | `REJECTED` | yes |
+| `rejectedAt` | ISO-8601 timestamp | yes |
+
+`REJECTED → PENDING` remains legal, so this event may be followed by a later
+`customer.kyc.verified.v1` for the same customer — unlike `VERIFIED`, this status is not
+terminal.
+
+## The transfer Saga's KYC gate (T-31)
+
+Step 1 of the Saga (`docs/events/saga-transfer.md`) now asks this question before anything else:
+may the customer who requested this transfer initiate one at all. The two messages below are how
+Transaction Service asks and Customer Service answers, over the broker rather than a shared
+table (X-1).
+
+### `customer.kyc.check.requested.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | transaction-service |
+| **Consumers** | customer-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `customer.kyc.check.requested.v1` |
+| **Contract** | [`customer.kyc.check.requested.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.kyc.check.requested.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `transactionId` | UUID v4 | yes |
+| `customerId` | UUID v4 | yes |
+
+**Preconditions.** Ordered once, from `PENDING`, in the same call that accepts
+`transfer.requested.v1` — a self-transition (`KYC_CHECK_ORDERED`) that leaves the transaction in
+`PENDING`, waiting on the answer.
+
+**Effects.** Customer Service answers with `customer.kyc.checked.v1`, never with a query reply:
+nobody is waiting on an HTTP connection for this, so it travels the same way every other Saga
+step does.
+
+### `customer.kyc.checked.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | customer-service |
+| **Consumers** | transaction-service, notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `customer.kyc.checked.v1` |
+| **Contract** | [`customer.kyc.checked.v1.ts`](../../apps/packages/contracts/src/events/customer/customer.kyc.checked.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `transactionId` | UUID v4 | yes |
+| `customerId` | UUID v4 | yes |
+| `kycStatus` | `PENDING` \| `VERIFIED` \| `REJECTED` | yes |
+| `allowed` | boolean | yes |
+
+**Effects.** `allowed: true` moves `PENDING → DEBITING` and orders `account.debit.requested.v1`
+(`KYC_APPROVED`). `allowed: false` moves `PENDING → FAILED` and publishes `transaction.failed.v1`
+with `reason: 'KYC_NOT_VERIFIED'` (`KYC_REJECTED`) — no compensation, because the debit was never
+ordered.
+
+**On error.** A customer id this service cannot find at all still answers, with
+`kycStatus: 'PENDING'` and `allowed: false`: the Saga always gets a verdict rather than waiting
+out its own retry ladder on a bad reference.
+
+`allowed` is carried explicitly rather than left for the consumer to derive from `kycStatus`,
+because the rule that only `VERIFIED` may transact (`mayInitiateTransactions`) belongs to the
+service that owns the customer.
+
+
+---
+
+## The AHORRO commission and minimum opening deposit (Fase 2, T-27)
+
+`AHORRO` and `MONETARIA` each carry a rule now (`account-type-rules.ts`), applying at different
+moments in the account's life: `AHORRO` requires a Q100.00 minimum deposit to **open** — see
+"Open an account" below, `account.open.rejected.v1`'s new `MINIMUM_BALANCE_VIOLATION` reason —
+and, once open, a Q3.00 commission on every debit for as long as the account exists. `MONETARIA`
+has neither. The minimum is checked once, at opening; it is never a floor `debit` re-enforces
+afterward, so an `AHORRO` account may be emptied to Q0.00 by ordinary transfers.
+
+### `account.commission.charged.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | account-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `account.commission.charged.v1` |
+| **Contract** | [`account.commission.charged.v1.ts`](../../apps/packages/contracts/src/events/account/account.commission.charged.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `accountId` | UUID v4 | yes |
+| `transactionId` | UUID v4 | yes |
+| `amount` | Money | yes |
+| `balanceAfter` | Money | yes |
+| `chargedAt` | ISO-8601 timestamp | yes |
+
+**Preconditions.** A `DEBIT` was just applied to an account whose type has a commission
+configured (`AHORRO`, as of this ticket — `MONETARIA` has none). Never published for a type with
+no commission, which is what makes the commission "opcional" a fact about whether this event
+exists at all rather than a field that is sometimes zero.
+
+**Effects.** None of its own — it narrates a fact `applyMovement` already committed in the same
+database transaction as the debit, as a second `account_operations` row (`type = 'COMMISSION'`).
+
+**On error.** There is none to have: this event is only ever published after the movement it
+describes has already succeeded. A debit still fails on `INSUFFICIENT_FUNDS` when the balance
+cannot cover the amount plus the commission together — see "Debit a source account" below — and
+produces no commission and no `DEBIT` either.
+
+**Why `amount` on `account.debited.v1` never grows by the commission.** Transaction Service
+compares that field against the amount its own Saga asked to move (`account.debit.requested.v1`),
+and a payload that silently grew by a fee it never asked about would break that equality. The
+commission is a fact about Account Service's own account-type rule, not about the transfer, so it
+travels as a separate statement.
+
+
+---
+
 ## Open an account
 
 ### `account.create.v1`
@@ -1049,12 +1232,17 @@ The payload is an empty object. There is nothing to narrow: the question is the 
 | `accountId` | UUID v4 | yes |
 | `customerId` | UUID v4 | yes |
 | `accountType` | `MONETARIA` \| `AHORRO` | yes |
+| `initialDeposit` | Money | no |
 
-**Preconditions.** The customer exists and has `role = CLIENTE` (C-6).
+**Preconditions.** The customer exists and has `role = CLIENTE` (C-6). `AHORRO` requires
+`initialDeposit` to reach its type's minimum (T-27, Fase 2 §4.1 p. 6) — absent or below it, the
+opening is refused. `initialDeposit` absent on `MONETARIA` opens at Q0.00, exactly as before T-27.
 
-**Effects.** An account is opened `ACTIVE` with a zero balance and the requested `accountType`.
+**Effects.** An account is opened `ACTIVE` with `initialDeposit` (or Q0.00, when absent) as its
+balance, and the requested `accountType`.
 
-**On error.** `ROLE_NOT_ELIGIBLE` when the customer is staff. No account is created.
+**On error.** `ROLE_NOT_ELIGIBLE` when the customer is staff, `MINIMUM_BALANCE_VIOLATION` (T-27)
+when an `AHORRO` opening's deposit does not reach the minimum. No account is created either way.
 
 ### `account.opened.v1`
 
@@ -1097,7 +1285,7 @@ The payload is an empty object. There is nothing to narrow: the question is the 
 | --- | --- | --- |
 | `accountId` | UUID v4 | yes |
 | `customerId` | UUID v4 | yes |
-| `reason` | `ROLE_NOT_ELIGIBLE` \| `FORBIDDEN_ACCOUNT_ACCESS` | yes |
+| `reason` | `ROLE_NOT_ELIGIBLE` \| `FORBIDDEN_ACCOUNT_ACCESS` \| `MINIMUM_BALANCE_VIOLATION` | yes |
 | `rejectedAt` | ISO-8601 UTC | yes |
 
 **Preconditions.** An `account.create.v1` was refused before any row was written.
@@ -1499,7 +1687,7 @@ The payload is an empty object.
 | `sourceAccount` | UUID v4 | yes |
 | `targetAccount` | UUID v4 | yes |
 | `amount` | object | yes |
-| `paymentScenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` | no |
+| `paymentScenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` \| `TIMEOUT` | no |
 | `reference` | string, 1–60 | no |
 
 **Preconditions.** Both accounts exist, the source is `ACTIVE` and has funds. Only the first two are checkable here; the rest belongs to Account Service.
@@ -1601,7 +1789,9 @@ The payload is an empty object.
 | `accountId` | UUID v4 | yes |
 | `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT_PRECISION` | yes |
 
-**Preconditions.** The debit did not happen.
+**Preconditions.** The debit did not happen. `INSUFFICIENT_FUNDS` (T-27) is checked against the
+amount *and* the account type's commission together, when the account's type charges one — a
+balance that covers the amount alone but not the amount plus the commission is still refused.
 
 **Effects.** The transaction closes in `FAILED`. **No compensation runs**, because there is no effect to reverse.
 
@@ -1623,7 +1813,7 @@ The payload is an empty object.
 | `paymentId` | UUID v4 | yes |
 | `transactionId` | UUID v4 | yes |
 | `amount` | object | yes |
-| `scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` | no |
+| `scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` \| `TIMEOUT` | no |
 
 **Preconditions.** The debit succeeded and the transaction is in `PAYMENT_PENDING`.
 
@@ -1648,6 +1838,7 @@ The payload is an empty object.
 | `transactionId` | UUID v4 | yes |
 | `attempt` | integer ≥ 1 | yes |
 | `errorType` | `TRANSIENT` \| `PERMANENT` | yes |
+| `providerResult` | `FAILURE` \| `TIMEOUT` | yes |
 | `willRetry` | boolean | yes |
 | `nextAttemptAt` | ISO-8601 UTC \| null | yes |
 | `failureReason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
@@ -1660,6 +1851,8 @@ The payload is an empty object.
 **It does not close the Saga.** `payment.failed.v1` is still the only event that means "the payment is over", and it still arrives afterwards when the retries are spent. Transaction Service records the attempt and the error kind onto the transaction it already owns and changes no state: `PAYMENT_PENDING` stays `PAYMENT_PENDING`. A consumer that treated this as terminal would compensate a payment about to succeed on its second attempt.
 
 `willRetry` is a field rather than something a consumer derives. A reader could compare `attempt` against the ladder's length and guess, but the decision belongs to the retry policy in Payment Service's domain, and a consumer that re-derives it is a second implementation of that policy waiting to disagree with the first — a `PERMANENT` error stops at attempt 1 no matter what the ladder allows. `nextAttemptAt` is `null` exactly when `willRetry` is `false`.
+
+`providerResult` (T-29) is what the simulated provider itself answered — `FAILURE` or `TIMEOUT`, never `SUCCESS`, since a successful attempt does not publish this event. `errorType` alone cannot distinguish the two: a `TRANSIENT_FAILURE` scenario and a `TIMEOUT` scenario both produce `errorType: 'TRANSIENT'` and climb the same ladder, so `providerResult` is the only field that tells a reader which one actually happened.
 
 `failureReason` is nullable because a transient failure — a timeout, a socket the provider closed — has no place in the closed failure-code enum, and inventing one would put transport noise into the vocabulary services use to decide whether to compensate.
 
@@ -1880,10 +2073,10 @@ The payload is an empty object.
 | `transactionId` | UUID v4 | yes |
 | `customerId` | UUID v4 \| `null` | yes |
 | `status` | `FAILED` | yes |
-| `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT` \| `INVALID_AMOUNT_PRECISION` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` | yes |
+| `reason` | `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT` \| `INVALID_AMOUNT_PRECISION` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `MINIMUM_BALANCE_VIOLATION` \| `KYC_NOT_VERIFIED` | yes |
 | `failedAt` | ISO-8601 UTC | yes |
 
-**Preconditions.** The debit was rejected.
+**Preconditions.** The debit was rejected, or (T-31) the KYC gate refused before any debit was ordered.
 
 **Effects.** Audited, and the customer is notified. Terminal. **Not interchangeable with `COMPENSATED`**: this means the money never left.
 
@@ -1960,7 +2153,7 @@ The payload is an empty object.
 | `transactionId` | UUID v4 | yes |
 | `status` | `PENDING` \| `DEBITING` \| `PAYMENT_PENDING` \| `COMPLETED` \| `FAILED` \| `COMPENSATED` | yes |
 | `amount` | object | yes |
-| `reason` | `DOCUMENT_ALREADY_REGISTERED` \| `EMAIL_ALREADY_REGISTERED` \| `INVALID_BIRTH_DATE` \| `ROLE_NOT_ELIGIBLE` \| `ACTIVATION_TOKEN_INVALID` \| `ACTIVATION_TOKEN_EXPIRED` \| `RESET_TOKEN_INVALID` \| `RESET_TOKEN_EXPIRED` \| `INVALID_CREDENTIALS` \| `IDENTITY_DOCUMENT_UNREADABLE` \| `IDENTITY_OBJECT_NOT_FOUND` \| `IDENTITY_DIGEST_MISMATCH` \| `CUSTOMER_NOT_FOUND` \| `INSUFFICIENT_FUNDS` \| `ACCOUNT_INACTIVE` \| `ACCOUNT_NOT_FOUND` \| `INVALID_AMOUNT_PRECISION` \| `FORBIDDEN_ACCOUNT_ACCESS` \| `INVALID_AMOUNT` \| `SAME_ACCOUNT_TRANSFER` \| `IDEMPOTENCY_KEY_CONFLICT` \| `ILLEGAL_TRANSITION` \| `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
+| `reason` | the full `failureCode` enum (`../../apps/packages/contracts/src/schemas/primitives.ts`), unrestricted \| null | yes |
 | `createdAt` | ISO-8601 UTC | yes |
 | `updatedAt` | ISO-8601 UTC | yes |
 | `originCorrelationId` | UUID v4 | no |
@@ -1971,6 +2164,13 @@ The payload is an empty object.
 | `payment.reason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
 | `payment.errorType` | `TRANSIENT` \| `PERMANENT` \| null | no |
 | `payment.decidedAt` | ISO-8601 UTC \| null | yes |
+| `phaseStatus` | `PENDING` \| `APPROVED` \| `FAILED` | no |
+| `transitions` | array of object | no |
+| `transitions[].from` | the six-state enum \| null | yes |
+| `transitions[].to` | the six-state enum | yes |
+| `transitions[].event` | string, ≤ 120 chars | yes |
+| `transitions[].reason` | failure code \| null | yes |
+| `transitions[].occurredAt` | ISO-8601 UTC | yes |
 
 **When outcome = `NOT_FOUND`**
 
@@ -1983,6 +2183,8 @@ The payload is an empty object.
 **Effects.** The Gateway answers the client. `reason` is present exactly when the transfer did not complete, and always from the closed failure set — this is the most likely thing a customer sees after a timeout, so it is the last place that should leak an internal detail.
 
 The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.failed.v1` said, not a second opinion**: Transaction Service processes no payments and reads no other service's database, so it repeats the event it received. `payment.status = PENDING` means the payment was ordered and nothing has come back yet, which is a different statement from "there is no payment" and a screen has to tell them apart. `payment.errorType` is not derivable from `payment.reason` — the two look related, but that mapping is Payment Service's policy rather than a law, and it says something while the payment is still `PENDING`, where `reason` is `null` and the kind of the last failed attempt is the only signal that a retry is under way. For the per-attempt evidence, ask `payment.status.query.v1`, which is the owner answering about its own row.
+
+`phaseStatus` and `transitions` were added by **T-28** as additive-optional fields — a reply that omits either validates exactly as before, so this contract stays at `v1`. `phaseStatus` is Fase 2's three-state vocabulary (`PENDING` \| `APPROVED` \| `FAILED`), computed from `status` by `phaseStatusOf` in the domain and never stored: `PENDING`/`DEBITING`/`PAYMENT_PENDING` read as `PENDING`, `COMPLETED` as `APPROVED`, `FAILED`/`COMPENSATED` as `FAILED`. `transitions` is the real history, oldest first — one row per legal state change `applyEvent` actually applied (self-transitions on `PAYMENT_PENDING` included, since those are the ones that order the payment, the credit and the compensation), plus the opening row `start()` writes with `from: null`. `undefined` on a reply from before this field existed and `[]` on a transfer this service's migration `008_transaction_transitions` predates read the same to a caller: no trace to show.
 
 **On error.** On timeout the Gateway stops waiting; the caller may ask again.
 
@@ -2007,13 +2209,16 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 | `customerId` | UUID v4 | no |
 | `accountId` | UUID v4 | no |
 | `status` | `PENDING` \| `DEBITING` \| `PAYMENT_PENDING` \| `COMPLETED` \| `FAILED` \| `COMPENSATED` | no |
+| `phaseStatus` | `PENDING` \| `APPROVED` \| `FAILED` | no |
+| `from` | ISO-8601 UTC | no |
+| `to` | ISO-8601 UTC | no |
 | `limit` | integer, 1–100 | no |
 
-**Preconditions.** None. This closes TD-033: `transaction.status.requested.v1` has answered "how did this one end" since T-18, and nothing answered "which transfers are mine".
+**Preconditions.** None. This closes TD-033: `transaction.status.requested.v1` has answered "how did this one end" since T-18, and nothing answered "which transfers are mine". `phaseStatus`, `from` and `to` were added by **T-28**, additive-optional, so the contract stays at `v1`.
 
-**Effects.** Nothing changes. **Every filter is a request, not a permission.** Who may see which transfers is Transaction Service's decision, made from the envelope identity against the `customer_id` it records at request time. `accountId` narrows to transfers that touched one account on either side.
+**Effects.** Nothing changes. **Every filter is a request, not a permission.** Who may see which transfers is Transaction Service's decision, made from the envelope identity against the `customer_id` it records at request time. `accountId` narrows to transfers that touched one account on either side. `phaseStatus` is a **separate field from `status`**, not a widened version of it — naming both narrows to their overlap, which is empty rather than one filter silently overriding the other. `from`/`to` are both inclusive and apply to `createdAt` — when the transfer was requested, not when it last moved.
 
-**On error.** A `CLIENTE` naming somebody else's `customerId` gets an empty list rather than a `403`, for the reason the account listing does the same: a distinguishable refusal is a way to discover which customers exist.
+**On error.** A `CLIENTE` naming somebody else's `customerId` gets an empty list rather than a `403`, for the reason the account listing does the same: a distinguishable refusal is a way to discover which customers exist. `to` earlier than `from` is refused by the contract's own `refine`, before Transaction Service acts on it; the Gateway catches the same case at the edge and answers `400` rather than forwarding a request the contract would reject.
 
 ### `transaction.list.replied.v1`
 
@@ -2034,10 +2239,13 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 | `transactions[].targetAccount` | UUID v4 | yes |
 | `transactions[].amount` | object | yes |
 | `transactions[].status` | `PENDING` \| `DEBITING` \| `PAYMENT_PENDING` \| `COMPLETED` \| `FAILED` \| `COMPENSATED` | yes |
+| `transactions[].phaseStatus` | `PENDING` \| `APPROVED` \| `FAILED` | no |
 | `transactions[].reason` | failure code \| null | yes |
 | `transactions[].createdAt` | ISO-8601 UTC | yes |
 | `transactions[].completedAt` | ISO-8601 UTC \| null | yes |
 | `total` | integer ≥ 0 | yes |
+
+`phaseStatus` was added by **T-28**, additive-optional, so the contract stays at `v1` — see `transaction.status.replied.v1` above for what it means and how it is computed.
 
 **Preconditions.** A `transaction.list.query.v1` was handled.
 
@@ -2096,7 +2304,7 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 | `payment.errorType` | `TRANSIENT` \| `PERMANENT` \| null | yes |
 | `payment.failureReason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
 | `payment.providerReference` | string, ≤ 100 \| null | yes |
-| `payment.scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` \| null | yes |
+| `payment.scenario` | `APPROVE` \| `REJECT` \| `TRANSIENT_FAILURE` \| `TIMEOUT` \| null | yes |
 | `payment.originCorrelationId` | UUID v4 \| null | yes |
 | `payment.createdAt` | ISO-8601 UTC | yes |
 | `payment.updatedAt` | ISO-8601 UTC | yes |
@@ -2106,6 +2314,7 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 | `attempts[].result` | `SUCCEEDED` \| `FAILED` | yes |
 | `attempts[].errorType` | `TRANSIENT` \| `PERMANENT` \| null | yes |
 | `attempts[].failureReason` | `PAYMENT_DECLINED` \| `PAYMENT_RETRIES_EXHAUSTED` \| null | yes |
+| `attempts[].providerResult` | `SUCCESS` \| `FAILURE` \| `TIMEOUT` \| null | yes |
 | `attempts[].occurredAt` | ISO-8601 UTC | yes |
 
 **When outcome = `NOT_FOUND`**
@@ -2116,7 +2325,7 @@ The `payment` block is a **copy of what `payment.succeeded.v1` or `payment.faile
 
 **Preconditions.** A `payment.status.query.v1` was handled.
 
-**Effects.** The Gateway answers the caller. `attempts` is the retry ladder **as evidence rather than as narrative**: "it was retried three times" is something anyone can check afterwards instead of something the service asserts. It is oldest rung first, and it is present even when it holds a single successful rung, because "approved on the first try" and "approved on the third" are different operational stories and a screen that could only show the second would make the first look like missing data. `providerReference` is opaque on purpose — a string to quote back to a provider, not a value any consumer may parse — and `scenario` is echoed so a screen can say *why* a payment was rejected on purpose instead of leaving a rehearsal looking like a real refusal.
+**Effects.** The Gateway answers the caller. `attempts` is the retry ladder **as evidence rather than as narrative**: "it was retried three times" is something anyone can check afterwards instead of something the service asserts. It is oldest rung first, and it is present even when it holds a single successful rung, because "approved on the first try" and "approved on the third" are different operational stories and a screen that could only show the second would make the first look like missing data. `providerReference` is opaque on purpose — a string to quote back to a provider, not a value any consumer may parse — and `scenario` is echoed so a screen can say *why* a payment was rejected on purpose instead of leaving a rehearsal looking like a real refusal. `attempts[].providerResult` (T-29) is what the simulated provider itself answered on that rung — `null` only for an attempt recorded before the field existed — and is the only value that tells a `TIMEOUT` rung apart from an ordinary `TRANSIENT_FAILURE` one, since both share the same `errorType` and the same ladder.
 
 **On error.** `NOT_FOUND` carries no failure code. Every code in the catalogue is a reason something was *refused*, and a payment that does not exist was not refused — it is a question about nothing. The Gateway supplies the nearest catalogue code when it has to render an HTTP status, in one place rather than letting each service invent a vocabulary for absence.
 
@@ -2208,6 +2417,7 @@ Each entry has the same shape as `payment` on `payment.status.replied.v1`, shari
 | `correlationId` | UUID v4 | yes |
 | `events` | array of object | yes |
 | `events[].processingStatus` | `PROCESSED` \| `INVALID` \| `ERROR` | no |
+| `events[].severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 | `events[].payload` | object, redacted | no |
 | `notifications` | array of object | yes |
 
@@ -2216,6 +2426,8 @@ Each entry has the same shape as `payment` on `payment.status.replied.v1`, shari
 **Effects.** The Gateway answers with the ordered events and the notifications of that flow. Returns **metadata and a redacted payload, never the payload as published**: echoing every payload back verbatim would recreate, in one reply, the data the per-service databases exist to keep apart.
 
 The two optional fields were added by T-20 and are additive — a reply that omits them validates exactly as before (TD-039). `processingStatus` exists so that a message this service could not parse is visible rather than absent; `payload` exists because the interface has to show *something* of what happened, and the redaction is computed by the service that owns the record, never by the consumer. What survives redaction is decided in one place: `redactPayload` in the service's domain.
+
+`severity` was added by T-30, additive and optional the same way: §4.1's classification (`INFO`/`WARNING`/`ERROR`), computed once by `domain/classification.ts` and absent for a row recorded before this axis existed.
 
 **On error.** On timeout the Gateway stops waiting.
 
@@ -2234,10 +2446,11 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | --- | --- | --- |
 | `limit` | integer, 1–100 (default 10) | no |
 | `page` | integer ≥ 1 (default 1) | no |
+| `severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 
 **Preconditions.** Restricted to `ADMINISTRADOR`.
 
-**Effects.** Paginated raw audit events query across all event families.
+**Effects.** Paginated raw audit events query across all event families, optionally narrowed by severity (T-30).
 
 **On error.** On timeout the Gateway stops waiting.
 
@@ -2263,13 +2476,14 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `events[].processingStatus` | string | yes |
 | `events[].consumer` | string | yes |
 | `events[].payload` | object, redacted | yes |
+| `events[].severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 | `total` | integer ≥ 0 | yes |
 | `page` | integer ≥ 1 | yes |
 | `limit` | integer ≥ 1 | yes |
 
 **Preconditions.** An `audit.events.list.query.v1` was handled.
 
-**Effects.** Returns the paginated list of audited events with redacted payloads.
+**Effects.** Returns the paginated list of audited events with redacted payloads. `severity` (T-30) is absent for a row recorded before this classification existed.
 
 ## Consult the notifications console
 
@@ -2321,11 +2535,12 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `notifications[].correlationId` | UUID v4 | yes |
 | `notifications[].createdAt` | ISO-8601 UTC | yes |
 | `notifications[].processedAt` | ISO-8601 UTC \| null | yes |
+| `notifications[].severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 | `omitted` | integer ≥ 0 | yes |
 
 **Preconditions.** A `notification.list.query.v1` was handled.
 
-**Effects.** The Gateway answers with the page, newest first, and with how many rows were left out, so a console can say "200 of 4,318" instead of implying it is showing everything. The ordering is part of the contract rather than left to the caller: this list is read while something is going wrong, and a screen that had to sort a truncated page would show the wrong rows.
+**Effects.** The Gateway answers with the page, newest first, and with how many rows were left out, so a console can say "200 of 4,318" instead of implying it is showing everything. The ordering is part of the contract rather than left to the caller: this list is read while something is going wrong, and a screen that had to sort a truncated page would show the wrong rows. `severity` (T-30) is absent for a row created before this classification existed.
 
 `recipient` is a **simulated address** — no mail leaves this system (§4.1, notificaciones simuladas) — and it is here because a console that lists deliveries without saying who they were for cannot be used to investigate one. It must not travel on any reply a customer can read, which is why the customer's own inbox is a separate message with a separate shape rather than this one with a filter.
 
@@ -2378,11 +2593,12 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `notifications[].correlationId` | UUID v4 | yes |
 | `notifications[].createdAt` | ISO-8601 UTC | yes |
 | `notifications[].readAt` | ISO-8601 UTC \| null | yes |
+| `notifications[].severity` | `INFO` \| `WARNING` \| `ERROR` | no |
 | `unread` | integer ≥ 0 | yes |
 
 **Preconditions.** A `notification.inbox.query.v1` was handled.
 
-**Effects.** The Gateway answers the caller. **No `recipient` field**, and that is the whole reason this is a separate shape from the console's row: that one carries the simulated address of every delivery in the system, and this one is read by the person the notification is about, who does not need to be told their own address and must not be handed a field that would carry somebody else's if a scope were ever wrong. **No `status` either** — `PENDING` and `FAILED` are facts about the bank's mail plumbing, and the customer is reading the notification right now, so its delivery status is not a thing they can act on. `unread` is counted over the **whole** inbox rather than over the page, so a badge does not shrink when somebody scrolls.
+**Effects.** The Gateway answers the caller. **No `recipient` field**, and that is the whole reason this is a separate shape from the console's row: that one carries the simulated address of every delivery in the system, and this one is read by the person the notification is about, who does not need to be told their own address and must not be handed a field that would carry somebody else's if a scope were ever wrong. **No `status` either** — `PENDING` and `FAILED` are facts about the bank's mail plumbing, and the customer is reading the notification right now, so its delivery status is not a thing they can act on. `unread` is counted over the **whole** inbox rather than over the page, so a badge does not shrink when somebody scrolls. `severity` (T-30) is absent for a row created before this classification existed.
 
 **On error.** On timeout the Gateway stops waiting. Nothing was changed.
 
@@ -2604,7 +2820,12 @@ The payload is an empty object. `ADMINISTRADOR` only.
 | `notificationsToday` | integer ≥ 0 | yes |
 | `lastEventType` | string, ≤ 120 \| null | yes |
 | `lastEventAt` | ISO-8601 UTC \| null | yes |
+| `infoToday` | integer ≥ 0 | no |
+| `warningToday` | integer ≥ 0 | no |
+| `errorToday` | integer ≥ 0 | no |
 
 `invalidToday` is the number worth having on a screen and the one a trail that counted only successes would hide: a message this service could not parse is recorded `INVALID` rather than parked, precisely so somebody can see that it happened.
 
 `lastEventType` is a **message name, never a payload**. It says the system is alive and what it was last doing, and it carries nothing about anyone — which is the rule for this database in general, and for a screen left open on a monitor in particular.
+
+`infoToday`/`warningToday`/`errorToday` (T-30) are §4.1's classification counted over today's rows, additive and optional the same way `invalidToday` is required — a reply from before this ticket still validates without them.

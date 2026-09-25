@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { notificationLabel, notificationLink } from '../lib/audit';
+import { SEVERITY_PRESENTATION, notificationLabel, notificationLink } from '../lib/audit';
 import { formatDate } from '../lib/money';
 
 /**
@@ -124,9 +124,18 @@ useHead({ title: 'Notificaciones · bonking' });
 
           <div class="min-w-0 flex-1">
             <p
-              class="text-[15px] leading-6"
+              class="flex items-center gap-2 text-[15px] leading-6"
               :class="notification.readAt === null ? 'font-semibold text-[#23242A]' : 'text-[#5A5B63]'"
-            >{{ notification.subject }}</p>
+            >
+              {{ notification.subject }}
+              <!-- Absent for a notification created before T-30 added the classification. -->
+              <UBadge
+                v-if="notification.severity"
+                :color="SEVERITY_PRESENTATION[notification.severity].color"
+                variant="subtle"
+                size="sm"
+              >{{ SEVERITY_PRESENTATION[notification.severity].label }}</UBadge>
+            </p>
             <p class="tab mt-0.5 text-[12px] text-[#75767F]">
               {{ notificationLabel(notification.type) }} · {{ formatDate(notification.createdAt) }}
             </p>

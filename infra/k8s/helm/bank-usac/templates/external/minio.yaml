@@ -2,4 +2,6 @@
 S3-compatible object storage — outside the cluster per ADR-005. Reached by
 the gateway and by customer-service (identity-document uploads).
 */}}
+{{- if not (and .Values.minio .Values.minio.inCluster) }}
 {{ include "bank-usac.externalDependency" (dict "root" $ "key" "minio" "dnsName" "minio" "portName" "s3") }}
+{{- end }}

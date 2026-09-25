@@ -1,6 +1,6 @@
 ﻿import { z } from 'zod';
 
-import { isoTimestamp, uuidV4 } from '../../schemas/primitives';
+import { eventSeverity, isoTimestamp, uuidV4 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
 
 export const auditEventsListRepliedV1 = defineContract({
@@ -19,6 +19,8 @@ export const auditEventsListRepliedV1 = defineContract({
         processingStatus: z.string(),
         consumer: z.string(),
         payload: z.record(z.string(), z.unknown()),
+        /** §4.1's classification (T-30). Absent for a row recorded before it existed. */
+        severity: eventSeverity.optional(),
       }),
     ),
     total: z.number().int().nonnegative(),

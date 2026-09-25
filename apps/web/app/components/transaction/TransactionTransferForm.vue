@@ -49,8 +49,60 @@ import { formatQuetzales } from '../../lib/money';
  * money from needs to see it; it is not consulted to block the send.
  */
 const api = useGatewayApi();
-const { role } = useSession();
+const { role, session } = useSession();
 const isStaff = computed(() => role.value !== null && role.value !== 'CLIENTE');
+
+/**
+ * A courtesy warning, not the rule itself (T-31). The Saga's own KYC gate is
+ * what actually refuses an unverified client's transfer — this only saves
+ * that client the round trip of finding out from a failed transfer instead.
+ * Staff are never gated by this rule (`mayInitiateTransactions`), so this is
+ * skipped for them entirely.
+ */
+const ownKycStatus = ref<'PENDING' | 'VERIFIED' | 'REJECTED' | null>(null);
+const ownIdentityStatus = ref<'PENDING' | 'VALIDATED' | 'REJECTED' | null>(null);
+const ownKycLoading = ref(false);
+
+interface CustomerStatusRecord {
+  readonly identityStatus: 'PENDING' | 'VALIDATED' | 'REJECTED';
+  readonly kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
+}
+
+const customerStatusCache = ref<Record<string, CustomerStatusRecord>>({});
+const sourceCustomerStatus = ref<CustomerStatusRecord | null>(null);
+
+async function loadOwnKyc(): Promise<void> {
+  if (isStaff.value || session.value === null) {
+    return;
+  }
+
+  ownKycLoading.value = true;
+  const result = await api.call<{
+    identityStatus: 'PENDING' | 'VALIDATED' | 'REJECTED';
+    kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  }>(`/api/customers/${session.value.customerId}`);
+  ownKycLoading.value = false;
+
+  if (result.ok) {
+    ownKycStatus.value = result.data.kycStatus;
+    ownIdentityStatus.value = result.data.identityStatus;
+  }
+}
+
+const verificationBlocksSubmission = computed(() => {
+  if (!isStaff.value) {
+    if (ownKycStatus.value !== null && ownKycStatus.value !== 'VERIFIED') return true;
+    if (ownIdentityStatus.value !== null && ownIdentityStatus.value !== 'VALIDATED') return true;
+    return false;
+  }
+  if (sourceCustomerStatus.value !== null) {
+    return (
+      sourceCustomerStatus.value.identityStatus !== 'VALIDATED' ||
+      sourceCustomerStatus.value.kycStatus !== 'VERIFIED'
+    );
+  }
+  return false;
+});
 
 /**
  * Format holder name to show first name and primary surname (e.g. 'Marco López').
@@ -115,7 +167,19 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  loadOwnKyc();
+  if (import.meta.client) {
+    window.addEventListener('focus', loadOwnKyc);
+  }
+});
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('focus', loadOwnKyc);
+  }
+});
 
 const source = computed(
   () => accounts.value.find((account) => account.accountId === sourceAccount.value) ?? null,
@@ -140,7 +204,7 @@ const someoneElseTargets = computed(() => {
   );
 });
 
-watch(sourceAccount, (newSource) => {
+watch(sourceAccount, async (newSource) => {
   if (ownTarget.value && !ownTargets.value.some((a) => a.accountId === ownTarget.value)) {
     ownTarget.value = undefined;
   }
@@ -149,6 +213,23 @@ watch(sourceAccount, (newSource) => {
   }
   if (destination.value === 'MINE' && ownTargets.value.length === 0) {
     destination.value = 'SOMEONE_ELSE';
+  }
+
+  if (isStaff.value && source.value?.customerId) {
+    const custId = source.value.customerId;
+    if (customerStatusCache.value[custId]) {
+      sourceCustomerStatus.value = customerStatusCache.value[custId]!;
+    } else {
+      const res = await api.call<CustomerStatusRecord>(`/api/customers/${custId}`);
+      if (res.ok) {
+        customerStatusCache.value[custId] = res.data;
+        sourceCustomerStatus.value = res.data;
+      } else {
+        sourceCustomerStatus.value = null;
+      }
+    }
+  } else {
+    sourceCustomerStatus.value = null;
   }
 });
 
@@ -219,6 +300,10 @@ const targetLabel = computed(() => {
 });
 
 function review(): void {
+  if (verificationBlocksSubmission.value) {
+    return;
+  }
+
   submitted.value = true;
 
   if (Object.keys(problems.value).length > 0) {
@@ -257,6 +342,7 @@ async function submit(): Promise<void> {
         sourceAccount: draft.value.sourceAccount.trim(),
         targetAccount: targetAccount.value,
         amount: { amountMinor: amountMinor.value, currency: 'GTQ' },
+        ...(source.value?.customerId ? { customerId: source.value.customerId } : {}),
         ...(paymentScenario.value === null ? {} : { paymentScenario: paymentScenario.value }),
       },
       idempotencyKey: idempotencyKey.value,
@@ -318,6 +404,30 @@ async function submit(): Promise<void> {
 
     <!-- Paso 1: los datos. -->
     <form v-else-if="step === 'FORM'" class="flex flex-col gap-5" @submit.prevent="review">
+      <div v-if="verificationBlocksSubmission" class="flex flex-col gap-2">
+        <UAlert
+          color="warning"
+          variant="subtle"
+          :title="isStaff ? 'Cliente titular no verificado' : 'Verificación de identidad requerida'"
+          :description="isStaff
+            ? 'El titular de la cuenta origen seleccionada aún no cuenta con verificación de identidad y KYC completada. No es posible realizar transferencias con fondos de clientes no verificados.'
+            : 'Tu cuenta aún no se encuentra verificada por un cajero o administrador. No es posible realizar transferencias salientes hasta que tu documento sea validado en ventanilla.'"
+          data-testid="transfer-kyc-blocked"
+        />
+        <div v-if="!isStaff" class="flex justify-end">
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            :loading="ownKycLoading"
+            icon="i-lucide-refresh-cw"
+            @click="loadOwnKyc"
+          >
+            ¿Ya fue aprobada tu verificación? Actualizar estado
+          </UButton>
+        </div>
+      </div>
+
       <UFormField
         label="Cuenta de origen"
         name="sourceAccount"
@@ -398,9 +508,12 @@ async function submit(): Promise<void> {
             data-testid="target-account"
             @update:model-value="otherTarget = $event && $event.trim().length > 0 ? $event.trim() : undefined"
           />
-          <p v-if="target" class="text-[13px] text-[#186A32] font-medium">
-            ✓ Cuenta destino: <strong>{{ describe(target) }}</strong>
-          </p>
+          <div v-if="target" class="flex items-center gap-2 text-[13px] text-[#186A32] font-medium">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-900 border border-emerald-300">
+              Destino confirmado
+            </span>
+            <span><strong>{{ describe(target) }}</strong></span>
+          </div>
         </div>
       </UFormField>
 
@@ -418,7 +531,9 @@ async function submit(): Promise<void> {
       />
 
       <div class="flex flex-wrap gap-2">
-        <UButton type="submit" color="primary" size="lg" class="flex-1">Continuar</UButton>
+        <UButton type="submit" color="primary" size="lg" class="flex-1" :disabled="verificationBlocksSubmission">
+          {{ verificationBlocksSubmission ? 'Transferencias bloqueadas (cliente no verificado)' : 'Continuar' }}
+        </UButton>
         <UButton to="/cuentas" variant="ghost" color="neutral">Ver mis cuentas</UButton>
       </div>
     </form>
@@ -467,7 +582,7 @@ async function submit(): Promise<void> {
           size="lg"
           class="flex-1"
           :loading="isSending"
-          :disabled="isSending"
+          :disabled="isSending || verificationBlocksSubmission"
           data-testid="confirm-transfer"
           @click="submit"
         >{{ canRetry ? 'Volver a intentar el envío' : 'Confirmar y enviar' }}</UButton>

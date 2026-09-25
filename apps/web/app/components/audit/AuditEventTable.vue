@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import {
   PROCESSING_STATUS_PRESENTATION,
+  SEVERITY_PRESENTATION,
   messageTypeLabel,
   orderedTrail,
-  tintFor,
+  severityTint,
 } from '../../lib/audit';
 import type { AuditEventRow } from '../../lib/audit';
 import { formatDate } from '../../lib/money';
@@ -54,6 +55,7 @@ const TINT_CLASS = {
           <th scope="col" class="py-4 pr-4 text-left font-semibold">Servicio origen</th>
           <th scope="col" class="py-4 pr-4 text-left font-semibold">eventId</th>
           <th scope="col" class="py-4 pr-4 text-left font-semibold">Registro</th>
+          <th scope="col" class="py-4 pr-4 text-left font-semibold">Severidad</th>
           <th scope="col" class="py-4" />
         </tr>
       </thead>
@@ -73,7 +75,7 @@ const TINT_CLASS = {
             -->
             <span
               class="block text-[13px] font-semibold"
-              :class="TINT_CLASS[tintFor(event.messageType)]"
+              :class="TINT_CLASS[severityTint(event)]"
               style="font-variant-numeric: tabular-nums lining-nums"
             >{{ event.messageType }}</span>
             <span class="mt-0.5 block text-[12px] text-[#5A5B63]">{{ messageTypeLabel(event.messageType) }}</span>
@@ -114,6 +116,22 @@ const TINT_CLASS = {
               size="sm"
               :title="PROCESSING_STATUS_PRESENTATION[event.processingStatus].explanation"
             >{{ PROCESSING_STATUS_PRESENTATION[event.processingStatus].label }}</UBadge>
+            <span v-else class="text-[12px] text-[#75767F]">—</span>
+          </td>
+
+          <td class="border-t border-[#E9E9EC] py-3.5 pr-4">
+            <!--
+              Absent for a row recorded before T-30 added the classification.
+              Same convention as the "Registro" column above: say nothing
+              rather than inventing a severity nobody computed.
+            -->
+            <UBadge
+              v-if="event.severity"
+              :color="SEVERITY_PRESENTATION[event.severity].color"
+              variant="subtle"
+              size="sm"
+              :title="SEVERITY_PRESENTATION[event.severity].explanation"
+            >{{ SEVERITY_PRESENTATION[event.severity].label }}</UBadge>
             <span v-else class="text-[12px] text-[#75767F]">—</span>
           </td>
 

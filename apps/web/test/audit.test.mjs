@@ -6,6 +6,7 @@ import {
   NOTIFICATION_STATUS_PRESENTATION,
   PROCESSING_STATUS_PRESENTATION,
   REDACTION_MARKER,
+  SEVERITY_PRESENTATION,
   correlationProblem,
   filterTrail,
   formatPayload,
@@ -20,6 +21,7 @@ import {
   orderedTrail,
   producersIn,
   redactedCount,
+  severityTint,
   summariseTrail,
   tintFor,
 } from '../app/lib/audit.ts';
@@ -129,6 +131,38 @@ describe('how a message name is read', () => {
     assert.equal(tintFor('account.debit.requested.v1'), 'neutral');
   });
 
+});
+
+describe('§4.1 classification (T-30)', () => {
+  test('has a sentence for each severity', () => {
+    for (const severity of ['INFO', 'WARNING', 'ERROR']) {
+      assert.ok(SEVERITY_PRESENTATION[severity].label.length > 0);
+      assert.ok(SEVERITY_PRESENTATION[severity].explanation.length > 0);
+    }
+  });
+
+  test('prefers the recorded severity over the inferred tint', () => {
+    // Its own name would guess "success" (registered), but the recorded
+    // severity is what the audit service actually decided.
+    assert.equal(
+      severityTint({ messageType: 'customer.registered.v1', severity: 'WARNING' }),
+      'neutral',
+    );
+    assert.equal(severityTint({ messageType: 'transaction.completed.v1', severity: 'ERROR' }), 'failure');
+    assert.equal(severityTint({ messageType: 'transaction.completed.v1', severity: 'INFO' }), 'success');
+  });
+
+  /**
+   * A row recorded before T-30 carries no `severity` at all. Falling back to
+   * `tintFor`'s guess is the honest thing to show rather than crashing or
+   * hiding the row.
+   */
+  test('falls back to the inferred tint for a row with no recorded severity', () => {
+    assert.equal(
+      severityTint({ messageType: 'transaction.completed.v1' }),
+      tintFor('transaction.completed.v1'),
+    );
+  });
 });
 
 describe('narrowing a trail', () => {

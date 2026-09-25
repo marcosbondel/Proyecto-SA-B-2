@@ -1,3 +1,4 @@
+{{- if ne .Values.web.enabled false }}
 {{- $component := .Values.web.component }}
 {{- $ctx := dict "root" $ "component" $component }}
 apiVersion: v1
@@ -8,10 +9,11 @@ metadata:
   labels:
     {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.web.serviceType | default "ClusterIP" }}
   selector:
     {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.web.port }}
       targetPort: http
+{{- end }}

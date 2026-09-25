@@ -22,6 +22,7 @@ import { QueryAuditUseCase } from './application/query-audit.use-case';
 import { ReadInboxUseCase } from './application/read-inbox.use-case';
 import { RecordEventUseCase } from './application/record-event.use-case';
 import { AppModule } from './app.module';
+import { classify } from './domain/classification';
 import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environment';
 import { BrokerReplyPublisher } from './infrastructure/messaging/broker-reply.publisher';
 import { ResendNotificationAdapter } from './infrastructure/notification/resend-notification.adapter';
@@ -280,6 +281,12 @@ async function bootstrap(): Promise<void> {
        */
       const envelope = tryParseEnvelope(parked.content);
 
+      /*
+       * `parked: true` outranks the message's own name and its `INVALID`
+       * status alike: by construction, whatever arrives here exhausted its
+       * retry ladder or could not even be parsed. `classify` always answers
+       * `ERROR` for it — see `domain/classification.ts`.
+       */
       const event =
         envelope === null
           ? {
@@ -293,6 +300,11 @@ async function bootstrap(): Promise<void> {
               payload: { unparseable: true, failureReason: reason, originalRoutingKey },
               processingStatus: 'INVALID' as const,
               consumer: ERROR_DRAIN_CONSUMER,
+              severity: classify({
+                messageType: originalRoutingKey.length > 0 ? originalRoutingKey : 'unknown',
+                processingStatus: 'INVALID',
+                parked: true,
+              }),
             }
           : {
               eventId: envelope.messageId,
@@ -305,6 +317,11 @@ async function bootstrap(): Promise<void> {
               payload: envelope.payload,
               processingStatus: 'INVALID' as const,
               consumer: ERROR_DRAIN_CONSUMER,
+              severity: classify({
+                messageType: envelope.messageType,
+                processingStatus: 'INVALID',
+                parked: true,
+              }),
             };
 
       const outcome = await drainRecorder.execute({ event, customerId: null });

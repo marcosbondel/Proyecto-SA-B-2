@@ -63,6 +63,8 @@ export class ListNotificationsUseCase {
         correlationId: notification.correlationId,
         createdAt: notification.createdAt.toISOString(),
         processedAt: notification.processedAt?.toISOString() ?? null,
+        /** `null` for a row created before T-30. See `migrations.ts`. */
+        ...(notification.severity === null ? {} : { severity: notification.severity }),
       })),
       omitted: page.omitted,
     };

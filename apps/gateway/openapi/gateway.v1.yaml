@@ -245,6 +245,32 @@ paths:
       tags:
         - customers
       x-bank-publishes: customer.set-identity-verdict.v1
+  /api/customers/{customerId}/kyc-status:
+    post:
+      description: "Publica customer.set-kyc-status.v1. VERIFIED es terminal: un segundo veredicto sobre
+        un cliente ya verificado no hace nada."
+      operationId: CustomersController_setKycStatus
+      parameters:
+        - name: customerId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetKycStatusDto"
+      responses:
+        "202":
+          description: ""
+      security:
+        - session: []
+      summary: Veredicto KYC del cajero
+      tags:
+        - customers
+      x-bank-publishes: customer.set-kyc-status.v1
   /api/customers/{customerId}/identity-document:
     get:
       description: Devuelve la imagen tal como la tiene guardada Customer Service, con su tipo de
@@ -394,8 +420,9 @@ paths:
         - account.operations.replied.v1
   /api/accounts/{accountId}/status:
     post:
-      description: "Solo ADMINISTRADOR (D-06). Devuelve 202: el cambio todavía no ocurrió. El motivo es
-        obligatorio porque es el único registro de por qué se hizo."
+      description: "ADMINISTRADOR, CAJERO_RECEPTOR y CLIENTE (para sus propias cuentas). Devuelve 202: el
+        cambio todavía no ocurrió. El motivo es obligatorio porque es el único registro de por qué
+        se hizo."
       operationId: AccountsController_setStatus
       parameters:
         - name: accountId
@@ -422,7 +449,9 @@ paths:
     get:
       description: "Los filtros son una PETICIÓN, no un permiso: Transaction Service los cruza con el
         alcance que deriva de la identidad del sobre. Un CLIENTE que nombre el customerId de otro
-        recibe una lista vacía, nunca un 403."
+        recibe una lista vacía, nunca un 403. phaseStatus (T-28) es un filtro aparte de status:
+        nombrar ambos reduce a su intersección. from/to son inclusivos y se aplican sobre la fecha
+        de solicitud."
       operationId: TransfersController_list
       parameters: []
       responses:
@@ -536,7 +565,8 @@ paths:
         - audit.query.replied.v1
   /api/audit/recent:
     get:
-      description: Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación.
+      description: "Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y,
+        opcionalmente, acotar por severidad (§4.1: INFO/WARNING/ERROR)."
       operationId: AuditController_recent
       parameters: []
       responses:
@@ -667,6 +697,9 @@ components:
       type: object
       properties: {}
     SetIdentityVerdictDto:
+      type: object
+      properties: {}
+    SetKycStatusDto:
       type: object
       properties: {}
     DepositDto:

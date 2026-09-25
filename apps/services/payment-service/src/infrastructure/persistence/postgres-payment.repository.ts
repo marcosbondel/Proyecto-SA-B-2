@@ -35,6 +35,7 @@ interface AttemptRow {
   result: string;
   error_type: string | null;
   failure_reason: string | null;
+  provider_result: string | null;
   occurred_at: Date;
 }
 
@@ -249,14 +250,15 @@ export class PostgresPaymentRepository implements PaymentRepository {
 
       await client.query(
         `INSERT INTO payment_attempts
-           (payment_id, attempt_number, result, error_type, failure_reason, occurred_at)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+           (payment_id, attempt_number, result, error_type, failure_reason, provider_result, occurred_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           input.paymentId,
           input.expectedAttempt,
           result.attemptResult,
           result.attemptResult === 'FAILED' ? result.errorType : null,
           result.attemptResult === 'FAILED' ? result.failureReason : null,
+          result.providerResult,
           input.now,
         ],
       );
@@ -364,7 +366,7 @@ export class PostgresPaymentRepository implements PaymentRepository {
 
   public async attemptsOf(paymentId: string): Promise<readonly PaymentAttempt[]> {
     const found = await this.#pool.query<AttemptRow>(
-      `SELECT attempt_number, result, error_type, failure_reason, occurred_at
+      `SELECT attempt_number, result, error_type, failure_reason, provider_result, occurred_at
          FROM payment_attempts
         WHERE payment_id = $1
         ORDER BY attempt_number`,
@@ -376,6 +378,7 @@ export class PostgresPaymentRepository implements PaymentRepository {
       result: row.result as PaymentAttempt['result'],
       errorType: row.error_type as PaymentAttempt['errorType'],
       failureReason: row.failure_reason as PaymentAttempt['failureReason'],
+      providerResult: row.provider_result as PaymentAttempt['providerResult'],
       occurredAt: row.occurred_at,
     }));
   }

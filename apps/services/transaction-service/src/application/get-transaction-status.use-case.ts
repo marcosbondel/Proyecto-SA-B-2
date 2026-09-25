@@ -1,8 +1,9 @@
 import { transactionStatusRepliedV1 } from '@bank/contracts';
 import type { Identity, TransactionStatusRequestedV1 } from '@bank/contracts';
 
+import { phaseStatusOf } from '../domain/phase-status';
 import { mayReadTransaction } from '../domain/transaction';
-import type { Transaction } from '../domain/transaction';
+import type { Transaction, TransitionRecord } from '../domain/transaction';
 import type { PaymentOutcome, EventPublisher, TransactionRepository } from './ports';
 
 /**
@@ -70,6 +71,11 @@ export class GetTransactionStatusUseCase {
     }
 
     const payment = await this.#repository.paymentOutcomeOf(transaction.transactionId);
+    /**
+     * Read only after `mayReadTransaction` above has already let this actor
+     * in — the trace is exactly as private as the transaction it belongs to.
+     */
+    const transitions = await this.#repository.transitionsOf(transaction.transactionId);
 
     await this.#publisher.reply({
       messageType: transactionStatusRepliedV1.name,
@@ -77,12 +83,14 @@ export class GetTransactionStatusUseCase {
         outcome: 'FOUND',
         transactionId: transaction.transactionId,
         status: transaction.status,
+        phaseStatus: phaseStatusOf(transaction.status),
         amount: transaction.amount,
         reason: transaction.failureReason,
         createdAt: transaction.createdAt.toISOString(),
         updatedAt: transaction.updatedAt.toISOString(),
         originCorrelationId: transaction.correlationId,
         ...(payment === null ? {} : { payment: wire(payment) }),
+        transitions: transitions.map(wireTransition),
       },
     });
   }
@@ -117,5 +125,15 @@ function wire(payment: PaymentOutcome): Record<string, unknown> {
     reason: payment.reason,
     errorType: payment.errorType,
     decidedAt: payment.decidedAt?.toISOString() ?? null,
+  };
+}
+
+function wireTransition(transition: TransitionRecord): Record<string, unknown> {
+  return {
+    from: transition.from,
+    to: transition.to,
+    event: transition.event,
+    reason: transition.failureReason,
+    occurredAt: transition.occurredAt.toISOString(),
   };
 }

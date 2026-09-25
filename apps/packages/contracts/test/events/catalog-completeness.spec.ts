@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(97);
+    expect(catalog).toHaveLength(103);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the fifty-five messages recorded as an extension, and no others', () => {
+  it('adds exactly the fifty-six messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -94,6 +94,12 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        */
       'account.billers.query.v1',
       'account.billers.replied.v1',
+      /*
+       * Added by T-27 (Fase 2, §4.1 p. 6). Published alongside
+       * `account.debited.v1`, never folded into it, so the Saga's own amount
+       * never grows by a fee it did not ask to move.
+       */
+      'account.commission.charged.v1',
       // The five added by T-17. Three of them exist because the assignment's
       // screens need data the catalogue could not carry: a list of accounts,
       // the movements of one, and the refusal of an opening that until now
@@ -158,6 +164,23 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        */
       'customer.identity-document.query.v1',
       'customer.identity-document.replied.v1',
+      /*
+       * Added by T-26 (Fase 2, §4.1 p. 4). Distinct from
+       * `customer.identity.validated.v1` / `customer.identity.rejected.v1`,
+       * which are Fase 1's document-photo review: these carry the broader KYC
+       * verdict that gates initiating a transaction (C-8).
+       */
+      /*
+       * Added by T-31: the Saga's own KYC gate. `check.requested` is
+       * Transaction Service ordering the question the same way it orders a
+       * debit; `checked` is Customer Service's answer, routed back onto
+       * `transaction.saga` rather than a Gateway reply queue, because nobody
+       * is waiting on an HTTP connection for it.
+       */
+      'customer.kyc.check.requested.v1',
+      'customer.kyc.checked.v1',
+      'customer.kyc.rejected.v1',
+      'customer.kyc.verified.v1',
       'customer.list.query.v1',
       'customer.list.replied.v1',
       /*
@@ -194,6 +217,8 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       // document produced silence rather than a rejection.
       'customer.register.rejected.v1',
       'customer.set-identity-verdict.v1',
+      // Added by T-26, alongside the two events above.
+      'customer.set-kyc-status.v1',
       'customer.stats.query.v1',
       'customer.stats.replied.v1',
       /*

@@ -4,6 +4,7 @@ import {
   accountCreateV1,
   accountSetStatusV1,
   customerRegisterV1,
+  customerSetKycStatusV1,
   customerUpdateV1,
   transferRequestedV1,
   validateMessage,
@@ -79,6 +80,35 @@ describe('the five asynchronous commands', () => {
       expect(harness.publisher.lastType).toBe(accountCreateV1.name);
     });
 
+    /**
+     * T-27: the gateway forwards `initialDeposit` as given — it does not
+     * decide whether AHORRO's minimum is met (X-7), only that the request is
+     * shaped like an amount.
+     */
+    it('carries the initial deposit through to account.create.v1, when one is given', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/accounts')
+        .set('Authorization', auth)
+        .send({ accountType: 'AHORRO', initialDeposit: { amountMinor: 10_000, currency: 'GTQ' } });
+
+      expect(response.status).toBe(202);
+      expect(harness.publisher.lastType).toBe(accountCreateV1.name);
+      expect(harness.publisher.published.at(-1)?.payload).toMatchObject({
+        initialDeposit: { amountMinor: 10_000, currency: 'GTQ' },
+      });
+    });
+
+    it('leaves initialDeposit out of account.create.v1 when none is given', async () => {
+      await request(app.getHttpServer())
+        .post('/api/accounts')
+        .set('Authorization', auth)
+        .send({ accountType: 'MONETARIA' });
+
+      const payload = harness.publisher.published.at(-1)?.payload as Record<string, unknown>;
+
+      expect(payload).not.toHaveProperty('initialDeposit');
+    });
+
     it('requests a transfer', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/transfers')
@@ -142,31 +172,24 @@ describe('the five asynchronous commands', () => {
   describe('activating or deactivating an account by hand', () => {
     const STATUS_CHANGE = { status: 'INACTIVE', reason: 'Solicitud del titular' };
 
-    it('publishes account.set-status.v1 for an administrator, and answers 202', async () => {
-      const response = await request(app.getHttpServer())
-        .post(`/api/accounts/${SOURCE}/status`)
-        .set('Authorization', admin)
-        .send(STATUS_CHANGE);
+    it.each(['ADMINISTRADOR', 'CAJERO_RECEPTOR', 'CLIENTE'] as const)(
+      'publishes account.set-status.v1 for %s, and answers 202',
+      async (role) => {
+        const token = harness.tokens.sign({ customerId: ACTOR, username: 'user', role });
 
-      expect(response.status).toBe(202);
-      expect(harness.publisher.lastType).toBe(accountSetStatusV1.name);
-      expect(harness.publisher.published.at(-1)?.payload).toEqual({
-        accountId: SOURCE,
-        ...STATUS_CHANGE,
-      });
-    });
+        const response = await request(app.getHttpServer())
+          .post(`/api/accounts/${SOURCE}/status`)
+          .set('Authorization', `Bearer ${token}`)
+          .send(STATUS_CHANGE);
 
-    it.each(['CLIENTE', 'CAJERO_RECEPTOR'] as const)('refuses %s with 403 and publishes nothing', async (role) => {
-      const token = harness.tokens.sign({ customerId: ACTOR, username: 'ana', role });
-
-      const response = await request(app.getHttpServer())
-        .post(`/api/accounts/${SOURCE}/status`)
-        .set('Authorization', `Bearer ${token}`)
-        .send(STATUS_CHANGE);
-
-      expect(response.status).toBe(403);
-      expect(harness.publisher.published).toHaveLength(0);
-    });
+        expect(response.status).toBe(202);
+        expect(harness.publisher.lastType).toBe(accountSetStatusV1.name);
+        expect(harness.publisher.published.at(-1)?.payload).toEqual({
+          accountId: SOURCE,
+          ...STATUS_CHANGE,
+        });
+      },
+    );
 
     /**
      * The reason is the only record of *why* a manual deactivation happened —
@@ -187,6 +210,59 @@ describe('the five asynchronous commands', () => {
         .post(`/api/accounts/${SOURCE}/status`)
         .set('Authorization', admin)
         .send({ status: 'CERRADA', reason: 'lo que sea' });
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+  });
+
+  /**
+   * T-31's KYC gate needs a way for staff to actually set the verdict the
+   * Saga later reads. `setIdentityVerdict` (Fase 1's document review) already
+   * has this shape; this is its Fase 2 sibling.
+   */
+  describe('a teller registers a KYC verdict', () => {
+    const CUSTOMER = '5c7e2d10-9c2e-4a71-b8f5-2d6e7c0a1b93';
+
+    it('publishes customer.set-kyc-status.v1 for staff, and answers 202', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/customers/${CUSTOMER}/kyc-status`)
+        .set('Authorization', admin)
+        .send({ status: 'VERIFIED' });
+
+      expect(response.status).toBe(202);
+      expect(harness.publisher.lastType).toBe(customerSetKycStatusV1.name);
+      expect(harness.publisher.published.at(-1)?.payload).toEqual({
+        customerId: CUSTOMER,
+        status: 'VERIFIED',
+      });
+    });
+
+    it('refuses a CLIENTE with 403 and publishes nothing', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/customers/${CUSTOMER}/kyc-status`)
+        .set('Authorization', auth)
+        .send({ status: 'VERIFIED' });
+
+      expect(response.status).toBe(403);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('refuses a status outside VERIFIED/REJECTED, before publishing anything', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/customers/${CUSTOMER}/kyc-status`)
+        .set('Authorization', admin)
+        .send({ status: 'PENDING' });
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('refuses a malformed customerId, before publishing anything', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/customers/not-a-uuid/kyc-status')
+        .set('Authorization', admin)
+        .send({ status: 'VERIFIED' });
 
       expect(response.status).toBe(400);
       expect(harness.publisher.published).toHaveLength(0);

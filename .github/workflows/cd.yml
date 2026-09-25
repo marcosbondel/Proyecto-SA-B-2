@@ -1,0 +1,344 @@
+name: CD
+
+# Despliegue Continuo (CD) — Requisito Enunciado Fase 2 (§4.1, p. 7-8):
+#
+#   1. Tras el merge en `develop`: construccion de imagenes Docker, etiquetado y
+#      despliegue en Kubernetes en el namespace de desarrollo (`dev`). "Los
+#      cambios deben ser visibles en el entorno de desarrollo. No deben afectar
+#      el entorno productivo."
+#   2. Al mergear hacia `main`/`master`: despliegue a produccion. "El pipeline
+#      utilizara las imagenes previamente generadas" (por release.yml), "se
+#      actualizaran los deployments en Kubernetes" y "se ejecutara un rolling
+#      update".
+#
+# Ambos jobs despliegan de verdad contra GKE. Si faltan las credenciales, el job
+# FALLA diciendo cual falta — no imprime un exito que no ocurrio. Un CD que
+# reporta verde sin desplegar es peor que uno rojo: esconde el problema.
+#
+# Secrets/variables que este workflow necesita (Settings > Secrets and variables):
+# Autenticacion — hace falta UNO de los dos caminos:
+#   var    WIF_PROVIDER      (preferido) el Workload Identity Provider, de la
+#                            forma projects/<num>/locations/global/workloadIdentityPools/<pool>/providers/<prov>
+#   var    WIF_SERVICE_ACCOUNT  el correo de la cuenta de servicio a suplantar
+#     — o bien —
+#   secret GCP_SA_KEY        JSON de una service account con roles
+#                            container.developer y artifactregistry.writer.
+#                            Imposible de crear si la organizacion aplica
+#                            `constraints/iam.disableServiceAccountKeyCreation`;
+#                            en ese caso, usar WIF.
+#   var    GCP_PROJECT_ID    id del proyecto de GCP
+#   var    GKE_CLUSTER       nombre del cluster  (terraform: bank-usac-vpc-gke)
+#   var    GKE_ZONE          zona del cluster    (terraform: us-central1-a)
+#   var    ARTIFACT_REPO     repositorio de Artifact Registry (ej. bank-images)
+#   var    GATEWAY_PUBLIC_URL  la direccion del Gateway tal como la alcanza el
+#                            navegador (terraform: gateway_public_url)
+#   var    WEB_PUBLIC_URL    opcional — origen del frontend, para el CORS del
+#                            Gateway
+#   secret HELM_SECRETS      valores `--set` de secrets.* que pide el chart,
+#                            uno por linea (ver infra/k8s/scripts/install.sh)
+#   secret INFRA_ADDRESSES   direcciones de la infraestructura fuera del
+#                            cluster (las VMs de PostgreSQL, RabbitMQ, MinIO),
+#                            una por linea; las da `terraform output`
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: true
+  CHART_PATH: infra/k8s/helm/bank-usac
+  COMPONENTS: 'customer-service account-service transaction-service payment-service notification-audit-service gateway web'
+
+jobs:
+  # ===========================================================================
+  # Comprobacion previa. Separada a proposito: decide si hay con que desplegar
+  # ANTES de construir nada, y deja el motivo escrito en el resumen de la
+  # corrida en vez de en la linea 400 de un log.
+  # ===========================================================================
+  preflight:
+    name: 'Verificacion de credenciales'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - name: Comprobar secrets y variables
+        id: check
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
+          GKE_ZONE: ${{ vars.GKE_ZONE }}
+          ARTIFACT_REPO: ${{ vars.ARTIFACT_REPO }}
+          GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
+          HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
+          INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
+        run: |
+          set -euo pipefail
+          missing=()
+          # Basta con UNO de los dos caminos de autenticacion. Se prefiere
+          # Workload Identity Federation: no hay llave que guardar, y es el
+          # unico posible cuando la organizacion prohibe crearlas.
+          if [ -n "${WIF_PROVIDER}" ]; then
+            [ -n "${WIF_SERVICE_ACCOUNT}" ] || missing+=("variable WIF_SERVICE_ACCOUNT (requerida junto a WIF_PROVIDER)")
+          elif [ -z "${GCP_SA_KEY}" ]; then
+            missing+=("autenticacion: o bien las variables WIF_PROVIDER + WIF_SERVICE_ACCOUNT, o bien el secret GCP_SA_KEY")
+          fi
+          [ -n "${GCP_PROJECT_ID}"  ] || missing+=("variable GCP_PROJECT_ID")
+          [ -n "${GKE_CLUSTER}"     ] || missing+=("variable GKE_CLUSTER")
+          [ -n "${GKE_ZONE}"        ] || missing+=("variable GKE_ZONE")
+          [ -n "${ARTIFACT_REPO}"   ] || missing+=("variable ARTIFACT_REPO")
+          [ -n "${GATEWAY_PUBLIC_URL}" ] || missing+=("variable GATEWAY_PUBLIC_URL")
+          [ -n "${HELM_SECRETS}"    ] || missing+=("secret HELM_SECRETS")
+          [ -n "${INFRA_ADDRESSES}" ] || missing+=("secret INFRA_ADDRESSES")
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## CD no puede desplegar todavia"
+              echo ""
+              echo "Falta configurar en *Settings > Secrets and variables > Actions*:"
+              echo ""
+              printf '-  `%s`\n' "${missing[@]}"
+              echo ""
+              echo "Los valores del cluster estan en \`infra/terraform/gcp/\`:"
+              echo "cluster \`bank-usac-vpc-gke\`, zona \`us-central1-a\`."
+              echo ""
+              echo "Si tu organizacion prohibe crear llaves de cuenta de servicio,"
+              echo "usa Workload Identity Federation: ver \`docs/operations/CI.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "::error::CD sin credenciales de GCP. Faltan: ${missing[*]}"
+            exit 1
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "Credenciales presentes. Continuando con el despliegue."
+
+  # ===========================================================================
+  # Despliegue en el entorno de desarrollo (merge a develop -> namespace `dev`)
+  # ===========================================================================
+  deploy-development:
+    name: 'Despliegue a Entorno de Desarrollo (dev)'
+    needs: preflight
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: development
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Dos caminos de autenticacion, y el primero es el preferido.
+      #
+      # Workload Identity Federation intercambia el token OIDC que GitHub emite
+      # para esta corrida por credenciales de GCP de corta vida. No hay ninguna
+      # llave que guardar, rotar ni filtrar — y es el unico camino disponible
+      # cuando la organizacion aplica `constraints/iam.disableServiceAccountKeyCreation`,
+      # que prohibe descargar llaves JSON. Necesita `id-token: write`, arriba.
+      - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
+        if: vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # El camino con llave, para un proyecto sin esa restriccion.
+      - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
+        if: vars.WIF_PROVIDER == ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Calcular la etiqueta de esta version
+        id: tag
+        run: |
+          set -euo pipefail
+          # Etiqueta versionada y trazable al commit. Nunca `latest`.
+          echo "value=dev-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          # La region de Artifact Registry es la zona sin su sufijo de letra:
+          # us-central1-a -> us-central1.
+          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
+          echo "registry=${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}" >> "$GITHUB_OUTPUT"
+
+      - name: Autenticar Docker contra Artifact Registry
+        run: |
+          set -euo pipefail
+          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Construccion y etiquetado (enunciado: "Construccion de imagenes Docker,
+      # Etiquetado de imagenes") antes de tocar el cluster.
+      - name: Construir y publicar las siete imagenes
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.tag.outputs.value }}'
+          REG='${{ steps.tag.outputs.registry }}'
+
+          declare -A DOCKERFILES=(
+            [customer-service]=apps/services/customer-service/Dockerfile
+            [account-service]=apps/services/account-service/Dockerfile
+            [transaction-service]=apps/services/transaction-service/Dockerfile
+            [payment-service]=apps/services/payment-service/Dockerfile
+            [notification-audit-service]=apps/services/notification-audit-service/Dockerfile
+            [gateway]=apps/gateway/Dockerfile
+            [web]=apps/web/Dockerfile
+          )
+
+          for component in $COMPONENTS; do
+            echo "::group::$component"
+            docker buildx build \
+              --file "${DOCKERFILES[$component]}" \
+              --tag "${REG}/${component}:${TAG}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              --label "org.opencontainers.image.version=${TAG}" \
+              --cache-from "type=gha,scope=${component}" \
+              --cache-to "type=gha,mode=max,scope=${component}" \
+              --push \
+              .
+            echo "::endgroup::"
+          done
+
+      - name: Obtener credenciales del cluster
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GKE_ZONE }}
+
+      - name: Desplegar en Kubernetes (namespace dev)
+        run: |
+          set -euo pipefail
+          bash .github/scripts/helm-deploy.sh
+        env:
+          NAMESPACE: dev
+          RELEASE_NAME: bank-usac-dev
+          IMAGE_TAG: ${{ steps.tag.outputs.value }}
+          IMAGE_REGISTRY: ${{ steps.tag.outputs.registry }}
+          HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
+          INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
+          GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
+          WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
+
+      - name: Resumen del despliegue
+        if: always()
+        run: |
+          {
+            echo "## Despliegue a \`dev\` — \`${{ steps.tag.outputs.value }}\`"
+            echo ""
+            echo "Namespace \`dev\`, release \`bank-usac-dev\`. El entorno productivo no fue tocado."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ===========================================================================
+  # Despliegue Continuo a produccion (merge a main/master -> namespace `prod`)
+  #
+  # No construye imagenes: consume la version que release.yml ya publico, que es
+  # lo que pide el enunciado ("El pipeline utilizara las imagenes previamente
+  # generadas").
+  # ===========================================================================
+  deploy-production:
+    name: 'Despliegue Continuo a Produccion (Rolling Update)'
+    needs: preflight
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Determinar la version publicada a desplegar
+        id: version
+        run: |
+          set -euo pipefail
+          # La ultima version formal que release.yml publico. Sin tag no hay
+          # nada que desplegar: produccion no improvisa una imagen.
+          VERSION="$(git tag -l 'v*' --sort=-v:refname | head -n 1)"
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::No hay ningun tag vX.X.X. Produccion solo despliega imagenes publicadas por release.yml."
+            exit 1
+          fi
+
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Desplegando la version publicada $VERSION"
+
+      # Dos caminos de autenticacion, y el primero es el preferido.
+      #
+      # Workload Identity Federation intercambia el token OIDC que GitHub emite
+      # para esta corrida por credenciales de GCP de corta vida. No hay ninguna
+      # llave que guardar, rotar ni filtrar — y es el unico camino disponible
+      # cuando la organizacion aplica `constraints/iam.disableServiceAccountKeyCreation`,
+      # que prohibe descargar llaves JSON. Necesita `id-token: write`, arriba.
+      - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
+        if: vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # El camino con llave, para un proyecto sin esa restriccion.
+      - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
+        if: vars.WIF_PROVIDER == ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Obtener credenciales del cluster
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GKE_ZONE }}
+
+      - name: Rolling update en produccion
+        run: |
+          set -euo pipefail
+          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
+          IMAGE_REGISTRY="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}" \
+            bash .github/scripts/helm-deploy.sh
+        env:
+          NAMESPACE: prod
+          RELEASE_NAME: bank-usac
+          IMAGE_TAG: ${{ steps.version.outputs.value }}
+          HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
+          INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
+          GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
+          WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
+
+      - name: Resumen del despliegue
+        if: always()
+        run: |
+          {
+            echo "## Produccion actualizada a \`${{ steps.version.outputs.value }}\`"
+            echo ""
+            echo "Rolling update completado en el namespace \`prod\`, con las imagenes"
+            echo "publicadas por \`release.yml\`. Ninguna imagen fue construida aqui."
+          } >> "$GITHUB_STEP_SUMMARY"

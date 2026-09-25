@@ -43,6 +43,7 @@ const ACTIVATION = {
   recipient: 'cliente-3f2a1c04@simulado.bonking.gt',
   subject: 'Activa tu cuenta de bonking',
   correlationId: '7d41e8b2-9a3f-4c15-8ee0-1b2f9a4c7d10',
+  severity: 'INFO' as const,
   link: '/activar?token=abcdef0123456789abcdef',
   deliveryAddress: 'ricardo@correo-real.com',
 };
@@ -97,6 +98,7 @@ describe('the Resend delivery channel', () => {
       recipient: 'cliente-3f2a1c04@simulado.bonking.gt',
       subject: 'Tu transferencia se completó',
       correlationId: ACTIVATION.correlationId,
+      severity: 'INFO' as const,
     });
 
     expect(status).toBe('SENT');

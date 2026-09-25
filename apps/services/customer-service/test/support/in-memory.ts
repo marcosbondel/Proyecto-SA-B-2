@@ -49,6 +49,8 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     readonly document: Omit<StoredIdentityDocument, 'documentId' | 'customerId'> | null;
     readonly activation: { readonly tokenHash: string; readonly expiresAt: string } | null;
     readonly identityStatus: IdentityStatus;
+    readonly status?: Customer['status'];
+    readonly emailVerifiedAt?: string | null;
     readonly idempotency: ProcessedMessage;
     readonly now: Date;
   }): Promise<Customer> {
@@ -81,7 +83,15 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     const customer: Customer = {
       ...shape,
       username,
+      status: input.status ?? shape.status,
+      emailVerifiedAt: input.emailVerifiedAt ?? shape.emailVerifiedAt,
       identityStatus: input.identityStatus,
+      kycStatus:
+        input.identityStatus === 'VALIDATED'
+          ? 'VERIFIED'
+          : input.identityStatus === 'REJECTED'
+            ? 'REJECTED'
+            : 'PENDING',
     };
 
     this.customers.set(customer.customerId, customer);
@@ -195,6 +205,14 @@ export class InMemoryCustomerRepository implements CustomerRepository {
       });
     }
 
+    await this.recordProcessed(input.idempotency);
+  }
+
+  public async saveKycVerdict(input: {
+    readonly customer: Customer;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void> {
+    this.customers.set(input.customer.customerId, input.customer);
     await this.recordProcessed(input.idempotency);
   }
 

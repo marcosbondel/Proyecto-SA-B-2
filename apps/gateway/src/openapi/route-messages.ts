@@ -43,6 +43,7 @@ import {
   customerPasswordResetRequestedV1,
   customerRegisterV1,
   customerSetIdentityVerdictV1,
+  customerSetKycStatusV1,
   customerUpdateV1,
   customerVerifyEmailV1,
   paymentListQueryV1,
@@ -130,6 +131,9 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   },
   'POST /api/customers/{customerId}/identity-verdict': {
     publishes: customerSetIdentityVerdictV1.name,
+  },
+  'POST /api/customers/{customerId}/kyc-status': {
+    publishes: customerSetKycStatusV1.name,
   },
   'GET /api/customers/{customerId}/identity-document': {
     publishes: customerIdentityDocumentQueryV1.name,

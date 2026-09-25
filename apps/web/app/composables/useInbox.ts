@@ -17,15 +17,31 @@ import type { InboxNotification } from '../lib/audit';
  */
 export function useInbox() {
   const api = useGatewayApi();
-  const { isSignedIn } = useSession();
+  const { isSignedIn, role, session } = useSession();
 
   const notifications = useState<readonly InboxNotification[]>('bank-inbox', () => []);
   const unread = useState<number>('bank-inbox-unread', () => 0);
   const state = useState<ScreenState>('bank-inbox-state', () => 'IDLE');
   const failure = useState<string | null>('bank-inbox-failure', () => null);
 
+  function reset(): void {
+    notifications.value = [];
+    unread.value = 0;
+    state.value = 'IDLE';
+    failure.value = null;
+  }
+
+  // Clear unread count and inbox state whenever the active session or username changes
+  watch(
+    () => session.value?.username,
+    () => {
+      reset();
+    },
+  );
+
   async function load(limit = 30): Promise<void> {
-    if (!isSignedIn.value) {
+    if (!isSignedIn.value || role.value !== 'CLIENTE') {
+      reset();
       return;
     }
 
@@ -48,8 +64,12 @@ export function useInbox() {
     state.value = asyncStateFor(result.error);
   }
 
-  /** Fetches only if nothing has been fetched yet. What the bell calls. */
+  /** Fetches only if nothing has been fetched yet and user is a client. What the bell calls. */
   async function loadOnce(): Promise<void> {
+    if (role.value !== 'CLIENTE') {
+      reset();
+      return;
+    }
     if (state.value === 'IDLE') {
       await load();
     }
@@ -90,5 +110,5 @@ export function useInbox() {
     return true;
   }
 
-  return { notifications, unread, state, failure, load, loadOnce, markRead };
+  return { notifications, unread, state, failure, load, loadOnce, markRead, reset };
 }

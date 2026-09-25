@@ -10,7 +10,7 @@ Table payments {
   error_type varchar(20) [note: 'TRANSIENT, PERMANENT']
   failure_reason text [note: 'PAYMENT_DECLINED, PAYMENT_RETRIES_EXHAUSTED']
   provider_reference varchar(100) [note: 'Referencia del proveedor externo']
-  scenario varchar(20) [note: 'Escenario simulado: APPROVE, REJECT, TRANSIENT_FAILURE']
+  scenario varchar(20) [note: 'Escenario simulado: APPROVE, REJECT, TRANSIENT_FAILURE, TIMEOUT']
   origin_correlation_id uuid [note: 'Correlación de la transferencia original']
   next_attempt_at timestamptz [note: 'Hora programada para el siguiente intento']
   created_at timestamptz [not null, default: `now()`]
@@ -31,6 +31,7 @@ Table payment_attempts {
   result varchar(20) [not null, note: 'SUCCEEDED, FAILED']
   error_type varchar(20) [note: 'TRANSIENT, PERMANENT']
   failure_reason text
+  provider_result varchar(20) [note: 'SUCCESS, FAILURE, TIMEOUT — lo que respondió el proveedor simulado (T-29)']
   occurred_at timestamptz [not null, default: `now()`]
 
   indexes {

@@ -78,6 +78,12 @@ export const paymentAttemptView = z.object({
   failureReason: failureCode
     .extract(['PAYMENT_DECLINED', 'PAYMENT_RETRIES_EXHAUSTED'])
     .nullable(),
+  /**
+   * What the simulated provider answered on this rung — added by T-29.
+   * `null` only for an attempt recorded before this field existed; every
+   * attempt from here on asks the provider and gets one of the three.
+   */
+  providerResult: z.enum(['SUCCESS', 'FAILURE', 'TIMEOUT']).nullable(),
   occurredAt: isoTimestamp,
 });
 

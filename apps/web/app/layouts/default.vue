@@ -31,15 +31,58 @@ const initials = computed(() => initialsOf(session.value?.username));
  * only changes when an event arrives — which no screen here is told about
  * anyway. `/notificaciones` refreshes it when somebody actually looks.
  */
-const { unread, loadOnce } = useInbox();
+const { unread, loadOnce, reset } = useInbox();
 
 onMounted(() => {
   void loadOnce();
 });
 
+watch(
+  () => role.value,
+  (newRole) => {
+    if (newRole === 'CLIENTE') {
+      void loadOnce();
+    } else {
+      reset();
+    }
+  },
+);
+
 const menuOpen = ref(false);
 const query = ref('');
 const destinations = computed(() => searchDestinations(query.value, role.value));
+
+/**
+ * The user menu items dynamically adjusted by role.
+ */
+const menuItems = computed(() => {
+  const items: Array<{
+    label: string;
+    icon: string;
+    to?: string;
+    color?: 'error';
+    onSelect?: () => Promise<void>;
+  }> = [{ label: 'Mi perfil', icon: 'i-lucide-user', to: '/perfil' }];
+
+  if (role.value === 'CLIENTE') {
+    items.push({ label: 'Notificaciones', icon: 'i-lucide-bell', to: '/notificaciones' });
+  } else if (role.value === 'ADMINISTRADOR') {
+    items.push({
+      label: 'Consola de notificaciones',
+      icon: 'i-lucide-bell',
+      to: '/auditoria/notificaciones',
+    });
+  }
+
+  items.push({
+    label: 'Cerrar sesión',
+    icon: 'i-lucide-log-out',
+    color: 'error',
+    onSelect: signOut,
+  });
+
+  return [items];
+});
 
 /**
  * The box says why it found nothing, rather than showing an empty list.
@@ -68,6 +111,7 @@ async function go(to: string): Promise<void> {
 }
 
 async function signOut(): Promise<void> {
+  reset();
   end();
   await navigateTo('/login');
 }
@@ -161,10 +205,9 @@ async function signOut(): Promise<void> {
 
           <div class="flex-1" />
 
-          <!-- The bell, as the prototype draws it: a count that is a count. It
-               used to be impossible — no row said whose notification it was
-               (TD-041) — and it is the one number in the header. -->
+          <!-- The bell: role-based display and routing -->
           <UButton
+            v-if="role === 'CLIENTE'"
             to="/notificaciones"
             color="neutral"
             variant="outline"
@@ -178,15 +221,17 @@ async function signOut(): Promise<void> {
             >{{ unread > 99 ? '99+' : unread }}</span>
           </UButton>
 
-          <UDropdownMenu
-            :items="[
-              [
-                { label: 'Mi perfil', icon: 'i-lucide-user', to: '/perfil' },
-                { label: 'Notificaciones', icon: 'i-lucide-bell', to: '/notificaciones' },
-                { label: 'Cerrar sesión', icon: 'i-lucide-log-out', color: 'error', onSelect: signOut },
-              ],
-            ]"
-          >
+          <UButton
+            v-else-if="role === 'ADMINISTRADOR'"
+            to="/auditoria/notificaciones"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-bell"
+            class="relative"
+            aria-label="Consola de notificaciones"
+          />
+
+          <UDropdownMenu :items="menuItems">
             <button
               type="button"
               class="flex h-[38px] items-center gap-2.5 rounded-full border border-[#DCDCE0] bg-white py-0 pl-1 pr-3"

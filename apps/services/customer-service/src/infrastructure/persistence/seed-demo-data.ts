@@ -76,6 +76,8 @@ const USERS: readonly SeedUser[] = [
  *
  * `identity_status = VALIDATED` and `status = ACTIVE` with a verified timestamp
  * (constraint C-4: ACTIVE iff verified), so each can sign in immediately.
+ * `kyc_status = VERIFIED` too, so a demo `CLIENTE` can be shown initiating a
+ * transaction without a teller working through the KYC queue first.
  */
 export async function seedDemoUsers(
   pool: Pool,
@@ -88,9 +90,9 @@ export async function seedDemoUsers(
     await pool.query(
       `INSERT INTO customers
          (customer_id, full_name, document_number, email, birth_date, address,
-          username, identity_status, role, status, password_hash, email_verified_at)
+          username, identity_status, kyc_status, role, status, password_hash, email_verified_at)
        VALUES ($1, $2, $3, $4, '1990-01-01', 'Zona 1, Guatemala',
-               $5, 'VALIDATED', $6, 'ACTIVE', $7, now())
+               $5, 'VALIDATED', 'VERIFIED', $6, 'ACTIVE', $7, now())
        ON CONFLICT (customer_id) DO UPDATE SET
          full_name         = EXCLUDED.full_name,
          email             = EXCLUDED.email,
@@ -98,6 +100,7 @@ export async function seedDemoUsers(
          password_hash     = EXCLUDED.password_hash,
          status            = 'ACTIVE',
          identity_status   = 'VALIDATED',
+         kyc_status        = 'VERIFIED',
          email_verified_at = now(),
          role              = EXCLUDED.role,
          updated_at        = now()`,

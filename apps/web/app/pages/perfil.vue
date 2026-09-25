@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IdentityStatus } from '../lib/customer';
+import type { IdentityStatus, KycStatus } from '../lib/customer';
 import { labelForRole } from '../lib/navigation';
 
 /**
@@ -28,6 +28,7 @@ interface CustomerRecord {
   readonly address: string;
   readonly username: string;
   readonly identityStatus: IdentityStatus;
+  readonly kycStatus: KycStatus;
 }
 
 const record = ref<CustomerRecord | null>(null);
@@ -35,19 +36,37 @@ const loadFailure = ref<string | null>(null);
 
 const customerId = computed(() => session.value?.customerId ?? null);
 
-onMounted(async () => {
+const isRefreshing = ref(false);
+
+async function loadProfile(): Promise<void> {
   if (customerId.value === null) {
     return;
   }
 
+  isRefreshing.value = true;
   const result = await api.call<CustomerRecord>(`/api/customers/${customerId.value}`);
+  isRefreshing.value = false;
 
   if (result.ok) {
     record.value = result.data;
+    loadFailure.value = null;
     return;
   }
 
   loadFailure.value = result.error.message;
+}
+
+onMounted(() => {
+  loadProfile();
+  if (import.meta.client) {
+    window.addEventListener('focus', loadProfile);
+  }
+});
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('focus', loadProfile);
+  }
 });
 
 useHead({ title: 'Mi perfil · bonking' });
@@ -120,18 +139,37 @@ useHead({ title: 'Mi perfil · bonking' });
         </UCard>
 
         <UCard>
-          <h2 class="text-[14px] font-semibold">Validación de identidad</h2>
+          <div class="flex items-center justify-between">
+            <h2 class="text-[14px] font-semibold">Estado de Verificación (KYC)</h2>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-refresh-cw"
+              :loading="isRefreshing"
+              @click="loadProfile"
+            >
+              Actualizar
+            </UButton>
+          </div>
 
           <div class="mt-4">
-            <CustomerIdentityStatusBadge
+            <CustomerKycStatusBadge
               v-if="record"
-              :status="record.identityStatus"
+              :status="record.kycStatus === 'VERIFIED' || record.identityStatus === 'VALIDATED' ? 'VERIFIED' : record.kycStatus === 'REJECTED' || record.identityStatus === 'REJECTED' ? 'REJECTED' : 'PENDING'"
               explain
             />
-            <p v-else class="text-[13px] leading-5 text-[#5A5B63]" data-testid="profile-identity-unknown">
-              {{ loadFailure ?? 'Consultando el estado de la validación…' }}
+            <p v-else class="text-[13px] leading-5 text-[#5A5B63]" data-testid="profile-kyc-unknown">
+              {{ loadFailure ?? 'Consultando el estado de la verificación…' }}
             </p>
           </div>
+
+          <p v-if="record?.kycStatus === 'PENDING' || record?.identityStatus === 'PENDING'" class="mt-3 text-[13px] leading-5 text-[#5A5B63]">
+            Un cajero receptor o administrador debe verificar tu identidad antes de que puedas realizar transferencias o pagos.
+          </p>
+          <p v-else-if="record?.kycStatus === 'REJECTED' || record?.identityStatus === 'REJECTED'" class="mt-3 text-[13px] leading-5 text-red-600">
+            Tu verificación fue rechazada. Acércate a una agencia bancaria con tu DPI físico para validar tu identidad presencialmente.
+          </p>
         </UCard>
       </div>
     </div>

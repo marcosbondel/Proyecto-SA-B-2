@@ -1,9 +1,7 @@
 @startuml 05-uml-despliegue
 
-' Bank USAC - UML 2 Deployment Diagram
-' The Kubernetes stereotypes are a project-specific UML profile extension.
-
-title UML 2 - Diagrama de Despliegue\nBank USAC
+' Bank USAC - UML 2 Deployment Diagram (Google Cloud Platform - Fase 2)
+title UML 2 - Diagrama de Despliegue en la Nube (GCP - Fase 2)\nBank USAC
 
 left to right direction
 skinparam shadowing false
@@ -11,256 +9,130 @@ skinparam linetype ortho
 skinparam dpi 150
 skinparam defaultFontName "Segoe UI"
 skinparam defaultTextAlignment center
-skinparam wrapWidth 220
-skinparam maxMessageSize 180
-skinparam ArrowColor #555555
-skinparam ArrowThickness 1.2
-skinparam NodeBorderThickness 1.5
-skinparam ArtifactBorderThickness 1.3
-skinparam noteBackgroundColor #FFF8DC
-skinparam noteBorderColor #D6B656
+skinparam wrapWidth 200
 
 skinparam node {
     BackgroundColor #FFFFFF
     BorderColor #1168BD
     FontColor #1168BD
 }
-skinparam node<<device>> {
-    BackgroundColor #F7F7F7
-    BorderColor #C11926
-    FontColor #C11926
+skinparam node<<gcpCloud>> {
+    BackgroundColor #F8FAFC
+    BorderColor #4285F4
+    FontColor #1A73E8
 }
-skinparam node<<executionEnvironment>> {
-    BackgroundColor #F4F8FF
-    BorderColor #1168BD
-    FontColor #1168BD
+skinparam node<<vpc>> {
+    BackgroundColor #FFFFFF
+    BorderColor #34A853
+    FontColor #1E7E34
 }
-skinparam node<<kubernetesDeployment>> {
-    BackgroundColor #FFF8EE
+skinparam node<<subnet>> {
+    BackgroundColor #F1F8F4
+    BorderColor #34A853
+    FontColor #1E7E34
+}
+skinparam node<<gkeCluster>> {
+    BackgroundColor #E8F0FE
+    BorderColor #1A73E8
+    FontColor #1A73E8
+}
+skinparam node<<computeVM>> {
+    BackgroundColor #FFF9E6
+    BorderColor #FBBC04
+    FontColor #B06000
+}
+skinparam node<<serverless>> {
+    BackgroundColor #FCE8E6
+    BorderColor #EA4335
+    FontColor #C5221F
+}
+skinparam node<<pod>> {
+    BackgroundColor #FFFFFF
     BorderColor #EF9425
-    FontColor #EF9425
+    FontColor #D06000
 }
-skinparam node<<kubernetesService>> {
-    BackgroundColor #FFFFFF
-    BorderColor #1168BD
-    FontColor #1168BD
-}
-skinparam node<<kubernetesNamespace>> {
-    BackgroundColor #EAF2FF
-    BorderColor #1168BD
-    FontColor #1168BD
-}
-skinparam artifact {
-    BackgroundColor #FFFFFF
-    BorderColor #398819
-    FontColor #398819
-}
-skinparam artifact<<secret>> {
-    BackgroundColor #FFF0F0
-    BorderColor #C11926
-    FontColor #C11926
+skinparam database<<postgres>> {
+    BackgroundColor #EBF3FB
+    BorderColor #336791
+    FontColor #336791
 }
 
-legend right
-    |= Element | Notación |
-    | <color:#C11926>Rojo</color> | Host o infraestructura externa al clúster |
-    | <color:#1168BD>Azul</color> | Nodo, namespace, service o conectividad de Kubernetes |
-    | <color:#EF9425>Naranja</color> | Deployment y Pod de una aplicación |
-    | <color:#398819>Verde</color> | Artifact: imagen, ConfigMap o chart |
-    | Línea sólida | Asociación / communication path |
-    | Línea discontinua | Dependency: `<<deploy>>` o referencia de configuración en tiempo de ejecución |
-    | `<<device>>` | Recurso físico o virtual de cómputo |
-    | `<<executionEnvironment>>` | Entorno donde se ejecutan artefactos |
-    | `<<kubernetesDeployment>>`, `<<kubernetesService>>`, `<<kubernetesNamespace>>` | Extensiones del perfil Kubernetes del proyecto |
-endlegend
+actor "Visitante / Cliente\nAdministrador / Cajero\n(Navegador Web)" as user
 
-node "Developer Host" as host <<device>> #F7F7F7 {
-    node "Docker Engine" as docker <<executionEnvironment>> #FFF0F0 {
-        node "RabbitMQ\nRabbitMQ 4.3.4-management" as rabbitmq <<node>> #FFF0F0 {
-            artifact "rabbitmq:4.3.4-management" as rabbit_image
-        }
+node "Google Cloud Platform (GCP)" <<gcpCloud>> {
 
-        node "Customer DB\nPostgreSQL 18.4" as customer_db <<node>> #FFF0F0 {
-            artifact "postgres:18.4" as customer_db_image
-        }
-        node "Account DB\nPostgreSQL 18.4" as account_db <<node>> #FFF0F0 {
-            artifact "postgres:18.4" as account_db_image
-        }
-        node "Transaction DB\nPostgreSQL 18.4" as transaction_db <<node>> #FFF0F0 {
-            artifact "postgres:18.4" as transaction_db_image
-        }
-        node "Payment DB\nPostgreSQL 18.4" as payment_db <<node>> #FFF0F0 {
-            artifact "postgres:18.4" as payment_db_image
-        }
-        node "Notification DB\nPostgreSQL 18.4" as notification_db <<node>> #FFF0F0 {
-            artifact "postgres:18.4" as notification_db_image
-        }
-        node "MinIO\nS3-compatible object store" as minio <<node>> #FFF0F0 {
-            artifact "minio/minio:RELEASE.2024-11-07T00-52-20Z" as minio_image
+    node "Cloud Run (Serverless)" <<serverless>> {
+        node "bank-usac-web" as cloudRunWeb {
+            artifact "Frontend Nuxt 3 (SSR/Nitro)\nPort 8080 | Autoescalado 0-5" as webArtifact
         }
     }
 
-    node "kind cluster\nSingle-node local limitation" as kind <<node>> #EAF2FF {
-        node "kind-worker" as worker <<device>> #F7F7F7 {
-            node "Namespace: bank-usac" as namespace <<kubernetesNamespace>> #EAF2FF {
-                node "frontend" as dep_frontend <<kubernetesDeployment>> #FFF8EE {
-                    node "frontend-pod" as pod_frontend <<executionEnvironment>> #FFF8EE {
-                        artifact "bank-usac/frontend:<git-sha>\nNuxt 4" as image_frontend
-                    }
-                }
-                node "gateway" as dep_gateway <<kubernetesDeployment>> #FFF8EE {
-                    node "gateway-pod" as pod_gateway <<executionEnvironment>> #FFF8EE {
-                        artifact "bank-usac/gateway:<git-sha>\nNestJS" as image_gateway
-                    }
-                }
-                node "customer" as dep_customer <<kubernetesDeployment>> #FFF8EE {
-                    node "customer-pod" as pod_customer <<executionEnvironment>> #FFF8EE {
-                        artifact "bank-usac/customer:<git-sha>\nNestJS" as image_customer
-                    }
-                }
-                node "account" as dep_account <<kubernetesDeployment>> #FFF8EE {
-                    node "account-pod" as pod_account <<executionEnvironment>> #FFF8EE {
-                        artifact "bank-usac/account:<git-sha>\nNestJS" as image_account
-                    }
-                }
-                node "transaction" as dep_transaction <<kubernetesDeployment>> #FFF8EE {
-                    node "transaction-pod" as pod_transaction <<executionEnvironment>> #FFF8EE {
-                        artifact "bank-usac/transaction:<git-sha>\nNestJS" as image_transaction
-                    }
-                }
-                node "payment" as dep_payment <<kubernetesDeployment>> #FFF8EE {
-                    node "payment-pod" as pod_payment <<executionEnvironment>> #FFF8EE {
-                        artifact "bank-usac/payment:<git-sha>\nNestJS" as image_payment
-                    }
-                }
-                node "notification-audit" as dep_notification <<kubernetesDeployment>> #FFF8EE {
-                    node "notification-audit-pod" as pod_notification <<executionEnvironment>> #FFF8EE {
-                        artifact "bank-usac/notification:<git-sha>\nNestJS" as image_notification
-                    }
-                }
+    node "Virtual Private Cloud (VPC): bank-usac-vpc" <<vpc>> {
+        
+        node "Cloud NAT & Router" as cloudNat {
+            artifact "Salida segura a Internet\n(Actualizaciones / Paquetes apt)" as natArtifact
+        }
 
-                node "frontend-service" as svc_frontend <<kubernetesService>> #EAF2FF
-                node "gateway-service" as svc_gateway <<kubernetesService>> #EAF2FF
-                node "customer-service" as svc_customer <<kubernetesService>> #EAF2FF
-                node "account-service" as svc_account <<kubernetesService>> #EAF2FF
-                node "transaction-service" as svc_transaction <<kubernetesService>> #EAF2FF
-                node "payment-service" as svc_payment <<kubernetesService>> #EAF2FF
-                node "notification-audit-service" as svc_notification <<kubernetesService>> #EAF2FF
+        node "Subred Bases de Datos (10.40.0.0/24)" <<subnet>> {
+            node "VM: bank-db-customer" <<computeVM>> {
+                database "PostgreSQL :5432\n(customer)" <<postgres>> as dbCustomer
+            }
+            node "VM: bank-db-account" <<computeVM>> {
+                database "PostgreSQL :5432\n(account)" <<postgres>> as dbAccount
+            }
+            node "VM: bank-db-transaction" <<computeVM>> {
+                database "PostgreSQL :5432\n(transaction)" <<postgres>> as dbTransaction
+            }
+            node "VM: bank-db-payment" <<computeVM>> {
+                database "PostgreSQL :5432\n(payment)" <<postgres>> as dbPayment
+            }
+            node "VM: bank-db-audit" <<computeVM>> {
+                database "PostgreSQL :5432\n(notification_audit)" <<postgres>> as dbAudit
+            }
+        }
 
-                node "Namespace resource" as namespace_resource <<executionEnvironment>> #EAF2FF
-                artifact "ConfigMap/bank-usac-config" as configmap
-                artifact "Secret/bank-usac-secrets" as secret <<secret>> #FFF0F0
+        node "Subred GKE (10.10.0.0/20)" <<subnet>> {
+            node "GKE Managed Cluster" <<gkeCluster>> {
+                
+                node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
+                node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
+                node "Account Service Pods\n[1 Replica]" <<pod>> as podAccount
+                node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
+                node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
+                node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit
+
+                node "Broker RabbitMQ\nStatefulSet (:5672)" <<pod>> as brokerRabbit
+                node "MinIO Object Storage\nStatefulSet (:9000)" <<pod>> as storageMinio
             }
         }
     }
-
-    node "kubectl port-forward\nlocalhost:3000 -> svc/gateway\nlocalhost:3010 -> svc/frontend" as portforward <<executionEnvironment>> #EAF2FF
-    artifact "Helm chart\ninfra/k8s/helm/bank-usac" as helm_chart
 }
 
-' UML deployment dependencies: artifacts are deployed to execution environments.
-image_frontend ..> pod_frontend : <<deploy>>
-image_gateway ..> pod_gateway : <<deploy>>
-image_customer ..> pod_customer : <<deploy>>
-image_account ..> pod_account : <<deploy>>
-image_transaction ..> pod_transaction : <<deploy>>
-image_payment ..> pod_payment : <<deploy>>
-image_notification ..> pod_notification : <<deploy>>
- rabbit_image ..> rabbitmq : runs as
- customer_db_image ..> customer_db : runs as
- account_db_image ..> account_db : runs as
- transaction_db_image ..> transaction_db : runs as
- payment_db_image ..> payment_db : runs as
- notification_db_image ..> notification_db : runs as
- minio_image ..> minio : runs as
-helm_chart ..> namespace_resource : <<deploy>>\nhelm upgrade --install
-configmap ..> pod_frontend
-configmap ..> pod_gateway
-configmap ..> pod_customer
-configmap ..> pod_account
-configmap ..> pod_transaction
-configmap ..> pod_payment
-configmap ..> pod_notification
-secret ..> pod_gateway
-secret ..> pod_customer
-secret ..> pod_account
-secret ..> pod_transaction
-secret ..> pod_payment
-secret ..> pod_notification
+' Flujos de comunicación
+user --> cloudRunWeb : "HTTPS :443 (Interfaz Web)"
+user --> podGateway : "HTTPS / REST :3000\n(API Gateway Ingress)"
 
-' Kubernetes Service selection and host exposure.
-svc_frontend --> pod_frontend : selects / forwards
-svc_gateway --> pod_gateway : selects / forwards
-svc_customer --> pod_customer : selects / forwards
-svc_account --> pod_account : selects / forwards
-svc_transaction --> pod_transaction : selects / forwards
-svc_payment --> pod_payment : selects / forwards
-svc_notification --> pod_notification : selects / forwards
-portforward --> svc_gateway : HTTP\nlocalhost:3000
-portforward --> svc_frontend : HTTP\nlocalhost:3010
+cloudRunWeb ..> podGateway : "NUXT_PUBLIC_API_BASE_URL\n(Consumo cliente)"
 
-' All application-service broker traffic is asynchronous AMQP over the explicit host gateway.
-' The communication path is bidirectional because services publish and consume messages.
-pod_gateway <--> rabbitmq : AMQP/TCP 5672\nhost.docker.internal
-pod_customer <--> rabbitmq : AMQP/TCP 5672\nhost.docker.internal
-pod_account <--> rabbitmq : AMQP/TCP 5672\nhost.docker.internal
-pod_transaction <--> rabbitmq : AMQP/TCP 5672\nhost.docker.internal
-pod_payment <--> rabbitmq : AMQP/TCP 5672\nhost.docker.internal
-pod_notification <--> rabbitmq : AMQP/TCP 5672\nhost.docker.internal
+podGateway --> brokerRabbit : "AMQP Request/Reply (:5672)"
+podGateway --> storageMinio : "S3 Upload DPI (:9000)"
 
-' One service owns one database; there is no shared database.
-    pod_customer --> customer_db : PostgreSQL/TCP\nhost.docker.internal
-    pod_account --> account_db : PostgreSQL/TCP\nhost.docker.internal
-    pod_transaction --> transaction_db : PostgreSQL/TCP\nhost.docker.internal
-    pod_payment --> payment_db : PostgreSQL/TCP\nhost.docker.internal
-    pod_notification --> notification_db : PostgreSQL/TCP\nhost.docker.internal
-    pod_gateway --> minio : S3-compatible/TCP 9000\nhost.docker.internal
-    pod_customer --> minio : S3-compatible/TCP 9000\nhost.docker.internal
+podCustomer --> brokerRabbit : "AMQP (:5672)"
+podAccount --> brokerRabbit : "AMQP (:5672)"
+podTransaction --> brokerRabbit : "AMQP (:5672)"
+podPayment --> brokerRabbit : "AMQP (:5672)"
+podAudit --> brokerRabbit : "AMQP (:5672)"
 
-note right of docker
-    RabbitMQ, MinIO and all five PostgreSQL databases run as Docker containers
-    on the developer host, outside the kind cluster.
+podCustomer --> dbCustomer : "TCP :5432 (Privado)"
+podAccount --> dbAccount : "TCP :5432 (Privado)"
+podTransaction --> dbTransaction : "TCP :5432 (Privado)"
+podPayment --> dbPayment : "TCP :5432 (Privado)"
+podAudit --> dbAudit : "TCP :5432 (Privado)"
 
-    Deployment properties (not node identities). Container names, database
-    names and roles match infra/docker/docker-compose.yml and the chart's
-    values.yaml; the host mappings are the ports Compose publishes, which
-    only the external.mode=hostFallback route uses.
-    RabbitMQ container: rabbitmq | AMQP: 5672 | host mapping: 5673
-    Customer DB: postgres-customer | database: customer
-        user: customer_app | host mapping: 5433
-    Account DB: postgres-account | database: account
-        user: account_app | host mapping: 5434
-    Transaction DB: postgres-transaction | database: transaction
-        user: transaction_app | host mapping: 5435
-    Payment DB: postgres-payment | database: payment
-        user: payment_app | host mapping: 5436
-    Notification DB: postgres-notification-audit | database: notification_audit
-        user: notification_audit_app | host mapping: 5437
-    MinIO: minio | S3 API: 9000 | host mapping: 9002
-
-    The preferred route is a shared Docker network plus selectorless
-    Kubernetes Services with stable in-cluster DNS. The host.docker.internal
-    labels shown on the paths are the documented local fallback.
-end note
-
-note bottom of kind
-    Local deployment uses one kind worker node. This is not a production
-    high-availability topology; replicaCount starts at 1 for every component.
-    It is overridable per component (gateway.replicaCount, web.replicaCount,
-    services.<name>.replicaCount) — except account-service, which also runs
-    the inactive-account sweep on an interval and has no leader election.
-end note
-
-note right of namespace
-    Kubernetes-specific properties shown as annotations:
-    Each KubernetesDeployment starts with replicas = 1.
-    Frontend and Gateway are exposed with kubectl port-forward.
-    The five internal Services use ClusterIP.
-    ConfigMap stores non-sensitive runtime configuration.
-    Secret stores JWT, database and RabbitMQ credentials;
-    secret values are not versioned.
-    Dashed dependencies from ConfigMap and Secret represent
-    runtime references from the Kubernetes Pod specifications.
-end note
+dbCustomer ..> cloudNat : "Acceso de salida seguro"
+dbAccount ..> cloudNat
+dbTransaction ..> cloudNat
+dbPayment ..> cloudNat
+dbAudit ..> cloudNat
 
 @enduml

@@ -3,7 +3,8 @@ import { isUuidV4 } from '../../lib/account';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { LoadState } from '../../lib/gateway-error';
 import type { Biller } from '../../lib/payment';
-import type { TransferRow } from '../../lib/transaction';
+import { historyFilterProblems, phaseFilterOptions } from '../../lib/transaction';
+import type { PhaseStatus, TransferRow } from '../../lib/transaction';
 
 const api = useGatewayApi();
 const { role } = useSession();
@@ -16,7 +17,45 @@ const correlationId = ref<string | null>(null);
 
 const isStaff = computed(() => role.value !== null && role.value !== 'CLIENTE');
 
+/**
+ * `'TODAS'`, not `''`: a `USelect` item whose value is the empty string never
+ * opens (see `monitor.vue`'s own note on the same sentinel).
+ */
+const phase = ref<PhaseStatus | 'TODAS'>('TODAS');
+/** Plain `YYYY-MM-DD`, what `UInput type="date"` produces — converted to a
+ * full day range only when the request is built. */
+const fromDate = ref('');
+const toDate = ref('');
+
+/**
+ * The one thing worth catching before the request goes out (T-28): a
+ * reversed range comes back from the Gateway as a generic `400` a filter bar
+ * cannot show next to the field that caused it.
+ */
+const rangeProblem = computed(() =>
+  historyFilterProblems({
+    from: fromDate.value === '' ? null : fromDate.value,
+    to: toDate.value === '' ? null : toDate.value,
+  }),
+);
+
+function hasFilters(): boolean {
+  return phase.value !== 'TODAS' || fromDate.value !== '' || toDate.value !== '';
+}
+
+function clearFilters(): void {
+  phase.value = 'TODAS';
+  fromDate.value = '';
+  toDate.value = '';
+}
+
+const accountNamesMap = ref<Record<string, string>>({});
+
 async function load(): Promise<void> {
+  if (rangeProblem.value !== undefined) {
+    return;
+  }
+
   state.value = 'LOADING';
   failure.value = null;
 
@@ -25,7 +64,15 @@ async function load(): Promise<void> {
       transactions: TransferRow[];
       total: number;
       correlationId: string;
-    }>('/api/transfers', { query: { limit: '50' } }),
+    }>('/api/transfers', {
+      query: {
+        limit: '50',
+        ...(phase.value === 'TODAS' ? {} : { phaseStatus: phase.value }),
+        // Both ends inclusive, so the picked day is covered start to end.
+        ...(fromDate.value === '' ? {} : { from: `${fromDate.value}T00:00:00.000Z` }),
+        ...(toDate.value === '' ? {} : { to: `${toDate.value}T23:59:59.999Z` }),
+      },
+    }),
     api.call<{ billers: Biller[] }>('/api/accounts/billers'),
   ]);
 
@@ -46,9 +93,23 @@ async function load(): Promise<void> {
   total.value = rows.value.length;
   correlationId.value = transfers.data.correlationId;
   state.value = 'READY';
+
+  if (Object.keys(accountNamesMap.value).length === 0) {
+    const accs = await api.call<{ accounts: Array<{ accountId: string; holderName?: string }> }>('/api/accounts');
+    if (accs.ok) {
+      const map: Record<string, string> = {};
+      for (const a of accs.data.accounts) {
+        if (a.holderName) {
+          map[a.accountId] = a.holderName;
+        }
+      }
+      accountNamesMap.value = map;
+    }
+  }
 }
 
 onMounted(load);
+watch([phase, fromDate, toDate], load);
 
 const lookup = ref('');
 const touched = ref(false);
@@ -97,15 +158,40 @@ useHead({ title: 'Transferencias · bonking' });
 
     <UCard>
       <template #header>
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h2 class="text-[20px] font-semibold leading-7">
-            {{ isStaff ? 'Historial de operaciones de clientes' : 'Historial' }}
-          </h2>
-          <!-- Says what it is not showing, rather than implying that 25 is all
-               there is. -->
-          <p v-if="state === 'READY' && total > rows.length" class="tab text-[13px] text-[#75767F]">
-            Mostrando {{ rows.length }} de {{ total }}
-          </p>
+        <div class="flex flex-col gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-[20px] font-semibold leading-7">
+              {{ isStaff ? 'Historial de operaciones de clientes' : 'Historial' }}
+            </h2>
+            <!-- Says what it is not showing, rather than implying that 25 is all
+                 there is. -->
+            <p v-if="state === 'READY' && total > rows.length" class="tab text-[13px] text-[#75767F]">
+              Mostrando {{ rows.length }} de {{ total }}
+            </p>
+          </div>
+
+          <!-- T-28: date and status filter, combinable. -->
+          <div class="flex flex-wrap items-end gap-3">
+            <USelect
+              v-model="phase"
+              class="w-[180px]"
+              :items="[{ value: 'TODAS', label: 'Todos los estados' }, ...phaseFilterOptions()]"
+              value-key="value"
+              aria-label="Filtrar por estado"
+            />
+            <UFormField label="Desde" name="from" :error="rangeProblem">
+              <UInput v-model="fromDate" type="date" aria-label="Desde" />
+            </UFormField>
+            <UFormField label="Hasta" name="to">
+              <UInput v-model="toDate" type="date" aria-label="Hasta" />
+            </UFormField>
+            <UButton
+              v-if="phase !== 'TODAS' || fromDate !== '' || toDate !== ''"
+              variant="ghost"
+              color="neutral"
+              @click="clearFilters"
+            >Limpiar filtros</UButton>
+          </div>
         </div>
       </template>
 
@@ -119,6 +205,23 @@ useHead({ title: 'Transferencias · bonking' });
         :message="failure"
         @retry="load"
       />
+
+      <!-- Two different messages on purpose: an empty account history reads as
+           reassurance, an empty filtered result reads as "try other filters" —
+           conflating them would make somebody re-check that their money moved. -->
+      <div
+        v-else-if="rows.length === 0 && hasFilters()"
+        class="py-10 text-center"
+        data-testid="transfers-empty-filtered"
+      >
+        <p class="text-[20px] font-semibold leading-7">Ninguna transferencia coincide</p>
+        <p class="mx-auto mt-2 max-w-[46ch] text-[14px] leading-[22px] text-[#5A5B63]">
+          No hay transferencias con esos filtros. Prueba con otro estado o rango de fechas.
+        </p>
+        <UButton variant="outline" color="neutral" class="mt-6" @click="clearFilters">
+          Limpiar filtros
+        </UButton>
+      </div>
 
       <div v-else-if="rows.length === 0" class="py-10 text-center" data-testid="transfers-empty">
         <p class="text-[20px] font-semibold leading-7">
@@ -136,7 +239,12 @@ useHead({ title: 'Transferencias · bonking' });
         </UButton>
       </div>
 
-      <TransactionHistoryTable v-else :rows="rows" :show-accounts="true" />
+      <TransactionHistoryTable
+        v-else
+        :rows="rows"
+        :show-accounts="true"
+        :account-names-map="accountNamesMap"
+      />
 
       <template #footer>
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -151,7 +259,15 @@ useHead({ title: 'Transferencias · bonking' });
       </template>
     </UCard>
 
-    <UCard v-if="isStaff">
+    <!--
+      Every role, not only staff — this is the lookup the manual documents for
+      CLIENTE too (docs/manual/rol-cliente.md, docs/manual/README.md §6.4): the
+      way back to a transfer that has not shown up in the history yet, or one
+      whose identifier is all a receipt kept. Safe for every role because the
+      restriction is not here — `GetTransactionStatusUseCase` answers a
+      stranger's identifier with the same NOT_FOUND it gives a guessed one.
+    -->
+    <UCard>
       <template #header>
         <h2 class="text-[20px] font-semibold leading-7">Consultar una transferencia</h2>
       </template>

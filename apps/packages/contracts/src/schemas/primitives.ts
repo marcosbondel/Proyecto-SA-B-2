@@ -106,6 +106,12 @@ export const customerStatus = z.enum(['PENDING_ACTIVATION', 'ACTIVE']);
 /** `Customer.identityStatus` — independent of activation (C-4 vs C-6). */
 export const identityStatus = z.enum(['PENDING', 'VALIDATED', 'REJECTED']);
 
+/**
+ * `Customer.kycStatus` (Fase 2, §4.1 p. 4) — distinct from `identityStatus`:
+ * the document-photo review and the KYC verdict are two different facts, C-8.
+ */
+export const kycStatus = z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
+
 /** `Account.status`. A credit to an INACTIVE account reactivates it (A-3). */
 export const accountStatus = z.enum(['ACTIVE', 'INACTIVE']);
 
@@ -117,7 +123,10 @@ export const accountStatus = z.enum(['ACTIVE', 'INACTIVE']);
  * and a statement that showed them alike would make a failed transfer read as
  * an incoming payment.
  */
-export const accountOperationType = z.enum(['DEBIT', 'CREDIT', 'COMPENSATION']);
+/* 'COMMISSION' added by T-27: the per-transaction fee `debit` charges
+ * alongside a DEBIT, on account types that configure one, recorded as its own
+ * ledger row rather than folded into the DEBIT amount. */
+export const accountOperationType = z.enum(['DEBIT', 'CREDIT', 'COMPENSATION', 'COMMISSION']);
 
 /**
  * `AccountOperation.status`.
@@ -141,6 +150,14 @@ export const transactionStatus = z.enum([
   'FAILED',
   'COMPENSATED',
 ]);
+
+/**
+ * The three states Fase 2 of the assignment names — a coarser projection of
+ * `transactionStatus`, computed in Transaction Service's domain
+ * (`phaseStatusOf`) and never stored. `PENDING|DEBITING|PAYMENT_PENDING` read
+ * as `PENDING`, `COMPLETED` as `APPROVED`, `FAILED|COMPENSATED` as `FAILED`.
+ */
+export const phaseStatus = z.enum(['PENDING', 'APPROVED', 'FAILED']);
 
 /** `Payment.status`. */
 export const paymentStatus = z.enum(['PENDING', 'SUCCEEDED', 'FAILED']);
@@ -197,6 +214,15 @@ export const notificationChannel = z.enum(['EMAIL']);
 export const auditProcessingStatus = z.enum(['PROCESSED', 'INVALID', 'ERROR']);
 
 /**
+ * §4.1's classification (T-30): every processable event Notification & Audit
+ * Service records gets exactly one of these, computed by that service's own
+ * `domain/classification.ts` and never by a consumer. Optional everywhere it
+ * appears on the wire — a reply that omits it still validates, because a row
+ * recorded before this axis existed has no severity to report.
+ */
+export const eventSeverity = z.enum(['INFO', 'WARNING', 'ERROR']);
+
+/**
  * The failure codes `docs/domain/entities.md` names as expected failures.
  *
  * Closed on purpose: a consumer that receives an unlisted code cannot know
@@ -234,6 +260,13 @@ export const failureCode = z.enum([
   'ACCOUNT_NOT_FOUND',
   'INVALID_AMOUNT_PRECISION',
   /*
+   * Added by T-27. Distinct from INSUFFICIENT_FUNDS: a debit that would leave
+   * a positive balance can still be refused when that balance falls below the
+   * account type's floor (`account-type-rules.ts`) — a different fact from
+   * "there is not enough money to move at all".
+   */
+  'MINIMUM_BALANCE_VIOLATION',
+  /*
    * Added by T-17. `../domain/actors.md` names this refusal — "may not operate
    * on an account that is not theirs ... the expected result is
    * FORBIDDEN_ACCOUNT_ACCESS, a named rejection, never a silent no-op" — but
@@ -249,6 +282,14 @@ export const failureCode = z.enum([
   'SAME_ACCOUNT_TRANSFER',
   'IDEMPOTENCY_KEY_CONFLICT',
   'ILLEGAL_TRANSITION',
+  /*
+   * Added by T-31. The Saga's own KYC gate (§4.1 p. 4: "Validar que solo
+   * clientes verificados puedan realizar transacciones"), decided from
+   * `customer.kyc.checked.v1` rather than from a status read off another
+   * service's table (X-1). Distinct from every account-side rejection: the
+   * money never left because the transfer was never allowed to start.
+   */
+  'KYC_NOT_VERIFIED',
   // Payment
   'PAYMENT_DECLINED',
   'PAYMENT_RETRIES_EXHAUSTED',
@@ -268,3 +309,5 @@ export type PaymentErrorType = z.infer<typeof paymentErrorType>;
 export type NotificationStatus = z.infer<typeof notificationStatus>;
 export type NotificationChannel = z.infer<typeof notificationChannel>;
 export type AuditProcessingStatus = z.infer<typeof auditProcessingStatus>;
+export type EventSeverity = z.infer<typeof eventSeverity>;
+export type KycStatus = z.infer<typeof kycStatus>;
