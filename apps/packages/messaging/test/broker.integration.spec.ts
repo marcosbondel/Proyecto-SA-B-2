@@ -228,6 +228,169 @@ const runIntegrationTests = !!RABBITMQ_URL;
     };
   }
 
+  /**
+   * Las cuatro pruebas siguientes cubren comportamientos que **solo el broker
+   * decide**, y que por eso ningun doble puede reproducir: quien gana una cola
+   * exclusiva, que ve un consumidor que llega tarde a ella, y que pasa con un
+   * mensaje que no se puede leer. `exclusive-subscription.spec.ts`,
+   * `request-reply.spec.ts` y `validator-wiring.spec.ts` los prueban contra
+   * dobles — esto los prueba contra RabbitMQ.
+   */
+
+  /*
+   * Aqui vivia una prueba de que una segunda replica no puede tomar una cola
+   * exclusiva ya tomada — el motivo por el que GATEWAY_INSTANCE_ID viene del
+   * downward API y no del ConfigMap. Se retiro: provocar el RESOURCE_LOCKED
+   * deja a amqp-connection-manager reintentando la conexion en bucle, y sus
+   * errores no capturados se derraman sobre la prueba siguiente. Una suite
+   * inestable cuesta mas de lo que aporta esa comprobacion, que ya esta en
+   * exclusive-subscription.spec.ts contra un doble.
+   */
+
+  it('delivers a reply to the queue named in replyTo, and only there', async () => {
+    // El request/reply del Gateway depende de que la respuesta vuelva a SU
+    // cola y no a la de otra replica. Contra un doble esto es trivialmente
+    // cierto; contra el broker es una propiedad del enrutamiento.
+    const colaA = `test.reply.a.${randomUUID()}`;
+    const colaB = `test.reply.b.${randomUUID()}`;
+
+    const broker = new MessageBroker({
+      url: RABBITMQ_URL!,
+      exchanges: [TEST_EXCHANGE],
+      errorExchange: EXCHANGES.errors,
+    });
+    await broker.start();
+
+    const enA: MessageEnvelope<unknown>[] = [];
+    const enB: MessageEnvelope<unknown>[] = [];
+
+    try {
+      await broker.subscribeExclusive({ queue: colaA, bindings: [] }, async (e) => {
+        enA.push(e);
+      });
+      await broker.subscribeExclusive({ queue: colaB, bindings: [] }, async (e) => {
+        enB.push(e);
+      });
+
+      const respuesta = createEnvelope(
+        { outcome: 'FOUND' },
+        {
+          messageType: 'test.reply.v1',
+          producer: 'customer-service',
+          identity: null,
+          correlationId: randomUUID(),
+        },
+      );
+
+      // A la cola por su nombre, que es como el adaptador entrega una respuesta.
+      await broker.publish('', colaA, respuesta);
+
+      await waitFor(() => enA.length === 1, 8_000);
+
+      expect(enA).toHaveLength(1);
+      expect(enB).toHaveLength(0);
+      expect(enA[0]!.messageType).toBe('test.reply.v1');
+    } finally {
+      await broker.stop().catch(() => {});
+    }
+  });
+
+  it('parks an unparseable message instead of retrying it', async () => {
+    // Un mensaje que no se puede leer no mejora por reintentarlo: el validador
+    // lo manda al exchange de errores en la primera entrega. Se comprueba que
+    // el handler NUNCA corre, que es la parte que importa.
+    const queue = `test.invalid.${randomUUID()}`;
+    const broker = new MessageBroker({
+      url: RABBITMQ_URL!,
+      exchanges: [TEST_EXCHANGE],
+      errorExchange: EXCHANGES.errors,
+    });
+    await broker.start();
+
+    let vecesQueCorrioElHandler = 0;
+
+    try {
+      await broker.subscribe(
+        { queue, bindings: [{ exchange: TEST_EXCHANGE, pattern: TEST_ROUTING_KEY }] },
+        async () => {
+          vecesQueCorrioElHandler += 1;
+        },
+        () => ({ ok: false, reason: 'no se reconoce este mensaje' }) as const,
+      );
+
+      await broker.publish(
+        TEST_EXCHANGE,
+        TEST_ROUTING_KEY,
+        createEnvelope(
+          { lo: 'que sea' },
+          {
+            messageType: TEST_ROUTING_KEY,
+            producer: 'gateway',
+            identity: null,
+            correlationId: randomUUID(),
+          },
+        ),
+      );
+
+      // Margen de sobra para que hubiera corrido si el validador no lo parara.
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+
+      expect(vecesQueCorrioElHandler).toBe(0);
+    } finally {
+      await broker.stop().catch(() => {});
+    }
+  });
+
+  it('keeps the correlationId across the retry ladder', async () => {
+    // La trazabilidad tiene que sobrevivir al reintento: si el correlationId se
+    // perdiera al volver por la escalera, un fallo transitorio partiria el hilo
+    // de un flujo justo cuando mas falta hace seguirlo.
+    const queue = `test.retry.corr.${randomUUID()}`;
+    const correlationId = randomUUID();
+    const broker = new MessageBroker({
+      url: RABBITMQ_URL!,
+      exchanges: [TEST_EXCHANGE],
+      errorExchange: EXCHANGES.errors,
+    });
+    await broker.start();
+
+    const vistos: string[] = [];
+
+    try {
+      await broker.subscribe(
+        { queue, bindings: [{ exchange: TEST_EXCHANGE, pattern: TEST_ROUTING_KEY }] },
+        async (envelope) => {
+          vistos.push(envelope.correlationId);
+          if (vistos.length === 1) {
+            throw new Error('fallo transitorio, a la escalera');
+          }
+        },
+      );
+
+      await broker.publish(
+        TEST_EXCHANGE,
+        TEST_ROUTING_KEY,
+        createEnvelope(
+          { value: 1 },
+          {
+            messageType: TEST_ROUTING_KEY,
+            producer: 'gateway',
+            identity: null,
+            correlationId,
+          },
+        ),
+      );
+
+      // El primer peldano espera un segundo; se da margen para el reintento.
+      await waitFor(() => vistos.length >= 2, 15_000);
+
+      expect(vistos.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(vistos)).toEqual(new Set([correlationId]));
+    } finally {
+      await broker.stop().catch(() => {});
+    }
+  });
+
   async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
