@@ -10,25 +10,30 @@ skinparam activity {
 
 |Transaction Service|
 start
-:Solicitar payment.requested;
+:Publicar comando payment.requested (en sobre AMQP);
 |Payment Service|
-:Validar operación y registrar PENDING;
-if (¿Pago interno?) then (Sí)
-    :Procesar pago interno;
-else (No)
-    :Solicitar pago al proveedor externo;
-endif
-if (¿Procesamiento exitoso?) then (Sí)
-    :Registrar SUCCEEDED;
-    :Publicar payment.succeeded;
-else (No)
-    :Reintentar el procesamiento;
-    if (¿Quedan reintentos?) then (Sí)
-        :Volver a procesar;
+:Validar operación y registrar en estado PENDING;
+:Ejecutar intento con proveedor externo simulado;
+while (¿Resultado TIMEOUT o fallo transitorio?) is (Sí)
+    if (¿Quedan reintentos en la escalera?) then (Sí)
+        :Registrar intento fallido;
+        :Publicar payment.attempt.failed (evento observable);
+        :Calcular fecha/hora de siguiente intento (next_attempt_at);
+        :Esperar vencimiento programado (barrido del scheduler);
+        :Ejecutar nuevo intento de pago;
     else (No)
-        :Registrar FAILED con failureReason;
-        :Publicar payment.failed;
+        break
     endif
+endwhile (No)
+
+if (¿Autorización exitosa?) then (Sí)
+    :Registrar estado SUCCEEDED en base de datos;
+    :Publicar evento payment.succeeded;
+else (No)
+    :Registrar estado FAILED con failureReason;
+    :Publicar evento terminal payment.failed;
 endif
+|Transaction Service|
+:Continuar la Saga según resultado (crédito o compensación);
 stop
 @enduml
