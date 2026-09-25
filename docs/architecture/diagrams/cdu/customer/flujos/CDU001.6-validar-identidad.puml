@@ -10,15 +10,24 @@ skinparam activity {
 
 |Cajero o Administrador|
 start
-:Revisar fotografía y datos del cliente;
+:Revisar fotografía de DPI (MinIO) y datos del cliente;
 |Customer Service|
-:Evaluar la identidad;
-if (¿Identidad válida?) then (No)
-    :Persistir estado REJECTED;
-    :Publicar customer.identity.rejected;
+:Evaluar autenticidad y coincidencia de identidad;
+if (¿Identidad aprobada?) then (No)
+    :Persistir identityStatus = REJECTED y kycStatus = REJECTED;
+    :Publicar customer.identity.rejected y customer.kyc.rejected;
+    |Notification & Audit|
+    :Registrar rechazo y notificar motivo;
 else (Sí)
-    :Persistir estado VALIDATED;
-    :Publicar customer.identity.validated;
+    :Persistir identityStatus = VALIDATED y kycStatus = VERIFIED;
+    :Publicar customer.identity.validated y customer.kyc.verified;
+    note right
+      El estado kycStatus = VERIFIED
+      habilita al cliente para iniciar
+      transferencias en la Saga (Gate KYC).
+    end note
+    |Notification & Audit|
+    :Registrar validación exitosa;
 endif
 stop
 @enduml
