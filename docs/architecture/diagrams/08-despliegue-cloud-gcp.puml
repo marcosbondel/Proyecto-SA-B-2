@@ -53,6 +53,13 @@ skinparam node<<namespace>> {
     BorderThickness 2
 }
 
+skinparam node<<namespaceOff>> {
+    BackgroundColor #F7F7F7
+    BorderColor #BBBBBB
+    FontColor #888888
+    BorderThickness 1
+}
+
 skinparam node<<pod>> {
     BackgroundColor #FFFFFF
     BorderColor #EF9425
@@ -113,20 +120,22 @@ node "Google Cloud Platform (GCP)" <<gcpCloud>> {
                     node "MinIO Object Storage\n(:9000)" <<pod>> as storageMinio
                 }
 
-                node "Namespace: dev\nrelease bank-usac-dev — imagenes dev-<sha>" <<namespace>> {
-                    node "Los mismos 7 componentes\n+ RabbitMQ y MinIO propios\n[HPA @ 80% CPU]" <<pod>> as podDev
+                node "Namespace: dev\n(retirado — ver la nota)" <<namespaceOff>> as nsDev {
                 }
             }
         }
     }
 }
 
-note bottom of podDev
-  Mismo cluster, namespaces separados: cada uno
-  levanta su propio RabbitMQ y su propio MinIO.
-  Las cinco VMs de PostgreSQL SI son compartidas
-  entre los dos entornos (TD-070) — el aislamiento
-  hoy es de computo y mensajeria, no de datos.
+note bottom of nsDev
+  El namespace `dev` existio y se retiro (TD-071):
+  el cluster corre UN nodo mientras Terraform declara
+  tres, y tres copias de la aplicacion reservaban mas
+  CPU de la que hay — 1911m de 1930m, usando 228m.
+  Produccion no cabia.
+  El job `retire-development` de cd.yml lo desinstala
+  y `helm upgrade` lo vuelve a crear cuando el cluster
+  tenga los tres nodos.
 end note
 
 ' Flujos de comunicación
