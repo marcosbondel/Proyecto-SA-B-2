@@ -47,6 +47,11 @@ on:
       - main
       - master
   workflow_dispatch:
+    inputs:
+      retire_dev:
+        description: 'Retirar el entorno de desarrollo (libera su CPU reservada)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -128,28 +133,33 @@ jobs:
 
           echo "configured=true" >> "$GITHUB_OUTPUT"
           echo "Credenciales presentes. Continuando con el despliegue."
-
   # ===========================================================================
-  # Despliegue en el entorno de desarrollo (merge a develop -> namespace `dev`)
+  # Retirada del entorno de desarrollo.
+  #
+  # Este workflow desplegaba en el namespace `dev` al mergear a develop, como
+  # pide el enunciado. Se retiro: el cluster tiene UN nodo, y tres copias de la
+  # aplicacion — el despliegue manual original, `dev` y `prod` — no caben en el.
+  # El nodo llego al 99% de CPU *reservada* usando el 11% real, y produccion se
+  # quedo con siete pods en `FailedScheduling: Insufficient cpu`.
+  #
+  # Liberar los 450m que `dev` tenia reservados es lo que deja entrar a
+  # produccion. Se ejecuta a mano, una vez, desde Actions > CD > Run workflow
+  # marcando `retire_dev`: nadie necesita acceso a gcloud para hacerlo, que era
+  # el otro coste de esta decision.
+  #
+  # Es idempotente — `helm uninstall` de un release que no existe no es un
+  # error — asi que volver a lanzarlo no rompe nada.
   # ===========================================================================
-  deploy-development:
-    name: 'Despliegue a Entorno de Desarrollo (dev)'
+  retire-development:
+    name: 'Retirar el entorno de desarrollo (dev)'
     needs: preflight
-    if: github.ref == 'refs/heads/develop'
+    if: github.event_name == 'workflow_dispatch' && inputs.retire_dev
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: development
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Dos caminos de autenticacion, y el primero es el preferido.
-      #
-      # Workload Identity Federation intercambia el token OIDC que GitHub emite
-      # para esta corrida por credenciales de GCP de corta vida. No hay ninguna
-      # llave que guardar, rotar ni filtrar — y es el unico camino disponible
-      # cuando la organizacion aplica `constraints/iam.disableServiceAccountKeyCreation`,
-      # que prohibe descargar llaves JSON. Necesita `id-token: write`, arriba.
       - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
         if: vars.WIF_PROVIDER != ''
         uses: google-github-actions/auth@v2
@@ -157,7 +167,6 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
 
-      # El camino con llave, para un proyecto sin esa restriccion.
       - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
         if: vars.WIF_PROVIDER == ''
         uses: google-github-actions/auth@v2
@@ -169,94 +178,32 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
 
-      - name: Calcular la etiqueta de esta version
-        id: tag
-        run: |
-          set -euo pipefail
-          # Etiqueta versionada y trazable al commit. Nunca `latest`.
-          echo "value=dev-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
-          # La region de Artifact Registry es la zona sin su sufijo de letra:
-          # us-central1-a -> us-central1.
-          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
-          echo "registry=${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}" >> "$GITHUB_OUTPUT"
-
-      - name: Autenticar Docker contra Artifact Registry
-        run: |
-          set -euo pipefail
-          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
-          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Construccion y etiquetado (enunciado: "Construccion de imagenes Docker,
-      # Etiquetado de imagenes") antes de tocar el cluster.
-      - name: Construir y publicar las siete imagenes
-        run: |
-          set -euo pipefail
-          TAG='${{ steps.tag.outputs.value }}'
-          REG='${{ steps.tag.outputs.registry }}'
-
-          declare -A DOCKERFILES=(
-            [customer-service]=apps/services/customer-service/Dockerfile
-            [account-service]=apps/services/account-service/Dockerfile
-            [transaction-service]=apps/services/transaction-service/Dockerfile
-            [payment-service]=apps/services/payment-service/Dockerfile
-            [notification-audit-service]=apps/services/notification-audit-service/Dockerfile
-            [gateway]=apps/gateway/Dockerfile
-            [web]=apps/web/Dockerfile
-          )
-
-          for component in $COMPONENTS; do
-            echo "::group::$component"
-            docker buildx build \
-              --file "${DOCKERFILES[$component]}" \
-              --tag "${REG}/${component}:${TAG}" \
-              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
-              --label "org.opencontainers.image.version=${TAG}" \
-              --cache-from "type=gha,scope=${component}" \
-              --cache-to "type=gha,mode=max,scope=${component}" \
-              --push \
-              .
-            echo "::endgroup::"
-          done
-
       - name: Obtener credenciales del cluster
         uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ vars.GKE_CLUSTER }}
           location: ${{ vars.GKE_ZONE }}
 
-      - name: Desplegar en Kubernetes (namespace dev)
+      - name: Retirar el release de desarrollo
         run: |
           set -euo pipefail
-          bash .github/scripts/helm-deploy.sh
-        env:
-          NAMESPACE: dev
-          RELEASE_NAME: bank-usac-dev
-          IMAGE_TAG: ${{ steps.tag.outputs.value }}
-          IMAGE_REGISTRY: ${{ steps.tag.outputs.registry }}
-          HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
-          INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
-          GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
-          WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
 
-      - name: Resumen del despliegue
-        if: always()
-        run: |
-          {
-            echo "## Despliegue a \`dev\` — \`${{ steps.tag.outputs.value }}\`"
-            echo ""
-            echo "Namespace \`dev\`, release \`bank-usac-dev\`. El entorno productivo no fue tocado."
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "=== CPU reservada ANTES ==="
+          kubectl describe nodes | grep -A6 "Allocated resources" || true
 
-  # ===========================================================================
-  # Despliegue Continuo a produccion (merge a main/master -> namespace `prod`)
-  #
-  # No construye imagenes: consume la version que release.yml ya publico, que es
-  # lo que pide el enunciado ("El pipeline utilizara las imagenes previamente
-  # generadas").
-  # ===========================================================================
+          if helm status bank-usac-dev --namespace dev >/dev/null 2>&1; then
+            helm uninstall bank-usac-dev --namespace dev --wait --timeout 10m
+            echo "Release bank-usac-dev retirado."
+          else
+            echo "No hay release bank-usac-dev en el namespace dev; nada que retirar."
+          fi
+
+          kubectl delete namespace dev --ignore-not-found --wait --timeout=5m
+
+          echo "=== CPU reservada DESPUES ==="
+          kubectl describe nodes | grep -A6 "Allocated resources" || true
+
+
   deploy-production:
     name: 'Despliegue Continuo a Produccion (Rolling Update)'
     needs: preflight
