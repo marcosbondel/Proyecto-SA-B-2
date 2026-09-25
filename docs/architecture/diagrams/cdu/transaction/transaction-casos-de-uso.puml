@@ -18,6 +18,7 @@ skinparam actor {
 actor "Cliente" as actor_transaction_customer
 actor "Cajero Receptor" as actor_transaction_teller
 actor "Administrador" as actor_transaction_admin
+actor "Customer Service" as actor_transaction_customer_svc
 actor "Account Service" as actor_transaction_account
 actor "Payment Service" as actor_transaction_payment
 
@@ -31,20 +32,27 @@ rectangle "CDU003 - Gestionar transferencias" as system_transaction {
     usecase "CDU003.7:\nOrdenar crédito" as uc_transaction_request_credit
     usecase "CDU003.8:\nCompensar débito" as uc_transaction_compensate
     usecase "CDU003.9:\nRegistrar estado de transacción" as uc_transaction_record
+    usecase "CDU003.10:\nConsultar historial con filtros" as uc_transaction_history
+    usecase "CDU003.11:\nValidar estado KYC (Gate KYC)" as uc_transaction_kyc
 }
 
 actor_transaction_customer -- uc_transaction_transfer
 actor_transaction_customer -- uc_transaction_status
+actor_transaction_customer -- uc_transaction_history
 actor_transaction_teller -- uc_transaction_transfer
 actor_transaction_teller -- uc_transaction_status
+actor_transaction_teller -- uc_transaction_history
 actor_transaction_admin -- uc_transaction_transfer
 actor_transaction_admin -- uc_transaction_status
+actor_transaction_admin -- uc_transaction_history
+actor_transaction_customer_svc -- uc_transaction_saga
 actor_transaction_account -- uc_transaction_saga
 actor_transaction_payment -- uc_transaction_saga
 
 uc_transaction_transfer .> uc_transaction_validate : <<include>>
 uc_transaction_transfer .> uc_transaction_saga : <<include>>
 uc_transaction_transfer .> uc_transaction_record : <<include>>
+uc_transaction_saga .> uc_transaction_kyc : <<include>>
 uc_transaction_saga .> uc_transaction_request_funds : <<include>>
 uc_transaction_saga .> uc_transaction_request_payment : <<include>>
 uc_transaction_saga .> uc_transaction_request_credit : <<include>>
@@ -52,6 +60,7 @@ uc_transaction_compensate .> uc_transaction_saga : <<extend>>
 
 note right of uc_transaction_validate
     Valida monto, cuentas distintas e idempotencia.
+    El Gate KYC consulta a Customer Service antes de debitar.
     La disponibilidad real de fondos la valida Account Service.
 end note
 
