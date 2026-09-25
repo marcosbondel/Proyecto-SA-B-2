@@ -58,6 +58,11 @@ Rel(rabbitmq, gateway, "Account -> Gateway: account.balance.query (request/reply
 Rel(gateway, rabbitmq, "Publica transfer.requested | AMQP | comando | correlationId")
 Rel(rabbitmq, transaction, "Gateway -> Transaction: transfer.requested | AMQP | comando | correlationId")
 
+Rel(transaction, rabbitmq, "Publica customer.kyc.check.requested (Gate KYC) | AMQP | comando | correlationId")
+Rel(rabbitmq, customer, "Transaction -> Customer: customer.kyc.check.requested | AMQP | comando | correlationId")
+Rel(customer, rabbitmq, "Publica customer.kyc.checked (veredicto KYC) | AMQP | evento | correlationId")
+Rel(rabbitmq, transaction, "Customer -> Transaction: customer.kyc.checked | AMQP | evento | correlationId")
+
 Rel(transaction, rabbitmq, "Publica account.debit.requested, account.credit.requested, account.debit.compensation.requested | AMQP | comandos | correlationId")
 Rel(rabbitmq, account, "Transaction -> Account: account.debit.requested, account.credit.requested, account.debit.compensation.requested | AMQP | comandos | correlationId")
 Rel(account, rabbitmq, "Publica account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated | AMQP | eventos | correlationId")
