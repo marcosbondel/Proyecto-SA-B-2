@@ -103,28 +103,6 @@ add_image() { # add_image <clave en values.yaml> <nombre del componente>
   IMAGE_ARGS+=(--set-string "$1.image.tag=${IMAGE_TAG}")
 }
 
-# Que base de datos usa cada servicio, por entorno.
-#
-# Las cinco VMs de PostgreSQL que provisiona Terraform son las mismas para dev y
-# para produccion — el enunciado pide las bases en VM, no una VM por entorno — y
-# hasta ahora los dos entornos escribian tambien en las MISMAS bases. Eso hacia
-# que un despliegue a `dev` tocara los datos de produccion, que es exactamente
-# lo que el enunciado prohibe ("no deben afectar el entorno productivo").
-#
-# Con `DB_NAME_SUFFIX=_dev`, el entorno de desarrollo usa `customer_dev`,
-# `account_dev`, etc. sobre esas mismas maquinas: el aislamiento es de datos, no
-# de hardware, que es donde estaba el problema. Produccion no pasa sufijo y
-# conserva los nombres de siempre.
-declare -a DB_ARGS=()
-if [ -n "${DB_NAME_SUFFIX:-}" ]; then
-  DB_ARGS+=(--set-string "databases.customer.name=customer${DB_NAME_SUFFIX}")
-  DB_ARGS+=(--set-string "databases.account.name=account${DB_NAME_SUFFIX}")
-  DB_ARGS+=(--set-string "databases.transaction.name=transaction${DB_NAME_SUFFIX}")
-  DB_ARGS+=(--set-string "databases.payment.name=payment${DB_NAME_SUFFIX}")
-  DB_ARGS+=(--set-string "databases.notificationAudit.name=notification_audit${DB_NAME_SUFFIX}")
-  echo "Entorno con bases propias: sufijo '${DB_NAME_SUFFIX}'"
-fi
-
 add_image services.customer          customer-service
 add_image services.account           account-service
 add_image services.transaction       transaction-service
@@ -142,7 +120,6 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   ${WEB_PUBLIC_URL:+--set-string "gateway.corsAllowedOrigins=${WEB_PUBLIC_URL}"} \
   "${SECRET_ARGS[@]}" \
   "${INFRA_ARGS[@]}" \
-  "${DB_ARGS[@]+"${DB_ARGS[@]}"}" \
   "${IMAGE_ARGS[@]}" \
   --atomic \
   --wait \

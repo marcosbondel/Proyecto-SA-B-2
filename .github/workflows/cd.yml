@@ -234,9 +234,6 @@ jobs:
         env:
           NAMESPACE: dev
           RELEASE_NAME: bank-usac-dev
-          # Bases propias para desarrollo sobre las mismas VMs: un despliegue a
-          # dev no debe tocar los datos de produccion.
-          DB_NAME_SUFFIX: _dev
           IMAGE_TAG: ${{ steps.tag.outputs.value }}
           IMAGE_REGISTRY: ${{ steps.tag.outputs.registry }}
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
