@@ -130,6 +130,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # apps/web's session-guard integration suite drives the real client
+      # router in Chromium through @nuxt/test-utils. pnpm installs Playwright
+      # itself, but browser binaries and their Linux dependencies are separate.
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Restore Turborepo cache
         uses: actions/cache/restore@v6
         with:

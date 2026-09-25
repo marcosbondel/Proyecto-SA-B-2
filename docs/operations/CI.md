@@ -58,7 +58,8 @@ will deploy.
 
 | Step | Command | What it verifies | A failure means |
 | --- | --- | --- | --- |
-| Test | `pnpm test` | The unit suites for every application and package | A unit test regressed |
+| Install Playwright Chromium | `pnpm exec playwright install --with-deps chromium` | The browser and Linux libraries required by the web app's browser integration suite | Chromium or a required runner library could not be installed |
+| Test | `pnpm test` | Unit suites and the web app's integration suites for every application and package | A test regressed |
 | Contract tests | `pnpm test:contract` | `@bank/contracts`'s own Jest suite | A shared contract broke |
 | One database per service | `psql … CREATE DATABASE` | Five databases in one instance — they each run their own migrations and would collide on `schema_migrations` | The service container is not up |
 | Integration suites | `pnpm --filter <pkg> test` with `DATABASE_URL` / `RABBITMQ_URL` | The row lock, the optimistic version, the `CHECK` constraints, deduplication, and the Gateway against a **real broker** | A guarantee the database or the broker enforces just broke |
@@ -69,6 +70,13 @@ Every integration step carries the same guard: **if Jest reports any suite as
 `skipped`, the step fails**. A suite that skips itself still counts green
 otherwise, and that is the defect this guard exists to catch — the pipeline
 would pass identically if the environment variables never reached Jest.
+
+Before `pnpm test`, CI installs Chromium with
+`pnpm exec playwright install --with-deps chromium`. The web app's
+`session-guard.integration.spec.ts` exercises the client-side route middleware
+in a real browser through `@nuxt/test-utils`; installing the Playwright npm
+package alone does not install its browser binary or the runner's Linux
+libraries.
 
 `pnpm test:pyramid --require-executed` is the second half of that idea. Here
 there is a real PostgreSQL and a real RabbitMQ, so an integration suite that
