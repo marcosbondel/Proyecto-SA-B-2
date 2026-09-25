@@ -322,27 +322,21 @@ registry nobody was pulling from. A delivery phase that hands over artifacts the
 deployment cannot reach has not delivered anything. Both halves now read the
 same three variables, so they cannot drift apart again.
 
-### Environment separation
+### Environment separation, and what is *not* separated
 
-Terraform provisions one set of five PostgreSQL VMs, and both environments use
-it — the assignment asks for databases on VMs, not for a VM per environment.
-What used to be shared beyond that was the *data*: `dev` and `prod` wrote to the
-same five databases, so a deploy to `dev` touched production's rows.
+`dev` and `prod` are two namespaces in the same GKE cluster. Each gets its own
+pods, its own in-cluster RabbitMQ and its own MinIO, so compute and messaging
+are genuinely independent.
 
-`DB_NAME_SUFFIX` separates them at the database level. The dev deploy passes
-`_dev` and gets `customer_dev`, `account_dev`, `transaction_dev`,
-`payment_dev`, `notification_audit_dev`; production passes nothing and keeps the
-original names. RabbitMQ and MinIO were already separate, since each namespace
-runs its own in-cluster instance.
+**The five PostgreSQL databases are shared.** Both environments read the same
+`INFRA_ADDRESSES` and the same `HELM_SECRETS`, so a deploy to `dev` writes to
+production's rows and a migration that lands there alters production's schema.
+This is a known, accepted deviation from the assignment's "mantener separación
+entre entornos" — recorded as **TD-070** with the reason and the remedy.
 
-**The five `_dev` databases must exist before the first dev deploy.** On each VM:
-
-```bash
-gcloud compute ssh bank-db-customer --zone us-central1-a --command \
-  "sudo -u postgres psql -c 'CREATE DATABASE customer_dev OWNER customer_app;'"
-```
-
-…and the equivalent on `bank-db-account`, `bank-db-transaction`,
-`bank-db-payment` and `bank-db-notification-audit`, with the matching name and
-owner. Each service runs its own migrations on boot, so an empty database is
-all that is needed.
+The remedy is databases per environment on the same VMs, which the assignment
+allows: it asks for databases *on VMs*, not for a VM per environment. It is not
+applied because it cannot be applied from the pipeline — Terraform gives the VMs
+no public IP, `pg_hba.conf` admits only `10.0.0.0/8`, and each service's role is
+created without `CREATEDB`. Creating those databases needs a person with access
+to the machines. See TD-070 for the exact commands.
