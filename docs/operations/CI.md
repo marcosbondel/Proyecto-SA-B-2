@@ -309,3 +309,40 @@ echo "WIF_SERVICE_ACCOUNT=$SA"
 
 The last two lines print the two repository **variables** to set. There is no
 secret to store, which is the point.
+
+### The registry the release publishes to
+
+`release.yml` publishes to the **same Artifact Registry the deployment pulls
+from** — `<region>-docker.pkg.dev/<project>/<ARTIFACT_REPO>` — derived from the
+same `GKE_ZONE`, `GCP_PROJECT_ID` and `ARTIFACT_REPO` the CD workflow uses.
+
+It published to `ghcr.io` once, and the production deploy failed against
+`v1.1.0` with `context deadline exceeded`: the images existed, verifiably, in a
+registry nobody was pulling from. A delivery phase that hands over artifacts the
+deployment cannot reach has not delivered anything. Both halves now read the
+same three variables, so they cannot drift apart again.
+
+### Environment separation
+
+Terraform provisions one set of five PostgreSQL VMs, and both environments use
+it — the assignment asks for databases on VMs, not for a VM per environment.
+What used to be shared beyond that was the *data*: `dev` and `prod` wrote to the
+same five databases, so a deploy to `dev` touched production's rows.
+
+`DB_NAME_SUFFIX` separates them at the database level. The dev deploy passes
+`_dev` and gets `customer_dev`, `account_dev`, `transaction_dev`,
+`payment_dev`, `notification_audit_dev`; production passes nothing and keeps the
+original names. RabbitMQ and MinIO were already separate, since each namespace
+runs its own in-cluster instance.
+
+**The five `_dev` databases must exist before the first dev deploy.** On each VM:
+
+```bash
+gcloud compute ssh bank-db-customer --zone us-central1-a --command \
+  "sudo -u postgres psql -c 'CREATE DATABASE customer_dev OWNER customer_app;'"
+```
+
+…and the equivalent on `bank-db-account`, `bank-db-transaction`,
+`bank-db-payment` and `bank-db-notification-audit`, with the matching name and
+owner. Each service runs its own migrations on boot, so an empty database is
+all that is needed.
