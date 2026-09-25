@@ -51,13 +51,38 @@ the same "do not recompile what did not change" guarantee `turbo run build
 
 ### Fase 2 — Test (`test`)
 
+The job declares PostgreSQL 18.4 and RabbitMQ 4.3.4 as service containers —
+the same versions `infra/docker/docker-compose.yml` runs, because testing
+against a different PostgreSQL than production ships checks something nobody
+will deploy.
+
 | Step | Command | What it verifies | A failure means |
 | --- | --- | --- | --- |
 | Test | `pnpm test` | The unit suites for every application and package | A unit test regressed |
 | Contract tests | `pnpm test:contract` | `@bank/contracts`'s own Jest suite | A shared contract broke |
+| One database per service | `psql … CREATE DATABASE` | Five databases in one instance — they each run their own migrations and would collide on `schema_migrations` | The service container is not up |
+| Integration suites | `pnpm --filter <pkg> test` with `DATABASE_URL` / `RABBITMQ_URL` | The row lock, the optimistic version, the `CHECK` constraints, deduplication, and the Gateway against a **real broker** | A guarantee the database or the broker enforces just broke |
+| Pyramid shape | `pnpm test:pyramid --require-executed` | The 70/20/10 split, measured per package and for the system | An app drifted out of proportion, or an integration suite did not execute |
+| E2E | `node test/e2e/run-all.mjs` against the full Docker stack | The flows end to end through the seven components | A business flow broke where no single-component test could see it |
 
-Runs on both triggers: a `feature/**` push and a pull request into `develop`,
-exactly the two points the assignment names for this phase.
+Every integration step carries the same guard: **if Jest reports any suite as
+`skipped`, the step fails**. A suite that skips itself still counts green
+otherwise, and that is the defect this guard exists to catch — the pipeline
+would pass identically if the environment variables never reached Jest.
+
+`pnpm test:pyramid --require-executed` is the second half of that idea. Here
+there is a real PostgreSQL and a real RabbitMQ, so an integration suite that
+skipped is not a circumstance — it is the measurement that did not happen, and
+the flag turns it into a failure rather than a footnote.
+
+The E2E steps and the Fase 3 job share one gating rule: they do **not** run on
+a pull request into `develop`, where the assignment asks only that Build and
+Test repeat. Standing up thirteen containers on every iteration costs more than
+it returns. They do run on a pull request into `main`, which is the last gate
+before production.
+
+Build and Test run on both triggers — a `feature/**` push and a pull request
+into `develop` — exactly the two points the assignment names for this phase.
 
 ### Fase 3 — Validación (`validate`)
 
@@ -96,31 +121,29 @@ stays a local, non-blocking habit.
 
 ## What a green run does **not** prove
 
-Every service's `test/repository.integration.spec.ts` is gated
-`describe.skip` when `DATABASE_URL` is unset, and
-`apps/packages/messaging/test/broker.integration.spec.ts` is gated the same
-way on `RABBITMQ_URL`. This pipeline sets neither, by design (see Scope
-below), so a green `test` job:
+This section used to say the pipeline exercised none of the guarantees the
+database and the broker enforce, because it started neither. **That is no
+longer true** — TD-069 closed it, and the integration and E2E steps above now
+run against real dependencies. What a green run still does not prove:
 
-- Never exercises the row lock a concurrent debit relies on, the optimistic
-  `version` that rejects a stale write, or the `CHECK (balance >= 0)`
-  constraint.
-- Never exercises deduplication by `(idempotency_key, type)` or by the
-  envelope's `messageId`.
-- Never exercises the outbox surviving a crash between commit and publish.
-
-Those are exactly the idempotency and failure-handling claims this project is
-judged on — see the same warning in [`AGENTS.md`](../../AGENTS.md#commands).
-This gap is tracked as TD-069 in [`docs/TECH_DEBT.md`](../TECH_DEBT.md).
+- **MinIO is never a live dependency here.** A GitHub Actions service container
+  cannot override a container's `command`, and `minio/minio` needs `server
+  /data`, so object storage stays doubled in the unit suites and is only
+  exercised for real by the E2E steps, which use Docker Compose rather than
+  service containers.
+- **The E2E steps do not run on a pull request into `develop`.** A green check
+  there covers Build and Test, which is what the assignment asks of that
+  trigger — not the end-to-end flows.
+- **`pnpm format:check` is still not a step** (see below).
+- A green pyramid is a statement about *proportion*, not about *quality*. It
+  counts cases; it cannot tell a sharp assertion from a decorative one.
 
 ## Scope: what this pipeline deliberately does not run
 
-- `pnpm test:e2e` / `pnpm test:e2e:happypath` — need the full Docker stack and
-  a browser; they belong to a slower, separate pipeline.
 - `pnpm images:build` / `images:smoke` / `images:flow` — need Docker and
   produce the seven runtime images; that is continuous **deployment**
   territory (T-33), not verification of a pull request.
-- Anything that needs PostgreSQL, RabbitMQ or MinIO as a live dependency.
+- Anything needing MinIO as a service container, for the reason above.
 
 ## Secrets
 
@@ -149,14 +172,37 @@ pnpm build
 pnpm test
 pnpm test:contract
 
+# Fase 2 — las suites de integración, contra dependencias reales.
+# Una por paquete, cada una con su propia variable: ver la sección "Check the
+# ports before trusting them" de AGENTS.md para las cinco URLs.
+pnpm dev:infra
+DATABASE_URL=postgresql://customer_app:changeme@localhost:5433/customer \
+  pnpm --filter customer-service test
+RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
+  pnpm --filter gateway test
+RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
+  pnpm --filter @bank/messaging test
+
+# Fase 2 — la forma de la pirámide
+pnpm test:pyramid
+
+# Fase 2 — E2E (necesita las siete aplicaciones, no solo la infraestructura)
+SEED_DEMO_DATA=true REVEAL_ACTIVATION_LINKS=true pnpm dev
+node test/e2e/run-all.mjs
+
 # Fase 3 — Validación (skip these two if only reproducing a pull-request run)
 pnpm lint
 pnpm typecheck
 ```
 
-To also exercise the suites the pipeline skips, follow the "Check the ports
-before trusting them" section of [`AGENTS.md`](../../AGENTS.md#commands) —
-`pnpm dev:infra` plus a `DATABASE_URL`/`RABBITMQ_URL` per service.
+`pnpm test:pyramid` without the infrastructure still prints the table — the
+cases are *declared* either way — but it lists everything that did not execute
+and says so. Add `--require-executed` to make that a failure, which is how the
+pipeline runs it.
+
+Turbo caches `test`, so a second run reports `FULL TURBO` without executing
+anything. That is a real pass when the inputs are identical, but when you need
+to *see* a suite run, add `--force`.
 
 ## Delivery and Deployment
 

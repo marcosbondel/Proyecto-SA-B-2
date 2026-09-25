@@ -18,6 +18,9 @@ agrega una entrada nueva en vez de editar la existente.
 | [happypath.md](happypath.md) | La guía integral: cada módulo con su camino exitoso frente a sus casos de validación y error, para los tres roles, con las capturas de cada paso. |
 | [validation-report.md](validation-report.md) | El informe de validación: las 68 pruebas con su veredicto una por una, agrupadas en once categorías, y el Quality Score resultante. |
 | [qa-test-results.json](qa-test-results.json) | Las métricas de la última corrida, escritas por la suite. |
+| [pyramid.md](pyramid.md) | La forma de la pirámide de pruebas: unitarias, integración y E2E por paquete y para el sistema, con el objetivo al lado y lo que no llegó a ejecutarse. |
+| [pyramid.json](pyramid.json) | Lo mismo en JSON, para que CI lo lea y lo publique como artefacto. |
+| [pyramid-e2e.json](pyramid-e2e.json) | El recuento por suite E2E, escrito por `test/e2e/run-all.mjs`. Es lo único que le dice a `pnpm test:pyramid` cuántos casos E2E hay, porque medir el E2E exige los siete contenedores en pie y el script no los levanta. |
 
 ## Las capturas
 
@@ -32,14 +35,26 @@ Las tres suites necesitan el stack levantado (`pnpm dev` o `pnpm images:up`) y
 escriben dentro de esta carpeta:
 
 ```bash
+node test/e2e/run-all.mjs                # → pyramid-e2e.json, screenshots/ y qa-test-results.json
 node test/e2e/happypath.e2e.mjs          # → screenshots/ y qa-test-results.json
 node test/e2e/qa-suite.e2e.mjs           # → qa-test-results.json
 node test/e2e/run-cajero-audit-flow.mjs  # → automated_test/
 ```
 
-**Las dos primeras escriben el mismo `qa-test-results.json` con formas
-distintas**, así que la última en correr es la que queda registrada. Hoy el
-archivo contiene la corrida de `qa-suite` del 2026-09-05.
+`run-all.mjs` es el camino que importa: corre las suites por flujo de
+`test/e2e/suites/`, agrega **una sola forma** de JSON y deja el recuento que
+`pnpm test:pyramid` necesita. Los dos scripts sueltos siguen ahí por
+compatibilidad y **escriben el mismo `qa-test-results.json` con formas
+distintas** — `passed`/`details` contra `pass`/`detail` — así que la última en
+correr es la que queda registrada. Ese choque es la razón por la que existe el
+agregador; correr los sueltos después de él pisa su informe.
+
+La pirámide se mide aparte y no necesita navegador:
+
+```bash
+pnpm test:pyramid                   # la tabla; informa lo que no se ejecutó
+pnpm test:pyramid --require-executed # y lo convierte en fallo — así corre en CI
+```
 
 Ocho pasos de [happypath.md](happypath.md) quedaron sin captura porque la última
 corrida no las guardó; están marcados en el texto como pendientes de recapturar.
