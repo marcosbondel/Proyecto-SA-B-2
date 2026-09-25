@@ -9,10 +9,14 @@ workspace "Bank USAC - Transaction Service (Componentes)" "Diagrama de Component
                 # --- interfaces/ ---
                 h_transfer = component "TransferRequestedHandler" "Consume transfer.requested | AMQP | comando" "Consumer AMQP" "Interfaces Layer"
                 h_status = component "TransactionStatusRequestedHandler" "Consume transaction.status.requested | AMQP | comando" "Consumer AMQP" "Interfaces Layer"
+                h_list = component "TransactionListQueryHandler" "Consume transaction.list.query | AMQP | consulta" "Consumer AMQP" "Interfaces Layer"
+                h_stats = component "TransactionStatsQueryHandler" "Consume transaction.stats.query | AMQP | consulta" "Consumer AMQP" "Interfaces Layer"
+                h_kyc_checked = component "CustomerKycCheckedHandler" "Consume customer.kyc.checked | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
                 h_debited = component "AccountDebitedHandler" "Consume account.debited | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
                 h_debit_rejected = component "AccountDebitRejectedHandler" "Consume account.debit.rejected | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
                 h_paid = component "PaymentSucceededHandler" "Consume payment.succeeded | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
                 h_pay_failed = component "PaymentFailedHandler" "Consume payment.failed | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
+                h_attempt_failed = component "PaymentAttemptFailedHandler" "Consume payment.attempt.failed | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
                 h_credited = component "AccountCreditedHandler" "Consume account.credited | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
                 h_credit_rejected = component "AccountCreditRejectedHandler" "Consume account.credit.rejected | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
                 h_compensated = component "AccountDebitCompensatedHandler" "Consume account.debit.compensated | AMQP | evento" "Consumer AMQP" "Interfaces Layer"
@@ -24,7 +28,10 @@ workspace "Bank USAC - Transaction Service (Componentes)" "Diagrama de Component
                 # --- application/ ---
                 uc_request_transfer = component "RequestTransferUseCase" "Abre la Saga: crea Transaction en PENDING" "Caso de uso" "Application Layer"
                 uc_get_status = component "GetTransactionStatusUseCase" "Responde transaction.status.replied" "Caso de uso" "Application Layer"
-                saga = component "SagaCoordinator" "Reacciona a eventos de Account y Payment; decide siguiente paso o compensación" "Handlers de la Saga" "Application Layer"
+                uc_list_tx = component "ListTransactionsUseCase" "Consulta historial con filtros (cuenta, estado, fechas)" "Caso de uso" "Application Layer"
+                uc_get_stats = component "GetTransactionStatsUseCase" "Métricas y volumen para el monitor de la Saga" "Caso de uso" "Application Layer"
+                uc_record_attempt = component "RecordPaymentAttemptUseCase" "Registra intentos de la escalera de reintentos" "Caso de uso" "Application Layer"
+                saga = component "SagaCoordinator" "Reacciona a eventos de KYC, Account y Payment; decide siguiente paso o compensación" "Handlers de la Saga" "Application Layer"
                 port_repo = component "TransactionRepositoryPort" "Contrato de persistencia de Transaction" "Puerto (interfaz)" "Application Layer Port"
                 port_publisher = component "EventPublisherPort" "Contrato de publicación de comandos/eventos" "Puerto (interfaz)" "Application Layer Port"
 
@@ -33,6 +40,7 @@ workspace "Bank USAC - Transaction Service (Componentes)" "Diagrama de Component
                 sub_adapter = component "RabbitMqConsumerAdapter" "Enruta deliveries a los handlers de interfaces/" "Adaptador de consumo" "Infrastructure Layer"
                 amqp = component "AmqpConnectionManager" "Conexión AMQP, ack manual, DLQ" "Integración con el broker" "Infrastructure Layer"
                 repo_impl = component "TransactionPostgresRepository" "Implementa TransactionRepositoryPort sobre PostgreSQL" "Adaptador de persistencia" "Infrastructure Layer"
+                outbox_relay = component "OutboxRelay" "Barrido periódico que lee eventos pendientes del outbox y los publica en RabbitMQ (TD-031)" "Outbox Scheduler" "Infrastructure Layer"
             }
             rabbitmq = container "RabbitMQ" "Broker central de mensajería asíncrona, fuera de kind." "RabbitMQ 4.3.4-management / AMQP" "Message Broker"
         }
@@ -40,10 +48,14 @@ workspace "Bank USAC - Transaction Service (Componentes)" "Diagrama de Component
         # --- interfaces/ -> application/ ---
         bankusac.transaction.h_transfer -> bankusac.transaction.uc_request_transfer "invoca" "llamada interna | síncrono"
         bankusac.transaction.h_status -> bankusac.transaction.uc_get_status "invoca" "llamada interna | síncrono"
+        bankusac.transaction.h_list -> bankusac.transaction.uc_list_tx "invoca" "llamada interna | síncrono"
+        bankusac.transaction.h_stats -> bankusac.transaction.uc_get_stats "invoca" "llamada interna | síncrono"
+        bankusac.transaction.h_kyc_checked -> bankusac.transaction.saga "invoca" "llamada interna | síncrono"
         bankusac.transaction.h_debited -> bankusac.transaction.saga "invoca" "llamada interna | síncrono"
         bankusac.transaction.h_debit_rejected -> bankusac.transaction.saga "invoca" "llamada interna | síncrono"
         bankusac.transaction.h_paid -> bankusac.transaction.saga "invoca" "llamada interna | síncrono"
         bankusac.transaction.h_pay_failed -> bankusac.transaction.saga "invoca" "llamada interna | síncrono"
+        bankusac.transaction.h_attempt_failed -> bankusac.transaction.uc_record_attempt "invoca" "llamada interna | síncrono"
         bankusac.transaction.h_credited -> bankusac.transaction.saga "invoca" "llamada interna | síncrono"
         bankusac.transaction.h_credit_rejected -> bankusac.transaction.saga "invoca" "llamada interna | síncrono"
         bankusac.transaction.h_compensated -> bankusac.transaction.saga "invoca" "llamada interna | síncrono"
@@ -54,31 +66,42 @@ workspace "Bank USAC - Transaction Service (Componentes)" "Diagrama de Component
 
         # --- application/ -> puertos (application/) ---
         bankusac.transaction.uc_request_transfer -> bankusac.transaction.port_repo "persiste transacción" "llamada interna | síncrono"
-        bankusac.transaction.uc_request_transfer -> bankusac.transaction.port_publisher "publica account.debit.requested" "llamada interna | síncrono"
+        bankusac.transaction.uc_request_transfer -> bankusac.transaction.port_publisher "publica customer.kyc.check.requested" "llamada interna | síncrono"
         bankusac.transaction.uc_get_status -> bankusac.transaction.port_repo "lee transacción" "llamada interna | síncrono"
         bankusac.transaction.uc_get_status -> bankusac.transaction.port_publisher "publica transaction.status.replied" "llamada interna | síncrono"
+        bankusac.transaction.uc_list_tx -> bankusac.transaction.port_repo "consulta transacciones con filtros" "llamada interna | síncrono"
+        bankusac.transaction.uc_list_tx -> bankusac.transaction.port_publisher "publica transaction.list.replied" "llamada interna | síncrono"
+        bankusac.transaction.uc_get_stats -> bankusac.transaction.port_repo "agrega estadísticas" "llamada interna | síncrono"
+        bankusac.transaction.uc_get_stats -> bankusac.transaction.port_publisher "publica transaction.stats.replied" "llamada interna | síncrono"
+        bankusac.transaction.uc_record_attempt -> bankusac.transaction.port_repo "persiste intento fallido" "llamada interna | síncrono"
         bankusac.transaction.saga -> bankusac.transaction.port_repo "persiste transición" "llamada interna | síncrono"
-        bankusac.transaction.saga -> bankusac.transaction.port_publisher "publica payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.completed, transaction.failed, transaction.compensated" "llamada interna | síncrono"
+        bankusac.transaction.saga -> bankusac.transaction.port_publisher "publica account.debit.requested, payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.completed, transaction.failed, transaction.compensated" "llamada interna | síncrono"
 
         # --- infrastructure/ implementa puertos de application/ (dependencia hacia adentro) ---
         bankusac.transaction.repo_impl -> bankusac.transaction.port_repo "implementa" "interfaz"
         bankusac.transaction.pub_adapter -> bankusac.transaction.port_publisher "implementa" "interfaz"
 
         # --- infrastructure/ <-> broker y base de datos ---
-        bankusac.transaction.repo_impl -> bankusac.transaction_db "lee/escribe tabla transactions" "TCP/IP | acceso a datos"
+        bankusac.transaction.repo_impl -> bankusac.transaction_db "lee/escribe tabla transactions y outbox" "TCP/IP | acceso a datos"
         bankusac.transaction.pub_adapter -> bankusac.transaction.amqp "usa conexión" "llamada interna"
         bankusac.transaction.sub_adapter -> bankusac.transaction.amqp "usa conexión" "llamada interna"
+        bankusac.transaction.outbox_relay -> bankusac.transaction.repo_impl "lee mensajes pendientes" "llamada interna"
+        bankusac.transaction.outbox_relay -> bankusac.transaction.amqp "publica periódicamente a RabbitMQ" "llamada interna"
         bankusac.transaction.amqp -> bankusac.rabbitmq "conexión AMQP, ack manual, DLQ" "AMQP | conexión"
-        bankusac.transaction.pub_adapter -> bankusac.rabbitmq "publica account.debit.requested, payment.requested, account.credit.requested, account.debit.compensation.requested, transaction.initiated, transaction.completed, transaction.failed, transaction.compensated, transaction.status.replied" "AMQP | comandos/eventos | correlationId"
-        bankusac.rabbitmq -> bankusac.transaction.sub_adapter "entrega transfer.requested, transaction.status.requested, account.debited, account.debit.rejected, payment.succeeded, payment.failed, account.credited, account.credit.rejected, account.debit.compensated" "AMQP | comandos/eventos | correlationId"
+        bankusac.transaction.pub_adapter -> bankusac.rabbitmq "publica comandos/eventos" "AMQP | comandos/eventos | correlationId"
+        bankusac.transaction.rabbitmq -> bankusac.transaction.sub_adapter "entrega comandos/eventos" "AMQP | comandos/eventos | correlationId"
 
         # --- infrastructure/ -> interfaces/ (enrutamiento de deliveries) ---
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_transfer "enruta por messageType" "llamada interna | síncrono"
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_status "enruta por messageType" "llamada interna | síncrono"
+        bankusac.transaction.sub_adapter -> bankusac.transaction.h_list "enruta por messageType" "llamada interna | síncrono"
+        bankusac.transaction.sub_adapter -> bankusac.transaction.h_stats "enruta por messageType" "llamada interna | síncrono"
+        bankusac.transaction.sub_adapter -> bankusac.transaction.h_kyc_checked "enruta por messageType" "llamada interna | síncrono"
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_debited "enruta por messageType" "llamada interna | síncrono"
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_debit_rejected "enruta por messageType" "llamada interna | síncrono"
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_paid "enruta por messageType" "llamada interna | síncrono"
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_pay_failed "enruta por messageType" "llamada interna | síncrono"
+        bankusac.transaction.sub_adapter -> bankusac.transaction.h_attempt_failed "enruta por messageType" "llamada interna | síncrono"
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_credited "enruta por messageType" "llamada interna | síncrono"
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_credit_rejected "enruta por messageType" "llamada interna | síncrono"
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_compensated "enruta por messageType" "llamada interna | síncrono"
