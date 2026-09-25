@@ -8,7 +8,9 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "lint": "eslint .",
-    "test": "node --test \"test/**/*.test.mjs\"",
+    "test": "pnpm test:unit && pnpm test:integration",
+    "test:unit": "node --test \"test/**/*.test.mjs\"",
+    "test:integration": "vitest run",
     "typecheck": "nuxt typecheck",
     "postinstall": "nuxt prepare"
   },
@@ -24,6 +26,10 @@
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
+    "@nuxt/test-utils": "catalog:",
+    "@vue/test-utils": "catalog:",
+    "happy-dom": "catalog:",
+    "vitest": "catalog:",
     "vue-tsc": "^3.3.11"
   }
 }
