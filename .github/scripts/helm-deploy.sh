@@ -111,6 +111,20 @@ add_image services.notificationAudit notification-audit-service
 add_image gateway                    gateway
 add_image web                        web
 
+# El despliegue se lanza SIN `--atomic` y en segundo plano, a proposito.
+#
+# `--atomic` desinstala el release en cuanto expira el plazo, y se lleva por
+# delante los pods — que son la unica fuente que puede decir POR QUE no
+# arrancaron. La primera instalacion en `prod` fallo con `context deadline
+# exceeded` y para cuando helm devolvio el control ya no quedaba nada que
+# preguntar: ni un `describe`, ni un evento, ni un log. Un rollback que borra la
+# evidencia del fallo convierte cada intento en el mismo intento.
+#
+# Asi que aqui el orden se invierte: se espera, y si no llega a tiempo se
+# captura el estado ANTES de revertir. El rollback sigue ocurriendo — solo
+# despues de haber mirado.
+echo "=== helm upgrade --install (sin --atomic; el rollback es explicito abajo) ==="
+set +e
 helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   --install \
   --namespace "$NAMESPACE" \
@@ -121,13 +135,59 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   "${SECRET_ARGS[@]}" \
   "${INFRA_ARGS[@]}" \
   "${IMAGE_ARGS[@]}" \
-  --atomic \
   --wait \
-  --timeout 15m
+  --timeout "${HELM_TIMEOUT:-10m}"
+HELM_STATUS=$?
+set -e
 
-# `--atomic --wait` ya revierte un despliegue que no levanta, pero no dice
-# cual de los siete Deployments fue. Esto lo deja escrito en el log, que es lo
-# que alguien va a leer cuando el rollback ya ocurrio.
+if [ "$HELM_STATUS" -ne 0 ]; then
+  echo "::group::Diagnostico: por que no arrancaron los pods"
+
+  echo "--- Pods ---"
+  kubectl get pods --namespace "$NAMESPACE" -o wide || true
+
+  # `Pending` casi siempre significa que el cluster no tiene sitio; los
+  # CrashLoopBackOff y los ImagePullBackOff se leen en la columna de estado.
+  echo "--- Pods que no estan Running ---"
+  kubectl get pods --namespace "$NAMESPACE" \
+    --field-selector=status.phase!=Running -o wide || true
+
+  echo "--- Eventos del namespace (los ultimos son los que importan) ---"
+  kubectl get events --namespace "$NAMESPACE" \
+    --sort-by=.lastTimestamp | tail -40 || true
+
+  # Para cada pod que no esta listo: por que lo dice Kubernetes, y que dijo el
+  # proceso antes de morir.
+  for pod in $(kubectl get pods --namespace "$NAMESPACE" \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+    listo=$(kubectl get pod "$pod" --namespace "$NAMESPACE" \
+      -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "")
+    [ "$listo" = "true" ] && continue
+
+    echo "--- $pod: condiciones y motivo ---"
+    kubectl describe pod "$pod" --namespace "$NAMESPACE" 2>/dev/null \
+      | sed -n '/Events:/,$p' | head -25 || true
+
+    echo "--- $pod: ultimas lineas del contenedor ---"
+    kubectl logs "$pod" --namespace "$NAMESPACE" --tail=30 --all-containers 2>&1 \
+      | head -40 || true
+  done
+
+  echo "--- Capacidad de los nodos ---"
+  kubectl top nodes 2>/dev/null || echo "(metrics-server no respondio)"
+  kubectl describe nodes 2>/dev/null \
+    | grep -A6 "Allocated resources" | head -30 || true
+
+  echo "::endgroup::"
+
+  # Ahora si: se revierte, con la evidencia ya en el log.
+  echo "::error::El despliegue no alcanzo Ready. Revirtiendo ${RELEASE_NAME} en ${NAMESPACE}."
+  helm uninstall "$RELEASE_NAME" --namespace "$NAMESPACE" --wait --timeout 5m || true
+  exit 1
+fi
+
+# Llegar aqui significa que helm ya espero a que todo estuviera Ready. Esto
+# deja el estado final escrito en el log, para el lector que viene despues.
 echo "=== Estado de los Deployments en ${NAMESPACE} ==="
 kubectl rollout status deployment --namespace "$NAMESPACE" --timeout=5m --selector "app.kubernetes.io/instance=${RELEASE_NAME}" || {
   echo "::error::Un Deployment no completo su rolling update."
