@@ -391,6 +391,203 @@ const runIntegrationTests = !!RABBITMQ_URL;
     }
   });
 
+  it('holds exactly one unacked delivery when prefetch is 1', async () => {
+    // A double can be told to call the handler once and stop; it cannot prove
+    // that the broker itself withholds the second delivery until the first is
+    // acknowledged. `prefetch: 1` is what keeps one slow consumer from being
+    // handed a pile of work it cannot get through — this is a fact about
+    // flow control, not about what our own code decides to do with a message.
+    const queue = `test.prefetch.${randomUUID()}`;
+    // El sufijo de version va al final: `createEnvelope` exige que el nombre
+    // termine en `.vN`, asi que el UUID tiene que ir antes y no despues.
+    const routingKey = `test.prefetch.${randomUUID()}.v1`;
+
+    // The two messages must already be sitting in the queue before a consumer
+    // with prefetch:1 attaches, or RabbitMQ would just hand them out as they
+    // arrive with nothing to withhold. So the queue and its binding are
+    // declared with a raw channel first, and only then does the broker's
+    // consumer attach to it (subscribe's own declaration is idempotent).
+    const setupConnection = await amqp.connect(RABBITMQ_URL!);
+    const setupChannel = await setupConnection.createChannel();
+    await setupChannel.assertQueue(queue, { durable: true });
+    await setupChannel.assertExchange(TEST_EXCHANGE, 'topic', { durable: true });
+    await setupChannel.bindQueue(queue, TEST_EXCHANGE, routingKey);
+
+    const envelopeFor = (n: number): MessageEnvelope<unknown> =>
+      createEnvelope(
+        { n },
+        { messageType: routingKey, producer: 'gateway', identity: null, correlationId: randomUUID() },
+      );
+
+    setupChannel.publish(TEST_EXCHANGE, routingKey, Buffer.from(JSON.stringify(envelopeFor(1))), {
+      persistent: true,
+    });
+    setupChannel.publish(TEST_EXCHANGE, routingKey, Buffer.from(JSON.stringify(envelopeFor(2))), {
+      persistent: true,
+    });
+    await setupChannel.close();
+    await setupConnection.close();
+
+    const broker = new MessageBroker({
+      url: RABBITMQ_URL!,
+      exchanges: [TEST_EXCHANGE],
+      errorExchange: EXCHANGES.errors,
+    });
+    await broker.start();
+
+    const received: MessageEnvelope<unknown>[] = [];
+    let releaseFirst!: () => void;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    try {
+      await broker.subscribe(
+        { queue, bindings: [{ exchange: TEST_EXCHANGE, pattern: routingKey }], prefetch: 1 },
+        async (envelope) => {
+          received.push(envelope);
+          if (received.length === 1) {
+            // Holds the handler open, so the first delivery stays unacked
+            // until the test says otherwise.
+            await firstHeld;
+          }
+        },
+      );
+
+      // Margin of time in which a broker ignoring prefetch would have handed
+      // over the second message too.
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      expect(received).toHaveLength(1);
+
+      releaseFirst();
+
+      await waitFor(() => received.length === 2, 5_000);
+      expect(received).toHaveLength(2);
+      expect(received.map((e) => (e.payload as { n: number }).n)).toEqual([1, 2]);
+    } finally {
+      releaseFirst?.();
+      await broker.stop().catch(() => {});
+
+      const cleanupConnection = await amqp.connect(RABBITMQ_URL!);
+      const cleanupChannel = await cleanupConnection.createChannel();
+      await deleteQueueTolerant(cleanupChannel, queue);
+      await deleteQueueTolerant(cleanupChannel, deadLetterQueueForTest(queue));
+      await cleanupChannel.close();
+      await cleanupConnection.close();
+    }
+  });
+
+  it('never lets a validator-rejected message reach the retry ladder', async () => {
+    // `validator-wiring.spec.ts` proves the catalogue validator's verdicts in
+    // isolation; this proves the *consequence* of a rejection against the real
+    // broker — the whole reason `dispatch` checks the validator before it ever
+    // touches the retry policy. A message the validator refuses is parked on
+    // its first delivery, so it must never appear on `<queue>.retry.1s`: if it
+    // did, the ladder would be retrying something retrying can never fix.
+    const queue = `test.validator-gate.${randomUUID()}`;
+    const retryQueueName = `${queue}.retry.1s`;
+
+    const broker = new MessageBroker({
+      url: RABBITMQ_URL!,
+      exchanges: [TEST_EXCHANGE],
+      errorExchange: EXCHANGES.errors,
+    });
+    await broker.start();
+
+    let handlerRuns = 0;
+    const parked: amqp.ConsumeMessage[] = [];
+    const closeErrorQueue = await bindErrorQueue(`test.validator-gate.errors.${randomUUID()}`, parked);
+
+    try {
+      await broker.subscribe(
+        { queue, bindings: [{ exchange: TEST_EXCHANGE, pattern: TEST_ROUTING_KEY }] },
+        async () => {
+          handlerRuns += 1;
+        },
+        () => ({ ok: false, reason: 'always rejected for this test' }) as const,
+      );
+
+      await broker.publish(
+        TEST_EXCHANGE,
+        TEST_ROUTING_KEY,
+        createEnvelope(
+          { value: 1 },
+          { messageType: TEST_ROUTING_KEY, producer: 'gateway', identity: null, correlationId: randomUUID() },
+        ),
+      );
+
+      await waitFor(() => parked.length === 1, 5_000);
+      expect(handlerRuns).toBe(0);
+
+      const connection = await amqp.connect(RABBITMQ_URL!);
+      const channel = await connection.createChannel();
+      const status = await channel.checkQueue(retryQueueName);
+      expect(status.messageCount).toBe(0);
+      await channel.close();
+      await connection.close();
+    } finally {
+      await closeErrorQueue();
+      await broker.stop().catch(() => {});
+
+      const cleanupConnection = await amqp.connect(RABBITMQ_URL!);
+      const cleanupChannel = await cleanupConnection.createChannel();
+      await deleteQueueTolerant(cleanupChannel, queue);
+      await deleteQueueTolerant(cleanupChannel, retryQueueName);
+      await deleteQueueTolerant(cleanupChannel, `${queue}.retry.5s`);
+      await deleteQueueTolerant(cleanupChannel, `${queue}.retry.30s`);
+      await deleteQueueTolerant(cleanupChannel, deadLetterQueueForTest(queue));
+      await cleanupChannel.close();
+      await cleanupConnection.close();
+    }
+  });
+
+  it('rejects publish() rather than resolving it, when the target exchange does not exist', async () => {
+    // `publish-timeout.spec.ts` proves the *option* that should make a stuck
+    // publish fail is passed through, against a mocked publisher that always
+    // resolves — it cannot prove the promise actually rejects, because the
+    // double it runs against has no way to refuse. This is the case where a
+    // caller's request must come back as "not accepted" rather than hang or
+    // silently succeed: publishing to an exchange this broker instance never
+    // declared, so the confirm channel has nothing to attach the message to.
+    const undeclaredExchange = `test.undeclared.${randomUUID()}`;
+
+    const broker = new MessageBroker({
+      url: RABBITMQ_URL!,
+      // Deliberately does not include `undeclaredExchange` — start() never
+      // asserts it, and nobody else on this broker has either.
+      exchanges: [],
+      errorExchange: `test.undeclared.errors.${randomUUID()}`,
+    });
+    await broker.start();
+
+    try {
+      const envelope = createEnvelope(
+        { value: 1 },
+        { messageType: 'test.undeclared.v1', producer: 'gateway', identity: null },
+      );
+
+      await expect(broker.publish(undeclaredExchange, 'test.undeclared.v1', envelope)).rejects.toBeDefined();
+    } finally {
+      await broker.stop().catch(() => {});
+    }
+  });
+
+  /** The dead-letter queue name `dead-letter.ts` derives from a work queue's name. */
+  function deadLetterQueueForTest(queue: string): string {
+    return `${queue}.dlq`;
+  }
+
+  /** Deletes a queue, tolerating NOT_FOUND — the same tolerance `afterEach` uses above. */
+  async function deleteQueueTolerant(channel: amqp.Channel, name: string): Promise<void> {
+    try {
+      await channel.deleteQueue(name, { ifUnused: false });
+    } catch (error) {
+      if (!String(error).includes('NOT_FOUND')) {
+        throw error;
+      }
+    }
+  }
+
   async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
