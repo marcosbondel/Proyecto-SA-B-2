@@ -167,7 +167,7 @@ deployment phases, and they are wired differently from each other on purpose.
 | --- | --- | --- |
 | `ci.yml` | push to `feature/**`, PR into `develop` or `main` | Build → Test → Validación |
 | `release.yml` | push to `release/**`, tag `v*` | Generates the version, **publishes** seven versioned images to `ghcr.io` |
-| `cd.yml` | push to `develop` / `main` | Deploys to GKE: namespace `dev` from `develop`, namespace `prod` from `main` |
+| `cd.yml` | push to `main` | Deploys to GKE, namespace `prod`. The `dev` deploy was removed — see **TD-071** |
 
 **Production never builds an image.** `cd.yml`'s production job resolves the
 newest `v*` tag and deploys the images `release.yml` already published, which is
@@ -340,3 +340,27 @@ applied because it cannot be applied from the pipeline — Terraform gives the V
 no public IP, `pg_hba.conf` admits only `10.0.0.0/8`, and each service's role is
 created without `CREATEDB`. Creating those databases needs a person with access
 to the machines. See TD-070 for the exact commands.
+
+### Why there is no `dev` deploy
+
+There was one, and it worked: nine Deployments at `1/1` with HPAs measuring real
+CPU. It was removed on 2026-09-25 because the cluster cannot hold it.
+
+The GKE cluster runs **one** node while `variables.tf` declares three. On that
+node the original manual release, `dev` and `prod` together reserve more CPU
+than exists — it reached 1911m requested of ~1930m allocatable, 99%, while
+actually using 11%. Production's first real deploy left seven pods in
+`FailedScheduling: Insufficient cpu`.
+
+`retire-development` (Actions → CD → Run workflow → `retire_dev`) uninstalls the
+dev release and frees its 450m. It is idempotent and needs no gcloud access.
+
+The real fix is the node count, and it needs no code change:
+
+```bash
+gcloud container clusters resize bank-usac-vpc-gke \
+  --node-pool bank-usac-vpc-node-pool --num-nodes 3 \
+  --zone us-central1-a --quiet
+```
+
+With three nodes the dev job can be restored exactly as it was.
