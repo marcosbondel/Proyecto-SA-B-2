@@ -38,6 +38,7 @@ metadata:
     {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
 spec:
   replicas: {{ $cfg.replicaCount | default .Values.replicaCount }}
+  {{- include "bank-usac.updateStrategy" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
@@ -57,10 +58,17 @@ spec:
       labels:
         {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
     spec:
+      {{- include "bank-usac.gracefulShutdown" . | nindent 6 }}
       containers:
         - name: app
           image: "{{ .Values.services.notificationAudit.image.repository }}:{{ .Values.services.notificationAudit.image.tag }}"
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          # Deja de recibir trafico antes de empezar a cerrarse: ver
+          # `bank-usac.gracefulShutdown` en _helpers.tpl.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           ports:
             - name: http
               containerPort: {{ .Values.services.notificationAudit.port }}
