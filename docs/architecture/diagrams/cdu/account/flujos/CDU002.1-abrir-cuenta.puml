@@ -10,16 +10,22 @@ skinparam activity {
 
 |Cliente, Cajero o Administrador|
 start
-:Solicitar apertura con customerId y accountType;
+:Solicitar apertura con customerId, accountType e initialDeposit;
 |Account Service|
-:Validar accountType y elegibilidad del cliente;
-if (¿Tipo y rol permitidos?) then (No)
-    :Rechazar la apertura;
+:Validar accountType y elegibilidad del cliente (C-6);
+if (¿Tipo válido y rol permitido?) then (No)
+    :Rechazar la apertura (ROLE_NOT_ELIGIBLE / FORBIDDEN);
+    stop
 else (Sí)
-    :Crear cuenta ACTIVE con balance 0.00;
-    :Publicar account.opened;
-    |Notification & Audit|
-    :Registrar apertura;
+    if (¿Es AHORRO y depósito inicial < Q50.00?) then (Sí)
+        :Rechazar apertura (MINIMUM_BALANCE_VIOLATION);
+        stop
+    else (No)
+        :Crear cuenta ACTIVE con saldo inicial (Q0.00 o depósito);
+        :Publicar account.opened;
+        |Notification & Audit|
+        :Registrar apertura y clasificar evento;
+    endif
 endif
 stop
 @enduml
