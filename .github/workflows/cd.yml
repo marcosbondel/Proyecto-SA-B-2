@@ -133,6 +133,11 @@ jobs:
 
           echo "configured=true" >> "$GITHUB_OUTPUT"
           echo "Credenciales presentes. Continuando con el despliegue."
+
+
+
+
+
   # ===========================================================================
   # Retirada del entorno de desarrollo.
   #

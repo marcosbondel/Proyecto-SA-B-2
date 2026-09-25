@@ -46,6 +46,20 @@ skinparam node<<serverless>> {
     BorderColor #EA4335
     FontColor #C5221F
 }
+skinparam node<<namespace>> {
+    BackgroundColor #F5F0FF
+    BorderColor #7B4FBF
+    FontColor #4B2E83
+    BorderThickness 2
+}
+
+skinparam node<<namespaceOff>> {
+    BackgroundColor #F7F7F7
+    BorderColor #BBBBBB
+    FontColor #888888
+    BorderThickness 1
+}
+
 skinparam node<<pod>> {
     BackgroundColor #FFFFFF
     BorderColor #EF9425
@@ -92,21 +106,37 @@ node "Google Cloud Platform (GCP)" <<gcpCloud>> {
         }
 
         node "Subred GKE (10.10.0.0/20)" <<subnet>> {
-            node "GKE Managed Cluster" <<gkeCluster>> {
-                
-                node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
-                node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
-                node "Account Service Pods\n[1 Replica]" <<pod>> as podAccount
-                node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
-                node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
-                node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit
+            node "GKE Managed Cluster: bank-usac-vpc-gke" <<gkeCluster>> {
 
-                node "Broker RabbitMQ\nStatefulSet (:5672)" <<pod>> as brokerRabbit
-                node "MinIO Object Storage\nStatefulSet (:9000)" <<pod>> as storageMinio
+                node "Namespace: prod\nrelease bank-usac — imagenes vX.Y.Z" <<namespace>> {
+                    node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
+                    node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
+                    node "Account Service Pods\n[1 Replica — barrido sin leader election]" <<pod>> as podAccount
+                    node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
+                    node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
+                    node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit
+
+                    node "Broker RabbitMQ\n(:5672)" <<pod>> as brokerRabbit
+                    node "MinIO Object Storage\n(:9000)" <<pod>> as storageMinio
+                }
+
+                node "Namespace: dev\n(retirado — ver la nota)" <<namespaceOff>> as nsDev {
+                }
             }
         }
     }
 }
+
+note bottom of nsDev
+  El namespace `dev` existio y se retiro (TD-071):
+  el cluster corre UN nodo mientras Terraform declara
+  tres, y tres copias de la aplicacion reservaban mas
+  CPU de la que hay — 1911m de 1930m, usando 228m.
+  Produccion no cabia.
+  El job `retire-development` de cd.yml lo desinstala
+  y `helm upgrade` lo vuelve a crear cuando el cluster
+  tenga los tres nodos.
+end note
 
 ' Flujos de comunicación
 user --> cloudRunWeb : "HTTPS :443 (Interfaz Web)"

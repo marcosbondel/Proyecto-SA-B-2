@@ -141,3 +141,40 @@ subsets:
         port: {{ $port }}
 {{- end }}
 {{- end -}}
+
+{{/*
+La estrategia de actualizacion, compartida por los siete Deployments.
+
+`maxUnavailable: 0` es lo que hace que un rolling update no tenga caida con una
+sola replica. La estrategia por defecto de Kubernetes permite retirar el 25% de
+los pods antes de tener reemplazo; con `replicas: 1` ese 25% redondea a uno, o
+sea el unico que hay: el Service se queda sin endpoints hasta que el nuevo pasa
+su readiness. Con `maxUnavailable: 0` y `maxSurge: 1` el orden se invierte —
+primero arranca el nuevo, pasa su readiness, y solo entonces muere el viejo.
+
+Cuesta un pod de mas durante la actualizacion, no de forma permanente.
+*/}}
+{{- define "bank-usac.updateStrategy" -}}
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+{{- end }}
+
+{{/*
+El apagado ordenado, que es la otra mitad de "sin caida".
+
+Que el pod nuevo este listo no basta: al viejo le llega SIGTERM en el mismo
+instante en que se le quita de los Endpoints, y esas dos cosas ocurren en
+paralelo — kube-proxy puede tardar en enterarse. Sin el `preStop`, las
+peticiones que ya iban en camino llegan a un proceso que se esta cerrando.
+
+Los cinco segundos no esperan a nada concreto: le dan al plano de datos tiempo
+de sobra para dejar de enrutar hacia este pod antes de que el proceso empiece a
+cerrarse. El `terminationGracePeriodSeconds` los cubre y deja margen para que
+las peticiones en vuelo terminen.
+*/}}
+{{- define "bank-usac.gracefulShutdown" -}}
+terminationGracePeriodSeconds: 30
+{{- end }}
