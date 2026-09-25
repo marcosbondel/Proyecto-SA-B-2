@@ -44,6 +44,15 @@ resources:
     cpu: 250m
     memory: 256Mi
 
+# Horizontal Pod Autoscaling (HPA) - Requisito Fase 2:
+# Autoescalado con umbral objetivo de 80% de utilización de CPU.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+
 # ---------------------------------------------------------------------------
 # How pods reach the databases, RabbitMQ and MinIO outside the cluster
 # (ADR-007). Both modes keep the same in-cluster DNS names
@@ -185,6 +194,9 @@ services:
     image:
       repository: bank-usac/account-service
       tag: dev # always --set at install time — see the note above `services:`
+    # Inactivity sweeper runs inside account-service; keep 1 replica until TD-055
+    autoscaling:
+      enabled: false
     deactivation:
       enabled: "true"
       intervalMs: "86400000"

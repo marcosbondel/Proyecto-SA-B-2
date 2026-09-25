@@ -27,6 +27,7 @@ Related: [bounded-contexts.md](bounded-contexts.md) · [use-cases.md](use-cases.
 | Access credential | Never leaves the service |
 | `role` | `ADMINISTRADOR` \| `CAJERO_RECEPTOR` \| `CLIENTE` |
 | `identityStatus` | `PENDING` \| `VALIDATED` \| `REJECTED` |
+| `kycStatus` | `PENDING` \| `VERIFIED` \| `REJECTED` — Fase 2 (§4.1, p. 4), C-8 |
 | `emailVerifiedAt` | Nullable timestamp |
 | `status` | `PENDING_ACTIVATION` \| `ACTIVE` |
 
@@ -50,6 +51,24 @@ verification. There is no path back in Phase 1.
 `identityStatus`: `PENDING` → `VALIDATED` \| `REJECTED`, and `REJECTED` → `PENDING` when a new
 photo is uploaded.
 
+`kycStatus` (Fase 2): `PENDING` → `VERIFIED` \| `REJECTED`, and `REJECTED` → `PENDING` when a new
+review reopens it. `VERIFIED` is terminal, for the same reason `VALIDATED` is on `identityStatus`
+— re-verifying an already-verified customer would let a later, weaker review silently replace an
+accepted one. A distinct concept from `identityStatus`: that axis is Fase 1's review of the
+document photo; this one is the broader compliance decision a teller or administrator registers
+directly (`customer.set-kyc-status.v1`), and it is what C-8 ties to initiating a transaction.
+
+**A KYC verdict carries `identityStatus` with it**, even though the two are distinct concepts:
+`VERIFIED` also sets `identityStatus = VALIDATED`, and `REJECTED` also sets it to `REJECTED`
+(`setKycStatus`, one `UPDATE` in `saveKycVerdict`). The reasoning is that a teller who registers a
+compliance verdict has, by that act, ruled on the document the verdict was based on — leaving the
+photo review behind at `PENDING` would show an accepted customer with an unreviewed document.
+
+The consequence is worth stating out loud, because it is the cost of that choice: a document
+review already recorded as `REJECTED` is overwritten by a later `VERIFIED` KYC verdict, without
+anybody looking at the photo again. Registering the two separately is what
+`POST /api/customers/:id/identity-verdict` is for.
+
 **The two axes are independent.** Email verification (which enables signing in) and
 identity-document validation (which reviews the photo) are different flows and neither implies
 the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may be
@@ -66,6 +85,7 @@ the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may b
 | C-5 | The date of birth is coherent — in the past, and plausible for a living person | `INVALID_BIRTH_DATE` — rejected |
 | C-6 | Only `role = CLIENTE` requires identity validation and may hold accounts | `ROLE_NOT_ELIGIBLE` when opening an account for staff |
 | C-7 | Verifying a token that is expired, already used or invalidated changes no state | `ACTIVATION_TOKEN_INVALID` — rejected with no effect |
+| C-8 | A `CLIENTE` may initiate a transaction only when `kycStatus = VERIFIED` (Fase 2, §4.1 p. 4) | `mayInitiateTransactions` decides it; enforced inside the transfer Saga since **T-31**, which asks over the broker (`customer.kyc.check.requested.v1` / `customer.kyc.checked.v1`) rather than querying this service's table (X-1) |
 
 ---
 
@@ -78,18 +98,55 @@ the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may b
 | `customerId` | Opaque reference. Always to a `Customer` with `role = CLIENTE` |
 | `balance` | Quetzales, exactly two decimals |
 | `status` | `ACTIVE` \| `INACTIVE` |
-| `accountType` | `MONETARIA` \| `AHORRO`. Classification only in Phase 1 (D-02) |
+| `accountType` | `MONETARIA` \| `AHORRO`. Pure classification through Phase 1 (D-02); carries its own rules as of T-27 |
 | `billerCode` | Optional code for institutional biller collection accounts (EEGSA, Empagua, Claro) |
 | `billerName` | Optional commercial name of institutional biller |
 | `lastActivityAt` | Last confirmed money movement |
 
 ### Account type
 
-`accountType` is recorded, reported on creation and displayed. In Phase 1 it changes **no
-invariant, no state and no flow**, and both types are equally subject to automatic
-deactivation. The assignment requires the two types to exist (§4.1, note on p. 7); it does not
-require them to behave differently. Introducing differentiated rules later is a model change
-and needs a new approval.
+`accountType` is recorded, reported on creation and displayed. Through Phase 1 it changed **no
+invariant, no state and no flow**, and both types were equally subject to automatic
+deactivation. The assignment required the two types to exist (§4.1, note on p. 7); it did not
+require them to behave differently, and the domain said in so many words that introducing
+differentiated rules later was a model change needing a new approval.
+
+**T-27 (Fase 2, §4.1, p. 6) is that approval.** Each type now carries a fixed rule
+(`account-type-rules.ts`), stated the way `deactivation-policy.ts` states its own boundary
+decisions rather than left implicit — the assignment names the two capabilities ("Límite de
+saldo mínimo", "Comisión por transacción (opcional)") but no amounts, and neither when in the
+account's life each applies:
+
+| Type | Minimum balance | Per-debit commission |
+| --- | --- | --- |
+| `MONETARIA` (the assignment's "Corriente") | none | none |
+| `AHORRO` | Q100.00, **to open** | Q3.00, on every debit |
+
+The minimum balance is a condition of **opening** an `AHORRO` account — the initial deposit must
+reach Q100.00, checked once by `openingDepositRefusal`, or the opening is refused
+(`account.open.rejected.v1`, `MINIMUM_BALANCE_VIOLATION`) and no account is created. It is not a
+floor the domain re-enforces afterward: an open `AHORRO` account may be debited down to Q0.00 by
+ordinary transfers, exactly like `MONETARIA`. (An earlier revision of this section described the
+minimum as a floor `debit` checked on every movement; that was corrected before the ticket closed
+— `AHORRO`'s Q100.00 is an entry requirement, not a balance the account must stay above.)
+
+The commission, unlike the minimum, applies for the account's whole life: every `AHORRO` debit
+carries one. It is a fact separate from the transfer itself and travels on its own event,
+`account.commission.charged.v1`, never folded into `account.debited.v1`'s `amount`, because
+Transaction Service compares that field against the amount its own Saga asked to move. Automatic
+deactivation is unaffected — both types remain equally subject to it, and its own Q50.00
+threshold (`MIN_BALANCE_MINOR` in `deactivation-policy.ts`) is a distinct number from
+`AHORRO`'s opening minimum, checked by a different job for a different reason.
+
+**A compensated transfer refunds the commission too (T-29 correction).** Testing T-29's
+`TIMEOUT` scenario end to end surfaced a gap T-27 never actually decided on purpose: `compensate`
+only ever saw the transfer amount, so an `AHORRO` transfer the Saga cancelled after debiting
+still left the customer paying Q3.00 for a transfer that never happened. `CompensateDebitUseCase`
+now has the repository look up the `COMMISSION` row the original debit charged (its own
+`account_operations` entry, found by `transaction_id` inside the same lock that reverses the
+debit), mark it `COMPENSATED`, and hand its amount to `compensate` so the full amount —
+transfer plus commission — returns in one movement. A `MONETARIA` compensation is unaffected:
+there was never a commission to look up.
 
 ### Automatic deactivation
 
@@ -151,7 +208,9 @@ case, a transfer failing at the last step for a reason the sender can neither kn
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING
-    PENDING --> DEBITING
+    PENDING --> PENDING: KYC check ordered (T-31)
+    PENDING --> FAILED: KYC gate refused (nothing to undo)
+    PENDING --> DEBITING: KYC gate approved
     DEBITING --> FAILED: Debit rejected (nothing to undo)
     DEBITING --> PAYMENT_PENDING: Debit applied
     PAYMENT_PENDING --> COMPLETED: Credit applied
@@ -163,7 +222,8 @@ stateDiagram-v2
 
 
 `COMPLETED`, `FAILED` and `COMPENSATED` are terminal. Any transition not drawn above is illegal
-and is discarded.
+and is discarded. `FAILED` is reachable from two places, both before any money moves: a KYC
+refusal (T-31) and a rejected debit.
 
 **`FAILED` and `COMPENSATED` are not the same thing.** `FAILED` means money never left the
 source account. `COMPENSATED` means it left and was returned. They are two different
@@ -180,6 +240,43 @@ operational situations and the audit record has to be able to tell them apart.
 | T-5 | A repeated event produces no second transition and no second compensation | Silently discarded; the envelope's `messageId` was already processed |
 | T-6 | An event requesting a transition not in the diagram is discarded and recorded | `ILLEGAL_TRANSITION` in the audit record, no state change |
 | T-7 | Any transaction that left `DEBITING` with the debit applied ends in `COMPLETED` or `COMPENSATED`, never in `FAILED` | Saga guarantee |
+
+### Phase status (T-28)
+
+Fase 2 of the assignment names three states — `PENDING`, `APPROVED`, `FAILED` — coarser
+than the six above. Rather than a seventh vocabulary the machine has to agree with, it is a
+**projection** computed from `status` by `phaseStatusOf` in the domain and never stored:
+`PENDING`/`DEBITING`/`PAYMENT_PENDING` read as `PENDING`, `COMPLETED` as `APPROVED`,
+`FAILED`/`COMPENSATED` as `FAILED`. It is carried on `transaction.list.replied.v1` and
+`transaction.status.replied.v1` alongside `status`, and both vocabularies are available as
+listing filters — naming both narrows to their overlap.
+
+### Real history (T-28)
+
+**Table**: `transaction_transitions` · **Owner**: Transaction Service, this service's own
+database only.
+
+| Column | Notes |
+| --- | --- |
+| `transactionId` | Opaque reference to the owning transaction |
+| `fromStatus` | Null only on the opening row — the transfer's acceptance, which nothing preceded |
+| `toStatus` | One of the six states above |
+| `eventType` | The message type that caused this row, or `transfer.requested.v1` for the opening one |
+| `failureReason` | Set exactly when the transition records a cause |
+| `messageId` | Null only on the opening row; the envelope's `messageId` for every other |
+| `occurredAt` | — |
+
+One row per legal transition `applyEvent` actually applies — self-transitions on
+`PAYMENT_PENDING` included, since those are the ones that order the payment, the credit and
+the compensation — written inside the same database transaction as the state change it
+records. Illegal transitions are not here: they moved nothing, and T-6's own record in
+`transaction_events` and `processed_messages.outcome` already covers them. A unique index on
+`(transactionId, messageId)` makes T-5 (no second row for a redelivered message) a fact about
+this table, not only about `processed_messages`'s own primary key.
+
+Exposed as `transitions` on `transaction.status.replied.v1`, oldest first — the answer to
+"what happened to this transfer, step by step", as opposed to the timeline a screen can
+already draw from `status` alone.
 
 ---
 
@@ -199,6 +296,18 @@ operational situations and the audit record has to be able to tell them apart.
 `PENDING` → `SUCCEEDED` \| `FAILED`. Retries happen **inside** `PENDING`, incrementing
 `attempt`; `FAILED` is reached only when retries are exhausted, and is terminal.
 
+### The simulated external provider (T-29)
+
+Each attempt asks a simulated provider — deterministic, chosen by the
+demonstration `scenario` carried from the transfer request — and records what
+it answered: `SUCCESS`, `FAILURE`, or `TIMEOUT`. This `providerResult` is
+distinct from `errorType`: `errorType` is the retry policy's own statement
+about whether an attempt is worth retrying (`TRANSIENT` vs `PERMANENT`), while
+`providerResult` is what the provider itself said. A `TRANSIENT_FAILURE`
+scenario and a `TIMEOUT` scenario both produce `errorType: 'TRANSIENT'` and
+climb the identical retry ladder — `providerResult` is the only fact that
+tells the two apart in the record kept of each attempt.
+
 ### Invariants
 
 | # | Invariant | Expected failure |
@@ -213,10 +322,21 @@ operational situations and the audit record has to be able to tell them apart.
 
 **Owner**: Notification & Audit Service · **Identity**: `eventId`
 
-Attributes: event type, `timestamp`, `payload`, `correlationId`, originating service.
+Attributes: event type, `timestamp`, `payload`, `correlationId`, originating service,
+`severity` (`INFO` \| `WARNING` \| `ERROR`, nullable — T-30).
 
 **No states.** It is an append-only record and it is **immutable**: never modified, never
 deleted, not even by an `ADMINISTRADOR`.
+
+**`severity` (T-30)** is computed once, by a pure function of `(messageType,
+processingStatus, parked)` — never of the payload, so a severity is always re-derivable
+from the row a reader already has. `ERROR` means this service itself failed to record the
+message, or the message reached the trail through the `bank.errors` drain after
+exhausting its retry ladder; `WARNING` means an expected business refusal with nothing to
+undo, or a payload this consumer could not read; `INFO` means the system did what was
+asked. Nullable and never backfilled: a row recorded before this axis existed reports
+`NULL` rather than an invented classification, which the append-only invariant (E-1
+below, restated) forbids correcting after the fact.
 
 ### Invariants
 
@@ -225,6 +345,7 @@ deleted, not even by an `ADMINISTRADOR`.
 | E-1 | Every `AuditEvent` carries a `correlationId` | Record rejected; an event without correlation is not auditable |
 | E-2 | An already recorded `eventId` is not recorded twice | Silently discarded |
 | E-3 | The `payload` contains no access credential and no full identity document number | A model violation, not a runtime error — it is caught in review |
+| E-4 | Every processable event receives exactly one `severity` (T-30) | `severity` computed and persisted alongside the row, in the same insert |
 
 ---
 
@@ -232,7 +353,7 @@ deleted, not even by an `ADMINISTRADOR`.
 
 **Owner**: Notification & Audit Service
 
-Attributes: `notificationId`, `customerId` (for recipient inbox scoping), `recipient`, `subject`, `channel`, `type`, `status` (`PENDING` \| `SENT` \| `FAILED`), `readAt`, `causedBy`, `referenceId`, `correlationId`, attempts.
+Attributes: `notificationId`, `customerId` (for recipient inbox scoping), `recipient`, `subject`, `channel`, `type`, `status` (`PENDING` \| `SENT` \| `FAILED`), `readAt`, `causedBy`, `referenceId`, `correlationId`, `severity` (`INFO` \| `WARNING` \| `ERROR`, nullable — T-30), attempts.
 
 ### Invariants
 

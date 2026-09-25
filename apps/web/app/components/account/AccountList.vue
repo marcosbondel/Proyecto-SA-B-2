@@ -47,9 +47,14 @@ defineProps<{ accounts: readonly AccountSummary[]; showHolder?: boolean }>();
           >{{ account.accountId }}</td>
           <td
             v-if="showHolder"
-            class="border-t border-[#E9E9EC] py-4 pr-4 font-mono text-[13px] text-[#5A5B63]"
-            style="font-variant-numeric: tabular-nums lining-nums"
-          >{{ account.customerId }}</td>
+            class="border-t border-[#E9E9EC] py-4 pr-4 text-[13px]"
+          >
+            <div class="font-medium text-[#23242A]">{{ account.holderName ?? '—' }}</div>
+            <div
+              class="font-mono text-[11px] text-[#75767F]"
+              style="font-variant-numeric: tabular-nums lining-nums"
+            >{{ account.customerId }}</div>
+          </td>
           <td class="border-t border-[#E9E9EC] py-4 pr-4">
             <AccountStatusBadge :status="account.status" />
           </td>

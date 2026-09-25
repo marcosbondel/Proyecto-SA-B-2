@@ -13,11 +13,13 @@ Table audit_events {
   causation_id uuid
   payload jsonb [not null, note: 'Payload previamente redactado sin credenciales']
   processing_status varchar(20) [not null, note: 'PROCESSED, INVALID, ERROR']
+  severity varchar(10) [note: 'INFO, WARNING, ERROR (T-30) — nullable, sin backfill: NULL en filas anteriores a esta columna']
 
   indexes {
     (event_id, consumer) [pk]
     (correlation_id, occurred_at) [name: 'audit_events_correlation_idx']
     (message_type, occurred_at) [name: 'audit_events_type_idx']
+    (severity, occurred_at) [name: 'audit_events_severity_idx']
   }
   Note: 'Bitácora global inmutable de todos los eventos del sistema bancario'
 }
@@ -36,6 +38,7 @@ Table notifications {
   read_at timestamptz [note: 'Fecha/hora de lectura por el cliente en buzón']
   created_at timestamptz [not null, default: `now()`]
   processed_at timestamptz
+  severity varchar(10) [note: 'INFO, WARNING, ERROR (T-30) — nullable, sin backfill']
 
   indexes {
     (correlation_id, created_at) [name: 'notifications_correlation_idx']

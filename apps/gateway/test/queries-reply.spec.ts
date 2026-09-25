@@ -9,6 +9,8 @@ import {
   accountListRepliedV1,
   accountOperationsQueryV1,
   accountOperationsRepliedV1,
+  auditEventsListQueryV1,
+  auditEventsListRepliedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
   notificationListQueryV1,
@@ -300,6 +302,38 @@ describe('the five queries that wait for an answer', () => {
       expect(response.body.status).toBe('COMPLETED');
     });
 
+    it('passes phaseStatus and the transition history through untouched', async () => {
+      harness.replier.answerWith(transactionStatusRepliedV1.name, {
+        outcome: 'FOUND',
+        transactionId: TRANSACTION,
+        status: 'COMPLETED',
+        phaseStatus: 'APPROVED',
+        amount: { amountMinor: 125_000, currency: 'GTQ' },
+        reason: null,
+        createdAt: '2026-08-19T14:32:08.100Z',
+        updatedAt: '2026-08-19T14:32:09.100Z',
+        transitions: [
+          { from: null, to: 'PENDING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.100Z' },
+          { from: 'PENDING', to: 'DEBITING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.200Z' },
+        ],
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/transfers/${TRANSACTION}`)
+        .set('Authorization', client);
+
+      expect(response.status).toBe(200);
+      expect(response.body.phaseStatus).toBe('APPROVED');
+      expect(response.body.transitions).toHaveLength(2);
+      expect(response.body.transitions[0]).toEqual({
+        from: null,
+        to: 'PENDING',
+        event: 'transfer.requested.v1',
+        reason: null,
+        occurredAt: '2026-08-19T14:32:08.100Z',
+      });
+    });
+
     it('reports an unknown transaction as 409 rather than inventing a 404 body', async () => {
       harness.replier.answerWith(transactionStatusRepliedV1.name, { outcome: 'NOT_FOUND' });
 
@@ -388,6 +422,48 @@ describe('the five queries that wait for an answer', () => {
       expect(response.status).toBe(200);
       expect(response.body.events[0].processingStatus).toBe('PROCESSED');
       expect(response.body.events[0].payload.amount).toBe('[redactado]');
+    });
+  });
+
+  describe('recent audit events, optionally by severity (§4.1, T-30)', () => {
+    it('passes the severity filter through to the query', async () => {
+      harness.replier.answerWith(auditEventsListRepliedV1.name, {
+        events: [
+          {
+            eventId: TRANSACTION,
+            messageType: 'transaction.compensated.v1',
+            producer: 'transaction-service',
+            occurredAt: '2026-08-19T14:32:08.100Z',
+            correlationId: TRACE,
+            processingStatus: 'PROCESSED',
+            consumer: 'audit.transaction',
+            payload: {},
+            severity: 'ERROR',
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 10,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/api/audit/recent?severity=ERROR')
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(200);
+      expect(harness.publisher.lastType).toBe(auditEventsListQueryV1.name);
+      expect(harness.publisher.published[0]?.payload).toMatchObject({ severity: 'ERROR' });
+      expect(response.body.events[0].severity).toBe('ERROR');
+    });
+
+    it('refuses a severity outside INFO/WARNING/ERROR, without asking anyone', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/audit/recent?severity=CATASTROPHIC')
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(400);
+      expect(response.body.field).toBe('severity');
+      expect(harness.publisher.published).toHaveLength(0);
     });
   });
 
@@ -513,6 +589,42 @@ describe('the five queries that wait for an answer', () => {
         .set('Authorization', client);
 
       expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('carries phaseStatus and the date range through, normalised to strict ISO 8601', async () => {
+      harness.replier.answerWith(transactionListRepliedV1.name, { transactions: [], total: 0 });
+
+      await request(app.getHttpServer())
+        .get('/api/transfers')
+        .query({ phaseStatus: 'APPROVED', from: '2026-08-01', to: '2026-08-31' })
+        .set('Authorization', client);
+
+      expect(harness.publisher.published[0]!.payload).toEqual({
+        phaseStatus: 'APPROVED',
+        from: new Date('2026-08-01').toISOString(),
+        to: new Date('2026-08-31').toISOString(),
+      });
+    });
+
+    it('refuses a phaseStatus outside Fase 2’s three names, publishing nothing', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/transfers')
+        .query({ phaseStatus: 'DEBITING' })
+        .set('Authorization', client);
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('refuses a reversed date range before asking anyone', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/transfers')
+        .query({ from: '2026-08-31', to: '2026-08-01' })
+        .set('Authorization', client);
+
+      expect(response.status).toBe(400);
+      expect(response.body.field).toBe('from');
       expect(harness.publisher.published).toHaveLength(0);
     });
   });

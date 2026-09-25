@@ -3,7 +3,7 @@ import type { FailureCode } from '@bank/contracts';
 import type { GatewayErrorType } from './gateway-error';
 
 /**
- * Which HTTP status stands for each of the catalogue's twenty-four failure codes.
+ * Which HTTP status stands for each of the catalogue's twenty-five failure codes.
  *
  * **A table, not a chain of conditionals**, and the difference is not
  * stylistic. Translating a verdict someone else reached is routing; deciding
@@ -52,10 +52,16 @@ export const FAILURE_CODE_STATUS: Readonly<Record<FailureCode, number>> = {
   INVALID_AMOUNT_PRECISION: 422,
   SAME_ACCOUNT_TRANSFER: 422,
   INSUFFICIENT_FUNDS: 422,
+  // Added by T-27: a debit that clears the amount but breaks the account
+  // type's minimum-balance floor — same "well-formed, domain refuses it" shape.
+  MINIMUM_BALANCE_VIOLATION: 422,
   IDENTITY_DOCUMENT_UNREADABLE: 422,
   IDENTITY_DIGEST_MISMATCH: 422,
   PAYMENT_DECLINED: 422,
   PAYMENT_RETRIES_EXHAUSTED: 422,
+  // Added by T-31: the Saga's own KYC gate, refused before any debit — same
+  // "well-formed, domain refuses it" shape as the other transfer rejections.
+  KYC_NOT_VERIFIED: 422,
 
   /*
    * Forbidden — the request is well-formed and the actor is authenticated, but

@@ -7,6 +7,8 @@
  * second `if` in a handler is how one event ends up notifying twice.
  */
 
+import { classify, type EventSeverity } from './classification';
+
 export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED';
 
 export interface Notification {
@@ -34,6 +36,11 @@ export interface Notification {
   readonly customerId: string | null;
   /** When the recipient read it, or `null` while it is still unread. */
   readonly readAt: Date | null;
+  /**
+   * The severity of the event that caused it. See `NotificationIntent.severity`.
+   * `null` for a row created before T-30 — see `migrations.ts`.
+   */
+  readonly severity: EventSeverity | null;
 }
 
 /** What the policy decides, before an id or a clock is involved. */
@@ -41,6 +48,13 @@ export interface NotificationIntent {
   readonly type: string;
   readonly subject: string;
   readonly referenceId: string | null;
+  /**
+   * The severity of the event that caused this notification, computed by
+   * `classify()` rather than written by hand in `POLICY` below — so the
+   * severity attached to a notification and the severity attached to the
+   * audit row it came from can never disagree.
+   */
+  readonly severity: EventSeverity;
   /**
    * The path a real email would link to, when the message carries what it takes
    * to build one. Today that is exactly one message: the activation event, the
@@ -58,7 +72,7 @@ export interface NotificationIntent {
 /**
  * Which events produce a notification, and what it says.
  *
- * Fourteen entries and not sixty-eight. The trail records everything; the *inbox*
+ * Fifteen entries and not sixty-eight. The trail records everything; the *inbox*
  * records the things a person would want to be told, and a notification for
  * `account.debit.requested.v1` would be the bank narrating its own plumbing.
  * The three the ticket names — completed, failed, compensated — are the first
@@ -147,6 +161,21 @@ const POLICY: Readonly<
     subject: 'No pudimos verificar tu identidad',
     reference: 'customerId',
   },
+  /*
+   * Added by T-31, alongside the Saga's own KYC gate: the customer whose
+   * transfer this later blocks should hear the verdict from the bank, not
+   * only discover it as a rejected transfer with no explanation.
+   */
+  'customer.kyc.verified.v1': {
+    type: 'kyc.verified',
+    subject: 'Verificamos tu identidad para operaciones (KYC)',
+    reference: 'customerId',
+  },
+  'customer.kyc.rejected.v1': {
+    type: 'kyc.rejected',
+    subject: 'No pudimos completar tu verificación de identidad (KYC)',
+    reference: 'customerId',
+  },
   'account.opened.v1': {
     type: 'account.opened',
     subject: 'Tu cuenta fue creada',
@@ -186,6 +215,7 @@ export function notificationFor(messageType: string, payload: unknown): Notifica
     type: rule.type,
     subject: rule.subject,
     referenceId: readString(payload, rule.reference),
+    severity: classify({ messageType, processingStatus: 'PROCESSED' }),
     ...(link === null ? {} : { link }),
   };
 }
@@ -275,7 +305,9 @@ export function subjectCustomerIdFrom(messageType: string, payload: unknown): st
   if (
     !messageType.startsWith('customer.') &&
     !messageType.startsWith('transaction.') &&
-    messageType !== 'account.opened.v1'
+    messageType !== 'account.opened.v1' &&
+    messageType !== 'account.deactivated.v1' &&
+    messageType !== 'account.reactivated.v1'
   ) {
     return null;
   }
@@ -309,7 +341,7 @@ export function deliverableEmailFrom(messageType: string, payload: unknown): str
 }
 
 /**
- * The two events sanctioned to carry a real address, and the reason both are.
+ * The events sanctioned to carry a real address, and the reason they are.
  *
  * Neither email can be delivered without one, and neither reaches a person who
  * has a session — one is finishing a sign-up, the other has lost their
@@ -319,6 +351,7 @@ const DELIVERABLE = new Set([
   'customer.activation.requested.v1',
   'customer.password-reset.issued.v1',
   'customer.identity.rejected.v1',
+  'customer.password-changed.v1',
 ]);
 
 function readString(payload: unknown, field: string): string | null {

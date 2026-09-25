@@ -25,6 +25,10 @@ import { MAX_ATTEMPTS, RETRY_LADDER_MS, formatDelay } from '../../lib/payment';
  * round numbers. Somebody running the demonstration needs to know how long to
  * wait before deciding it hung, and "falla y se reintenta" does not tell them.
  *
+ * T-29 added a fourth option, `TIMEOUT`: the provider not answering at all,
+ * distinct from `TRANSIENT_FAILURE`'s "answered no, ask again". Both climb the
+ * same ladder, which is why the legend below treats them alike.
+ *
  * Owned by T-19.
  */
 const model = defineModel<PaymentScenario | null>({ default: null });
@@ -67,7 +71,7 @@ const ladder = computed(() => RETRY_LADDER_MS.map((delay) => formatDelay(delay))
 
     <p v-if="chosen" class="text-[13px] leading-5 text-[#5A5B63]">
       {{ chosen.description }}
-      <template v-if="chosen.value === 'TRANSIENT_FAILURE'">
+      <template v-if="chosen.value === 'TRANSIENT_FAILURE' || chosen.value === 'TIMEOUT'">
         Son hasta {{ MAX_ATTEMPTS }} intentos, con esperas de {{ ladder }} entre uno y otro,
         así que la transferencia puede tardar en cerrar. El panel de resultado muestra en qué
         intento va.

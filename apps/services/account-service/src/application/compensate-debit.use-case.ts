@@ -18,6 +18,13 @@ import type { AccountRepository, Clock, EventPublisher } from './ports';
  *
  * "Exactly once" is criterion 5 and it is the idempotency record that provides
  * it: a redelivery re-announces the same compensation without moving anything.
+ *
+ * **Reverses the commission too, when the debit charged one.** `decide` is
+ * handed `commissionToReverse` by the repository — found from the debit's own
+ * `account_operations` row, not carried on this event — so `compensate` folds
+ * it into what comes back. Before this, a compensated `AHORRO` transfer
+ * returned the transfer amount and kept the fee: the bank cancelled the
+ * transfer and still charged for moving money that never moved.
  */
 export class CompensateDebitUseCase {
   readonly #repository: AccountRepository;
@@ -64,7 +71,8 @@ export class CompensateDebitUseCase {
       transactionId: payload.transactionId,
       idempotencyKey,
       messageType,
-      decide: (account) => compensate(account, payload.amount, now),
+      decide: (account, commissionToReverse) =>
+        compensate(account, payload.amount, commissionToReverse, now),
       // Marks the original debit COMPENSATED, so the statement does not read as
       // a debit and an unrelated deposit.
       compensates: { transactionId: payload.transactionId },

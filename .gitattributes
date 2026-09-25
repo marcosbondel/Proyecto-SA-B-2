@@ -1,0 +1,7 @@
+# Shell scripts run inside Linux containers (RabbitMQ init, image builds,
+# k8s tooling). A CRLF shebang line fails to exec there — the kernel looks
+# for an interpreter literally named "/usr/bin/env bash\r" and gives up with
+# exit 127. Windows checkouts with core.autocrlf=true otherwise convert these
+# to CRLF on every clone/checkout, which is what broke `pnpm dev`'s
+# `rabbitmq-init` step. Force LF regardless of the client's autocrlf setting.
+*.sh text eol=lf

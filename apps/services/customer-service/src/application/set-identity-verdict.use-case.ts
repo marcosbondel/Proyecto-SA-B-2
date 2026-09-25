@@ -1,7 +1,8 @@
 import {
-  customerActivationRequestedV1,
   customerIdentityRejectedV1,
   customerIdentityValidatedV1,
+  customerKycRejectedV1,
+  customerKycVerifiedV1,
 } from '@bank/contracts';
 import type { CustomerSetIdentityVerdictV1, Identity } from '@bank/contracts';
 
@@ -25,7 +26,6 @@ export class SetIdentityVerdictUseCase {
   readonly #repository: CustomerRepository;
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
-  readonly #tokens?: ActivationTokenFactory;
 
   constructor(dependencies: {
     readonly repository: CustomerRepository;
@@ -36,7 +36,6 @@ export class SetIdentityVerdictUseCase {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
-    this.#tokens = dependencies.tokens;
   }
 
   public async execute(
@@ -108,25 +107,14 @@ export class SetIdentityVerdictUseCase {
         },
       });
 
-      if (this.#tokens !== undefined && existing.status === 'PENDING_ACTIVATION') {
-        const activation = this.#tokens.issue();
-        const expiresAt = new Date(now.getTime() + 86_400_000).toISOString();
-        await this.#repository.saveActivationToken({
+      await this.#publisher.publish({
+        messageType: customerKycVerifiedV1.name,
+        payload: {
           customerId: updated.customerId,
-          tokenHash: activation.tokenHash,
-          expiresAt,
-        });
-
-        await this.#publisher.publish({
-          messageType: customerActivationRequestedV1.name,
-          payload: {
-            customerId: updated.customerId,
-            email: updated.email,
-            expiresAt,
-            activationToken: activation.token,
-          },
-        });
-      }
+          kycStatus: 'VERIFIED',
+          verifiedAt: now.toISOString(),
+        },
+      });
       return;
     }
 
@@ -135,13 +123,19 @@ export class SetIdentityVerdictUseCase {
       payload: {
         customerId: updated.customerId,
         identityStatus: 'REJECTED',
-        // A human refusal maps to the code that means "the document was not
-        // acceptable" from the customer's side; a teller who refuses it is
-        // saying exactly that.
         reason: 'IDENTITY_DOCUMENT_UNREADABLE',
         rejectedAt: now.toISOString(),
         email: existing.email,
         fullName: existing.fullName,
+      },
+    });
+
+    await this.#publisher.publish({
+      messageType: customerKycRejectedV1.name,
+      payload: {
+        customerId: updated.customerId,
+        kycStatus: 'REJECTED',
+        rejectedAt: now.toISOString(),
       },
     });
   }

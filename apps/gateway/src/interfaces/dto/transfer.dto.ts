@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsDefined,
   IsIn,
+  IsISO8601,
   IsInt,
   IsObject,
   IsOptional,
@@ -15,7 +16,7 @@ import {
 } from 'class-validator';
 import { MAX_TRANSACTION_ROWS } from '@bank/contracts';
 
-const SCENARIOS = ['APPROVE', 'REJECT', 'TRANSIENT_FAILURE'] as const;
+const SCENARIOS = ['APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT'] as const;
 
 /** The six states of the machine, as the listing may filter by them. */
 const TRANSACTION_STATUSES = [
@@ -26,6 +27,9 @@ const TRANSACTION_STATUSES = [
   'FAILED',
   'COMPENSATED',
 ] as const;
+
+/** Fase 2's three states (T-28) — a separate filter from `status`, never a wider version of it. */
+const PHASE_STATUSES = ['PENDING', 'APPROVED', 'FAILED'] as const;
 
 /** Money on the wire: an integer of minor units, never a float. */
 export class MoneyDto {
@@ -84,6 +88,10 @@ export class TransferDto {
   @IsOptional()
   @IsIn(SCENARIOS, { message: `El escenario de pago debe ser uno de: ${SCENARIOS.join(', ')}.` })
   public paymentScenario?: (typeof SCENARIOS)[number];
+
+  @IsOptional()
+  @IsUUID('4', { message: 'El customerId debe ser un UUID v4.' })
+  public customerId?: string;
 }
 
 /**
@@ -109,6 +117,25 @@ export class ListTransfersQueryDto {
     message: `El estado debe ser uno de: ${TRANSACTION_STATUSES.join(', ')}.`,
   })
   public status?: (typeof TRANSACTION_STATUSES)[number];
+
+  /**
+   * Fase 2's vocabulary (T-28), a separate field from `status` — naming both
+   * narrows to their overlap rather than one silently widening the other.
+   */
+  @IsOptional()
+  @IsIn(PHASE_STATUSES, {
+    message: `La fase debe ser una de: ${PHASE_STATUSES.join(', ')}.`,
+  })
+  public phaseStatus?: (typeof PHASE_STATUSES)[number];
+
+  /** Both ends inclusive, against the date the transfer was requested. */
+  @IsOptional()
+  @IsISO8601({}, { message: 'La fecha inicial debe tener formato ISO 8601.' })
+  public from?: string;
+
+  @IsOptional()
+  @IsISO8601({}, { message: 'La fecha final debe tener formato ISO 8601.' })
+  public to?: string;
 
   /**
    * Coerced from the query string, where everything is text. Without the

@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto';
 import type { CustomerRegisterV1 } from '@bank/contracts';
 
 import { AuthenticateCustomerUseCase } from '../src/application/authenticate-customer.use-case';
+import { CheckKycUseCase } from '../src/application/check-kyc.use-case';
 import { GetCustomerUseCase } from '../src/application/get-customer.use-case';
 import { GetIdentityDocumentUseCase } from '../src/application/get-identity-document.use-case';
 import { GetPendingValidationUseCase } from '../src/application/get-pending-validation.use-case';
 import { RegisterCustomerUseCase } from '../src/application/register-customer.use-case';
 import { SetIdentityVerdictUseCase } from '../src/application/set-identity-verdict.use-case';
+import { SetKycStatusUseCase } from '../src/application/set-kyc-status.use-case';
 import { UpdateCustomerUseCase } from '../src/application/update-customer.use-case';
 import { ValidateIdentityUseCase } from '../src/application/validate-identity.use-case';
 import { VerifyEmailActivationUseCase } from '../src/application/verify-email-activation.use-case';
@@ -80,6 +82,8 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
     getCustomer: new GetCustomerUseCase({ repository, publisher }),
     getIdentityDocument: new GetIdentityDocumentUseCase({ repository, publisher, stager }),
     setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
+    setKycStatus: new SetKycStatusUseCase({ repository, publisher, clock }),
+    checkKyc: new CheckKycUseCase({ repository, publisher }),
     pending: new GetPendingValidationUseCase({ repository, publisher }),
     authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
     verifyEmail: new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
@@ -95,7 +99,10 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
 
     expect(context.repository.customers.size).toBe(1);
     expect(context.repository.documents).toHaveLength(1);
-    expect(context.publisher.typesPublished()).toEqual(['customer.registered.v1']);
+    expect(context.publisher.typesPublished()).toEqual([
+      'customer.registered.v1',
+      'customer.activation.requested.v1',
+    ]);
   });
 
   it('generates the username from the name and publishes it', async () => {
@@ -108,7 +115,7 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
     });
   });
 
-  it('sends the activation email when teller validates identity, and no account can sign in yet', async () => {
+  it('sends the activation email upon registration, and validates identity on staff approval', async () => {
     const context = build();
 
     await context.register.execute(REGISTER, 'key-1');
@@ -116,14 +123,23 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
       'PENDING_ACTIVATION',
     );
 
+    const activation = context.publisher.payloadOf('customer.activation.requested.v1');
+    expect(activation).toMatchObject({ email: REGISTER.email, activationToken: 'token-1' });
+
     await context.setVerdict.execute(
       { customerId: REGISTER.customerId, verdict: 'VALIDATED' },
       { customerId: 'staff-1', role: 'CAJERO_RECEPTOR' },
       'verdict-key-1',
     );
 
-    const activation = context.publisher.payloadOf('customer.activation.requested.v1');
-    expect(activation).toMatchObject({ email: REGISTER.email, activationToken: 'token-2' });
+    expect(context.publisher.payloadOf('customer.identity.validated.v1')).toMatchObject({
+      customerId: REGISTER.customerId,
+      identityStatus: 'VALIDATED',
+    });
+    expect(context.publisher.payloadOf('customer.kyc.verified.v1')).toMatchObject({
+      customerId: REGISTER.customerId,
+      kycStatus: 'VERIFIED',
+    });
   });
 
   it('does nothing at all the second time the same command arrives (criterion 2)', async () => {
@@ -133,7 +149,7 @@ describe('registering a customer (criteria 1, 2, 3, 4, 5, 10)', () => {
     await context.register.execute(REGISTER, 'key-1');
 
     expect(context.repository.customers.size).toBe(1);
-    expect(context.publisher.published).toHaveLength(1);
+    expect(context.publisher.published).toHaveLength(2);
   });
 
   it('refuses a duplicated document with a safe reason and no success event', async () => {
@@ -717,7 +733,7 @@ describe('signing in (criterion 11)', () => {
       context.publisher.published.filter(
         (message) => message.messageType === 'customer.activation.requested.v1',
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it('re-sends the reply on a broker redelivery, but does not invalidate the token it just issued', async () => {
@@ -734,7 +750,7 @@ describe('signing in (criterion 11)', () => {
     const afterFirstDelivery = context.publisher.published.filter(
       (message) => message.messageType === 'customer.activation.requested.v1',
     );
-    expect(afterFirstDelivery).toHaveLength(1);
+    expect(afterFirstDelivery).toHaveLength(2);
 
     // A broker redelivery of that *same* command — same idempotencyKey,
     // exactly as the broker replays the identical envelope.
@@ -768,12 +784,12 @@ describe('signing in (criterion 11)', () => {
       'login-2',
     );
 
-    // One per distinct login attempt.
+    // One from registration + one per distinct login attempt.
     expect(
       context.publisher.published.filter(
         (message) => message.messageType === 'customer.activation.requested.v1',
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 });
 
@@ -818,5 +834,223 @@ describe('validating an identity again', () => {
 
     await context.validateIdentity.execute(command, 'key-identity');
     expect(context.publisher.published.length).toBe(afterFirst);
+  });
+});
+
+describe('the teller registers a KYC verdict (Fase 2, T-26)', () => {
+  const STAFF = { role: 'CAJERO_RECEPTOR' as const, customerId: '22222222-2222-4222-8222-222222222222' };
+
+  it('lets staff verify a pending customer, publishing the verified event', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'VERIFIED' },
+      STAFF,
+      'key-kyc-1',
+    );
+
+    expect(context.repository.customers.get(REGISTER.customerId)!.kycStatus).toBe('VERIFIED');
+    expect(context.publisher.payloadOf('customer.kyc.verified.v1')).toMatchObject({
+      customerId: REGISTER.customerId,
+      kycStatus: 'VERIFIED',
+    });
+  });
+
+  it('lets staff reject it, publishing the rejected event', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'REJECTED' },
+      STAFF,
+      'key-kyc-1',
+    );
+
+    expect(context.repository.customers.get(REGISTER.customerId)!.kycStatus).toBe('REJECTED');
+    expect(context.publisher.payloadOf('customer.kyc.rejected.v1')).toMatchObject({
+      kycStatus: 'REJECTED',
+    });
+  });
+
+  it('refuses a CLIENTE, publishing nothing and changing nothing', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    const before = context.publisher.published.length;
+
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'VERIFIED' },
+      { role: 'CLIENTE', customerId: REGISTER.customerId },
+      'key-kyc-1',
+    );
+
+    expect(context.publisher.published).toHaveLength(before);
+    expect(context.repository.customers.get(REGISTER.customerId)!.kycStatus).toBe('PENDING');
+  });
+
+  it('does nothing when the same verdict command arrives twice (idempotency)', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    const before = context.publisher.published.length;
+
+    const command = { customerId: REGISTER.customerId, status: 'VERIFIED' as const };
+
+    await context.setKycStatus.execute(command, STAFF, 'key-kyc-1');
+    const afterFirst = context.publisher.published.length;
+    expect(afterFirst).toBe(before + 2);
+
+    await context.setKycStatus.execute(command, STAFF, 'key-kyc-1');
+    expect(context.publisher.published.length).toBe(afterFirst);
+  });
+
+  it('records a re-opened rejection as a no-op that publishes nothing (VERIFIED is terminal)', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'VERIFIED' },
+      STAFF,
+      'key-kyc-1',
+    );
+    const afterVerified = context.publisher.published.length;
+
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'REJECTED' },
+      STAFF,
+      'key-kyc-2',
+    );
+
+    expect(context.publisher.published.length).toBe(afterVerified);
+    expect(context.repository.customers.get(REGISTER.customerId)!.kycStatus).toBe('VERIFIED');
+  });
+});
+
+describe('the Saga asks the KYC gate (T-31)', () => {
+  const TRANSACTION_ID = '99999999-9999-4999-8999-999999999901';
+
+  it('allows a verified customer', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'VERIFIED' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-kyc-1',
+    );
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toEqual({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+      kycStatus: 'VERIFIED',
+      allowed: true,
+    });
+  });
+
+  it('refuses a customer still PENDING, without touching anything', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toEqual({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+      kycStatus: 'PENDING',
+      allowed: false,
+    });
+  });
+
+  it('refuses a customer whose KYC was rejected', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'REJECTED' },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+      'key-kyc-1',
+    );
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toMatchObject({
+      kycStatus: 'REJECTED',
+      allowed: false,
+    });
+  });
+
+  /**
+   * Staff never opens an account and is never gated by this rule
+   * (`mayInitiateTransactions`) — the same exemption `setKycStatus`'s own
+   * tests exercise from the other side.
+   */
+  it('always allows staff, whatever their KYC status', async () => {
+    const context = build();
+    const staff = {
+      customerId: '33333333-3333-4333-8333-333333333301',
+      fullName: 'Un Cajero',
+      identityDocument: '9999999990101',
+      email: 'cajero@bank.test',
+      dateOfBirth: '1990-01-01',
+      address: 'la sucursal',
+      role: 'CAJERO_RECEPTOR' as const,
+      credential: 'una-clave-larga',
+      photo: null,
+    };
+    await context.register.execute(staff, 'key-staff', {
+      role: 'ADMINISTRADOR',
+      customerId: '44444444-4444-4444-8444-444444444401',
+    });
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: staff.customerId,
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toMatchObject({
+      allowed: true,
+    });
+  });
+
+  it('answers allowed: false for a customer id that names nobody', async () => {
+    const context = build();
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: '00000000-0000-4000-8000-000000000000',
+    });
+
+    expect(context.publisher.payloadOf('customer.kyc.checked.v1')).toEqual({
+      transactionId: TRANSACTION_ID,
+      customerId: '00000000-0000-4000-8000-000000000000',
+      kycStatus: 'PENDING',
+      allowed: false,
+    });
+  });
+
+  it('answers again on a redelivery, since a question changes nothing', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+    await context.checkKyc.execute({
+      transactionId: TRANSACTION_ID,
+      customerId: REGISTER.customerId,
+    });
+
+    expect(
+      context.publisher.published.filter((m) => m.messageType === 'customer.kyc.checked.v1'),
+    ).toHaveLength(2);
   });
 });

@@ -76,6 +76,10 @@ export interface TransferListFilter {
   readonly customerId?: string;
   readonly accountId?: string;
   readonly status?: 'PENDING' | 'DEBITING' | 'PAYMENT_PENDING' | 'COMPLETED' | 'FAILED' | 'COMPENSATED';
+  /** Fase 2's vocabulary (T-28) — a separate filter from `status`, see the DTO. */
+  readonly phaseStatus?: 'PENDING' | 'APPROVED' | 'FAILED';
+  readonly from?: string;
+  readonly to?: string;
   readonly limit?: number;
 }
 
@@ -424,7 +428,7 @@ export class QueriesUseCase {
    * The paginated list of recent audit events across flows. ADMINISTRADOR only.
    */
   public async auditEventsList(
-    params: { page: number; limit: number },
+    params: { page: number; limit: number; severity?: 'INFO' | 'WARNING' | 'ERROR' },
     context: QueryContext,
   ): Promise<Record<string, unknown>> {
     const raw = await this.#ask(auditEventsListQueryV1.name, params, context);

@@ -58,6 +58,8 @@ export interface CustomerRepository {
     readonly document: Omit<StoredIdentityDocument, 'documentId' | 'customerId'> | null;
     readonly activation: { readonly tokenHash: string; readonly expiresAt: string } | null;
     readonly identityStatus: IdentityStatus;
+    readonly status?: Customer['status'];
+    readonly emailVerifiedAt?: string | null;
     readonly idempotency: ProcessedMessage;
     readonly now: Date;
   }): Promise<Customer>;
@@ -92,6 +94,19 @@ export interface CustomerRepository {
   saveIdentityVerdict(input: {
     readonly customer: Customer;
     readonly document: Omit<StoredIdentityDocument, 'documentId' | 'customerId'> | null;
+    readonly idempotency: ProcessedMessage;
+  }): Promise<void>;
+
+  /**
+   * Records a new KYC verdict, in one transaction with its idempotency record.
+   *
+   * Distinct from `saveIdentityVerdict`: no document is involved, and no
+   * anonymisation of `email`/`username`/`identityDocument` happens on
+   * rejection — a KYC rejection does not free those fields for reuse the way
+   * an identity-document rejection does.
+   */
+  saveKycVerdict(input: {
+    readonly customer: Customer;
     readonly idempotency: ProcessedMessage;
   }): Promise<void>;
 

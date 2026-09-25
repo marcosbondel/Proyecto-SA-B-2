@@ -61,6 +61,8 @@ export class QueryAuditUseCase {
         causationId: event.causationId,
         occurredAt: event.occurredAt.toISOString(),
         processingStatus: event.processingStatus,
+        /** `null` for a row recorded before T-30. See `migrations.ts`. */
+        ...(event.severity === null ? {} : { severity: event.severity }),
         /*
          * Omitted rather than sent empty when redaction left nothing. An empty
          * object on screen reads as "this message carried no data", which is a

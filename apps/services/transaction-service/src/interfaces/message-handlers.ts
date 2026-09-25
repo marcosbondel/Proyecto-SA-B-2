@@ -4,6 +4,7 @@ import {
   accountDebitCompensatedV1,
   accountDebitRejectedV1,
   accountDebitedV1,
+  customerKycCheckedV1,
   paymentAttemptFailedV1,
   paymentFailedV1,
   paymentSucceededV1,
@@ -25,17 +26,17 @@ import type { InboundMessageHandler } from './inbound-message.handler';
 import type { StructuredLogger } from './logging';
 
 /**
- * The eleven messages this service answers, each parsed before it is believed.
+ * The twelve messages this service answers, each parsed before it is believed.
  *
  * Parsing at the edge is not ceremony. The broker hands over whatever was
  * published, and a payload that does not match its contract is a message this
  * service cannot act on — failing here names the contract and the field, while
  * failing three layers down names a property of `undefined`.
  *
- * **Seven of the eleven are the same handler.** Every Saga event does exactly one
+ * **Eight of the twelve are the same handler.** Every Saga event does exactly one
  * thing: name itself in the domain's vocabulary and hand the transaction id to
- * the state machine. Writing them as seven classes would be seven places to
- * forget the deduplication or the lock, so there is one class and seven
+ * the state machine. Writing them as eight classes would be eight places to
+ * forget the deduplication or the lock, so there is one class and eight
  * descriptions, and the part that actually differs between them — which
  * transitions are legal — lives in `domain/transaction.ts` where it is tested
  * without a database.
@@ -146,11 +147,12 @@ export class SagaEventHandler<TPayload> implements InboundMessageHandler {
 }
 
 /**
- * The seven Saga events, in the order the choreography produces them.
+ * The eight Saga events, in the order the choreography produces them.
  *
- * Reading this list top to bottom is reading `docs/domain/use-cases.md` §6:
- * debit, then payment, then credit, with the two rejections and the
- * compensation that close the flows that do not complete.
+ * Reading this list top to bottom is reading `docs/domain/use-cases.md` §6,
+ * as amended by T-31: the KYC gate, then debit, then payment, then credit,
+ * with the three rejections and the compensation that close the flows that
+ * do not complete.
  *
  * They are built into handlers here rather than returned as descriptions
  * because each one closes over a different payload type, and a list of
@@ -165,6 +167,16 @@ export function sagaHandlers(
     new SagaEventHandler(binding, useCase, logger);
 
   return [
+    handler({
+      messageType: customerKycCheckedV1.name,
+      parse: (payload) => customerKycCheckedV1.schema.parse(payload),
+      read: (payload) => ({
+        transactionId: payload.transactionId,
+        event: payload.allowed
+          ? { kind: 'KYC_APPROVED' }
+          : { kind: 'KYC_REJECTED', reason: 'KYC_NOT_VERIFIED' },
+      }),
+    }),
     handler({
       messageType: accountDebitedV1.name,
       parse: (payload) => accountDebitedV1.schema.parse(payload),

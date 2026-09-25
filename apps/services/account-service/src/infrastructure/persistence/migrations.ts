@@ -183,6 +183,21 @@ export const MIGRATIONS: readonly Migration[] = [
          ON accounts (biller_code) WHERE biller_code IS NOT NULL`,
     ],
   },
+  {
+    /*
+     * T-27: the per-transaction commission an account type may charge
+     * (`account-type-rules.ts`), recorded as its own row alongside the DEBIT
+     * it accompanies — same `idempotency_key`, different `type`, which
+     * `account_operations_once UNIQUE (idempotency_key, type)` from
+     * `002_account_operations` already deduplicates without change.
+     */
+    name: '007_account_operations_commission_type',
+    statements: [
+      `ALTER TABLE account_operations DROP CONSTRAINT IF EXISTS account_operations_type_known`,
+      `ALTER TABLE account_operations ADD CONSTRAINT account_operations_type_known
+         CHECK (type IN ('DEBIT', 'CREDIT', 'COMPENSATION', 'COMMISSION'))`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

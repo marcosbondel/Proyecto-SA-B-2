@@ -126,15 +126,15 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 *Login Rechazado por Cuenta Inactiva — captura pendiente de recapturar*
 
-### 3.2 Activación Exitosa por Token
-- **URL**: `http://localhost:3010/activar?token=<token_hash>`
-- **Flujo**: Notification Service genera el enlace con token temporal de 24 horas. Al ser visitado, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para que el usuario pueda iniciar sesión formalmente.
-- **URL**: `http://localhost:3010/activar?token=<token_hash>`
-- **Flujo**: Notification Service emite el enlace con token temporal de 24 horas. Al ser visitado, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para operar.
+### 3.2 Activación Exitosa por Token y Correo Real
+- **URL**: `https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/activar?token=<token_hash>`
+- **Flujo**: Notification Service despacha el correo transaccional real a través de Resend (`bonking <no-reply@guatechnology.com>`) con token criptográfico temporal. Al hacer clic, Customer Service valida el token en base de datos, marca `emailVerifiedAt` y activa la cuenta para que el usuario pueda iniciar sesión formalmente.
 
-*Activación Exitosa — captura pendiente de recapturar*
+| Correo Transaccional Recibido (Resend) | Confirmación de Activación Exitosa |
+| :--- | :--- |
+| ![Correo de Activación](screenshots/hp-19-correo-activacion.png) | ![Activación Exitosa](screenshots/hp-20-activacion-exitosa.png) |
 
-### 3.2 Caminos de Error en Activación
+### 3.3 Caminos de Error en Activación
 1. **Token Reusado (Single-Use)**: Por la decisión **D-05**, un token consumido no puede volver a utilizarse (`ACTIVATION_TOKEN_INVALID`).
 2. **Token Fabricado/Inválido**: Un token no registrado en la base de datos es rechazado de inmediato.
 
@@ -150,28 +150,28 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 - **Credenciales**: `cliente@bankusac.gt` / `BankUsac#2026`
 - **Dashboard**: Muestra la bienvenida personalizada, las métricas de saldo acumulado, el acceso rápido a transferencias y la lista de cuentas.
 
-| Dashboard de Bienvenida | Mi Perfil | Bandeja de Notificaciones |
-| :--- | :--- | :--- |
-| ![Dashboard Cliente](screenshots/hp-22-dashboard-cliente-nuevo.png) | ![Perfil Cliente](screenshots/hp-23-perfil-cliente.png) | ![Notificaciones](screenshots/hp-24-notificaciones-cliente.png) |
+| Dashboard de Bienvenida | Mi Perfil (KYC Pendiente) | Mi Perfil (KYC Verificado) | Notificaciones (13 Eventos Auditados) |
+| :--- | :--- | :--- | :--- |
+| ![Dashboard Cliente](screenshots/hp-22-dashboard-cliente-nuevo.png) | ![Perfil Cliente](screenshots/hp-23-perfil-cliente.png) | ![Perfil Cliente Verificado](screenshots/hp-23b-perfil-cliente-kyc-verificado.png) | ![Notificaciones](screenshots/hp-24-notificaciones-cliente.png) |
 
 ---
 
 ## Módulo 5: Apertura y Administración de Cuentas Bancarias
 
 ### 5.1 Apertura de Cuenta Monetaria y de Ahorro
-- **URL**: `http://localhost:3010/cuentas/nueva`
-- **Flujo**: Selección de tipo (`MONETARIA` o `AHORRO`), confirmación y emisión de identificador UUID inmutable generado por Account Service con saldo inicial `Q0.00`.
+- **URL**: `https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/cuentas/nueva`
+- **Flujo**: Selección de tipo (`MONETARIA` o `AHORRO`), verificación en vivo del depósito inicial de apertura (boleta validada) y emisión de identificador UUID inmutable por Account Service.
 - **Regla de Negocio (Validación de Identidad)**: Un cliente solo puede aperturar cuentas si su documento de identidad ha sido validado previamente por un cajero receptor o administrador.
 
-| Selección de Tipo Ahorro | Confirmación de Apertura | Cuenta Creada Exitosamente (`accountId`) |
+| Selección de Tipo Ahorro (Depósito Verificado) | Confirmación de Apertura | Cuenta Creada Exitosamente (`accountId`) |
 | :--- | :--- | :--- |
 | ![Tipo Ahorro](screenshots/hp-29-cuenta-nueva-tipo-ahorro.png) | ![Confirmación](screenshots/hp-27-cuenta-nueva-confirmacion.png) | ![Cuenta Creada](screenshots/hp-30-cuenta-ahorro-creada.png) |
 
 ### 5.2 Listado y Detalle Individual de Cuentas
 
-| Cuentas Activas del Cliente | Detalle de Cuenta Individual (Movimientos y Balance) |
+| Detalle de Cuenta Activa (Saldo Inicial Q100) | Cuenta Desactivada / Inactiva |
 | :--- | :--- |
-| ![Lista de Cuentas](screenshots/hp-31-lista-cuentas-cliente.png) | ![Detalle Cuenta](screenshots/hp-32-detalle-cuenta.png) |
+| ![Detalle Cuenta Activa](screenshots/hp-32-detalle-cuenta.png) | ![Cuenta Desactivada](screenshots/hp-32b-cuenta-desactivada.png) |
 
 ---
 
@@ -181,9 +181,13 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 - **Credenciales**: `cajero@bankusac.gt` / `BankUsac#2026`
 - **Cola de Validaciones**: `GET /api/customers/pending-validation`. Permite inspeccionar las fotos de DPI subidas a MinIO y emitir veredicto de aprobación.
 
-| Dashboard del Cajero Receptor | Cola de Validaciones de Identidad | Detalle de Documento DPI |
+| Directorio de Clientes (`/clientes`) | Cola de Validaciones (`/clientes/validaciones`) |
+| :--- | :--- |
+| ![Directorio Clientes](screenshots/hp-33b-directorio-clientes.png) | ![Cola Validaciones](screenshots/hp-34-cola-validaciones.png) |
+
+| Revisión de Identidad Pendiente | Identidad Aprobada Exitosamente | Ficha de Cliente y Expediente KYC |
 | :--- | :--- | :--- |
-| ![Dashboard Cajero](screenshots/hp-33-dashboard-cajero.png) | ![Cola Validaciones](screenshots/hp-34-cola-validaciones.png) | ![Detalle DPI](screenshots/hp-34-cola-validaciones.png) |
+| ![Revisión Identidad](screenshots/hp-35-revision-identidad-formulario.png) | ![Identidad Aprobada](screenshots/hp-35b-identidad-aprobada-exito.png) | ![Ficha Cliente](screenshots/hp-35c-ficha-cliente-ventanilla.png) |
 
 ---
 
@@ -217,29 +221,30 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 
 ### 7.1 Creación y Validación de la Transferencia
 
-#### A. Camino Exitoso (`Q250.00`)
-- **Actor**: `cliente@bankusac.gt` (Cuenta con saldo disponible).
-- **Destino**: Cuenta receptora monetaria.
+#### A. Camino Exitoso (`Q30.00`)
+- **Actor**: `juanita@bankusac.gt` / `ennermendizabal` (Cuenta de Ahorro activa con saldo disponible de Q 57.00).
+- **Destino**: Cuenta receptora registrada (`b0000000-0002-4000-8000-000000000004`).
+- **Escenario**: `Sin escenario (comportamiento real)`.
 
-| Formulario de Transferencia | Revisión con Idempotency-Key |
+| Formulario de Transferencia Exitosa | Revisión con Idempotency-Key |
 | :--- | :--- |
-| ![Formulario Transferencia](screenshots/hp-44-transferencia-formulario-lleno.png) | ![Revisión Transferencia](screenshots/hp-45-transferencia-confirmacion.png) |
+| ![Formulario Transferencia](screenshots/hp-43-transferencia-formulario.png) | ![Revisión Transferencia](screenshots/hp-45-transferencia-confirmacion.png) |
 
 #### B. Caminos de Error en Formulario y Parámetros
 - **Auto-Transferencia (Misma Cuenta)**: Bloqueado con error `SAME_ACCOUNT_TRANSFER`.
 - **Monto Cero o Negativo**: Rechazado con `INVALID_AMOUNT`.
 - **Destino Inválido**: Validación local en formulario antes del envío.
 
-| Destino Inválido en UI | Fallo de Saga por Fondos Insuficientes |
+| Destino Inválido en UI | Simulación de Rechazo en Demostración |
 | :--- | :--- |
-| *Destino Inválido — captura pendiente de recapturar* | *Fondos Insuficientes — captura pendiente de recapturar* |
+| *Destino Inválido — validación UI* | ![Simulación de Rechazo](screenshots/hp-44-transferencia-formulario-lleno.png) |
 
 ---
 
 ### 7.2 Ejecución de la Saga: Éxito vs. Compensación / Fallo
 
 #### A. Transición Exitosa (`COMPLETED`)
-La Saga coreografiada avanza a través de 4 eventos asíncronos por RabbitMQ:
+La Saga coreografiada avanza a través de los eventos asíncronos orquestados por RabbitMQ:
 
 ```mermaid
 sequenceDiagram
@@ -261,17 +266,29 @@ sequenceDiagram
     Note over TX: Estado Final: COMPLETED ✅
 ```
 
-#### B. Fallo por Fondos Insuficientes (`DEBIT_REJECTED` ➔ `FAILED`)
-- **Escenario de Falla**: Intento de transferir `Q999,999.00` desde una cuenta sin saldo suficiente.
-- **Comportamiento**: Account Service evalúa la regla `CHECK (balance >= 0)` bajo `SELECT ... FOR UPDATE` y emite `account.debit.rejected.v1`. Transaction Service transiciona limpiamente a estado terminal `FAILED`. **El dinero nunca sale de la cuenta**.
+| Monitor de Saga Completada (Q30.00) | Resultado de Pago Aprobado |
+| :--- | :--- |
+| ![Saga Completada](screenshots/hp-46-saga-completada.png) | Operación `61457774-8ee2-4448-8c5d-15ca44281cb7` con 6 hitos validados |
+
+#### B. Demostración de Resiliencia y Compensación de la Saga
+- **Rechazo de Pago Inmediato**: Débito efectuado pero pago rechazado ➔ compensación automática inmediata (devolución del dinero al origen).
+- **Caída de Proveedor (Timeout con Escalera de Reintentos)**: El sistema escala de forma exponencial (1s, 5s, 30s) para reintentar hasta 4 veces antes de liquidar o compensar.
+
+| Formulario Timeout (Escalera) | Revisión Q40.00 | Monitor Reintentando | Monitor Compensada |
+| :--- | :--- | :--- | :--- |
+| ![Formulario Timeout](screenshots/hp-44b-transferencia-timeout.png) | ![Revisión Q40](screenshots/hp-45b-transferencia-confirmacion-q40.png) | ![Monitor Sagas Reintentando](screenshots/hp-48-saga-monitor.png) | ![Saga Compensada](screenshots/hp-46b-saga-compensada.png) |
 
 ---
 
-### 7.3 Historial de Movimientos y Monitor de Sagas en Tiempo Real
+### 7.3 Historial de Movimientos y Filtrado Reactivo
 
-| Historial de Transferencias del Cliente | Monitor de Sagas en Tiempo Real |
+| Historial en Proceso (Reintento en Vivo) | Historial Consolidado (3 Transacciones) | Historial Filtrado por Estado (Aprobada) |
+| :--- | :--- | :--- |
+| ![Historial en Proceso](screenshots/hp-47b-transferencias-historial-en-proceso.png) | ![Historial Consolidado](screenshots/hp-47-historial-transferencias.png) | ![Historial Filtrado](screenshots/hp-47c-transferencias-historial-filtrado.png) |
+
+| Supervisión General de Operaciones (Rol Cajero) | Supervisión Filtrada por Incidencias ("Fallida" / Compensadas) |
 | :--- | :--- |
-| ![Historial](screenshots/hp-47-historial-transferencias.png) | ![Monitor Sagas](screenshots/hp-48-saga-monitor.png) |
+| ![Supervisión Cajero](screenshots/hp-48b-cajero-transferencias-historial.png) | ![Supervisión Cajero Filtrado](screenshots/hp-48c-cajero-transferencias-filtradas.png) |
 
 ---
 
@@ -280,39 +297,47 @@ sequenceDiagram
 ### 8.1 Dashboard y Herramientas del Administrador
 - **Credenciales**: `admin@bankusac.gt` / `BankUsac#2026`
 
-| Login Administrador | Dashboard Administrativo Global | Perfil del Administrador |
-| :--- | :--- | :--- |
-| ![Login Admin](screenshots/hp-52-dashboard-admin.png) | ![Dashboard Admin](screenshots/hp-52-dashboard-admin.png) | ![Perfil Admin](screenshots/hp-56-perfil-admin.png) |
+| Dashboard Administrativo Global | Perfil del Administrador |
+| :--- | :--- |
+| ![Dashboard Admin](screenshots/hp-52-dashboard-admin.png) | ![Perfil Admin](screenshots/hp-56-perfil-admin.png) |
 
 ---
 
 ### 8.2 Auditoría Distribuida por `correlationId`
-- **URL**: `http://localhost:3010/auditoria`
+- **URL**: `https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/auditoria`
 - **Capacidad**: Rastreo de todos los eventos emitidos en RabbitMQ asociados al `correlationId` de una transacción, garantizando inmutabilidad y redacción de datos sensibles.
 
-| Consulta de Auditoría por Correlation ID | Bandeja de Notificaciones Centralizada |
-| :--- | :--- |
-| ![Auditoría](screenshots/hp-53-auditoria-consulta.png) | ![Notificaciones Admin](screenshots/hp-54-auditoria-notificaciones.png) |
+| Pista de Auditoría Global de Eventos | Rastro Forense de Operación Seleccionada | Bandeja de Notificaciones Centralizada |
+| :--- | :--- | :--- |
+| ![Auditoría Global](screenshots/hp-53-auditoria-consulta.png) | ![Rastro Forense](screenshots/hp-53b-auditoria-rastro-operacion.png) | ![Notificaciones Admin](screenshots/hp-54-auditoria-notificaciones.png) |
 
 ---
 
 ### 8.3 Monitoreo de Pagos y Gestión de Cuentas
 
-| Monitoreo de Pagos a Proveedores (`/pagos`) | Administración de Estado de Cuentas (`/cuentas/administracion`) |
+| Monitoreo de Pagos a Proveedores (`/pagos`) | Historial Global de Transferencias (`/transferencias`) |
 | :--- | :--- |
-| ![Monitoreo Pagos](screenshots/hp-55-pagos-monitor.png) | ![Gestión Cuentas](screenshots/hp-60-admin-gestion-cuentas.png) |
+| ![Monitoreo Pagos](screenshots/hp-55-pagos-monitor.png) | ![Transferencias Admin](screenshots/hp-59b-admin-transferencias-historial.png) |
 
-| Lista Global de Cuentas (Todos los Clientes) | Cola de Validaciones (Vista Administrador) |
+| Lista Global de Cuentas (Saldo Custodiado) | Directorio de Usuarios del Sistema (`/usuarios`) |
 | :--- | :--- |
-| ![Admin Cuentas](screenshots/hp-57-admin-lista-cuentas.png) | ![Admin Validaciones](screenshots/hp-58-admin-cola-validaciones.png) |
+| ![Admin Cuentas](screenshots/hp-57-admin-lista-cuentas.png) | ![Directorio Usuarios](screenshots/hp-58b-admin-directorio-usuarios.png) |
+
+| Administración de Estado de Cuentas (`/cuentas/administracion`) | Cola de Validaciones (Vista Administrador) |
+| :--- | :--- |
+| ![Gestión Cuentas](screenshots/hp-60-admin-gestion-cuentas.png) | ![Admin Validaciones](screenshots/hp-58-admin-cola-validaciones.png) |
 
 ---
 
 ### 8.4 Servicios Públicos y Casos Especiales
 
-| Recuperación de Contraseña (`/recuperar`) | Pantalla de Error 404 Amigable | Pago de Servicios a Terceros (`/pagos/nuevo`) |
+| Formulario Pago de Servicios (`/pagos/nuevo`) | Saga del Pago Completada (`/transferencias/[id]`) | Historial de Pagos (`/pagos`) |
 | :--- | :--- | :--- |
-| ![Recuperar](screenshots/hp-61-recuperar-password.png) | ![404](screenshots/hp-62-pagina-404.png) | ![Pago Servicio](screenshots/hp-63-pago-servicio.png) |
+| ![Pago Servicio](screenshots/hp-63-pago-servicio.png) | ![Pago Saga Completada](screenshots/hp-64-pago-saga-completada.png) | ![Historial Pagos](screenshots/hp-65-pagos-historial.png) |
+
+| Recuperación de Contraseña (`/recuperar`) | Pantalla de Error 404 Amigable |
+| :--- | :--- |
+| ![Recuperar](screenshots/hp-61-recuperar-password.png) | ![404](screenshots/hp-62-pagina-404.png) |
 
 ---
 

@@ -21,6 +21,21 @@ export class SetIdentityVerdictDto {
   public verdict!: (typeof IDENTITY_VERDICTS)[number];
 }
 
+const KYC_VERDICTS = ['VERIFIED', 'REJECTED'] as const;
+
+/**
+ * A teller's manual verdict on a customer's KYC status (Fase 2, §4.1 p. 4;
+ * T-31). Distinct from `SetIdentityVerdictDto`: that one is Fase 1's
+ * document-photo review, this one is the broader compliance verdict the
+ * transfer Saga's own KYC gate reads.
+ */
+export class SetKycStatusDto {
+  @IsIn(KYC_VERDICTS, {
+    message: `El estado KYC debe ser uno de: ${KYC_VERDICTS.join(', ')}.`,
+  })
+  public status!: (typeof KYC_VERDICTS)[number];
+}
+
 /**
  * The registration form, as it arrives in a `multipart/form-data` body.
  *

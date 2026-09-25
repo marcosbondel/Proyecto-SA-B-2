@@ -3,6 +3,14 @@
 Lo que se probó, cómo se probó y qué se vio. Las capturas de esta carpeta no se
 editan a mano: **las produce la suite**, y volver a correrla las reescribe.
 
+## Evidencia de backend (por ticket)
+
+[backend/](backend/) guarda la salida real de `pnpm lint` / `pnpm typecheck` /
+`pnpm test` para tickets de un microservicio, un archivo por ticket. A
+diferencia de lo de abajo, **no la produce un script** — es una captura manual
+del día de la implementación, y no se sobrescribe: una revisión posterior
+agrega una entrada nueva en vez de editar la existente.
+
 ## Los documentos
 
 | Documento | Qué contiene |

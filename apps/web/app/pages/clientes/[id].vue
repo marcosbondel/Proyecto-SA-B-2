@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IdentityStatus } from '../../lib/customer';
+import type { IdentityStatus, KycStatus } from '../../lib/customer';
 
 /**
  * One customer: what can be changed, and where their identity stands.
@@ -23,17 +23,23 @@ import type { IdentityStatus } from '../../lib/customer';
  */
 const api = useGatewayApi();
 const route = useRoute();
-const { session } = useSession();
+const { session, role } = useSession();
 
 const customerId = computed(() => String(route.params.id));
 
 const isMe = computed(() => session.value?.customerId === customerId.value);
+
+/** Staff registers a KYC verdict (T-31); a client only ever sees their own. */
+const isStaff = computed(
+  () => role.value === 'CAJERO_RECEPTOR' || role.value === 'ADMINISTRADOR',
+);
 
 const STATUSES: readonly string[] = ['PENDING', 'VALIDATED', 'REJECTED'];
 
 interface CustomerRecord {
   readonly username: string;
   readonly identityStatus: IdentityStatus;
+  readonly kycStatus: KycStatus;
 }
 
 const record = ref<CustomerRecord | null>(null);
@@ -53,6 +59,35 @@ onMounted(async () => {
   unreadable.value = true;
 });
 
+/**
+ * The Fase 2 compliance verdict (T-31): whether this customer may initiate a
+ * transfer at all, decided by staff and read by the transfer Saga's own KYC
+ * gate — never by anything in this frontend.
+ */
+const kycSending = ref(false);
+const kycError = ref<string | null>(null);
+
+async function decideKyc(status: 'VERIFIED' | 'REJECTED'): Promise<void> {
+  kycSending.value = true;
+  kycError.value = null;
+
+  const verdict = status === 'VERIFIED' ? 'VALIDATED' : 'REJECTED';
+  const result = await api.call<{ correlationId: string }>(
+    `/api/customers/${customerId.value}/identity-verdict`,
+    { method: 'POST', body: { verdict } },
+  );
+
+  kycSending.value = false;
+
+  if (result.ok) {
+    if (record.value) {
+      record.value = { ...record.value, kycStatus: status, identityStatus: verdict };
+    }
+  } else {
+    kycError.value = result.error.message;
+  }
+}
+
 const overridden = computed<IdentityStatus | null>(() => {
   const declared = String(route.query.identidad ?? '').toUpperCase();
 
@@ -61,6 +96,14 @@ const overridden = computed<IdentityStatus | null>(() => {
 
 const identityStatus = computed<IdentityStatus | null>(
   () => overridden.value ?? record.value?.identityStatus ?? null,
+);
+
+const isVerified = computed(
+  () => record.value?.kycStatus === 'VERIFIED' || identityStatus.value === 'VALIDATED',
+);
+
+const isRejected = computed(
+  () => record.value?.kycStatus === 'REJECTED' || identityStatus.value === 'REJECTED',
 );
 
 const username = computed(() =>
@@ -86,18 +129,74 @@ useHead({ title: 'Ficha de cliente · bonking' });
 
       <div class="flex flex-col gap-4">
         <UCard>
-          <h2 class="text-[14px] font-semibold">Validación de identidad</h2>
+          <h2 class="text-[14px] font-semibold">Estado de Verificación (KYC)</h2>
 
-          <div class="mt-4">
-            <CustomerIdentityStatusBadge v-if="identityStatus" :status="identityStatus" explain />
+          <div class="mt-4 flex flex-col gap-2">
+            <div class="flex items-center gap-2">
+              <UBadge
+                v-if="isVerified"
+                color="success"
+                variant="subtle"
+                size="md"
+              >
+                Verificado
+              </UBadge>
+              <UBadge
+                v-else-if="isRejected"
+                color="error"
+                variant="subtle"
+                size="md"
+              >
+                Rechazado
+              </UBadge>
+              <UBadge
+                v-else
+                color="warning"
+                variant="subtle"
+                size="md"
+              >
+                Pendiente de verificación
+              </UBadge>
+            </div>
 
-            <p v-else class="text-[13px] leading-5 text-[#5A5B63]" data-testid="identity-unknown">
+            <p class="text-[13px] leading-5 text-[#5A5B63]">
               {{
-                unreadable
-                  ? 'No puedes consultar la ficha de este cliente, así que esta pantalla no sabe si la foto de su documento ya fue revisada.'
-                  : 'Consultando el estado de la validación…'
+                isVerified
+                  ? 'Expediente e identidad aprobados. El cliente cuenta con acceso habilitado para operar transferencias, pagos y cuentas.'
+                  : isRejected
+                    ? 'Expediente rechazado. Las transferencias y pagos se encuentran inhabilitados.'
+                    : 'Expediente en espera de revisión por un cajero o administrador. Las operaciones de transferencia y pago permanecen bloqueadas.'
               }}
             </p>
+          </div>
+
+          <UAlert
+            v-if="kycError"
+            color="error"
+            variant="subtle"
+            :description="kycError"
+            class="mt-3"
+          />
+
+          <div v-if="isStaff && !isVerified" class="mt-4 flex gap-2">
+            <UButton
+              color="primary"
+              size="sm"
+              class="flex-1 justify-center"
+              :loading="kycSending"
+              @click="decideKyc('VERIFIED')"
+            >
+              Aprobar verificación
+            </UButton>
+            <UButton
+              variant="outline"
+              color="error"
+              size="sm"
+              :loading="kycSending"
+              @click="decideKyc('REJECTED')"
+            >
+              Rechazar
+            </UButton>
           </div>
 
           <div class="mt-5 border-t border-[#E9E9EC] pt-5">
@@ -114,6 +213,18 @@ useHead({ title: 'Ficha de cliente · bonking' });
               class="text-[13px] font-semibold text-[#23242A]"
               style="font-variant-numeric: tabular-nums lining-nums"
             >{{ username }}</div>
+          </div>
+
+          <div v-if="isStaff" class="mt-4">
+            <UButton
+              :to="`/clientes/validaciones/${customerId}`"
+              variant="outline"
+              color="neutral"
+              size="xs"
+              class="w-full justify-center"
+            >
+              Ver documento de identidad adjunto →
+            </UButton>
           </div>
         </UCard>
 

@@ -35,3 +35,5 @@ data:
   INACTIVITY_MIN_BALANCE_MINOR: {{ .Values.services.account.deactivation.inactivityMinBalanceMinor | quote }}
   PAYMENT_RETRY_DELAYS_MS: {{ .Values.services.payment.retryDelaysMs | quote }}
   PAYMENT_RETRY_SWEEP_MS: {{ .Values.services.payment.retrySweepMs | quote }}
+  SEED_DEMO_DATA: "true"
+  SEED_PASSWORD: "BankUsac#2026"

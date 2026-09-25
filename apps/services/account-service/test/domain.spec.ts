@@ -1,4 +1,12 @@
-import { DomainRejection, compensate, credit, debit, openAccount, openingRefusal } from '../src/domain/account';
+import {
+  DomainRejection,
+  compensate,
+  credit,
+  debit,
+  openAccount,
+  openingDepositRefusal,
+  openingRefusal,
+} from '../src/domain/account';
 import {
   DEFAULT_CRITERIA,
   inactivityThreshold,
@@ -93,7 +101,7 @@ describe('debiting', () => {
     expect(moved.account.lastActivityAt).toEqual(NOW);
   });
 
-  it('allows a debit that empties the account exactly', () => {
+  it('allows a debit that empties the account exactly — no floor once it is open (T-27)', () => {
     expect(debit(account({ balanceMinor: 2_500 }), quetzales(2_500), NOW).account.balanceMinor).toBe(0);
   });
 
@@ -152,13 +160,23 @@ describe('crediting', () => {
 
 describe('compensating', () => {
   it('returns the money to an inactive account, because the alternative is losing it', () => {
-    const moved = compensate(account({ balanceMinor: 0, status: 'INACTIVE' }), quetzales(2_500), NOW);
+    const moved = compensate(
+      account({ balanceMinor: 0, status: 'INACTIVE' }),
+      quetzales(2_500),
+      null,
+      NOW,
+    );
 
     expect(moved.account.balanceMinor).toBe(2_500);
   });
 
   it('does not reactivate: the account was corrected, not used', () => {
-    const moved = compensate(account({ balanceMinor: 0, status: 'INACTIVE' }), quetzales(2_500), NOW);
+    const moved = compensate(
+      account({ balanceMinor: 0, status: 'INACTIVE' }),
+      quetzales(2_500),
+      null,
+      NOW,
+    );
 
     expect(moved.reactivated).toBe(false);
     expect(moved.account.status).toBe('INACTIVE');
@@ -172,9 +190,38 @@ describe('compensating', () => {
    */
   it('does not refresh the inactivity clock — a correction is not activity', () => {
     const EARLIER = new Date('2026-01-15T09:00:00.000Z');
-    const moved = compensate(account({ lastActivityAt: EARLIER }), quetzales(2_500), NOW);
+    const moved = compensate(account({ lastActivityAt: EARLIER }), quetzales(2_500), null, NOW);
 
     expect(moved.account.lastActivityAt).toEqual(EARLIER);
+  });
+
+  /**
+   * T-29 correction: a compensated `AHORRO` transfer used to return the
+   * transfer amount and keep the Q3.00 commission — the bank cancelled the
+   * transfer and still charged a fee for money that never moved. Discovered
+   * testing T-29's TIMEOUT scenario end to end; fixed by having the
+   * repository hand `compensate` the commission the original debit charged.
+   */
+  it('folds a reversed commission into the amount that comes back', () => {
+    const moved = compensate(
+      account({ balanceMinor: 0, status: 'INACTIVE' }),
+      quetzales(10_000),
+      quetzales(300),
+      NOW,
+    );
+
+    expect(moved.account.balanceMinor).toBe(10_300);
+    expect(moved.amount).toEqual(quetzales(10_300));
+    // Compensation itself never charges a commission of its own (T-27) — this
+    // field is about a fee it levies, not a fee it happens to be undoing.
+    expect(moved.commission).toBeNull();
+  });
+
+  it('is unchanged for a MONETARIA compensation, which never charged a commission', () => {
+    const moved = compensate(account({ balanceMinor: 0 }), quetzales(2_500), null, NOW);
+
+    expect(moved.account.balanceMinor).toBe(2_500);
+    expect(moved.amount).toEqual(quetzales(2_500));
   });
 });
 
@@ -246,5 +293,92 @@ describe('the automatic deactivation, at its four boundaries', () => {
 
     expect(shouldDeactivate(candidate(90_000, lastMonth), NOW, relaxed)).toBe(true);
     expect(shouldDeactivate(candidate(90_000, lastMonth), NOW, DEFAULT_CRITERIA)).toBe(false);
+  });
+});
+
+/**
+ * T-27: `AHORRO` and `MONETARIA` each carry a different rule
+ * (`account-type-rules.ts`) — a per-debit commission for `AHORRO` only, no
+ * floor on either type once open.
+ */
+describe('account type rules (T-27): the AHORRO commission', () => {
+  const ahorro = (overrides: Partial<ReturnType<typeof openAccount>> = {}) => ({
+    ...openAccount({
+      accountId: '3a7d9e14-6b25-4f83-9c01-8e5a2d7b4f60',
+      customerId: '9f1c8b2a-4d63-4e57-8a90-1b2c3d4e5f60',
+      accountType: 'AHORRO' as const,
+      now: NOW,
+    }),
+    ...overrides,
+  });
+
+  it('charges no commission on MONETARIA — the event stays null, not zero', () => {
+    const moved = debit(account({ balanceMinor: 10_000 }), quetzales(2_000), NOW);
+
+    expect(moved.commission).toBeNull();
+    expect(moved.account.balanceMinor).toBe(8_000);
+  });
+
+  it('charges AHORRO its Q3.00 commission on top of the amount, in one atomic movement', () => {
+    const moved = debit(ahorro({ balanceMinor: 20_000 }), quetzales(2_000), NOW);
+
+    // balanceAfter (outer) is after the amount alone — what account.debited.v1
+    // carries; the account itself lands after amount + commission.
+    expect(moved.balanceAfter).toEqual(quetzales(18_000));
+    expect(moved.commission).toEqual({
+      amount: quetzales(300),
+      balanceAfter: quetzales(17_700),
+    });
+    expect(moved.account.balanceMinor).toBe(17_700);
+  });
+
+  it('lets an AHORRO debit empty the account — the minimum is an opening condition, not a floor', () => {
+    // Balance 600: amount 300 plus the Q3.00 (300) commission leaves exactly 0.
+    expect(debit(ahorro({ balanceMinor: 600 }), quetzales(300), NOW).account.balanceMinor).toBe(0);
+  });
+
+  it('never charges a commission on credit or compensation, only on debit', () => {
+    expect(credit(ahorro({ balanceMinor: 0 }), quetzales(500), NOW).commission).toBeNull();
+    expect(compensate(ahorro({ balanceMinor: 0 }), quetzales(500), null, NOW).commission).toBeNull();
+  });
+});
+
+/**
+ * T-27, corrected: the minimum balance is a condition of *opening* an
+ * `AHORRO` account, checked once by `openingDepositRefusal` — never a floor
+ * `debit` re-enforces afterward.
+ */
+describe('the AHORRO minimum opening deposit (T-27)', () => {
+  it('refuses an AHORRO opening below Q100.00', () => {
+    expect(openingDepositRefusal('AHORRO', 9_999)).toBe('MINIMUM_BALANCE_VIOLATION');
+  });
+
+  it('allows an AHORRO opening at exactly Q100.00', () => {
+    expect(openingDepositRefusal('AHORRO', 10_000)).toBeNull();
+  });
+
+  it('allows an AHORRO opening above Q100.00', () => {
+    expect(openingDepositRefusal('AHORRO', 50_000)).toBeNull();
+  });
+
+  it('never refuses a MONETARIA opening, whatever the deposit — including none', () => {
+    expect(openingDepositRefusal('MONETARIA', 0)).toBeNull();
+    expect(openingDepositRefusal('MONETARIA', 1)).toBeNull();
+  });
+
+  it('opens an account with the initial deposit as its starting balance', () => {
+    const opened = openAccount({
+      accountId: '3a7d9e14-6b25-4f83-9c01-8e5a2d7b4f60',
+      customerId: '9f1c8b2a-4d63-4e57-8a90-1b2c3d4e5f60',
+      accountType: 'AHORRO',
+      now: NOW,
+      initialDepositMinor: 10_000,
+    });
+
+    expect(opened.balanceMinor).toBe(10_000);
+  });
+
+  it('still opens at Q0.00 when no deposit is given, as before T-27', () => {
+    expect(account().balanceMinor).toBe(0);
   });
 });

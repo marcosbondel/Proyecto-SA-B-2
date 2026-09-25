@@ -35,7 +35,9 @@
     - [5.3. Descripción de Capas](#53-descripción-de-capas)
   - [6. Decisiones Arquitectónicas Clave](#6-decisiones-arquitectónicas-clave)
   - [7. Infraestructura, Despliegue y Topología de Red](#7-infraestructura-despliegue-y-topología-de-red)
-    - [7.1. Diagrama de Despliegue (UML / Kubernetes)](#71-diagrama-de-despliegue-uml--kubernetes)
+    - [7.1. Diagramas de Despliegue (UML)](#71-diagramas-de-despliegue-uml)
+      - [7.1.1. Despliegue Local (Fase 1: Kubernetes con kind)](#711-despliegue-local-fase-1-kubernetes-con-kind)
+      - [7.1.2. Despliegue en la Nube (Fase 2: Google Cloud Platform con Terraform)](#712-despliegue-en-la-nube-fase-2-google-cloud-platform-con-terraform)
     - [7.2. Matriz de Puertos y Variables de Entorno](#72-matriz-de-puertos-y-variables-de-entorno)
     - [7.3. Estrategia de Resiliencia y Healthchecks](#73-estrategia-de-resiliencia-y-healthchecks)
 
@@ -207,11 +209,19 @@ La arquitectura de Bank USAC se fundamenta en doce decisiones técnicas principa
 
 ## 7. Infraestructura, Despliegue y Topología de Red
 
-### 7.1. Diagrama de Despliegue (UML / Kubernetes)
+### 7.1. Diagramas de Despliegue (UML)
 
-![Diagrama de Despliegue UML / Kubernetes](architecture/diagrams/05-uml-despliegue.png)
+#### 7.1.1. Despliegue Local (Fase 1: Kubernetes con kind)
 
-> **Descripción del diagrama:** Topología de despliegue en clúster Kubernetes / kind. Cada microservicio corre como un Pod/Deployment dentro del namespace `bank-usac` con su Service ClusterIP, consumiendo configuración de ConfigMaps y credenciales de Secrets, interactuando con la infraestructura de bases de datos PostgreSQL, RabbitMQ y MinIO.
+![Diagrama de Despliegue Local UML / Kubernetes](architecture/diagrams/05-uml-despliegue.png)
+
+> **Descripción:** Topología de desarrollo local en clúster Kubernetes / kind. Cada microservicio corre como un Pod/Deployment dentro del namespace `bank-usac` con su Service ClusterIP, consumiendo configuración de ConfigMaps y credenciales de Secrets, interactuando con las bases de datos PostgreSQL en el host de desarrollo, RabbitMQ y MinIO.
+
+#### 7.1.2. Despliegue en la Nube (Fase 2: Google Cloud Platform con Terraform)
+
+![Diagrama de Despliegue Cloud GCP](architecture/diagrams/08-despliegue-cloud-gcp.png)
+
+> **Descripción:** Topología de producción en Google Cloud Platform (GCP). El frontend corre en **Google Cloud Run (Serverless)**; los microservicios, el broker RabbitMQ y MinIO se ejecutan en un clúster administrado **Google Kubernetes Engine (GKE)** con **Autoescalado Horizontal de Pods (HPA) al 80% de CPU**; y las cinco bases de datos PostgreSQL se alojan en **5 Máquinas Virtuales Compute Engine** en una subred privada dedicada (`10.40.0.0/24`) con salida segura vía **Cloud NAT**.
 
 ---
 

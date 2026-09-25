@@ -14,7 +14,7 @@ useHead({ title: 'Abrir cuenta · bonking' });
     <header>
       <h1 class="text-[32px] font-bold leading-10 tracking-tight">Abrir una cuenta</h1>
       <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
-        Elige el tipo y confirma. La cuenta nace en Q 0.00 y activa.
+        Elige el tipo y confirma. Nace activa, con el saldo inicial que corresponda a su tipo.
       </p>
     </header>
 

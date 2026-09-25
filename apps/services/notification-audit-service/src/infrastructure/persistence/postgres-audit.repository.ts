@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import { redactPayload } from '../../domain/redaction';
 import type { AuditEvent, AuditProcessingStatus } from '../../domain/audit-event';
+import type { EventSeverity } from '../../domain/classification';
 import type {
   Notification,
   NotificationIntent,
@@ -72,8 +73,8 @@ export class PostgresAuditRepository implements AuditRepository {
       const inserted = await client.query(
         `INSERT INTO audit_events
            (event_id, message_type, message_version, producer, occurred_at, received_at,
-            correlation_id, causation_id, payload, processing_status, consumer)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11)
+            correlation_id, causation_id, payload, processing_status, consumer, severity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11, $12)
          ON CONFLICT (event_id, consumer) DO NOTHING`,
         [
           event.eventId,
@@ -87,6 +88,7 @@ export class PostgresAuditRepository implements AuditRepository {
           JSON.stringify(redactPayload(event.payload)),
           event.processingStatus,
           event.consumer,
+          event.severity,
         ],
       );
 
@@ -105,8 +107,8 @@ export class PostgresAuditRepository implements AuditRepository {
         await client.query(
           `INSERT INTO notifications
              (notification_id, type, channel, recipient, reference_id, subject,
-              status, correlation_id, caused_by, created_at, processed_at, customer_id)
-           VALUES ($1, $2, 'EMAIL', $3, $4, $5, 'PENDING', $6, $7, $8, NULL, $9)
+              status, correlation_id, caused_by, created_at, processed_at, customer_id, severity)
+           VALUES ($1, $2, 'EMAIL', $3, $4, $5, 'PENDING', $6, $7, $8, NULL, $9, $10)
            ON CONFLICT DO NOTHING`,
           [
             notification.notificationId,
@@ -118,6 +120,7 @@ export class PostgresAuditRepository implements AuditRepository {
             event.eventId,
             now,
             notification.customerId,
+            notification.intent.severity,
           ],
         );
       }
@@ -137,7 +140,7 @@ export class PostgresAuditRepository implements AuditRepository {
   }): Promise<{ readonly notifications: readonly InboxNotification[]; readonly unread: number }> {
     const [rows, unread] = await Promise.all([
       this.#pool.query<InboxRow>(
-        `SELECT notification_id, type, subject, reference_id, correlation_id, created_at, read_at
+        `SELECT notification_id, type, subject, reference_id, correlation_id, created_at, read_at, severity
            FROM notifications
           WHERE customer_id = $1
           ORDER BY created_at DESC, notification_id
@@ -156,6 +159,7 @@ export class PostgresAuditRepository implements AuditRepository {
         correlationId: row.correlation_id,
         createdAt: row.created_at.toISOString(),
         readAt: row.read_at?.toISOString() ?? null,
+        severity: row.severity,
       })),
       unread,
     };
@@ -212,6 +216,9 @@ export class PostgresAuditRepository implements AuditRepository {
     readonly notificationsToday: number;
     readonly lastEventType: string | null;
     readonly lastEventAt: string | null;
+    readonly infoToday: number;
+    readonly warningToday: number;
+    readonly errorToday: number;
   }> {
     /**
      * "Today" means Guatemala's calendar day, not the container's.
@@ -226,7 +233,13 @@ export class PostgresAuditRepository implements AuditRepository {
      * see also `account-service`'s `postgres-account.repository.ts#stats`.
      */
     const [events, notifications, last] = await Promise.all([
-      this.#pool.query<{ events_today: string; invalid_today: string }>(
+      this.#pool.query<{
+        events_today: string;
+        invalid_today: string;
+        info_today: string;
+        warning_today: string;
+        error_today: string;
+      }>(
         `SELECT COUNT(*) FILTER (
                   WHERE (occurred_at AT TIME ZONE 'America/Guatemala')::date
                       = (now() AT TIME ZONE 'America/Guatemala')::date
@@ -235,7 +248,22 @@ export class PostgresAuditRepository implements AuditRepository {
                   WHERE (occurred_at AT TIME ZONE 'America/Guatemala')::date
                       = (now() AT TIME ZONE 'America/Guatemala')::date
                     AND processing_status = 'INVALID'
-                )::TEXT AS invalid_today
+                )::TEXT AS invalid_today,
+                COUNT(*) FILTER (
+                  WHERE (occurred_at AT TIME ZONE 'America/Guatemala')::date
+                      = (now() AT TIME ZONE 'America/Guatemala')::date
+                    AND severity = 'INFO'
+                )::TEXT AS info_today,
+                COUNT(*) FILTER (
+                  WHERE (occurred_at AT TIME ZONE 'America/Guatemala')::date
+                      = (now() AT TIME ZONE 'America/Guatemala')::date
+                    AND severity = 'WARNING'
+                )::TEXT AS warning_today,
+                COUNT(*) FILTER (
+                  WHERE (occurred_at AT TIME ZONE 'America/Guatemala')::date
+                      = (now() AT TIME ZONE 'America/Guatemala')::date
+                    AND severity = 'ERROR'
+                )::TEXT AS error_today
            FROM audit_events`,
       ),
       this.#pool.query<{ total: string }>(
@@ -260,6 +288,9 @@ export class PostgresAuditRepository implements AuditRepository {
       notificationsToday: Number(notifications.rows[0]?.total ?? '0'),
       lastEventType: newest?.message_type ?? null,
       lastEventAt: newest?.occurred_at.toISOString() ?? null,
+      infoToday: Number(row?.info_today ?? '0'),
+      warningToday: Number(row?.warning_today ?? '0'),
+      errorToday: Number(row?.error_today ?? '0'),
     };
   }
 
@@ -279,7 +310,7 @@ export class PostgresAuditRepository implements AuditRepository {
   public async trailFor(correlationId: string): Promise<readonly AuditEvent[]> {
     const result = await this.#pool.query<AuditRow>(
       `SELECT event_id, message_type, message_version, producer, occurred_at, received_at,
-              correlation_id, causation_id, payload, processing_status, consumer
+              correlation_id, causation_id, payload, processing_status, consumer, severity
          FROM audit_events
         WHERE correlation_id = $1
         ORDER BY occurred_at, event_id`,
@@ -292,17 +323,30 @@ export class PostgresAuditRepository implements AuditRepository {
   public async listRecentEvents(input: {
     readonly limit: number;
     readonly offset: number;
+    readonly severity?: string;
   }): Promise<{ readonly events: readonly AuditEvent[]; readonly total: number }> {
+    const where = input.severity === undefined ? '' : 'WHERE severity = $3';
+    const parameters =
+      input.severity === undefined
+        ? [input.limit, input.offset]
+        : [input.limit, input.offset, input.severity];
+
     const [eventsResult, countResult] = await Promise.all([
       this.#pool.query<AuditRow>(
         `SELECT event_id, message_type, message_version, producer, occurred_at, received_at,
-                correlation_id, causation_id, payload, processing_status, consumer
+                correlation_id, causation_id, payload, processing_status, consumer, severity
            FROM audit_events
+           ${where}
           ORDER BY occurred_at DESC, event_id DESC
           LIMIT $1 OFFSET $2`,
-        [input.limit, input.offset],
+        parameters,
       ),
-      this.#pool.query<{ total: string }>(`SELECT COUNT(*)::TEXT AS total FROM audit_events`),
+      input.severity === undefined
+        ? this.#pool.query<{ total: string }>(`SELECT COUNT(*)::TEXT AS total FROM audit_events`)
+        : this.#pool.query<{ total: string }>(
+            `SELECT COUNT(*)::TEXT AS total FROM audit_events WHERE severity = $1`,
+            [input.severity],
+          ),
     ]);
 
     return {
@@ -348,6 +392,11 @@ export class PostgresAuditRepository implements AuditRepository {
     if (filter.type !== undefined) {
       parameters.push(filter.type);
       conditions.push(`type = $${String(parameters.length)}`);
+    }
+
+    if (filter.severity !== undefined) {
+      parameters.push(filter.severity);
+      conditions.push(`severity = $${String(parameters.length)}`);
     }
 
     const where = conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')}`;
@@ -403,7 +452,7 @@ export class PostgresAuditRepository implements AuditRepository {
 }
 
 const NOTIFICATION_COLUMNS = `notification_id, type, channel, recipient, reference_id,
-                              subject, status, correlation_id, created_at, processed_at`;
+                              subject, status, correlation_id, created_at, processed_at, severity`;
 
 interface AuditRow {
   readonly event_id: string;
@@ -417,6 +466,7 @@ interface AuditRow {
   readonly payload: Record<string, unknown>;
   readonly processing_status: AuditProcessingStatus;
   readonly consumer: string;
+  readonly severity: EventSeverity | null;
 }
 
 interface NotificationRow {
@@ -430,6 +480,7 @@ interface NotificationRow {
   readonly correlation_id: string;
   readonly created_at: Date;
   readonly processed_at: Date | null;
+  readonly severity: EventSeverity | null;
   /** Optional in the row type: the console's projection does not select them. */
   readonly customer_id?: string | null;
   readonly read_at?: Date | null;
@@ -448,6 +499,7 @@ function auditEventFrom(row: AuditRow): AuditEvent {
     payload: row.payload,
     processingStatus: row.processing_status,
     consumer: row.consumer,
+    severity: row.severity,
   };
 }
 
@@ -465,6 +517,7 @@ function notificationFrom(row: NotificationRow): Notification {
     processedAt: row.processed_at,
     customerId: row.customer_id ?? null,
     readAt: row.read_at ?? null,
+    severity: row.severity,
   };
 }
 
@@ -477,5 +530,6 @@ interface InboxRow {
   correlation_id: string;
   created_at: Date;
   read_at: Date | null;
+  severity: EventSeverity | null;
 }
 

@@ -4,6 +4,7 @@ import type { Identity } from '@bank/contracts';
 import { ListNotificationsUseCase } from '../src/application/list-notifications.use-case';
 import { QueryAuditUseCase } from '../src/application/query-audit.use-case';
 import { RecordEventUseCase } from '../src/application/record-event.use-case';
+import { classify } from '../src/domain/classification';
 import type { InboundRecord } from '../src/application/ports';
 import {
   CountingIds,
@@ -53,7 +54,7 @@ function harness(): Harness {
 }
 
 function event(overrides: Partial<InboundRecord> = {}): InboundRecord {
-  return {
+  const base = {
     eventId: '8f21c9a0-4d7b-4f0e-9c1e-0242ac120002',
     messageType: 'transaction.completed.v1',
     messageVersion: 1,
@@ -62,9 +63,16 @@ function event(overrides: Partial<InboundRecord> = {}): InboundRecord {
     correlationId: CORRELATION,
     causationId: null,
     payload: { transactionId: TRANSACTION, status: 'COMPLETED' },
-    processingStatus: 'PROCESSED',
+    processingStatus: 'PROCESSED' as const,
     consumer: 'audit.transaction',
     ...overrides,
+  };
+
+  return {
+    ...base,
+    severity:
+      overrides.severity ??
+      classify({ messageType: base.messageType, processingStatus: base.processingStatus }),
   };
 }
 

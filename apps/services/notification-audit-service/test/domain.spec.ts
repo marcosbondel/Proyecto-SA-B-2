@@ -1,4 +1,7 @@
+import { catalog } from '@bank/contracts';
+
 import { orderTrail, statusForRejection } from '../src/domain/audit-event';
+import { classify, severityCatalogue } from '../src/domain/classification';
 import { deduplicationKeyOf } from '../src/domain/deduplication';
 import {
   notificationFor,
@@ -153,8 +156,20 @@ describe('which events are worth telling somebody about', () => {
     }
   });
 
-  it('notifies on fifteen message types and no more', () => {
-    expect(notifyingMessageTypes()).toHaveLength(15);
+  it('notifies on seventeen message types and no more', () => {
+    expect(notifyingMessageTypes()).toHaveLength(17);
+  });
+
+  /** T-31: the customer hears the KYC verdict, not just its downstream refusal. */
+  it.each([
+    ['customer.kyc.verified.v1', 'kyc.verified'],
+    ['customer.kyc.rejected.v1', 'kyc.rejected'],
+  ])('notifies on %s', (messageType, expected) => {
+    const intent = notificationFor(messageType, { customerId: 'c-1' });
+
+    expect(intent?.type).toBe(expected);
+    expect(intent?.referenceId).toBe('c-1');
+    expect(intent?.severity).toBe(messageType.endsWith('verified.v1') ? 'INFO' : 'WARNING');
   });
 
   /**
@@ -271,6 +286,138 @@ describe('deduplication', () => {
     expect(statusForRejection('invalid-payload')).toBe('INVALID');
     expect(statusForRejection('unknown-type')).toBe('INVALID');
     expect(statusForRejection('error')).toBe('ERROR');
+  });
+});
+
+describe('classifying events (§4.1 — INFO/WARNING/ERROR)', () => {
+  /**
+   * The catalogue this module hand-writes must cover every `category:'event'`
+   * contract `@bank/contracts` actually declares — no more, no less than what
+   * the audit queues can hear. A future contract added to the catalogue
+   * without a decision here would silently fall back to the suffix guess
+   * instead of failing a test, which is exactly the gap this closes.
+   */
+  it('has an explicit entry for every event contract in the catalogue', () => {
+    const events = catalog.filter((contract) => contract.category === 'event');
+    const classified = severityCatalogue();
+
+    expect(events.length).toBeGreaterThan(0);
+
+    for (const event of events) {
+      expect(classified.has(event.name)).toBe(true);
+    }
+    expect(classified.size).toBe(events.length);
+  });
+
+  it('assigns exactly one severity to every catalogued event', () => {
+    const events = catalog.filter((contract) => contract.category === 'event');
+
+    for (const event of events) {
+      const severity = classify({ messageType: event.name, processingStatus: 'PROCESSED' });
+
+      expect(['INFO', 'WARNING', 'ERROR']).toContain(severity);
+    }
+  });
+
+  it('covers all three severities across the real catalogue', () => {
+    const events = catalog.filter((contract) => contract.category === 'event');
+    const severities = new Set(
+      events.map((event) => classify({ messageType: event.name, processingStatus: 'PROCESSED' })),
+    );
+
+    expect(severities).toEqual(new Set(['INFO', 'WARNING', 'ERROR']));
+  });
+
+  it('is INFO for a routine success', () => {
+    expect(
+      classify({ messageType: 'transaction.completed.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('INFO');
+    expect(
+      classify({ messageType: 'account.opened.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('INFO');
+  });
+
+  it('is WARNING for an expected refusal with nothing to undo', () => {
+    expect(
+      classify({ messageType: 'transaction.failed.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('WARNING');
+    expect(
+      classify({ messageType: 'account.debit.rejected.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('WARNING');
+    expect(
+      classify({ messageType: 'payment.attempt.failed.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('WARNING');
+    expect(
+      classify({ messageType: 'account.deactivated.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('WARNING');
+    expect(
+      classify({ messageType: 'customer.password-changed.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('WARNING');
+  });
+
+  it('is ERROR when something already done had to be undone, or ended terminally badly', () => {
+    expect(
+      classify({ messageType: 'transaction.compensated.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('ERROR');
+    expect(
+      classify({ messageType: 'account.debit.compensated.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('ERROR');
+    expect(
+      classify({ messageType: 'payment.failed.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('ERROR');
+  });
+
+  /**
+   * `processingStatus` outranks the message's own meaning: a message this
+   * service failed to record, or could not read, is not classified by what it
+   * would otherwise have said.
+   */
+  it('lets processingStatus override what the message would otherwise mean', () => {
+    expect(
+      classify({ messageType: 'transaction.completed.v1', processingStatus: 'ERROR' }),
+    ).toBe('ERROR');
+    expect(
+      classify({ messageType: 'transaction.completed.v1', processingStatus: 'INVALID' }),
+    ).toBe('WARNING');
+  });
+
+  /**
+   * A message recorded through the `bank.errors` drain is, by construction,
+   * one the system could not process — worse than an ordinary refusal,
+   * whatever its name would otherwise classify to.
+   */
+  it('is ERROR for a parked message regardless of its own name', () => {
+    expect(
+      classify({
+        messageType: 'transaction.completed.v1',
+        processingStatus: 'PROCESSED',
+        parked: true,
+      }),
+    ).toBe('ERROR');
+  });
+
+  it('falls back to a suffix guess for an uncatalogued contract', () => {
+    expect(classify({ messageType: 'made-up.rejected.v1', processingStatus: 'PROCESSED' })).toBe(
+      'WARNING',
+    );
+    expect(classify({ messageType: 'made-up.compensated.v1', processingStatus: 'PROCESSED' })).toBe(
+      'ERROR',
+    );
+    expect(classify({ messageType: 'made-up.happened.v1', processingStatus: 'PROCESSED' })).toBe(
+      'INFO',
+    );
+  });
+
+  /**
+   * The severity is re-derivable from exactly what a reader of `audit_events`
+   * has in front of them — never from the payload, which is stored redacted.
+   * Two rows with the same type and status must classify identically.
+   */
+  it('depends only on messageType, processingStatus and parked', () => {
+    const a = classify({ messageType: 'account.debit.compensated.v1', processingStatus: 'PROCESSED' });
+    const b = classify({ messageType: 'account.debit.compensated.v1', processingStatus: 'PROCESSED' });
+
+    expect(a).toBe(b);
   });
 });
 

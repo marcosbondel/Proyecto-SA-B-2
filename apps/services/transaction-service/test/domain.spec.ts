@@ -14,6 +14,8 @@ import {
   numericFromMinorUnits,
   quetzales,
 } from '../src/domain/money';
+import { phaseStatusOf, statusesInPhase } from '../src/domain/phase-status';
+import type { PhaseStatus } from '../src/domain/phase-status';
 
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
@@ -162,7 +164,8 @@ describe('a repeated idempotency key', () => {
 
 describe('the legal transitions', () => {
   it.each([
-    ['PENDING', 'DEBIT_ORDERED', 'DEBITING', 'DEBIT'],
+    ['PENDING', 'KYC_CHECK_ORDERED', 'PENDING', 'KYC_CHECK'],
+    ['PENDING', 'KYC_APPROVED', 'DEBITING', 'DEBIT'],
     ['DEBITING', 'DEBITED', 'PAYMENT_PENDING', 'PAYMENT'],
     ['PAYMENT_PENDING', 'PAYMENT_SUCCEEDED', 'PAYMENT_PENDING', 'CREDIT'],
     ['PAYMENT_PENDING', 'CREDITED', 'COMPLETED', null],
@@ -174,7 +177,18 @@ describe('the legal transitions', () => {
     expect(result.failureReason).toBeNull();
   });
 
-  it('a rejected debit is the only door to FAILED (T-7)', () => {
+  it('the KYC gate is the other door to FAILED — refused before any debit (T-31)', () => {
+    const result = applyEvent(transaction({ status: 'PENDING' }), {
+      kind: 'KYC_REJECTED',
+      reason: 'KYC_NOT_VERIFIED',
+    });
+
+    expect(result.status).toBe('FAILED');
+    expect(result.failureReason).toBe('KYC_NOT_VERIFIED');
+    expect(result.command).toBeNull();
+  });
+
+  it('a rejected debit is the only door to FAILED once the gate has approved (T-7)', () => {
     const result = applyEvent(transaction({ status: 'DEBITING' }), {
       kind: 'DEBIT_REJECTED',
       reason: 'INSUFFICIENT_FUNDS',
@@ -236,7 +250,9 @@ describe('the legal transitions', () => {
 
 describe('an event that has no place here (T-6)', () => {
   const EVERY_EVENT: readonly SagaEvent[] = [
-    { kind: 'DEBIT_ORDERED' },
+    { kind: 'KYC_CHECK_ORDERED' },
+    { kind: 'KYC_APPROVED' },
+    { kind: 'KYC_REJECTED', reason: 'KYC_NOT_VERIFIED' },
     { kind: 'DEBITED' },
     { kind: 'DEBIT_REJECTED', reason: 'INSUFFICIENT_FUNDS' },
     { kind: 'PAYMENT_SUCCEEDED' },
@@ -361,7 +377,7 @@ describe('writing a transition down', () => {
   it('stamps a closing time only when the transaction closed', () => {
     const open = afterTransition(
       transaction(),
-      applyEvent(transaction(), { kind: 'DEBIT_ORDERED' }),
+      applyEvent(transaction(), { kind: 'KYC_CHECK_ORDERED' }),
       later,
     );
 
@@ -391,5 +407,41 @@ describe('writing a transition down', () => {
     );
 
     expect(again.completedAt).toEqual(later);
+  });
+});
+
+describe('phaseStatusOf — Fase 2’s three states as a projection of the six (T-28)', () => {
+  const EXPECTED: Readonly<Record<TransactionStatus, PhaseStatus>> = {
+    PENDING: 'PENDING',
+    DEBITING: 'PENDING',
+    PAYMENT_PENDING: 'PENDING',
+    COMPLETED: 'APPROVED',
+    FAILED: 'FAILED',
+    COMPENSATED: 'FAILED',
+  };
+
+  it.each(Object.entries(EXPECTED) as [TransactionStatus, PhaseStatus][])(
+    'reads %s as %s',
+    (status, phase) => {
+      expect(phaseStatusOf(status)).toBe(phase);
+    },
+  );
+
+  it('never invents or drops a status: every one of the six lands in exactly one phase', () => {
+    const covered = (['PENDING', 'APPROVED', 'FAILED'] as const).flatMap((phase) =>
+      statusesInPhase(phase),
+    );
+
+    expect(covered.sort()).toEqual(
+      ['PENDING', 'DEBITING', 'PAYMENT_PENDING', 'COMPLETED', 'FAILED', 'COMPENSATED'].sort(),
+    );
+  });
+
+  it('inverts phaseStatusOf exactly: every status in a phase reads back as that phase', () => {
+    for (const phase of ['PENDING', 'APPROVED', 'FAILED'] as const) {
+      for (const status of statusesInPhase(phase)) {
+        expect(phaseStatusOf(status)).toBe(phase);
+      }
+    }
   });
 });

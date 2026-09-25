@@ -220,6 +220,69 @@ export const MIGRATIONS: readonly Migration[] = [
       `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS reference VARCHAR(60)`,
     ],
   },
+  {
+    /*
+     * The real history (T-28), as opposed to `transaction_events`: that table
+     * records *what message arrived*, this one records *what state change it
+     * produced*. One row per legal transition `applyEvent` actually applied —
+     * self-transitions on PAYMENT_PENDING included, since those are the ones
+     * that order the payment, the credit and the compensation — plus one
+     * opening row per transaction, written by `start()` with `from_status`
+     * NULL. Illegal transitions are not here: they moved nothing, and T-6
+     * already records them in `transaction_events` and in
+     * `processed_messages.outcome`.
+     *
+     * No foreign statuses and no foreign tables, same as every table above:
+     * criterion 8 applies to this one exactly as it does to `transactions`.
+     */
+    name: '008_transaction_transitions',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS transaction_transitions (
+         id             BIGSERIAL    PRIMARY KEY,
+         transaction_id UUID         NOT NULL REFERENCES transactions (transaction_id),
+         from_status    VARCHAR(20),
+         to_status      VARCHAR(20)  NOT NULL,
+         event_type     VARCHAR(120) NOT NULL,
+         failure_reason TEXT,
+         /* NULL only on the opening row, which no message caused. */
+         message_id     UUID,
+         occurred_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+         CONSTRAINT transaction_transitions_to_known
+           CHECK (to_status IN ('PENDING','DEBITING','PAYMENT_PENDING','COMPLETED','FAILED','COMPENSATED')),
+         CONSTRAINT transaction_transitions_from_known
+           CHECK (from_status IS NULL
+                  OR from_status IN ('PENDING','DEBITING','PAYMENT_PENDING','COMPLETED','FAILED','COMPENSATED'))
+       )`,
+      `CREATE INDEX IF NOT EXISTS transaction_transitions_transaction_idx
+         ON transaction_transitions (transaction_id, id)`,
+      /*
+       * T-5 as a fact about the table, not only as trust in
+       * `processed_messages`'s own primary key: two writers racing to record
+       * the same delivery's effect can insert at most one row for it. Partial
+       * so the single opening row (message_id NULL) never collides with
+       * another transaction's opening row.
+       */
+      `CREATE UNIQUE INDEX IF NOT EXISTS transaction_transitions_message_once
+         ON transaction_transitions (transaction_id, message_id)
+         WHERE message_id IS NOT NULL`,
+    ],
+  },
+  {
+    /*
+     * T-29: Payment Service's simulated provider gains a third answer,
+     * `TIMEOUT`. This service only carries the value to `payment.requested.v1`
+     * and decides nothing from it, but the column's own CHECK still has to
+     * admit it or a transfer requested with `TIMEOUT` is refused here before
+     * Payment Service ever sees it.
+     */
+    name: '009_transactions_payment_scenario_timeout',
+    statements: [
+      `ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_scenario_known`,
+      `ALTER TABLE transactions ADD CONSTRAINT transactions_scenario_known
+         CHECK (payment_scenario IS NULL
+                OR payment_scenario IN ('APPROVE','REJECT','TRANSIENT_FAILURE','TIMEOUT'))`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

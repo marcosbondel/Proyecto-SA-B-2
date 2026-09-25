@@ -50,9 +50,10 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 
 | Documento | Qué responde |
 | --- | --- |
-| [operations/](operations/README.md) | Los runbooks: despliegue, contenedores y el canal de correo real. |
+| [operations/](operations/README.md) | Los runbooks: despliegue, contenedores, CI y el canal de correo real. |
 | [operations/DEPLOYMENT.md](operations/DEPLOYMENT.md) | De una máquina limpia a un clúster corriendo, en cuatro comandos, y qué hacer cuando algo falla. |
 | [operations/CONTAINERS.md](operations/CONTAINERS.md) | El inventario de las siete imágenes: Dockerfile, puerto, health checks y variables requeridas. |
+| [operations/CI.md](operations/CI.md) | El pipeline de GitHub Actions: qué lo dispara, qué verifica cada etapa y qué no demuestra un run verde. |
 | [operations/EMAIL_RESEND.md](operations/EMAIL_RESEND.md) | Cómo enviar correo de activación real en lugar del canal simulado. |
 | [RELIABILITY.md](RELIABILITY.md) | Las preocupaciones de confiabilidad que el enunciado exige resolver: idempotencia, reintentos, consistencia eventual, trazabilidad. |
 | [sre/sli.md](sre/sli.md) · [slo.md](sre/slo.md) · [sla.md](sre/sla.md) | Qué se mide, qué meta se persigue y qué se promete. Encadenados: ninguna promesa sin un número que la verifique. |
@@ -74,6 +75,7 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | --- | --- |
 | [manual/](manual/README.md) | El manual de usuario: la guía general, una por rol y el recorrido visual de 78 pasos. |
 | [qa/](qa/README.md) | La evidencia de pruebas: guía de happy path y casos de error, informe de validación y las capturas que producen las suites. |
+| [process/implementations.md](process/implementations.md) | Guía de pruebas de Fase 2 para quien no implementó los tickets: qué pedía cada uno, cómo se cubrió, y los pasos concretos en la web — con lo que no tiene superficie visible dicho de frente. |
 | [images/kubernetes/](images/kubernetes/README.md) | Las capturas del despliegue en el clúster, con la lectura de qué prueba cada una. |
 
 ## Gobierno del repositorio

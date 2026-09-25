@@ -85,7 +85,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the twenty-five paths the tickets fixed', () => {
+  it('declares the twenty-six paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -119,6 +119,9 @@ describe('the versioned API contract', () => {
         '/api/customers/pending-validation',
         '/api/customers/{customerId}',
         '/api/customers/{customerId}/identity-verdict',
+        // Added by T-31: the broader compliance verdict the transfer Saga's
+        // own KYC gate reads, distinct from the document-photo review above.
+        '/api/customers/{customerId}/kyc-status',
         // Added by this ticket: the document photo itself, which until now had
         // no read route and left the teller's validation screen with a
         // placeholder instead of the image it asked them to compare.
@@ -171,7 +174,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(26);
+      expect(functional).toHaveLength(27);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

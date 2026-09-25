@@ -62,17 +62,23 @@ export interface AccountTypePresentation {
   /** The two-letter mark the prototype puts in the type column. */
   readonly mark: string;
   readonly description: string;
+  /**
+   * The initial deposit this type requires to open, in minor units — `null`
+   * when it requires none. T-27 (Fase 2, §4.1 p. 6): a condition of *opening*
+   * the account, never a floor re-enforced afterward — an `AHORRO` account may
+   * be emptied by transfers down to Q0.00 once it exists.
+   */
+  readonly minimumOpeningDepositMinor: number | null;
 }
 
 /**
  * What each account type is, in the words a person opening one needs.
  *
- * **The `AHORRO` copy is a deliberate departure from the prototype**, which
- * reads "Genera intereses" — an interest rate. Decision D-02 gives the two
- * types no differentiated rule at all in this phase (recorded as TD-017), so
- * promising interest here would be inventing a product the system does not
- * have. The rule that *does* apply to both is the automatic deactivation, and
- * saying that is more useful than saying nothing.
+ * **The `AHORRO` copy departs from the prototype**, which reads "Genera
+ * intereses" — an interest rate this system does not pay. What `AHORRO` does
+ * have, since T-27, is a Q100.00 minimum to open it and a Q3.00 commission on
+ * every transfer out of it — real rules, said as what they are rather than
+ * as a product feature the backend cannot honour.
  */
 export const ACCOUNT_TYPE_PRESENTATION: Readonly<
   Record<AccountType, AccountTypePresentation>
@@ -80,12 +86,14 @@ export const ACCOUNT_TYPE_PRESENTATION: Readonly<
   MONETARIA: {
     label: 'Monetaria',
     mark: 'MO',
-    description: 'Uso diario, transferencias y pagos sin límite de movimientos.',
+    description: 'Uso diario, transferencias y pagos sin límite de movimientos ni saldo mínimo.',
+    minimumOpeningDepositMinor: null,
   },
   AHORRO: {
     label: 'Ahorro',
     mark: 'AH',
-    description: 'Para guardar dinero y acumular fondos.',
+    description: 'Para guardar dinero. Requiere un depósito inicial de Q100.00 y cobra Q3.00 de comisión por cada transferencia.',
+    minimumOpeningDepositMinor: 10_000,
   },
 };
 
@@ -226,7 +234,7 @@ function daysInUtcMonth(date: Date): number {
  * a role-restricted screen filters in the page.
  */
 export function mayManageAccounts(role: Role | null): boolean {
-  return role === 'ADMINISTRADOR';
+  return role === 'ADMINISTRADOR' || role === 'CAJERO_RECEPTOR';
 }
 
 /**

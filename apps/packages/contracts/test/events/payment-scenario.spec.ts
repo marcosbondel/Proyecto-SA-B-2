@@ -48,18 +48,18 @@ describe('transfer.requested.v1 after the paymentScenario amendment', () => {
   });
 
   describe('the field itself', () => {
-    it.each(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE'])('accepts %s', (scenario) => {
+    it.each(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT'])('accepts %s', (scenario) => {
       const message = { ...asWrittenBefore, paymentScenario: scenario };
 
       expect(transferRequestedV1.schema.parse(message).paymentScenario).toBe(scenario);
     });
 
     /**
-     * A fourth value has no meaning downstream, so letting it through would put
+     * A fifth value has no meaning downstream, so letting it through would put
      * Transaction Service in the position of deciding what to do with a
      * scenario nobody defined.
      */
-    it('refuses a value that is not one of the three', () => {
+    it('refuses a value that is not one of the four', () => {
       const message = { ...asWrittenBefore, paymentScenario: 'MAYBE' };
 
       expect(transferRequestedV1.schema.safeParse(message).success).toBe(false);
@@ -112,7 +112,7 @@ describe('payment.requested.v1 after the scenario amendment', () => {
     expect(versionOf(paymentRequestedV1.name)).toBe(1);
   });
 
-  it.each(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE'])('carries %s through', (scenario) => {
+  it.each(['APPROVE', 'REJECT', 'TRANSIENT_FAILURE', 'TIMEOUT'])('carries %s through', (scenario) => {
     const message = { ...asWrittenBefore, scenario };
 
     expect(paymentRequestedV1.schema.parse(message).scenario).toBe(scenario);

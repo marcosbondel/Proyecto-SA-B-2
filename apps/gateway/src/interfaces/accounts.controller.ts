@@ -125,6 +125,7 @@ export class AccountsController {
     return await this.#commands.openAccount({
       accountType: body.accountType,
       ...(body.customerId === undefined ? {} : { customerId: body.customerId }),
+      ...(body.initialDeposit === undefined ? {} : { initialDeposit: body.initialDeposit }),
       actor: actorOf(request),
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,
@@ -214,10 +215,10 @@ export class AccountsController {
   @ApiOperation({
     summary: 'Activa o desactiva una cuenta',
     description:
-      'Solo ADMINISTRADOR (D-06). Devuelve 202: el cambio todavía no ocurrió. ' +
+      'ADMINISTRADOR, CAJERO_RECEPTOR y CLIENTE (para sus propias cuentas). Devuelve 202: el cambio todavía no ocurrió. ' +
       'El motivo es obligatorio porque es el único registro de por qué se hizo.',
   })
-  @Roles('ADMINISTRADOR')
+  @Roles('ADMINISTRADOR', 'CAJERO_RECEPTOR', 'CLIENTE')
   @Post(':accountId/status')
   @HttpCode(202)
   public async setStatus(
