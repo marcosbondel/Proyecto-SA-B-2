@@ -89,16 +89,23 @@ alternatives and the accepted trade-off.
 - **Persistence:** one PostgreSQL database per service, outside the cluster —
   [ADR-005](docs/architecture/adr/ADR-005-persistence.md).
 - **Runtime:** Docker containers —
-  [ADR-006](docs/architecture/adr/ADR-006-containerization.md) — in a local kind
-  Kubernetes cluster, released through a single Helm chart
-  (`infra/k8s/helm/bank-usac`) —
-  [ADR-007](docs/architecture/adr/ADR-007-local-orchestration.md).
+  [ADR-006](docs/architecture/adr/ADR-006-containerization.md) — in a Kubernetes
+  cluster, released through a single Helm chart (`infra/k8s/helm/bank-usac`).
+  The **same chart** installs on a local kind cluster —
+  [ADR-007](docs/architecture/adr/ADR-007-local-orchestration.md) — and on GKE.
 - **Service structure:** Clean Architecture inside each service —
   [ADR-008](docs/architecture/adr/ADR-008-service-internal-architecture.md).
 - **Distributed workflows:** Saga by choreography —
   [ADR-009](docs/architecture/adr/ADR-009-distributed-transactions.md).
 - **Diagrams:** versioned Mermaid and PlantUML sources, with Lucid optional —
   [ADR-013](docs/architecture/adr/ADR-013-diagramming-toolchain-revision.md).
+- **Cloud:** Google Cloud Platform —
+  [ADR-014](docs/architecture/adr/ADR-014-cloud-provider.md).
+- **CI/CD:** GitHub Actions, four workflows —
+  [ADR-015](docs/architecture/adr/ADR-015-ci-cd-platform.md).
+- **Infrastructure as code:** Terraform, one module: VPC, five Compute Engine
+  VMs for the databases, a zonal GKE cluster and Cloud Run for the frontend —
+  [ADR-016](docs/architecture/adr/ADR-016-cloud-infrastructure.md).
 
 These choices are constrained by the technologies allowed in assignment section
 4.3 (page 14) and section 4.2 (page 13). The complete record, with alternatives
@@ -146,32 +153,52 @@ RabbitMQ clients, or other services.
 
 ## Current State
 
-Verified against the workspace on 2026-08-15.
+Verified against the workspace and the running deployment on 2026-09-26.
 
-**What exists.** A pnpm workspace with every unit of code under `apps/`: the
-Gateway (`apps/gateway`) and the frontend (`apps/web`) at the top level, the five
-domain services under `apps/services/`, and `@bank/contracts`, `@bank/messaging`
-and `@bank/tooling` under `apps/packages/`. Seven applications, all building,
-linting and testing.
+**The system is built and deployed.** All seven applications build, lint, typecheck
+and test from a clean checkout, and the whole thing runs on Google Cloud Platform:
+seven workloads in the GKE namespace `prod`, the frontend on Cloud Run, and the five
+PostgreSQL databases on Compute Engine virtual machines outside the cluster.
 
-The contents are **scaffolding**: health and readiness endpoints, environment
-validation at boot, the shared message envelope, and a broker adapter. The
-`domain` and `application` layers of every service hold a `README.md` and nothing
-else — they are empty **on purpose**, because the business logic arrives with
-T-16 to T-20. The architecture boundaries are already executable: `pnpm lint`
-fails on a cross-service import, a framework import in `domain`, or an
-`infrastructure` import in `application`.
+- **The five domain services are implemented.** Customer, Account, Transaction,
+  Payment and Notification & Audit each own a schema, their message handlers,
+  idempotency enforced by a database constraint, and money as `NUMERIC(14,2)` that
+  no float ever touches. The transfer's six-state machine is one pure function that
+  refuses every transition outside the diagram.
+- **The Gateway holds no business logic**, no database and no HTTP client towards
+  any internal service — and a test asserts all three rather than asking to be
+  believed. Two routes compose replies; none computes anything.
+- **`apps/web` implements the whole prototype**, thirty-four screens, mapped route
+  by route in [docs/FRONTEND.md](docs/FRONTEND.md).
+- **The Saga runs end to end in all three shapes** — completed, compensated on the
+  first refusal, and compensated after climbing the retry ladder — each asserted by
+  `pnpm images:flow` as a fact about the money rather than a status somebody wrote
+  down.
+- **Phase II's five extensions are in** and integrated into the transfer flow in
+  this order: KYC gate → account-type rule with its commission → history → external
+  payment with its ladder → classified notification. Detail in
+  [docs/TECHNICAL_DOCUMENT.md §12](docs/TECHNICAL_DOCUMENT.md#12-fase-ii--extensión-funcional-por-microservicio).
+- **The pipeline is four GitHub Actions workflows**: Build / Test / Validación as
+  three chained jobs, a reusable path filter, a release phase that publishes seven
+  versioned images, and a deployment that rolls out to `dev` on `develop` and to
+  `prod` on `main` — never building an image in production, never tagging `latest`,
+  and rolling itself back when a deploy does not reach `Ready`.
+  See [docs/operations/CI.md](docs/operations/CI.md).
+- **The infrastructure is Terraform**, one module in `infra/terraform/gcp/`. See
+  [docs/operations/CLOUD.md](docs/operations/CLOUD.md) for the procedure.
 
-**What does not exist yet.** No business logic, no domain entity and no use case
-in any service. `apps/web` has no Bank USAC screens or routes. The runtime
-integration is still future work: `infra/docker/` contains the local Compose
-stack for development, while `infra/k8s/` documents the intended Helm layout
-without the final chart. The Docker images (T-21), the Saga implementation
-(T-16 to T-20, T-23) and rendered exports for the newly added diagram sources
-remain future work; the versioned diagram sources are now present.
+**What is not finished.** Three cloud resources are still created by hand — the
+Artifact Registry repository, the Gateway's public `LoadBalancer` and the Cloud Run
+revision that serves the frontend (TD-079, TD-080, TD-081) — and `dev` and `prod`
+share the five databases, so environment isolation today covers compute and
+messaging but not data (TD-070). The open correctness debts worth knowing before
+touching the affected code are TD-074 (account opening has no KYC gate at the API),
+TD-076 (the broker's retry path can kill a service process) and TD-078 (the Gateway
+reports a registration timeout as `202`). All of them, with their proposed fixes,
+are in [docs/TECH_DEBT.md](docs/TECH_DEBT.md).
 
-The web dependency manifest carries `@artmizu/nuxt-prometheus`, retained as
-pending debt for the observability ticket T-24 (TD-006).
+The web dependency manifest carries `@artmizu/nuxt-prometheus`, retained as pending
+debt for the observability ticket T-24 (TD-006).
 
 ## Commands
 
@@ -208,8 +235,9 @@ Two things worth knowing before claiming a check passed:
 
 ## Related Docs
 
-- [docs/architecture/adr/](docs/architecture/adr/README.md) - the eleven decision
-  records: what was chosen, what was rejected, and why.
+- [docs/architecture/adr/](docs/architecture/adr/README.md) - the sixteen decision
+  records: what was chosen, what was rejected, and why. ADR-014 to ADR-016 are the
+  Phase II ones — cloud provider, CI/CD platform and cloud infrastructure.
 - [docs/architecture/decision-matrix.md](docs/architecture/decision-matrix.md) -
   decisions, alternatives, trade-offs and consequences in one table.
 - [README.md](README.md) - project identity and entry points.
@@ -222,3 +250,8 @@ Two things worth knowing before claiming a check passed:
 - [docs/RELIABILITY.md](docs/RELIABILITY.md) - SRE requirements and targets.
 - [docs/DOC_INVENTORY.md](docs/DOC_INVENTORY.md) - documentation classification.
 - [docs/TECH_DEBT.md](docs/TECH_DEBT.md) - open and closed debt.
+- [docs/TECHNICAL_DOCUMENT.md](docs/TECHNICAL_DOCUMENT.md) - the consolidated
+  deliverable, with the Phase II sections.
+- [docs/operations/CLOUD.md](docs/operations/CLOUD.md) - the GCP deployment
+  procedure.
+- [docs/operations/CI.md](docs/operations/CI.md) - the four CI/CD workflows.

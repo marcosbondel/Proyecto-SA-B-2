@@ -111,11 +111,13 @@ teller identity-validation flow) are **closed** by the audit-remediation feature
 (`specs/008-audit-remediation`), which also added the Kubernetes deployment: a
 Helm chart at `infra/k8s/helm/bank-usac` plus a kind cluster config.
 
-**The deployment runs and the repository proves it.** Seven pods at `1/1 Ready`
-against the PostgreSQL, RabbitMQ and MinIO outside the cluster, and a Gateway
-that answers through `port-forward`. The procedure is
+**The local deployment runs and the repository proves it.** Seven pods at
+`1/1 Ready` against the PostgreSQL, RabbitMQ and MinIO outside the cluster, and
+a Gateway that answers through `port-forward`. The procedure is
 [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) — four commands
-from a clean machine — and `pnpm k8s:evidence` re-captures the cluster's state
+from a clean machine; the cloud one is
+[docs/operations/CLOUD.md](docs/operations/CLOUD.md), and the **same chart**
+serves both — and `pnpm k8s:evidence` re-captures the cluster's state
 into `specs/008-audit-remediation/evidence/` on demand, so the evidence is a
 script rather than a paste. The first live run found two defects `helm lint` and
 `helm template` could not: a bash 4 associative array that broke on macOS's bash
@@ -144,20 +146,46 @@ images end to end. The inventory, the required variables per component and the
 base-image bump procedure are in
 [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
-**Continuous integration runs on every `feature/*` push and every pull request
-into `develop`** (T-32), as three separate GitHub Actions jobs mirroring the
-assignment's three named phases — Build, Test, Validación — instead of one
-job with many steps: `build` (`pnpm build`), `test` (`pnpm test`,
-`pnpm test:contract`) and `validate` (a tracked-`.env` guard, `pnpm lint`,
-`pnpm typecheck`). `test` depends on `build` and `validate` depends on both, so the
-three phases run strictly in that order and a failure anywhere stops every
-phase after it; `validate` is skipped on a pull request into `develop`, where
-only Build and Test are meant to repeat. Neither PostgreSQL
-nor RabbitMQ are started, so the pipeline never runs the suites
-`describe.skip` gates on `DATABASE_URL`/`RABBITMQ_URL` — the gap is tracked as
-TD-069. `pnpm format:check` is left out for the same reason
-`docs/operations/CI.md` records: the Helm templates under `infra/k8s/` are Go
-template syntax that is not valid YAML, which Prettier rejects today.
+**Phase II is built and deployed, and the system is running on GCP.** The five
+functional extensions live **inside the transfer Saga** in this order: the KYC
+gate (a customer who is not `VERIFIED` closes the transfer in `FAILED` without
+moving money) → the account-type rule (`AHORRO` opens at Q100.00 and charges
+Q3.00 per debit in the same row lock; a compensation returns the commission too,
+which it did not until TD-065) → the history with its date and status filters →
+the external payment with `SUCCESS` / `FAILURE` / `TIMEOUT` over the
+1 s / 5 s / 30 s ladder → the notification classified `INFO`, `WARNING` or
+`ERROR`. The three states the assignment names — `PENDING`, `APPROVED`,
+`FAILED` — are a **projection** (`phaseStatus`) of the Saga's six, never a
+replacement for them.
+
+**The pipeline is four workflows, not one.** `ci.yml` runs Build → Test →
+Validación as three chained jobs on a push to `feature/**`, `fix/**`, `test/**`,
+`docs/**`, `chore/**` or `refactor/**`, and on a pull request into `develop` or
+`main`. **PostgreSQL 18.4 and RabbitMQ 4.3.4 run as service containers**, so the
+integration suites execute instead of skipping themselves — TD-069 is closed,
+and every integration step fails if Jest reports a suite as `skipped`.
+`changes.yml` decides which components a commit touched; `release.yml` publishes
+seven versioned images on a `v*` tag; `cd.yml` deploys the changed components to
+namespace `dev` on `develop`, and rolls production forward on `main` using only
+images `release.yml` already published. **No tag is ever `latest`**, and a
+deploy that does not reach `Ready` rolls itself back. `pnpm format:check` is
+still left out: the Helm templates under `infra/k8s/` are Go template syntax
+that Prettier's YAML parser rejects.
+
+**The cloud is one Terraform module** (`infra/terraform/gcp/`): a VPC with a
+private data subnet, five Compute Engine VMs with no public IP running one
+PostgreSQL each, a zonal GKE cluster of three `e2-standard-2` nodes, and Cloud
+Run for the frontend. Seven HPAs at 80 % CPU, with requests and limits. `dev`
+and `prod` are two namespaces of that one cluster, each with its own RabbitMQ
+and MinIO — but they **share the five databases** (TD-070), so a deploy to `dev`
+does touch production's rows. Three resources are still created by hand
+(TD-079, TD-080, TD-081): the Artifact Registry repository, the Gateway's public
+`LoadBalancer` and the Cloud Run revision that serves the frontend. Do not
+delete the Gateway Service, and do not install the release into a fresh
+namespace, without re-reading TD-080 first.
+
+The three Phase II decisions — cloud provider, CI/CD platform and cloud
+infrastructure — are ADR-014, ADR-015 and ADR-016.
 
 ## Project Documentation
 
@@ -168,8 +196,11 @@ decision. Read [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md) be
 changing a Dockerfile, adding a variable a container needs at run time, or
 touching a health check: it is the image inventory and the contract T-22 builds
 the Helm chart against. Read
-[docs/operations/CI.md](docs/operations/CI.md) before changing
-`.github/workflows/ci.yml` or any script it calls.
+[docs/operations/CI.md](docs/operations/CI.md) before changing anything under
+`.github/workflows/` or any script it calls, and
+[docs/operations/CLOUD.md](docs/operations/CLOUD.md) before touching
+`infra/terraform/gcp/` — it is the procedure from an empty GCP project to a
+running system, and it names the steps Terraform does not yet cover.
 
 **Start at [docs/README.md](docs/README.md)** — it lists every document in
 `docs/` by what it answers, which is the fastest way to find the right one.
