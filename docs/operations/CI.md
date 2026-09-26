@@ -61,10 +61,18 @@ will deploy.
 | Install Playwright Chromium | `pnpm exec playwright install --with-deps chromium` | The browser and Linux libraries required by the web app's browser integration suite | Chromium or a required runner library could not be installed |
 | Test | `pnpm test` | Unit suites and the web app's integration suites for every application and package | A test regressed |
 | Contract tests | `pnpm test:contract` | `@bank/contracts`'s own Jest suite | A shared contract broke |
-| One database per service | `psql … CREATE DATABASE` | Five databases in one instance — they each run their own migrations and would collide on `schema_migrations` | The service container is not up |
+| Two databases per service | `psql … CREATE DATABASE` | Five databases in one instance — they each run their own migrations and would collide on `schema_migrations` — plus a `_pyramid` copy of each | The service container is not up |
 | Integration suites | `pnpm --filter <pkg> test` with `DATABASE_URL` / `RABBITMQ_URL` | The row lock, the optimistic version, the `CHECK` constraints, deduplication, and the Gateway against a **real broker** | A guarantee the database or the broker enforces just broke |
-| Pyramid shape | `pnpm test:pyramid --require-executed` | The 70/20/10 split, measured per package and for the system | An app drifted out of proportion, or an integration suite did not execute |
+| E2E — configure the stack | `cp .env.example .env`, move the broker's published ports | Compose has the variables it substitutes, and nothing collides with the job's own service containers | — |
 | E2E | `node test/e2e/run-all.mjs` against the full Docker stack | The flows end to end through the seven components | A business flow broke where no single-component test could see it |
+| Pyramid shape | `pnpm test:pyramid --require-executed` | The 70/20/10 split, measured per package and for the system | An app drifted out of proportion, or a suite did not execute |
+
+**The pyramid is measured after the E2E, not before.** Its E2E layer is read
+from the report `run-all.mjs` writes, so measuring first measures the *previous*
+run — and that report is committed as evidence, so a stale one is always
+present to be read by mistake. The configure step deletes it for that reason:
+an E2E that never writes its own should make the pyramid say the report is
+missing, not silently grade last week's.
 
 Every integration step carries the same guard: **if Jest reports any suite as
 `skipped`, the step fails**. A suite that skips itself still counts green
@@ -83,11 +91,24 @@ there is a real PostgreSQL and a real RabbitMQ, so an integration suite that
 skipped is not a circumstance — it is the measurement that did not happen, and
 the flag turns it into a failure rather than a footnote.
 
-The E2E steps and the Fase 3 job share one gating rule: they do **not** run on
-a pull request into `develop`, where the assignment asks only that Build and
-Test repeat. Standing up thirteen containers on every iteration costs more than
-it returns. They do run on a pull request into `main`, which is the last gate
-before production.
+For that to be true the script needs the database and not only the broker.
+`pnpm test:pyramid` runs each package's Jest as a child process, and the child
+inherits this step's environment: without `DATABASE_URL` the eight repository
+suites close behind `describe.skip` and the flag reports all eight. It arrives
+as `PYRAMID_DATABASE_URL_TEMPLATE`, one template with `{db}` where the name
+goes, because a package's database is named by `test/pyramid.manifest.json` and
+the script has no business knowing the host or the password. The names end in
+`_pyramid`: these suites assume a virgin database — they create their rows and
+check unique constraints against them — and the integration step above already
+spent the other five.
+
+The E2E steps used to share the Fase 3 job's gating rule — neither ran on a
+pull request into `develop` — and that is no longer true of the E2E. The
+pyramid's third layer *is* the E2E, so a run without it does not measure the
+pyramid: it grades whichever report happened to be committed. Thirteen
+containers on every iteration is a real cost, and it buys the only number that
+makes `--require-executed` mean what it says. Fase 3 keeps the old rule, which
+is the one the assignment actually writes down: into `develop`, Build and Test.
 
 Build and Test run on both triggers — a `feature/**` push and a pull request
 into `develop` — exactly the two points the assignment names for this phase.
@@ -139,9 +160,10 @@ run against real dependencies. What a green run still does not prove:
   /data`, so object storage stays doubled in the unit suites and is only
   exercised for real by the E2E steps, which use Docker Compose rather than
   service containers.
-- **The E2E steps do not run on a pull request into `develop`.** A green check
-  there covers Build and Test, which is what the assignment asks of that
-  trigger — not the end-to-end flows.
+- **The E2E stack is the development one, in watch mode.** `docker-compose.dev.yml`
+  bind-mounts the workspace and runs each application through its `dev` script,
+  so a green E2E says the flows work against the code as written — not against
+  the images `pnpm images:build` produces, which is what a deployment runs.
 - **`pnpm format:check` is still not a step** (see below).
 - A green pyramid is a statement about *proportion*, not about *quality*. It
   counts cases; it cannot tell a sharp assertion from a decorative one.
@@ -191,12 +213,13 @@ RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
 RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
   pnpm --filter @bank/messaging test
 
-# Fase 2 — la forma de la pirámide
-pnpm test:pyramid
-
 # Fase 2 — E2E (necesita las siete aplicaciones, no solo la infraestructura)
 SEED_DEMO_DATA=true REVEAL_ACTIVATION_LINKS=true pnpm dev
 node test/e2e/run-all.mjs
+
+# Fase 2 — la forma de la pirámide, despues del E2E: su tercera capa sale
+# del informe que run-all.mjs acaba de escribir
+pnpm test:pyramid
 
 # Fase 3 — Validación (skip these two if only reproducing a pull-request run)
 pnpm lint
@@ -206,7 +229,9 @@ pnpm typecheck
 `pnpm test:pyramid` without the infrastructure still prints the table — the
 cases are *declared* either way — but it lists everything that did not execute
 and says so. Add `--require-executed` to make that a failure, which is how the
-pipeline runs it.
+pipeline runs it; locally that also needs
+`PYRAMID_DATABASE_URL_TEMPLATE`, since the script composes each package's
+`DATABASE_URL` from it before handing the environment to Jest.
 
 Turbo caches `test`, so a second run reports `FULL TURBO` without executing
 anything. That is a real pass when the inputs are identical, but when you need
