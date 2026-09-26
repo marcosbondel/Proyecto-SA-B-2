@@ -1,0 +1,32 @@
+@startuml CDU002.8-desactivar-cuentas-inactivas
+title CDU002.8 - Desactivar cuentas inactivas
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Proceso automático (Scheduler)|
+start
+:Disparar tarea periódica de revisión de inactividad;
+|Account Service|
+:Calcular fecha de corte con reloj inyectado
+(cuentas ACTIVE sin movimientos en > 6 meses);
+:Buscar cuentas elegibles para desactivación;
+if (¿Se encontraron cuentas inactivas?) then (No)
+    :Registrar ejecución sin cambios;
+    stop
+else (Sí)
+    :Actualizar status = INACTIVE de forma idempotente
+    (incrementar version por cuenta);
+    |RabbitMQ / Notification & Audit|
+    :Publicar evento account.deactivated.v1 por cada cuenta;
+    :Registrar evento en la bitácora de auditoría;
+    :Generar notificación informativa para el cliente;
+endif
+|Account Service|
+:Finalizar lote y registrar métricas de cuentas procesadas;
+stop
+@enduml

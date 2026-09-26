@@ -59,9 +59,9 @@ in**. What that source is, per diagram:
 | # | Diagram | Source | Render | Document that reads it |
 | --- | --- | --- | --- | --- |
 | 1 | General architecture | [`01-arquitectura-general.puml`](diagrams/01-arquitectura-general.puml) | `.png` | [`../architecture.md`](../architecture.md) §3 |
-| 2 | C4 L1 — Context | [`02-c4-contexto.puml`](diagrams/02-c4-contexto.puml) · [`c4.dsl`](diagrams/c4.dsl) | `.png` | [`c4-context.md`](c4-context.md) |
-| 3 | C4 L2 — Containers | [`03-c4-contenedores.puml`](diagrams/03-c4-contenedores.puml) · [`c4.dsl`](diagrams/c4.dsl) | `.png` | [`c4-container.md`](c4-container.md) |
-| 4 | C4 L3 — Components | [`04-c4-componentes.puml`](diagrams/04-c4-componentes.puml) · [`.dsl`](diagrams/04-c4-componentes.dsl) | `.png` | [`c4-component.md`](c4-component.md) |
+| 2 | C4 L1 — Context | [`02-c4-contexto.dsl`](diagrams/02-c4-contexto.dsl) · [`c4.dsl`](diagrams/c4.dsl) | `.png` | [`c4-context.md`](c4-context.md) |
+| 3 | C4 L2 — Containers | [`03-c4-contenedores.dsl`](diagrams/03-c4-contenedores.dsl) · [`c4.dsl`](diagrams/c4.dsl) | `.png` | [`c4-container.md`](c4-container.md) |
+| 4 | C4 L3 — Components | [`04-c4-componentes.dsl`](diagrams/04-c4-componentes.dsl) | `.png` | [`c4-component.md`](c4-component.md) |
 | 5 | UML — Deployment (Local) | [`05-uml-despliegue.puml`](diagrams/05-uml-despliegue.puml) | `.png` | [`deployment.md`](deployment.md) §1 |
 | 5b | UML — Deployment (Cloud GCP Fase 2) | [`08-despliegue-cloud-gcp.puml`](diagrams/08-despliegue-cloud-gcp.puml) | `.png` | [`deployment.md`](deployment.md) §2 |
 | 6 | UML — Sequence, create account | [`06-uml-secuencia-crear-cuenta.puml`](diagrams/06-uml-secuencia-crear-cuenta.puml) | `.png` | [`sequence-create-account.md`](sequence-create-account.md) |

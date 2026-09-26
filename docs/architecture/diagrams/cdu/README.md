@@ -37,8 +37,9 @@ microservicio.
   actualizar datos, cargar fotografía, validar identidad, recuperar la
   contraseña por correo y cambiar la contraseña propia.
 - `CDU002`: abrir cuenta, consultar saldo, aplicar movimiento de Saga,
-  gestionar estado de cuenta y registrar un depósito en ventanilla.
-- `CDU003`: transferir fondos y consultar el estado de una transferencia.
+  gestionar estado de cuenta, desactivar cuentas inactivas y registrar un depósito en ventanilla.
+- `CDU003`: transferir fondos, consultar el estado de una transferencia y
+  consultar el historial de transferencias con filtros.
 - `CDU004`: procesar pagos y consultar el historial de pagos.
 - `CDU005`: registrar auditoría, enviar notificaciones y consultar auditoría o
   notificaciones.
@@ -115,6 +116,7 @@ Cada diagrama tiene su fuente PlantUML versionada y el PNG que se entrega.
 | CDU002.2 | Consultar saldo | [`.puml`](account/flujos/CDU002.2-consultar-saldo.puml) | [`.png`](account/flujos/CDU002.2-consultar-saldo.png) |
 | CDU002.3 | Aplicar movimiento de la Saga | [`.puml`](account/flujos/CDU002.3-aplicar-movimiento.puml) | [`.png`](account/flujos/CDU002.3-aplicar-movimiento.png) |
 | CDU002.4 | Gestionar estado de la cuenta | [`.puml`](account/flujos/CDU002.4-gestionar-estado.puml) | [`.png`](account/flujos/CDU002.4-gestionar-estado.png) |
+| CDU002.8 | Desactivar cuentas inactivas | [`.puml`](account/flujos/CDU002.8-desactivar-cuentas-inactivas.puml) | [`.png`](account/flujos/CDU002.8-desactivar-cuentas-inactivas.png) |
 | CDU002.9 | Registrar depósito en ventanilla | [`.puml`](account/flujos/CDU002.9-registrar-deposito.puml) | [`.png`](account/flujos/CDU002.9-registrar-deposito.png) |
 
 ### CDU003 — Transaction Service
@@ -124,6 +126,7 @@ Cada diagrama tiene su fuente PlantUML versionada y el PNG que se entrega.
 | CDU003 | **Diagrama de casos de uso del servicio** | [`.puml`](transaction/transaction-casos-de-uso.puml) | [`.png`](transaction/transaction-casos-de-uso.png) |
 | CDU003.1 | Transferir fondos | [`.puml`](transaction/flujos/CDU003.1-transferir-fondos.puml) | [`.png`](transaction/flujos/CDU003.1-transferir-fondos.png) |
 | CDU003.2 | Consultar estado de la transferencia | [`.puml`](transaction/flujos/CDU003.2-consultar-estado.puml) | [`.png`](transaction/flujos/CDU003.2-consultar-estado.png) |
+| CDU003.10 | Consultar historial con filtros | [`.puml`](transaction/flujos/CDU003.10-consultar-historial.puml) | [`.png`](transaction/flujos/CDU003.10-consultar-historial.png) |
 
 ### CDU004 — Payment Service
 
