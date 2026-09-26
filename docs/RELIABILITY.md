@@ -1,10 +1,10 @@
 # Confiabilidad y SRE — Bank USAC
 
-> **La definición completa vive en [`sre/`](sre/sli.md).** Este documento fija
+> **La definición completa vive en [`sre/sli-slo-sla.md`](sre/sli-slo-sla.md).** Este documento fija
 > las preocupaciones de diseño que el enunciado exige resolver y la línea base de
 > métricas aprobada en T-03. Los indicadores, objetivos y compromisos en su
 > versión extendida —30 SLI, 26 SLO, severidades y exclusiones— están en
-> [SLI](sre/sli.md) · [SLO](sre/slo.md) · [SLA](sre/sla.md), encadenados de modo
+> [SLI](sre/sli-slo-sla.md#4-indicadores-de-nivel-de-servicio-sli) · [SLO](sre/sli-slo-sla.md#5-objetivos-de-nivel-de-servicio-slo) · [SLA](sre/sli-slo-sla.md#7-acuerdo-de-nivel-de-servicio-sla), encadenados de modo
 > que ninguna promesa carece de un número que la verifique. Donde ambos hablen
 > del mismo indicador, `sre/` es el que se mantiene.
 

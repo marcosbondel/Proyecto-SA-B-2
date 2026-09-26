@@ -29,8 +29,8 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | Documento | Qué responde |
 | --- | --- |
 | [architecture/README.md](architecture/README.md) | Índice de los diagramas y de los ADR: qué diagrama es cuál y en qué formato se entrega. |
-| [architecture/adr/](architecture/adr/README.md) | Los trece registros de decisión, cada uno con las alternativas descartadas. Léelos antes de introducir o cambiar una tecnología. |
-| [architecture/decision-matrix.md](architecture/decision-matrix.md) | Los trece ADR en una sola tabla: decisión, alternativa descartada, trade-off aceptado. |
+| [architecture/adr/](architecture/adr/README.md) | Los dieciséis registros de decisión, cada uno con las alternativas descartadas. Los tres de la Fase II son [ADR-014](architecture/adr/ADR-014-cloud-provider.md) (proveedor cloud), [ADR-015](architecture/adr/ADR-015-ci-cd-platform.md) (CI/CD) y [ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md) (infraestructura). Léelos antes de introducir o cambiar una tecnología. |
+| [architecture/decision-matrix.md](architecture/decision-matrix.md) | Los dieciséis ADR en una sola tabla: decisión, alternativa descartada, trade-off aceptado, y las penalizaciones del enunciado que cada uno evita. |
 | [architecture/diagrams/](architecture/diagrams/) | Las fuentes versionadas (`.puml`, `.dsl`, `.dbml`) y sus renders `.png`. |
 | [architecture/c4-context.md](architecture/c4-context.md) · [c4-container.md](architecture/c4-container.md) · [c4-component.md](architecture/c4-component.md) | La lectura de cada nivel C4: qué muestra el diagrama y qué significa cada elemento. |
 | [architecture/deployment.md](architecture/deployment.md) | La forma del despliegue: nodos, contenedores, puertos y protocolos. Para *ejecutarlo*, [operations/DEPLOYMENT.md](operations/DEPLOYMENT.md). |
@@ -42,7 +42,7 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | Documento | Qué responde |
 | --- | --- |
 | [domain/](domain/README.md) | El modelo de dominio como contrato funcional: quién posee qué dato, qué invariante protege, qué comandos acepta. Léelo antes de implementar cualquier servicio. |
-| [events/](events/README.md) | Cómo el sistema se habla a sí mismo: el sobre, el catálogo de los 97 contratos, la topología del broker y la Saga de transferencia. |
+| [events/](events/README.md) | Cómo el sistema se habla a sí mismo: el sobre, el catálogo de los 103 contratos, la topología del broker y la Saga de transferencia. |
 | [generated/db-schema.md](generated/db-schema.md) | El catálogo de las cinco bases de datos: tabla, columna, tipo, restricción e índice. |
 | [architecture/diagrams/er/](architecture/diagrams/er/README.md) | Los diagramas entidad-relación por microservicio, en DBML y PNG. |
 
@@ -51,12 +51,14 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | Documento | Qué responde |
 | --- | --- |
 | [operations/](operations/README.md) | Los runbooks: despliegue, contenedores, CI y el canal de correo real. |
-| [operations/DEPLOYMENT.md](operations/DEPLOYMENT.md) | De una máquina limpia a un clúster corriendo, en cuatro comandos, y qué hacer cuando algo falla. |
+| [operations/DEPLOYMENT.md](operations/DEPLOYMENT.md) | De una máquina limpia a un clúster **local** corriendo, en cuatro comandos, y qué hacer cuando algo falla. |
+| [operations/CLOUD.md](operations/CLOUD.md) | **El despliegue en la nube (Fase II)**: de un proyecto de GCP vacío a un sistema que responde — Terraform, la identidad del pipeline, las variables, la primera versión publicada, Cloud Run, y los tres pasos que siguen siendo manuales. |
+| [operations/MONOREPO.md](operations/MONOREPO.md) | La estrategia de monorepo: un directorio por componente, y cómo un cambio redespliega sólo ese componente. |
 | [operations/CONTAINERS.md](operations/CONTAINERS.md) | El inventario de las siete imágenes: Dockerfile, puerto, health checks y variables requeridas. |
-| [operations/CI.md](operations/CI.md) | El pipeline de GitHub Actions: qué lo dispara, qué verifica cada etapa y qué no demuestra un run verde. |
+| [operations/CI.md](operations/CI.md) | Los cuatro workflows de GitHub Actions: qué los dispara, qué verifica cada etapa, cómo se publica una versión y qué no demuestra un run verde. |
 | [operations/EMAIL_RESEND.md](operations/EMAIL_RESEND.md) | Cómo enviar correo de activación real en lugar del canal simulado. |
 | [RELIABILITY.md](RELIABILITY.md) | Las preocupaciones de confiabilidad que el enunciado exige resolver: idempotencia, reintentos, consistencia eventual, trazabilidad. |
-| [sre/sli.md](sre/sli.md) · [slo.md](sre/slo.md) · [sla.md](sre/sla.md) | Qué se mide, qué meta se persigue y qué se promete. Encadenados: ninguna promesa sin un número que la verifique. |
+| [sre/sli-slo-sla.md](sre/sli-slo-sla.md) | Qué se mide ([SLI](sre/sli-slo-sla.md#4-indicadores-de-nivel-de-servicio-sli)), qué meta se persigue ([SLO](sre/sli-slo-sla.md#5-objetivos-de-nivel-de-servicio-slo)) y qué se promete ([SLA](sre/sli-slo-sla.md#7-acuerdo-de-nivel-de-servicio-sla)). Encadenados: ninguna promesa sin un número que la verifique. |
 
 ## Producto, diseño y calidad
 

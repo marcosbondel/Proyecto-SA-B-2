@@ -5,9 +5,11 @@ cost accepted, and what it obliges. This table **indexes** the records in [`adr/
 the full reasoning lives in each ADR and is deliberately not repeated here, so the two can never
 disagree.
 
-Assignment references are to `docs/references/780_Proyecto_1_2S2026.pdf`, revision 2026-08-13.
+Assignment references are to `docs/references/780_Proyecto_1_2S2026.pdf`, revision 2026-08-13,
+for ADR-001 … ADR-013, and to `docs/references/780_Proyecto_2_2S2026.pdf` (Fase II) for
+ADR-014 … ADR-016 — the rows whose page numbers are marked *(F2)*.
 
-## The thirteen decisions
+## The sixteen decisions
 
 | Decision | ADR | Chosen | Rejected alternatives | Accepted trade-off | Operational consequence | Assignment rule |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -22,8 +24,11 @@ Assignment references are to `docs/references/780_Proyecto_1_2S2026.pdf`, revisi
 | Distributed transactions | [ADR-009](adr/ADR-009-distributed-transactions.md) | Saga by choreography | Orchestration; 2PC; no compensation | **The flow is not visible in one file**; compensation is hard to get right | Every step idempotent; `FAILED` and `COMPENSATED` are distinguishable states | p. 7; §6 step 6 p. 17; §8.1 p. 20 |
 | Authentication | [ADR-010](adr/ADR-010-authentication.md) | JWT issued and validated in the Gateway, HS256, 1 h | Customer Service as issuer; RS256; per-service validation; stateful sessions | **No revocation before expiry**; services trust identity rather than verifying it | Identity costs no database lookup; the secret lives in exactly one component | §4.1 p. 5 |
 | Diagramming toolchain (superseded) | [ADR-011](adr/ADR-011-diagramming-toolchain.md) | Lucid + Mermaid, two artefacts per diagram | PlantUML as a third format; Lucid only; Mermaid only | **Sixteen artefacts to keep in sync** | Architecture changes are reviewable in pull requests via the `.mmd` diff | Not constrained (§4.2 p. 13 fixes the properties, not the tool) |
-| Large-payload transport | [ADR-012](adr/ADR-012-object-storage.md) | Identity-document photos travel through S3-compatible object storage (MinIO); messages carry only a reference and a SHA-256 | Base64 bytes inside the command; a database owned by the Gateway; an HTTP upload endpoint on Customer Service | **One more component to provision, plus a failure mode that did not exist: a reference to a missing object** | Every message payload stays under 64 KB, so retry and dead-letter behaviour are uniform across all 91 contracts in the catalogue | §4.1 p. 5 constrains the requirement, not the mechanism |
+| Large-payload transport | [ADR-012](adr/ADR-012-object-storage.md) | Identity-document photos travel through S3-compatible object storage (MinIO); messages carry only a reference and a SHA-256 | Base64 bytes inside the command; a database owned by the Gateway; an HTTP upload endpoint on Customer Service | **One more component to provision, plus a failure mode that did not exist: a reference to a missing object** | Every message payload stays under 64 KB, so retry and dead-letter behaviour are uniform across all 103 contracts in the catalogue | §4.1 p. 5 constrains the requirement, not the mechanism |
 | Diagramming toolchain (current) | [ADR-013](adr/ADR-013-diagramming-toolchain-revision.md), supersedes ADR-011 | Mermaid + PlantUML required per diagram, Lucid optional | Lucid + PlantUML + Mermaid all required; PlantUML + Lucid without Mermaid; ADR-011's Lucid + Mermaid only | **Two required text sources to keep in sync, plus a PlantUML render toolchain (Java or a render server)** | Architecture changes are reviewable via both the `.mmd` and `.puml` diffs; PlantUML gives native UML use-case notation for the one diagram Mermaid can't express | Not constrained (§4.2 p. 13 fixes the properties, not the tool) |
+| Cloud provider | [ADR-014](adr/ADR-014-cloud-provider.md) | Google Cloud Platform — GKE, Compute Engine, Cloud Run, Artifact Registry | AWS (EKS bills the control plane by the hour with no free-tier equivalent for the one zonal cluster deployed here); Azure (free AKS control plane, but Container Apps is not the service the statement names); splitting the system across two providers | **The organisation policy `constraints/iam.disableServiceAccountKeyCreation` rules out a downloadable CI key**, so the pipeline had to be built on Workload Identity Federation; a fixed credit balance caps the cluster at three nodes and puts both environments in it | The frontend gets a managed HTTPS origin for free, and the HPA needs no metrics-server install — it is a control-plane addon. Provider coupling is the Terraform module plus four repository variables; the chart, the images and the code are neutral | §4.3 p. 8 *(F2)*; §4.4 p. 9 *(F2)* |
+| CI/CD platform | [ADR-015](adr/ADR-015-ci-cd-platform.md) | GitHub Actions, as four workflows (`ci`, `changes`, `release`, `cd`) | GitLab CI (would need the deliverable repository mirrored); Google Cloud Build (triggers live outside the repository, so *when* the pipeline runs stops being reviewable); Jenkins (a server to run and secure for four weeks) | **GitHub-hosted runners live outside the VPC**, so no workflow can reach a database VM — which is why TD-070's remedy waits on a person with IAP SSH | Build, Test and Validación are three jobs and therefore three checks, so "no phase was omitted" is visible rather than asserted; `needs` enforces the order and a matrix parallelises the seven images | §4.3 p. 8 *(F2)*; §4.1 pp. 6–8 *(F2)*; §8.3 p. 13 *(F2)* |
+| Cloud infrastructure topology | [ADR-016](adr/ADR-016-cloud-infrastructure.md) | One Terraform module: VPC with two subnets, five Compute Engine VMs with no public IP, zonal GKE Standard (3 × e2-standard-2), Cloud Run, and **the same Helm chart as kind**, with `dev` and `prod` as two namespaces | Cloud SQL (better engineering, forbidden by §4.2); GKE Autopilot (no controllable ceiling on a fixed budget); RabbitMQ and MinIO on their own VMs; two clusters, one per environment; a second chart or a `values-cloud.yaml` | **Three resources are still created by hand** — the Artifact Registry repository, the Gateway's public LoadBalancer and the Cloud Run revision (TD-079 … TD-081) — and the two environments **share the five databases** (TD-070) | `terraform apply` produces the network, the provisioned machines and the cluster in one command; the chart never learned it was running somewhere else, so a change tested on kind deploys to GKE untranslated | §4.2 p. 8 *(F2)*; §4.3 pp. 8–9 *(F2)*; §4.1 pp. 7–8 *(F2)*; §8.3 p. 13 *(F2)* |
 
 ## The two database penalties are separate rules
 
@@ -46,7 +51,20 @@ independently.
 | No local Kubernetes deployment | 100 % | [ADR-006](adr/ADR-006-containerization.md), [ADR-007](adr/ADR-007-local-orchestration.md) |
 | Inconsistency between diagrams and code | 25 % | [ADR-013](adr/ADR-013-diagramming-toolchain-revision.md) (supersedes ADR-011) |
 
-All five are listed in §8.3, page 27.
+All five are listed in §8.3, page 27, of the Fase I statement.
+
+Fase II adds its own list (§8.3, page 13 of `780_Proyecto_2_2S2026.pdf`). These are the ones
+these decisions bear on:
+
+| Failure | Penalty | Decision that prevents it | Status |
+| --- | ---: | --- | --- |
+| No deploying the system on Kubernetes | 100 % | [ADR-016](adr/ADR-016-cloud-infrastructure.md) | Avoided — seven workloads in GKE, two namespaces |
+| A non-functional CI/CD pipeline | 100 % | [ADR-015](adr/ADR-015-ci-cd-platform.md) | Avoided — four workflows, last runs green |
+| Omitting a pipeline phase | 25 % | [ADR-015](adr/ADR-015-ci-cd-platform.md) | Avoided — three jobs chained by `needs` |
+| Terraform not reproducible, or infrastructure created by hand | 50 % | [ADR-016](adr/ADR-016-cloud-infrastructure.md) | **Partly exposed** — three resources are still manual: TD-079, TD-080, TD-081 |
+| A manual production deployment | 50 % | [ADR-015](adr/ADR-015-ci-cd-platform.md) | **Partly exposed** — the cluster is deployed by the pipeline, the Cloud Run frontend is not: TD-081 |
+| Using unversioned (`latest`) images | 10 % | [ADR-015](adr/ADR-015-ci-cd-platform.md) | Avoided — `release.yml` tags `vX.Y.Z`, `cd.yml` tags `dev-<sha>`, and `helm-deploy.sh` refuses `latest` |
+| Frontend on S3 or a service that is not allowed | 10 % | [ADR-014](adr/ADR-014-cloud-provider.md) | Avoided — Cloud Run, which §4.4 names |
 
 ## What these decisions oblige, by ticket
 
@@ -61,6 +79,8 @@ All five are listed in §8.3, page 27.
 | **T-22** | Helm chart, and the documented mechanism for pods reaching external databases | ADR-005, ADR-007 |
 | **T-23** | Validate failure paths and compensation routes, not only the happy path | ADR-009 |
 | **T-24** | Measure the SLI defined in [`../RELIABILITY.md`](../RELIABILITY.md) | ADR-004, ADR-009 |
+| **T-32** | Build, Test and Validación as three chained jobs on a platform whose triggers live in the repository | ADR-015 |
+| **T-33 … T-35** | Every cloud resource declared in `infra/terraform/gcp/`, or a debt row on the day it is created by hand | ADR-014, ADR-016 |
 
 ## Changing a decision
 
