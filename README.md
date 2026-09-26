@@ -30,9 +30,13 @@ single primary owner of every component.
   - [Ports](#ports) · [Check it came up](#check-it-came-up) ·
     [What you can see](#what-you-can-actually-see) · [Stopping](#stopping)
 - [What This Is](#what-this-is)
+- [**Phase II — the deployed system**](#phase-ii--the-deployed-system) — the
+  live URLs, the pipeline, the cloud infrastructure
 - [Repository Layout](#repository-layout)
-- [**Kubernetes deployment**](docs/operations/DEPLOYMENT.md) — the runbook:
-  four commands from a clean machine to a running cluster
+- [**Kubernetes deployment, locally**](docs/operations/DEPLOYMENT.md) — the
+  runbook: four commands from a clean machine to a running cluster
+- [**Deployment to GCP**](docs/operations/CLOUD.md) — from an empty project to
+  a system that answers
 - [Documentation](#documentation)
 - [Development](#development) —
   [prerequisites](#prerequisites) · [commands](#commands) ·
@@ -141,12 +145,80 @@ refused payment that compensates on the first attempt, and one that climbs the
 retry ladder to its end and then compensates — each asserted as a fact about the
 money by `pnpm images:flow`.
 
-**The system is deployed to Kubernetes**: one Helm chart over a local kind
-cluster, all seven workloads reaching `1/1 Ready`, and the five PostgreSQL
-databases, RabbitMQ and MinIO running *outside* the cluster by design. Bring it
-up with `pnpm k8s:cluster && pnpm k8s:install`; the full procedure, the
-prerequisites and the troubleshooting are in
-[docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md).
+**The system is deployed to Kubernetes**: one Helm chart, all seven workloads
+reaching `1/1 Ready`, and the five PostgreSQL databases running *outside* the
+cluster by design. The **same chart** installs on a local kind cluster and on
+GKE — bring the local one up with `pnpm k8s:cluster && pnpm k8s:install`
+([docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md)), and see
+[Phase II](#phase-ii--the-deployed-system) below for the cloud one, which is
+where the system actually runs today.
+
+## Phase II — the deployed system
+
+Phase II adds five functional extensions, a complete CI/CD pipeline,
+infrastructure as code and a cloud deployment. **The system is running.**
+
+| | |
+| --- | --- |
+| **Frontend** | <https://bank-usac-web-771155413874.us-central1.run.app> — Google Cloud Run |
+| **API Gateway** | `http://34.27.60.211:3000` — GKE, namespace `prod` (`/health`, `/ready`) |
+| **Cloud** | Google Cloud Platform, `us-central1` ([ADR-014](docs/architecture/adr/ADR-014-cloud-provider.md)) |
+| **Environments** | `prod` and `dev`, two namespaces of one GKE cluster |
+
+### What was added to the services
+
+| Service | Extension |
+| --- | --- |
+| Customer | **KYC status** — `PENDING` / `VERIFIED` / `REJECTED`, and only a verified customer may start a transfer |
+| Account | **Account-type rules** — `AHORRO` opens with Q100.00 minimum and charges a Q3.00 commission per debit; `MONETARIA` charges none |
+| Transaction | **History** — per account, filtered by date range and status, with the assignment's `PENDING` / `APPROVED` / `FAILED` as a projection of the Saga's six real states |
+| Payment | **Simulated external payments** — success, failure and **timeout**, over the 1 s / 5 s / 30 s retry ladder |
+| Notification & Audit | **Event classification** — `INFO`, `WARNING`, `ERROR`, filterable and driving the notification |
+
+All five live **inside** the transfer Saga, in that order: KYC gate → account-type
+rule → history → external payment → final notification. The sequence diagram is
+[`07-uml-secuencia-transferencia.png`](docs/architecture/diagrams/07-uml-secuencia-transferencia.png)
+and the detail is
+[TECHNICAL_DOCUMENT.md §12](docs/TECHNICAL_DOCUMENT.md#12-fase-ii--extensión-funcional-por-microservicio).
+
+### The pipeline
+
+Four workflows in [`.github/workflows/`](.github/workflows/), explained in
+[docs/operations/CI.md](docs/operations/CI.md):
+
+```
+feature/<name>  ──push──►  CI: Build → Test → Validación   (three jobs, chained)
+      └──PR──►  develop  ──►  CI: Build → Test
+                   └──►  CD: builds only what changed, deploys to namespace dev
+      tag vX.Y.Z  ──►  Release: formal version + seven versioned images
+                   └──merge──►  main  ──►  CD: rolling update in prod
+```
+
+Production never builds an image: it deploys the ones the release phase
+published. No tag is ever `latest`. A deploy that does not reach `Ready` rolls
+itself back.
+
+### The infrastructure
+
+One Terraform module,
+[`infra/terraform/gcp/`](infra/terraform/gcp/README.md): a VPC with a subnet for
+the cluster and a private subnet for data, **five Compute Engine VMs with no
+public IP** running one PostgreSQL database each, a zonal GKE cluster of three
+nodes, and Cloud Run for the frontend. The seven workloads carry an HPA at
+**80 % CPU** with CPU and memory requests and limits.
+
+The procedure, from an empty GCP project to a system that answers — including
+the three steps that are still manual — is
+[docs/operations/CLOUD.md](docs/operations/CLOUD.md).
+
+### What is not finished, stated plainly
+
+- `dev` and `prod` **share the five databases** ([TD-070](docs/TECH_DEBT.md)).
+  Compute and messaging are separated; data is not.
+- Three cloud resources are still created by hand: the Artifact Registry
+  repository, the Gateway's public `LoadBalancer` and the Cloud Run revision
+  that serves the frontend ([TD-079, TD-080, TD-081](docs/TECH_DEBT.md)).
+
 
 ## Repository Layout
 
@@ -217,8 +289,19 @@ explains how agents build it.
   dependency rules.
 - [Design system](docs/DESIGN.md) - visual tokens, components, states, and
   domain formats.
-- [Kubernetes deployment](docs/operations/DEPLOYMENT.md) - the runbook: from a
-  clean machine to a running cluster, and what each failure looks like.
+- [Technical document](docs/TECHNICAL_DOCUMENT.md) - the consolidated
+  deliverable: where every required artifact lives, the diagrams read one by
+  one, and the Phase II sections (§12 functional extensions, §13 CI/CD, §14
+  infrastructure as code).
+- [Kubernetes deployment, locally](docs/operations/DEPLOYMENT.md) - the runbook:
+  from a clean machine to a running kind cluster, and what each failure looks
+  like.
+- [Deployment to GCP](docs/operations/CLOUD.md) - the Phase II procedure: from
+  an empty project to a system that answers, and which steps are still manual.
+- [Continuous integration and delivery](docs/operations/CI.md) - the four
+  workflows, what each phase verifies, and what a green run does not prove.
+- [Monorepo strategy](docs/operations/MONOREPO.md) - one directory per
+  component, and how a change redeploys only that component.
 - [Containers](docs/operations/CONTAINERS.md) - the seven images, their ports,
   health checks and runtime variables.
 - [Ownership](docs/OWNERSHIP.md) - primary owners and shared work.

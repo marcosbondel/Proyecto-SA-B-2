@@ -26,8 +26,8 @@ tool looks for it; those are covered by the directory rules below.
 
 | Path | Class | Owner | State | Last reviewed |
 | --- | --- | --- | --- | --- |
-| `README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `ARCHITECTURE.md` | project | Marcos Bonifasi | current | 2026-08-11 |
+| `README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `ARCHITECTURE.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `AGENTS.md` | project | Marcos Bonifasi | current | 2026-08-24 |
 | `CLAUDE.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `context/AI_PROJECT_AGENTS.md` | project | Marcos Bonifasi | current | 2026-08-11 |
@@ -39,11 +39,13 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/OWNERSHIP.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/PRODUCT_SENSE.md` | project | Marcos Bonifasi | blocked | 2026-08-11 |
 | `docs/QUALITY_SCORE.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/RELIABILITY.md` | project | Marcos Bonifasi | current | 2026-08-15 |
+| `docs/RELIABILITY.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/SECURITY.md` | project | Marcos Bonifasi | blocked | 2026-08-15 |
-| `docs/TECH_DEBT.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/TECHNICAL_DOCUMENT.md` | project | Marcos Bonifasi | current | 2026-08-28 |
+| `docs/TECH_DEBT.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/TECHNICAL_DOCUMENT.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/manual/README.md` | project | Marcos Bonifasi | current | 2026-08-28 |
+| `docs/manual-usuario.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/manual-tecnico.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/manual/rol-cliente.md` | project | Marcos Bonifasi | current | 2026-08-28 |
 | `docs/manual/rol-cajero-receptor.md` | project | Marcos Bonifasi | current | 2026-08-28 |
 | `docs/manual/rol-administrador.md` | project | Marcos Bonifasi | current | 2026-08-28 |
@@ -58,18 +60,24 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/events/catalog.md` | generated | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/events/topology.md` | project | Marcos Bonifasi | current | 2026-08-19 |
 | `docs/events/saga-transfer.md` | project | Marcos Bonifasi | current | 2026-08-19 |
-| `docs/operations/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
+| `docs/operations/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/operations/CONTAINERS.md` | project | Marcos Bonifasi | current | 2026-08-27 |
-| `docs/operations/CI.md` | project | Marcos Bonifasi | current | 2026-09-12 |
-| `docs/operations/DEPLOYMENT.md` | project | Marcos Bonifasi | current | 2026-09-03 |
+| `docs/operations/CI.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/operations/CLOUD.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/operations/DEPLOYMENT.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/operations/EMAIL_RESEND.md` | project | Marcos Bonifasi | current | 2026-08-30 |
-| `docs/architecture/deployment.md` | project | Marcos Bonifasi | current | 2026-09-03 |
+| `docs/architecture/deployment.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `infra/k8s/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
+| `infra/terraform/gcp/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/operations/MONOREPO.md` | project | Marcos Bonifasi | current | 2026-09-24 |
 | `infra/docker/README.md` | project | Marcos Bonifasi | current | 2026-08-27 |
 | `docs/architecture/adr/ADR-012-object-storage.md` | project | Marcos Bonifasi | current | 2026-08-19 |
+| `docs/architecture/adr/ADR-014-cloud-provider.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/architecture/adr/ADR-015-ci-cd-platform.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/architecture/adr/ADR-016-cloud-infrastructure.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
-| `docs/architecture/decision-matrix.md` | project | Marcos Bonifasi | current | 2026-08-15 |
-| `docs/architecture/adr/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
+| `docs/architecture/decision-matrix.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/architecture/adr/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/ADR-001-backend-stack.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/adr/ADR-002-frontend-stack.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/adr/ADR-003-communication-model.md` | project | Marcos Bonifasi | current | 2026-08-15 |
@@ -83,9 +91,9 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/adr/ADR-011-diagramming-toolchain.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/references/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
 | `apps/web/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
-| `docs/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
-| `docs/dda.md` | project | Enner Mendizabal | current | 2026-09-01 |
-| `docs/adr.md` | project | Enner Mendizabal | current | 2026-09-01 |
+| `docs/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/dda.md` | project | Enner Mendizabal | current | 2026-09-26 |
+| `docs/adr.md` | project | Enner Mendizabal | current | 2026-09-26 |
 | `docs/architecture.md` | project | Enner Mendizabal | current | 2026-09-01 |
 | `docs/architecture/c4-context.md` | project | Enner Mendizabal | current | 2026-09-02 |
 | `docs/architecture/c4-container.md` | project | Enner Mendizabal | current | 2026-09-02 |
@@ -99,6 +107,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/sre/sli-slo-sla.md` | project | Marcos Bonifasi | current | 2026-09-20 |
 | `docs/manual/recorrido-visual.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/qa/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
+| `docs/qa/pyramid.md` | generated | — | current | 2026-09-25 |
 | `docs/qa/happypath.md` | project | Enner Mendizabal | current | 2026-09-09 |
 | `docs/qa/validation-report.md` | project | Enner Mendizabal | current | 2026-09-01 |
 | `docs/qa/backend/T-26-kyc-evidence.md` | project | Enner Mendizabal | current | 2026-09-09 |
@@ -124,6 +133,7 @@ document itself. A reader must not fill that gap with an assumption.
 | --- | --- | --- | --- |
 | `.agents/roles/**/*.md` | harness | — | Canonical agent role definitions. |
 | `.agents/skills/**/*.md` | harness | — | Canonical skill content and its supporting references. |
+| `.claude/agent-memory/**/*.md` | harness | — | Notes an agent role keeps across sessions. Written by the agent, not by the team. |
 | `.claude/agents/**/*.md` | harness | — | Symlinked role entry points into `.agents/roles/`. |
 | `.claude/skills/**/*.md` | harness | — | Symlinked skill entry points into `.agents/skills/`. |
 | `.opencode/commands/**/*.md` | harness | — | Symlinked command entry points into Spec Kit skill bodies. |
@@ -159,6 +169,7 @@ find . -name '*.md' -not -path './.git/*' -not -path '*/node_modules/*' \
     printf '%s\n' "$rows" | grep -qxF "$path" && continue
     case "$path" in
       .agents/roles/*|.agents/skills/*|.claude/agents/*|.claude/skills/*) ;;
+      .claude/agent-memory/*) ;;
       .opencode/commands/*|.specify/memory/*|.specify/templates/*|specs/*) ;;
       docs/architecture/adr/ADR-*) ;;
       apps/*/README.md|apps/*/*/README.md|apps/*/*/*/README.md) ;;
