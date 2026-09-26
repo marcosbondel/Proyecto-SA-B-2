@@ -1,7 +1,14 @@
-# Despliegue en Kubernetes
+# Despliegue en Kubernetes (local, kind)
 
-Cómo llevar Bank USAC a un clúster local de Kubernetes, desde una máquina
+Cómo llevar Bank USAC a un clúster **local** de Kubernetes, desde una máquina
 limpia, y cómo comprobar que quedó bien.
+
+> **¿Buscas el despliegue en la nube?** Está en [CLOUD.md](CLOUD.md): GKE, las
+> cinco VMs de Compute Engine, Cloud Run y el pipeline que despliega. Este
+> documento es el clúster local con kind, que sigue siendo el camino corto para
+> desarrollar y probar, y no está sustituido por aquél — los dos instalan **el
+> mismo chart**, y lo único que cambia es a qué apuntan `postgres-customer`,
+> `rabbitmq` y `minio`.
 
 Este documento es el procedimiento. La decisión que le da forma —por qué kind,
 por qué un chart de Helm y no manifiestos sueltos, y por qué las bases de datos
