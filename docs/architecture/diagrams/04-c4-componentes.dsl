@@ -89,7 +89,7 @@ workspace "Bank USAC - Transaction Service (Componentes)" "Diagrama de Component
         bankusac.transaction.outbox_relay -> bankusac.transaction.amqp "publica periódicamente a RabbitMQ" "llamada interna"
         bankusac.transaction.amqp -> bankusac.rabbitmq "conexión AMQP, ack manual, DLQ" "AMQP | conexión"
         bankusac.transaction.pub_adapter -> bankusac.rabbitmq "publica comandos/eventos" "AMQP | comandos/eventos | correlationId"
-        bankusac.transaction.rabbitmq -> bankusac.transaction.sub_adapter "entrega comandos/eventos" "AMQP | comandos/eventos | correlationId"
+        bankusac.rabbitmq -> bankusac.transaction.sub_adapter "entrega comandos/eventos" "AMQP | comandos/eventos | correlationId"
 
         # --- infrastructure/ -> interfaces/ (enrutamiento de deliveries) ---
         bankusac.transaction.sub_adapter -> bankusac.transaction.h_transfer "enruta por messageType" "llamada interna | síncrono"
