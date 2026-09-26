@@ -18,8 +18,9 @@
  * que no se ejecutó es la peor clase de verde y este repositorio ya se tropezó
  * con eso una vez (TD-069).
  *
- *   node test/scripts/pyramid.mjs            # mide y falla si hay desvío
- *   node test/scripts/pyramid.mjs --no-fail  # solo informa
+ *   node test/scripts/pyramid.mjs                # mide y falla si hay desvío
+ *   node test/scripts/pyramid.mjs --no-fail      # solo informa
+ *   node test/scripts/pyramid.mjs --without-e2e  # sin la capa que no ejecutó
  */
 
 import { execFileSync } from 'node:child_process';
@@ -40,6 +41,22 @@ const FAIL_ON_DEVIATION = !process.argv.includes('--no-fail');
  * la peor clase de verde.
  */
 const REQUIRE_EXECUTED = process.argv.includes('--require-executed');
+
+/**
+ * Mide sin la capa E2E, porque quien invoca no la ejecuta.
+ *
+ * El E2E necesita los siete componentes en pie y se corre a mano; su informe
+ * queda versionado como evidencia. Eso significa que en un pipeline que no lo
+ * levanta siempre hay un `pyramid-e2e.json` a mano — de otra máquina y otro
+ * día — y afirmar un 70/20/10 sobre él es exactamente el verde que no se
+ * ejecutó que este script existe para no dar.
+ *
+ * Con esta bandera la capa E2E se informa pero no se afirma, y la proporción
+ * que sí se comprueba es la que esta corrida midió de verdad: cuánto pesa la
+ * integración sobre lo propio de cada app, que es 70:20 normalizado — el mismo
+ * objetivo que ya se exige paquete por paquete.
+ */
+const WITHOUT_E2E = process.argv.includes('--without-e2e');
 
 /**
  * Plantilla con la que se compone el `DATABASE_URL` de cada paquete, con `{db}`
@@ -318,17 +335,32 @@ function main() {
         }
       }
     }
-    if (e2e.stale) {
+    if (e2e.stale && !WITHOUT_E2E) {
       deviations.push(
         `no hay informe E2E en ${MANIFEST.e2e.report}: levanta el stack y corre test/e2e/run-all.mjs`,
       );
     }
   }
 
-  for (const [layer, target] of Object.entries(MANIFEST.targets)) {
-    const actual = system[`${layer}Share`];
-    if (Math.abs(actual - target) > MANIFEST.tolerancePoints) {
-      deviations.push(`sistema ${layer}: ${pct(actual)} (objetivo ${target} %)`);
+  if (WITHOUT_E2E) {
+    // Las tres capas no se pueden comparar contra 70/20/10 sin la tercera: un
+    // E2E ausente o corto no baja sólo su propio porcentaje, sube los otros dos
+    // por el mismo motivo, y saldrían tres desviaciones donde no hay ninguna.
+    // Lo que sí midió esta corrida es la relación entre las dos capas que
+    // ejecutó, y esa se compara contra el mismo objetivo de siempre.
+    const own = system.unit + system.integration;
+    const actual = share(system.integration, own);
+    if (Math.abs(actual - ownIntegrationTarget) > MANIFEST.tolerancePoints) {
+      deviations.push(
+        `sistema integración: ${pct(actual)} de lo propio (objetivo ${pct(ownIntegrationTarget)})`,
+      );
+    }
+  } else {
+    for (const [layer, target] of Object.entries(MANIFEST.targets)) {
+      const actual = system[`${layer}Share`];
+      if (Math.abs(actual - target) > MANIFEST.tolerancePoints) {
+        deviations.push(`sistema ${layer}: ${pct(actual)} (objetivo ${target} %)`);
+      }
     }
   }
 
@@ -369,6 +401,21 @@ function main() {
   lines.push(`| E2E | ${system.e2e} | ${pct(system.e2eShare)} | ${MANIFEST.targets.e2e} % |`);
   lines.push(`| **Total** | **${system.total}** | | |`);
 
+  if (WITHOUT_E2E) {
+    lines.push(
+      '',
+      '**Esta corrida no ejecutó el E2E.** La fila de arriba sale de',
+      `\`${MANIFEST.e2e.report}\`, que escribe \`test/e2e/run-all.mjs\` contra un stack`,
+      'levantado a mano, así que es de otra corrida y se informa sin afirmarse.',
+      'Lo que sí se comprobó es la relación entre las dos capas que sí se',
+      `midieron: la integración pesa ${pct(share(system.integration, system.unit + system.integration))}`,
+      `de lo propio de las siete apps, contra el objetivo de ${pct(ownIntegrationTarget)}.`,
+      '',
+      'Para medir las tres capas: levanta el stack, corre `node test/e2e/run-all.mjs`',
+      'y vuelve a ejecutar `pnpm test:pyramid` sin `--without-e2e`.',
+    );
+  }
+
   const notRun = packages.reduce(
     (sum, p) => sum + p.skipped.unit + p.skipped.integration + p.skipped.e2e,
     0,
@@ -397,9 +444,10 @@ function main() {
       );
     }
     if (e2e.skipped > 0) {
+      // «Y» sólo cuando hay un párrafo antes al que sumarse.
       lines.push(
         '',
-        `Y ${e2e.skipped} casos E2E se declararon pero se omitieron — una precondición`,
+        `${notRun > 0 ? 'Y ' : ''}${e2e.skipped} casos E2E se declararon pero se omitieron — una precondición`,
         'que la suite no pudo montar, no infraestructura ausente. Cuentan para la',
         'proporción; no cuentan como evidencia.',
       );
@@ -415,7 +463,7 @@ function main() {
   mkdirSync(dirname(outputJson), { recursive: true });
   writeFileSync(
     outputJson,
-    `${JSON.stringify({ generatedAt: new Date().toISOString(), targets: MANIFEST.targets, ownIntegrationTarget, packages, system, e2e, deviations }, null, 2)}\n`,
+    `${JSON.stringify({ generatedAt: new Date().toISOString(), targets: MANIFEST.targets, ownIntegrationTarget, e2eMeasured: !WITHOUT_E2E, packages, system, e2e, deviations }, null, 2)}\n`,
   );
   writeFileSync(outputMd, markdown);
 
