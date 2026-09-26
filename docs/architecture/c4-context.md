@@ -9,7 +9,8 @@ Este documento describe el **Nivel 1 (Contexto)** de la arquitectura C4 para **B
 ![C4 Contexto — Bank USAC](diagrams/02-c4-contexto.png)
 
 Fuentes de diagramación versionadas:
-* [PlantUML (`.puml`)](diagrams/02-c4-contexto.puml)
+* [Structurizr DSL (`.dsl`)](diagrams/02-c4-contexto.dsl)
+* [Structurizr DSL Workspace Maestro (`c4.dsl`)](diagrams/c4.dsl)
 
 ---
 
