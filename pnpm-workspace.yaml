@@ -112,6 +112,17 @@ catalog:
   jest: 30.4.2
   ts-jest: 29.4.12
 
+  # El segundo runner, y solo para `apps/web` (TD-010). Jest no compila un
+  # componente de archivo único, asi que la unica forma de probar lo que Nuxt
+  # rinde es un runner nativo de Vite. `@nuxt/test-utils` en modo servidor
+  # levanta un Nitro de verdad — eso cruza un proceso y por eso cuenta como
+  # integracion; `happy-dom` y `@vue/test-utils` sirven al modo montado, que
+  # corre en proceso y cuenta como unitaria.
+  vitest: 5.0.2
+  '@nuxt/test-utils': 4.3.2
+  '@vue/test-utils': 2.5.1
+  happy-dom: 20.14.5
+
   # Task runner over the workspace. pnpm still resolves and links the packages;
   # turbo only orders the tasks and caches the ones whose inputs did not move.
   # Root-only dependency — no package.json under apps/ references it.
@@ -123,3 +134,8 @@ catalog:
   eslint-config-prettier: 10.1.8
   prettier: 3.9.6
   typescript-eslint: 8.67.0
+
+minimumReleaseAgeExclude:
+  - '@vitest/mocker@5.0.2'
+  - '@vitest/spy@5.0.2'
+  - vitest@5.0.2

@@ -1,0 +1,76 @@
+{
+  "$comment": [
+    "Qué cuenta como cada capa de la pirámide, sin renombrar un solo archivo existente.",
+    "",
+    "El criterio es uno y no admite matices: INTEGRACIÓN es la prueba que cruza un",
+    "proceso real — PostgreSQL, RabbitMQ o MinIO de verdad. Todo lo demás que corre",
+    "en proceso con dobles es UNITARIA, incluidas las suites de Supertest del gateway,",
+    "que montan Nest entero pero doblan todos los puertos en test/support/harness.ts.",
+    "E2E es la que atraviesa los siete componentes desplegados, y vive en test/e2e/.",
+    "",
+    "La clasificación se hace por sufijo de archivo y por una lista explícita, nunca",
+    "por heurística: un archivo mal clasificado mueve un porcentaje que alguien va a",
+    "citar en una calificación, así que la regla tiene que ser legible de un vistazo."
+  ],
+
+  "targets": { "unit": 70, "integration": 20, "e2e": 10 },
+
+  "$comment_tolerance": [
+    "Puntos porcentuales de desvío admitidos antes de que el script falle. 1.5 es",
+    "suficiente para absorber una prueba añadida o quitada sin obligar a recalcular",
+    "la pirámide entera, y estrecho para que una desviación real no pase de largo."
+  ],
+  "tolerancePoints": 1.5,
+
+  "integrationSuffixes": [".integration.spec.ts"],
+
+  "$comment_integrationFiles": [
+    "Rutas explícitas para suites de integración que no llevan el sufijo. Vacío hoy,",
+    "y debe seguir vacío: si una suite cruza un proceso real, que lo diga su nombre."
+  ],
+  "integrationFiles": [],
+
+  "$comment_database": [
+    "Nombre de la base que este paquete necesita para que sus suites de integración",
+    "no se salten solas. El script no sabe el host ni la contraseña: compone la URL",
+    "con la plantilla PYRAMID_DATABASE_URL_TEMPLATE, que trae {db} donde va este",
+    "nombre. Una base por servicio y no una compartida, porque los cinco corren sus",
+    "propias migraciones y escribirían todos en la misma `schema_migrations`.",
+    "Un paquete sin esta clave no recibe DATABASE_URL — el gateway no tiene base de",
+    "datos y una prueba suya comprueba justamente que no la declara."
+  ],
+
+  "packages": [
+    { "name": "gateway", "dir": "apps/gateway", "runner": "jest", "tier": "app" },
+    { "name": "web", "dir": "apps/web", "runner": "web", "tier": "app" },
+    { "name": "customer-service", "dir": "apps/services/customer-service", "runner": "jest", "tier": "app", "database": "customer" },
+    { "name": "account-service", "dir": "apps/services/account-service", "runner": "jest", "tier": "app", "database": "account" },
+    { "name": "transaction-service", "dir": "apps/services/transaction-service", "runner": "jest", "tier": "app", "database": "transaction" },
+    { "name": "payment-service", "dir": "apps/services/payment-service", "runner": "jest", "tier": "app", "database": "payment" },
+    {
+      "name": "notification-audit-service",
+      "dir": "apps/services/notification-audit-service",
+      "runner": "jest",
+      "tier": "app",
+      "database": "notification_audit"
+    },
+    { "name": "@bank/messaging", "dir": "apps/packages/messaging", "runner": "jest", "tier": "library" },
+    {
+      "name": "@bank/contracts",
+      "dir": "apps/packages/contracts",
+      "runner": "jest",
+      "tier": "library",
+      "exception": "Paquete de esquemas con cero E/S: no abre un socket, no toca un disco y no tiene proceso al que cruzar. Integración y E2E no son difíciles aquí, son imposibles, así que no se le exige proporción."
+    }
+  ],
+
+  "e2e": {
+    "dir": "test/e2e",
+    "report": "docs/qa/pyramid-e2e.json"
+  },
+
+  "output": {
+    "json": "docs/qa/pyramid.json",
+    "markdown": "docs/qa/pyramid.md"
+  }
+}

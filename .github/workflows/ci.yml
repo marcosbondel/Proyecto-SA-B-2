@@ -10,7 +10,17 @@ name: CI
 on:
   push:
     branches:
+      # Toda rama de trabajo, no solo `feature/**`. El enunciado nombra las
+      # ramas de funcionalidad, pero el equipo tambien abre `fix/`, `test/`,
+      # `docs/` y `chore/`, y sobre esas el push no disparaba nada: su codigo
+      # llegaba a `develop` con Build y Test del pull request y sin haber
+      # pasado Validacion (lint, typecheck, guard de `.env`) ni una sola vez.
       - 'feature/**'
+      - 'fix/**'
+      - 'test/**'
+      - 'docs/**'
+      - 'chore/**'
+      - 'refactor/**'
   pull_request:
     branches:
       - develop
@@ -77,7 +87,7 @@ jobs:
     name: 'Fase 2: Test'
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     # PostgreSQL y RabbitMQ de verdad, para que corran las suites que hasta
     # ahora se saltaban (TD-069). Sin ellos, `describe.skip` dejaba fuera
     # precisamente lo que mas necesita una prueba: la concurrencia con bloqueo
@@ -130,6 +140,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # apps/web's session-guard integration suite drives the real client
+      # router in Chromium through @nuxt/test-utils. pnpm installs Playwright
+      # itself, but browser binaries and their Linux dependencies are separate.
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Restore Turborepo cache
         uses: actions/cache/restore@v6
         with:
@@ -151,8 +167,17 @@ jobs:
           PGPASSWORD: bank_test
         run: |
           set -euo pipefail
+
+          # Dos juegos de bases y no uno. Las suites asumen una base virgen:
+          # crean sus datos y comprueban restricciones unicas contra ellos, asi
+          # que la segunda corrida sobre la misma base falla por el rastro de la
+          # primera. Y hay dos corridas — el paso de abajo, que las ejecuta y
+          # exige que ninguna se salte, y el de la piramide, que las vuelve a
+          # ejecutar para contar los casos que el runner reporta. Cinco bases mas
+          # dentro de la misma instancia cuestan un CREATE DATABASE cada una.
           for db in customer account transaction payment notification_audit; do
             psql -h localhost -U bank_test -d postgres -c "CREATE DATABASE $db;"
+            psql -h localhost -U bank_test -d postgres -c "CREATE DATABASE ${db}_pyramid;"
           done
 
           # SQL plano y no el macro `\l` del cliente: el psql del runner es mas
@@ -175,11 +200,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Las suites asumen una base virgen: crean sus datos y comprueban
-          # restricciones unicas contra ellos. Correrlas dos veces sobre la
-          # misma base falla por su propio rastro, asi que la comprobacion de
-          # "no se salto" se hace sobre la salida de ESTA corrida y no
-          # repitiendola.
+          # La comprobacion de "no se salto" se hace sobre la salida de ESTA
+          # corrida y no repitiendola: la base ya no estaria virgen.
           run_suite() { # run_suite <paquete> <base de datos>
             echo "::group::$1"
             local output
@@ -206,6 +228,61 @@ jobs:
           echo "::group::@bank/messaging"
           pnpm --filter @bank/messaging test
           echo "::endgroup::"
+
+          # El gateway no declara `DATABASE_URL` — no tiene base de datos, y un
+          # test lo comprueba — asi que solo recibe el broker. Lleva su propio
+          # guardia por el mismo motivo que los cinco servicios: sus suites
+          # contra RabbitMQ se saltan solas en el paso `pnpm test` de arriba,
+          # que corre sin broker, y sin esta comprobacion quedarian verdes sin
+          # haberse ejecutado jamas.
+          echo "::group::gateway"
+          gateway_output="$(pnpm --filter gateway test 2>&1)" \
+            || { echo "$gateway_output"; echo "::endgroup::"; exit 1; }
+          echo "$gateway_output"
+          echo "::endgroup::"
+          if echo "$gateway_output" | grep -qE "Test Suites:.*skipped"; then
+            echo "::error::gateway salto suites pese a haber RabbitMQ disponible."
+            exit 1
+          fi
+
+      # La forma de la piramide, medida y no afirmada. Cuenta casos declarados
+      # por cada runner, clasifica por el sufijo `.integration.spec.ts` y falla
+      # si una app se desvia de la proporcion mas alla de la tolerancia.
+      #
+      # `--require-executed` es la diferencia entre medir y estimar: aqui hay
+      # PostgreSQL y RabbitMQ de verdad, asi que una suite de integracion que se
+      # salta no es una circunstancia, es la medicion que no se hizo. Para que
+      # eso sea cierto el script necesita la base, no solo el broker:
+      # `pnpm test:pyramid` lanza `jest` como proceso hijo y el hijo hereda este
+      # entorno. `{db}` lo sustituye por el nombre que el manifiesto asigna a
+      # cada paquete, y son las bases `_pyramid` porque las otras ya las gasto
+      # el paso de integracion de arriba.
+      #
+      # `--without-e2e` por el mismo criterio, aplicado a la capa que este
+      # pipeline no ejecuta. El E2E se corre a mano contra el stack completo y
+      # su informe queda versionado como evidencia, de modo que aqui siempre hay
+      # un `pyramid-e2e.json` de otra maquina y otro dia esperando a que alguien
+      # lo tome por una medicion. Sin la bandera, un E2E corto no baja solo su
+      # porcentaje: sube los otros dos por el mismo motivo, y saldrian tres
+      # desviaciones donde no hay ninguna. Con ella, esa fila se informa pero no
+      # se afirma, y lo que se comprueba es la relacion entre las dos capas que
+      # esta corrida si midio.
+      - name: 'Forma de la piramide de pruebas'
+        env:
+          RABBITMQ_URL: amqp://bank_test:bank_test@localhost:5672
+          PYRAMID_DATABASE_URL_TEMPLATE: postgresql://bank_test:bank_test@localhost:5432/{db}_pyramid
+        run: pnpm test:pyramid --require-executed --without-e2e
+
+      - name: 'Publicar el informe de la piramide'
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: pyramid
+          path: |
+            docs/qa/pyramid.json
+            docs/qa/pyramid.md
+          if-no-files-found: warn
+
 
   # Fase 3: Validacion — verificacion basica del sistema (sanity check).
   #

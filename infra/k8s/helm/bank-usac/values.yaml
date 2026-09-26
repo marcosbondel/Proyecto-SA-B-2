@@ -28,13 +28,15 @@ imagePullPolicy: IfNotPresent
 #   payment, notification  — yes. They consume shared durable queues, so the
 #                            broker round-robins work across replicas, which is
 #                            the intended behaviour.
-#   account                — NOT YET. It also runs the inactive-account
-#                            deactivation job on an interval
-#                            (services.account.deactivation), and nothing
-#                            elects a single runner. N replicas would run the
-#                            sweep N times concurrently. Scale it only after
-#                            that job is made leader-elected or idempotent
-#                            under concurrency (see docs/TECH_DEBT.md TD-055).
+#   account                — yes, since the sweep lease. It also runs the
+#                            inactive-account deactivation job on an interval
+#                            (services.account.deactivation), which used to run
+#                            N times with N replicas because nothing elected a
+#                            single runner. `PostgresSweepLease` now takes a
+#                            `pg_try_advisory_lock` before each sweep, so the
+#                            replica that gets it sweeps and the others skip
+#                            their turn. The lock is held by a session, so a pod
+#                            that dies mid-sweep releases it by disconnecting.
 replicaCount: 1
 resources:
   requests:
@@ -129,6 +131,41 @@ external:
 # password lives under secrets.databases.<key> below). Values match
 # docs/architecture/diagrams/05-uml-despliegue.puml and
 # infra/docker/docker-compose.yml's *_POSTGRES_DB / *_POSTGRES_USER.
+# MinIO, cuando se levanta dentro del namespace (`minio.inCluster=true`, que
+# hoy llega desde los secrets del despliegue y vale para dev y para prod).
+#
+# La imagen estaba incrustada en el template y apuntaba a
+# `quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z`, que **ya no se puede
+# descargar**: quay.io devuelve 401 y Docker Hub tambien. MinIO cerro la
+# distribucion publica de esa etiqueta. El pod de produccion sigue en pie solo
+# porque su imagen se bajo antes del cierre; el dia que se reinicie o se
+# reprograme, entra en ImagePullBackOff como entro el de desarrollo.
+#
+# Se fija por **digest** y no por etiqueta: el unico registro que publica MinIO
+# de forma abierta hoy es Chainguard, y su plan gratuito solo etiqueta
+# `latest`. Un digest es una referencia inmutable — mas fuerte que una
+# etiqueta, y no es la "imagen no versionada" que el enunciado prohibe.
+#
+# Comprobado como reemplazo directo: mismo entrypoint (`/usr/bin/minio`), los
+# mismos `args` del Deployment, `/data` escribible corriendo sin root, y el
+# `postStart` que crea el bucket funciona tal cual porque la imagen trae `mc`.
+#
+# Pendiente (no es para la vispera de una entrega): copiarla al Artifact
+# Registry propio con etiqueta versionada, para no depender de que Chainguard
+# conserve este digest en su nivel gratuito.
+minio:
+  image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
+
+# Sufijo que se anade al nombre de las cinco bases. Vacio en produccion, que
+# es quien manda en los nombres; el entorno `dev` lo pone a `_dev` para leer y
+# escribir en bases propias sobre las MISMAS VMs. Sin esto los dos entornos
+# comparten datos y un despliegue a desarrollo altera produccion, que es
+# justo lo que el enunciado prohibe ("no deben afectar el entorno productivo").
+#
+# Las bases con el sufijo tienen que existir: los servicios corren sus
+# migraciones, pero no crean la base. Mientras no existan, dejar esto vacio.
+databaseSuffix: ''
+
 databases:
   customer:
     name: customer
@@ -194,9 +231,10 @@ services:
     image:
       repository: bank-usac/account-service
       tag: dev # always --set at install time — see the note above `services:`
-    # Inactivity sweeper runs inside account-service; keep 1 replica until TD-055
-    autoscaling:
-      enabled: false
+    # El HPA global (80% de CPU, 1-5 replicas) aplica tambien aqui: el barrido
+    # de cuentas inactivas se serializa con un cerrojo consultivo de PostgreSQL
+    # (`PostgresSweepLease`), asi que varias replicas no lo ejecutan varias
+    # veces.
     deactivation:
       enabled: "true"
       intervalMs: "86400000"
