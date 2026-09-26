@@ -211,18 +211,27 @@ fi
 # tocarlos seria borrar lo que esta sirviendo. Produccion siempre tiene
 # release, asi que esto no se ejecuta ahi nunca.
 if [ "$RELEASE_EXISTE" = false ]; then
-  RESTOS="$(kubectl get deployments,statefulsets,services,endpoints \
+  # Lo que hay en el namespace ANTES de tocar nada, con etiqueta o sin ella.
+  #
+  # El barrido anterior buscaba `deployments,statefulsets,services,endpoints`
+  # con la etiqueta del release y no encontro nada, mientras un ReplicaSet
+  # `minio-58689fbff5` — el mismo en tres corridas seguidas, creado por ninguna
+  # de ellas — seguia levantando pods. Un barrido que solo mira donde espera
+  # encontrar algo no sirve para descubrir por que fallo el despliegue: lo
+  # primero es ver el namespace entero y dejarlo escrito en el log.
+  echo "=== Inventario de ${NAMESPACE} antes de instalar ==="
+  kubectl get all,endpoints --namespace "$NAMESPACE" --show-labels --ignore-not-found 2>/dev/null || true
+
+  # Se barre `all` — que incluye replicasets y pods, no solo deployments — mas
+  # los endpoints, que no entran en `all`.
+  RESTOS="$(kubectl get all,endpoints \
     --namespace "$NAMESPACE" \
     --selector "app.kubernetes.io/instance=${RELEASE_NAME}" \
     --no-headers --ignore-not-found 2>/dev/null | wc -l | tr -d ' ')"
 
   if [ "${RESTOS:-0}" -gt 0 ]; then
     echo "::warning::No hay release ${RELEASE_NAME}, pero quedan ${RESTOS} objetos con su etiqueta en ${NAMESPACE}. Son restos de un intento fallido; se retiran antes de instalar."
-    kubectl get deployments,statefulsets,services,endpoints \
-      --namespace "$NAMESPACE" \
-      --selector "app.kubernetes.io/instance=${RELEASE_NAME}" \
-      --ignore-not-found || true
-    kubectl delete deployments,statefulsets,services,endpoints \
+    kubectl delete all,endpoints \
       --namespace "$NAMESPACE" \
       --selector "app.kubernetes.io/instance=${RELEASE_NAME}" \
       --ignore-not-found --wait --timeout=3m || true
@@ -320,6 +329,7 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   "${INFRA_ARGS[@]}" \
   "${IMAGE_ARGS[@]}" \
   --wait \
+  ${HELM_WAIT_DEBUG:+--debug} \
   --timeout "${HELM_TIMEOUT:-10m}"
 HELM_STATUS=$?
 set -e
@@ -400,7 +410,7 @@ if [ "$HELM_STATUS" -ne 0 ]; then
     # fallar la corrida siguiente con un sintoma que no apunta aqui. Se barre
     # por etiqueta, que es lo que el barrido previo de arriba ya no tendra que
     # descubrir.
-    kubectl delete deployments,statefulsets,services,endpoints \
+    kubectl delete all,endpoints \
       --namespace "$NAMESPACE" \
       --selector "app.kubernetes.io/instance=${RELEASE_NAME}" \
       --ignore-not-found --wait --timeout=3m || true

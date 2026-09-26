@@ -294,6 +294,10 @@ jobs:
           # cinco bases `<nombre>_dev` existan; entonces basta con definir la
           # variable DEV_DATABASE_SUFFIX del repositorio como `_dev`.
           DATABASE_SUFFIX: ${{ vars.DEV_DATABASE_SUFFIX }}
+          # Que helm diga por que recurso espera. Tres despliegues seguidos
+          # caducaron con los ocho Deployments del release en 1/1 Running, y
+          # sin esto el log no dice a quien esperaba.
+          HELM_WAIT_DEBUG: 'true'
           UPDATED_COMPONENTS: ${{ join(fromJSON(needs.changes.outputs.components), ' ') }}
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
