@@ -44,12 +44,13 @@
 #                    produccion y se llevan sus mensajes. Produccion lo deja sin
 #                    definir y sigue usando la infraestructura de Terraform.
 #
-#   IN_CLUSTER_OBJECT_STORAGE  lo mismo para MinIO. **No usar hoy**: la imagen
-#                    `quay.io/minio/minio` que declara el chart devuelve 401
-#                    tanto en quay.io como en Docker Hub — MinIO cerro la
-#                    distribucion publica de esa etiqueta, y el pod se queda en
-#                    ImagePullBackOff. Los dos entornos comparten el MinIO de la
-#                    VM mientras tanto; compartir blobs no es compartir colas.
+#   IN_CLUSTER_OBJECT_STORAGE  lo mismo para MinIO.
+#
+# Las dos son redundantes hoy: `HELM_SECRETS`/`INFRA_ADDRESSES` ya traen
+# `rabbitmq.inCluster=true` y `minio.inCluster=true`, asi que los dos entornos
+# levantan su broker y su almacenamiento dentro de su propio namespace desde
+# antes de que estas variables existieran. Se dejan porque hacen explicito en el
+# workflow algo que hoy solo se sabe leyendo un secreto.
 #
 #   DATABASE_SUFFIX  sufijo para el nombre de las cinco bases (`_dev`). Vacio
 #                    en produccion. Las bases con sufijo tienen que existir ya;
