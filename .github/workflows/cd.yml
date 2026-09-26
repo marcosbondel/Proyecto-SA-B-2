@@ -468,6 +468,83 @@ jobs:
           # declara `maxUnavailable: 0`; esto es lo que lo demuestra.
           ZERO_DOWNTIME_PROBE_URL: ${{ vars.GATEWAY_PUBLIC_URL }}/health
 
+      # -----------------------------------------------------------------------
+      # El frontend que la gente abre de verdad.
+      #
+      # `infra/terraform/gcp/cloud_run.tf` declara el Cloud Run `bank-usac-web`
+      # con `image = var.web_image`: una variable que se fija en el
+      # `terraform apply` y que NADIE vuelve a tocar. El paso de arriba
+      # actualiza el Deployment `web` de GKE, que es un Service ClusterIP y por
+      # tanto no lo alcanza ningun navegador. Resultado hasta hoy: cada release
+      # daba verde y el portal publico seguia sirviendo la imagen del dia del
+      # `apply`.
+      #
+      # Se usa `services update --image` y no `run deploy` a proposito: update
+      # solo pide `run.services.update`, mientras que `deploy` ademas exige
+      # `iam.serviceAccounts.actAs` sobre la cuenta de ejecucion del servicio.
+      # Menos permiso para el mismo efecto, y conserva el puerto, las variables
+      # de entorno y el escalado tal y como Terraform los dejo.
+      #
+      # Se activa definiendo la variable de repositorio CLOUD_RUN_SERVICE con el
+      # nombre del servicio (`bank-usac-web`). Sin ella el paso no corre y el
+      # comportamiento es exactamente el de antes.
+      - name: Actualizar el frontend publico (Cloud Run)
+        if: vars.CLOUD_RUN_SERVICE != ''
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+        run: |
+          set -euo pipefail
+          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
+          IMAGE="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}/web:${VERSION}"
+
+          echo "Apuntando ${SERVICE} a ${IMAGE}"
+
+          if ! gcloud run services update "$SERVICE" \
+                 --region "$REGION" \
+                 --image "$IMAGE" \
+                 --quiet 2>/tmp/run-update.err; then
+            cat /tmp/run-update.err
+
+            # El unico fallo que no se arregla reintentando: falta el rol.
+            if grep -qiE 'permission|denied|403' /tmp/run-update.err; then
+              {
+                echo "## El frontend publico NO se actualizo"
+                echo ""
+                echo "La cuenta de servicio del pipeline no puede escribir en Cloud Run."
+                echo "Hace falta concederle \`roles/run.developer\` sobre el servicio"
+                echo "\`${SERVICE}\` — Kubernetes si quedo en \`${VERSION}\`."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Falta roles/run.developer para actualizar Cloud Run. Kubernetes quedo en ${VERSION}; el portal publico no."
+            fi
+
+            exit 1
+          fi
+
+          # La comprobacion va aqui dentro y no en un job aparte: un despliegue
+          # que nadie comprueba es exactamente lo que produjo este defecto.
+          SIRVIENDO="$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(spec.template.spec.containers[0].image)')"
+
+          if [ "$SIRVIENDO" != "$IMAGE" ]; then
+            echo "::error::Cloud Run quedo sirviendo ${SIRVIENDO}, no ${IMAGE}."
+            exit 1
+          fi
+
+          URL="$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(status.url)')"
+          CODIGO="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL/" || echo 000)"
+
+          {
+            echo "### Frontend publico"
+            echo ""
+            echo "- Servicio: \`${SERVICE}\`"
+            echo "- Imagen: \`${IMAGE}\`"
+            echo "- URL: ${URL} (HTTP ${CODIGO})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          [ "$CODIGO" = "200" ] || echo "::warning::El portal respondio ${CODIGO} tras la actualizacion."
+
       - name: Resumen del despliegue
         if: always()
         run: |
