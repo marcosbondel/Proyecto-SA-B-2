@@ -300,3 +300,156 @@ describe('the scheduler around it', () => {
     expect(logger.error).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('the sweep lease, which is what lets this service run more than one replica', () => {
+  /**
+   * El arriendo de una replica que lo consigue, y el de una que no. Cuenta las
+   * veces que se pidio y las que se solto, porque el fallo que importa no es
+   * "no barrio" sino "barrio y no devolvio el cerrojo".
+   */
+  function leaseFixture(granted: boolean) {
+    const calls = { acquired: 0, released: 0 };
+
+    return {
+      calls,
+      lease: {
+        acquire: async () => {
+          calls.acquired += 1;
+
+          return granted;
+        },
+        release: async () => {
+          calls.released += 1;
+        },
+      },
+    };
+  }
+
+  it('does not run the job when another replica holds the lease', async () => {
+    const logger = silentLogger();
+    const { lease, calls } = leaseFixture(false);
+    let runs = 0;
+
+    const scheduler = new DeactivationScheduler({
+      job: {
+        execute: async () => {
+          runs += 1;
+
+          return [];
+        },
+      },
+      intervalMs: 60_000,
+      logger,
+      lease,
+    });
+
+    await scheduler.runOnce();
+
+    expect(runs).toBe(0);
+    expect(calls.acquired).toBe(1);
+    expect(logger.info).toHaveBeenCalledWith(
+      'deactivation run skipped: another replica holds the sweep lease',
+      expect.objectContaining({ runId: expect.any(String) }),
+    );
+  });
+
+  it('runs the job and releases the lease when it holds it', async () => {
+    const logger = silentLogger();
+    const { lease, calls } = leaseFixture(true);
+    let runs = 0;
+
+    const scheduler = new DeactivationScheduler({
+      job: {
+        execute: async () => {
+          runs += 1;
+
+          return [];
+        },
+      },
+      intervalMs: 60_000,
+      logger,
+      lease,
+    });
+
+    await scheduler.runOnce();
+
+    expect(runs).toBe(1);
+    expect(calls.released).toBe(1);
+  });
+
+  /**
+   * El caso que deja el sistema sin barrido si se hace mal: el trabajo falla,
+   * y el cerrojo se queda tomado hasta que el pod muera.
+   */
+  it('releases the lease even when the job throws', async () => {
+    const logger = silentLogger();
+    const { lease, calls } = leaseFixture(true);
+
+    const scheduler = new DeactivationScheduler({
+      job: {
+        execute: async () => {
+          throw new Error('la base se cayo a mitad del barrido');
+        },
+      },
+      intervalMs: 60_000,
+      logger,
+      lease,
+    });
+
+    await scheduler.runOnce();
+
+    expect(calls.released).toBe(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      'deactivation run failed',
+      expect.objectContaining({ error: 'la base se cayo a mitad del barrido' }),
+    );
+  });
+
+  it('does not lose a finished run because the lease could not be released', async () => {
+    const logger = silentLogger();
+
+    const scheduler = new DeactivationScheduler({
+      job: { execute: async () => [] },
+      intervalMs: 60_000,
+      logger,
+      lease: {
+        acquire: async () => true,
+        release: async () => {
+          throw new Error('conexion perdida');
+        },
+      },
+    });
+
+    await scheduler.runOnce();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      'deactivation run finished',
+      expect.objectContaining({ outcome: '0 deactivated' }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'could not release the sweep lease',
+      expect.objectContaining({ error: 'conexion perdida' }),
+    );
+  });
+
+  it('behaves exactly as before when no lease is configured', async () => {
+    const logger = silentLogger();
+    let runs = 0;
+
+    const scheduler = new DeactivationScheduler({
+      job: {
+        execute: async () => {
+          runs += 1;
+
+          return [];
+        },
+      },
+      intervalMs: 60_000,
+      logger,
+    });
+
+    await scheduler.runOnce();
+
+    expect(runs).toBe(1);
+  });
+});
