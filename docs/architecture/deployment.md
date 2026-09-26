@@ -55,12 +55,13 @@ Para la **Fase 2**, la infraestructura se aprovisiona mediante Terraform (`infra
    - **Subred GKE (`10.10.0.0/20`)**: Aloja el plano de datos de Kubernetes, con rangos secundarios para Pods (`10.20.0.0/16`) y Services (`10.30.0.0/20`).
    - **Subred Bases de Datos (`10.40.0.0/24`)**: Subred privada dedicada exclusivamente a las máquinas virtuales de PostgreSQL.
    - **Cloud Router & Cloud NAT**: Permite que las VMs privadas de base de datos descarguen actualizaciones y paquetes de software sin exponer IPs públicas a Internet.
-   - **Firewall VPC**: Bloqueo perimetral estricto; el puerto 5432 de PostgreSQL solo es alcanzable desde los nodos y pods de GKE.
+   - **Firewall VPC**: sin exposición pública. Tres reglas: tráfico entre los cuatro rangos internos (nodos, pods, services y VMs de base de datos), SSH únicamente desde el rango de Google IAP `35.235.240.0/20`, y los rangos de health check de los balanceadores. La regla interna abre **todos** los puertos TCP y UDP entre esos cuatro rangos, no sólo el 5432 — el radio de impacto lo contiene que la VPC no tenga otro inquilino, pero es más amplia de lo necesario y debería estrecharse a los puertos en uso.
 
 3. **Clúster Administrado de Google Kubernetes Engine (GKE)**:
    - **Microservicios con HPA al 80% CPU**: API Gateway, Customer, Account, Transaction, Payment y Notification & Audit Service escalan automáticamente entre 1 y 5 réplicas ante incrementos de carga.
-   - **Broker RabbitMQ**: StatefulSet con colas durables en el puerto interno `5672`.
-   - **MinIO Object Storage**: StatefulSet para almacenamiento de fotos de DPI en el puerto interno `9000`.
+   - **Broker RabbitMQ**: `Deployment` de una réplica en el puerto interno `5672`, **uno por namespace** (`rabbitmq.inCluster`), de modo que `dev` y `prod` no comparten mensajería.
+   - **MinIO Object Storage**: `Deployment` de una réplica en el puerto interno `9000` para las fotos de DPI, también uno por namespace (`minio.inCluster`).
+   - **Sin volúmenes persistentes en ninguno de los dos.** Ambos escriben en la capa de escritura del contenedor, así que su estado no sobrevive al reemplazo de un pod. Para MinIO es casi inocuo — la foto es un búfer de transferencia con ventana de retención de 24 h (ADR-012) y la copia durable vive en la base de Customer Service — y para RabbitMQ significa que los mensajes encolados y aún no consumidos se pierden en un reinicio del pod del broker. Registrado como **TD-082**.
 
 4. **Bases de Datos en Máquinas Virtuales Compute Engine**:
    - 5 instancias Compute Engine independientes (`bank-db-customer`, `bank-db-account`, `bank-db-transaction`, `bank-db-payment`, `bank-db-audit`).
@@ -82,8 +83,8 @@ Para la **Fase 2**, la infraestructura se aprovisiona mediante Terraform (`infra
 
 ## 4. Protocolos y Puertos de Comunicación
 
-* **HTTPS :443**: Acceso de los cuentahabientes y cajeros a Cloud Run y al API Gateway público.
-* **TCP 3000**: API Gateway Ingress en GKE (REST / JSON).
+* **HTTPS :443**: acceso de los cuentahabientes y cajeros al frontend en Cloud Run, con certificado gestionado por Google.
+* **HTTP :3000**: el API Gateway, expuesto por un `Service` de tipo `LoadBalancer` en GKE (REST / JSON). **Es HTTP, no HTTPS**, y por eso el navegador no puede llamarlo directamente desde una página servida por HTTPS: el frontend enruta sus peticiones por el proxy de mismo origen `server/routes/api/[...slug].ts` de Nitro, que sí puede. Ese `LoadBalancer` no está declarado en el chart (**TD-080**).
 * **AMQP 0-9-1 / TCP 5672**: Comunicación asíncrona bidireccional entre pods y RabbitMQ en GKE.
 * **PostgreSQL / TCP 5432**: Comunicación síncrona privada entre cada pod y su VM dedicada en Compute Engine (`10.40.0.0/24`).
 * **S3-compatible / TCP 9000**: Streaming de imágenes de DPI hacia MinIO.
@@ -92,7 +93,7 @@ Para la **Fase 2**, la infraestructura se aprovisiona mediante Terraform (`infra
 
 ## 5. Justificación Arquitectónica: MinIO en GKE vs Almacenamiento Gestionado (Google Cloud Storage)
 
-Aun cuando la plataforma se despliega sobre Google Cloud Platform, el almacenamiento de objetos para documentos de identidad (DPI y pasaportes) se ejecuta mediante **MinIO StatefulSet en GKE** en lugar de un bucket nativo de Google Cloud Storage (GCS). Esta decisión obedece a las mejores prácticas de la industria bancaria:
+Aun cuando la plataforma se despliega sobre Google Cloud Platform, el almacenamiento de objetos para documentos de identidad (DPI y pasaportes) se ejecuta mediante **MinIO en GKE** (hoy un `Deployment` de una réplica por namespace) en lugar de un bucket nativo de Google Cloud Storage (GCS). Esta decisión obedece a las mejores prácticas de la industria bancaria:
 
 1. **Soberanía y Perímetro de Seguridad (Modelo Zero Trust):**
    * Los documentos de identificación son datos personales altamente sensibles (*PII*).
@@ -105,6 +106,6 @@ Aun cuando la plataforma se despliega sobre Google Cloud Platform, el almacenami
    * Toda la suite de integración (`pnpm test`, `pnpm images:flow`) se ejecuta de manera determinista, reproducible y 100% offline sin incurrir en dependencias de conexión ni costos de nube por desarrollador.
 4. **Previsibilidad de Costos y Latencia Interna:**
    * GCS factura por operaciones de API (Clase A y B) y transferencia de red (*egress*). En un sistema con alto volumen de transacciones y validaciones, estos cobros variables aumentan los costos operativos.
-   * MinIO opera sobre los volúmenes persistentes del clúster con costo fijo, cero cobro por petición y latencia de red sub-milisegundo dentro de la VPC.
+   * MinIO opera dentro del clúster con costo fijo, cero cobro por petición y latencia de red sub-milisegundo dentro de la VPC. Hoy lo hace **sin volumen persistente**, que es una omisión y no parte del argumento: ver TD-082.
 
 
