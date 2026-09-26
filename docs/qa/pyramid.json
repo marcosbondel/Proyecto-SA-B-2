@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T23:12:14.844Z",
+  "generatedAt": "2026-09-25T23:27:47.929Z",
   "targets": {
     "unit": 70,
     "integration": 20,
@@ -17,7 +17,7 @@
       "e2e": 0,
       "skipped": {
         "unit": 0,
-        "integration": 95,
+        "integration": 0,
         "e2e": 0
       },
       "files": [
@@ -28,51 +28,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/reply-timeout.spec.ts",
-          "layer": "unit",
-          "cases": 7,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/publish-routing.integration.spec.ts",
-          "layer": "integration",
-          "cases": 37,
-          "skipped": 37
-        },
-        {
-          "path": "apps/gateway/test/envelope-and-replies.integration.spec.ts",
-          "layer": "integration",
-          "cases": 36,
-          "skipped": 36
-        },
-        {
           "path": "apps/gateway/test/change-password.spec.ts",
           "layer": "unit",
           "cases": 8,
           "skipped": 0
         },
         {
+          "path": "apps/gateway/test/reply-timeout.spec.ts",
+          "layer": "unit",
+          "cases": 7,
+          "skipped": 0
+        },
+        {
           "path": "apps/gateway/test/photo-upload.spec.ts",
           "layer": "unit",
           "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/payments-routes.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/reply-correlation.integration.spec.ts",
-          "layer": "integration",
-          "cases": 22,
-          "skipped": 22
-        },
-        {
-          "path": "apps/gateway/test/correlation.spec.ts",
-          "layer": "unit",
-          "cases": 9,
           "skipped": 0
         },
         {
@@ -88,9 +58,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/broker-down.spec.ts",
+          "path": "apps/gateway/test/payments-routes.spec.ts",
           "layer": "unit",
-          "cases": 12,
+          "cases": 11,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/correlation.spec.ts",
+          "layer": "unit",
+          "cases": 9,
           "skipped": 0
         },
         {
@@ -100,27 +76,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/error-contract.spec.ts",
+          "path": "apps/gateway/test/broker-down.spec.ts",
           "layer": "unit",
-          "cases": 13,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/no-database-no-http.spec.ts",
-          "layer": "unit",
-          "cases": 22,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/failure-code-table.spec.ts",
-          "layer": "unit",
-          "cases": 20,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/commands-publish.spec.ts",
-          "layer": "unit",
-          "cases": 18,
+          "cases": 12,
           "skipped": 0
         },
         {
@@ -130,9 +88,33 @@
           "skipped": 0
         },
         {
+          "path": "apps/gateway/test/error-contract.spec.ts",
+          "layer": "unit",
+          "cases": 13,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/commands-publish.spec.ts",
+          "layer": "unit",
+          "cases": 18,
+          "skipped": 0
+        },
+        {
           "path": "apps/gateway/test/queries-reply.spec.ts",
           "layer": "unit",
           "cases": 32,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/failure-code-table.spec.ts",
+          "layer": "unit",
+          "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/no-database-no-http.spec.ts",
+          "layer": "unit",
+          "cases": 22,
           "skipped": 0
         },
         {
@@ -148,15 +130,27 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/health.controller.spec.ts",
-          "layer": "unit",
-          "cases": 8,
+          "path": "apps/gateway/test/reply-correlation.integration.spec.ts",
+          "layer": "integration",
+          "cases": 22,
           "skipped": 0
         },
         {
           "path": "apps/gateway/test/payment-scenario.spec.ts",
           "layer": "unit",
           "cases": 8,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/auth-login.spec.ts",
+          "layer": "unit",
+          "cases": 12,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/register-role-authorization.spec.ts",
+          "layer": "unit",
+          "cases": 6,
           "skipped": 0
         },
         {
@@ -178,9 +172,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/register-role-authorization.spec.ts",
+          "path": "apps/gateway/test/health.controller.spec.ts",
           "layer": "unit",
-          "cases": 6,
+          "cases": 8,
           "skipped": 0
         },
         {
@@ -190,9 +184,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/auth-login.spec.ts",
-          "layer": "unit",
-          "cases": 12,
+          "path": "apps/gateway/test/publish-routing.integration.spec.ts",
+          "layer": "integration",
+          "cases": 37,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/envelope-and-replies.integration.spec.ts",
+          "layer": "integration",
+          "cases": 36,
           "skipped": 0
         }
       ],
@@ -250,7 +250,7 @@
       "e2e": 0,
       "skipped": {
         "unit": 0,
-        "integration": 40,
+        "integration": 0,
         "e2e": 0
       },
       "files": [
@@ -258,13 +258,7 @@
           "path": "apps/services/customer-service/test/repository-queries.integration.spec.ts",
           "layer": "integration",
           "cases": 16,
-          "skipped": 16
-        },
-        {
-          "path": "apps/services/customer-service/test/repository.integration.spec.ts",
-          "layer": "integration",
-          "cases": 14,
-          "skipped": 14
+          "skipped": 0
         },
         {
           "path": "apps/services/customer-service/test/health.controller.spec.ts",
@@ -279,10 +273,16 @@
           "skipped": 0
         },
         {
+          "path": "apps/services/customer-service/test/repository.integration.spec.ts",
+          "layer": "integration",
+          "cases": 14,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/customer-service/test/constraints.integration.spec.ts",
           "layer": "integration",
           "cases": 10,
-          "skipped": 10
+          "skipped": 0
         },
         {
           "path": "apps/services/customer-service/test/environment.spec.ts",
@@ -334,7 +334,7 @@
       "e2e": 0,
       "skipped": {
         "unit": 0,
-        "integration": 37,
+        "integration": 0,
         "e2e": 0
       },
       "files": [
@@ -342,13 +342,13 @@
           "path": "apps/services/account-service/test/repository.integration.spec.ts",
           "layer": "integration",
           "cases": 22,
-          "skipped": 22
+          "skipped": 0
         },
         {
           "path": "apps/services/account-service/test/repository-extended.integration.spec.ts",
           "layer": "integration",
           "cases": 15,
-          "skipped": 15
+          "skipped": 0
         },
         {
           "path": "apps/services/account-service/test/health.controller.spec.ts",
@@ -369,15 +369,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/account-service/test/deposit.spec.ts",
-          "layer": "unit",
-          "cases": 9,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/account-service/test/deactivation-scheduler.spec.ts",
           "layer": "unit",
           "cases": 12,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/account-service/test/deposit.spec.ts",
+          "layer": "unit",
+          "cases": 9,
           "skipped": 0
         },
         {
@@ -412,7 +412,7 @@
       "e2e": 0,
       "skipped": {
         "unit": 0,
-        "integration": 48,
+        "integration": 0,
         "e2e": 0
       },
       "files": [
@@ -420,7 +420,7 @@
           "path": "apps/services/transaction-service/test/repository.integration.spec.ts",
           "layer": "integration",
           "cases": 48,
-          "skipped": 48
+          "skipped": 0
         },
         {
           "path": "apps/services/transaction-service/test/health.controller.spec.ts",
@@ -453,9 +453,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/listing-and-scope.spec.ts",
+          "path": "apps/services/transaction-service/test/saga-transition-matrix.spec.ts",
           "layer": "unit",
-          "cases": 20,
+          "cases": 16,
           "skipped": 0
         },
         {
@@ -465,9 +465,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/saga-transition-matrix.spec.ts",
+          "path": "apps/services/transaction-service/test/listing-and-scope.spec.ts",
           "layer": "unit",
-          "cases": 16,
+          "cases": 20,
           "skipped": 0
         },
         {
@@ -508,7 +508,7 @@
       "e2e": 0,
       "skipped": {
         "unit": 0,
-        "integration": 17,
+        "integration": 0,
         "e2e": 0
       },
       "files": [
@@ -516,7 +516,7 @@
           "path": "apps/services/payment-service/test/repository.integration.spec.ts",
           "layer": "integration",
           "cases": 17,
-          "skipped": 17
+          "skipped": 0
         },
         {
           "path": "apps/services/payment-service/test/health.controller.spec.ts",
@@ -543,15 +543,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/payment-service/test/isolation.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/payment-service/test/domain.spec.ts",
           "layer": "unit",
           "cases": 17,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/isolation.spec.ts",
+          "layer": "unit",
+          "cases": 11,
           "skipped": 0
         },
         {
@@ -574,7 +574,7 @@
       "e2e": 0,
       "skipped": {
         "unit": 0,
-        "integration": 39,
+        "integration": 0,
         "e2e": 0
       },
       "files": [
@@ -582,7 +582,7 @@
           "path": "apps/services/notification-audit-service/test/repository.integration.spec.ts",
           "layer": "integration",
           "cases": 39,
-          "skipped": 39
+          "skipped": 0
         },
         {
           "path": "apps/services/notification-audit-service/test/health.controller.spec.ts",
@@ -603,15 +603,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/notification-audit-service/test/domain.spec.ts",
-          "layer": "unit",
-          "cases": 47,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/notification-audit-service/test/inbound-message.handler.spec.ts",
           "layer": "unit",
           "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/notification-audit-service/test/domain.spec.ts",
+          "layer": "unit",
+          "cases": 47,
           "skipped": 0
         },
         {
@@ -621,15 +621,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/notification-audit-service/test/simulated-notification.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/notification-audit-service/test/resend-notification.spec.ts",
           "layer": "unit",
           "cases": 5,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/notification-audit-service/test/simulated-notification.spec.ts",
+          "layer": "unit",
+          "cases": 11,
           "skipped": 0
         },
         {
@@ -652,7 +652,7 @@
       "e2e": 0,
       "skipped": {
         "unit": 0,
-        "integration": 12,
+        "integration": 0,
         "e2e": 0
       },
       "files": [
@@ -669,28 +669,16 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/messaging/test/validator-wiring.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/messaging/test/exclusive-subscription.spec.ts",
           "layer": "unit",
           "cases": 4,
           "skipped": 0
         },
         {
-          "path": "apps/packages/messaging/test/broker.integration.spec.ts",
-          "layer": "integration",
-          "cases": 9,
-          "skipped": 9
-        },
-        {
-          "path": "apps/packages/messaging/test/topology.integration.spec.ts",
-          "layer": "integration",
+          "path": "apps/packages/messaging/test/validator-wiring.spec.ts",
+          "layer": "unit",
           "cases": 3,
-          "skipped": 3
+          "skipped": 0
         },
         {
           "path": "apps/packages/messaging/test/broker.spec.ts",
@@ -702,6 +690,18 @@
           "path": "apps/packages/messaging/test/request-reply.spec.ts",
           "layer": "unit",
           "cases": 10,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/messaging/test/topology.integration.spec.ts",
+          "layer": "integration",
+          "cases": 3,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/messaging/test/broker.integration.spec.ts",
+          "layer": "integration",
+          "cases": 9,
           "skipped": 0
         }
       ],
@@ -748,33 +748,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/events/saga-chain.spec.ts",
-          "layer": "unit",
-          "cases": 23,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/contracts/test/events/catalog-completeness.spec.ts",
           "layer": "unit",
           "cases": 9,
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/routing/gateway-reply-queue.spec.ts",
+          "path": "apps/packages/contracts/test/events/saga-chain.spec.ts",
           "layer": "unit",
-          "cases": 10,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/validation/validate-message.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/safe-rejections.spec.ts",
-          "layer": "unit",
-          "cases": 6,
+          "cases": 23,
           "skipped": 0
         },
         {
@@ -784,9 +766,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/envelope.spec.ts",
+          "path": "apps/packages/contracts/test/validation/validate-message.spec.ts",
           "layer": "unit",
           "cases": 11,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/routing/gateway-reply-queue.spec.ts",
+          "layer": "unit",
+          "cases": 10,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/safe-rejections.spec.ts",
+          "layer": "unit",
+          "cases": 6,
           "skipped": 0
         },
         {
@@ -796,15 +790,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/events/transaction-status-reply.spec.ts",
-          "layer": "unit",
-          "cases": 10,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/contracts/test/events/payment-scenario.spec.ts",
           "layer": "unit",
           "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/envelope.spec.ts",
+          "layer": "unit",
+          "cases": 11,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/transaction-status-reply.spec.ts",
+          "layer": "unit",
+          "cases": 10,
           "skipped": 0
         },
         {
