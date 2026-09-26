@@ -131,6 +131,16 @@ external:
 # password lives under secrets.databases.<key> below). Values match
 # docs/architecture/diagrams/05-uml-despliegue.puml and
 # infra/docker/docker-compose.yml's *_POSTGRES_DB / *_POSTGRES_USER.
+# Sufijo que se anade al nombre de las cinco bases. Vacio en produccion, que
+# es quien manda en los nombres; el entorno `dev` lo pone a `_dev` para leer y
+# escribir en bases propias sobre las MISMAS VMs. Sin esto los dos entornos
+# comparten datos y un despliegue a desarrollo altera produccion, que es
+# justo lo que el enunciado prohibe ("no deben afectar el entorno productivo").
+#
+# Las bases con el sufijo tienen que existir: los servicios corren sus
+# migraciones, pero no crean la base. Mientras no existan, dejar esto vacio.
+databaseSuffix: ''
+
 databases:
   customer:
     name: customer
