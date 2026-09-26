@@ -281,11 +281,15 @@ jobs:
           NAMESPACE: dev
           RELEASE_NAME: bank-usac-dev
           IMAGE_TAG: ${{ env.DEV_IMAGE_TAG }}
-          # Broker y almacenamiento propios: con los de produccion, los
-          # consumidores de dev se suscriben a las mismas colas durables y se
-          # llevan mensajes reales. Esto es lo que hace que un despliegue a
-          # desarrollo no afecte al entorno productivo.
-          IN_CLUSTER_INFRA: 'true'
+          # Broker propio: con el de produccion, los consumidores de dev se
+          # suscriben a las mismas colas durables y se llevan mensajes reales.
+          # Esto es lo que hace que un despliegue a desarrollo no afecte al
+          # entorno productivo.
+          IN_CLUSTER_BROKER: 'true'
+          # MinIO NO: `quay.io/minio/minio` devuelve 401 y el pod se queda en
+          # ImagePullBackOff, que es lo que tumbo la primera corrida de este
+          # job aunque los siete pods de aplicacion llegaron a 1/1 Running.
+          # Los dos entornos comparten el MinIO de la VM mientras tanto.
           # Bases propias sobre las mismas VMs. Se queda vacio hasta que las
           # cinco bases `<nombre>_dev` existan; entonces basta con definir la
           # variable DEV_DATABASE_SUFFIX del repositorio como `_dev`.
