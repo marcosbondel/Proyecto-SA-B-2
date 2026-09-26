@@ -9,7 +9,8 @@ Este documento describe el **Nivel 2 (Contenedores)** de la arquitectura C4 para
 ![C4 Contenedores — Bank USAC](diagrams/03-c4-contenedores.png)
 
 Fuentes de diagramación versionadas:
-* [PlantUML (`.puml`)](diagrams/03-c4-contenedores.puml)
+* [Structurizr DSL (`.dsl`)](diagrams/03-c4-contenedores.dsl)
+* [Structurizr DSL Workspace Maestro (`c4.dsl`)](diagrams/c4.dsl)
 
 ---
 
