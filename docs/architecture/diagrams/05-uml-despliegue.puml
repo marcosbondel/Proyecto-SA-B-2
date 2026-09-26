@@ -96,7 +96,7 @@ node "Google Cloud Platform (GCP)" <<gcpCloud>> {
                 
                 node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
                 node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
-                node "Account Service Pods\n[1 Replica]" <<pod>> as podAccount
+                node "Account Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAccount
                 node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
                 node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
                 node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit

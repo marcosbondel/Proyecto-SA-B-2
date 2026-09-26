@@ -112,6 +112,9 @@ useHead({ title: 'Inicio · bonking' });
       <p v-if="role" class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
         Estás operando como {{ labelForRole(role) }}.
       </p>
+      <p class="mt-1 text-[16px] leading-6 text-[#5A5B63]">
+        Kevin Pozuelos el mejor auxiliar de SA
+      </p>
     </header>
 
     <div v-if="state === 'LOADING'" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

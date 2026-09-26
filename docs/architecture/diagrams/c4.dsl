@@ -19,11 +19,11 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
                 frontend = container "Frontend" "Interfaz de los tres actores. No contiene lógica de negocio." "Nuxt 4 + @nuxt/ui" "Web Browser"
                 gateway = container "API Gateway" "Único entrypoint. Valida el JWT y traduce HTTP síncrono a mensajes AMQP; sin lógica de negocio ni base de datos." "NestJS" "Server-Side Application"
 
-                customer = container "Customer Service" "Identidad del cliente: registro, validación de identidad y actualización de datos." "NestJS" "Server-Side Application"
-                account = container "Account Service" "Cuentas, balances y desactivación de cuentas inactivas." "NestJS" "Server-Side Application"
-                transaction = container "Transaction Service" "Gestiona el estado de transferencias mediante una Saga por coreografía." "NestJS" "Server-Side Application"
-                payment = container "Payment Service" "Procesamiento de pagos y reintentos." "NestJS" "Server-Side Application"
-                notification = container "Notification & Audit Service" "Registro de eventos y notificaciones. Terminal: no publica eventos hacia otros servicios." "NestJS" "Server-Side Application"
+                customer = container "Customer Service" "Identidad del cliente y estado KYC (PENDING/VERIFIED/REJECTED); responde el gate que autoriza transferir." "NestJS" "Server-Side Application"
+                account = container "Account Service" "Cuentas y balances. Tipos MONETARIA y AHORRO con saldo mínimo de apertura y comisión por débito." "NestJS" "Server-Side Application"
+                transaction = container "Transaction Service" "Orquestación de la Saga e historial con filtros por cuenta, estado y fecha." "NestJS" "Server-Side Application"
+                payment = container "Payment Service" "Pagos externos simulados (SUCCESS/FAILURE/TIMEOUT) y escalera de reintentos." "NestJS" "Server-Side Application"
+                notification = container "Notification & Audit Service" "Clasifica cada evento INFO/WARNING/ERROR, notifica según tipo y guarda el historial; terminal." "NestJS" "Server-Side Application"
             }
 
             group "Infraestructura externa al Cluster (Docker en el host)" {
@@ -65,8 +65,8 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
         bankusac.account -> bankusac.rabbitmq "Publica las respuestas de consulta y los eventos de Saga/auditoría: account.opened, account.deposited, account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated y account.deactivated (job automático)" "AMQP | evento/respuesta | correlationId"
 
         # --- RABBITMQ <-> TRANSACTION ---
-        bankusac.rabbitmq -> bankusac.transaction "Entrega transfer.requested, las consultas transaction.status.requested, transaction.list.query y transaction.stats.query, y los eventos de Saga de Account/Payment" "AMQP | comando/evento | correlationId"
-        bankusac.transaction -> bankusac.rabbitmq "Publica comandos de Saga (debit/credit/compensation), payment.requested, las respuestas transaction.status.replied, transaction.list.replied y transaction.stats.replied, y eventos de auditoría" "AMQP | comando/evento/respuesta | correlationId"
+        bankusac.rabbitmq -> bankusac.transaction "Entrega transfer.requested, customer.kyc.checked (Gate KYC), las consultas transaction.status.requested, transaction.list.query y transaction.stats.query, y los eventos de Saga de Account/Payment" "AMQP | comando/evento | correlationId"
+        bankusac.transaction -> bankusac.rabbitmq "Publica customer.kyc.check.requested (Gate KYC), comandos de Saga (debit/credit/compensation), payment.requested, las respuestas transaction.status.replied, transaction.list.replied y transaction.stats.replied, y eventos de auditoría" "AMQP | comando/evento/respuesta | correlationId"
 
         # --- RABBITMQ <-> PAYMENT ---
         bankusac.rabbitmq -> bankusac.payment "Entrega payment.requested y las consultas payment.status.query, payment.list.query y payment.stats.query" "AMQP | comando | correlationId"
@@ -109,26 +109,30 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
             autoLayout tb 650 400
         }
 
-        dynamic bankusac "Flujo_Saga_Transferencia_Exitoso" "Camino feliz de una transferencia entre cuentas (patrón Saga)." {
+        dynamic bankusac "Flujo_Saga_Transferencia_Exitoso" "Camino feliz de una transferencia entre cuentas con Gate KYC (patrón Saga)." {
             cliente -> bankusac.frontend "1. Solicita transferencia"
             bankusac.frontend -> bankusac.gateway "2. POST /transfers"
             bankusac.gateway -> bankusac.rabbitmq "3. Publica transfer.requested"
             bankusac.rabbitmq -> bankusac.transaction "4. Entrega transfer.requested"
-            bankusac.transaction -> bankusac.rabbitmq "5. Publica account.debit.requested"
-            bankusac.rabbitmq -> bankusac.account "6. Entrega account.debit.requested"
-            bankusac.account -> bankusac.rabbitmq "7. Publica account.debited"
-            bankusac.rabbitmq -> bankusac.transaction "8. Entrega account.debited"
-            bankusac.transaction -> bankusac.rabbitmq "9. Publica payment.requested"
-            bankusac.rabbitmq -> bankusac.payment "10. Entrega payment.requested"
-            bankusac.payment -> proveedor "11. Procesa pago externo"
-            bankusac.payment -> bankusac.rabbitmq "12. Publica payment.succeeded"
-            bankusac.rabbitmq -> bankusac.transaction "13. Entrega payment.succeeded"
-            bankusac.transaction -> bankusac.rabbitmq "14. Publica account.credit.requested"
-            bankusac.rabbitmq -> bankusac.account "15. Entrega account.credit.requested"
-            bankusac.account -> bankusac.rabbitmq "16. Publica account.credited"
-            bankusac.rabbitmq -> bankusac.transaction "17. Entrega account.credited"
-            bankusac.transaction -> bankusac.rabbitmq "18. Publica transaction.completed"
-            bankusac.rabbitmq -> bankusac.notification "19. Consume eventos para auditoría"
+            bankusac.transaction -> bankusac.rabbitmq "5. Publica customer.kyc.check.requested (Gate KYC)"
+            bankusac.rabbitmq -> bankusac.customer "6. Entrega customer.kyc.check.requested"
+            bankusac.customer -> bankusac.rabbitmq "7. Publica customer.kyc.checked (VERIFIED)"
+            bankusac.rabbitmq -> bankusac.transaction "8. Entrega customer.kyc.checked (aprobado)"
+            bankusac.transaction -> bankusac.rabbitmq "9. Publica account.debit.requested"
+            bankusac.rabbitmq -> bankusac.account "10. Entrega account.debit.requested"
+            bankusac.account -> bankusac.rabbitmq "11. Publica account.debited"
+            bankusac.rabbitmq -> bankusac.transaction "12. Entrega account.debited"
+            bankusac.transaction -> bankusac.rabbitmq "13. Publica payment.requested"
+            bankusac.rabbitmq -> bankusac.payment "14. Entrega payment.requested"
+            bankusac.payment -> proveedor "15. Procesa pago externo"
+            bankusac.payment -> bankusac.rabbitmq "16. Publica payment.succeeded"
+            bankusac.rabbitmq -> bankusac.transaction "17. Entrega payment.succeeded"
+            bankusac.transaction -> bankusac.rabbitmq "18. Publica account.credit.requested"
+            bankusac.rabbitmq -> bankusac.account "19. Entrega account.credit.requested"
+            bankusac.account -> bankusac.rabbitmq "20. Publica account.credited"
+            bankusac.rabbitmq -> bankusac.transaction "21. Entrega account.credited"
+            bankusac.transaction -> bankusac.rabbitmq "22. Publica transaction.completed"
+            bankusac.rabbitmq -> bankusac.notification "23. Consume eventos para auditoría"
             autoLayout lr 450 250
         }
 
