@@ -37,6 +37,20 @@
 #                    aqui para que ese caso no exista.
 #
 # Variable opcional:
+#   IN_CLUSTER_INFRA  `true` levanta RabbitMQ y MinIO DENTRO del namespace en
+#                    vez de apuntar a las VMs. Es lo que separa de verdad a
+#                    `dev` de `prod`: con el broker compartido, los consumidores
+#                    de desarrollo compiten por las MISMAS colas durables que
+#                    produccion y se llevan sus mensajes. Produccion lo deja sin
+#                    definir y sigue usando la infraestructura de Terraform.
+#
+#   DATABASE_SUFFIX  sufijo para el nombre de las cinco bases (`_dev`). Vacio
+#                    en produccion. Las bases con sufijo tienen que existir ya;
+#                    los servicios migran, pero no crean la base.
+#
+#   ZERO_DOWNTIME_PROBE_URL  si esta definida, se sondea durante la
+#                    actualizacion para medir si hubo caida.
+#
 #   WEB_PUBLIC_URL   el origen desde el que el navegador carga el frontend, para
 #                    `gateway.corsAllowedOrigins`. Opcional y sin valor por
 #                    defecto derivado a proposito: es el origen del *frontend*,
@@ -175,6 +189,78 @@ fi
 # Asi que aqui el orden se invierte: se espera, y si no llega a tiempo se
 # captura el estado ANTES de revertir. El rollback sigue ocurriendo — solo
 # despues de haber mirado.
+# Broker y almacenamiento propios del namespace, cuando se piden.
+#
+# `dev` y `prod` compartiendo el RabbitMQ de la VM no es un entorno separado:
+# las colas son durables y con nombre fijo, asi que los cinco servicios de
+# desarrollo se suscriben a las mismas que produccion y el broker les reparte
+# mensajes reales. Con esto cada namespace levanta el suyo.
+declare -a INFRA_PROPIA_ARGS=()
+if [ "${IN_CLUSTER_INFRA:-false}" = "true" ]; then
+  INFRA_PROPIA_ARGS+=(--set "rabbitmq.inCluster=true" --set "minio.inCluster=true")
+  echo "Infraestructura propia del namespace: RabbitMQ y MinIO dentro de ${NAMESPACE}."
+fi
+
+# ---------------------------------------------------------------------------
+# Sonda de disponibilidad DURANTE la actualizacion (opcional).
+#
+# `maxUnavailable: 0` y `maxSurge: 1` estan en el chart, pero eso es la
+# intencion declarada, no la prueba. La unica forma de afirmar que un rolling
+# update no tuvo caida es preguntarle al servicio mientras ocurre: esta sonda
+# golpea la URL publica cada segundo en segundo plano y cuenta las respuestas
+# que NO fueron 200. Se activa definiendo ZERO_DOWNTIME_PROBE_URL y no altera
+# el despliegue — solo lo observa.
+# ---------------------------------------------------------------------------
+SONDA_PID=""
+SONDA_LOG=""
+if [ -n "${ZERO_DOWNTIME_PROBE_URL:-}" ]; then
+  SONDA_LOG="$(mktemp)"
+  echo "Sondeando ${ZERO_DOWNTIME_PROBE_URL} durante la actualizacion."
+  (
+    while true; do
+      # Sin `|| echo`: cuando curl no conecta ya imprime `000` por su cuenta y
+      # ademas sale distinto de cero, asi que anadir un echo escribia `000000`.
+      codigo="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$ZERO_DOWNTIME_PROBE_URL" 2>/dev/null)" || codigo="000"
+      [ -n "$codigo" ] || codigo="000"
+      echo "$codigo" >> "$SONDA_LOG"
+      sleep 1
+    done
+  ) &
+  SONDA_PID=$!
+fi
+
+detener_sonda() {
+  [ -n "$SONDA_PID" ] || return 0
+  kill "$SONDA_PID" 2>/dev/null || true
+  wait "$SONDA_PID" 2>/dev/null || true
+  SONDA_PID=""
+
+  local total fallos
+  total="$(wc -l < "$SONDA_LOG" | tr -d ' ')"
+  fallos="$(grep -cv '^200$' "$SONDA_LOG" || true)"
+
+  echo "=== Disponibilidad durante la actualizacion ==="
+  echo "Peticiones: ${total} · respuestas distintas de 200: ${fallos}"
+  if [ "${fallos:-0}" -gt 0 ]; then
+    echo "Codigos observados:"
+    sort "$SONDA_LOG" | uniq -c | sort -rn
+    echo "::warning::El servicio devolvio ${fallos} respuestas no-200 durante el rolling update."
+  else
+    echo "Ninguna peticion fallo: la actualizacion fue sin caida."
+  fi
+
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    {
+      echo "### Rolling update en \`${NAMESPACE}\`"
+      echo ""
+      echo "- Peticiones durante la actualizacion: **${total}**"
+      echo "- Respuestas distintas de 200: **${fallos}**"
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
+
+  rm -f "$SONDA_LOG"
+}
+
 echo "=== helm upgrade --install (sin --atomic; el rollback es explicito abajo) ==="
 set +e
 helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
@@ -183,6 +269,8 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   --create-namespace \
   --set-string "imagePullPolicy=IfNotPresent" \
   --set-string "web.apiBaseUrl=${GATEWAY_PUBLIC_URL}" \
+  ${INFRA_PROPIA_ARGS[@]+"${INFRA_PROPIA_ARGS[@]}"} \
+  --set-string "databaseSuffix=${DATABASE_SUFFIX:-}" \
   ${WEB_PUBLIC_URL:+--set-string "gateway.corsAllowedOrigins=${WEB_PUBLIC_URL}"} \
   "${SECRET_ARGS[@]}" \
   "${INFRA_ARGS[@]}" \
@@ -191,6 +279,8 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   --timeout "${HELM_TIMEOUT:-10m}"
 HELM_STATUS=$?
 set -e
+
+detener_sonda
 
 if [ "$HELM_STATUS" -ne 0 ]; then
   echo "::group::Diagnostico: por que no arrancaron los pods"
@@ -233,8 +323,36 @@ if [ "$HELM_STATUS" -ne 0 ]; then
   echo "::endgroup::"
 
   # Ahora si: se revierte, con la evidencia ya en el log.
-  echo "::error::El despliegue no alcanzo Ready. Revirtiendo ${RELEASE_NAME} en ${NAMESPACE}."
-  helm uninstall "$RELEASE_NAME" --namespace "$NAMESPACE" --wait --timeout 5m || true
+  #
+  # Revertir NO es desinstalar. Cuando el release ya existia, la version
+  # anterior estaba sirviendo trafico y es exactamente a donde hay que volver:
+  # `helm rollback` restaura su revision y deja la aplicacion en pie. Un
+  # `helm uninstall` en ese caso se lleva por delante lo que si funcionaba y
+  # convierte un despliegue fallido en una caida — que es lo que hacia antes.
+  #
+  # La desinstalacion solo tiene sentido en la PRIMERA instalacion: ahi no hay
+  # revision anterior a la que volver, y dejar el release a medias impide el
+  # siguiente intento.
+  if [ "$RELEASE_EXISTE" = true ]; then
+    REVISION_ACTUAL="$(helm history "$RELEASE_NAME" --namespace "$NAMESPACE" --max 1 -o json 2>/dev/null \
+      | jq -r '.[0].revision // empty' || true)"
+
+    echo "::error::El despliegue no alcanzo Ready. Rollback de ${RELEASE_NAME} en ${NAMESPACE} (revision fallida: ${REVISION_ACTUAL:-desconocida})."
+
+    # Sin argumento de revision, helm vuelve a la anterior.
+    if helm rollback "$RELEASE_NAME" --namespace "$NAMESPACE" --wait --timeout 5m; then
+      echo "Rollback completado. Revisiones del release:"
+      helm history "$RELEASE_NAME" --namespace "$NAMESPACE" --max 5 || true
+      kubectl get pods --namespace "$NAMESPACE" -o wide || true
+    else
+      echo "::error::El rollback tambien fallo. El release queda como esta, para poder inspeccionarlo."
+      helm history "$RELEASE_NAME" --namespace "$NAMESPACE" --max 5 || true
+    fi
+  else
+    echo "::error::La primera instalacion de ${RELEASE_NAME} en ${NAMESPACE} no alcanzo Ready. No hay revision anterior: se retira el release a medias."
+    helm uninstall "$RELEASE_NAME" --namespace "$NAMESPACE" --wait --timeout 5m || true
+  fi
+
   exit 1
 fi
 
