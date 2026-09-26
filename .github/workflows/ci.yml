@@ -235,74 +235,9 @@ jobs:
             exit 1
           fi
 
-      # ── E2E ──────────────────────────────────────────────────────────────
-      #
-      # Sigue dentro de la Fase 2 y no en una cuarta: el enunciado nombra tres
-      # fases obligatorias y `docs/operations/CI.md` dice que el pipeline las
-      # refleja literalmente. Una prueba de extremo a extremo es una prueba, y
-      # anadir un job cambiaria la estructura que el enunciado fija.
-      #
-      # Corre tambien en un pull request hacia `develop`, a diferencia de la
-      # Fase 3. No es simetria: la forma de la piramide se mide justo despues de
-      # este paso y el E2E es una de sus tres capas, asi que un CI sin E2E no
-      # mide la piramide, la estima con el informe que quedara commiteado de la
-      # corrida anterior — que es exactamente el verde que este pipeline existe
-      # para no dar.
-      - name: 'E2E — configurar el stack de Compose'
-        run: |
-          set -euo pipefail
-
-          # `infra/docker/.env` esta en .gitignore, con razon, asi que en un
-          # runner no existe y cada `${..._PORT}` de docker-compose.yml quedaria
-          # vacio: el mapeo de puertos se vuelve `":5432"` y Compose ni arranca.
-          # Los valores de ejemplo son los de un portatil y sirven aqui: nada de
-          # lo que hay en este job sobrevive al job.
-          cp infra/docker/.env.example infra/docker/.env
-
-          # El broker del stack no puede publicar 5672 ni 15672: ese puerto ya lo
-          # tiene el contenedor de servicio `rabbitmq` de este job, el que usan
-          # las suites de integracion y las del gateway. Dentro de la red de
-          # Compose las aplicaciones hablan por `rabbitmq:5672` — el puerto
-          # publicado solo importa desde el host, y desde el host nadie lo usa.
-          sed -i 's/^RABBITMQ_AMQP_PORT=.*/RABBITMQ_AMQP_PORT=5673/' infra/docker/.env
-          sed -i 's/^RABBITMQ_MANAGEMENT_PORT=.*/RABBITMQ_MANAGEMENT_PORT=15673/' infra/docker/.env
-
-          # El informe E2E esta versionado como evidencia, y por eso mismo hay
-          # uno en el checkout. Si se queda, un E2E que no llegue a escribir el
-          # suyo deja que la piramide mida el de otra maquina y otro dia sin
-          # notarlo. Borrado, `pyramid.mjs` lo reporta como ausente y falla.
-          rm -f docs/qa/pyramid-e2e.json
-
-      - name: 'E2E — levantar el stack completo'
-        env:
-          SEED_DEMO_DATA: 'true'
-          REVEAL_ACTIVATION_LINKS: 'true'
-        run: |
-          set -euo pipefail
-          docker compose -f infra/docker/docker-compose.dev.yml up -d --wait --wait-timeout 900
-          # `--wait` respeta los healthcheck de los contenedores, pero `web` no
-          # declara uno, asi que se comprueba a mano antes de abrir el navegador.
-          for attempt in $(seq 1 60); do
-            if curl -fsS http://localhost:3000/ready >/dev/null \
-              && curl -fsS http://localhost:3010/health >/dev/null; then
-              echo "stack listo tras $attempt intentos"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::El stack no respondio a tiempo."
-          docker compose -f infra/docker/docker-compose.dev.yml ps
-          exit 1
-
-      - name: 'E2E — correr las suites por flujo'
-        run: node test/e2e/run-all.mjs
-
       # La forma de la piramide, medida y no afirmada. Cuenta casos declarados
       # por cada runner, clasifica por el sufijo `.integration.spec.ts` y falla
-      # si una app se desvia de 70/20/10 mas alla de la tolerancia.
-      #
-      # Va despues del E2E y no antes: la capa E2E la lee del informe que deja
-      # `run-all.mjs`, asi que medirla primero es medir la corrida anterior.
+      # si una app se desvia de la proporcion mas alla de la tolerancia.
       #
       # `--require-executed` es la diferencia entre medir y estimar: aqui hay
       # PostgreSQL y RabbitMQ de verdad, asi que una suite de integracion que se
@@ -312,11 +247,21 @@ jobs:
       # entorno. `{db}` lo sustituye por el nombre que el manifiesto asigna a
       # cada paquete, y son las bases `_pyramid` porque las otras ya las gasto
       # el paso de integracion de arriba.
+      #
+      # `--without-e2e` por el mismo criterio, aplicado a la capa que este
+      # pipeline no ejecuta. El E2E se corre a mano contra el stack completo y
+      # su informe queda versionado como evidencia, de modo que aqui siempre hay
+      # un `pyramid-e2e.json` de otra maquina y otro dia esperando a que alguien
+      # lo tome por una medicion. Sin la bandera, un E2E corto no baja solo su
+      # porcentaje: sube los otros dos por el mismo motivo, y saldrian tres
+      # desviaciones donde no hay ninguna. Con ella, esa fila se informa pero no
+      # se afirma, y lo que se comprueba es la relacion entre las dos capas que
+      # esta corrida si midio.
       - name: 'Forma de la piramide de pruebas'
         env:
           RABBITMQ_URL: amqp://bank_test:bank_test@localhost:5672
           PYRAMID_DATABASE_URL_TEMPLATE: postgresql://bank_test:bank_test@localhost:5432/{db}_pyramid
-        run: pnpm test:pyramid --require-executed
+        run: pnpm test:pyramid --require-executed --without-e2e
 
       - name: 'Publicar el informe de la piramide'
         if: always()
@@ -326,21 +271,6 @@ jobs:
           path: |
             docs/qa/pyramid.json
             docs/qa/pyramid.md
-          if-no-files-found: warn
-
-      - name: 'E2E — logs del stack cuando algo falla'
-        if: failure()
-        run: docker compose -f infra/docker/docker-compose.dev.yml logs --tail 200
-
-      - name: 'E2E — publicar evidencia'
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: e2e
-          path: |
-            docs/qa/pyramid-e2e.json
-            docs/qa/qa-test-results.json
-            docs/qa/screenshots/
           if-no-files-found: warn
 
 
