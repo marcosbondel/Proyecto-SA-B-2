@@ -259,9 +259,10 @@ deployment phases, and they are wired differently from each other on purpose.
 
 | Workflow | Fires on | What it does |
 | --- | --- | --- |
-| `ci.yml` | push to `feature/**`, PR into `develop` or `main` | Build → Test → Validación |
-| `release.yml` | push to `release/**`, tag `v*` | Generates the version, **publishes** seven versioned images to `ghcr.io` |
-| `cd.yml` | push to `main` | Deploys to GKE, namespace `prod`. The `dev` deploy was removed — see **TD-071** |
+| `ci.yml` | push to any work branch (`feature/**`, `fix/**`, `test/**`, `docs/**`, `chore/**`, `refactor/**`), PR into `develop` or `main` | Build → Test → Validación |
+| `release.yml` | push to `release/**`, tag `v*` | Generates the version, **publishes** seven versioned images to Artifact Registry (`<region>-docker.pkg.dev/<project>/<repo>`) |
+| `cd.yml` | push to `develop` | Builds only the **modified** components and deploys them to GKE, namespace `dev` |
+| `cd.yml` | push to `main` | Deploys the newest `v*` tag's images to GKE, namespace `prod`, with a rolling update |
 
 **Production never builds an image.** `cd.yml`'s production job resolves the
 newest `v*` tag and deploys the images `release.yml` already published, which is
@@ -271,7 +272,10 @@ production deploy of an unpublished artifact is the thing the release phase
 exists to prevent.
 
 **No tag is ever `latest`.** `release.yml` tags with the version, `cd.yml`'s dev
-job tags with `dev-<sha12>`, and `helm-deploy.sh` refuses `latest` outright so
+job tags with `dev-<commit sha>` — defined once as the workflow-level
+`DEV_IMAGE_TAG`, because when the building job and the deploying job each
+composed it separately they disagreed on its length and the deploy referenced an
+image that was never pushed — and `helm-deploy.sh` refuses `latest` outright so
 the rule holds even when the script is run by hand.
 
 ### What `cd.yml` needs before it can deploy
@@ -308,13 +312,18 @@ Engine VMs rather than inside the cluster, so the chart has to be told where
 they are; `external.mode` stays `dockerNetwork`, which despite its name means
 "an explicit host and port" and is exactly what a VM address is.
 
-### The one component without an HPA
+### The component that used to have no HPA
 
-`account-service` ships with `autoscaling.enabled: false`. It is not an
-oversight: besides consuming its queue it runs the inactive-account sweep on an
-interval with no leader election, so N replicas would make the sweep run N
-times. Six of the seven components autoscale at 80% CPU; this one is pinned to
-a single replica until that job has an owner.
+All seven autoscale at 80% CPU. `account-service` did not, and the reason was
+real: besides consuming its queue it runs the inactive-account sweep on an
+interval, and with N replicas there are N timers, so the sweep ran N times.
+The scheduler's in-process guard cannot help — it is one guard per process.
+
+`PostgresSweepLease` gives that job the owner it was waiting for. Each replica
+takes a `pg_try_advisory_lock` before sweeping: the one that gets it sweeps, the
+others skip their turn rather than queue behind it, since the next tick will try
+again anyway. The lock is held by a session, so a pod that dies mid-sweep
+releases it by disconnecting — there is no stale lease to clean up by hand.
 
 ### Why CI also fires on pull requests into `main`
 
@@ -435,21 +444,27 @@ no public IP, `pg_hba.conf` admits only `10.0.0.0/8`, and each service's role is
 created without `CREATEDB`. Creating those databases needs a person with access
 to the machines. See TD-070 for the exact commands.
 
-### Why there is no `dev` deploy
+The chart's half is already in place: `databaseSuffix` appends a per-environment
+suffix to the five database names, and the `dev` job passes it from the
+`DEV_DATABASE_SUFFIX` repository variable. It is empty on purpose — a suffix
+pointing at databases that do not exist would leave every service unable to
+start. Once somebody creates `customer_dev`, `account_dev` and the rest, setting
+that variable to `_dev` separates the two environments with no code change.
 
-There was one, and it worked: nine Deployments at `1/1` with HPAs measuring real
-CPU. It was removed on 2026-09-25 because the cluster cannot hold it.
+### The `dev` deploy, and the two weeks it did not exist
 
-The GKE cluster runs **one** node while `variables.tf` declares three. On that
-node the original manual release, `dev` and `prod` together reserve more CPU
-than exists — it reached 1911m requested of ~1930m allocatable, 99%, while
+Every merge into `develop` builds the modified components and deploys them to
+the `dev` namespace: nine Deployments at `1/1` — the seven applications, its own
+RabbitMQ and its own MinIO — with seven HPAs at 80% CPU.
+
+It was not always there. The job was removed on 2026-09-25 because the cluster
+could not hold it: GKE ran **one** node while `variables.tf` declared three, and
+on that node the original manual release, `dev` and `prod` together reserved
+more CPU than existed — 1911m requested of ~1930m allocatable, 99%, while
 actually using 11%. Production's first real deploy left seven pods in
 `FailedScheduling: Insufficient cpu`.
 
-`retire-development` (Actions → CD → Run workflow → `retire_dev`) uninstalls the
-dev release and frees its 450m. It is idempotent and needs no gcloud access.
-
-The real fix is the node count, and it needs no code change:
+The fix needed no code change, which is why the job could come back untouched:
 
 ```bash
 gcloud container clusters resize bank-usac-vpc-gke \
@@ -457,4 +472,9 @@ gcloud container clusters resize bank-usac-vpc-gke \
   --zone us-central1-a --quiet
 ```
 
-With three nodes the dev job can be restored exactly as it was.
+`retire-development` (Actions → CD → Run workflow → `retire_dev`) stays as the
+escape hatch: it uninstalls the dev release and deletes its namespace, freeing
+its 450m. It is idempotent and needs no gcloud access. **Run it from a branch
+that is neither `develop` nor `main`** — the other jobs are gated on those refs,
+so dispatching from `develop` would retire `dev` and redeploy it in the same
+run, and dispatching from `main` would deploy production.
