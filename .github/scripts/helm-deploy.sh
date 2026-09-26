@@ -37,12 +37,19 @@
 #                    aqui para que ese caso no exista.
 #
 # Variable opcional:
-#   IN_CLUSTER_INFRA  `true` levanta RabbitMQ y MinIO DENTRO del namespace en
-#                    vez de apuntar a las VMs. Es lo que separa de verdad a
-#                    `dev` de `prod`: con el broker compartido, los consumidores
-#                    de desarrollo compiten por las MISMAS colas durables que
+#   IN_CLUSTER_BROKER  `true` levanta RabbitMQ DENTRO del namespace en vez de
+#                    apuntar a la VM. Es lo que separa de verdad a `dev` de
+#                    `prod`: con el broker compartido, los consumidores de
+#                    desarrollo compiten por las MISMAS colas durables que
 #                    produccion y se llevan sus mensajes. Produccion lo deja sin
 #                    definir y sigue usando la infraestructura de Terraform.
+#
+#   IN_CLUSTER_OBJECT_STORAGE  lo mismo para MinIO. **No usar hoy**: la imagen
+#                    `quay.io/minio/minio` que declara el chart devuelve 401
+#                    tanto en quay.io como en Docker Hub — MinIO cerro la
+#                    distribucion publica de esa etiqueta, y el pod se queda en
+#                    ImagePullBackOff. Los dos entornos comparten el MinIO de la
+#                    VM mientras tanto; compartir blobs no es compartir colas.
 #
 #   DATABASE_SUFFIX  sufijo para el nombre de las cinco bases (`_dev`). Vacio
 #                    en produccion. Las bases con sufijo tienen que existir ya;
@@ -196,9 +203,13 @@ fi
 # desarrollo se suscriben a las mismas que produccion y el broker les reparte
 # mensajes reales. Con esto cada namespace levanta el suyo.
 declare -a INFRA_PROPIA_ARGS=()
-if [ "${IN_CLUSTER_INFRA:-false}" = "true" ]; then
-  INFRA_PROPIA_ARGS+=(--set "rabbitmq.inCluster=true" --set "minio.inCluster=true")
-  echo "Infraestructura propia del namespace: RabbitMQ y MinIO dentro de ${NAMESPACE}."
+if [ "${IN_CLUSTER_BROKER:-false}" = "true" ]; then
+  INFRA_PROPIA_ARGS+=(--set "rabbitmq.inCluster=true")
+  echo "Broker propio del namespace: RabbitMQ dentro de ${NAMESPACE}."
+fi
+if [ "${IN_CLUSTER_OBJECT_STORAGE:-false}" = "true" ]; then
+  INFRA_PROPIA_ARGS+=(--set "minio.inCluster=true")
+  echo "Almacenamiento propio del namespace: MinIO dentro de ${NAMESPACE}."
 fi
 
 # ---------------------------------------------------------------------------
