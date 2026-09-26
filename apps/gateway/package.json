@@ -34,6 +34,7 @@
   "devDependencies": {
     "@bank/tooling": "workspace:*",
     "@nestjs/cli": "catalog:",
+    "amqplib": "catalog:",
     "@nestjs/testing": "catalog:",
     "@types/express": "catalog:",
     "@types/jest": "catalog:",

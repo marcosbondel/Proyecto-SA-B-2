@@ -91,6 +91,37 @@ const dummyPng = Buffer.from(
 // ─── Test results collector ──────────────────────────────────────────────────
 
 const results = [];
+
+/**
+ * Whether the browser really is on `path`, showing a real screen.
+ *
+ * This suite used to answer that question by passing a literal `true` to
+ * `record`. Thirty-seven cases did, which meant thirty-seven cases could not
+ * fail: the page could have bounced to `/login`, rendered `error.vue`, or come
+ * back blank, and the report would still have said "Cargado". A green case that
+ * cannot go red is worse than no case, because it occupies the space where the
+ * real check would have gone.
+ *
+ * Three things have to hold, and each one has been the actual failure at some
+ * point: the URL is where we meant to be (not bounced by the route guard), the
+ * body carries more than a spinner's worth of text, and nothing on it is the
+ * error screen's wording.
+ */
+async function landedOn(page, path) {
+  try {
+    const pathname = new URL(page.url()).pathname;
+    if (pathname !== path) {
+      return false;
+    }
+
+    const text = (await page.locator('body').innerText({ timeout: 5000 })).trim();
+
+    return text.length > 40 && !/Esta pantalla no existe|Algo salió mal/i.test(text);
+  } catch {
+    return false;
+  }
+}
+
 function record(id, category, name, expected, actual, pass, detail = '') {
   results.push({ id, category, name, expected, actual, pass, detail });
   console.log(`  ${pass ? '✅' : '❌'} ${id}: ${name}`);
@@ -134,7 +165,7 @@ async function run() {
   await shot(page, 'hp-02-login-error-credenciales');
   const loginErrorVisible = await page.locator('text=credenciales').isVisible().catch(() => false)
     || await page.locator('[class*="error"], [class*="alert"], [role="alert"]').isVisible().catch(() => false);
-  record('SEC-01', 'Autenticación', 'Login con credenciales inválidas', '401 con mensaje genérico (D-04)', loginErrorVisible ? 'Mensaje de error mostrado' : 'Error no visible', true, 'Evita enumeración de cuentas');
+  record('SEC-01', 'Autenticación', 'Login con credenciales inválidas', '401 con mensaje genérico (D-04)', loginErrorVisible ? 'Mensaje de error mostrado' : 'Error no visible', await landedOn(page, '/login'), 'Evita enumeración de cuentas');
 
   // 1.3 Login con email vacío (form validation)
   await clearSession(ctx, page);
@@ -145,12 +176,12 @@ async function run() {
   await page.click('button:has-text("Entrar")');
   await page.waitForTimeout(800);
   await shot(page, 'hp-03-login-campos-vacios');
-  record('SEC-02', 'Autenticación', 'Login con campos vacíos', 'Formulario bloquea envío', 'Campos requeridos señalados', true);
+  record('SEC-02', 'Autenticación', 'Login con campos vacíos', 'Formulario bloquea envío', 'Campos requeridos señalados', await landedOn(page, '/login'));
 
   // 1.4 Login exitoso como Cliente Demo
   await loginViaUI(ctx, page, 'cliente@bankusac.gt', 'BankUsac#2026');
   await shot(page, 'hp-04-login-exitoso-cliente');
-  record('SEC-03', 'Autenticación', 'Login exitoso con JWT emitido', '200 OK con sesión', 'Dashboard cargado', true);
+  record('SEC-03', 'Autenticación', 'Login exitoso con JWT emitido', '200 OK con sesión', 'Dashboard cargado', await landedOn(page, '/login'));
 
   // Get API tokens for all three roles
   const cAuth = await loginApi('cliente@bankusac.gt', 'BankUsac#2026');
@@ -174,7 +205,7 @@ async function run() {
   await page.click('button[type="submit"]');
   await page.waitForTimeout(600);
   await shot(page, 'hp-06-registro-paso1-campos-vacios');
-  record('REG-01', 'Registro', 'Paso 1: envío con campos vacíos', 'Bloquear avance', 'Formulario bloqueado', true);
+  record('REG-01', 'Registro', 'Paso 1: envío con campos vacíos', 'Bloquear avance', 'Formulario bloqueado', await landedOn(page, '/registro'));
 
   // 2.2 Step 1: menor de edad
   await page.fill('input[placeholder="María Fernanda López García"]', 'Menor de Edad Test');
@@ -198,7 +229,7 @@ async function run() {
   await page.click('button[type="submit"]');
   await page.waitForTimeout(600);
   await shot(page, 'hp-08-registro-paso1-email-invalido');
-  record('REG-03', 'Registro', 'Paso 1: email con formato inválido', 'Validación HTML5 bloquea', 'Campo email marcado', true);
+  record('REG-03', 'Registro', 'Paso 1: email con formato inválido', 'Validación HTML5 bloquea', 'Campo email marcado', await landedOn(page, '/registro'));
 
   // 2.4 Step 1: Happy Path - datos válidos
   await page.goto(`${BASE}/registro`);
@@ -225,7 +256,11 @@ async function run() {
   await page.click('button[type="submit"]');
   await page.waitForTimeout(600);
   await shot(page, 'hp-11-registro-paso2-dpi-letras');
-  record('REG-05', 'Registro', 'Paso 2: DPI con caracteres alfabéticos', 'Rechazar formato no numérico', 'Campo no acepta letras o bloquea avance', true);
+  const dpiStillOnStep2 = await page
+    .locator('input[placeholder="2547 89632 0101"]')
+    .isVisible()
+    .catch(() => false);
+  record('REG-05', 'Registro', 'Paso 2: DPI con caracteres alfabéticos', 'Rechazar formato no numérico', dpiStillOnStep2 ? 'Bloqueado (sigue en el paso 2)' : 'Avanzó con un DPI no numérico', dpiStillOnStep2);
 
   // 2.7 Step 2: sin foto de documento
   await page.fill('input[placeholder="2547 89632 0101"]', testDPI);
@@ -254,7 +289,11 @@ async function run() {
   if (await submitBtn.isVisible()) await submitBtn.click();
   await page.waitForTimeout(600);
   await shot(page, 'hp-14-registro-paso3-password-corta');
-  record('REG-07', 'Registro', 'Paso 3: contraseña menor a 8 caracteres', 'Bloquear envío', 'Validación de longitud mínima', true);
+  const shortPasswordBlocked = !(await page
+    .locator('[data-testid="registration-accepted"]')
+    .isVisible()
+    .catch(() => false));
+  record('REG-07', 'Registro', 'Paso 3: contraseña menor a 8 caracteres', 'Bloquear envío', shortPasswordBlocked ? 'Bloqueado' : 'Aceptado con una contraseña corta', shortPasswordBlocked);
 
   // 2.10 Step 3: contraseñas no coincidentes
   await page.fill('input[placeholder="Mínimo 8 caracteres"]', 'PasswordA#123');
@@ -274,7 +313,10 @@ async function run() {
   if (isChecked === 'true') await checkbox.click();
   await page.waitForTimeout(300);
   await shot(page, 'hp-16-registro-paso3-sin-terminos');
-  record('REG-09', 'Registro', 'Paso 3: checkbox de términos sin marcar', 'Botón deshabilitado o envío bloqueado', 'Términos requeridos', true);
+  const termsBlock =
+    (await submitBtn.isDisabled().catch(() => false)) ||
+    !(await page.locator('[data-testid="registration-accepted"]').isVisible().catch(() => false));
+  record('REG-09', 'Registro', 'Paso 3: checkbox de términos sin marcar', 'Botón deshabilitado o envío bloqueado', termsBlock ? 'Términos requeridos' : 'Envió sin aceptar los términos', termsBlock);
 
   // 2.12 Step 3: Happy Path completo
   if (isChecked !== 'true') await checkbox.click();
@@ -287,7 +329,11 @@ async function run() {
   } catch {}
   await page.waitForTimeout(1500);
   await shot(page, 'hp-18-registro-solicitud-aceptada');
-  record('REG-10', 'Registro', 'Registro completo exitoso (202 Accepted)', 'Solicitud aceptada', 'Pantalla de confirmación', true);
+  const registrationAccepted = await page
+    .locator('[data-testid="registration-accepted"]')
+    .isVisible()
+    .catch(() => false);
+  record('REG-10', 'Registro', 'Registro completo exitoso (202 Accepted)', 'Solicitud aceptada', registrationAccepted ? 'Pantalla de confirmación' : 'Nunca apareció la confirmación', registrationAccepted);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SECTION 3: ACCOUNT ACTIVATION
@@ -300,14 +346,20 @@ async function run() {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
     await shot(page, 'hp-19-activacion-exitosa');
-    record('ACT-01', 'Activación', 'Activación por token válido', 'Cuenta activada', 'Pantalla de éxito', true);
+    const activationText = await page.locator('body').innerText().catch(() => '');
+    const activated = /activad|verificad|éxito|exito/i.test(activationText);
+    record('ACT-01', 'Activación', 'Activación por token válido', 'Cuenta activada', activated ? 'Pantalla de éxito' : 'La pantalla no confirma la activación', activated);
 
     // 3.2 Try re-using the same token
     await page.goto(`${BASE}${activationPath}`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
     await shot(page, 'hp-20-activacion-token-reusado');
-    record('ACT-02', 'Activación', 'Re-uso de token ya consumido', 'Token inválido (single-use)', 'Pantalla de error/token expirado', true);
+    const reuseText = await page.locator('body').innerText().catch(() => '');
+    // Un token de un solo uso tiene que fallar la segunda vez. Si la pantalla
+    // vuelve a decir "activada", el token no era de un solo uso.
+    const reuseRefused = /inválid|invalid|expirad|no es válido|error/i.test(reuseText);
+    record('ACT-02', 'Activación', 'Re-uso de token ya consumido', 'Token inválido (single-use)', reuseRefused ? 'Rechazado' : 'Aceptó el token por segunda vez', reuseRefused);
   } else {
     console.log('  ⚠️  No se pudo obtener el enlace de activación de los logs.');
   }
@@ -317,7 +369,7 @@ async function run() {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(2000);
   await shot(page, 'hp-21-activacion-token-invalido');
-  record('ACT-03', 'Activación', 'Token fabricado/inválido', 'Rechazo con error', 'Activación denegada', true);
+  record('ACT-03', 'Activación', 'Token fabricado/inválido', 'Rechazo con error', 'Activación denegada', await landedOn(page, '/activar'));
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SECTION 4: CLIENT DASHBOARD & PROFILE
@@ -337,21 +389,21 @@ async function run() {
     await loginViaUI(ctx, page, 'cliente@bankusac.gt', 'BankUsac#2026');
   }
   await shot(page, 'hp-22-dashboard-cliente-nuevo');
-  record('DASH-01', 'Dashboard', 'Dashboard de cliente' + (newUserLoggedIn ? ' nuevo (sin cuentas)' : ' demo'), 'Dashboard personalizado', 'Dashboard cargado', true);
+  record('DASH-01', 'Dashboard', 'Dashboard de cliente' + (newUserLoggedIn ? ' nuevo (sin cuentas)' : ' demo'), 'Dashboard personalizado', 'Dashboard cargado', await landedOn(page, '/'));
 
   // 4.2 Perfil page
   await page.goto(`${BASE}/perfil`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   await shot(page, 'hp-23-perfil-cliente');
-  record('PROF-01', 'Perfil', 'Página Mi Perfil', 'Datos del cliente visibles', 'Perfil cargado', true);
+  record('PROF-01', 'Perfil', 'Página Mi Perfil', 'Datos del cliente visibles', 'Perfil cargado', await landedOn(page, '/perfil'));
 
   // 4.3 Notificaciones page (client)
   await page.goto(`${BASE}/notificaciones`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   await shot(page, 'hp-24-notificaciones-cliente');
-  record('NOTIF-01', 'Notificaciones', 'Bandeja de notificaciones del cliente', 'Notificaciones propias', 'Vista cargada', true);
+  record('NOTIF-01', 'Notificaciones', 'Bandeja de notificaciones del cliente', 'Notificaciones propias', 'Vista cargada', await landedOn(page, '/notificaciones'));
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SECTION 5: BANK ACCOUNTS
@@ -400,7 +452,11 @@ async function run() {
     } catch {}
     await page.waitForTimeout(1500);
     await shot(page, 'hp-30-cuenta-ahorro-creada');
-    record('ACC-02', 'Cuentas', 'Apertura de cuenta AHORRO', '202 + Account ID', 'Cuenta de ahorro creada', true);
+    const savingsId = await page
+      .locator('[data-testid="new-account-id"]')
+      .innerText()
+      .catch(() => '');
+    record('ACC-02', 'Cuentas', 'Apertura de cuenta AHORRO', '202 + Account ID', savingsId ? `ID: ${savingsId}` : 'Sin ID de cuenta', savingsId.length > 0);
   }
 
   // 5.3 Lista de cuentas
@@ -408,7 +464,7 @@ async function run() {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
   await shot(page, 'hp-31-lista-cuentas-cliente');
-  record('ACC-03', 'Cuentas', 'Lista de cuentas del cliente', 'Cuentas MONETARIA y AHORRO visibles', 'Listado cargado', true);
+  record('ACC-03', 'Cuentas', 'Lista de cuentas del cliente', 'Cuentas MONETARIA y AHORRO visibles', 'Listado cargado', await landedOn(page, '/cuentas'));
 
   // 5.4 Detail of one account
   if (newAccountId) {
@@ -416,7 +472,7 @@ async function run() {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
     await shot(page, 'hp-32-detalle-cuenta');
-    record('ACC-04', 'Cuentas', 'Detalle de cuenta individual', 'Saldo Q0.00, movimientos vacíos', 'Detalle cargado', true);
+    record('ACC-04', 'Cuentas', 'Detalle de cuenta individual', 'Saldo Q0.00, movimientos vacíos', 'Detalle cargado', await landedOn(page, '/cuentas/${newAccountId}'));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -426,14 +482,14 @@ async function run() {
 
   await loginViaUI(ctx, page, 'cajero@bankusac.gt', 'BankUsac#2026');
   await shot(page, 'hp-33-dashboard-cajero');
-  record('TEL-01', 'Cajero', 'Dashboard del cajero receptor', 'Dashboard de turno', 'Dashboard cargado', true);
+  record('TEL-01', 'Cajero', 'Dashboard del cajero receptor', 'Dashboard de turno', 'Dashboard cargado', await landedOn(page, '/'));
 
   // 6.2 Identity validation queue
   await page.goto(`${BASE}/clientes/validaciones`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1200);
   await shot(page, 'hp-34-cola-validaciones');
-  record('TEL-02', 'Cajero', 'Cola de validaciones de identidad', 'Lista de pendientes', 'Cola visible', true);
+  record('TEL-02', 'Cajero', 'Cola de validaciones de identidad', 'Lista de pendientes', 'Cola visible', await landedOn(page, '/clientes/validaciones'));
 
   // 6.3 Identity validation detail (if any pending)
   const reviewLink = page.locator('a:has-text("Revisar"), button:has-text("Revisar"), text=Revisar →').first();
@@ -442,7 +498,7 @@ async function run() {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
     await shot(page, 'hp-35-validacion-detalle-dpi');
-    record('TEL-03', 'Cajero', 'Detalle de validación de documento DPI', 'Foto y datos del cliente', 'Documento visible', true);
+    record('TEL-03', 'Cajero', 'Detalle de validación de documento DPI', 'Foto y datos del cliente', 'Documento visible', await landedOn(page, '/clientes/validaciones'));
   }
 
   // 6.4 Deposit: Happy Path
@@ -459,7 +515,7 @@ async function run() {
   } catch (e) {
     console.log(`  ⚠️  TEL-04 captura alternativa: ${e.message.slice(0, 80)}`);
     await shot(page, 'hp-37-deposito-campos-vacios');
-    record('TEL-04', 'Cajero', 'Depósito sin cuenta ni monto', 'Botón deshabilitado', 'Bloqueado por validación', true);
+    record('TEL-04', 'Cajero', 'Depósito sin cuenta ni monto', 'Botón deshabilitado', 'Bloqueado por validación', await landedOn(page, '/cuentas/deposito'));
   }
 
   // 6.4b Deposit: invalid account UUID — button should stay disabled
@@ -474,11 +530,11 @@ async function run() {
     await page.waitForTimeout(600);
     const continuarDisabled = await page.locator('button:has-text("Continuar")').isDisabled().catch(() => true);
     await shot(page, 'hp-38-deposito-uuid-invalido');
-    record('TEL-05', 'Cajero', 'Depósito con UUID de formato inválido', 'Formulario bloquea avance', continuarDisabled ? 'Bloqueado (UUID inválido)' : 'Aceptado para envío', true);
+    record('TEL-05', 'Cajero', 'Depósito con UUID de formato inválido', 'Formulario bloquea avance', continuarDisabled ? 'Bloqueado (UUID inválido)' : 'Aceptado para envío', await landedOn(page, '/cuentas/deposito'));
   } catch (e) {
     console.log(`  ⚠️  TEL-05: ${e.message.slice(0, 80)}`);
     await shot(page, 'hp-38-deposito-uuid-invalido');
-    record('TEL-05', 'Cajero', 'Depósito con UUID de formato inválido', 'Formulario bloquea', 'Captura de estado', true);
+    record('TEL-05', 'Cajero', 'Depósito con UUID de formato inválido', 'Formulario bloquea', `La pantalla falló: ${e.message.slice(0, 60)}`, false);
   }
 
   // 6.4c Deposit: nonexistent account (via API — more reliable than UI for this edge case)
@@ -490,7 +546,7 @@ async function run() {
     });
     record('TEL-06', 'Cajero', 'Depósito a cuenta inexistente (API)', '404 Not Found', `${depNotFound.status}`, depNotFound.status === 404 || depNotFound.status === 422);
   } catch (e) {
-    record('TEL-06', 'Cajero', 'Depósito a cuenta inexistente', 'Error controlado', e.message.slice(0, 60), true);
+    record('TEL-06', 'Cajero', 'Depósito a cuenta inexistente', '404 Not Found', `La llamada falló: ${e.message.slice(0, 60)}`, false);
   }
 
   // 6.4d Deposit: zero or negative amount (API)
@@ -532,7 +588,9 @@ async function run() {
         await page.waitForTimeout(3000);
       }
       await shot(page, 'hp-42-deposito-exitoso-comprobante');
-      record('TEL-09', 'Cajero', 'Depósito exitoso de Q5,000.00', '200 OK + saldo actualizado', 'Comprobante emitido', true);
+      const receiptText = await page.locator('body').innerText().catch(() => '');
+      const deposited = /comprobante|registrado|exitoso|5,000|5000/i.test(receiptText);
+      record('TEL-09', 'Cajero', 'Depósito exitoso de Q5,000.00', '200 OK + saldo actualizado', deposited ? 'Comprobante emitido' : 'Sin comprobante en pantalla', deposited);
     } catch (e) {
       console.log(`  ⚠️  TEL-09 depósito UI: ${e.message.slice(0, 80)}`);
       // Fallback: do the deposit via API
@@ -665,12 +723,14 @@ async function run() {
       } catch {}
       await page.waitForTimeout(5000); // Wait for Saga
       await shot(page, 'hp-46-saga-completada');
-      record('TX-05', 'Transferencia', 'Transferencia exitosa Q250.00 (Saga COMPLETED)', 'COMPLETED', 'Saga completada', true);
+      const sagaText = await page.locator('body').innerText().catch(() => '');
+      const completed = /COMPLETAD|COMPLETED/i.test(sagaText);
+      record('TX-05', 'Transferencia', 'Transferencia exitosa Q250.00 (Saga COMPLETED)', 'COMPLETED', completed ? 'Saga completada' : 'La Saga no llegó a COMPLETED', completed);
     }
   } catch (e) {
     console.log(`  ⚠️  TX-05 transfer UI: ${e.message.slice(0, 80)}`);
     await shot(page, 'hp-46-saga-completada');
-    record('TX-05', 'Transferencia', 'Transferencia Q250.00 (UI falló, ver API tests)', 'COMPLETED', 'Captura parcial', true);
+    record('TX-05', 'Transferencia', 'Transferencia Q250.00 por la interfaz', 'COMPLETED', `La pantalla falló: ${e.message.slice(0, 60)}`, false);
   }
 
   // 7.7 Transfer history
@@ -678,14 +738,14 @@ async function run() {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
   await shot(page, 'hp-47-historial-transferencias');
-  record('TX-06', 'Transferencia', 'Historial de transferencias', 'Lista con COMPLETED y FAILED', 'Historial visible', true);
+  record('TX-06', 'Transferencia', 'Historial de transferencias', 'Lista con COMPLETED y FAILED', 'Historial visible', await landedOn(page, '/transferencias'));
 
   // 7.8 Saga Monitor
   await page.goto(`${BASE}/transferencias/monitor`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
   await shot(page, 'hp-48-saga-monitor');
-  record('TX-07', 'Transferencia', 'Monitor de Sagas', 'Sagas con estados visibles', 'Monitor cargado', true);
+  record('TX-07', 'Transferencia', 'Monitor de Sagas', 'Sagas con estados visibles', 'Monitor cargado', await landedOn(page, '/transferencias/monitor'));
 
   // 7.9 Idempotency test (API)
   if (srcAccountId && newAccountId) {
@@ -765,19 +825,19 @@ async function run() {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
   await shot(page, 'hp-49-rbac-cliente-validaciones');
-  record('RBAC-15', 'RBAC', 'Cliente navega a /clientes/validaciones', 'Redirigido o bloqueado', 'Acceso denegado en UI', true);
+  record('RBAC-15', 'RBAC', 'Cliente navega a /clientes/validaciones', 'Redirigido o bloqueado', 'Acceso denegado en UI', await landedOn(page, '/clientes/validaciones'));
 
   await page.goto(`${BASE}/cuentas/deposito`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
   await shot(page, 'hp-50-rbac-cliente-deposito');
-  record('RBAC-16', 'RBAC', 'Cliente navega a /cuentas/deposito', 'Redirigido o bloqueado', 'Ventanilla no accesible para cliente', true);
+  record('RBAC-16', 'RBAC', 'Cliente navega a /cuentas/deposito', 'Redirigido o bloqueado', 'Ventanilla no accesible para cliente', await landedOn(page, '/cuentas/deposito'));
 
   await page.goto(`${BASE}/auditoria`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
   await shot(page, 'hp-51-rbac-cliente-auditoria');
-  record('RBAC-17', 'RBAC', 'Cliente navega a /auditoria', 'Redirigido o bloqueado', 'Auditoría no accesible para cliente', true);
+  record('RBAC-17', 'RBAC', 'Cliente navega a /auditoria', 'Redirigido o bloqueado', 'Auditoría no accesible para cliente', await landedOn(page, '/auditoria'));
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SECTION 9: ADMINISTRATOR
@@ -786,63 +846,63 @@ async function run() {
 
   await loginViaUI(ctx, page, 'admin@bankusac.gt', 'BankUsac#2026');
   await shot(page, 'hp-52-dashboard-admin');
-  record('ADM-01', 'Admin', 'Dashboard administrativo', 'Métricas del sistema', 'Dashboard cargado', true);
+  record('ADM-01', 'Admin', 'Dashboard administrativo', 'Métricas del sistema', 'Dashboard cargado', await landedOn(page, '/auditoria'));
 
   // 9.2 Auditoría
   await page.goto(`${BASE}/auditoria`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1200);
   await shot(page, 'hp-53-auditoria-consulta');
-  record('ADM-02', 'Admin', 'Consulta de auditoría', 'Formulario de consulta por correlationId', 'Módulo cargado', true);
+  record('ADM-02', 'Admin', 'Consulta de auditoría', 'Formulario de consulta por correlationId', 'Módulo cargado', await landedOn(page, '/auditoria'));
 
   // 9.3 Notificaciones de auditoría
   await page.goto(`${BASE}/auditoria/notificaciones`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1200);
   await shot(page, 'hp-54-auditoria-notificaciones');
-  record('ADM-03', 'Admin', 'Bandeja de notificaciones de auditoría', 'Eventos del sistema', 'Bandeja cargada', true);
+  record('ADM-03', 'Admin', 'Bandeja de notificaciones de auditoría', 'Eventos del sistema', 'Bandeja cargada', await landedOn(page, '/auditoria/notificaciones'));
 
   // 9.4 Monitoreo de pagos
   await page.goto(`${BASE}/pagos`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1200);
   await shot(page, 'hp-55-pagos-monitor');
-  record('ADM-04', 'Admin', 'Monitor de pagos', 'Lista de pagos procesados', 'Monitor cargado', true);
+  record('ADM-04', 'Admin', 'Monitor de pagos', 'Lista de pagos procesados', 'Monitor cargado', await landedOn(page, '/pagos'));
 
   // 9.5 Admin → perfil
   await page.goto(`${BASE}/perfil`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   await shot(page, 'hp-56-perfil-admin');
-  record('ADM-05', 'Admin', 'Perfil del administrador', 'Datos del admin visibles', 'Perfil cargado', true);
+  record('ADM-05', 'Admin', 'Perfil del administrador', 'Datos del admin visibles', 'Perfil cargado', await landedOn(page, '/perfil'));
 
   // 9.6 Admin: lista de cuentas completa
   await page.goto(`${BASE}/cuentas`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1200);
   await shot(page, 'hp-57-admin-lista-cuentas');
-  record('ADM-06', 'Admin', 'Admin ve todas las cuentas del banco', 'Cuentas de todos los clientes', 'Listado completo', true);
+  record('ADM-06', 'Admin', 'Admin ve todas las cuentas del banco', 'Cuentas de todos los clientes', 'Listado completo', await landedOn(page, '/cuentas'));
 
   // 9.7 Admin: cola de validaciones
   await page.goto(`${BASE}/clientes/validaciones`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1200);
   await shot(page, 'hp-58-admin-cola-validaciones');
-  record('ADM-07', 'Admin', 'Admin accede a cola de validaciones', 'Misma cola que el cajero', 'Cola visible', true);
+  record('ADM-07', 'Admin', 'Admin accede a cola de validaciones', 'Misma cola que el cajero', 'Cola visible', await landedOn(page, '/clientes/validaciones'));
 
   // 9.8 Admin: ventanilla de depósito
   await page.goto(`${BASE}/cuentas/deposito`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   await shot(page, 'hp-59-admin-deposito');
-  record('ADM-08', 'Admin', 'Admin puede usar ventanilla de depósito', 'Formulario accesible', 'Ventanilla visible', true);
+  record('ADM-08', 'Admin', 'Admin puede usar ventanilla de depósito', 'Formulario accesible', 'Ventanilla visible', await landedOn(page, '/cuentas/deposito'));
 
   // 9.9 Admin: account administration
   await page.goto(`${BASE}/cuentas/administracion`);
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   await shot(page, 'hp-60-admin-gestion-cuentas');
-  record('ADM-09', 'Admin', 'Administración de cuentas', 'Opciones de activar/desactivar', 'Gestión visible', true);
+  record('ADM-09', 'Admin', 'Administración de cuentas', 'Opciones de activar/desactivar', 'Gestión visible', await landedOn(page, '/cuentas/administracion'));
 
   // 9.10 Password recovery page
   await clearSession(ctx, page);
@@ -850,7 +910,7 @@ async function run() {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   await shot(page, 'hp-61-recuperar-password');
-  record('ADM-10', 'Recuperación', 'Página de recuperación de contraseña', 'Formulario de email', 'Página accesible', true);
+  record('ADM-10', 'Recuperación', 'Página de recuperación de contraseña', 'Formulario de email', 'Página accesible', await landedOn(page, '/recuperar'));
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SECTION 10: DATA PRIVACY & AUDIT REDACTION
@@ -899,7 +959,7 @@ async function run() {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   await shot(page, 'hp-62-pagina-404');
-  record('EDGE-01', 'Edge Cases', 'Ruta inexistente → página 404', 'Pantalla de error amigable', 'Error.vue renderizado', true);
+  record('EDGE-01', 'Edge Cases', 'Ruta inexistente → página 404', 'Pantalla de error amigable', 'Error.vue renderizado', await landedOn(page, '/pagina-que-no-existe'));
 
   // 11.2 Access another client's account
   if (newAccountId) {
@@ -913,7 +973,7 @@ async function run() {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   await shot(page, 'hp-63-pago-servicio');
-  record('EDGE-03', 'Edge Cases', 'Página de nuevo pago de servicio', 'Formulario de pago a biller', 'Página cargada', true);
+  record('EDGE-03', 'Edge Cases', 'Página de nuevo pago de servicio', 'Formulario de pago a biller', 'Página cargada', await landedOn(page, '/pagos/nuevo'));
 
   await browser.close();
 

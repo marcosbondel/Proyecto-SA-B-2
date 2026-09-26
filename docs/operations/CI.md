@@ -51,13 +51,68 @@ the same "do not recompile what did not change" guarantee `turbo run build
 
 ### Fase 2 — Test (`test`)
 
+The job declares PostgreSQL 18.4 and RabbitMQ 4.3.4 as service containers —
+the same versions `infra/docker/docker-compose.yml` runs, because testing
+against a different PostgreSQL than production ships checks something nobody
+will deploy.
+
 | Step | Command | What it verifies | A failure means |
 | --- | --- | --- | --- |
-| Test | `pnpm test` | The unit suites for every application and package | A unit test regressed |
+| Install Playwright Chromium | `pnpm exec playwright install --with-deps chromium` | The browser and Linux libraries required by the web app's browser integration suite | Chromium or a required runner library could not be installed |
+| Test | `pnpm test` | Unit suites and the web app's integration suites for every application and package | A test regressed |
 | Contract tests | `pnpm test:contract` | `@bank/contracts`'s own Jest suite | A shared contract broke |
+| Two databases per service | `psql … CREATE DATABASE` | Five databases in one instance — they each run their own migrations and would collide on `schema_migrations` — plus a `_pyramid` copy of each | The service container is not up |
+| Integration suites | `pnpm --filter <pkg> test` with `DATABASE_URL` / `RABBITMQ_URL` | The row lock, the optimistic version, the `CHECK` constraints, deduplication, and the Gateway against a **real broker** | A guarantee the database or the broker enforces just broke |
+| Pyramid shape | `pnpm test:pyramid --require-executed --without-e2e` | The proportion between the two layers this run measured, per package and for the system | An app drifted out of proportion, or a suite did not execute |
 
-Runs on both triggers: a `feature/**` push and a pull request into `develop`,
-exactly the two points the assignment names for this phase.
+**The E2E does not run here.** It needs the seven components standing and is
+run by hand against a local stack; `test/e2e/run-all.mjs` writes its report to
+`docs/qa/pyramid-e2e.json`, which is committed as evidence. That is precisely
+why the pyramid step carries `--without-e2e`: a report from another machine on
+another day is always sitting in the checkout, and asserting a 70/20/10 over it
+is the green-that-never-ran this pipeline exists not to give. Worse, the error
+would not even point at the E2E — a short one does not only lower its own
+share, it raises the other two by the same arithmetic, so three deviations
+appear where there is no drift at all.
+
+With the flag the E2E row is *reported* and not asserted, and what CI checks is
+the ratio between the two layers it did run: integration as a share of each
+app's own tests, against the same 22.2 % already required package by package —
+70:20 normalised. The three-layer number is a local command, below.
+
+Every integration step carries the same guard: **if Jest reports any suite as
+`skipped`, the step fails**. A suite that skips itself still counts green
+otherwise, and that is the defect this guard exists to catch — the pipeline
+would pass identically if the environment variables never reached Jest.
+
+Before `pnpm test`, CI installs Chromium with
+`pnpm exec playwright install --with-deps chromium`. The web app's
+`session-guard.integration.spec.ts` exercises the client-side route middleware
+in a real browser through `@nuxt/test-utils`; installing the Playwright npm
+package alone does not install its browser binary or the runner's Linux
+libraries.
+
+`pnpm test:pyramid --require-executed` is the second half of that idea. Here
+there is a real PostgreSQL and a real RabbitMQ, so an integration suite that
+skipped is not a circumstance — it is the measurement that did not happen, and
+the flag turns it into a failure rather than a footnote.
+
+For that to be true the script needs the database and not only the broker.
+`pnpm test:pyramid` runs each package's Jest as a child process, and the child
+inherits this step's environment: without `DATABASE_URL` the eight repository
+suites close behind `describe.skip` and the flag reports all eight. It arrives
+as `PYRAMID_DATABASE_URL_TEMPLATE`, one template with `{db}` where the name
+goes, because a package's database is named by `test/pyramid.manifest.json` and
+the script has no business knowing the host or the password. The names end in
+`_pyramid`: these suites assume a virgin database — they create their rows and
+check unique constraints against them — and the integration step above already
+spent the other five.
+
+Fase 3 does not run on a pull request into `develop`, which is the rule the
+assignment writes down: into `develop`, Build and Test.
+
+Build and Test run on both triggers — a `feature/**` push and a pull request
+into `develop` — exactly the two points the assignment names for this phase.
 
 ### Fase 3 — Validación (`validate`)
 
@@ -96,31 +151,30 @@ stays a local, non-blocking habit.
 
 ## What a green run does **not** prove
 
-Every service's `test/repository.integration.spec.ts` is gated
-`describe.skip` when `DATABASE_URL` is unset, and
-`apps/packages/messaging/test/broker.integration.spec.ts` is gated the same
-way on `RABBITMQ_URL`. This pipeline sets neither, by design (see Scope
-below), so a green `test` job:
+This section used to say the pipeline exercised none of the guarantees the
+database and the broker enforce, because it started neither. **That is no
+longer true** — TD-069 closed it, and the integration steps above now run
+against a real PostgreSQL and a real RabbitMQ. What a green run still does not
+prove:
 
-- Never exercises the row lock a concurrent debit relies on, the optimistic
-  `version` that rejects a stale write, or the `CHECK (balance >= 0)`
-  constraint.
-- Never exercises deduplication by `(idempotency_key, type)` or by the
-  envelope's `messageId`.
-- Never exercises the outbox surviving a crash between commit and publish.
-
-Those are exactly the idempotency and failure-handling claims this project is
-judged on — see the same warning in [`AGENTS.md`](../../AGENTS.md#commands).
-This gap is tracked as TD-069 in [`docs/TECH_DEBT.md`](../TECH_DEBT.md).
+- **No end-to-end flow is exercised.** The E2E suites run locally, against a
+  stack somebody stood up by hand, and their report is committed as evidence.
+  A green CI says every component behaves; it does not say a transfer completes
+  across all seven of them. `docs/qa/pyramid-e2e.json` is the only claim about
+  that, and it is as old as the last time somebody ran it.
+- **MinIO and the deployable images are never exercised.** Object storage stays
+  doubled in the unit suites, and nothing here runs what `pnpm images:build`
+  produces — which is what a deployment actually starts.
+- **`pnpm format:check` is still not a step** (see below).
+- A green pyramid is a statement about *proportion*, not about *quality*. It
+  counts cases; it cannot tell a sharp assertion from a decorative one.
 
 ## Scope: what this pipeline deliberately does not run
 
-- `pnpm test:e2e` / `pnpm test:e2e:happypath` — need the full Docker stack and
-  a browser; they belong to a slower, separate pipeline.
 - `pnpm images:build` / `images:smoke` / `images:flow` — need Docker and
   produce the seven runtime images; that is continuous **deployment**
   territory (T-33), not verification of a pull request.
-- Anything that needs PostgreSQL, RabbitMQ or MinIO as a live dependency.
+- Anything needing MinIO as a service container, for the reason above.
 
 ## Secrets
 
@@ -149,14 +203,54 @@ pnpm build
 pnpm test
 pnpm test:contract
 
+# Fase 2 — las suites de integración, contra dependencias reales.
+# Una por paquete, cada una con su propia variable: ver la sección "Check the
+# ports before trusting them" de AGENTS.md para las cinco URLs.
+pnpm dev:infra
+DATABASE_URL=postgresql://customer_app:changeme@localhost:5433/customer \
+  pnpm --filter customer-service test
+RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
+  pnpm --filter gateway test
+RABBITMQ_URL=amqp://bank_app:changeme@localhost:5673 \
+  pnpm --filter @bank/messaging test
+
+# Fase 2 — la forma de la pirámide, como la corre el pipeline
+pnpm test:pyramid --without-e2e
+
 # Fase 3 — Validación (skip these two if only reproducing a pull-request run)
 pnpm lint
 pnpm typecheck
 ```
 
-To also exercise the suites the pipeline skips, follow the "Check the ports
-before trusting them" section of [`AGENTS.md`](../../AGENTS.md#commands) —
-`pnpm dev:infra` plus a `DATABASE_URL`/`RABBITMQ_URL` per service.
+`pnpm test:pyramid` without the infrastructure still prints the table — the
+cases are *declared* either way — but it lists everything that did not execute
+and says so. Add `--require-executed` to make that a failure, which is how the
+pipeline runs it; locally that also needs `PYRAMID_DATABASE_URL_TEMPLATE`,
+since the script composes each package's `DATABASE_URL` from it before handing
+the environment to Jest.
+
+### The E2E, and the only run that measures all three layers
+
+CI does not run it. To exercise the flows end to end, and to get a pyramid
+whose third layer is a measurement rather than a citation:
+
+```bash
+# Las siete aplicaciones, no solo la infraestructura
+SEED_DEMO_DATA=true REVEAL_ACTIVATION_LINKS=true pnpm dev
+node test/e2e/run-all.mjs
+
+# Ahora sí, las tres capas contra 70/20/10 — sin --without-e2e
+pnpm test:pyramid
+```
+
+`run-all.mjs` writes `docs/qa/pyramid-e2e.json`; commit it, because that file
+is the repository's only evidence that a flow crosses all seven components.
+Run the two commands in that order — the pyramid reads the report, so measuring
+first measures the previous run.
+
+Turbo caches `test`, so a second run reports `FULL TURBO` without executing
+anything. That is a real pass when the inputs are identical, but when you need
+to *see* a suite run, add `--force`.
 
 ## Delivery and Deployment
 
