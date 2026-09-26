@@ -196,6 +196,39 @@ fi
 # Asi que aqui el orden se invierte: se espera, y si no llega a tiempo se
 # captura el estado ANTES de revertir. El rollback sigue ocurriendo — solo
 # despues de haber mirado.
+# Restos de un intento anterior que fallo.
+#
+# Cuando una PRIMERA instalacion no alcanza Ready, `helm uninstall` retira el
+# release pero puede dejar objetos vivos en el namespace — paso con el
+# Deployment de MinIO, que sobrevivio a la desinstalacion y siguio creando
+# pods en ImagePullBackOff. La corrida siguiente instala un release que ya no
+# lo declara, asi que helm ni lo adopta ni lo borra: queda un pod que nadie
+# reclama esperando una imagen que no existe, y el namespace no vuelve a estar
+# sano por su cuenta. Cada merge a develop fallaba igual hasta que una persona
+# entrara a limpiarlo.
+#
+# Solo se hace cuando NO hay release: si lo hay, sus objetos son suyos y
+# tocarlos seria borrar lo que esta sirviendo. Produccion siempre tiene
+# release, asi que esto no se ejecuta ahi nunca.
+if [ "$RELEASE_EXISTE" = false ]; then
+  RESTOS="$(kubectl get deployments,statefulsets,services,endpoints \
+    --namespace "$NAMESPACE" \
+    --selector "app.kubernetes.io/instance=${RELEASE_NAME}" \
+    --no-headers --ignore-not-found 2>/dev/null | wc -l | tr -d ' ')"
+
+  if [ "${RESTOS:-0}" -gt 0 ]; then
+    echo "::warning::No hay release ${RELEASE_NAME}, pero quedan ${RESTOS} objetos con su etiqueta en ${NAMESPACE}. Son restos de un intento fallido; se retiran antes de instalar."
+    kubectl get deployments,statefulsets,services,endpoints \
+      --namespace "$NAMESPACE" \
+      --selector "app.kubernetes.io/instance=${RELEASE_NAME}" \
+      --ignore-not-found || true
+    kubectl delete deployments,statefulsets,services,endpoints \
+      --namespace "$NAMESPACE" \
+      --selector "app.kubernetes.io/instance=${RELEASE_NAME}" \
+      --ignore-not-found --wait --timeout=3m || true
+  fi
+fi
+
 # Broker y almacenamiento propios del namespace, cuando se piden.
 #
 # `dev` y `prod` compartiendo el RabbitMQ de la VM no es un entorno separado:
@@ -362,6 +395,15 @@ if [ "$HELM_STATUS" -ne 0 ]; then
   else
     echo "::error::La primera instalacion de ${RELEASE_NAME} en ${NAMESPACE} no alcanzo Ready. No hay revision anterior: se retira el release a medias."
     helm uninstall "$RELEASE_NAME" --namespace "$NAMESPACE" --wait --timeout 5m || true
+
+    # `helm uninstall` no siempre se lleva todo, y lo que deja atras hace
+    # fallar la corrida siguiente con un sintoma que no apunta aqui. Se barre
+    # por etiqueta, que es lo que el barrido previo de arriba ya no tendra que
+    # descubrir.
+    kubectl delete deployments,statefulsets,services,endpoints \
+      --namespace "$NAMESPACE" \
+      --selector "app.kubernetes.io/instance=${RELEASE_NAME}" \
+      --ignore-not-found --wait --timeout=3m || true
   fi
 
   exit 1
