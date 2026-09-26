@@ -41,6 +41,30 @@ const FAIL_ON_DEVIATION = !process.argv.includes('--no-fail');
  */
 const REQUIRE_EXECUTED = process.argv.includes('--require-executed');
 
+/**
+ * Plantilla con la que se compone el `DATABASE_URL` de cada paquete, con `{db}`
+ * donde va el nombre que el manifiesto le asigna.
+ *
+ * Sin esto la medición era una estimación y no lo decía: el script lanza `jest`
+ * como proceso hijo, el hijo hereda el entorno, y un entorno sin `DATABASE_URL`
+ * hace que las ocho suites de repositorio se cierren tras `describe.skip`. El
+ * paso de CI que sí les pasaba una base era otro, y este nunca vio ninguna.
+ *
+ * Es una plantilla y no cinco variables porque el script no tiene por qué saber
+ * el host ni la contraseña, y una base por servicio porque los cinco corren sus
+ * propias migraciones sobre la misma tabla `schema_migrations`.
+ *
+ *   PYRAMID_DATABASE_URL_TEMPLATE=postgresql://u:p@localhost:5432/{db}
+ */
+const DATABASE_URL_TEMPLATE = process.env.PYRAMID_DATABASE_URL_TEMPLATE;
+
+/** Entorno con el que se lanza el runner de un paquete. */
+function envFor(pkg) {
+  if (pkg.database === undefined || DATABASE_URL_TEMPLATE === undefined) return process.env;
+
+  return { ...process.env, DATABASE_URL: DATABASE_URL_TEMPLATE.split('{db}').join(pkg.database) };
+}
+
 /** Capa a la que pertenece un archivo de prueba, según el manifiesto. */
 function layerOf(relativePath) {
   const normalised = relativePath.split('\\').join('/');
@@ -79,6 +103,7 @@ function collectJest(pkg) {
       execFileSync('npx', ['jest', '--json', '--silent', `--outputFile=${reportPath}`], {
         cwd: join(ROOT, pkg.dir),
         stdio: 'ignore',
+        env: envFor(pkg),
       });
     } catch {
       // Una suite en rojo hace salir a Jest con código 1 pero el informe ya está
@@ -186,14 +211,20 @@ function collectE2e() {
   const reportPath = join(ROOT, MANIFEST.e2e.report);
 
   if (!existsSync(reportPath)) {
-    return { cases: 0, stale: true, suites: [], generatedAt: null };
+    return { cases: 0, skipped: 0, stale: true, suites: [], generatedAt: null };
   }
 
   const report = JSON.parse(readFileSync(reportPath, 'utf8'));
   const suites = report.suites ?? [];
 
+  // `cases` en ese informe son los que corrieron; los omitidos van aparte. Aquí
+  // se suman los dos, porque la proporción se mide sobre pruebas declaradas en
+  // las otras dos capas — un `describe.skip` de Jest también cuenta — y medir
+  // el E2E con otra vara inventa una desviación que no existe: un E2E omitido
+  // bajaba su porcentaje y subía el de las unitarias por el mismo motivo.
   return {
-    cases: suites.reduce((sum, suite) => sum + suite.cases, 0),
+    cases: suites.reduce((sum, suite) => sum + suite.cases + (suite.skipped ?? 0), 0),
+    skipped: suites.reduce((sum, suite) => sum + (suite.skipped ?? 0), 0),
     stale: false,
     suites,
     generatedAt: report.generatedAt ?? null,
@@ -265,6 +296,18 @@ function main() {
   }
 
   if (REQUIRE_EXECUTED) {
+    // Un paquete que declara base pero no recibe plantilla se va a saltar sus
+    // suites enteras, y el motivo no es "falta DATABASE_URL" sino que quien
+    // invoca el script no dijo dónde está la base. Se nombra aparte porque la
+    // otra desviación manda a mirar el entorno equivocado.
+    if (DATABASE_URL_TEMPLATE === undefined && packages.some((p) => p.database !== undefined)) {
+      deviations.push(
+        'falta PYRAMID_DATABASE_URL_TEMPLATE: los paquetes con base propia van a ' +
+          'saltarse sus suites de integración enteras. Ejemplo: ' +
+          'PYRAMID_DATABASE_URL_TEMPLATE=postgresql://user:pass@localhost:5432/{db}',
+      );
+    }
+
     for (const pkg of packages) {
       for (const file of pkg.files) {
         if (file.layer === 'integration' && (file.skipped ?? 0) > 0) {
@@ -330,7 +373,7 @@ function main() {
     (sum, p) => sum + p.skipped.unit + p.skipped.integration + p.skipped.e2e,
     0,
   );
-  if (notRun > 0 || e2e.stale) {
+  if (notRun > 0 || e2e.stale || e2e.skipped > 0) {
     lines.push('', '## Lo que no se ejecutó', '');
     if (notRun > 0) {
       lines.push(
@@ -352,6 +395,17 @@ function main() {
         `No hay informe E2E en \`${MANIFEST.e2e.report}\`. El E2E necesita los siete`,
         'contenedores en pie: levanta el stack y corre `node test/e2e/run-all.mjs`.',
       );
+    }
+    if (e2e.skipped > 0) {
+      lines.push(
+        '',
+        `Y ${e2e.skipped} casos E2E se declararon pero se omitieron — una precondición`,
+        'que la suite no pudo montar, no infraestructura ausente. Cuentan para la',
+        'proporción; no cuentan como evidencia.',
+      );
+      for (const suite of e2e.suites) {
+        if ((suite.skipped ?? 0) > 0) lines.push(`- \`${suite.name}\` — ${suite.skipped} casos`);
+      }
     }
   }
 
