@@ -10,7 +10,17 @@ name: CI
 on:
   push:
     branches:
+      # Toda rama de trabajo, no solo `feature/**`. El enunciado nombra las
+      # ramas de funcionalidad, pero el equipo tambien abre `fix/`, `test/`,
+      # `docs/` y `chore/`, y sobre esas el push no disparaba nada: su codigo
+      # llegaba a `develop` con Build y Test del pull request y sin haber
+      # pasado Validacion (lint, typecheck, guard de `.env`) ni una sola vez.
       - 'feature/**'
+      - 'fix/**'
+      - 'test/**'
+      - 'docs/**'
+      - 'chore/**'
+      - 'refactor/**'
   pull_request:
     branches:
       - develop
