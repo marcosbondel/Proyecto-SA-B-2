@@ -1,0 +1,32 @@
+@startuml CDU003.10-consultar-historial
+title CDU003.10 - Consultar historial con filtros
+
+skinparam shadowing false
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Cliente, Cajero o Administrador|
+start
+:Solicitar listado de transferencias con filtros
+(fechas, estado/fase, cuenta, cliente);
+|Gateway|
+:Verificar autenticación JWT y extraer identidad;
+:Publicar transaction.list.requested;
+|Transaction Service|
+:Determinar el alcance de consulta según el rol;
+if (¿El rol es CLIENTE?) then (Sí)
+    :Restringir ownerId al customerId autenticado
+    (un cliente solo ve sus propias transferencias);
+else (No (Personal))
+    :Permitir consulta global o filtro por cualquier cliente;
+endif
+:Aplicar filtros de fecha (from/to), estado y paginación;
+:Consultar transacciones ordenadas por created_at DESC;
+:Publicar respuesta transaction.list.replied;
+|Gateway|
+:Retornar código 200 con la lista de transferencias;
+stop
+@enduml
