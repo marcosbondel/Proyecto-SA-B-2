@@ -25,6 +25,7 @@ import { migrate } from './infrastructure/persistence/migrations';
 import { seedBillerAccounts } from './infrastructure/persistence/seed-billers';
 import { seedDemoAccounts } from './infrastructure/persistence/seed-demo-data';
 import { PostgresAccountRepository } from './infrastructure/persistence/postgres-account.repository';
+import { PostgresSweepLease } from './infrastructure/persistence/postgres-sweep-lease';
 import { DeactivationScheduler } from './infrastructure/scheduler/deactivation.scheduler';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
@@ -157,6 +158,13 @@ async function bootstrap(): Promise<void> {
   const scheduler = new DeactivationScheduler({
     intervalMs: environment.DEACTIVATION_INTERVAL_MS,
     logger,
+    /**
+     * Con mas de una replica, el barrido lo ejecuta la que consiga el cerrojo
+     * consultivo de PostgreSQL; las demas se saltan su turno. Es lo que permite
+     * que este servicio tenga HPA como los otros seis en vez de quedarse fijo
+     * en una replica para que el barrido no corriera N veces.
+     */
+    lease: new PostgresSweepLease(pool),
     job: {
       /**
        * A fresh publisher per run, bound to that run's correlation. The job is

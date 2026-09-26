@@ -28,13 +28,15 @@ imagePullPolicy: IfNotPresent
 #   payment, notification  — yes. They consume shared durable queues, so the
 #                            broker round-robins work across replicas, which is
 #                            the intended behaviour.
-#   account                — NOT YET. It also runs the inactive-account
-#                            deactivation job on an interval
-#                            (services.account.deactivation), and nothing
-#                            elects a single runner. N replicas would run the
-#                            sweep N times concurrently. Scale it only after
-#                            that job is made leader-elected or idempotent
-#                            under concurrency (see docs/TECH_DEBT.md TD-055).
+#   account                — yes, since the sweep lease. It also runs the
+#                            inactive-account deactivation job on an interval
+#                            (services.account.deactivation), which used to run
+#                            N times with N replicas because nothing elected a
+#                            single runner. `PostgresSweepLease` now takes a
+#                            `pg_try_advisory_lock` before each sweep, so the
+#                            replica that gets it sweeps and the others skip
+#                            their turn. The lock is held by a session, so a pod
+#                            that dies mid-sweep releases it by disconnecting.
 replicaCount: 1
 resources:
   requests:
@@ -194,9 +196,10 @@ services:
     image:
       repository: bank-usac/account-service
       tag: dev # always --set at install time — see the note above `services:`
-    # Inactivity sweeper runs inside account-service; keep 1 replica until TD-055
-    autoscaling:
-      enabled: false
+    # El HPA global (80% de CPU, 1-5 replicas) aplica tambien aqui: el barrido
+    # de cuentas inactivas se serializa con un cerrojo consultivo de PostgreSQL
+    # (`PostgresSweepLease`), asi que varias replicas no lo ejecutan varias
+    # veces.
     deactivation:
       enabled: "true"
       intervalMs: "86400000"

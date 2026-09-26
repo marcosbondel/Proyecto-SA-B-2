@@ -23,6 +23,25 @@ export interface DeactivationJob {
   execute(runId: string): Promise<readonly string[]>;
 }
 
+/**
+ * El permiso para barrer, cuando hay mas de una replica.
+ *
+ * `#running` de abajo impide que un barrido se solape consigo mismo *dentro de
+ * un proceso*. Con `replicas: N` eso deja de bastar: son N procesos, cada uno
+ * con su propio temporizador y su propio `#running`, y el barrido correria N
+ * veces. Este puerto es la version entre procesos de la misma idea — quien no
+ * consigue el arriendo se salta su turno en vez de encolarlo, porque el barrido
+ * es periodico y el siguiente tick vuelve a intentarlo.
+ *
+ * Es opcional: sin el, el planificador se comporta como siempre, que es lo
+ * correcto para una sola replica y para los tests.
+ */
+export interface SweepLease {
+  /** `true` si este proceso puede barrer; `false` si otra replica ya lo hace. */
+  acquire(): Promise<boolean>;
+  release(): Promise<void>;
+}
+
 export interface SchedulerLog {
   info(message: string, fields?: Record<string, unknown>): void;
   error(message: string, fields?: Record<string, unknown>): void;
@@ -32,6 +51,7 @@ export class DeactivationScheduler {
   readonly #job: DeactivationJob;
   readonly #intervalMs: number;
   readonly #logger: SchedulerLog;
+  readonly #lease: SweepLease | null;
   #timer: ReturnType<typeof setInterval> | null = null;
   #running = false;
 
@@ -39,10 +59,12 @@ export class DeactivationScheduler {
     readonly job: DeactivationJob;
     readonly intervalMs: number;
     readonly logger: SchedulerLog;
+    readonly lease?: SweepLease;
   }) {
     this.#job = dependencies.job;
     this.#intervalMs = dependencies.intervalMs;
     this.#logger = dependencies.logger;
+    this.#lease = dependencies.lease ?? null;
   }
 
   public start(): void {
@@ -87,14 +109,29 @@ export class DeactivationScheduler {
     const runId = randomUUID();
 
     try {
-      const deactivated = await this.#job.execute(runId);
+      if (this.#lease !== null && !(await this.#lease.acquire())) {
+        // Con `replicas: N` esto es lo normal en N-1 de ellas, no un problema.
+        this.#logger.info('deactivation run skipped: another replica holds the sweep lease', {
+          runId,
+        });
 
-      // Logged even when it is zero: "it ran and found nothing" and "it did not
-      // run" have to look different from outside.
-      this.#logger.info('deactivation run finished', {
-        runId,
-        outcome: `${String(deactivated.length)} deactivated`,
-      });
+        return;
+      }
+
+      try {
+        const deactivated = await this.#job.execute(runId);
+
+        // Logged even when it is zero: "it ran and found nothing" and "it did not
+        // run" have to look different from outside.
+        this.#logger.info('deactivation run finished', {
+          runId,
+          outcome: `${String(deactivated.length)} deactivated`,
+        });
+      } finally {
+        // Se suelta pase lo que pase: un arriendo que no se devuelve deja al
+        // resto de replicas sin barrido hasta que este proceso muera.
+        await this.#releaseLease(runId);
+      }
     } catch (error) {
       this.#logger.error('deactivation run failed', {
         runId,
@@ -102,6 +139,26 @@ export class DeactivationScheduler {
       });
     } finally {
       this.#running = false;
+    }
+  }
+
+  /**
+   * Soltar el arriendo no puede tumbar el barrido que acaba de terminar: el
+   * trabajo ya esta hecho y comprometido, y quedarse sin soltar es un problema
+   * de la siguiente ronda, no de esta.
+   */
+  async #releaseLease(runId: string): Promise<void> {
+    if (this.#lease === null) {
+      return;
+    }
+
+    try {
+      await this.#lease.release();
+    } catch (error) {
+      this.#logger.error('could not release the sweep lease', {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }
