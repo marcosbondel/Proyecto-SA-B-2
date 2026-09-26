@@ -1,0 +1,1449 @@
+{
+  "generatedAt": "2026-09-25T22:37:31.192Z",
+  "suites": [
+    {
+      "name": "accounts-deposits",
+      "cases": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 2
+    },
+    {
+      "name": "auth-session",
+      "cases": 12,
+      "passed": 11,
+      "failed": 1
+    },
+    {
+      "name": "kyc-identity",
+      "cases": 9,
+      "passed": 7,
+      "failed": 2,
+      "skipped": 2
+    },
+    {
+      "name": "notifications-audit",
+      "cases": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 5
+    },
+    {
+      "name": "payments",
+      "cases": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 9
+    },
+    {
+      "name": "rbac-matrix",
+      "cases": 26,
+      "passed": 26,
+      "failed": 0
+    },
+    {
+      "name": "registration-activation",
+      "cases": 19,
+      "passed": 18,
+      "failed": 1,
+      "skipped": 1
+    },
+    {
+      "name": "resilience",
+      "cases": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 3
+    },
+    {
+      "name": "transfers-saga",
+      "cases": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 14
+    }
+  ],
+  "totals": {
+    "cases": 98,
+    "passed": 94,
+    "failed": 4
+  },
+  "tests": [
+    {
+      "suite": "accounts-deposits",
+      "id": "ACC-OPEN-01",
+      "category": "Cuentas",
+      "name": "Apertura de cuenta MONETARIA para un cliente recién aprovisionado",
+      "expected": "accountId presente y con formato UUID v4",
+      "actual": "accountId=df12fdfb-c9d5-4398-bdc2-d3e5ed98816c",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "ACC-OPEN-02",
+      "category": "Cuentas",
+      "name": "Apertura de cuenta AHORRO con depósito inicial que cumple el mínimo (Q100.00)",
+      "expected": "GET /api/accounts muestra ambas cuentas con su accountType real (MONETARIA y AHORRO)",
+      "actual": "openStatus=202 ahorroId=7afd879a-4de2-4783-962e-d6197c4bb18d confirmedTypes=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "ACC-LIST-01",
+      "category": "Cuentas",
+      "name": "GET /api/accounts devuelve exactamente las cuentas creadas para el cliente",
+      "expected": "{df12fdfb-c9d5-4398-bdc2-d3e5ed98816c, 7afd879a-4de2-4783-962e-d6197c4bb18d}",
+      "actual": "status=200 ids={7afd879a-4de2-4783-962e-d6197c4bb18d, df12fdfb-c9d5-4398-bdc2-d3e5ed98816c}",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "ACC-LIST-02",
+      "category": "Cuentas (UI)",
+      "name": "/cuentas muestra las etiquetas de tipo \"Monetaria\" y \"Ahorro\" para el cliente",
+      "expected": "Ambas etiquetas visibles en el texto de la página",
+      "actual": "Monetaria=true Ahorro=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "ACC-DETAIL-01",
+      "category": "Cuentas (UI)",
+      "name": "El detalle de cuenta muestra el mismo saldo que reporta GET /api/accounts/:id/balance",
+      "expected": "Texto \"Q 0.00\" presente en la página",
+      "actual": "apiBalance=200:0 found=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "DEP-01",
+      "category": "Depósitos",
+      "name": "Depósito a un UUID de cuenta bien formado pero inexistente",
+      "expected": "404 con failureCode ACCOUNT_NOT_FOUND (get-balance/deposit use-cases lo modelan así)",
+      "actual": "404: ACCOUNT_NOT_FOUND",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "DEP-02",
+      "category": "Depósitos",
+      "name": "Depósito con amountMinor: 0",
+      "expected": "Rechazado (no 200), típicamente 400 VALIDATION_ERROR sobre amount.amountMinor",
+      "actual": "400: type=VALIDATION_ERROR field=amount.amountMinor",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "DEP-03",
+      "category": "Depósitos",
+      "name": "Depósito con amountMinor negativo",
+      "expected": "Rechazado (no 200)",
+      "actual": "400: type=VALIDATION_ERROR field=amount.amountMinor",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "DEP-04",
+      "category": "Depósitos",
+      "name": "Depósito real de Q5,000.00 incrementa el saldo exactamente en esa cantidad",
+      "expected": "status 200 y delta de saldo = 500000",
+      "actual": "status=200 before=0 after=500000 delta=500000",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "DEP-05",
+      "category": "Depósitos",
+      "name": "Repetir la misma Idempotency-Key para el mismo depósito no lo duplica",
+      "expected": "Mismo operationId en ambas respuestas y el saldo no se mueve una segunda vez",
+      "actual": "firstOperationId=fa585abb-1c42-4645-aef2-4d76dbfaef39 replayOperationId=fa585abb-1c42-4645-aef2-4d76dbfaef39 balanceAfterFirst=500000 balanceAfterReplay=500000",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "OPS-01",
+      "category": "Movimientos",
+      "name": "GET /api/accounts/:id/operations refleja el depósito real hecho en DEP-04",
+      "expected": "Una entrada CREDIT con amount.amountMinor = 500000",
+      "actual": "status=200 found=true operationId=fa585abb-1c42-4645-aef2-4d76dbfaef39",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "RBAC-DEP-01",
+      "category": "RBAC",
+      "name": "Un CLIENTE no puede depositar, ni siquiera en su propia cuenta (@Roles CAJERO_RECEPTOR/ADMINISTRADOR)",
+      "expected": "403",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "FORBIDDEN-ACCESS-01",
+      "category": "RBAC",
+      "name": "El token del cliente A consultando el saldo de una cuenta del cliente B",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar al segundo cliente en el paso 'login': 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"bdc88339-e00b-488e-aaac-903922e6b1fe\"}"
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "RBAC-STATUS-01",
+      "category": "RBAC",
+      "name": "Un CAJERO_RECEPTOR cambia el estado de una cuenta ajena (permitido por el código real, no admin-only)",
+      "expected": "202 y el estado real de la cuenta pasa a INACTIVE",
+      "actual": "status=202 appliedInactive=true",
+      "pass": true,
+      "detail": "Contradice la suposición \"admin-only\": @Roles admite CAJERO_RECEPTOR y el use-case lo autoriza explícitamente para cualquier cuenta."
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "RBAC-STATUS-02",
+      "category": "RBAC",
+      "name": "ADMINISTRADOR desactiva una cuenta",
+      "expected": "202 y GET /api/accounts refleja status: INACTIVE para esa cuenta",
+      "actual": "status=202 appliedInactive=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "RBAC-STATUS-03",
+      "category": "RBAC",
+      "name": "Un CLIENTE no puede cambiar el estado de una cuenta que no es suya",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar al segundo cliente en el paso 'login': 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"bdc88339-e00b-488e-aaac-903922e6b1fe\"}"
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "AHORRO-MIN-01",
+      "category": "Cuentas",
+      "name": "Abrir AHORRO con un depósito inicial de Q50.00 (< Q100.00 mínimo, T-27) es rechazado en silencio",
+      "expected": "La Gateway responde 202 con accountId (no valida la regla), pero esa cuenta nunca aparece en GET /api/accounts",
+      "actual": "openStatus=202 accountId=e918ac5c-992f-401d-a2c6-e0a69eb223f2 neverAppeared=true",
+      "pass": true,
+      "detail": "openingDepositRefusal() en account.ts refusa con MINIMUM_BALANCE_VIOLATION; el 202 de la Gateway no es prueba de apertura real."
+    },
+    {
+      "suite": "accounts-deposits",
+      "id": "BILLERS-01",
+      "category": "Cuentas",
+      "name": "GET /api/accounts/billers responde con el catálogo de prestadores",
+      "expected": "200 con un arreglo billers",
+      "actual": "status=200 count=3",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-01",
+      "category": "Autenticación",
+      "name": "Pantalla de login renderiza los tres controles esperados",
+      "expected": "email + password + botón Entrar visibles",
+      "actual": "Los tres controles están visibles",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-02",
+      "category": "Autenticación",
+      "name": "Login con credenciales inválidas (UI)",
+      "expected": "Permanece en /login y muestra un error",
+      "actual": "stillOnLogin=true errorVisible=false",
+      "pass": false,
+      "detail": "D-04: el mensaje debe ser genérico para no permitir enumeración de cuentas."
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-03",
+      "category": "Autenticación",
+      "name": "Login API con correo no registrado",
+      "expected": "401 UNAUTHENTICATED",
+      "actual": "401: UNAUTHENTICATED",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-04",
+      "category": "Autenticación",
+      "name": "Login API con correo válido y contraseña incorrecta",
+      "expected": "Mismo 401 UNAUTHENTICATED que un correo desconocido (D-04)",
+      "actual": "401: UNAUTHENTICATED",
+      "pass": true,
+      "detail": "Las dos respuestas deben ser indistinguibles: mismo type y mismo message."
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-05",
+      "category": "Autenticación",
+      "name": "Login API con contraseña vacía",
+      "expected": "400 VALIDATION_ERROR o 401, nunca 200",
+      "actual": "400",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-06",
+      "category": "Autenticación",
+      "name": "Login API exitoso como CLIENTE",
+      "expected": "200 + token JWT con role=CLIENTE",
+      "actual": "200: role=CLIENTE",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-07",
+      "category": "Autenticación",
+      "name": "Login API exitoso como CAJERO_RECEPTOR",
+      "expected": "200 + token JWT con role=CAJERO_RECEPTOR",
+      "actual": "200: role=CAJERO_RECEPTOR",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-08",
+      "category": "Autenticación",
+      "name": "Login API exitoso como ADMINISTRADOR",
+      "expected": "200 + token JWT con role=ADMINISTRADOR",
+      "actual": "200: role=ADMINISTRADOR",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-09",
+      "category": "Autenticación",
+      "name": "Login exitoso vía UI redirige fuera de /login",
+      "expected": "URL final no contiene /login",
+      "actual": "http://localhost:3010/",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-10",
+      "category": "Sesión",
+      "name": "Petición sin token a una ruta protegida",
+      "expected": "401 UNAUTHENTICATED",
+      "actual": "401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-11",
+      "category": "Sesión",
+      "name": "Petición con un token JWT inválido/forjado",
+      "expected": "401 UNAUTHENTICATED",
+      "actual": "401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "auth-session",
+      "id": "SEC-12",
+      "category": "Sesión",
+      "name": "Sin sesión, navegar a /cuentas redirige a /login",
+      "expected": "URL contiene /login",
+      "actual": "http://localhost:3010/login?next=/cuentas",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "PENDING-01",
+      "category": "KYC",
+      "name": "Cliente recién registrado sin validar aparece en GET /api/customers/pending-validation",
+      "expected": "customerId d38d4546-db7a-4c17-b266-61bde93e7b44 presente en la lista",
+      "actual": "status=200 presente=false total=100",
+      "pass": false,
+      "detail": ""
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "PENDING-02",
+      "category": "KYC",
+      "name": "Cola de validaciones (UI) muestra la fila del cliente pendiente",
+      "expected": "El nombre \"QA kyc-pending-a 353447\" aparece en la lista",
+      "actual": "rowVisible=false",
+      "pass": false,
+      "detail": ""
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "PENDING-03",
+      "category": "KYC",
+      "name": "Detalle de validación (UI) muestra los datos declarados y el visor de documento",
+      "expected": "Nombre completo visible en los datos declarados, y el visor de documento (foto, vacío o error) renderiza algo",
+      "actual": "declaredShowsName=true photoStateVisible=true declaredText=\"Nombre completo | QA kyc-pending-a 353447 | Número de documento | 2353447935344 | Fecha de nacimiento | 1995-06-20 | Dirección | Ciuda\"",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "TD074-01",
+      "category": "Defecto conocido (TD-074)",
+      "name": "POST /api/accounts no exige identidad/KYC validados — hallazgo real",
+      "expected": "Un cliente con identityStatus=PENDING/kycStatus=PENDING NO debería poder abrir cuenta, pero el backend (account-service create-account.use-case.ts) no verifica esos estados",
+      "actual": "status=202 body={\"accountId\":\"9aee5274-c939-48a1-85c9-7f23013e09c6\",\"correlationId\":\"4f7ddbf2-8ab2-44f3-9668-6082831ffc01\"}",
+      "pass": true,
+      "detail": "CONOCIDO: esto es la prueba reproducida del defecto TD-074, no un resultado deseable. apps/gateway/src/interfaces/accounts.controller.ts y apps/services/account-service/src/application/create-account.use-case.ts no consultan identityStatus/kycStatus antes de abrir la cuenta. El bloqueo visto en PENDING-02/03 y en UI-BLOCKED-01 es exclusivamente del frontend (validate() en AccountCreateForm.vue), y una llamada directa a la API lo evade por completo."
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "UI-BLOCKED-01",
+      "category": "KYC",
+      "name": "UI bloquea /cuentas/nueva para un cliente no verificado (a diferencia de la API, ver TD074-01)",
+      "expected": "La página muestra el texto \"Validación de identidad requerida\" y un botón que dice \"Apertura bloqueada\"",
+      "actual": "hasRequiredText=true hasBlockedButton=true",
+      "pass": true,
+      "detail": "Contraste directo con TD074-01: el mismo cliente sin validar es bloqueado aquí por el frontend pero no por la API."
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "APPROVE-01",
+      "category": "KYC",
+      "name": "Cajero aprueba identidad (VALIDATED) y KYC (VERIFIED); ambos campos convergen",
+      "expected": "identityStatus=VALIDATED y kycStatus=VERIFIED",
+      "actual": "identityStatus=VALIDATED kycStatus=VERIFIED",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "APPROVE-02",
+      "category": "KYC",
+      "name": "Tras aprobación de identidad y KYC, POST /api/accounts abre la cuenta (contraste con TD074-01)",
+      "expected": "202 + accountId",
+      "actual": "status=202 body={\"accountId\":\"c84370dd-f533-41e6-89c6-d5e735924361\",\"correlationId\":\"d5cc50b2-d89f-424e-a2e3-c29cc5adea20\"}",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "REJECT-01",
+      "category": "KYC",
+      "name": "Cajero rechaza la identidad de un cliente",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente B: paso=activate 409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El enlace de activación no es válido o ya fue utilizado.\",\"correlationId\":\"fde59765-e584-490c-9212-c7b4203695c9\",\"failureCode\":\"ACTIVATION_TOKEN_INVALID\"}"
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "REJECT-02",
+      "category": "KYC",
+      "name": "POST /api/accounts tras rechazo de identidad",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "Depende del aprovisionamiento del cliente B"
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "RBAC-KYC-01",
+      "category": "RBAC",
+      "name": "CLIENTE no puede emitir un veredicto de identidad (identity-verdict)",
+      "expected": "403 FORBIDDEN",
+      "actual": "status=403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "kyc-identity",
+      "id": "RBAC-KYC-02",
+      "category": "RBAC",
+      "name": "CLIENTE no puede leer GET /api/customers/pending-validation",
+      "expected": "403 FORBIDDEN",
+      "actual": "status=403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "NOTIF-RBAC-01",
+      "category": "Notificaciones",
+      "name": "GET /api/notifications sin token",
+      "expected": "401 UNAUTHENTICATED",
+      "actual": "401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "NOTIF-OWN-01",
+      "category": "Notificaciones",
+      "name": "Bandeja propia tras provisión",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo provisionar el cliente A: paso login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"2d3811f1-42c9-4a2c-968b-63f1c230b569\"}"
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "NOTIF-READ-01",
+      "category": "Notificaciones",
+      "name": "Marcar como leída",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "Depende de NOTIF-OWN-01, que fue saltado."
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "NOTIF-UI-01",
+      "category": "Notificaciones",
+      "name": "Bandeja en la UI",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "Depende de NOTIF-OWN-01, que fue saltado."
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "NOTIF-ISOLATION-01",
+      "category": "Notificaciones",
+      "name": "Aislamiento entre clientes",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo provisionar el cliente B: paso login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"973a952a-5c41-4b8b-a779-afe7daa76357\"}"
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "AUDIT-RECENT-01",
+      "category": "Auditoría",
+      "name": "GET /api/audit/recent como admin",
+      "expected": "200 con eventos reales (messageType/severity presentes)",
+      "actual": "status=200 count=20 first.messageType=customer.activation.requested.v1 first.processingStatus=PROCESSED",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "AUDIT-RECENT-02",
+      "category": "Auditoría",
+      "name": "GET /api/audit/recent?severity=INFO",
+      "expected": "Cada evento devuelto trae exactamente esa severidad",
+      "actual": "status=200 count=50 allMatch=true severidades=INFO",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "AUDIT-RECENT-RBAC-01",
+      "category": "Auditoría",
+      "name": "GET /api/audit/recent como CAJERO_RECEPTOR",
+      "expected": "403 FORBIDDEN (D-06: solo ADMINISTRADOR)",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "AUDIT-CORRELATION-01",
+      "category": "Auditoría",
+      "name": "GET /api/audit?correlationId= incluye el evento de registro real",
+      "expected": "events incluye un customer.register*.v1 para ese correlationId exacto",
+      "actual": "status=200 correlationId=02ceb32c-d8dd-4293-a76a-6cdf52a695ee eventCount=3 messageTypes=customer.registered.v1,customer.activation.requested.v1,customer.identity.rejected.v1",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "AUDIT-UI-01",
+      "category": "Auditoría",
+      "name": "/auditoria busca por correlationId y muestra el rastro real",
+      "expected": "La página refleja correlationId=02ceb32c-d8dd-4293-a76a-6cdf52a695ee y al menos un evento (API tenía 3)",
+      "actual": "inputValue=02ceb32c-d8dd-4293-a76a-6cdf52a695ee correlationIdInBody=true apiEventCount=3",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "AUDIT-NOTIF-RBAC-01",
+      "category": "Auditoría",
+      "name": "GET /api/audit/notifications como CLIENTE",
+      "expected": "403 FORBIDDEN (D-06: solo ADMINISTRADOR)",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "PRIV-REDACT-01",
+      "category": "Privacidad",
+      "name": "Ninguna respuesta de auditoría filtra una contraseña en texto plano",
+      "expected": "Ninguna coincidencia literal de las contraseñas sembradas/generadas en el JSON de respuesta",
+      "actual": "Sin coincidencias",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "notifications-audit",
+      "id": "NOTIF-READ-02",
+      "category": "Notificaciones",
+      "name": "Marcar todas como leídas (sin notificationIds)",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo provisionar el cliente C: paso login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"330045db-cc75-47a6-9dea-0f38469b8314\"}"
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-RBAC-01",
+      "category": "Pagos",
+      "name": "CLIENTE no puede listar pagos",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar un cliente para obtener un token CLIENTE real: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-RBAC-02",
+      "category": "Pagos",
+      "name": "CAJERO puede listar pagos",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "Sin cliente aprovisionado, se omite el bloque completo por consistencia."
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-RBAC-03",
+      "category": "Pagos",
+      "name": "ADMIN puede listar pagos",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "Sin cliente aprovisionado, se omite el bloque completo por consistencia."
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-CREATE-APPROVE-01",
+      "category": "Pagos",
+      "name": "Transferencia APPROVE crea un pago SUCCEEDED",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el fixture de dos clientes: origen: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-CREATE-REJECT-01",
+      "category": "Pagos",
+      "name": "Transferencia REJECT crea un pago FAILED/PERMANENT",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el fixture de dos clientes: origen: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-DETAIL-01",
+      "category": "Pagos",
+      "name": "GET /api/payments/:paymentId devuelve el pago creado",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el fixture de dos clientes: origen: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-FILTER-01",
+      "category": "Pagos",
+      "name": "GET /api/payments?status= filtra realmente",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el fixture de dos clientes: origen: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-DETAIL-NOTFOUND-01",
+      "category": "Pagos",
+      "name": "GET /api/payments/:paymentId con un UUID válido pero inexistente",
+      "expected": "409, type=BUSINESS_REJECTION, failureCode=ILLEGAL_TRANSITION (código prestado, ver payments.controller.ts)",
+      "actual": "409: type=BUSINESS_REJECTION, failureCode=ILLEGAL_TRANSITION",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "payments",
+      "id": "BILLERS-01",
+      "category": "Pagos",
+      "name": "GET /api/accounts/billers devuelve un catálogo real y no vacío",
+      "expected": "200 y >=1 biller con {code, name, accountId}",
+      "actual": "200: 3 billers — [\"CLARO\",\"EEGSA\",\"EMPAGUA\"]",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "payments",
+      "id": "BILLERS-ROLE-01",
+      "category": "Pagos",
+      "name": "Un CLIENTE también puede leer el catálogo de billers (sin @Roles)",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "Sin cliente aprovisionado."
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-UI-MONITOR-01",
+      "category": "Pagos",
+      "name": "/pagos/monitor (staff) muestra pagos reales, no un estado genérico",
+      "expected": "El texto de la página referencia la transacción creada (N/A) o al menos un monto real, con GET /api/payments devolviendo 6 filas",
+      "actual": "apiCount=6, showsOurTransfer=false, showsAnyPaymentRow=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-UI-NEW-01",
+      "category": "Pagos",
+      "name": "/pagos/nuevo (cliente) renderiza el formulario y produce una transferencia real",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar un cliente para probar esta pantalla."
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-GATE-01",
+      "category": "RBAC",
+      "name": "GET /api/audit sin token",
+      "expected": "401 UNAUTHENTICATED",
+      "actual": "401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-GATE-02",
+      "category": "RBAC",
+      "name": "POST /api/accounts/:id/deposit sin token",
+      "expected": "401 UNAUTHENTICATED",
+      "actual": "401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-AUDIT-CLIENTE",
+      "category": "RBAC",
+      "name": "GET /api/audit como CLIENTE",
+      "expected": "403 FORBIDDEN (no 404: el chequeo de rol corre antes de buscar el recurso)",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-AUDIT-CAJERO",
+      "category": "RBAC",
+      "name": "GET /api/audit como CAJERO_RECEPTOR",
+      "expected": "403 FORBIDDEN",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-AUDIT-ADMIN",
+      "category": "RBAC",
+      "name": "GET /api/audit como ADMINISTRADOR",
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-AUDIT-RECENT-CLIENTE",
+      "category": "RBAC",
+      "name": "GET /api/audit/recent como CLIENTE",
+      "expected": "403 FORBIDDEN",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-AUDIT-NOTIF-CLIENTE",
+      "category": "RBAC",
+      "name": "GET /api/audit/notifications como CLIENTE",
+      "expected": "403 FORBIDDEN",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-AUDIT-SUBROUTES-ADMIN",
+      "category": "RBAC",
+      "name": "/api/audit/recent y /api/audit/notifications como ADMINISTRADOR",
+      "expected": "Ambas 200",
+      "actual": "recent=200 notifications=200",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-PAYMENTS-CLIENTE",
+      "category": "RBAC",
+      "name": "GET /api/payments como CLIENTE",
+      "expected": "403 FORBIDDEN",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-PAYMENTS-CAJERO",
+      "category": "RBAC",
+      "name": "GET /api/payments como CAJERO_RECEPTOR",
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-DEPOSIT-CLIENTE",
+      "category": "RBAC",
+      "name": "POST /api/accounts/:id/deposit como CLIENTE (cuenta inexistente)",
+      "expected": "403 FORBIDDEN (no 404: el rol se rechaza antes de mirar la cuenta)",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-DEPOSIT-CAJERO",
+      "category": "RBAC",
+      "name": "POST /api/accounts/:id/deposit como CAJERO_RECEPTOR",
+      "expected": "Pasa el chequeo de rol (no 401/403); lo que ocurra después depende de que la cuenta no existe",
+      "actual": "404: BUSINESS_REJECTION",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-STATUS-ALLROLES",
+      "category": "RBAC",
+      "name": "POST /api/accounts/:id/status para las tres sesiones autenticadas",
+      "expected": "Las tres pasan el gate de rol (202) — D-06 no es \"solo ADMINISTRADOR\" en esta ruta",
+      "actual": "cliente=202 cajero=202 admin=202",
+      "pass": true,
+      "detail": "La consigna de esta suite asumía \"ADMINISTRADOR only\" para esta ruta; el código fuente y esta prueba muestran @Roles('ADMINISTRADOR', 'CAJERO_RECEPTOR', 'CLIENTE') — D-06 permite que un CLIENTE desactive/reactive sus propias cuentas. No es un defecto: es el hecho real, documentado en el propio comentario del controlador (\"ADMINISTRADOR, CAJERO_RECEPTOR y CLIENTE (para sus propias cuentas)\")."
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-IDENTITY-VERDICT-CLIENTE",
+      "category": "RBAC",
+      "name": "POST /api/customers/:id/identity-verdict como CLIENTE",
+      "expected": "403 FORBIDDEN",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-IDENTITY-VERDICT-CAJERO",
+      "category": "RBAC",
+      "name": "POST /api/customers/:id/identity-verdict como CAJERO_RECEPTOR",
+      "expected": "202 (pasa el gate de rol)",
+      "actual": "202",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-KYC-STATUS-CLIENTE",
+      "category": "RBAC",
+      "name": "POST /api/customers/:id/kyc-status como CLIENTE",
+      "expected": "403 FORBIDDEN",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-KYC-STATUS-CAJERO",
+      "category": "RBAC",
+      "name": "POST /api/customers/:id/kyc-status como CAJERO_RECEPTOR",
+      "expected": "202 (pasa el gate de rol)",
+      "actual": "202",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-PENDING-VALIDATION-CLIENTE",
+      "category": "RBAC",
+      "name": "GET /api/customers/pending-validation como CLIENTE",
+      "expected": "403 FORBIDDEN",
+      "actual": "403: FORBIDDEN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-PENDING-VALIDATION-CAJERO",
+      "category": "RBAC",
+      "name": "GET /api/customers/pending-validation como CAJERO_RECEPTOR",
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-ACCOUNTS-OPEN-CLIENTE",
+      "category": "RBAC",
+      "name": "POST /api/accounts como CLIENTE (autoservicio)",
+      "expected": "202",
+      "actual": "202",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "RBAC-ANY-ROLE-CLIENTE",
+      "category": "RBAC",
+      "name": "GET /api/accounts, /api/dashboard y /api/notifications como CLIENTE",
+      "expected": "Las tres 200",
+      "actual": "accounts=200 dashboard=200 notifications=200",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "NAV-CLIENT-STAFF-01",
+      "category": "Guardas de navegación",
+      "name": "CLIENTE navega a /clientes/validaciones (pantalla de personal)",
+      "expected": "La URL cambia lejos de /clientes/validaciones (redirección real)",
+      "actual": "http://localhost:3010/clientes",
+      "pass": true,
+      "detail": "Redirige a /clientes vía un guard propio de esa página, no vía el chequeo global de módulo (D-06 en /clientes es EVERY_ROLE)."
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "NAV-CLIENT-STAFF-02",
+      "category": "Guardas de navegación",
+      "name": "CLIENTE navega a /cuentas/deposito (pantalla de ventanilla)",
+      "expected": "La navegación NO se bloquea (URL igual); en su lugar el formulario de depósito está oculto y se muestra el mensaje \"Esta pantalla es para ventanilla\"",
+      "actual": "url=http://localhost:3010/cuentas/deposito mensajeVisible=true formularioVisible=false",
+      "pass": true,
+      "detail": "Este es un guard de CONTENIDO, no de navegación: la URL nunca cambia. Es el patrón contrario al de NAV-CLIENT-STAFF-01/03 — vale la pena que quede documentado así y no como \"bloqueado\" sin más."
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "NAV-CLIENT-STAFF-03",
+      "category": "Guardas de navegación",
+      "name": "CLIENTE navega a /auditoria (pantalla de administración)",
+      "expected": "La URL cambia lejos de /auditoria (redirección real, vía el guard global de módulo)",
+      "actual": "http://localhost:3010/",
+      "pass": true,
+      "detail": "Redirige a la landing (/) — no a /login ni a la pantalla de error.vue — porque el visitante ya tiene sesión."
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "GUARD-NEXT-01",
+      "category": "Guardas de navegación",
+      "name": "Deep link sin sesión a /cuentas conserva el destino a través del login (?next=)",
+      "expected": "1) /login?next=/cuentas (o codificado) antes de autenticar. 2) Login desde esa página aterriza en /cuentas, no en la landing genérica",
+      "actual": "antesDeLogin=http://localhost:3010/login?next=/cuentas despuesDeLogin=http://localhost:3010/cuentas",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "rbac-matrix",
+      "id": "GUARD-LOGOUT-01",
+      "category": "Guardas de navegación",
+      "name": "Cerrar sesión por la UI real, luego navegar de nuevo a /cuentas",
+      "expected": "Tras cerrar sesión, una navegación fresca a /cuentas redirige a /login (nunca debe mostrarse una pantalla autenticada)",
+      "actual": "botonCerrarSesiónVisible=true urlJustoDespuésDeCerrar=http://localhost:3010/login urlEnNavegaciónFresca=http://localhost:3010/login?next=/cuentas confirmadoEnCuentasAntes=true",
+      "pass": true,
+      "detail": "Comportamiento correcto: el logout limpia la sesión de verdad y una navegación fresca a una pantalla protegida redirige a /login."
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-01",
+      "category": "Registro",
+      "name": "Paso 1 enviado con campos vacíos",
+      "expected": "Permanece en el Paso 1 (input de nombre completo sigue visible, URL sin cambiar)",
+      "actual": "stillOnStep1=true url=http://localhost:3010/registro",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-02",
+      "category": "Registro",
+      "name": "Paso 1 con fecha de nacimiento de un menor de 18 años (15 años)",
+      "expected": "Bloquea el avance al Paso 2",
+      "actual": "stillOnStep1=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-03",
+      "category": "Registro",
+      "name": "Paso 1 con formato de correo inválido",
+      "expected": "validity.valid del input email es false, y/o permanece en el Paso 1",
+      "actual": "emailValidityValid=false stillOnStep1=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-04",
+      "category": "Registro",
+      "name": "Paso 2 con DPI de solo 6 dígitos",
+      "expected": "Bloquea el avance (permanece en el Paso 2)",
+      "actual": "stillOnStep2=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-05",
+      "category": "Registro",
+      "name": "Paso 2 con DPI que contiene letras",
+      "expected": "El input filtra los caracteres no numéricos, o el envío queda bloqueado en el Paso 2",
+      "actual": "inputValueAfterFill=\"ABCDEFGHIJKLM\" valueWasStripped=false stillOnStep2=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-06",
+      "category": "Registro",
+      "name": "Paso 2 con DPI válido pero sin foto de documento",
+      "expected": "Bloquea el avance (foto requerida, permanece en el Paso 2)",
+      "actual": "stillOnStep2=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-07",
+      "category": "Registro",
+      "name": "Paso 3 con contraseña de menos de 8 caracteres",
+      "expected": "[data-testid=\"registration-accepted\"] NO visible",
+      "actual": "accepted=false",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-08",
+      "category": "Registro",
+      "name": "Paso 3 con confirmación de contraseña distinta a la contraseña",
+      "expected": "[data-testid=\"registration-accepted\"] NO visible",
+      "actual": "accepted=false",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-09",
+      "category": "Registro",
+      "name": "Paso 3 con checkbox de términos sin marcar",
+      "expected": "El botón reporta disabled/aria-disabled, o el envío no queda aceptado",
+      "actual": "disabled=\"null\" ariaDisabled=\"null\" accepted=false",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "REG-10",
+      "category": "Registro",
+      "name": "Registro completo válido en 3 pasos",
+      "expected": "[data-testid=\"registration-accepted\"] visible",
+      "actual": "accepted=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "DUPLICATE-REG",
+      "category": "Registro",
+      "name": "Registrar un segundo cliente con el mismo correo y el mismo DPI",
+      "expected": "409 con failureCode EMAIL_ALREADY_REGISTERED o DOCUMENT_ALREADY_REGISTERED",
+      "actual": "409: failureCode=DOCUMENT_ALREADY_REGISTERED type=BUSINESS_REJECTION",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "DUPLICATE-REG-DPI",
+      "category": "Registro",
+      "name": "Registrar con un DPI ya usado pero un correo nuevo",
+      "expected": "409 con failureCode específicamente DOCUMENT_ALREADY_REGISTERED (aísla la colisión de documento de la de correo)",
+      "actual": "409: failureCode=DOCUMENT_ALREADY_REGISTERED",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "ACT-04",
+      "category": "Activación",
+      "name": "El enlace de activación recuperado tiene la forma esperada (/activar?token=<token largo>)",
+      "expected": "Coincide con /^\\/activar\\?token=[a-zA-Z0-9_-]{16,}$/",
+      "actual": "activationPath=\"/activar?token=9bf8719a-9abf-4d86-8993-14f8139ae9dde3d2fbe8b24aab2eefa7c2001cbc424d088d1aa5fa2b568681fbd6b45a612f58\"",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "ACT-01",
+      "category": "Activación",
+      "name": "Activar la cuenta con el enlace real y luego iniciar sesión con las nuevas credenciales",
+      "expected": "loginApi devuelve un token no nulo tras visitar el enlace de activación",
+      "actual": "loginStatus=401 token=null",
+      "pass": false,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "ACT-02",
+      "category": "Activación",
+      "name": "Reutilizar el mismo token de activación una segunda vez",
+      "expected": "GET /api/customers/verify-email devuelve un status distinto de 200 (token de un solo uso)",
+      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El enlace de activación no es válido o ya fue utilizado.\",\"correlationId\":\"f3572740-59b4-4d87-b170-d3f0f4d57dbf\",\"failureCode\":\"ACTIVATION_TOKEN_INVALID\"}",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "ACT-03",
+      "category": "Activación",
+      "name": "Token de activación fabricado a mano",
+      "expected": "La pantalla muestra un texto de rechazo, y/o GET /api/customers/verify-email responde distinto de 200",
+      "actual": "rejectedTextVisible=true apiStatus=409",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "PWRESET-01",
+      "category": "Recuperación de contraseña",
+      "name": "Solicitar restablecimiento para un correo real y confirmarlo",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "Depende de ACT-01 (una cuenta realmente activada) para tener credenciales válidas que probar; ACT-01 no pasó en esta corrida."
+    },
+    {
+      "suite": "registration-activation",
+      "id": "PWRESET-02",
+      "category": "Recuperación de contraseña",
+      "name": "Solicitar restablecimiento para un correo que NO existe",
+      "expected": "202 (anti-enumeración, D-04) — cualquier otro status filtraría qué correos están registrados",
+      "actual": "202",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "PWRESET-03",
+      "category": "Recuperación de contraseña",
+      "name": "Confirmar restablecimiento con un resetToken fabricado a mano",
+      "expected": "Distinto de 200",
+      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El enlace para restablecer la contraseña no es válido o ya fue utilizado.\",\"correlationId\":\"53238b5c-4105-46ba-b6a2-e2910184791f\",\"failureCode\":\"RESET_TOKEN_INVALID\"}",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "registration-activation",
+      "id": "ERRORPAGE-01",
+      "category": "Manejo de errores",
+      "name": "Navegar a una ruta desconocida sin sesión abierta",
+      "expected": "h1 contiene el texto exacto de error.vue, el cuerpo menciona \"Inicia sesión\", y hay un botón \"Ir a iniciar sesión\"",
+      "actual": "heading=\"Esta pantalla no existe o no tienes permisos\" headingOk=true loginPromptVisible=true loginButtonVisible=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "resilience",
+      "id": "MALFORMED-BODY-01",
+      "category": "Resiliencia",
+      "name": "POST /api/transfers con un cuerpo JSON sintácticamente inválido",
+      "expected": "400, no 500 y no una conexión colgada",
+      "actual": "400: {\"type\":\"VALIDATION_ERROR\",\"message\":\"Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"correlationId\":\"unknown\"}",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "resilience",
+      "id": "MISSING-FIELD-01",
+      "category": "Resiliencia",
+      "name": "POST /api/transfers con targetAccount omitido",
+      "expected": "400 VALIDATION_ERROR",
+      "actual": "400: VALIDATION_ERROR",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "resilience",
+      "id": "UNKNOWN-ROUTE-01",
+      "category": "Resiliencia",
+      "name": "GET a una ruta que no existe",
+      "expected": "404, no 500 y no una redirección",
+      "actual": "404: {\"type\":\"VALIDATION_ERROR\",\"message\":\"La ruta solicitada no existe.\",\"correlationId\":\"ef76ab58-98c5-4aff-9b9a-ffb246402ef8\"}",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "resilience",
+      "id": "CONCURRENT-DEPOSIT-RACE-01",
+      "category": "Resiliencia",
+      "name": "Depósito concurrente con la misma Idempotency-Key",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente de origen: paso=login detalle=401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b9d05ac7-63bf-44db-a426-e29eed33737e\"}"
+    },
+    {
+      "suite": "resilience",
+      "id": "INVALID-CURRENCY-01",
+      "category": "Resiliencia",
+      "name": "Depósito con una moneda distinta de GTQ",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente de origen: paso=login detalle=401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b9d05ac7-63bf-44db-a426-e29eed33737e\"}"
+    },
+    {
+      "suite": "resilience",
+      "id": "CONCURRENT-TRANSFER-RACE-01",
+      "category": "Resiliencia",
+      "name": "Dos transferencias concurrentes que sobregirarían la cuenta",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente de origen: paso=login detalle=401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b9d05ac7-63bf-44db-a426-e29eed33737e\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-SELF-01",
+      "category": "Transferencias",
+      "name": "TX-SELF-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-ZERO-01",
+      "category": "Transferencias",
+      "name": "TX-ZERO-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-NEG-01",
+      "category": "Transferencias",
+      "name": "TX-NEG-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-NOFUNDS-01",
+      "category": "Transferencias",
+      "name": "TX-NOFUNDS-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-HAPPY-01",
+      "category": "Transferencias",
+      "name": "TX-HAPPY-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-REJECT-01",
+      "category": "Transferencias",
+      "name": "TX-REJECT-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-TRANSIENT-01",
+      "category": "Transferencias",
+      "name": "TX-TRANSIENT-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-TIMEOUT-01",
+      "category": "Transferencias",
+      "name": "TX-TIMEOUT-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-IDEMPOTENT-01",
+      "category": "Transferencias",
+      "name": "TX-IDEMPOTENT-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-OWNACCOUNTS-01",
+      "category": "Transferencias",
+      "name": "TX-OWNACCOUNTS-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-SCOPE-01",
+      "category": "Transferencias",
+      "name": "TX-SCOPE-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-HISTORY-01",
+      "category": "Transferencias",
+      "name": "TX-HISTORY-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-DETAIL-01",
+      "category": "Transferencias",
+      "name": "TX-DETAIL-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-UI-HAPPY-01",
+      "category": "Transferencias",
+      "name": "TX-UI-HAPPY-01",
+      "expected": null,
+      "actual": null,
+      "pass": null,
+      "skipped": true,
+      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-NOTFOUND-01",
+      "category": "Transferencias",
+      "name": "Consultar un transactionId que nunca existió",
+      "expected": "409 BUSINESS_REJECTION/ILLEGAL_TRANSITION (el borrowed code que queries.use-case.ts documenta; no hay 404 real en el catálogo)",
+      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"No existe una transacción con ese identificador.\",\"correlationId\":\"71b56d7a-668e-4df5-ae4c-e3f3114b25dc\",\"failureCode\":\"ILLEGAL_TRANSITION\"}",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-MONITOR-01",
+      "category": "Transferencias",
+      "name": "El monitor de Sagas (staff) carga filas reales y no más de las que la API reporta",
+      "expected": "Sin estado vacío, >=1 fila en la tabla, y el conteo de filas no excede el total real de la API",
+      "actual": "emptyState=false rowCount=24 apiTotal=24",
+      "pass": true,
+      "detail": ""
+    }
+  ]
+}
