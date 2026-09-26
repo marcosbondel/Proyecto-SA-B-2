@@ -131,6 +131,31 @@ external:
 # password lives under secrets.databases.<key> below). Values match
 # docs/architecture/diagrams/05-uml-despliegue.puml and
 # infra/docker/docker-compose.yml's *_POSTGRES_DB / *_POSTGRES_USER.
+# MinIO, cuando se levanta dentro del namespace (`minio.inCluster=true`, que
+# hoy llega desde los secrets del despliegue y vale para dev y para prod).
+#
+# La imagen estaba incrustada en el template y apuntaba a
+# `quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z`, que **ya no se puede
+# descargar**: quay.io devuelve 401 y Docker Hub tambien. MinIO cerro la
+# distribucion publica de esa etiqueta. El pod de produccion sigue en pie solo
+# porque su imagen se bajo antes del cierre; el dia que se reinicie o se
+# reprograme, entra en ImagePullBackOff como entro el de desarrollo.
+#
+# Se fija por **digest** y no por etiqueta: el unico registro que publica MinIO
+# de forma abierta hoy es Chainguard, y su plan gratuito solo etiqueta
+# `latest`. Un digest es una referencia inmutable — mas fuerte que una
+# etiqueta, y no es la "imagen no versionada" que el enunciado prohibe.
+#
+# Comprobado como reemplazo directo: mismo entrypoint (`/usr/bin/minio`), los
+# mismos `args` del Deployment, `/data` escribible corriendo sin root, y el
+# `postStart` que crea el bucket funciona tal cual porque la imagen trae `mc`.
+#
+# Pendiente (no es para la vispera de una entrega): copiarla al Artifact
+# Registry propio con etiqueta versionada, para no depender de que Chainguard
+# conserve este digest en su nivel gratuito.
+minio:
+  image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
+
 # Sufijo que se anade al nombre de las cinco bases. Vacio en produccion, que
 # es quien manda en los nombres; el entorno `dev` lo pone a `_dev` para leer y
 # escribir en bases propias sobre las MISMAS VMs. Sin esto los dos entornos
