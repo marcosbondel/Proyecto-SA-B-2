@@ -133,17 +133,46 @@ images end to end. The inventory, the required variables per component and the
 base-image bump procedure are in
 [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
 
-**Continuous integration runs on every `feature/*` push and every pull request
-into `develop`** (T-32), as three separate GitHub Actions jobs mirroring the
-assignment's three named phases: `build` (`pnpm build`), `test` (`pnpm test`,
-`pnpm test:contract`) and `validate` (the tracked-`.env` guard, `pnpm lint`,
-`pnpm typecheck`). `test` depends on `build` and `validate` depends on both, so the three run
-strictly in that order and a failure anywhere skips every phase after it;
-`validate` does not run on a pull request into `develop` — only Build and
-Test repeat there, per the assignment. Neither PostgreSQL nor
-RabbitMQ are started, so the pipeline never runs the suites gated
-`describe.skip` on `DATABASE_URL`/`RABBITMQ_URL` — that gap is TD-069. Details
-in [docs/operations/CI.md](docs/operations/CI.md).
+**Phase II is built and deployed.** Five functional extensions, a four-workflow
+pipeline, Terraform, and a system running on Google Cloud Platform.
+
+- **The extensions live inside the transfer Saga**, in this order: the KYC gate
+  (`customer.kyc.checked.v1`, and a customer who is not `VERIFIED` closes the
+  transfer in `FAILED` without moving money) → the account-type rule (`AHORRO`
+  opens at Q100.00 and charges Q3.00 per debit **in the same row lock**, and a
+  compensation returns the commission too) → the history with its date and
+  status filters → the external payment with `SUCCESS` / `FAILURE` / `TIMEOUT`
+  over the 1 s / 5 s / 30 s ladder → the notification classified `INFO`,
+  `WARNING` or `ERROR`. The assignment's three states — `PENDING`, `APPROVED`,
+  `FAILED` — are a **projection** (`phaseStatus`) of the Saga's six, never a
+  replacement.
+- **Continuous integration** (T-32) runs on a push to `feature/**`, `fix/**`,
+  `test/**`, `docs/**`, `chore/**` or `refactor/**`, and on a pull request into
+  `develop` or `main`, as three chained jobs: `build`, `test`, `validate`.
+  **PostgreSQL 18.4 and RabbitMQ 4.3.4 now run as service containers**, so the
+  integration suites that used to `describe.skip` themselves actually execute —
+  TD-069 is closed, and every integration step fails if Jest reports a suite as
+  `skipped`. `validate` is skipped on a pull request into `develop` and runs on
+  one into `main`.
+- **Delivery and deployment** are three more workflows: `changes.yml` decides
+  which components a commit touched, `release.yml` publishes seven versioned
+  images on a `v*` tag, and `cd.yml` deploys the changed components to namespace
+  `dev` on `develop` and rolls production forward on `main` **using only images
+  release already published**. No tag is ever `latest`; a deploy that does not
+  reach `Ready` rolls itself back.
+- **The infrastructure is one Terraform module** (`infra/terraform/gcp/`): a VPC
+  with a private data subnet, five Compute Engine VMs with no public IP running
+  one PostgreSQL each, a zonal GKE cluster of three nodes, and Cloud Run for the
+  frontend. The seven workloads carry an HPA at 80 % CPU with requests and
+  limits.
+- **What is not finished, and matters before you touch it**: `dev` and `prod`
+  share the five databases (TD-070); the Artifact Registry repository, the
+  Gateway's public `LoadBalancer` and the Cloud Run revision are created by hand
+  (TD-079, TD-080, TD-081).
+
+Read [docs/operations/CI.md](docs/operations/CI.md) before changing a workflow
+and [docs/operations/CLOUD.md](docs/operations/CLOUD.md) before touching
+anything under `infra/terraform/`.
 
 ## Project Documentation
 
@@ -159,7 +188,7 @@ Consult these documents before making decisions or describing the repository:
 - [ARCHITECTURE.md](ARCHITECTURE.md): system boundaries, stack, constraints, and dependency rules.
 - [docs/DESIGN.md](docs/DESIGN.md): **must be read before creating or modifying any interface, page, component, style, or interface text**. It also records the mandatory Claude Design reference and import prompt for frontend work. This link is permanent and must not be removed by a documentation change without an explicit team decision.
 - [docs/domain/](docs/domain/README.md): **the domain model as a functional contract** — which service owns which data, which invariants it protects, and which commands and events it handles. Read it before implementing any service, designing an event, or adding a business rule.
-- [docs/architecture/adr/](docs/architecture/adr/README.md): **the technology and architecture decisions**, each with the alternatives that were rejected and why. Read it before introducing or changing a technology, or before writing a spec that depends on the stack. These decisions are design constraints — changing one requires a new ADR that supersedes the old, not an edit.
+- [docs/architecture/adr/](docs/architecture/adr/README.md): **the technology and architecture decisions**, each with the alternatives that were rejected and why. ADR-014 (cloud provider), ADR-015 (CI/CD platform) and ADR-016 (cloud infrastructure) are the Phase II ones. Read it before introducing or changing a technology, or before writing a spec that depends on the stack. These decisions are design constraints — changing one requires a new ADR that supersedes the old, not an edit.
 - [docs/OWNERSHIP.md](docs/OWNERSHIP.md): primary owner before changing a component.
 - [docs/METHODOLOGY.md](docs/METHODOLOGY.md): milestones, status transitions, evidence, and blockers.
 - [docs/PRODUCT_SENSE.md](docs/PRODUCT_SENSE.md): users and banking workflows before product-facing changes.
@@ -176,7 +205,9 @@ Consult these documents before making decisions or describing the repository:
 - [docs/architecture.md](docs/architecture.md): the Spanish architecture deliverable — guiding principles, the port and variable matrix, and the resilience strategy.
 - [docs/adr.md](docs/adr.md): the unified Spanish narrative of the decisions. The canonical records are `docs/architecture/adr/`; where the two disagree, the ADR wins.
 - [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md): **the image inventory** — one row per component with its Dockerfile, port, start command, health checks and required variables, plus the tagging scheme T-22 references. Read it before changing a Dockerfile, adding a variable a container needs, or writing the Helm chart.
-- [docs/operations/CI.md](docs/operations/CI.md): **the GitHub Actions pipeline** — what triggers it, what each stage verifies, and what a green run does not prove. Read it before changing `.github/workflows/ci.yml` or the root `build`/`lint`/`typecheck`/`test`/`test:contract` scripts it calls.
+- [docs/operations/CI.md](docs/operations/CI.md): **the four GitHub Actions workflows** — what triggers each, what every stage verifies, how a version is published, and what a green run does not prove. Read it before changing anything under `.github/workflows/` or the root `build`/`lint`/`typecheck`/`test`/`test:contract` scripts it calls.
+- [docs/operations/CLOUD.md](docs/operations/CLOUD.md): **the cloud runbook** — from an empty GCP project to a system that answers, and which three steps Terraform does not yet cover. Read it before changing `infra/terraform/gcp/` or the deployment workflows.
+- [docs/operations/MONOREPO.md](docs/operations/MONOREPO.md): **the monorepo strategy** — one directory per component and how a change redeploys only that component. Read it before adding a component or changing the path filters.
 - [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md): **the Kubernetes runbook** — prerequisites, the four commands that take the system from a clean machine to a running cluster, verification, the Saga run, scaling limits and every failure mode. Read it before changing the Helm chart, the kind configuration or anything under `infra/k8s/`.
 - [docs/manual/](docs/manual/README.md): the user manual — the general guide, one walkthrough per role, and the 78-step visual tour.
 - [docs/qa/](docs/qa/README.md): the test evidence — the happy-path and error-case guide, the validation report, and the screenshots the suites produce.

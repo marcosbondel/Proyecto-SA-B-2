@@ -153,13 +153,13 @@ Buzón accesible mediante icono de campana en el encabezado superior. Muestra al
 
 Para una descripción operativa paso a paso orientada específicamente a su puesto de trabajo o perfil, consulte los manuales dedicados:
 
-- **[Manual del Cliente](rol-cliente.md)**: Guía completa para el cuentahabiente (apertura de productos, gestión de saldos, congelamiento de cuenta, transferencias y pagos).
-- **[Manual del Cajero Receptor](rol-cajero-receptor.md)**: Operaciones de ventanilla, recepción de depósitos, validación de DPIs y apertura de cuentas asistidas.
-- **[Manual del Administrador](rol-administrador.md)**: Gobierno de cuentas, auditoría forense, monitoreo de la Saga y supervisión global del sistema.
+- **[Manual del Cliente](manual/rol-cliente.md)**: Guía completa para el cuentahabiente (apertura de productos, gestión de saldos, congelamiento de cuenta, transferencias y pagos).
+- **[Manual del Cajero Receptor](manual/rol-cajero-receptor.md)**: Operaciones de ventanilla, recepción de depósitos, validación de DPIs y apertura de cuentas asistidas.
+- **[Manual del Administrador](manual/rol-administrador.md)**: Gobierno de cuentas, auditoría forense, monitoreo de la Saga y supervisión global del sistema.
 
 ## Recorrido Visual Paso a Paso
 
-- **[Recorrido visual interactivo](recorrido-visual.md)**: 78 capturas de pantalla secuenciales con datos concretos que ilustran cada una de las pantallas de la plataforma en funcionamiento.
+- **[Recorrido visual interactivo](manual/recorrido-visual.md)**: 78 capturas de pantalla secuenciales con datos concretos que ilustran cada una de las pantallas de la plataforma en funcionamiento.
 
 ---
 
@@ -800,7 +800,7 @@ pagos propio y marcar notificaciones como leídas. Lo que queda es esto.
 | **Agregar un nuevo prestador al catálogo de pagos** | Los facturadores institucionales (EEGSA, Empagua, Claro) están fijos en base de datos. Agregar nuevos convenios requiere configuración administrativa. |
 
 El detalle técnico de cada una, con su decisión y su ticket, está en
-[docs/TECH_DEBT.md](../TECH_DEBT.md).
+[docs/TECH_DEBT.md](TECH_DEBT.md).
 
 ---
 
@@ -855,6 +855,6 @@ Puede haber sido desactivada automáticamente si pasó seis meses sin movimiento
 
 ## Ver también
 
-- [Manual del Cliente](rol-cliente.md) · [Manual del Cajero Receptor](rol-cajero-receptor.md) · [Manual del Administrador](rol-administrador.md)
-- [Documento técnico](../TECHNICAL_DOCUMENT.md) — el índice de toda la documentación del proyecto
-- [Casos de uso](../domain/use-cases.md) — los seis flujos del sistema, en detalle
+- [Manual del Cliente](manual/rol-cliente.md) · [Manual del Cajero Receptor](manual/rol-cajero-receptor.md) · [Manual del Administrador](manual/rol-administrador.md)
+- [Documento técnico](TECHNICAL_DOCUMENT.md) — el índice de toda la documentación del proyecto
+- [Casos de uso](domain/use-cases.md) — los seis flujos del sistema, en detalle

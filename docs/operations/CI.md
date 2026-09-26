@@ -1,23 +1,31 @@
 # Continuous Integration
 
 The pipeline that runs the verification every contributor is expected to run
-locally, automatically, on every push to a `feature/*` branch and on every
-pull request into `develop`. Built by **T-32**. Defined in
-[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
+locally, automatically, on every push to a working branch and on every pull
+request into `develop`. Built by **T-32**. Defined in
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). The decision to
+build it on GitHub Actions, and the three alternatives rejected, is
+[ADR-015](../architecture/adr/ADR-015-ci-cd-platform.md).
 
 ## What triggers it
 
 | Event | Branches | Runs |
 | --- | --- | --- |
-| `push` | `feature/**` | `build` → `test` → `validate`, in that order |
+| `push` | `feature/**`, `fix/**`, `test/**`, `docs/**`, `chore/**`, `refactor/**` | `build` → `test` → `validate`, in that order |
 | `pull_request` | target `develop` | `build` → `test` only |
+| `pull_request` | target `main` or `master` | `build` → `test` → `validate` |
 | `workflow_dispatch` | any | `build` → `test` → `validate` |
 
-A push to `main`, `develop` itself, or any other branch does not trigger the
-workflow — those are integration or release branches, not where a contributor
-lands unreviewed commits. `concurrency` cancels an in-flight run for the same
-ref when a new push arrives, so a rapid sequence of fixups does not queue
-redundant runs.
+**Six branch prefixes and not only `feature/**`.** The assignment names the
+feature branches, but the team also opens `fix/`, `test/`, `docs/`, `chore/`
+and `refactor/`, and on those a push used to trigger nothing at all: their code
+reached `develop` with the pull request's Build and Test and without having
+passed Validación — lint, typecheck, the tracked-`.env` guard — even once.
+
+A push to `develop` or `main` themselves does not trigger this workflow: those
+are integration branches, and what fires there is `cd.yml`. `concurrency`
+cancels an in-flight run for the same ref when a new push arrives, so a rapid
+sequence of fixups does not queue redundant runs.
 
 ## The three phases
 
@@ -129,9 +137,12 @@ request's), the sanity check this pipeline can perform is static — no secret
 committed, no architectural boundary crossed, no type error — which is what
 `git diff`/review cannot catch as reliably as a machine can.
 
-`validate` carries `if: github.event_name != 'pull_request'`, so it does not
-run on a pull request into `develop` — the assignment and the ticket only ask
-that moment to repeat Build and Test.
+`validate` carries
+`if: github.event_name != 'pull_request' || github.base_ref == 'main' || github.base_ref == 'master'`,
+so it does not run on a pull request into `develop` — the assignment and the
+ticket only ask that moment to repeat Build and Test — and it **does** run on
+one into `main`, which the assignment does not cover and which is the last gate
+before a production deploy.
 
 Node and pnpm versions are read from `.nvmrc` and the `packageManager` field
 in the root `package.json` in every job — nothing in the workflow pins a

@@ -27,9 +27,17 @@ and the headers a parked message carries. It lives in
 
 ## The runbooks
 
-- [DEPLOYMENT.md](DEPLOYMENT.md) — taking the system to the local Kubernetes
-  cluster from a clean machine: prerequisites, the four commands, how to verify
-  it, how to run the Saga against it, and what each failure mode looks like.
+- [DEPLOYMENT.md](DEPLOYMENT.md) — taking the system to the **local** Kubernetes
+  cluster (kind) from a clean machine: prerequisites, the four commands, how to
+  verify it, how to run the Saga against it, and what each failure mode looks
+  like.
+- [CLOUD.md](CLOUD.md) — taking it to **GCP**, from an empty project to a system
+  that answers: Terraform, the identity the pipeline deploys with, the variables
+  and secrets, the first published version, and the three steps that are still
+  manual. This is the Fase II procedure.
+- [MONOREPO.md](MONOREPO.md) — how the repository is laid out per component and
+  how a change to one service triggers the build and redeployment of only that
+  service.
 - [CONTAINERS.md](CONTAINERS.md) — the image inventory: one row per component
   with its Dockerfile, port, health checks and required runtime variables.
 - [CI.md](CI.md) — the GitHub Actions pipeline: what triggers it, what each

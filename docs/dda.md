@@ -149,6 +149,20 @@ La primera descomposición mapea cada una de las 5 funciones principales del neg
 | **RF-21** | CDU005 | Consulta Forense de Auditoría | Búsqueda por `correlationId` que reconstruye la línea de tiempo completa de eventos emitidos por todos los microservicios. | Administrador | Alta |
 | **RF-22** | CDU005 | Buzón de Notificaciones al Cliente | Visualización y marcado de lectura de notificaciones transaccionales propias de cada usuario. | Cliente, Cajero, Admin | Media |
 
+#### Requisitos incorporados en la Fase II
+
+Los siete siguientes provienen de la extensión funcional del enunciado de la Fase II (§4.1, pp. 4-6). Son **aditivos**: ninguno reemplaza a un requisito anterior, y los siete están implementados y verificados (ver [`TECHNICAL_DOCUMENT.md` §12](TECHNICAL_DOCUMENT.md#12-fase-ii--extensión-funcional-por-microservicio)).
+
+| ID | Módulo | Nombre del Requisito | Descripción Funcional | Actor(es) | Prioridad |
+|---|---|---|---|---|---|
+| **RF-23** | CDU001 | Gestión de Estado KYC del Cliente | Registro y actualización del estado de validación `PENDING`, `VERIFIED` o `REJECTED`, independiente del veredicto de identidad de RF-07 y con `VERIFIED` como estado terminal. | Cajero, Admin | Alta |
+| **RF-24** | CDU001 | Bloqueo de Transacciones a Clientes no Verificados | Sólo un cliente con `kycStatus = VERIFIED` puede iniciar una transferencia; el rechazo cierra la Saga en `FAILED` con motivo `KYC_NOT_VERIFIED` y sin mover fondos. | Sistema (Saga) | Alta |
+| **RF-25** | CDU002 | Reglas Diferenciadas por Tipo de Cuenta | La cuenta `AHORRO` exige un depósito mínimo de apertura de Q100.00 y cobra una comisión de Q3.00 por débito; la `MONETARIA` no tiene ninguna de las dos. El destino recibe siempre el monto íntegro. | Cliente, Cajero, Admin | Alta |
+| **RF-26** | CDU002 | Reversión de Comisión en Compensación | Una transferencia compensada devuelve el monto **y** la comisión que el débito cobró, de modo que el saldo vuelve exactamente a su valor previo. | Sistema (Saga) | Alta |
+| **RF-27** | CDU003 | Historial de Transacciones con Filtros | Consulta del historial por cuenta con filtros combinables de rango de fechas y estado, paginada (25 por defecto, 100 como techo), acotada por la identidad del solicitante. | Cliente, Cajero, Admin | Alta |
+| **RF-28** | CDU004 | Simulación de Timeout del Proveedor Externo | Además del éxito y el fallo, el proveedor simulado devuelve `TIMEOUT`, que entra a la escalera de reintentos de RF-18 y termina en compensación si se agota. | Sistema | Alta |
+| **RF-29** | CDU005 | Clasificación de Eventos por Severidad | Cada evento auditado se clasifica `INFO`, `WARNING` o `ERROR` mediante una tabla explícita; la severidad es filtrable, alimenta las estadísticas diarias y determina la notificación generada. | Administrador, Sistema | Alta |
+
 ---
 
 ### 4.2. CDU001 – Gestión de Clientes e Identidad (Customer Service)
@@ -292,6 +306,16 @@ La primera descomposición mapea cada una de las 5 funciones principales del neg
 | **RNF-11** | **Escalabilidad** | Capacidad de escalar horizontalmente los microservicios sin contención de estado. | Microservicios sin estado (Stateless), sesiones manejadas en JWT y pools de conexiones optimizados. |
 | **RNF-12** | **Portabilidad** | Ejecución idéntica en entornos locales de desarrollo, Docker Compose y Kubernetes. | Imágenes multi-stage basadas en Node.js Alpine/Slim ejecutadas bajo usuario no privilegiado (`node`). |
 
+#### Requisitos no funcionales incorporados en la Fase II
+
+| ID | Atributo de Calidad | Métrica / Umbral Exigido | Mecanismo Arquitectónico de Soporte |
+|---|---|---|---|
+| **RNF-13** | **Integración Continua** | Las tres fases obligatorias —Build, Test, Validación— se ejecutan en cada push a una rama de trabajo y el pipeline se detiene ante cualquier fallo. Cero etapas omitidas. | Tres jobs encadenados con `needs` en [`ci.yml`](../.github/workflows/ci.yml), visibles como tres checks independientes ([ADR-015](architecture/adr/ADR-015-ci-cd-platform.md)). |
+| **RNF-14** | **Entrega y Despliegue Continuos** | Cero despliegues manuales a producción y cero imágenes sin versionar. Rolling update sin respuestas fallidas durante la actualización. | `release.yml` publica imágenes `vX.Y.Z`; `cd.yml` despliega **sólo las ya publicadas**; `helm-deploy.sh` rechaza `latest`, sondea la disponibilidad durante el upgrade y hace `helm rollback` si no alcanza `Ready`. |
+| **RNF-15** | **Infraestructura Reproducible** | La red, las máquinas virtuales y el clúster se recrean desde código en un solo comando, sin pasos manuales. | Módulo único de Terraform en [`infra/terraform/gcp/`](../infra/terraform/gcp/README.md) ([ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md)). **Cumplido parcialmente**: tres recursos siguen creándose a mano (TD-079, TD-080, TD-081). |
+| **RNF-16** | **Elasticidad (Autoescalado)** | Cada microservicio escala horizontalmente al alcanzar el **80 % de CPU**, entre 1 y 5 réplicas, con `requests` y `limits` de CPU y memoria declarados. | Un `HorizontalPodAutoscaler` (`autoscaling/v2`) por componente en el chart de Helm, sobre el addon de HPA del plano de control de GKE. |
+| **RNF-17** | **Separación de Entornos** | Un despliegue a desarrollo no debe afectar a producción. | Dos namespaces del mismo clúster, cada uno con sus pods, su propio RabbitMQ y su propio MinIO. **Cumplido parcialmente**: las cinco bases de datos son compartidas entre ambos entornos (TD-070), de modo que hoy el aislamiento es de cómputo y mensajería, no de datos. |
+
 ---
 
 ### 5.2. Escenarios de Atributos de Calidad (EAC)
@@ -358,6 +382,11 @@ La primera descomposición mapea cada una de las 5 funciones principales del neg
 | **RES-06** | **Normativa / Negocio** | Restricción de mayoría de edad legal ($\ge 18$ años) y DPI de 13 dígitos. | Validación obligatoria en registro conforme a la legislación guatemalteca (CUI de RENAP). |
 | **RES-07** | **Normativa / Negocio** | Ausencia de retiros de efectivo en ventanilla (TD-018). | El alcance del proyecto modela depósitos en ventanilla y transferencias electrónicas; las salidas de dinero ocurren exclusivamente por transferencias. |
 | **RES-08** | **Operativa** | Contenedores ejecutados bajo usuario no privilegiado (`node`, UID 1000). | Cumplimiento de estándares de seguridad en contenedores evitando ejecución como `root`. |
+| **RES-09** | **Técnica (Fase II)** | Las bases de datos se ejecutan en **máquinas virtuales**, nunca como servicio gestionado ni dentro del clúster. | §4.2 y §4.3 del enunciado de la Fase II lo exigen literalmente. Descarta Cloud SQL, que sería mejor ingeniería y un requisito incumplido ([ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md)). |
+| **RES-10** | **Técnica (Fase II)** | Toda la infraestructura se provisiona con **Terraform**; nada se crea a mano. | §8.3 penaliza con 50 % la infraestructura creada manualmente. Las tres excepciones vigentes están registradas como deuda (TD-079 … TD-081) y no como práctica aceptada. |
+| **RES-11** | **Operativa (Fase II)** | Prohibido el uso de imágenes sin versionar (`latest`) en cualquier entorno. | Producción consume `vX.Y.Z` publicadas por la fase de entrega y desarrollo `dev-<sha>`; `helm-deploy.sh` aborta si recibe `latest`. |
+| **RES-12** | **Operativa (Fase II)** | Prohibido el despliegue manual a producción; todo pasa por el pipeline. | El despliegue a `prod` sólo ocurre al mergear a `main` y sólo con imágenes ya publicadas. **Excepción vigente**: la revisión de Cloud Run del frontend todavía se actualiza a mano (TD-081). |
+| **RES-13** | **Operativa (Fase II)** | El frontend no puede desplegarse en S3 ni en un servicio no permitido. | Se despliega en **Google Cloud Run**, que §4.4 del enunciado nombra explícitamente como destino aceptado. |
 
 ---
 

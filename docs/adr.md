@@ -21,6 +21,11 @@
     - [ADR-010: Autenticación, Sesiones y Autorización por Roles (RBAC)](#adr-010-autenticación-sesiones-y-autorización-por-roles-rbac)
     - [ADR-011: Herramientas de Diagramación y Documentación Viva](#adr-011-herramientas-de-diagramación-y-documentación-viva)
     - [ADR-012: Almacenamiento de Objetos para Documentos e Identidad](#adr-012-almacenamiento-de-objetos-para-documentos-e-identidad)
+  - [3 bis. Decisiones de la Fase II: nube, CI/CD e infraestructura (ADR-013 a ADR-016)](#3-bis-decisiones-de-la-fase-ii-nube-cicd-e-infraestructura-adr-013-a-adr-016)
+    - [ADR-013: Revisión del Toolchain de Diagramación](#adr-013-revisión-del-toolchain-de-diagramación)
+    - [ADR-014: Proveedor de Nube](#adr-014-proveedor-de-nube)
+    - [ADR-015: Plataforma de CI/CD](#adr-015-plataforma-de-cicd)
+    - [ADR-016: Topología de Infraestructura en la Nube](#adr-016-topología-de-infraestructura-en-la-nube)
   - [4. Decisiones de Dominio y Reglas de Negocio (D-01 a D-06)](#4-decisiones-de-dominio-y-reglas-de-negocio-d-01-a-d-06)
     - [D-01: Modelado Unificado de Usuarios y Personal Bancario](#d-01-modelado-unificado-de-usuarios-y-personal-bancario)
     - [D-02: Clasificación de Cuentas (Monetarias vs. Ahorro)](#d-02-clasificación-de-cuentas-monetarias-vs-ahorro)
@@ -56,6 +61,14 @@ Este documento unifica y traduce al español todas las decisiones distribuidas e
 | **ADR-010** | Autenticación y RBAC | **JWT Bearer + Hashing `scrypt` + Gateway `RolesGuard`** | Sesiones Stateful con Redis / OAuth2 externo | Autenticación stateless de alto rendimiento y control perimetral estricto (D-06). |
 | **ADR-011** | Toolchain de Diagramación | **Fuentes de Texto Versionadas (Mermaid `.mmd` y PlantUML `.puml`)** | Diagramas binarios (Visio, Draw.io XML) | Trazabilidad git, revisión de cambios en Pull Requests y generación automatizada. |
 | **ADR-012** | Almacenamiento de Objetos | **MinIO (S3-Compatible) + Hashes SHA-256 en Base de Datos** | BLOBs en PostgreSQL / FileSystem local | Desacoplamiento de almacenamiento no estructurado y aislamiento del broker. |
+| **ADR-013** | Toolchain de Diagramación (vigente) | **Mermaid `.mmd` + PlantUML `.puml` obligatorios; Lucid opcional** | Exigir además Lucid / prescindir de Mermaid | Notación UML nativa de casos de uso, que Mermaid no expresa. **Sustituye a ADR-011.** |
+| **ADR-014** | Proveedor de Nube (Fase II) | **Google Cloud Platform** (GKE, Compute Engine, Cloud Run, Artifact Registry) | AWS (EKS factura el plano de control por hora) / Azure (Container Apps no es el servicio que nombra el enunciado) | El enunciado nombra Cloud Run como ejemplo aceptado; GKE incluye el HPA en el plano de control. |
+| **ADR-015** | Plataforma de CI/CD (Fase II) | **GitHub Actions**, cuatro workflows (`ci`, `changes`, `release`, `cd`) | GitLab CI (exigiría espejar el repositorio entregable) / Cloud Build (los triggers viven fuera del repositorio) / Jenkins | Las tres fases obligatorias son tres jobs y, por tanto, tres checks: «no se omitió ninguna etapa» se ve, no se afirma. |
+| **ADR-016** | Topología de Infraestructura (Fase II) | **Terraform**: VPC con dos subredes, 5 VMs Compute Engine sin IP pública, GKE zonal, Cloud Run, **y el mismo chart de Helm que en kind** | Cloud SQL (prohibido por §4.2) / GKE Autopilot / dos clústeres, uno por entorno | Reproducibilidad en un comando y paridad total entre el clúster local y el de la nube. |
+
+> **ADR-011 está superada por ADR-013.** La fila de ADR-011 en esta matriz describe ya la
+> decisión vigente (fuentes de texto versionadas); el registro canónico de por qué Lucid dejó
+> de ser obligatorio es [`architecture/adr/ADR-013-diagramming-toolchain-revision.md`](architecture/adr/ADR-013-diagramming-toolchain-revision.md).
 
 ---
 
@@ -277,6 +290,169 @@ Este documento unifica y traduce al español todas las decisiones distribuidas e
 * **Consecuencias (Trade-offs):**
   * *Positivo:* Escalabilidad ilimitada de archivos, streaming de alto rendimiento y verificación de integridad biométrica por hash SHA-256.
   * *Negativo:* Introduce un contenedor de infraestructura adicional (MinIO) que debe estar disponible durante el registro.
+
+---
+
+## 3 bis. Decisiones de la Fase II: nube, CI/CD e infraestructura (ADR-013 a ADR-016)
+
+Las tres últimas son las decisiones que la Fase II añade y que su rúbrica (§8.2) pide ver
+justificadas con *trade-offs*: **proveedor cloud, herramienta de CI/CD y decisiones de
+infraestructura**. Se tomaron y se implementaron entre el 12 y el 20 de septiembre de 2026, y
+se escribieron el 26 de septiembre; cada registro canónico lleva una línea `Recorded` que lo
+dice, para que nadie las lea como decisiones tomadas después de los hechos.
+
+---
+
+### ADR-013: Revisión del Toolchain de Diagramación
+
+* **Título:** Exigir PlantUML junto a Mermaid; Lucid pasa a ser opcional. **Sustituye a ADR-011.**
+* **Contexto:** ADR-011 exigía un documento Lucid y una fuente Mermaid por diagrama. Mermaid no
+  expresa la notación UML de casos de uso, y mantener tres artefactos por diagrama multiplicaba
+  el trabajo de sincronización sin añadir revisabilidad.
+* **Decisión:** Cada diagrama se entrega con **dos fuentes de texto versionadas que concuerdan**
+  — `.mmd` y `.puml` — y su render `.png`. El documento Lucid queda como material de apoyo
+  opcional.
+* **Alternativas Descartadas:**
+  * *Mantener los tres formatos obligatorios:* descartado por coste de sincronización — dieciséis
+    artefactos que mantener de acuerdo entre sí.
+  * *Sólo PlantUML, sin Mermaid:* descartado porque Mermaid se renderiza nativamente en GitHub,
+    y perder eso hace que un cambio de arquitectura deje de ser legible en el pull request.
+* **Consecuencias (Trade-offs):**
+  * *Positivo:* notación UML nativa donde hace falta; el diff de ambas fuentes es revisable.
+  * *Negativo:* dos fuentes obligatorias que mantener sincronizadas, más un toolchain de
+    PlantUML (Java o un servidor de render).
+* **Registro canónico:** [`architecture/adr/ADR-013-diagramming-toolchain-revision.md`](architecture/adr/ADR-013-diagramming-toolchain-revision.md)
+
+---
+
+### ADR-014: Proveedor de Nube
+
+* **Título:** Desplegar sobre Google Cloud Platform.
+* **Contexto:** El enunciado de la Fase II (§4.3, p. 8) admite **AWS, GCP o Azure** sin preferir
+  ninguno, y fija todo lo demás: Kubernetes, Terraform, bases de datos en VMs y un frontend en
+  un servicio de despliegue rápido que **no** puede ser S3. El entregable es un sistema que
+  responde (§8.1, p. 12), el presupuesto es una bolsa fija de crédito de prueba, y el enunciado
+  imprime un ejemplo concreto de frontend aceptado: **Google Cloud Run** (§4.4, p. 9).
+* **Decisión:** **Google Cloud Platform**, región `us-central1`, zona `us-central1-a`. GKE para
+  las cargas de trabajo, Compute Engine para las cinco bases de datos, Cloud Run para el
+  frontend y Artifact Registry para las imágenes versionadas.
+* **Alternativas Descartadas:**
+  * *AWS:* descartado por el coste de un clúster que permanece encendido hasta el día de la
+    calificación. El nivel gratuito de GKE cubría la tarifa de gestión de **un clúster zonal por
+    cuenta de facturación** —exactamente la forma desplegada aquí— y EKS no tiene equivalente;
+    bajar a ECS o App Runner para evitarlo no es una opción porque §4.2 exige Kubernetes.
+  * *Azure:* descartado pese a que AKS ofrece plano de control gratuito, porque el enunciado
+    nombra Cloud Run y no nombra Container Apps. Es un argumento débil en lo técnico y fuerte en
+    lo entregable: §8.3 penaliza con 10 % un «servicio no permitido», y equiparar Container Apps
+    a Cloud Run es un argumento que habría que ganar en la defensa en lugar de una casilla que
+    se marca.
+  * *Repartir el sistema entre dos proveedores:* descartado porque duplica credenciales,
+    proveedores de Terraform y redes, y obliga al tráfico de base de datos a salir de una VPC
+    privada sin que el enunciado pida nada a cambio.
+* **Consecuencias (Trade-offs):**
+  * *Positivo:* Cloud Run entrega origen HTTPS y certificado gestionados sin balanceador ni DNS;
+    el HPA obligatorio al 80 % es un addon del plano de control de GKE y no hubo que instalar
+    `metrics-server`; un único proveedor de Terraform cubre red, VMs, clúster y serverless.
+  * *Negativo:* la organización de Google Workspace de la USAC aplica
+    `constraints/iam.disableServiceAccountKeyCreation`, así que **no se puede crear una llave de
+    cuenta de servicio** y el pipeline tuvo que construirse sobre *Workload Identity Federation*.
+    Es mejor práctica, pero no fue una elección.
+  * *Negativo:* el crédito es finito, y de ahí salen dos compromisos registrados: tres nodos y no
+    más, y `dev` y `prod` como dos namespaces del mismo clúster en vez de dos clústeres
+    (**TD-070**).
+* **Registro canónico:** [`architecture/adr/ADR-014-cloud-provider.md`](architecture/adr/ADR-014-cloud-provider.md)
+
+---
+
+### ADR-015: Plataforma de CI/CD
+
+* **Título:** Ejecutar el pipeline en GitHub Actions, repartido en cuatro workflows.
+* **Contexto:** El enunciado no pide «un pipeline»: prescribe su forma. §4.1 (pp. 6-8) nombra
+  tres **fases obligatorias** —Build, Test, Validación— en cada push a `feature/<nombre>`, exige
+  repetir Build y Test en el merge request hacia `develop`, define una fase de entrega sobre
+  `release/<version>` o un tag `vX.X.X` que publica imágenes versionadas, y un despliegue a
+  producción en el merge hacia `main` que **consume esas mismas imágenes** y ejecuta un rolling
+  update. §8.3 penaliza con 100 % un pipeline no funcional y con 25 % omitir una etapa. Además,
+  el repositorio entregable vive en GitHub (§8.1).
+* **Decisión:** **GitHub Actions**, en cuatro workflows: `ci.yml` (las tres fases como **tres
+  jobs** encadenados con `needs`), `changes.yml` (workflow reutilizable que decide qué
+  componentes cambiaron), `release.yml` (versión formal + publicación de las siete imágenes) y
+  `cd.yml` (namespace `dev` al mergear a `develop`; rolling update en `prod` al mergear a
+  `main`). La autenticación contra GCP es *Workload Identity Federation*.
+* **Alternativas Descartadas:**
+  * *GitLab CI:* descartado porque el repositorio entregable está en GitHub. Usarlo exige
+    espejar el repositorio, y un espejo que se atrasa es un pipeline verde que verificó el
+    commit equivocado.
+  * *Google Cloud Build:* descartado como pipeline de registro porque **los triggers no viven en
+    el repositorio**: cambiar *cuándo* corre el pipeline dejaría de ser revisable en el pull
+    request que lo provoca. Los dos `cloudbuild*.yaml` de la raíz quedan como vía manual
+    documentada, sin trigger asociado.
+  * *Jenkins:* descartado por ser un servidor que hay que levantar, asegurar y mantener vivo
+    durante cuatro semanas, pagado con el mismo crédito que ya sostiene el clúster.
+* **Consecuencias (Trade-offs):**
+  * *Positivo:* tres fases = tres checks independientes; `needs` impone el orden y detiene todo
+    lo posterior ante un fallo; `strategy.matrix` paraleliza las siete imágenes; la caché de
+    capas Docker (`type=gha`) y la de dependencias (pnpm + Turborepo) vienen de la plataforma.
+  * *Negativo:* los runners de GitHub viven **fuera de la VPC**, así que ningún workflow alcanza
+    una VM de base de datos. Ésa es la razón por la que el remedio de **TD-070** depende de una
+    persona con acceso SSH por IAP y no del pipeline.
+* **Registro canónico:** [`architecture/adr/ADR-015-ci-cd-platform.md`](architecture/adr/ADR-015-ci-cd-platform.md)
+
+---
+
+### ADR-016: Topología de Infraestructura en la Nube
+
+* **Título:** Aprovisionar la nube con Terraform — GKE para las cargas, Compute Engine para las
+  bases de datos, Cloud Run para el frontend.
+* **Contexto:** ADR-005 ya da a cada servicio su propia base de datos **fuera** del clúster y
+  ADR-007 ya libera todo el sistema con **un solo chart de Helm**, pero acotándose al clúster
+  local de kind. Lo que queda abierto es el arreglo en la nube, y §8.3 fija el estándar de la
+  respuesta: infraestructura creada a mano cuesta el 50 % de la nota.
+* **Decisión:** un único módulo raíz de Terraform (`infra/terraform/gcp/`) con seis partes:
+  1. Una **VPC** con subred de GKE (`10.10.0.0/20`, con rangos secundarios para pods y
+     services) y subred de bases de datos (`10.40.0.0/24`), Cloud Router + Cloud NAT para la
+     salida, y tres reglas de firewall.
+  2. **Cinco VMs Compute Engine** `e2-medium` con Debian 12, **sin IP pública**, que se
+     aprovisionan solas por `metadata_startup_script`: instalan PostgreSQL y crean exactamente
+     un rol y una base por servicio.
+  3. **GKE Standard zonal**, pool gestionado de 3 × `e2-standard-2`, canal `REGULAR`, Workload
+     Identity y el addon de HPA habilitado.
+  4. **Cloud Run** para el frontend (puerto 8080, de 0 a 5 instancias, público).
+  5. **El mismo chart de Helm** que en kind, recibiendo las IP privadas por `--set`.
+  6. **`dev` y `prod` como dos namespaces** de ese único clúster, cada uno con su propio
+     RabbitMQ y su propio MinIO, y con los siete HPA al 80 % de CPU.
+* **Alternativas Descartadas:**
+  * *Cloud SQL en vez de cinco VMs:* mejor ingeniería en todos los ejes menos uno —
+    **el enunciado lo prohíbe**. §4.2 (p. 8) y §4.3 (p. 9) exigen «Bases de datos ejecutadas en
+    VM», y §8.1 lo convierte en requisito para poder optar a la calificación.
+  * *GKE Autopilot:* descartado porque factura por *request* de cada pod y no deja elegir el
+    techo, y con un crédito fijo el equipo necesitaba poder fijarlo. Lo que pasa cuando el
+    dimensionamiento va mal está registrado en **TD-071**: con un nodo en vez de los tres que
+    declara `variables.tf`, el clúster reservó 1911m de ~1930m asignables (99 % reservado, 11 %
+    en uso) y el primer despliegue real de producción dejó siete pods en `FailedScheduling`.
+  * *RabbitMQ y MinIO en sus propias VMs:* descartado porque el enunciado exige VMs para las
+    **bases de datos** y nada dice del broker, y tenerlos dentro del clúster es lo único que da
+    a `dev` y `prod` mensajería y almacenamiento de objetos realmente independientes.
+  * *Dos clústeres, uno por entorno:* descartado por presupuesto, y el coste de descartarlo está
+    escrito en vez de escondido — los dos entornos comparten las cinco bases de datos
+    (**TD-070**).
+  * *Un segundo chart o un `values-cloud.yaml`:* descartado porque dos definiciones del mismo
+    despliegue divergen, y la divergencia se descubre en producción.
+* **Consecuencias (Trade-offs):**
+  * *Positivo:* `terraform apply` sobre un proyecto vacío produce la red, las cinco máquinas ya
+    aprovisionadas y el clúster; `terraform output` devuelve las IP privadas y el comando que
+    configura `kubectl`. Como el chart nunca supo que corría en otro sitio, un cambio probado en
+    kind se despliega en GKE sin traducción.
+  * *Negativo:* las VMs no tienen IP pública, `pg_hba.conf` sólo admite `10.0.0.0/8` y los roles
+    de aplicación se crean sin `CREATEDB`. Las tres cosas juntas significan que **nadie fuera de
+    la VPC puede crear una base de datos**, que es exactamente por qué TD-070 sigue abierta.
+  * *Negativo:* **tres recursos del sistema en producción todavía se crean a mano** — el
+    repositorio de Artifact Registry (**TD-079**), el `LoadBalancer` público del Gateway
+    (**TD-080**) y la revisión de Cloud Run que sirve el frontend real (**TD-081**). Es
+    justamente lo que penaliza §8.3, y por eso están registrados en vez de quedar por descubrir.
+  * *Negativo:* RabbitMQ y MinIO dentro del clúster no declaran volúmenes: su estado es efímero
+    (**TD-082**).
+* **Registro canónico:** [`architecture/adr/ADR-016-cloud-infrastructure.md`](architecture/adr/ADR-016-cloud-infrastructure.md)
 
 ---
 
