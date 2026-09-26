@@ -35,12 +35,15 @@ en ellos reconstruye los siete.
 
 ## Despliegue selectivo
 
-> **Estado.** La detección de cambios y la lógica de despliegue selectivo están
-> construidas y probadas, pero **hoy no las consume ningún workflow**: vivían en
-> el despliegue a `dev`, que se retiró porque el clúster corre un nodo en vez de
-> los tres que Terraform declara (**TD-071**). Producción despliega una versión
-> completa desde su tag, donde «selectivo» no aplica. Restaurar el entorno `dev`
-> las devuelve al pipeline sin cambiarlas.
+> **Estado.** En uso. `cd.yml` llama a `changes.yml` en cada merge a `develop`,
+> construye sólo los componentes modificados y los despliega en el namespace
+> `dev`. Estuvo un tiempo construido y sin que ningún workflow lo llamara —
+> vivía en el despliegue a `dev`, que se retiró cuando el clúster corría un
+> nodo en vez de los tres que Terraform declara (**TD-071**); con el pool en
+> sus tres nodos volvió a caber, y con él volvió esto.
+>
+> Producción sigue desplegando la versión completa desde su tag, donde
+> «selectivo» no aplica: un `vX.X.X` es una versión formal del sistema entero.
 
 `.github/workflows/changes.yml` clasifica los archivos que cambiaron y
 devuelve la lista de componentes a construir. Es un workflow reutilizable en
