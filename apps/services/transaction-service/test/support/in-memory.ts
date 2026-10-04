@@ -10,6 +10,10 @@ import type {
   PaymentOutcome,
   StartOutcome,
   TransactionRepository,
+  TransferObservation,
+  TransferRoot,
+  TransferStep,
+  TransferTelemetry,
 } from '../../src/application/ports';
 
 /**
@@ -33,6 +37,8 @@ export class InMemoryTransactionRepository implements TransactionRepository {
   public readonly aliases = new Map<string, string>();
   public readonly events: { transactionId: string; messageType: string; payload: unknown }[] = [];
   public readonly processed = new Set<string>();
+  /** What `start` was given for telemetry; a seeded transfer has none and falls back. */
+  public readonly observations = new Map<string, TransferObservation>();
   /** What the Saga wrote to the outbox, in order — the durable form of `sent`/`published`. */
   public readonly outbox: OutboxMessage[] = [];
   /** The real history (T-28), keyed by transaction, oldest first — mirrors `transaction_transitions`. */
@@ -42,6 +48,8 @@ export class InMemoryTransactionRepository implements TransactionRepository {
   public async start(input: {
     readonly transaction: Transaction;
     readonly outbound?: (transaction: Transaction) => OutboxMessage;
+    readonly requestedAt?: Date;
+    readonly traceContext?: string | null;
   }): Promise<StartOutcome> {
     const existingId = this.#byKey.get(input.transaction.idempotencyKey);
 
@@ -50,6 +58,10 @@ export class InMemoryTransactionRepository implements TransactionRepository {
     }
 
     this.transactions.set(input.transaction.transactionId, input.transaction);
+    this.observations.set(input.transaction.transactionId, {
+      requestedAt: input.requestedAt ?? input.transaction.createdAt,
+      traceContext: input.traceContext ?? null,
+    });
     this.#byKey.set(input.transaction.idempotencyKey, input.transaction.transactionId);
     this.transitions.set(input.transaction.transactionId, [
       {
@@ -172,6 +184,15 @@ export class InMemoryTransactionRepository implements TransactionRepository {
     return null;
   }
 
+  #observationOf(transaction: Transaction): TransferObservation {
+    return (
+      this.observations.get(transaction.transactionId) ?? {
+        requestedAt: transaction.createdAt,
+        traceContext: null,
+      }
+    );
+  }
+
   public async applyEvent(input: {
     readonly transactionId: string;
     readonly messageId: string;
@@ -251,7 +272,12 @@ export class InMemoryTransactionRepository implements TransactionRepository {
       this.outbox.push(...effects.dispatch);
     }
 
-    return { kind: 'APPLIED', transaction: updated, transition };
+    return {
+      kind: 'APPLIED',
+      transaction: updated,
+      transition,
+      observation: this.#observationOf(updated),
+    };
   }
 
   public async dispatchPendingOutbox(
@@ -296,7 +322,7 @@ export class InMemoryTransactionRepository implements TransactionRepository {
       payload: input.payload,
     });
 
-    return { kind: 'RECORDED' };
+    return { kind: 'RECORDED', observation: this.#observationOf(this.transactions.get(input.transactionId)!) };
   }
 
   public async paymentOutcomeOf(transactionId: string): Promise<PaymentOutcome | null> {
@@ -458,5 +484,39 @@ export class SequentialIds {
     this.#issued += 1;
 
     return `44444444-4444-4444-8444-4444444444${String(this.#issued).padStart(2, '0')}`;
+  }
+}
+
+/**
+ * Remembers what the transfer reported about itself, so a use-case test can
+ * assert on it. The traceparent it hands out is fixed, which is what lets a test
+ * check that the context stored with the row is the one a later step reads back.
+ */
+export class RecordingTransferTelemetry implements TransferTelemetry {
+  public static readonly TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+
+  public readonly accepted: { transactionId: string; correlationId: string }[] = [];
+  public duplicates = 0;
+  public readonly steps: TransferStep[] = [];
+  public readonly attempts: Parameters<TransferTelemetry['paymentAttempt']>[0][] = [];
+
+  public openTransfer(): TransferRoot {
+    return {
+      traceparent: RecordingTransferTelemetry.TRACEPARENT,
+      accepted: (event) => {
+        this.accepted.push(event);
+      },
+      duplicate: () => {
+        this.duplicates += 1;
+      },
+    };
+  }
+
+  public step(step: TransferStep): void {
+    this.steps.push(step);
+  }
+
+  public paymentAttempt(attempt: Parameters<TransferTelemetry['paymentAttempt']>[0]): void {
+    this.attempts.push(attempt);
   }
 }
