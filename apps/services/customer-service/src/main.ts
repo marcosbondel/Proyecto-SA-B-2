@@ -33,6 +33,7 @@ import {
   RandomActivationTokenFactory,
   ScryptPasswordHasher,
 } from './infrastructure/security/scrypt-password-hasher';
+import { OtelLifecycleTelemetry } from './infrastructure/telemetry/otel-lifecycle.telemetry';
 import { S3IdentityDocumentReader } from './infrastructure/storage/s3-identity-document.reader';
 import { S3IdentityDocumentStager } from './infrastructure/storage/s3-identity-document.stager';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
@@ -135,6 +136,7 @@ async function bootstrap(): Promise<void> {
   const tokens = new RandomActivationTokenFactory();
   const clock = { now: (): Date => new Date() };
   const publisherFactory = new BrokerEventPublisher(broker);
+  const lifecycleTelemetry = new OtelLifecycleTelemetry(logger);
 
   /**
    * A router per delivery, because the publisher is bound to the message it is
@@ -144,10 +146,19 @@ async function bootstrap(): Promise<void> {
    */
   const routerFor = (envelope: MessageEnvelope<unknown>): InboundMessageRouter => {
     const publisher = publisherFactory.forCause(envelope);
+    const telemetry = lifecycleTelemetry.forCorrelation(envelope.correlationId);
 
     return new InboundMessageRouter([
       new RegisterCustomerHandler(
-        new RegisterCustomerUseCase({ repository, publisher, hasher, tokens, documents, clock }),
+        new RegisterCustomerUseCase({
+          repository,
+          publisher,
+          hasher,
+          tokens,
+          documents,
+          clock,
+          telemetry,
+        }),
       ),
       new UpdateCustomerHandler(new UpdateCustomerUseCase({ repository, publisher, clock })),
       new GetCustomerHandler(new GetCustomerUseCase({ repository, publisher })),
@@ -163,9 +174,11 @@ async function bootstrap(): Promise<void> {
         new GetCustomerListUseCase({ repository, publisher }),
       ),
       new SetIdentityVerdictHandler(
-        new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
+        new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens, telemetry }),
       ),
-      new SetKycStatusHandler(new SetKycStatusUseCase({ repository, publisher, clock })),
+      new SetKycStatusHandler(
+        new SetKycStatusUseCase({ repository, publisher, clock, telemetry }),
+      ),
       new CheckKycHandler(new CheckKycUseCase({ repository, publisher })),
       new AuthenticateCustomerHandler(
         new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
@@ -183,7 +196,7 @@ async function bootstrap(): Promise<void> {
         new ConfirmPasswordResetUseCase({ repository, publisher, hasher, tokens, clock }),
       ),
       new ValidateIdentityHandler(
-        new ValidateIdentityUseCase({ repository, publisher, documents, clock }),
+        new ValidateIdentityUseCase({ repository, publisher, documents, clock, telemetry }),
       ),
     ]);
   };

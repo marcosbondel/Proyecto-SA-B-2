@@ -338,7 +338,7 @@ Desarrollado en Vue 3 y Nuxt con Server-Side Rendering y empaquetado en contened
 Cada microservicio gestiona su propio esquema relacional independiente en PostgreSQL 18:
 
 ### 6.1 Base de Datos `customer`
-* `customers`: `(customer_id PK, username UNIQUE, email UNIQUE, identity_document, kyc_status, created_at)`
+* `customers`: `(customer_id PK, username UNIQUE, email UNIQUE, identity_document, kyc_status, created_at, creation_trace)` — `creation_trace` es el `traceparent` W3C del span de creación (T-41), nulo si no había SDK de trazas
 * `identity_documents`: `(document_id PK, customer_id FK, object_key, photo_sha256, verified_at)`
 * `email_activation_tokens`: `(token_hash PK, customer_id FK, expires_at, used_at)`
 * `processed_messages`: `(idempotency_key, message_type PK, processed_at)`

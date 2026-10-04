@@ -127,6 +127,23 @@ describeIntegration('PostgresCustomerRepository', () => {
     expect(found?.status).toBe('PENDING_ACTIVATION');
   });
 
+  it('stores the creation trace with the row and reads it back (T-41)', async () => {
+    const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+    const stored = await repository.registerCustomer({
+      ...inputFor(registration()),
+      creationTrace: traceparent,
+    });
+
+    await expect(repository.findCreationTrace(stored.customerId)).resolves.toBe(traceparent);
+  });
+
+  it('has no creation trace for a customer registered without one, or for nobody', async () => {
+    const stored = await repository.registerCustomer(inputFor(registration()));
+
+    await expect(repository.findCreationTrace(stored.customerId)).resolves.toBeNull();
+    await expect(repository.findCreationTrace(randomUUID())).resolves.toBeNull();
+  });
+
   it('refuses a duplicated document with the invariant it violated (C-1)', async () => {
     const first = registration();
     await repository.registerCustomer(inputFor(first));
