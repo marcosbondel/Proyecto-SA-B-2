@@ -75,6 +75,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/adr/ADR-014-cloud-provider.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/ADR-015-ci-cd-platform.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/ADR-016-cloud-infrastructure.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/architecture/adr/ADR-017-account-anomaly-reports-not-blocks.md` | project | David Barrios | current | 2026-10-04 |
 | `docs/architecture/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/decision-matrix.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
@@ -117,6 +118,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-30-event-classification-evidence.md` | project | Marcos Bonifasi | current | 2026-09-12 |
 | `docs/qa/backend/T-31-integration-evidence.md` | project | Marcos Bonifasi | current | 2026-09-12 |
 | `docs/qa/backend/T-41-customer-lifecycle-telemetry-evidence.md` | project | Enner Mendizabal | current | 2026-10-04 |
+| `docs/qa/backend/T-42-account-activity-monitoring-evidence.md` | project | David Barrios | current | 2026-10-04 |
 | `docs/process/implementations.md` | project | David Barrios | current | 2026-09-12 |
 | `docs/images/kubernetes/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `context/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |

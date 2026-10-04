@@ -251,6 +251,10 @@ services:
       DEACTIVATION_INTERVAL_MS: ${DEACTIVATION_INTERVAL_MS:-86400000}
       INACTIVITY_MONTHS: ${INACTIVITY_MONTHS:-6}
       INACTIVITY_MIN_BALANCE_MINOR: ${INACTIVITY_MIN_BALANCE_MINOR:-5000}
+      # T-42: more than N debits and credits on one account in M minutes is an
+      # anomaly. The assignment suggests ten in five; lower them to see one.
+      ANOMALY_MAX_OPERATIONS: ${ANOMALY_MAX_OPERATIONS:-10}
+      ANOMALY_WINDOW_MINUTES: ${ANOMALY_WINDOW_MINUTES:-5}
       # Two accounts for the demo client (one funded), matching customer-service's
       # SEED_DEMO_DATA. Idempotent; off by default in code.
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
