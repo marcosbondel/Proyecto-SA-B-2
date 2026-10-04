@@ -27,3 +27,34 @@ describe('account-service environment', () => {
     expect(() => loadEnvironment(malformed)).toThrow(/PORT/);
   });
 });
+
+describe('the high-frequency rule (T-42)', () => {
+  it('defaults to the assignment’s ten operations in five minutes', () => {
+    const environment = loadEnvironment(complete);
+
+    expect(environment.ANOMALY_MAX_OPERATIONS).toBe(10);
+    expect(environment.ANOMALY_WINDOW_MINUTES).toBe(5);
+  });
+
+  it('takes N and M from the environment, which is what the ConfigMap sets', () => {
+    const environment = loadEnvironment({
+      ...complete,
+      ANOMALY_MAX_OPERATIONS: '25',
+      ANOMALY_WINDOW_MINUTES: '15',
+    });
+
+    expect(environment.ANOMALY_MAX_OPERATIONS).toBe(25);
+    expect(environment.ANOMALY_WINDOW_MINUTES).toBe(15);
+  });
+
+  it.each([
+    ['ANOMALY_MAX_OPERATIONS', '0'],
+    ['ANOMALY_MAX_OPERATIONS', '-3'],
+    ['ANOMALY_MAX_OPERATIONS', 'many'],
+    ['ANOMALY_WINDOW_MINUTES', '0'],
+    ['ANOMALY_WINDOW_MINUTES', '2.5'],
+    ['ANOMALY_WINDOW_MINUTES', '99999'],
+  ])('refuses %s = %s, naming the variable', (name, value) => {
+    expect(() => loadEnvironment({ ...complete, [name]: value })).toThrow(new RegExp(name));
+  });
+});

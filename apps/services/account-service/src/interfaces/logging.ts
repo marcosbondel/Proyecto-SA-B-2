@@ -16,6 +16,17 @@ export interface LogFields {
   readonly messageType?: string;
   readonly customerId?: string;
   readonly accountId?: string;
+  /** Telemetry of the account activity (T-42). Never a metric label; a log field. */
+  readonly accountType?: string;
+  readonly operation?: string;
+  readonly transactionId?: string;
+  readonly operationCount?: number;
+  readonly threshold?: number;
+  readonly windowMinutes?: number;
+  readonly republished?: boolean;
+  readonly stage?: string;
+  readonly traceId?: string;
+  readonly spanId?: string;
   readonly runId?: string;
   readonly outcome?: string;
   readonly reason?: string;

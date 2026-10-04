@@ -80,6 +80,26 @@ export class AccountServiceEnvironment {
   public INACTIVITY_MIN_BALANCE_MINOR!: number;
 
   /**
+   * The high-frequency rule (Fase 3, T-42): more than `ANOMALY_MAX_OPERATIONS`
+   * debits and credits on one account inside `ANOMALY_WINDOW_MINUTES` minutes.
+   *
+   * Configuration and not constants because the assignment says they must be
+   * configurable from the ConfigMap, and because a demonstration cannot send
+   * eleven operations in five minutes to every reviewer. The defaults are the
+   * assignment's own suggestion, so an unconfigured deployment behaves as
+   * specified.
+   */
+  @IsInt()
+  @Min(1)
+  @Max(100_000)
+  public ANOMALY_MAX_OPERATIONS!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(1_440)
+  public ANOMALY_WINDOW_MINUTES!: number;
+
+  /**
    * Whether to insert the demo client's two accounts at boot.
    *
    * Off by default; on in the dev and demo stacks, alongside the same flag in
@@ -117,6 +137,8 @@ export function loadEnvironment(
     DEACTIVATION_INTERVAL_MS: toInteger(source.DEACTIVATION_INTERVAL_MS) ?? ONE_DAY_MS,
     INACTIVITY_MONTHS: toInteger(source.INACTIVITY_MONTHS) ?? 6,
     INACTIVITY_MIN_BALANCE_MINOR: toInteger(source.INACTIVITY_MIN_BALANCE_MINOR) ?? 5_000,
+    ANOMALY_MAX_OPERATIONS: toInteger(source.ANOMALY_MAX_OPERATIONS) ?? 10,
+    ANOMALY_WINDOW_MINUTES: toInteger(source.ANOMALY_WINDOW_MINUTES) ?? 5,
     SEED_DEMO_DATA: toBoolean(source.SEED_DEMO_DATA, false),
   });
 
