@@ -351,7 +351,7 @@ Cada microservicio gestiona su propio esquema relacional independiente en Postgr
 * `account_anomalies`: `(anomaly_id PK, account_id FK, rule, operation_count, threshold, window_minutes, window_start, detected_at, claimed_at, published_at)` — las anomalías de alta frecuencia (T-42); se escribe antes de publicar y `published_at` nulo significa «detectada, aún sin anunciar»
 
 ### 6.3 Base de Datos `transaction`
-* `transactions`: `(transaction_id PK, source_account, target_account, amount_minor, status, failure_reason, created_at)`
+* `transactions`: `(transaction_id PK, source_account, target_account, amount_minor, status, failure_reason, created_at, requested_at, trace_context)` — `requested_at` es el `occurredAt` de `transfer.requested.v1` (el inicio de la latencia, SLI-3) y `trace_context` el `traceparent` W3C de la raíz de la traza de la transferencia (T-43); ambos nulos en las filas anteriores a la migración 010
 * `transaction_events`: `(event_id PK, transaction_id FK, event_type, payload, occurred_at)`
 * `transaction_transitions`: `(transition_id PK, transaction_id FK, from_status, to_status, created_at)`
 
