@@ -1,6 +1,11 @@
 import { DepositUseCase } from '../src/application/deposit.use-case';
 import { openAccount } from '../src/domain/account';
-import { FixedClock, InMemoryAccountRepository, RecordingPublisher } from './support/in-memory';
+import {
+  FixedClock,
+  InMemoryAccountRepository,
+  RecordingActivity,
+  RecordingPublisher,
+} from './support/in-memory';
 
 /**
  * `A-05` — cash taken at a window.
@@ -41,6 +46,7 @@ function fixture(status: 'ACTIVE' | 'INACTIVE' = 'ACTIVE', balanceMinor = 0) {
   const repository = new InMemoryAccountRepository();
   const publisher = new RecordingPublisher();
   const clock = new FixedClock(NOW);
+  const activity = new RecordingActivity();
 
   repository.accounts.set(ACCOUNT, {
     ...openAccount({
@@ -56,7 +62,8 @@ function fixture(status: 'ACTIVE' | 'INACTIVE' = 'ACTIVE', balanceMinor = 0) {
   return {
     repository,
     publisher,
-    deposit: new DepositUseCase({ repository, publisher, clock }),
+    activity,
+    deposit: new DepositUseCase({ repository, publisher, clock, activity }),
   };
 }
 
@@ -186,5 +193,28 @@ describe('taking a deposit at a window', () => {
       'account.deposit.rejected.v1',
       'account.deposit.rejected.v1',
     ]);
+  });
+});
+
+describe('reporting the deposit to the activity monitor (T-42)', () => {
+  it('reports it as a credit with no transaction, because that is how it enters the account', async () => {
+    const { activity, deposit } = fixture();
+
+    await deposit.execute(PAYLOAD, TELLER, 'key-1');
+
+    expect(activity.movements).toMatchObject([
+      { type: 'CREDIT', transactionId: null, account: { accountId: ACCOUNT, customerId: CUSTOMER } },
+    ]);
+  });
+
+  it('does not report a refused deposit, nor a redelivered one twice', async () => {
+    const { activity, deposit } = fixture();
+
+    await deposit.execute(PAYLOAD, CLIENT, 'key-refused');
+    expect(activity.movements).toEqual([]);
+
+    await deposit.execute(PAYLOAD, TELLER, 'key-1');
+    await deposit.execute(PAYLOAD, TELLER, 'key-1');
+    expect(activity.movements).toHaveLength(1);
   });
 });

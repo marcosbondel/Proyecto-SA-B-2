@@ -9,7 +9,12 @@ import { ListAccountsUseCase } from '../src/application/list-accounts.use-case';
 import { SetAccountStatusUseCase } from '../src/application/set-account-status.use-case';
 import { openAccount } from '../src/domain/account';
 import { quetzales } from '../src/domain/money';
-import { FixedClock, InMemoryAccountRepository, RecordingPublisher } from './support/in-memory';
+import {
+  FixedClock,
+  InMemoryAccountRepository,
+  RecordingActivity,
+  RecordingPublisher,
+} from './support/in-memory';
 
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
@@ -27,8 +32,15 @@ function fixture() {
   const repository = new InMemoryAccountRepository();
   const publisher = new RecordingPublisher();
   const clock = new FixedClock(NOW);
+  const activity = new RecordingActivity();
 
-  return { repository, publisher, clock, dependencies: { repository, publisher, clock } };
+  return {
+    repository,
+    publisher,
+    clock,
+    activity,
+    dependencies: { repository, publisher, clock, activity },
+  };
 }
 
 function seed(
@@ -703,5 +715,91 @@ describe('the automatic deactivation, as a use case', () => {
     await useCase.execute('run-2');
 
     expect(publisher.events).toHaveLength(1);
+  });
+});
+
+describe('reporting each movement to the activity monitor (T-42)', () => {
+  const debitCommand = { transactionId: TRANSACTION, accountId: ACCOUNT, amount: quetzales(2_500) };
+
+  it('reports an applied debit, with the account and the transfer it belongs to', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 10_000, accountType: 'AHORRO' });
+
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+
+    expect(activity.movements).toHaveLength(1);
+    expect(activity.movements[0]).toMatchObject({
+      type: 'DEBIT',
+      transactionId: TRANSACTION,
+      account: { accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'AHORRO' },
+    });
+  });
+
+  it('does not report a debit that was refused: nothing moved', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 1_000 });
+
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(
+      { ...debitCommand, accountId: OTHER_ACCOUNT },
+      'key-2',
+    );
+
+    expect(activity.movements).toEqual([]);
+  });
+
+  it('does not report a redelivered debit twice: the movement happened once', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 10_000 });
+
+    const useCase = new DebitAccountUseCase(dependencies);
+    await useCase.execute(debitCommand, 'key-1');
+    await useCase.execute(debitCommand, 'key-1');
+    await useCase.execute(debitCommand, 'key-1');
+
+    expect(activity.movements).toHaveLength(1);
+  });
+
+  it('reports an applied credit', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 1_000 });
+
+    await new CreditAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+
+    expect(activity.movements).toMatchObject([{ type: 'CREDIT', transactionId: TRANSACTION }]);
+  });
+
+  it('does not report a credit to an account that does not exist', async () => {
+    const { activity, dependencies } = fixture();
+
+    await new CreditAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+
+    expect(activity.movements).toEqual([]);
+  });
+
+  it('reports a compensation as its own kind of movement, once however often it is delivered', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 10_000 });
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'debit-key');
+
+    const useCase = new CompensateDebitUseCase(dependencies);
+    const compensation = { ...debitCommand, triggeredBy: 'PAYMENT_DECLINED' as const };
+    await useCase.execute(compensation, 'compensation-key');
+    await useCase.execute(compensation, 'compensation-key');
+
+    expect(activity.movements.map((movement) => movement.type)).toEqual(['DEBIT', 'COMPENSATION']);
+  });
+
+  it('does not report a status change or the automatic deactivation: no balance moved', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 10_000 });
+
+    await new SetAccountStatusUseCase(dependencies).execute(
+      { accountId: ACCOUNT, status: 'INACTIVE', reason: 'a reason' },
+      { customerId: CUSTOMER, role: 'ADMINISTRADOR' },
+      'key-1',
+    );
+
+    expect(activity.movements).toEqual([]);
   });
 });

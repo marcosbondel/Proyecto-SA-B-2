@@ -6,6 +6,7 @@ import { MessageBroker } from '@bank/messaging';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
+import { ActivityMonitor } from './application/activity-monitor';
 import { CompensateDebitUseCase } from './application/compensate-debit.use-case';
 import { CreateAccountUseCase } from './application/create-account.use-case';
 import { CreditAccountUseCase } from './application/credit-account.use-case';
@@ -27,6 +28,7 @@ import { seedDemoAccounts } from './infrastructure/persistence/seed-demo-data';
 import { PostgresAccountRepository } from './infrastructure/persistence/postgres-account.repository';
 import { PostgresSweepLease } from './infrastructure/persistence/postgres-sweep-lease';
 import { DeactivationScheduler } from './infrastructure/scheduler/deactivation.scheduler';
+import { OtelActivityTelemetry } from './infrastructure/telemetry/otel-activity.telemetry';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
@@ -102,6 +104,11 @@ async function bootstrap(): Promise<void> {
 
   const clock = { now: (): Date => new Date() };
   const publisherFactory = new BrokerEventPublisher(broker);
+  const activityTelemetry = new OtelActivityTelemetry(logger);
+  const activityRule = {
+    maxOperations: environment.ANOMALY_MAX_OPERATIONS,
+    windowMinutes: environment.ANOMALY_WINDOW_MINUTES,
+  };
 
   /**
    * A router per delivery, because the publisher is bound to the message it is
@@ -112,17 +119,30 @@ async function bootstrap(): Promise<void> {
   const routerFor = (envelope: MessageEnvelope<unknown>): InboundMessageRouter => {
     const publisher = publisherFactory.forCause(envelope);
 
+    /**
+     * Per delivery, like the publisher: the monitor reports with the
+     * correlation id of the command that caused the movement, and a shared
+     * instance would hand one request's id to another under any concurrency.
+     */
+    const activity = new ActivityMonitor({
+      repository,
+      publisher,
+      clock,
+      telemetry: activityTelemetry.forCorrelation(envelope.correlationId),
+      rule: activityRule,
+    });
+
     return new InboundMessageRouter([
       new CreateAccountHandler(new CreateAccountUseCase({ repository, publisher, clock })),
       new GetBalanceHandler(new GetBalanceUseCase({ repository, publisher })),
       new ListAccountsHandler(new ListAccountsUseCase({ repository, publisher })),
       new GetOperationsHandler(new GetOperationsUseCase({ repository, publisher })),
-      new DebitAccountHandler(new DebitAccountUseCase({ repository, publisher, clock })),
-      new CreditAccountHandler(new CreditAccountUseCase({ repository, publisher, clock })),
-      new DepositHandler(new DepositUseCase({ repository, publisher, clock })),
+      new DebitAccountHandler(new DebitAccountUseCase({ repository, publisher, clock, activity })),
+      new CreditAccountHandler(new CreditAccountUseCase({ repository, publisher, clock, activity })),
+      new DepositHandler(new DepositUseCase({ repository, publisher, clock, activity })),
       new ListBillersHandler(new ListBillersUseCase({ repository, publisher })),
       new GetAccountStatsHandler(new GetAccountStatsUseCase({ repository, publisher })),
-      new CompensateDebitHandler(new CompensateDebitUseCase({ repository, publisher, clock })),
+      new CompensateDebitHandler(new CompensateDebitUseCase({ repository, publisher, clock, activity })),
       new SetAccountStatusHandler(new SetAccountStatusUseCase({ repository, publisher, clock })),
     ]);
   };
