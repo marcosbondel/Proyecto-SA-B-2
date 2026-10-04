@@ -197,6 +197,16 @@ per-debit commission (`AHORRO` only, for the account's whole life).
 which is a debit's own refusal when the account cannot cover the amount plus a commission it may
 carry.
 
+## Fase 3 extension: account usage monitoring (T-42)
+
+The assignment's Fase 3 (§4.1, Account Service) asks the system to measure how accounts are used
+and to flag a pattern: more than N debits and credits on one account inside a window of M minutes.
+The flag is an event, and Notification & Audit turns it into a `WARNING` (T-45).
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| event | `account.anomaly.detected` | **Added by T-42.** Published at most once per account per window. It reports and does not block the account: the reasoning is the ADR that closes T-42 |
+
 Enforcing account-type rules is entirely Account Service's own job — the opening minimum is
 checked once, before an account is created; the commission is applied atomically alongside the
 debit it accompanies — so no other service needed a change to consume this. Both rules live

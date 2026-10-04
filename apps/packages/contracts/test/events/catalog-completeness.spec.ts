@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(103);
+    expect(catalog).toHaveLength(104);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,11 +77,17 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the fifty-six messages recorded as an extension, and no others', () => {
+  it('adds exactly the fifty-seven messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
     expect(added.sort()).toEqual([
+      /*
+       * Added by T-42 (Fase 3, §4.1 — Account Service). A signal that an account
+       * was used more often than the configured limit allows. It reports and
+       * does not block, and is published at most once per account per window.
+       */
+      'account.anomaly.detected.v1',
       'account.balance.replied.v1',
       /*
        * The two that make the prototype's `G-01` "pago de servicios" possible.

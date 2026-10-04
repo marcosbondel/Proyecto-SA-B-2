@@ -57,6 +57,7 @@ import { accountCreditRejectedV1 } from './account/account.credit.rejected.v1';
 import { accountCreditRequestedV1 } from './account/account.credit.requested.v1';
 import { accountBillersQueryV1 } from './account/account.billers.query.v1';
 import { accountBillersRepliedV1 } from './account/account.billers.replied.v1';
+import { accountAnomalyDetectedV1 } from './account/account.anomaly.detected.v1';
 import { accountCommissionChargedV1 } from './account/account.commission.charged.v1';
 import { accountDepositV1 } from './account/account.deposit.v1';
 import { accountDepositedV1 } from './account/account.deposited.v1';
@@ -164,6 +165,7 @@ export * from './audit/audit.stats.query.v1';
 export * from './audit/audit.stats.replied.v1';
 export * from './account/account.billers.query.v1';
 export * from './account/account.billers.replied.v1';
+export * from './account/account.anomaly.detected.v1';
 export * from './account/account.commission.charged.v1';
 export * from './account/account.credited.v1';
 export * from './account/account.deposit.rejected.v1';
@@ -279,6 +281,7 @@ export const catalog: readonly MessageContract[] = [
   auditStatsRepliedV1,
   accountBillersQueryV1,
   accountBillersRepliedV1,
+  accountAnomalyDetectedV1,
   accountCommissionChargedV1,
   accountDepositV1,
   accountDepositedV1,

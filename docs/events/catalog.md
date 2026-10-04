@@ -100,6 +100,7 @@ messages, nothing that reveals whether an account or an email exists.
 | `account.set-status.v1` | command | gateway | account-service |
 | `account.deactivated.v1` | event | account-service | notification-audit-service |
 | `account.reactivated.v1` | event | account-service | notification-audit-service |
+| `account.anomaly.detected.v1` | event | account-service | notification-audit-service |
 | `account.deposit.v1` | command | gateway | account-service |
 | `account.deposited.v1` | event | account-service | notification-audit-service |
 | `account.deposit.rejected.v1` | event | account-service | notification-audit-service |
@@ -1210,6 +1211,41 @@ compares that field against the amount its own Saga asked to move (`account.debi
 and a payload that silently grew by a fee it never asked about would break that equality. The
 commission is a fact about Account Service's own account-type rule, not about the transfer, so it
 travels as a separate statement.
+
+### `account.anomaly.detected.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | account-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `account.anomaly.detected.v1` |
+| **Contract** | [`account.anomaly.detected.v1.ts`](../../apps/packages/contracts/src/events/account/account.anomaly.detected.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `accountId` | UUID v4 | yes |
+| `customerId` | UUID v4 | no |
+| `accountType` | `MONETARIA` \| `AHORRO` | yes |
+| `rule` | `HIGH_FREQUENCY` | yes |
+| `operationCount` | integer, > 0 | yes |
+| `threshold` | integer, > 0 | yes |
+| `windowMinutes` | integer, > 0 | yes |
+| `windowStart` | ISO-8601 timestamp | yes |
+| `detectedAt` | ISO-8601 timestamp | yes |
+
+**Preconditions.** More than `threshold` debits and credits were applied to one account inside a
+sliding window of `windowMinutes` minutes (ten operations in five minutes by default; both are
+configuration, and both travel in the event so a consumer can say which rule fired). Counted from
+the database, never from memory, so the answer does not depend on how many replicas are running.
+
+**Effects.** Audited, and Notification & Audit raises a `WARNING` notification (T-45). **The
+account is not blocked**: the event reports and nothing else. After publishing, the producer stays
+silent about that account for the same `windowMinutes`, so a burst is one event rather than one
+per operation beyond the limit.
+
+**On error.** Retry, then dead-letter. Carries no balance, document, name or address.
 
 
 ---
