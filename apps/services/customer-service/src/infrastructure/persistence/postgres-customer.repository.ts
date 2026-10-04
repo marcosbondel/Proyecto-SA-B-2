@@ -80,6 +80,7 @@ export class PostgresCustomerRepository implements CustomerRepository {
     readonly emailVerifiedAt?: string | null;
     readonly idempotency: ProcessedMessage;
     readonly now: Date;
+    readonly creationTrace?: string | null;
   }): Promise<Customer> {
     // Throws INVALID_BIRTH_DATE before a connection is taken: an incoherent
     // date should not cost a transaction.
@@ -105,8 +106,8 @@ export class PostgresCustomerRepository implements CustomerRepository {
           `INSERT INTO customers (
              customer_id, full_name, document_number, email, birth_date, address,
              username, role, status, identity_status, kyc_status, password_hash,
-             email_verified_at, created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
+             email_verified_at, created_at, updated_at, creation_trace
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15)
            RETURNING *`,
           [
             shape.customerId,
@@ -123,6 +124,7 @@ export class PostgresCustomerRepository implements CustomerRepository {
             input.credentialHash,
             emailVerifiedAt,
             input.now.toISOString(),
+            input.creationTrace ?? null,
           ],
         );
 
@@ -683,6 +685,15 @@ export class PostgresCustomerRepository implements CustomerRepository {
       pendingValidation: Number(row?.pending_validation ?? '0'),
       activatedToday: Number(row?.activated_today ?? '0'),
     };
+  }
+
+  public async findCreationTrace(customerId: string): Promise<string | null> {
+    const found = await this.#pool.query<{ creation_trace: string | null }>(
+      `SELECT creation_trace FROM customers WHERE customer_id = $1`,
+      [customerId],
+    );
+
+    return found.rows[0]?.creation_trace ?? null;
   }
 
   public async findProcessed(
