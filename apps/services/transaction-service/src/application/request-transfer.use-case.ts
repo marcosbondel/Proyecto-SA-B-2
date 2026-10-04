@@ -14,7 +14,7 @@ import type {
   Transaction,
 } from '../domain/transaction';
 import type { AdvanceSagaUseCase } from './advance-saga.use-case';
-import type { Clock, EventPublisher, TransactionRepository } from './ports';
+import type { Clock, EventPublisher, TransactionRepository, TransferTelemetry } from './ports';
 
 /** What a request did, for the log line the interface layer writes. */
 export type RequestOutcome =
@@ -51,17 +51,20 @@ export class RequestTransferUseCase {
   readonly #publisher: EventPublisher;
   readonly #saga: AdvanceSagaUseCase;
   readonly #clock: Clock;
+  readonly #telemetry: TransferTelemetry;
 
   constructor(dependencies: {
     readonly repository: TransactionRepository;
     readonly publisher: EventPublisher;
     readonly saga: AdvanceSagaUseCase;
     readonly clock: Clock;
+    readonly telemetry: TransferTelemetry;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#saga = dependencies.saga;
     this.#clock = dependencies.clock;
+    this.#telemetry = dependencies.telemetry;
   }
 
   public async execute(
@@ -80,6 +83,12 @@ export class RequestTransferUseCase {
        * insert rather than derived later (TD-033, TD-035).
        */
       readonly identity: { readonly customerId: string } | null;
+      /**
+       * When `transfer.requested.v1` was emitted, ISO-8601: the start of the
+       * transfer's latency (SLI-3). Optional so a caller that does not have the
+       * envelope to hand falls back to the moment the row is created.
+       */
+      readonly occurredAt?: string;
     },
   ): Promise<RequestOutcome> {
     const refusal = requestRefusal(payload);
@@ -108,8 +117,18 @@ export class RequestTransferUseCase {
       now,
     });
 
+    /**
+     * Opened before the insert so its context is stored in the same row — the
+     * link every later step of this transfer joins (T-43). It ends as accepted,
+     * or as the retry it turns out to be.
+     */
+    const root = this.#telemetry.openTransfer();
+    const requestedAt = parseInstant(envelope.occurredAt) ?? now;
+
     const outcome = await this.#repository.start({
       transaction: candidate,
+      requestedAt,
+      traceContext: root.traceparent,
       /**
        * Announced in `PENDING`, which is where it genuinely is for the length
        * of this method. The audit record is meant to reconstruct the flow, and
@@ -142,8 +161,15 @@ export class RequestTransferUseCase {
     });
 
     if (outcome.kind === 'EXISTS') {
+      root.duplicate();
+
       return await this.#existing(outcome.transaction, payload, envelope);
     }
+
+    root.accepted({
+      transactionId: outcome.transaction.transactionId,
+      correlationId: outcome.transaction.correlationId,
+    });
 
     /**
      * The first edge of the diagram, taken through the same code path as every
@@ -271,4 +297,15 @@ export class RequestTransferUseCase {
       },
     });
   }
+}
+
+/** An ISO-8601 instant, or `null` when it is absent or not one. */
+function parseInstant(value: string | undefined): Date | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }

@@ -283,6 +283,24 @@ export const MIGRATIONS: readonly Migration[] = [
                 OR payment_scenario IN ('APPROVE','REJECT','TRANSIENT_FAILURE','TIMEOUT'))`,
     ],
   },
+  {
+    /*
+     * T-43: what the telemetry needs that the state machine does not.
+     *
+     * `requested_at` is the `occurredAt` of `transfer.requested.v1` — the start
+     * SLI-3 measures the Saga's duration from — and differs from `created_at`
+     * by however long the message waited in the broker. `trace_context` is the
+     * W3C `traceparent` of the span that opened the transfer's trace, so that a
+     * step arriving as a different message, possibly on a different pod, joins
+     * the same trace. Both nullable: a row from before this migration has
+     * neither, and the telemetry falls back to `created_at` and to no link.
+     */
+    name: '010_transactions_observability',
+    statements: [
+      `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ`,
+      `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

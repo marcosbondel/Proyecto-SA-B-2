@@ -1,14 +1,20 @@
 import { randomUUID } from 'node:crypto';
 
 import { EXCHANGES, createEnvelope, routingKeyFor } from '@bank/contracts';
+import { trace } from '@opentelemetry/api';
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { Pool } from 'pg';
 
+import { AdvanceSagaUseCase } from '../src/application/advance-saga.use-case';
 import type { AppliedEffects, OutboxMessage } from '../src/application/ports';
+import { RequestTransferUseCase } from '../src/application/request-transfer.use-case';
 import { applyEvent, openTransaction } from '../src/domain/transaction';
 import type { Transaction, Transition } from '../src/domain/transaction';
 import { quetzales } from '../src/domain/money';
 import { migrate } from '../src/infrastructure/persistence/migrations';
 import { PostgresTransactionRepository } from '../src/infrastructure/persistence/postgres-transaction.repository';
+import { OtelTransferTelemetry } from '../src/infrastructure/telemetry/otel-transfer.telemetry';
+import { FixedClock, RecordingPublisher, SequentialIds } from './support/in-memory';
 
 /**
  * The repository against a real PostgreSQL, because the guarantees that matter
@@ -627,7 +633,7 @@ describeIntegration('PostgresTransactionRepository', () => {
         payload: { paymentId: randomUUID(), attempt: 1, errorType: 'TRANSIENT' },
       });
 
-      expect(outcome).toEqual({ kind: 'RECORDED' });
+      expect(outcome).toMatchObject({ kind: 'RECORDED' });
 
       const rows = await pool.query(
         `SELECT payload FROM transaction_events
@@ -662,7 +668,7 @@ describeIntegration('PostgresTransactionRepository', () => {
         payload: { paymentId: randomUUID(), attempt: 1 },
       });
 
-      expect(first).toEqual({ kind: 'RECORDED' });
+      expect(first).toMatchObject({ kind: 'RECORDED' });
       expect(second).toEqual({ kind: 'DUPLICATE' });
 
       const rows = await pool.query<{ n: number }>(
@@ -1176,4 +1182,213 @@ describeIntegration('PostgresTransactionRepository', () => {
     });
   });
 
+  /**
+   * T-43, against a real database: the columns the telemetry needs, the trace a
+   * later step joins, and the real use cases producing real spans from them.
+   * What these prove cannot be shown with a double: that the context is written
+   * in the same insert as the row, that it survives the round trip through the
+   * row lock, and that a row from before migration 010 still works.
+   */
+  describe('the observability of a transfer (T-43)', () => {
+    const TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+    const SECOND = 1_000;
+
+    const row = async (transactionId: string) =>
+      (
+        await pool.query<{ requested_at: Date | null; trace_context: string | null; created_at: Date }>(
+          'SELECT requested_at, trace_context, created_at FROM transactions WHERE transaction_id = $1',
+          [transactionId],
+        )
+      ).rows[0]!;
+
+    it('stores the request timestamp and the trace context in the same insert as the transfer', async () => {
+      const requestedAt = new Date(NOW.getTime() - 1_500);
+      const { transaction } = await repository.start({
+        transaction: candidate(),
+        requestedAt,
+        traceContext: TRACEPARENT,
+      });
+
+      const stored = await row(transaction.transactionId);
+
+      expect(stored.requested_at?.toISOString()).toBe(requestedAt.toISOString());
+      expect(stored.trace_context).toBe(TRACEPARENT);
+    });
+
+    it('falls back to the creation time, and to no trace, when it is not given', async () => {
+      const { transaction } = await repository.start({ transaction: candidate() });
+
+      const outcome = await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'customer.kyc.checked.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
+        now: NOW,
+      });
+
+      expect(outcome).toMatchObject({
+        kind: 'APPLIED',
+        observation: { requestedAt: NOW, traceContext: null },
+      });
+    });
+
+    it('hands back the stored trace with every applied transition', async () => {
+      const requestedAt = new Date(NOW.getTime() - 2_000);
+      const { transaction } = await repository.start({
+        transaction: candidate(),
+        requestedAt,
+        traceContext: TRACEPARENT,
+      });
+
+      const outcome = await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'customer.kyc.checked.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
+        now: NOW,
+      });
+
+      expect(outcome.kind).toBe('APPLIED');
+      expect(
+        outcome.kind === 'APPLIED' && outcome.observation.requestedAt.toISOString(),
+      ).toBe(requestedAt.toISOString());
+      expect(outcome.kind === 'APPLIED' && outcome.observation.traceContext).toBe(TRACEPARENT);
+    });
+
+    it('hands the same trace back with a payment attempt, which is not a transition', async () => {
+      const { transaction } = await repository.start({
+        transaction: candidate(),
+        traceContext: TRACEPARENT,
+      });
+
+      const outcome = await repository.recordPaymentAttempt({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'payment.attempt.failed.v1',
+        payload: { attempt: 1 },
+      });
+
+      expect(outcome).toMatchObject({
+        kind: 'RECORDED',
+        observation: { traceContext: TRACEPARENT },
+      });
+    });
+
+    it('still works for a row from before migration 010, which has neither column', async () => {
+      const { transaction } = await repository.start({ transaction: candidate() });
+      await pool.query(
+        'UPDATE transactions SET requested_at = NULL, trace_context = NULL WHERE transaction_id = $1',
+        [transaction.transactionId],
+      );
+
+      const outcome = await repository.applyEvent({
+        transactionId: transaction.transactionId,
+        messageId: randomUUID(),
+        messageType: 'customer.kyc.checked.v1',
+        payload: {},
+        decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
+        now: NOW,
+      });
+
+      expect(outcome).toMatchObject({
+        kind: 'APPLIED',
+        observation: { requestedAt: transaction.createdAt, traceContext: null },
+      });
+    });
+
+    it('keeps the observation out of a duplicate, which is not a step', async () => {
+      const { transaction } = await repository.start({
+        transaction: candidate(),
+        traceContext: TRACEPARENT,
+      });
+      const messageId = randomUUID();
+      const apply = async () =>
+        await repository.applyEvent({
+          transactionId: transaction.transactionId,
+          messageId,
+          messageType: 'customer.kyc.checked.v1',
+          payload: {},
+          decide: (found) => applyEvent(found, { kind: 'KYC_APPROVED' }),
+          now: NOW,
+        });
+
+      expect((await apply()).kind).toBe('APPLIED');
+      expect((await apply()).kind).toBe('DUPLICATE');
+    });
+
+    it('produces one trace, one duration and one result through the real use cases', async () => {
+      const spans = new InMemorySpanExporter();
+      const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(spans)] });
+      trace.setGlobalTracerProvider(provider);
+
+      const publisher = new RecordingPublisher();
+      const clock = new FixedClock(NOW);
+      const telemetry = new OtelTransferTelemetry({ info: () => undefined, error: () => undefined });
+      const saga = new AdvanceSagaUseCase({
+        repository,
+        publisher,
+        clock,
+        ids: new SequentialIds(),
+        telemetry,
+      });
+      const request = new RequestTransferUseCase({ repository, publisher, saga, clock, telemetry });
+
+      const transactionId = randomUUID();
+      const customerId = randomUUID();
+      await request.execute(
+        {
+          transactionId,
+          sourceAccount: randomUUID(),
+          targetAccount: randomUUID(),
+          amount: quetzales(15_000),
+        },
+        {
+          messageId: randomUUID(),
+          correlationId: randomUUID(),
+          idempotencyKey: randomUUID(),
+          identity: { customerId },
+          occurredAt: NOW.toISOString(),
+        },
+      );
+
+      const deliver = async (event: Parameters<typeof applyEvent>[1], afterSeconds: number) => {
+        clock.advance(NOW.getTime() + afterSeconds * SECOND - clock.now().getTime());
+        await saga.execute({
+          transactionId,
+          event,
+          messageId: randomUUID(),
+          messageType: 'test.event',
+          payload: {},
+        });
+      };
+
+      await deliver({ kind: 'KYC_APPROVED' }, 1);
+      await deliver({ kind: 'DEBITED' }, 2);
+      await deliver({ kind: 'PAYMENT_FAILED', reason: 'PAYMENT_DECLINED' }, 3);
+      await deliver({ kind: 'DEBIT_COMPENSATED' }, 4);
+
+      const finished = spans.getFinishedSpans();
+      const root = finished.find((span) => span.name === 'transfer.requested')!;
+      const stored = await row(transactionId);
+
+      // The context in the database is the root span's, and every later span joined it.
+      expect(stored.trace_context).toBe(
+        `00-${root.spanContext().traceId}-${root.spanContext().spanId}-01`,
+      );
+      expect(new Set(finished.map((span) => span.spanContext().traceId)).size).toBe(1);
+      expect(finished.map((span) => span.name)).toEqual([
+        'transfer.requested',
+        'saga.step KYC_CHECK_ORDERED',
+        'saga.step KYC_APPROVED',
+        'saga.step DEBITED',
+        'saga.compensation ordered',
+        'saga.compensation completed',
+        'transfer',
+      ]);
+      expect(finished.at(-1)!.attributes['bank.transfer.duration_ms']).toBe(4_000);
+      expect(finished.at(-1)!.events.map((event) => event.name)).toEqual(['PENDING', 'FAILED']);
+    });
+  });
 });
