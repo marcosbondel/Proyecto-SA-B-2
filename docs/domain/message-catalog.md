@@ -247,3 +247,15 @@ Verifiable against the tables above without reading any code.
 | M-4 | Every transfer step that can fail after the debit has a compensation path | `payment.failed` and `account.credit.rejected` both lead to `account.debit.compensation.requested` |
 | M-5 | No message carries data from the "does not cross" list | The single exception is the email in `customer.activation.requested` |
 | M-6 | Every message propagates `correlationId` | Cross-cutting invariant X-3, no exceptions |
+
+## Fase 3 extension: advanced provider simulation (T-44)
+
+The assignment's Fase 3 (§4.1, Payment Service) asks for intermittent failures with a configurable rate, timeouts and slow
+responses with a configurable latency, changeable at run time without a redeploy, through a protected endpoint at the API Gateway.
+The change is a command over the broker, never HTTP between services.
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| command | `payment.simulation.update` | **Added by T-44.** Sets the three parameters, or resets them to the ConfigMap's values |
+| command | `payment.simulation.query` | **Added by T-44.** Reads the simulation as it is now |
+| reply | `payment.simulation.replied` | **Added by T-44.** The simulation in force; also the confirmation of an update |
