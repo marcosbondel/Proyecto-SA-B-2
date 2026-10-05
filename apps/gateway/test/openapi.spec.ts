@@ -139,6 +139,8 @@ describe('the versioned API contract', () => {
         // Added by T-19. Read-only: a payment is born from a transfer, never
         // from a route.
         '/api/payments',
+        // Added by T-44: the administrator's dial for the simulated provider.
+        '/api/payments/simulation',
         '/api/payments/{paymentId}',
         '/api/transfers',
         '/api/transfers/{transactionId}',
@@ -174,7 +176,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(27);
+      expect(functional).toHaveLength(28);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

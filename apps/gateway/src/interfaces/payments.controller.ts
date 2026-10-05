@@ -1,10 +1,12 @@
-import { Controller, Get, Inject, Param, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Put, Query, Req } from '@nestjs/common';
 
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { paymentSimulationUpdateV1 } from '@bank/contracts';
+import type { PaymentSimulationUpdateV1 } from '@bank/contracts';
 
 import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { GatewayError } from '../application/errors/gateway-error';
-import { ListPaymentsQueryDto } from './dto/payment.dto';
+import { ListPaymentsQueryDto, UpdatePaymentSimulationDto } from './dto/payment.dto';
 import { Roles } from './guards/route-access.decorator';
 import type { GatewayRequest } from './http-request';
 import { actorOf } from './actor';
@@ -81,6 +83,60 @@ export class PaymentsController {
   }
 
   /**
+   * How the simulated provider is set up right now (T-44).
+   *
+   * Declared **before** `:paymentId`: Nest matches in declaration order, and
+   * `simulation` is a valid path segment that the parameter route would take for
+   * a malformed payment id and answer with a `400`.
+   */
+  @ApiOperation({
+    summary: 'Consulta la simulación del proveedor de pagos',
+    description:
+      'Solo ADMINISTRADOR. Devuelve la tasa de fallos, la tasa de timeouts y la latencia ' +
+      'vigentes, y si vienen del ConfigMap (DEFAULTS) o de un cambio en caliente (RUNTIME).',
+  })
+  @Roles('ADMINISTRADOR')
+  @Get('simulation')
+  public async simulation(@Req() request: GatewayRequest): Promise<Record<string, unknown>> {
+    return await this.#queries.paymentSimulation({
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+  }
+
+  /**
+   * Changes how the simulated provider misbehaves, without a redeploy (T-44).
+   *
+   * `PUT` and not `PATCH`: the body is the whole simulation — all three
+   * numbers — or `{ "reset": true }`. The Gateway does not merge a partial
+   * body with the current values, because the merge would have to happen in
+   * Payment Service, and a refusal from there has no shape the Gateway can
+   * parse. It is the same all-or-nothing rule the contract states.
+   *
+   * It publishes one command and waits for the owning service's answer; there
+   * is no HTTP between the Gateway and Payment Service.
+   */
+  @ApiOperation({
+    summary: 'Cambia en caliente la simulación del proveedor de pagos',
+    description:
+      'Solo ADMINISTRADOR. Cuerpo: failureRatePercent, timeoutRatePercent (0–100, su suma no ' +
+      'puede superar 100) y latencyMs (0–30 000), o bien { "reset": true } para volver a los ' +
+      'valores del ConfigMap. Aplica solo a pagos cuya transferencia no indicó un scenario. ' +
+      'Responde con la simulación que quedó vigente.',
+  })
+  @Roles('ADMINISTRADOR')
+  @Put('simulation')
+  public async updateSimulation(
+    @Body(validated(UpdatePaymentSimulationDto)) body: UpdatePaymentSimulationDto,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    return await this.#queries.updatePaymentSimulation(commandFrom(body), {
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
+  }
+
+  /**
    * One payment and the rungs of its retry ladder.
    *
    * Unrestricted by role, like the transfer status query it mirrors, and it
@@ -115,3 +171,76 @@ export class PaymentsController {
 }
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * The body as the command the contract describes, or the first thing wrong with
+ * it, said in Spanish.
+ *
+ * The contract has the last word — the result is parsed against it — but its
+ * issues are not written for a person, so the three ways a body can be wrong
+ * are named here first.
+ */
+function commandFrom(body: UpdatePaymentSimulationDto): PaymentSimulationUpdateV1 {
+  const { reset, failureRatePercent, timeoutRatePercent, latencyMs } = body;
+  const given = [failureRatePercent, timeoutRatePercent, latencyMs].filter(
+    (value) => value !== undefined,
+  );
+
+  if (reset === true) {
+    if (given.length > 0) {
+      throw GatewayError.validation(
+        'reset no se combina con los demás parámetros: envía solo { "reset": true }.',
+        'reset',
+      );
+    }
+
+    return { reset: true };
+  }
+
+  if (reset === false) {
+    throw GatewayError.validation(
+      'reset solo puede ser verdadero; para cambiar la simulación envía los tres parámetros.',
+      'reset',
+    );
+  }
+
+  if (failureRatePercent === undefined) {
+    throw GatewayError.validation(
+      'Indica los tres parámetros (failureRatePercent, timeoutRatePercent y latencyMs) o bien reset.',
+      'failureRatePercent',
+    );
+  }
+
+  if (timeoutRatePercent === undefined) {
+    throw GatewayError.validation(
+      'Indica los tres parámetros (failureRatePercent, timeoutRatePercent y latencyMs) o bien reset.',
+      'timeoutRatePercent',
+    );
+  }
+
+  if (latencyMs === undefined) {
+    throw GatewayError.validation(
+      'Indica los tres parámetros (failureRatePercent, timeoutRatePercent y latencyMs) o bien reset.',
+      'latencyMs',
+    );
+  }
+
+  if (failureRatePercent + timeoutRatePercent > 100) {
+    throw GatewayError.validation(
+      'La tasa de fallos y la de timeouts, juntas, no pueden superar el 100 % de los intentos.',
+      'timeoutRatePercent',
+    );
+  }
+
+  const parsed = paymentSimulationUpdateV1.schema.safeParse({
+    failureRatePercent,
+    timeoutRatePercent,
+    latencyMs,
+  });
+
+  if (!parsed.success) {
+    throw GatewayError.validation('Los parámetros de la simulación no son válidos.');
+  }
+
+  return parsed.data;
+}
