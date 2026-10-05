@@ -313,6 +313,11 @@ services:
       <<: [*pnpm-env, *node-env, *rabbitmq-url]
       PORT: 3004
       DATABASE_URL: postgresql://${PAYMENT_POSTGRES_USER}:${PAYMENT_POSTGRES_PASSWORD}@postgres-payment:5432/${PAYMENT_POSTGRES_DB}
+      # T-44: how the simulated provider behaves until an administrator changes it
+      # with PUT /api/payments/simulation. Zeroes are the behaviour before the ticket.
+      PAYMENT_SIM_FAILURE_RATE: ${PAYMENT_SIM_FAILURE_RATE:-0}
+      PAYMENT_SIM_TIMEOUT_RATE: ${PAYMENT_SIM_TIMEOUT_RATE:-0}
+      PAYMENT_SIM_LATENCY_MS: ${PAYMENT_SIM_LATENCY_MS:-0}
     ports:
       - '3004:3004'
     depends_on:

@@ -360,3 +360,18 @@ En la arquitectura de Bank USAC, la gestión de documentos de identidad (fotogra
 | Tasa de error | `bank.transfer.finished` | `sum(rate(bank_transfer_finished_total{result=~"failed\|compensated"}[5m])) / sum(rate(bank_transfer_finished_total[5m]))` |
 
 Dos precisiones. El inicio de la duración es el `occurredAt` del mensaje `transfer.requested.v1` (como define SLI-3), no el momento en que el servicio crea la fila. Y la etiqueta `reason` permite que la tasa de error excluya los rechazos del negocio (`KYC_NOT_VERIFIED`, `INSUFFICIENT_FUNDS`), que no son fallos del sistema: `sum(...{reason!~"KYC_NOT_VERIFIED\|INSUFFICIENT_FUNDS"})`.
+
+
+---
+
+## Anexo: cómo se mide hoy el proveedor de pagos simulado (Fase 3, T-44)
+
+`payment-service` emite, contra `@opentelemetry/api`, las métricas con las que se calculan la **tasa de fallos externos** y el **p95 de latencia del sistema externo simulado** (§4.1, *Payment Service*) y alimentan **SLI-23** y **SLO-11**. Sin SDK registrado (T-48) son no-op: hoy solo las comprueban los tests con exporters en memoria, y las consultas de abajo **no se han ejecutado** porque todavía no hay Prometheus.
+
+| Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
+|---|---|---|
+| **Tasa de fallos externos** | `bank.payment.provider.calls` (`result`, `source`) | `sum(rate(bank_payment_provider_calls_total{result!="success"}[5m])) / sum(rate(bank_payment_provider_calls_total[5m]))` |
+| **Latencia del proveedor simulado (p95)** | `bank.payment.provider.duration` (`s`, `result`) | `histogram_quantile(0.95, sum by (le) (rate(bank_payment_provider_duration_seconds_bucket[5m])))` |
+| Cambios de la simulación en caliente | `bank.payment.simulation.changes` (`action`) | `sum by (action) (increase(bank_payment_simulation_changes_total[1h]))` |
+
+Dos precisiones. La etiqueta `source` (`scenario` / `configuration`) separa los fallos que alguien guionó en la transferencia de los que produjo la perilla del administrador, de modo que un panel puede mostrar solo estos últimos: `...{source="configuration"}`. Y el latency es la espera simulada **medida**, no la configurada: con `latencyMs = 0` o con un `scenario` explícito el histograma registra cero.
