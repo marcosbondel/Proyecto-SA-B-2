@@ -206,11 +206,17 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
       .get('/api/payments/simulation')
       .set('Authorization', auth(h, 'ADMINISTRADOR')),
 
+  // A reset, and not a set of rates. The integration suites that use this table
+  // publish the request to a REAL broker, and on a machine where the stack is
+  // running (or starts later, because `payment.commands` is durable) the real
+  // Payment Service applies it. A reset only returns the simulation to the
+  // ConfigMap's values, so the worst a stray run can do is clear an override;
+  // 30 % of failures left behind silently turns every later transfer flaky.
   'PUT /api/payments/simulation': (h) =>
     request(h.app.getHttpServer())
       .put('/api/payments/simulation')
       .set('Authorization', auth(h, 'ADMINISTRADOR'))
-      .send({ failureRatePercent: 30, timeoutRatePercent: 10, latencyMs: 250 }),
+      .send({ reset: true }),
 
   'GET /api/payments/{paymentId}': (h) =>
     request(h.app.getHttpServer())
