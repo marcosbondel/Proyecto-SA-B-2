@@ -120,6 +120,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-41-customer-lifecycle-telemetry-evidence.md` | project | Enner Mendizabal | current | 2026-10-04 |
 | `docs/qa/backend/T-42-account-activity-monitoring-evidence.md` | project | David Barrios | current | 2026-10-04 |
 | `docs/qa/backend/T-43-transfer-performance-telemetry-evidence.md` | project | Marcos Bonifasi | current | 2026-10-04 |
+| `docs/qa/backend/T-44-payment-failure-simulation-evidence.md` | project | Enner Mendizabal | current | 2026-10-05 |
 | `docs/process/implementations.md` | project | David Barrios | current | 2026-09-12 |
 | `docs/images/kubernetes/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `context/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
