@@ -1,6 +1,6 @@
 import type { Money } from './money';
 import { callProvider } from './provider';
-import type { ProviderResult } from './provider';
+import type { ProviderResult, Simulation } from './provider';
 
 /**
  * What a payment is, and what may become of one attempt at it.
@@ -170,14 +170,16 @@ export function decideAttempt(input: {
   readonly attempt: number;
   readonly delays: readonly number[];
   readonly reference: string;
+  /** The unscripted provider's rates and roll (T-44); ignored when a scenario is named. */
+  readonly simulation?: Simulation | null;
 }): AttemptOutcome {
-  const { scenario, attempt, delays, reference } = input;
+  const { scenario, attempt, delays, reference, simulation } = input;
 
   if (attempt < 1) {
     throw new Error(`An attempt is numbered from 1; got ${String(attempt)}.`);
   }
 
-  const response = callProvider({ scenario, reference });
+  const response = callProvider({ scenario, reference, simulation });
 
   if (response.result === 'SUCCESS') {
     return {

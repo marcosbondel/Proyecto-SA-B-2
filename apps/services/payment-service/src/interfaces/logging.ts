@@ -25,6 +25,19 @@ export interface LogFields {
   readonly reason?: string;
   readonly durationMs?: number;
   readonly error?: string;
+  /** The attempt number, and what the simulated provider answered on it (T-44). */
+  readonly attempt?: number;
+  readonly providerResult?: string;
+  readonly errorType?: string;
+  /** Always `true` for a provider failure: there is no real provider in this system. */
+  readonly simulated?: boolean;
+  /** `scenario` when the transfer scripted the answer, `configuration` when the rates did. */
+  readonly source?: string;
+  readonly latencyMs?: number;
+  readonly failureRatePercent?: number;
+  readonly timeoutRatePercent?: number;
+  readonly traceId?: string;
+  readonly spanId?: string;
 }
 
 const FORBIDDEN = /credential|password|token|secret/i;

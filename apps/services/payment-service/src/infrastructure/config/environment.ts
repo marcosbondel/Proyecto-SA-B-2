@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { plainToInstance } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsString, Max, Min, validateSync } from 'class-validator';
+import { IsIn, IsInt, IsNotEmpty, IsNumber, IsString, Max, Min, validateSync } from 'class-validator';
+
+import { MAX_LATENCY_MS, isValidSettings } from '../../domain/simulation';
 
 /**
  * Raised when a required environment variable is missing or malformed.
@@ -67,6 +69,29 @@ export class PaymentServiceEnvironment {
   @Min(100)
   @Max(600_000)
   public PAYMENT_RETRY_SWEEP_MS!: number;
+
+  /**
+   * How the simulated provider behaves until an administrator changes it
+   * (Fase 3, T-44): the share of attempts that fail, the share that time out,
+   * and how long an answer takes. The ConfigMap supplies them; an override made
+   * at run time takes precedence and is removed by a reset, which brings these
+   * back. All zero by default, so an unconfigured deployment behaves as the
+   * provider did before this ticket.
+   */
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  public PAYMENT_SIM_FAILURE_RATE!: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  public PAYMENT_SIM_TIMEOUT_RATE!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(MAX_LATENCY_MS)
+  public PAYMENT_SIM_LATENCY_MS!: number;
 }
 
 /**
@@ -119,6 +144,9 @@ export function loadEnvironment(
     RABBITMQ_URL: source.RABBITMQ_URL,
     PAYMENT_RETRY_DELAYS_MS: source.PAYMENT_RETRY_DELAYS_MS ?? '1000,5000,30000',
     PAYMENT_RETRY_SWEEP_MS: toInteger(source.PAYMENT_RETRY_SWEEP_MS) ?? 500,
+    PAYMENT_SIM_FAILURE_RATE: toNumber(source.PAYMENT_SIM_FAILURE_RATE) ?? 0,
+    PAYMENT_SIM_TIMEOUT_RATE: toNumber(source.PAYMENT_SIM_TIMEOUT_RATE) ?? 0,
+    PAYMENT_SIM_LATENCY_MS: toInteger(source.PAYMENT_SIM_LATENCY_MS) ?? 0,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
@@ -133,7 +161,29 @@ export function loadEnvironment(
 
   parseRetryDelays(candidate.PAYMENT_RETRY_DELAYS_MS);
 
+  // Each rate is in range on its own; together a failure and a timeout are two
+  // ways one attempt goes wrong, so they cannot exceed every attempt.
+  if (!isValidSettings(simulationDefaults(candidate))) {
+    throw new EnvironmentValidationError(
+      ['PAYMENT_SIM_FAILURE_RATE', 'PAYMENT_SIM_TIMEOUT_RATE'],
+      '  - PAYMENT_SIM_FAILURE_RATE + PAYMENT_SIM_TIMEOUT_RATE must not exceed 100',
+    );
+  }
+
   return candidate;
+}
+
+/** The ConfigMap's three numbers, as the domain's settings. */
+export function simulationDefaults(environment: PaymentServiceEnvironment): {
+  readonly failureRatePercent: number;
+  readonly timeoutRatePercent: number;
+  readonly latencyMs: number;
+} {
+  return {
+    failureRatePercent: environment.PAYMENT_SIM_FAILURE_RATE,
+    timeoutRatePercent: environment.PAYMENT_SIM_TIMEOUT_RATE,
+    latencyMs: environment.PAYMENT_SIM_LATENCY_MS,
+  };
 }
 
 /** `undefined` when absent, `NaN` when present but not an integer. */
@@ -143,4 +193,12 @@ function toInteger(raw: string | undefined): number | undefined {
   }
   const parsed = Number(raw);
   return Number.isInteger(parsed) ? parsed : Number.NaN;
+}
+
+/** `undefined` when absent, `NaN` when present but not a number. */
+function toNumber(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === '') {
+    return undefined;
+  }
+  return Number(raw);
 }

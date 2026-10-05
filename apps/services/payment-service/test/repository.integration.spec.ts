@@ -47,7 +47,9 @@ describeIntegration('PostgresPaymentRepository', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('TRUNCATE outbox_messages, payment_attempts, payments');
+    await pool.query(
+      'TRUNCATE outbox_messages, payment_attempts, payments, payment_simulation_settings',
+    );
   });
 
   const payment = (overrides: Partial<Payment> = {}): Payment => ({
@@ -314,6 +316,86 @@ describeIntegration('PostgresPaymentRepository', () => {
     nextAttemptAt,
     attemptResult: 'FAILED',
     providerResult: 'TIMEOUT',
+  });
+
+  describe('the simulation override (T-44)', () => {
+    const SETTINGS = { failureRatePercent: 30, timeoutRatePercent: 10, latencyMs: 250 };
+
+    it('is absent until an administrator sets one, so the ConfigMap values apply', async () => {
+      await expect(repository.loadSimulation()).resolves.toBeNull();
+    });
+
+    it('stores and reads back the three numbers exactly, fractions included', async () => {
+      const fractional = { failureRatePercent: 12.5, timeoutRatePercent: 0.25, latencyMs: 30_000 };
+
+      const saved = await repository.saveSimulation(fractional, NOW);
+
+      expect(saved).toEqual({ settings: fractional, updatedAt: NOW });
+      await expect(repository.loadSimulation()).resolves.toEqual({ settings: fractional, updatedAt: NOW });
+    });
+
+    it('keeps one row however often it is changed, and the last change wins', async () => {
+      await repository.saveSimulation(SETTINGS, NOW);
+      const later = new Date(NOW.getTime() + 60_000);
+      await repository.saveSimulation({ failureRatePercent: 90, timeoutRatePercent: 0, latencyMs: 0 }, later);
+
+      const count = await pool.query<{ n: number }>(
+        'SELECT count(*)::INT AS n FROM payment_simulation_settings',
+      );
+
+      expect(count.rows[0]!.n).toBe(1);
+      await expect(repository.loadSimulation()).resolves.toMatchObject({
+        settings: { failureRatePercent: 90 },
+        updatedAt: later,
+      });
+    });
+
+    it('is seen by a second connection, which is what makes it hold for every replica', async () => {
+      await repository.saveSimulation(SETTINGS, NOW);
+
+      const otherPool = new Pool({ connectionString: DATABASE_URL });
+
+      try {
+        const replica = new PostgresPaymentRepository(otherPool);
+
+        await expect(replica.loadSimulation()).resolves.toMatchObject({ settings: SETTINGS });
+      } finally {
+        await otherPool.end();
+      }
+    });
+
+    it('is removed by a clear, and clearing nothing is harmless', async () => {
+      await repository.saveSimulation(SETTINGS, NOW);
+      await repository.clearSimulation();
+      await repository.clearSimulation();
+
+      await expect(repository.loadSimulation()).resolves.toBeNull();
+    });
+
+    it('is refused by the database itself when it is out of range', async () => {
+      const insert = async (failure: number, timeout: number, latency: number): Promise<unknown> =>
+        await pool.query(
+          `INSERT INTO payment_simulation_settings
+             (id, failure_rate_percent, timeout_rate_percent, latency_ms)
+           VALUES (1, $1, $2, $3)`,
+          [failure, timeout, latency],
+        );
+
+      await expect(insert(101, 0, 0)).rejects.toThrow(/payment_simulation_rates_in_range/);
+      await expect(insert(-1, 0, 0)).rejects.toThrow(/payment_simulation_rates_in_range/);
+      await expect(insert(70, 40, 0)).rejects.toThrow(/payment_simulation_rates_in_range/);
+      await expect(insert(0, 0, 30_001)).rejects.toThrow(/payment_simulation_latency_in_range/);
+    });
+
+    it('cannot hold a second row', async () => {
+      await expect(
+        pool.query(
+          `INSERT INTO payment_simulation_settings
+             (id, failure_rate_percent, timeout_rate_percent, latency_ms)
+           VALUES (2, 0, 0, 0)`,
+        ),
+      ).rejects.toThrow(/payment_simulation_single_row/);
+    });
   });
 
   describe('list (scoping and filtering)', () => {
