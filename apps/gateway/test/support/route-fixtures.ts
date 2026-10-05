@@ -9,7 +9,7 @@ import type { BrokerHarness } from './broker-harness';
 /**
  * One valid HTTP request per entry of `ROUTE_MESSAGES`
  * (`apps/gateway/src/openapi/route-messages.ts`), shared by every suite in
- * this directory that needs to drive all twenty-five paths against a real
+ * this directory that needs to drive every path against a real
  * broker.
  *
  * Kept in one place because `publish-routing.integration.spec.ts` and
@@ -200,6 +200,17 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
     request(h.app.getHttpServer())
       .get('/api/payments')
       .set('Authorization', auth(h, 'ADMINISTRADOR')),
+
+  'GET /api/payments/simulation': (h) =>
+    request(h.app.getHttpServer())
+      .get('/api/payments/simulation')
+      .set('Authorization', auth(h, 'ADMINISTRADOR')),
+
+  'PUT /api/payments/simulation': (h) =>
+    request(h.app.getHttpServer())
+      .put('/api/payments/simulation')
+      .set('Authorization', auth(h, 'ADMINISTRADOR'))
+      .send({ failureRatePercent: 30, timeoutRatePercent: 10, latencyMs: 250 }),
 
   'GET /api/payments/{paymentId}': (h) =>
     request(h.app.getHttpServer())
