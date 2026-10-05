@@ -105,33 +105,43 @@ cambio con los números que quedaron vigentes.
 | Paquete | Resultado |
 | --- | --- |
 | `@bank/contracts` | 18 suites, 846 casos (los 3 contratos: identidad, catálogo, enrutamiento a `payment.commands`, 13 payloads rechazados) |
-| `payment-service` | 12 suites; casos nuevos en `simulation.spec.ts` (dominio puro), `simulation-use-case.spec.ts`, `provider-telemetry.spec.ts` (SDK real de OpenTelemetry con exporters en memoria), `simulation-handlers.spec.ts` y `environment.spec.ts` |
+| `payment-service` | 14 suites, 195 casos; nuevos en `simulation.spec.ts` (dominio puro), `simulation-use-case.spec.ts`, `provider-telemetry.spec.ts` (SDK real de OpenTelemetry con exporters en memoria), `simulation-handlers.spec.ts`, `environment.spec.ts` y las dos suites de integración de abajo |
 | `gateway` | `payment-simulation-routes.spec.ts`: 28 casos (rol, nada publicado si se rechaza, 16 cuerpos rechazados, 504, respuesta que no cumple el contrato) |
 | `apps/web` | `navigation-parity.test.mjs`: la prueba que cuenta los `@Roles(` de `payments.controller.ts` falló (3 ≠ 1) y es exactamente lo que debía hacer; ahora fija las dos rutas nuevas como solo-`ADMINISTRADOR` |
 
 Las pruebas de integración de `payment-service` corren contra un PostgreSQL 18.4 desechable
-(`docker run … postgres:18.4`): **31 casos pasan** (181 en total en el servicio), 14 de ellos
-nuevos. Siete están en `repository.integration.spec.ts` (fila ausente → `null`, fracciones
-exactas, una sola fila aunque se cambie varias veces, visible desde otra conexión, `clear`
-idempotente, los `CHECK` de rango y de fila única) y siete en `simulation.integration.spec.ts`,
-que pasa los casos de uso por el repositorio real: la escalera completa al 100 % de fallo deja el
-pago `FAILED` con sus cinco eventos en el outbox; un timeout se registra como `TIMEOUT`; **un cambio
-hecho desde una réplica lo ve el siguiente intento de otra**; el `reset` vale para todas; un
-`scenario` explícito sigue mandando; y, sobre todo, **mientras el proveedor simulado «piensa»,
-otra conexión puede tomar la fila del pago con `FOR UPDATE NOWAIT`**, que es la razón de esperar
-antes del lock.
+(`docker run … postgres:18.4`): **45 casos pasan** (195 en total en el servicio), 28 de ellos nuevos, en
+tres archivos:
+
+- `repository.integration.spec.ts` (7 nuevos): fila ausente → `null`, fracciones exactas, una sola fila aunque
+  se cambie varias veces, visible desde otra conexión, `clear` idempotente, los `CHECK` de rango y de fila única.
+- `simulation.integration.spec.ts` (7): los casos de uso por el repositorio real. La escalera completa al 100 % de
+  fallo deja el pago `FAILED` con sus cinco eventos en el outbox; un timeout se registra como `TIMEOUT`; **un cambio
+  hecho desde una réplica lo ve el siguiente intento de otra**; el `reset` vale para todas; un `scenario` explícito
+  sigue mandando; y, sobre todo, **mientras el proveedor simulado «piensa», otra conexión puede tomar la fila del
+  pago con `FOR UPDATE NOWAIT`**, que es la razón de esperar antes del lock.
+- `simulation-handlers.integration.spec.ts` (14): desde la puerta del broker hasta la fila. Un cambio del
+  administrador se persiste y se contesta con lo vigente; un cliente, un cajero o un mensaje sin identidad **no
+  escriben ninguna fila** (ni siquiera un `reset`, que borraría el override real); cuatro cargas que el contrato
+  rechazaría nunca llegan al repositorio; el `reset` borra la fila; la consulta ve primero los valores por defecto y
+  luego el override; dos administradores cambiando la perilla a la vez dejan **una fila coherente** (una de las dos
+  enteras, nunca la tasa de una con la latencia de la otra); y dos réplicas que se disputan el mismo intento con el
+  proveedor lento lo registran **una sola vez**.
 
 ### Pirámide de pruebas
 
-`pnpm test:pyramid` (con el parche local de `npx.cmd`, ver abajo) termina con tres desviaciones, dos
-heredadas y una que esta ficha introduce:
+El CI corre `pnpm test:pyramid --require-executed --without-e2e` y **falla** si la integración de un servicio
+se aparta más de 1,5 puntos de su objetivo (22,2 % de lo propio). Reproducido localmente con una base `*_pyramid`
+por servicio (y el parche de `npx.cmd`, ver abajo):
 
-- `sistema unit: 73,0 %` (objetivo 70 %) y `sistema e2e: 6,7 %` (objetivo 10 %): ya existían
-  (≈ 71 % y ≈ 7,4 % antes de T-41).
-- **`payment-service: integración 17,1 % de lo propio (objetivo 22,2 %), faltan 12 casos`**: nueva.
-  La lógica de la ficha es casi toda pura (dominio y casos de uso con dobles), que es lo que se pidió
-  —el proveedor como función pura—, y las pruebas de integración se añadieron donde el diseño
-  depende de un proceso real. No se infló la cuenta con integraciones sin valor para llegar al 22 %.
+- Con las suites de integración del primer intento (31 casos), `payment-service` quedaba en **17,1 %** y el script
+  terminaba con `exit=1`: ese push habría roto el CI. La lógica de la ficha es casi toda pura (dominio y casos de
+  uso con dobles), que es lo que se pidió, así que la proporción no salía sola.
+- Se agregó `simulation-handlers.integration.spec.ts` (14 casos, todos sobre un riesgo real de la base de datos,
+  no relleno): `payment-service` pasa a 45 de integración sobre 195 y el script termina con `exit=0`
+  («la pirámide está dentro de la tolerancia»).
+- Sin `--without-e2e`, el sistema sigue con las dos desviaciones que ya existían antes de T-41
+  (`unit` ≈ 73 % frente a 70 %, `e2e` ≈ 6,7 % frente a 10 %); el CI no las mide porque pasa `--without-e2e`.
 
 ### Mutaciones
 
@@ -260,8 +270,6 @@ memoria. Estas dos cosas solo se pueden ver cuando esa plataforma exista.
   tiradas fijas, y las demostraciones (12 transferencias al 40 %, y cuatro al 50 % + 20 %) solo
   prueban que la perilla muerde.
 - **No hay pantalla** para la perilla: la ficha no la pide. Se usa por `PUT /api/payments/simulation`.
-- **Desviación de pirámide** de `payment-service`, descrita arriba (17,1 % de integración frente al
-  22,2 % objetivo): se prefirió no inflar la cuenta con pruebas sin valor.
 - `pnpm test:pyramid` no corre en Windows sin el parche local de `npx.cmd` (`execFileSync('npx', …)`
   sin shell); se corrió con una copia temporal que se borró, y los informes `docs/qa/pyramid.*` se
   restauraron.
