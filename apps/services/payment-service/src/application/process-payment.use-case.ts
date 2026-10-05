@@ -2,6 +2,8 @@ import { paymentAttemptFailedV1, paymentFailedV1, paymentSucceededV1 } from '@ba
 
 import { decideAttempt } from '../domain/payment';
 import type { AttemptOutcome, Payment } from '../domain/payment';
+import { providerLatencyMs } from '../domain/provider';
+import type { Simulation } from '../domain/provider';
 import type {
   AttemptResult,
   Clock,
@@ -10,6 +12,10 @@ import type {
   OutboxMessage,
   PaymentOrder,
   PaymentRepository,
+  ProviderTelemetry,
+  Randomness,
+  SimulationSource,
+  Sleeper,
 } from './ports';
 
 /**
@@ -34,17 +40,34 @@ export class ProcessPaymentUseCase {
   readonly #clock: Clock;
   readonly #ids: IdGenerator;
   readonly #delays: readonly number[];
+  readonly #simulation: SimulationSource | null;
+  readonly #random: Randomness | null;
+  readonly #sleeper: Sleeper | null;
+  readonly #telemetry: ProviderTelemetry | null;
 
+  /**
+   * `simulation`, `random`, `sleeper` and `telemetry` arrive together (T-44):
+   * without all of them the provider is the scripted one it was before, which is
+   * what a test of the ladder alone wants.
+   */
   constructor(dependencies: {
     repository: PaymentRepository;
     clock: Clock;
     ids: IdGenerator;
     delays: readonly number[];
+    simulation?: SimulationSource;
+    random?: Randomness;
+    sleeper?: Sleeper;
+    telemetry?: ProviderTelemetry;
   }) {
     this.#repository = dependencies.repository;
     this.#clock = dependencies.clock;
     this.#ids = dependencies.ids;
     this.#delays = dependencies.delays;
+    this.#simulation = dependencies.simulation ?? null;
+    this.#random = dependencies.random ?? null;
+    this.#sleeper = dependencies.sleeper ?? null;
+    this.#telemetry = dependencies.telemetry ?? null;
   }
 
   /**
@@ -105,8 +128,18 @@ export class ProcessPaymentUseCase {
     attemptNumber: number,
     publisher: EventPublisher,
   ): Promise<void> {
-    const now = this.#clock.now();
     const reference = this.#ids.next();
+
+    /**
+     * The dice, and the wait, **before** the lock. A simulated provider that
+     * takes two seconds to answer must not hold the payment's row for two
+     * seconds: the handler and the sweeper would queue behind it, and the "slow
+     * provider" would become a slow database. Only a payment whose transfer
+     * scripted nothing is left to the dice.
+     */
+    const simulation = await this.#roll(payment);
+    const waitedMs = await this.#wait(payment, simulation);
+    const now = this.#clock.now();
 
     /**
      * Computed inside the repository's lock. `decide` is called with the row as
@@ -115,7 +148,7 @@ export class ProcessPaymentUseCase {
      */
     let outcome: AttemptOutcome | null = null;
 
-    await this.#repository.attempt({
+    const recorded = await this.#repository.attempt({
       paymentId: payment.paymentId,
       expectedAttempt: attemptNumber,
       now,
@@ -125,6 +158,7 @@ export class ProcessPaymentUseCase {
           attempt,
           delays: this.#delays,
           reference,
+          simulation,
         });
 
         return resultOf(outcome, now);
@@ -140,6 +174,61 @@ export class ProcessPaymentUseCase {
       outbound: (recorded, attempt) =>
         outcome === null ? [] : this.#effectsOf(recorded, attempt, outcome, now, publisher),
     });
+
+    // Only for an attempt that was actually recorded: a superseded one belongs
+    // to whoever got there first, and counting it twice would put the same
+    // call in the failure rate twice.
+    if (recorded.kind === 'RECORDED' && outcome !== null) {
+      this.#report(recorded.payment, recorded.attempt, outcome, waitedMs);
+    }
+  }
+
+  async #roll(payment: Payment): Promise<Simulation | null> {
+    if (payment.scenario !== null || this.#simulation === null || this.#random === null) {
+      return null;
+    }
+
+    const { settings } = await this.#simulation.current();
+
+    return { settings, roll: this.#random.next() };
+  }
+
+  /** Waits out the simulated latency, and returns how long that took. */
+  async #wait(payment: Payment, simulation: Simulation | null): Promise<number> {
+    const latencyMs = providerLatencyMs({ scenario: payment.scenario, simulation });
+
+    if (latencyMs === 0 || this.#sleeper === null) {
+      return 0;
+    }
+
+    const startedAt = this.#clock.now().getTime();
+
+    await this.#sleeper.sleep(latencyMs);
+
+    return Math.max(0, this.#clock.now().getTime() - startedAt);
+  }
+
+  /** Telemetry is told after the commit and never makes a settled attempt fail. */
+  #report(payment: Payment, attempt: number, outcome: AttemptOutcome, latencyMs: number): void {
+    if (this.#telemetry === null) {
+      return;
+    }
+
+    try {
+      this.#telemetry.providerCall({
+        paymentId: payment.paymentId,
+        transactionId: payment.transactionId,
+        correlationId: payment.originCorrelationId,
+        attempt,
+        result: outcome.providerResult,
+        errorType: outcome.kind === 'SUCCEEDED' ? null : outcome.errorType,
+        willRetry: outcome.kind === 'RETRY',
+        source: payment.scenario === null ? 'CONFIGURATION' : 'SCENARIO',
+        latencyMs,
+      });
+    } catch {
+      // Reporting failed too. The attempt has committed; nothing is left to tell anyone.
+    }
   }
 
   /**

@@ -1,12 +1,15 @@
 import {
   paymentListQueryV1,
   paymentRequestedV1,
+  paymentSimulationQueryV1,
+  paymentSimulationUpdateV1,
   paymentStatsQueryV1,
   paymentStatusQueryV1,
 } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 
 import type { EventPublisher } from '../application/ports';
+import type { SimulationUseCase } from '../application/manage-simulation.use-case';
 import type { ProcessPaymentUseCase } from '../application/process-payment.use-case';
 import type { GetPaymentStatsUseCase } from '../application/get-payment-stats.use-case';
 import type { QueryPaymentUseCase } from '../application/query-payment.use-case';
@@ -111,5 +114,56 @@ export class PaymentStatusHandler implements InboundMessageHandler {
     const query = paymentStatusQueryV1.schema.parse(envelope.payload);
 
     await this.#useCase.status(query.paymentId, this.#publisher);
+  }
+}
+
+
+/**
+ * `payment.simulation.update.v1` — an administrator changing how the simulated
+ * provider misbehaves, without a redeploy (T-44).
+ *
+ * The envelope's identity goes to the use case, which refuses anybody who is
+ * not an administrator: the Gateway checks the role too, but this service is
+ * reachable by the broker and does not trust its caller.
+ */
+export class SimulationUpdateHandler implements InboundMessageHandler {
+  public readonly messageType = paymentSimulationUpdateV1.name;
+
+  readonly #useCase: SimulationUseCase;
+  readonly #publisher: EventPublisher;
+
+  constructor(useCase: SimulationUseCase, publisher: EventPublisher) {
+    this.#useCase = useCase;
+    this.#publisher = publisher;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const command = paymentSimulationUpdateV1.schema.parse(envelope.payload);
+
+    await this.#useCase.update({
+      command,
+      identity: envelope.identity,
+      correlationId: envelope.correlationId,
+      publisher: this.#publisher,
+    });
+  }
+}
+
+/** `payment.simulation.query.v1` — how the provider is set up right now. */
+export class SimulationQueryHandler implements InboundMessageHandler {
+  public readonly messageType = paymentSimulationQueryV1.name;
+
+  readonly #useCase: SimulationUseCase;
+  readonly #publisher: EventPublisher;
+
+  constructor(useCase: SimulationUseCase, publisher: EventPublisher) {
+    this.#useCase = useCase;
+    this.#publisher = publisher;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    paymentSimulationQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.query(this.#publisher);
   }
 }
