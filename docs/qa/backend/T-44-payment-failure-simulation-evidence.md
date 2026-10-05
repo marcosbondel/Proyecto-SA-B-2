@@ -169,12 +169,37 @@ Stack de `docker-compose.images.yml` con `payment-service` y `gateway` reconstru
 - Reiniciar el contenedor de Payment con una simulación activa: `GET` sigue devolviendo
   `RUNTIME` 25 / 5 / 120, y la fila está en `payment_simulation_settings`.
 
+### Contra el RabbitMQ real (Gateway)
+
+Con `RABBITMQ_URL` apuntando al broker del stack local, las tres suites de integración del
+Gateway que recorren las rutas contra el broker de verdad:
+
+| Suite | Resultado |
+| --- | --- |
+| `publish-routing.integration.spec.ts` | pasa (39 casos): `GET` y `PUT /api/payments/simulation` publican su comando con la routing key y el exchange correctos |
+| `envelope-and-replies.integration.spec.ts` | pasa (36 casos) |
+| `reply-correlation.integration.spec.ts` | pasa (**24 casos**: los 22 de antes y **2 nuevos** para las rutas de T-44, que faltaban en su tabla): la respuesta `payment.simulation.replied.v1`, entregada por `bank.replies` desde otro proceso, cierra la espera en la cola exclusiva del Gateway |
+
+**`reply-correlation` solo es fiable con los consumidores de negocio detenidos.** Con el stack
+completo levantado, la primera corrida falló 7 casos de 22: los servicios reales (customer,
+account, transaction, payment y audit) consumen las mismas colas y contestan antes que el doble, con
+datos reales (404, los tres billers reales, `total: 653` en la auditoría). Con
+`docker stop customer-service account-service transaction-service payment-service notification-audit-service`
+pasan los 24. Es el hallazgo ambiental que el propio comentario de la suite ya documenta; no es un
+defecto del Gateway ni de T-44, y en el CI esas colas no tienen otro consumidor.
+
 ### Chart
 
 `helm lint` sin fallos y `helm template` renderiza las tres variables en el ConfigMap, el
 Deployment de payment las toma de ahí y lleva `checksum/config`.
 
 ## Lo que no se verificó
+
+### Depende de tickets posteriores (T-48, T-49, T-50)
+
+La ficha no tiene dependencias y está completa: su propia sección «Convenciones mínimas de
+telemetría (Fase A)» dice que la plataforma llega después y pide verificar con exporters en
+memoria. Estas dos cosas solo se pueden ver cuando esa plataforma exista.
 
 - **Nada de esto se ha visto en Prometheus, Jaeger o Grafana**: no hay SDK registrado hasta
   T-48. Las métricas, los spans y los logs se comprobaron con exporters en memoria y con las
@@ -183,13 +208,16 @@ Deployment de payment las toma de ahí y lleva `checksum/config`.
 - **La compensación como span, de punta a punta, no se vio**: se vio el log
   `transfer step … DEBIT_COMPENSATED` y el estado `COMPENSATED`; los spans `saga.compensation *`
   los comprobó T-43 con exporters en memoria. Payment y Transaction aún no están en la misma
-  traza.
-- **Las pruebas de integración del Gateway contra RabbitMQ** (`publish-routing`,
-  `reply-correlation`, `envelope-and-replies`) se saltan sin `RABBITMQ_URL`; las corre el CI. Las
-  rutas nuevas ya están en `route-fixtures.ts`, que esas suites recorren.
+  traza: el `traceparent` cruza el broker en T-48.
+
+### No ejecutado por decisión o por límite del entorno
+
 - **La tasa efectiva no se midió estadísticamente** con tráfico real: los límites se prueban con
-  tiradas fijas, y la demostración de 12 transferencias solo prueba que la perilla muerde.
+  tiradas fijas, y las demostraciones (12 transferencias al 40 %, y cuatro al 50 % + 20 %) solo
+  prueban que la perilla muerde.
 - **No hay pantalla** para la perilla: la ficha no la pide. Se usa por `PUT /api/payments/simulation`.
+- **Desviación de pirámide** de `payment-service`, descrita arriba (17,1 % de integración frente al
+  22,2 % objetivo): se prefirió no inflar la cuenta con pruebas sin valor.
 - `pnpm test:pyramid` no corre en Windows sin el parche local de `npx.cmd` (`execFileSync('npx', …)`
   sin shell); se corrió con una copia temporal que se borró, y los informes `docs/qa/pyramid.*` se
   restauraron.
