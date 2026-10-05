@@ -133,7 +133,11 @@ export async function provisionCustomer({ label = 'e2e', openSavings = false } =
   if (openSavings) {
     const openAhorro = await api('/api/accounts', token, {
       method: 'POST',
-      body: { accountType: 'AHORRO' },
+      // Since T-27 an AHORRO account cannot be opened empty: it needs its
+      // type's minimum (Q100.00) as an opening deposit, or the open is refused
+      // with MINIMUM_BALANCE_VIOLATION and the account never exists — which
+      // surfaced downstream as a 404 when a suite read its balance.
+      body: { accountType: 'AHORRO', initialDeposit: { amountMinor: 10000, currency: 'GTQ' } },
     });
     if (openAhorro.status === 202 && openAhorro.body.accountId) {
       accountIds.push(openAhorro.body.accountId);

@@ -188,6 +188,50 @@ datos reales (404, los tres billers reales, `total: 653` en la auditoría). Con
 pasan los 24. Es el hallazgo ambiental que el propio comentario de la suite ya documenta; no es un
 defecto del Gateway ni de T-44, y en el CI esas colas no tienen otro consumidor.
 
+### E2E contra el stack (suites de `test/e2e`)
+
+`node test/e2e/run-all.mjs` con `GATEWAY_URL=http://localhost:3100`, el broker sano y
+`NOTIFICATION_CHANNEL=simulated` (con `resend` el enlace de activación no sale por el log y no se puede
+aprovisionar ningún cliente nuevo: 39 casos quedan omitidos). Resultado: **132 de 135**, sin casos
+omitidos por activación.
+
+| Suite | Resultado |
+| --- | --- |
+| accounts-deposits, notifications-audit, payments, rbac-matrix, registration-activation, resilience | 18, 13, 13, 26, 20 y 6 casos: todos pasan |
+| transfers-saga | 16 de 16, incluidos los cuatro desenlaces de la Saga (éxito, rechazo, fallo transitorio, timeout) con compensación y saldo exacto |
+| auth-session | 11 de 12: `SEC-02` |
+| kyc-identity | 9 de 11: `PENDING-01` y `PENDING-02` |
+
+Los tres fallos **ya estaban en el reporte versionado en `HEAD`** (`docs/qa/pyramid-e2e.json`), con el mismo
+síntoma (`SEC-02`: se queda en `/login` sin mostrar error; `PENDING-*`: el cliente recién registrado no
+aparece en la lista, `presente=false`, `total=100`). No son de T-41 a T-44 y no se tocaron.
+
+Para que `transfers-saga` pudiera correr hubo que corregir dos cosas **de las pruebas**, no del sistema:
+
+- `test/e2e/support/seed.mjs` abría la cuenta de ahorro sin depósito inicial. Desde T-27 una cuenta de ahorro
+  exige Q100.00 al abrirse, así que se rechazaba y luego el saldo daba 404. Ahora abre con
+  `initialDeposit` de Q100.00 (como ya hace `accounts-deposits`), y `TX-NOFUNDS-01` usa un monto (Q500.00) que
+  sigue superando ese saldo.
+- `TX-IDEMPOTENT-01` exigía el mismo `transactionId` en la respuesta del `POST`. El Gateway acuña un id por
+  solicitud y Transaction Service lo resuelve con su tabla de alias: el reintento recibe su propio id, que
+  resuelve a la transferencia que ya existe. Comprobado a mano con dos `POST` de la misma clave: ambos ids
+  resuelven a la misma transferencia y el débito ocurre una sola vez. La prueba ahora comprueba eso, y espera
+  a que termine antes de leer el saldo (antes dejaba el débito en vuelo y contaminaba `TX-OWNACCOUNTS-01`).
+
+### Riesgos de correr las suites de integración contra un stack vivo
+
+Tres cosas que se aprendieron al correrlas contra el broker del stack local, y que conviene saber:
+
+- **`broker.integration.spec.ts` borraba el exchange real `bank.events`** y con él todos los enlaces de las
+  colas de los servicios y de la cola de respuestas del Gateway: las activaciones de correo daban 504 hasta
+  reiniciar cada servicio. Ahora usa un exchange privado con sufijo aleatorio.
+- **Las rutas de la simulación se publican de verdad.** Los fixtures de `route-fixtures.ts` se envían al
+  broker real, y `payment.commands` es durable: con el stack arriba (o arrancado después) el Payment Service real
+  aplica el comando. El `PUT` del fixture mandaba 30 % de fallo, 10 % de timeout y 250 ms, y dejó la
+  simulación así hasta que se hizo un `reset`. Ahora el fixture envía `{"reset": true}`, que solo devuelve la
+  simulación a los valores del ConfigMap.
+- `reply-correlation` solo es fiable con los consumidores de negocio detenidos (ver arriba).
+
 ### Chart
 
 `helm lint` sin fallos y `helm template` renderiza las tres variables en el ConfigMap, el

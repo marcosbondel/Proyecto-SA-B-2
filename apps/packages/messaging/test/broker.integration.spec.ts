@@ -24,7 +24,16 @@ const runIntegrationTests = !!RABBITMQ_URL;
 (runIntegrationTests ? describe : describe.skip)('MessageBroker integration', () => {
   const TEST_QUEUE = 'test.integration';
   const TEST_ROUTING_KEY = 'test.integration.v1';
-  const TEST_EXCHANGE = EXCHANGES.events;
+  /**
+   * A private exchange, never `bank.events`. This suite deletes its exchange
+   * after every case, and deleting the real one takes with it every binding the
+   * running services and the Gateway's reply queue hang from it — which turned a
+   * run against a live stack into 504s on every email activation until each
+   * service was restarted. The pattern strings and the retry/dead-letter
+   * behaviour under test are the same; only the name is private, as
+   * `topology.integration.spec.ts` already does.
+   */
+  const TEST_EXCHANGE = `test.broker-integration.${randomUUID()}`;
 
   beforeAll(() => {
     if (!RABBITMQ_URL) {

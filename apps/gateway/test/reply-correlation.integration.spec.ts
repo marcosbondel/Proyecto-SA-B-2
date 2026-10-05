@@ -404,20 +404,22 @@ const REPLY_CASES: readonly ReplyCase[] = [
     },
   },
   {
-    // T-44: the change, answered with the simulation now in force.
+    // T-44: the change, answered with the simulation now in force. The request
+    // is a reset (see `route-fixtures.ts`), so the reply is the defaults.
     key: 'PUT /api/payments/simulation',
     kind: 'reply',
     messageType: 'payment.simulation.replied.v1',
     payload: {
-      failureRatePercent: 30,
-      timeoutRatePercent: 10,
-      latencyMs: 250,
-      source: 'RUNTIME',
-      updatedAt: ISO,
+      failureRatePercent: 0,
+      timeoutRatePercent: 0,
+      latencyMs: 0,
+      source: 'DEFAULTS',
+      updatedAt: null,
     },
     assert: (r) => {
       expect(r.status).toBe(200);
-      expect(r.body.latencyMs).toBe(250);
+      expect(r.body.source).toBe('DEFAULTS');
+      expect(r.body.latencyMs).toBe(0);
     },
   },
   {
