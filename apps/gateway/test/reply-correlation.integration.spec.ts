@@ -386,6 +386,41 @@ const REPLY_CASES: readonly ReplyCase[] = [
     },
   },
   {
+    // T-44: the administrator's read of the provider simulation.
+    key: 'GET /api/payments/simulation',
+    kind: 'reply',
+    messageType: 'payment.simulation.replied.v1',
+    payload: {
+      failureRatePercent: 30,
+      timeoutRatePercent: 10,
+      latencyMs: 250,
+      source: 'RUNTIME',
+      updatedAt: ISO,
+    },
+    assert: (r) => {
+      expect(r.status).toBe(200);
+      expect(r.body.failureRatePercent).toBe(30);
+      expect(r.body.source).toBe('RUNTIME');
+    },
+  },
+  {
+    // T-44: the change, answered with the simulation now in force.
+    key: 'PUT /api/payments/simulation',
+    kind: 'reply',
+    messageType: 'payment.simulation.replied.v1',
+    payload: {
+      failureRatePercent: 30,
+      timeoutRatePercent: 10,
+      latencyMs: 250,
+      source: 'RUNTIME',
+      updatedAt: ISO,
+    },
+    assert: (r) => {
+      expect(r.status).toBe(200);
+      expect(r.body.latencyMs).toBe(250);
+    },
+  },
+  {
     key: 'GET /api/audit',
     kind: 'reply',
     messageType: 'audit.query.replied.v1',
