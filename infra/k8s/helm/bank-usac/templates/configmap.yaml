@@ -33,6 +33,8 @@ data:
   DEACTIVATION_INTERVAL_MS: {{ .Values.services.account.deactivation.intervalMs | quote }}
   INACTIVITY_MONTHS: {{ .Values.services.account.deactivation.inactivityMonths | quote }}
   INACTIVITY_MIN_BALANCE_MINOR: {{ .Values.services.account.deactivation.inactivityMinBalanceMinor | quote }}
+  ANOMALY_MAX_OPERATIONS: {{ .Values.services.account.anomaly.maxOperations | quote }}
+  ANOMALY_WINDOW_MINUTES: {{ .Values.services.account.anomaly.windowMinutes | quote }}
   PAYMENT_RETRY_DELAYS_MS: {{ .Values.services.payment.retryDelaysMs | quote }}
   PAYMENT_RETRY_SWEEP_MS: {{ .Values.services.payment.retrySweepMs | quote }}
   SEED_DEMO_DATA: "true"

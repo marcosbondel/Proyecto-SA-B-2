@@ -95,6 +95,12 @@ const CATALOGUE: Readonly<Record<string, EventSeverity>> = {
   'account.open.rejected.v1': 'WARNING',
   'account.deactivated.v1': 'WARNING',
   'account.reactivated.v1': 'WARNING',
+  /**
+   * T-42. A pattern worth a person's attention, not a failure: the account did
+   * what it was asked and the system noticed how often. The assignment names
+   * this one `WARNING` (§4.1, Account Service).
+   */
+  'account.anomaly.detected.v1': 'WARNING',
   'account.deposited.v1': 'INFO',
   'account.deposit.rejected.v1': 'WARNING',
   'account.debited.v1': 'INFO',

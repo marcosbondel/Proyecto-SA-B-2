@@ -1,14 +1,27 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Account } from '../../src/domain/account';
+import {
+  ANOMALY_CLAIM_TTL_MS,
+  COUNTED_OPERATION_TYPES,
+  exceedsLimit,
+  isCoolingDown,
+  windowStart,
+} from '../../src/domain/activity-policy';
+import type { ActivityRule } from '../../src/domain/activity-policy';
 import { shouldDeactivate } from '../../src/domain/deactivation-policy';
 import type { DeactivationCriteria } from '../../src/domain/deactivation-policy';
 import type {
   AccountFilter,
   AccountOperation,
+  AccountActivity,
   AccountRepository,
+  ActivityTelemetry,
+  AnomalyClaim,
+  AnomalyRecord,
   AppliedMovement,
   EventPublisher,
+  ObservedMovement,
   OutboundMessage,
   ProcessedMessage,
 } from '../../src/application/ports';
@@ -237,6 +250,84 @@ export class InMemoryAccountRepository implements AccountRepository {
     return deactivated;
   }
 
+  /** Every anomaly written down, with whether and when it was announced. */
+  public readonly anomalies: {
+    record: AnomalyRecord;
+    claimedAt: Date;
+    publishedAt: Date | null;
+  }[] = [];
+
+  /**
+   * The same decision `PostgresAccountRepository.claimAnomaly` takes, minus the
+   * lock: count the window, honour the cooldown, hand a stale claim back.
+   *
+   * What this cannot show is two detections racing — that is a fact about the
+   * advisory lock, and `repository.integration.spec.ts` proves it against a real
+   * PostgreSQL.
+   */
+  public async claimAnomaly(input: {
+    readonly account: Pick<Account, 'accountId' | 'customerId' | 'accountType'>;
+    readonly rule: ActivityRule;
+    readonly now: Date;
+  }): Promise<AnomalyClaim | null> {
+    const { account, rule, now } = input;
+
+    const previous = this.anomalies
+      .filter((entry) => entry.record.accountId === account.accountId)
+      .sort((a, b) => b.record.detectedAt.getTime() - a.record.detectedAt.getTime())[0];
+
+    if (previous !== undefined && isCoolingDown(previous.record.detectedAt, now, rule)) {
+      const stale =
+        previous.publishedAt === null &&
+        previous.claimedAt.getTime() <= now.getTime() - ANOMALY_CLAIM_TTL_MS;
+
+      if (!stale) {
+        return null;
+      }
+
+      previous.claimedAt = now;
+
+      return { anomaly: previous.record, firstTime: false };
+    }
+
+    const start = windowStart(now, rule);
+    const operationCount = this.operations.filter(
+      (operation) =>
+        operation.accountId === account.accountId &&
+        (COUNTED_OPERATION_TYPES as readonly string[]).includes(operation.type) &&
+        operation.occurredAt.getTime() > start.getTime() &&
+        operation.occurredAt.getTime() <= now.getTime(),
+    ).length;
+
+    if (!exceedsLimit(operationCount, rule)) {
+      return null;
+    }
+
+    const record: AnomalyRecord = {
+      anomalyId: randomUUID(),
+      accountId: account.accountId,
+      customerId: account.customerId,
+      accountType: account.accountType,
+      operationCount,
+      threshold: rule.maxOperations,
+      windowMinutes: rule.windowMinutes,
+      windowStart: start,
+      detectedAt: now,
+    };
+
+    this.anomalies.push({ record, claimedAt: now, publishedAt: null });
+
+    return { anomaly: record, firstTime: true };
+  }
+
+  public async markAnomalyPublished(anomalyId: string, now: Date): Promise<void> {
+    const entry = this.anomalies.find((candidate) => candidate.record.anomalyId === anomalyId);
+
+    if (entry !== undefined && entry.publishedAt === null) {
+      entry.publishedAt = now;
+    }
+  }
+
   public async findProcessed(
     idempotencyKey: string,
     messageType: string,
@@ -294,5 +385,33 @@ export class FixedClock {
 
   public advanceTo(now: Date): void {
     this.#now = now;
+  }
+}
+
+/** Remembers which movements the use cases reported to the monitor. */
+export class RecordingActivity implements AccountActivity {
+  public readonly movements: ObservedMovement[] = [];
+
+  public async afterMovement(movement: ObservedMovement): Promise<void> {
+    this.movements.push(movement);
+  }
+}
+
+/** Remembers what the monitor said about itself. */
+export class RecordingActivityTelemetry implements ActivityTelemetry {
+  public readonly operations: Parameters<ActivityTelemetry['operation']>[0][] = [];
+  public readonly anomalies: Parameters<ActivityTelemetry['anomaly']>[0][] = [];
+  public readonly failures: Parameters<ActivityTelemetry['failed']>[0][] = [];
+
+  public operation(event: Parameters<ActivityTelemetry['operation']>[0]): void {
+    this.operations.push(event);
+  }
+
+  public anomaly(event: Parameters<ActivityTelemetry['anomaly']>[0]): void {
+    this.anomalies.push(event);
+  }
+
+  public failed(event: Parameters<ActivityTelemetry['failed']>[0]): void {
+    this.failures.push(event);
   }
 }

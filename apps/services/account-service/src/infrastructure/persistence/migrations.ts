@@ -198,6 +198,40 @@ export const MIGRATIONS: readonly Migration[] = [
          CHECK (type IN ('DEBIT', 'CREDIT', 'COMPENSATION', 'COMMISSION'))`,
     ],
   },
+  {
+    /*
+     * T-42: the anomalies the high-frequency rule has detected.
+     *
+     * A table and not a counter in memory because "exactly one event per
+     * account per window" has to hold across replicas and across restarts, and
+     * only a row every replica can see can promise that. The row is written
+     * **before** the event is published, so a crash in between leaves a record
+     * that says "detected, never announced" (`published_at IS NULL`) rather than
+     * an announcement nobody can account for.
+     *
+     * `claimed_at` is a lease on the right to publish: a detector that crashed
+     * after writing the row cannot hold it for ever, and one that is merely slow
+     * is not duplicated while it holds it.
+     */
+    name: '008_account_anomalies',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS account_anomalies (
+         anomaly_id      UUID PRIMARY KEY,
+         account_id      UUID         NOT NULL REFERENCES accounts (account_id),
+         rule            VARCHAR(40)  NOT NULL DEFAULT 'HIGH_FREQUENCY',
+         operation_count INTEGER      NOT NULL,
+         threshold       INTEGER      NOT NULL,
+         window_minutes  INTEGER      NOT NULL,
+         window_start    TIMESTAMPTZ  NOT NULL,
+         detected_at     TIMESTAMPTZ  NOT NULL,
+         claimed_at      TIMESTAMPTZ  NOT NULL,
+         published_at    TIMESTAMPTZ,
+         CONSTRAINT account_anomalies_exceeds_limit CHECK (operation_count > threshold)
+       )`,
+      `CREATE INDEX IF NOT EXISTS account_anomalies_account_idx
+         ON account_anomalies (account_id, detected_at DESC)`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

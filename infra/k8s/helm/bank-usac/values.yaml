@@ -240,6 +240,15 @@ services:
       intervalMs: "86400000"
       inactivityMonths: "6"
       inactivityMinBalanceMinor: "5000"
+    # T-42: la regla de alta frecuencia. Mas de `maxOperations` debitos y
+    # creditos sobre una misma cuenta en `windowMinutes` minutos publican un
+    # `account.anomaly.detected.v1`. Los valores por defecto son los que sugiere
+    # el enunciado (10 operaciones en 5 minutos). Se cambian aqui y con
+    # `helm upgrade`: el Deployment lleva el checksum del ConfigMap, asi que los
+    # pods se reinician solos con los valores nuevos, sin tocar codigo.
+    anomaly:
+      maxOperations: "10"
+      windowMinutes: "5"
   transaction:
     component: transaction-service
     port: 3003
