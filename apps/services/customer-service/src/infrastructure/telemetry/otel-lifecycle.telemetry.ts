@@ -1,5 +1,13 @@
-import { isSpanContextValid, metrics, trace } from '@opentelemetry/api';
-import type { Attributes, Counter, Histogram, Link, Span, Tracer } from '@opentelemetry/api';
+import { context, isSpanContextValid, metrics, trace } from '@opentelemetry/api';
+import type {
+  Attributes,
+  Context,
+  Counter,
+  Histogram,
+  Link,
+  Span,
+  Tracer,
+} from '@opentelemetry/api';
 
 import type {
   CreationSpan,
@@ -60,24 +68,35 @@ export function traceparentOf(span: Span): string | null {
     : null;
 }
 
-/** The inverse of {@link traceparentOf}; anything malformed yields no link. */
-function linkTo(traceparent: string | null): Link[] {
+/**
+ * The inverse of {@link traceparentOf}: the creation span as a remote parent.
+ * Anything malformed (or a customer created before T-41 stored the context)
+ * yields `null`, and the decision then simply has no creation to hang from.
+ */
+function creationParent(traceparent: string | null): Context | null {
   const match = traceparent === null ? null : TRACEPARENT.exec(traceparent);
 
   if (match === null) {
-    return [];
+    return null;
   }
 
-  return [
-    {
-      context: {
-        traceId: match[1]!,
-        spanId: match[2]!,
-        traceFlags: Number.parseInt(match[3]!, 16),
-        isRemote: true,
-      },
-    },
-  ];
+  return trace.setSpanContext(context.active(), {
+    traceId: match[1]!,
+    spanId: match[2]!,
+    traceFlags: Number.parseInt(match[3]!, 16),
+    isRemote: true,
+  });
+}
+
+/**
+ * The request that caused the decision, kept as a link: the decision belongs to
+ * the creation's trace, but whoever pressed the button is still one hop away.
+ * Empty while no SDK records the active span.
+ */
+function causeLink(): Link[] {
+  const active = trace.getSpan(context.active())?.spanContext();
+
+  return active !== undefined && isSpanContextValid(active) ? [{ context: active }] : [];
 }
 
 /**
@@ -92,9 +111,14 @@ function linkTo(traceparent: string | null): Link[] {
  * avoid; the per-customer story is told by the log, joined on the correlation
  * id.
  *
- * **Creation and decision share a trace by link, not by parent.** They are
- * different messages, hours apart: the creation span's context is stored with
- * the customer, and the decision span carries a link to it.
+ * **Creation and decision share one trace, by parent.** The brief asks for the
+ * flow "from creation to verification", and two traces joined by a link do
+ * not show that flow in a trace viewer. The creation span's context is stored
+ * with the customer; the decision span is opened as its child, so it keeps the
+ * creation's `traceId` however many hours later it happens. The cost is a trace
+ * that spans hours or days, which Tempo accepts. The request that caused the
+ * decision stays reachable as a link. A customer with no stored context gets
+ * a decision in the active context, as before.
  *
  * The instruments are looked up when the adapter is constructed, which is
  * after a test (or T-48) has registered a provider. Built at import time they
@@ -181,9 +205,12 @@ export class OtelLifecycleTelemetry implements LifecycleTelemetry {
   }
 
   public record(event: LifecycleEvent): void {
-    const span = this.#tracer.startSpan(`${SPAN_NAME} ${event.transition}`, {
-      links: linkTo(event.creationTrace),
-    });
+    const parent = creationParent(event.creationTrace);
+    const span = this.#tracer.startSpan(
+      `${SPAN_NAME} ${event.transition}`,
+      parent === null ? {} : { links: causeLink() },
+      parent ?? context.active(),
+    );
 
     span.setAttributes(this.#spanAttributes(event.transition, event.customerId, event.path));
     span.end();
