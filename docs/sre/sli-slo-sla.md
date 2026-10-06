@@ -345,3 +345,18 @@ En la arquitectura de Bank USAC, la gestión de documentos de identidad (fotogra
 | **Auditoría Forense** | SLI-16, SLI-17, SLI-18| SLO-20, SLO-21, SLO-22 (0 en claro) | Registro inmutable con datos sensibles ofuscados| `pnpm --filter notification-audit-service test`|
 | **Seguridad de Acceso** | SLI-28, SLI-29, SLI-30| SLO-24, SLO-25 (0 secretos) | Segregación de roles (D-06) y JWT inviolable | `pnpm images:smoke` |
 | **Plataforma K8s / Cloud**| SLI-11, SLI-12, SLI-13| SLO-9, SLO-10 (≥ 99.0% / < 90s) | Autoescalado al 80% CPU y RTO < 15 min | `pnpm k8s:evidence` |
+
+---
+
+## Anexo: cómo se miden hoy los SLI de transferencias (Fase 3, T-43)
+
+`transaction-service` ya emite, contra `@opentelemetry/api`, las métricas con las que se calculan **SLI-2**, **SLI-3** y **SLO-2**. Sin SDK registrado (T-48) son no-op: hoy solo las comprueban los tests con exporters en memoria, y las consultas de abajo **no se han ejecutado** porque todavía no hay Prometheus.
+
+| Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
+|---|---|---|
+| **SLI-2** Tasa de completitud | `bank.transfer.finished` (`result`, `reason`) | `sum(rate(bank_transfer_finished_total{result="completed"}[5m])) / sum(rate(bank_transfer_finished_total[5m]))` |
+| **SLI-3** Duración de la Saga (p50 / p95 / p99) | `bank.transfer.duration` (`s`, `result`) | `histogram_quantile(0.95, sum by (le) (rate(bank_transfer_duration_seconds_bucket[5m])))` |
+| **SLO-2** Completadas en menos de 5,0 s | la misma, con una frontera exacta en `le="5"` | `sum(rate(bank_transfer_duration_seconds_bucket{result="completed",le="5"}[5m])) / sum(rate(bank_transfer_finished_total[5m]))` |
+| Tasa de error | `bank.transfer.finished` | `sum(rate(bank_transfer_finished_total{result=~"failed\|compensated"}[5m])) / sum(rate(bank_transfer_finished_total[5m]))` |
+
+Dos precisiones. El inicio de la duración es el `occurredAt` del mensaje `transfer.requested.v1` (como define SLI-3), no el momento en que el servicio crea la fila. Y la etiqueta `reason` permite que la tasa de error excluya los rechazos del negocio (`KYC_NOT_VERIFIED`, `INSUFFICIENT_FUNDS`), que no son fallos del sistema: `sum(...{reason!~"KYC_NOT_VERIFIED\|INSUFFICIENT_FUNDS"})`.

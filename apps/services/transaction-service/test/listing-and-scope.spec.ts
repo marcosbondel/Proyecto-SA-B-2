@@ -10,6 +10,7 @@ import {
   FixedClock,
   InMemoryTransactionRepository,
   RecordingPublisher,
+  RecordingTransferTelemetry,
   SequentialIds,
 } from './support/in-memory';
 
@@ -45,12 +46,13 @@ function world() {
   const publisher = new RecordingPublisher();
   const clock = new FixedClock(NOW);
   const ids = new SequentialIds();
-  const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids });
+  const telemetry = new RecordingTransferTelemetry();
+  const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids, telemetry });
 
   return {
     repository,
     publisher,
-    request: new RequestTransferUseCase({ repository, publisher, saga, clock }),
+    request: new RequestTransferUseCase({ repository, publisher, saga, clock, telemetry }),
     list: new ListTransactionsUseCase({ repository, publisher }),
     status: new GetTransactionStatusUseCase({ repository, publisher }),
   };

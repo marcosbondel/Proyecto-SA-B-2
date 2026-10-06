@@ -19,6 +19,12 @@ export interface LogFields {
   readonly correlationId?: string;
   readonly messageType?: string;
   readonly transactionId?: string;
+  /** T-43: the state a transition left, the Fase 2 phase it reads as, and the span it belongs to. */
+  readonly from?: string;
+  readonly phaseStatus?: string;
+  readonly attempt?: number;
+  readonly traceId?: string;
+  readonly spanId?: string;
   readonly paymentId?: string;
   readonly status?: string;
   readonly outcome?: string;

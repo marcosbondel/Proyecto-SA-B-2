@@ -17,7 +17,12 @@ import {
   TransactionStatusHandler,
   sagaHandlers,
 } from '../src/interfaces/message-handlers';
-import { FixedClock, InMemoryTransactionRepository, RecordingPublisher } from './support/in-memory';
+import {
+  FixedClock,
+  InMemoryTransactionRepository,
+  RecordingPublisher,
+  RecordingTransferTelemetry,
+} from './support/in-memory';
 
 /**
  * Every routing key `@bank/contracts`' `QUEUES` binds to this service,
@@ -47,13 +52,14 @@ function router(): InboundMessageRouter {
     /* discarded: this suite asserts on routing, not on log lines */
   });
 
-  const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids });
+  const telemetry = new RecordingTransferTelemetry();
+  const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids, telemetry });
 
   return new InboundMessageRouter([
     ...sagaHandlers(saga, logger),
-    new PaymentAttemptFailedHandler(new RecordPaymentAttemptUseCase({ repository }), logger),
+    new PaymentAttemptFailedHandler(new RecordPaymentAttemptUseCase({ repository, telemetry }), logger),
     new RequestTransferHandler(
-      new RequestTransferUseCase({ repository, publisher, saga, clock }),
+      new RequestTransferUseCase({ repository, publisher, saga, clock, telemetry }),
       logger,
     ),
     new TransactionStatusHandler(new GetTransactionStatusUseCase({ repository, publisher })),

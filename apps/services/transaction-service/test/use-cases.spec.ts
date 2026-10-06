@@ -12,6 +12,7 @@ import {
   FixedClock,
   InMemoryTransactionRepository,
   RecordingPublisher,
+  RecordingTransferTelemetry,
   SequentialIds,
 } from './support/in-memory';
 
@@ -52,15 +53,16 @@ function world() {
   const clock = new FixedClock(NOW);
   const ids = new SequentialIds();
 
-  const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids });
-  const attempts = new RecordPaymentAttemptUseCase({ repository });
+  const telemetry = new RecordingTransferTelemetry();
+  const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids, telemetry });
+  const attempts = new RecordPaymentAttemptUseCase({ repository, telemetry });
 
   return {
     repository,
     publisher,
     clock,
     saga,
-    request: new RequestTransferUseCase({ repository, publisher, saga, clock }),
+    request: new RequestTransferUseCase({ repository, publisher, saga, clock, telemetry }),
     status: new GetTransactionStatusUseCase({ repository, publisher }),
     /**
      * The KYC gate's own answer, as `customer.kyc.checked.v1` would deliver it
@@ -109,6 +111,7 @@ function world() {
       return await attempts.execute(payload, {
         messageId,
         messageType: 'payment.attempt.failed.v1',
+        correlationId: 'corr-attempt',
       });
     },
   };
@@ -672,7 +675,7 @@ describe('recording one rung of the retry ladder', () => {
 
     const outcome = await deliverAttempt({ attempt: 1 }, 'attempt-1');
 
-    expect(outcome).toEqual({ kind: 'RECORDED' });
+    expect(outcome).toMatchObject({ kind: 'RECORDED' });
     expect(repository.transactions.get(TRANSACTION)!.status).toBe('PAYMENT_PENDING');
   });
 
@@ -687,7 +690,7 @@ describe('recording one rung of the retry ladder', () => {
     const first = await deliverAttempt({ attempt: 1 }, 'the-same-attempt');
     const second = await deliverAttempt({ attempt: 1 }, 'the-same-attempt');
 
-    expect(first).toEqual({ kind: 'RECORDED' });
+    expect(first).toMatchObject({ kind: 'RECORDED' });
     expect(second).toEqual({ kind: 'DUPLICATE' });
   });
 
