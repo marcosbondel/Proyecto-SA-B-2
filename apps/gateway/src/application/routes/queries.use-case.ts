@@ -37,7 +37,7 @@ import {
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
 } from '@bank/contracts';
-import type { Identity, PaymentSimulationUpdateV1 } from '@bank/contracts';
+import type { Identity, PaymentSimulationUpdateV1, Producer } from '@bank/contracts';
 
 import { GatewayError } from '../errors/gateway-error';
 import type { ReplyKind } from '../errors/gateway-error';
@@ -60,6 +60,20 @@ export interface AccountListFilter {
   readonly customerId?: string;
   readonly status?: 'ACTIVE' | 'INACTIVE';
   readonly accountType?: 'MONETARIA' | 'AHORRO';
+}
+
+/**
+ * What the recent-events listing may be narrowed by (T-45): the four filters §4.1
+ * names — correlation, trace, service and level — all optional and combined
+ * with AND. `service` is the producer of the event.
+ */
+export interface AuditEventsFilter {
+  readonly page: number;
+  readonly limit: number;
+  readonly severity?: 'INFO' | 'WARNING' | 'ERROR';
+  readonly correlationId?: string;
+  readonly traceId?: string;
+  readonly service?: Producer;
 }
 
 /** What a notifications listing may be narrowed by. None of these is a permission. */
@@ -472,7 +486,7 @@ export class QueriesUseCase {
    * The paginated list of recent audit events across flows. ADMINISTRADOR only.
    */
   public async auditEventsList(
-    params: { page: number; limit: number; severity?: 'INFO' | 'WARNING' | 'ERROR' },
+    params: AuditEventsFilter,
     context: QueryContext,
   ): Promise<Record<string, unknown>> {
     const raw = await this.#ask(auditEventsListQueryV1.name, params, context);

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { Role } from '@bank/contracts';
 
-import { bearerFor } from './broker-harness';
+import { TEST_ALERT_WEBHOOK_TOKEN, bearerFor } from './broker-harness';
 import type { BrokerHarness } from './broker-harness';
 
 /**
@@ -227,6 +227,27 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
     request(h.app.getHttpServer())
       .get(`/api/audit?correlationId=${randomUUID()}`)
       .set('Authorization', auth(h, 'ADMINISTRADOR')),
+
+  /*
+   * Published for real, and the Notification & Audit Service of a live stack
+   * records it: a *resolved, informational* alert, so what it leaves in the
+   * operators' console is a line that says nothing is wrong.
+   */
+  'POST /api/alerts/slo': (h) =>
+    request(h.app.getHttpServer())
+      .post('/api/alerts/slo')
+      .set('Authorization', `Bearer ${TEST_ALERT_WEBHOOK_TOKEN}`)
+      .send({
+        status: 'resolved',
+        alerts: [
+          {
+            status: 'resolved',
+            labels: { alertname: 'RouteFixtureProbe', severity: 'info' },
+            annotations: { summary: 'Sonda de las pruebas de rutas: no es una alerta real.' },
+            startsAt: '2026-10-05T18:00:00Z',
+          },
+        ],
+      }),
 
   'GET /api/audit/recent': (h) =>
     request(h.app.getHttpServer())

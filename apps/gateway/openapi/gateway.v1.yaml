@@ -606,8 +606,9 @@ paths:
         - audit.query.replied.v1
   /api/audit/recent:
     get:
-      description: "Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y,
-        opcionalmente, acotar por severidad (§4.1: INFO/WARNING/ERROR)."
+      description: "Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y acotar
+        por los cuatro filtros de §4.1, combinables: severity (INFO/WARNING/ERROR), correlationId,
+        traceId y service (el servicio que publicó el evento)."
       operationId: AuditController_recent
       parameters: []
       responses:
@@ -639,6 +640,22 @@ paths:
       x-bank-publishes: notification.list.query.v1
       x-bank-awaits:
         - notification.list.replied.v1
+  /api/alerts/slo:
+    post:
+      description: "Sin sesión: se autentica con `Authorization: Bearer <ALERT_WEBHOOK_TOKEN>`, un secreto
+        compartido que vive en un Secret de Kubernetes, y se rechaza si no hay uno configurado.
+        Publica la alerta en el broker para que Notification & Audit la registre y notifique;
+        responde 202 sin esperar. Cuerpo: el formato de webhook de Grafana (`alerts[]` con
+        `labels.alertname`, `labels.severity`, `annotations.summary`, `annotations.runbook_url`)."
+      operationId: AlertsController_slo
+      parameters: []
+      responses:
+        "202":
+          description: ""
+      summary: Recibe el webhook de alertas de SLO de Grafana
+      tags:
+        - alerts
+      x-bank-publishes: alert.slo.received.v1
   /api/notifications:
     get:
       description: "El alcance sale del token y la consulta no lleva customerId: no hay forma de apuntarla
