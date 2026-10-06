@@ -71,9 +71,15 @@ ningún SDK registre un span. Expuesta por CORS.
   OpenTelemetry sin SDK es un no-op y se enciende solo cuando T-48 lo registre. Las
   pruebas usan un SDK real y un gestor de contexto mínimo.
 - **La anomalía llega al titular y al administrador.** El evento trae `customerId`
-  (opcional); sin él, la notificación queda igualmente en la consola del
-  administrador. El texto no dice cifras: la bandeja es del cliente y los números
-  pertenecen a la auditoría.
+  (opcional); sin él, la notificación va a la audiencia `OPERATORS` (la misma de las
+  alertas de SLO) con el asunto «Actividad inusual detectada en una cuenta», que no
+  dice «tu» porque no nombra a ningún titular. Antes quedaba sin destinatario y el
+  canal la marcaba `FAILED`: se registraba la advertencia y no se avisaba a nadie.
+  El texto no dice cifras: la bandeja es del cliente y los números pertenecen a la
+  auditoría. Cubierto con el canal simulado real (no el doble que siempre contesta
+  `SENT`), con PostgreSQL (una sola notificación, destinatario de operadores,
+  `customer_id` nulo, `SENT`) y con mutación: desactivar el desvío rompe 3 casos
+  unitarios y el de integración.
 - **Deduplicación por clave de negocio, no por id de mensaje.** Account Service puede
   republicar la misma anomalía con otro `messageId` (T-42). `caused_by` no lo ve; la
   clave `anomaly:<cuenta>:<inicio de ventana>` sí, y es un índice único, no una
