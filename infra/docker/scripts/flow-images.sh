@@ -40,9 +40,12 @@ set -uo pipefail
 # refused on the first attempt and the Saga COMPENSATES; one climbs the retry
 # ladder to its end and COMPENSATES the same way. The source balance is read
 # before and after each, so the compensation — and the KYC refusal's *lack* of
-# one — is a fact about the money, not a status somebody wrote down. The
-# seventh image, the audit trail, is read at the end to show it recorded all
-# four.
+# one — is a fact about the money, not a status somebody wrote down. A fifth
+# Saga is the T-44 one: the administrator sets the simulated provider to 100 %
+# failure at run time, the transfer made meanwhile COMPENSATES with the balance
+# restored, and the simulation is reset and proved reset by one that COMPLETES.
+# The seventh image, the audit trail, is read at the end to show it recorded all
+# five.
 
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(CDPATH="" cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -352,14 +355,93 @@ climbed="$(echo "$state" | sed -n 's/.*"payment":{[^}]*"attempt":\([0-9]*\).*/\1
 echo "   the provider was asked ${climbed} times before the Saga gave up"
 [[ "${climbed:-0}" -gt 1 ]] || fail "the ladder was never climbed: ${state}"
 
-step "11. the audit trail  →  the seventh image"
+step "11. the provider fails 100 % of the time, set at run time  →  the Saga compensates (T-44)"
+# The same compensation as step 10, reached the way an operator reaches it: no
+# `paymentScenario` on the transfer, and the *administrator* turns the simulated
+# provider's failure rate to 100 % through the Gateway, which publishes a command
+# to Payment Service — no redeploy, no restart, no HTTP between services.
+#
+# Three things are asserted. The route refuses anybody who is not an
+# administrator (a CLIENTE's session is the one at hand). The transfer made while
+# the provider is down ends COMPENSATED with the source balance exactly where it
+# started — a fact about the money. And the simulation is put back, always: it is
+# a switch on a shared stack, and leaving it at 100 % would fail every transfer
+# of whoever uses the stack next.
+admin_password="${SEED_PASSWORD:-BankUsac#2026}"
+admin_session="$(curl -fsS -X POST "${GATEWAY}/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"admin@bankusac.gt\",\"credential\":\"${admin_password}\"}")" \
+  || fail "the demo administrator could not sign in — set SEED_DEMO_DATA=true, as for the teller"
+
+admin_token="$(echo "$admin_session" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+[[ -n "$admin_token" ]] || fail "no token in the administrator's login response: ${admin_session}"
+echo "   signed in as admin@bankusac.gt, JWT issued (${#admin_token} characters)"
+
+refused_status="$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "${GATEWAY}/api/payments/simulation" \
+  "${auth[@]}" -H 'Content-Type: application/json' \
+  -d '{"failureRatePercent":100,"timeoutRatePercent":0,"latencyMs":0}')"
+echo "   a customer's PUT /api/payments/simulation → HTTP ${refused_status}"
+[[ "$refused_status" == "403" ]] || fail "a non-administrator was not refused with 403 (got ${refused_status})"
+
+simulation_reset() {
+  curl -fsS -X PUT "${GATEWAY}/api/payments/simulation" \
+    -H "Authorization: Bearer ${admin_token}" -H 'Content-Type: application/json' \
+    -d '{"reset":true}' >/dev/null 2>&1
+}
+trap simulation_reset EXIT
+
+hot="$(curl -fsS -X PUT "${GATEWAY}/api/payments/simulation" \
+  -H "Authorization: Bearer ${admin_token}" -H 'Content-Type: application/json' \
+  -d '{"failureRatePercent":100,"timeoutRatePercent":0,"latencyMs":0}')" \
+  || fail "the administrator's simulation change was refused"
+echo "   admin PUT → ${hot}"
+[[ "$hot" == *'"failureRatePercent":100'* ]] || fail "the simulation did not take 100 % failure: ${hot}"
+
+before="$(balance_of "$source_account")"
+down="$(transfer_of none)"
+down_id="$(echo "$down" | sed -n 's/.*"transactionId":"\([^"]*\)".*/\1/p')"
+echo "   202 Accepted — transactionId ${down_id}"
+
+state="$(settle "$down_id" 60)" || fail "the transfer made during the outage never settled: ${state}"
+echo "   settled: $(transfer_status "$state")"
+echo "   ${state}"
+
+after="$(balance_of "$source_account")"
+echo "   source balance ${before} → ${after} minor units"
+[[ "$state" == *'"status":"COMPENSATED"'* ]] || fail "expected COMPENSATED, got: ${state}"
+[[ "$before" -eq "$after" ]] || fail "the compensation did not return the money: ${before} → ${after}"
+outage_correlation="$(transfer_correlation "$state")"
+
+outage_attempts="$(echo "$state" | sed -n 's/.*"payment":{[^}]*"attempt":\([0-9]*\).*/\1/p')"
+echo "   the simulated provider failed ${outage_attempts} attempts in a row before the Saga gave up"
+[[ "${outage_attempts:-0}" -gt 1 ]] || fail "the failure was not retried as a transient one: ${state}"
+
+# Put it back, and prove it: the next transfer must COMPLETE.
+simulation_reset || fail "the simulation could not be reset — reset it by hand: PUT /api/payments/simulation {\"reset\":true}"
+trap - EXIT
+reset_state="$(curl -fsS "${GATEWAY}/api/payments/simulation" -H "Authorization: Bearer ${admin_token}")" \
+  || fail "the simulation could not be read back"
+echo "   reset → ${reset_state}"
+[[ "$reset_state" == *'"failureRatePercent":0'* ]] || fail "the simulation is still failing after the reset: ${reset_state}"
+
+before="$(balance_of "$source_account")"
+recovered="$(transfer_of none)"
+recovered_id="$(echo "$recovered" | sed -n 's/.*"transactionId":"\([^"]*\)".*/\1/p')"
+state="$(settle "$recovered_id")" || fail "the transfer after the reset never settled: ${state}"
+after="$(balance_of "$source_account")"
+echo "   after the reset: $(transfer_status "$state"), source balance ${before} → ${after}"
+[[ "$state" == *'"status":"COMPLETED"'* ]] || fail "expected COMPLETED after the reset, got: ${state}"
+[[ $((before - after)) -eq 25000 ]] || fail "the debit after the reset did not stick: ${before} → ${after}"
+
+step "12. the audit trail  →  the seventh image"
 # The trail is restricted to ADMINISTRADOR (D-06, TD-021), so this client
 # session cannot read it over HTTP. What it can be shown to have recorded is
 # read from the service's own log, which is where a container's evidence lives.
 for label in "the transfer refused for KYC:${gated_correlation}" \
              "the transfer that worked:${happy_correlation}" \
              "the payment that was refused:${declined_correlation}" \
-             "the payment that timed out:${flaky_correlation}"; do
+             "the payment that timed out:${flaky_correlation}" \
+             "the transfer made during the 100 % outage:${outage_correlation}"; do
   echo "   ${label%%:*}"
   $BANK_LOGS_CMD 2>&1 \
     | grep "${label##*:}" \
@@ -369,12 +451,14 @@ done
 
 echo
 echo "════════════════════════════════════════════════════════════════"
-echo " Four Sagas, seven images, one network."
+echo " Five Sagas, seven images, one network."
 echo
 echo " FAILED      — the KYC gate refused before any debit (T-31)"
 echo " COMPLETED   — debit, payment, credit"
 echo " COMPENSATED — a refusal, and the money given back"
 echo " COMPENSATED — a retry ladder climbed to its end, then the same"
+echo " COMPENSATED — the provider set to 100 % failure by the administrator at"
+echo "               run time (T-44), and a transfer COMPLETED after the reset"
 echo
 echo " Every request entered through the Gateway; no service was called"
 echo " directly and no service read another's database — not even the source"

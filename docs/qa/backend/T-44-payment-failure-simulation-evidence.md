@@ -179,6 +179,31 @@ Stack de `docker-compose.images.yml` con `payment-service` y `gateway` reconstru
 - Reiniciar el contenedor de Payment con una simulación activa: `GET` sigue devolviendo
   `RUNTIME` 25 / 5 / 120, y la fila está en `payment_simulation_settings`.
 
+### Dentro de `pnpm images:flow` (repetible)
+
+Las comprobaciones de arriba salieron de un script ad hoc que no quedó en el repositorio. El caso
+central, el de 100 % de fallo, ahora es el **paso 11** de `infra/docker/scripts/flow-images.sh` y se
+repite con un solo comando. Corrida del 2026-10-06 contra seis imágenes reconstruidas, exit 0:
+
+- `PUT /api/payments/simulation` con la sesión de un `CLIENTE` → **403**.
+- El administrador fija 100 % de fallo (`source: RUNTIME`) y una transferencia **sin `scenario`**
+  termina `COMPENSATED` con `PAYMENT_RETRIES_EXHAUSTED` tras **4 intentos**; el saldo de origen es
+  el mismo antes y después (`125000 → 125000`), medido por el Gateway y no leído de un estado.
+- `{"reset": true}` devuelve `DEFAULTS` con `failureRatePercent: 0`, y la transferencia siguiente
+  termina `COMPLETED` con el débito exacto (`125000 → 100000`).
+- La simulación se restaura **siempre**: una `trap EXIT` la resetea aunque el script falle a mitad,
+  porque es un interruptor sobre un stack compartido.
+- El paso 12 (auditoría) confirma que Notification & Audit registró la transferencia de la caída:
+  `payment.attempt.failed`, `payment.failed`, `account.debit.compensated`, `transaction.compensated`.
+
+Requiere `SEED_DEMO_DATA=true`, como el resto del flujo, porque usa al administrador sembrado.
+En Windows (Git Bash) hacen falta además `uuidgen` y `mktemp -t`, que ese entorno no trae.
+
+**Salvedad que sigue en pie:** el span `saga.compensation ordered` / `completed` **no se vio en esta
+corrida**. No hay SDK registrado hasta T-48, así que contra el stack real no existe ningún span; lo
+que se afirma de punta a punta es el dinero y el estado. Los spans los comprueban las pruebas de T-43
+con exporter en memoria.
+
 ### Contra el RabbitMQ real (Gateway)
 
 Con `RABBITMQ_URL` apuntando al broker del stack local, las tres suites de integración del
