@@ -1,14 +1,23 @@
 <script setup lang="ts">
 import {
+  AUDIT_SERVICES,
   SEVERITY_PRESENTATION,
+  auditFilterIsActive,
+  auditFilterProblems,
   filterTrail,
   formatSpan,
   mayQueryAudit,
   messageTypesIn,
   producersIn,
+  recentAuditQuery,
   summariseTrail,
 } from '../../lib/audit';
-import type { AuditEventRow, AuditNotification, EventSeverity } from '../../lib/audit';
+import type {
+  AuditEventRow,
+  AuditFilterInput,
+  AuditNotification,
+  RecentAuditEvent,
+} from '../../lib/audit';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
 import { formatDate } from '../../lib/money';
@@ -136,47 +145,71 @@ async function query(correlationId: string): Promise<void> {
   state.value = 'READY';
 }
 
-interface RecentAuditEvent {
-  eventId: string;
-  messageType: string;
-  producer: string;
-  occurredAt: string;
-  correlationId: string;
-  processingStatus: string;
-  consumer: string;
-  payload: Record<string, unknown>;
-  /** Absent for an event recorded before T-30 added the classification. */
-  severity?: EventSeverity;
-}
-
 const recentEvents = ref<RecentAuditEvent[]>([]);
 const recentTotal = ref(0);
 const recentPage = ref(1);
 const recentLimit = 10;
 const recentLoading = ref(false);
-/** `TODOS` shows every row, including the ones recorded before T-30 with no severity at all. */
-const severityFilter = ref<'TODOS' | EventSeverity>('TODOS');
+
+/**
+ * The four filters of §4.1 — correlation, trace, service and level (T-45).
+ * `TODOS` in a menu is "no filter", and so is an empty box. A severity filter
+ * never matches the rows recorded before T-30, which have none assigned.
+ */
+const filters = reactive<{
+  -readonly [K in keyof AuditFilterInput]: AuditFilterInput[K];
+}>({
+  correlationId: '',
+  traceId: '',
+  service: 'TODOS',
+  severity: 'TODOS',
+});
+
+/** What is wrong with the two free-text filters, shown beside them. Never blocks a filter left empty. */
+const filterProblems = computed(() => auditFilterProblems(filters));
+const filterActive = computed(() => auditFilterIsActive(filters));
+const filtersValid = computed(() => Object.keys(filterProblems.value).length === 0);
+/** The filters that produced what is on screen, so a half-typed box does not relabel it. */
+const applied = ref<AuditFilterInput | null>(null);
+const recentFailure = ref<string | null>(null);
 
 const stats = ref<{ infoToday: number; warningToday: number; errorToday: number } | null>(null);
 
 async function loadRecentEvents(page = 1): Promise<void> {
   if (!mayQuery.value) return;
+  if (!filtersValid.value) return;
+
   recentLoading.value = true;
-  const severityParam =
-    severityFilter.value === 'TODOS' ? '' : `&severity=${severityFilter.value}`;
+  recentFailure.value = null;
+  const asked: AuditFilterInput = { ...filters };
   const result = await api.call<{
     events: RecentAuditEvent[];
     total: number;
     page: number;
     limit: number;
-  }>(`/api/audit/recent?page=${page}&limit=${recentLimit}${severityParam}`);
+  }>('/api/audit/recent', { query: recentAuditQuery(asked, page, recentLimit) });
   recentLoading.value = false;
 
   if (result.ok) {
     recentEvents.value = result.data.events;
     recentTotal.value = result.data.total;
     recentPage.value = result.data.page;
+    applied.value = asked;
+
+    return;
   }
+
+  // A failure is said, not shown as an empty trail: "no events match" and "the
+  // audit service did not answer" are different facts about the bank.
+  recentFailure.value = result.error.message;
+}
+
+function clearFilters(): void {
+  filters.correlationId = '';
+  filters.traceId = '';
+  filters.service = 'TODOS';
+  filters.severity = 'TODOS';
+  void loadRecentEvents(1);
 }
 
 /**
@@ -222,8 +255,15 @@ onMounted(async () => {
   await loadStats();
 });
 
-/** Changing the filter starts a fresh listing, same as clicking "Actualizar". */
-watch(severityFilter, () => loadRecentEvents(1));
+/**
+ * The two menus start a fresh listing as soon as they change, same as clicking
+ * "Actualizar". The two boxes wait for "Buscar": a search that fired on every
+ * keystroke would ask the audit service about half an identifier.
+ */
+watch(
+  () => [filters.service, filters.severity],
+  () => loadRecentEvents(1),
+);
 
 useHead({ title: 'Auditoría · bonking' });
 </script>
@@ -275,16 +315,6 @@ useHead({ title: 'Auditoría · bonking' });
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <USelect
-              v-model="severityFilter"
-              :items="[
-                { label: 'Todas las severidades', value: 'TODOS' },
-                { label: 'Info', value: 'INFO' },
-                { label: 'Advertencia', value: 'WARNING' },
-                { label: 'Error', value: 'ERROR' },
-              ]"
-              size="sm"
-            />
             <UButton
               icon="i-lucide-refresh-cw"
               variant="ghost"
@@ -299,16 +329,142 @@ useHead({ title: 'Auditoría · bonking' });
         </div>
       </template>
 
-      <p v-if="severityFilter !== 'TODOS'" class="mb-3 text-[12px] text-[#75767F]">
-        Filtrando por severidad: no incluye los eventos registrados antes de esta
-        clasificación, que no tienen una asignada.
+      <!--
+        The four filters §4.1 names for the audit trail: correlation, trace,
+        service and level (T-45). Combined with AND by the audit service. The
+        two menus search on change; the two boxes wait for "Buscar", because a
+        search on every keystroke would ask about half an identifier.
+      -->
+      <form
+        class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        data-testid="audit-filters"
+        @submit.prevent="loadRecentEvents(1)"
+      >
+        <div class="flex flex-col gap-2">
+          <label for="filter-correlation" class="text-[13px] font-medium leading-5 text-[#5A5B63]">
+            Código de seguimiento
+          </label>
+          <UInput
+            id="filter-correlation"
+            v-model="filters.correlationId"
+            placeholder="UUID versión 4"
+            autocomplete="off"
+            spellcheck="false"
+            class="font-mono"
+            :aria-invalid="filterProblems.correlationId !== undefined"
+            aria-describedby="filter-correlation-error"
+            data-testid="filter-correlation"
+          />
+          <p
+            v-if="filterProblems.correlationId"
+            id="filter-correlation-error"
+            class="text-[13px] leading-5 text-[#B01B1B]"
+            data-testid="filter-correlation-error"
+          >{{ filterProblems.correlationId }}</p>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label for="filter-trace" class="text-[13px] font-medium leading-5 text-[#5A5B63]">
+            Traza
+          </label>
+          <UInput
+            id="filter-trace"
+            v-model="filters.traceId"
+            placeholder="32 caracteres hex"
+            autocomplete="off"
+            spellcheck="false"
+            class="font-mono"
+            :aria-invalid="filterProblems.traceId !== undefined"
+            aria-describedby="filter-trace-error"
+            data-testid="filter-trace"
+          />
+          <p
+            v-if="filterProblems.traceId"
+            id="filter-trace-error"
+            class="text-[13px] leading-5 text-[#B01B1B]"
+            data-testid="filter-trace-error"
+          >{{ filterProblems.traceId }}</p>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label for="filter-service" class="text-[13px] font-medium leading-5 text-[#5A5B63]">
+            Servicio
+          </label>
+          <USelect
+            id="filter-service"
+            v-model="filters.service"
+            :items="[
+              { label: 'Todos los servicios', value: 'TODOS' },
+              ...AUDIT_SERVICES.map((service) => ({ label: service, value: service })),
+            ]"
+            data-testid="filter-service"
+          />
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label for="filter-severity" class="text-[13px] font-medium leading-5 text-[#5A5B63]">
+            Nivel
+          </label>
+          <USelect
+            id="filter-severity"
+            v-model="filters.severity"
+            :items="[
+              { label: 'Todos los niveles', value: 'TODOS' },
+              { label: 'Info', value: 'INFO' },
+              { label: 'Advertencia', value: 'WARNING' },
+              { label: 'Error', value: 'ERROR' },
+            ]"
+            data-testid="filter-severity"
+          />
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 sm:col-span-2 xl:col-span-4">
+          <UButton
+            type="submit"
+            color="primary"
+            :disabled="!filtersValid || recentLoading"
+            data-testid="filter-submit"
+          >
+            {{ recentLoading ? 'Buscando…' : 'Buscar' }}
+          </UButton>
+          <UButton
+            v-if="filterActive"
+            type="button"
+            variant="outline"
+            color="neutral"
+            data-testid="filter-clear"
+            @click="clearFilters"
+          >
+            Limpiar filtros
+          </UButton>
+        </div>
+      </form>
+
+      <p
+        v-if="applied !== null && auditFilterIsActive(applied)"
+        class="mb-3 text-[12px] text-[#75767F]"
+        data-testid="filter-note"
+      >
+        Filtrando: las condiciones se combinan, y un filtro de nivel no incluye los eventos
+        registrados antes de esta clasificación, que no tienen una asignada. Una traza solo
+        aparece en los eventos registrados mientras la telemetría estaba activa.
       </p>
+
+      <UAlert
+        v-if="recentFailure"
+        color="error"
+        variant="subtle"
+        class="mb-3"
+        title="No se pudo consultar la auditoría"
+        :description="recentFailure"
+        data-testid="filter-failure"
+      />
 
       <div v-if="recentLoading && recentEvents.length === 0" class="py-8 text-center text-[#5A5B63]">
         Cargando eventos recientes…
       </div>
       <div v-else-if="recentEvents.length === 0" class="py-8 text-center text-[#75767F]">
-        No hay eventos registrados en la base de auditoría.
+        {{ filterActive ? 'Ningún evento coincide con los filtros.' : 'No hay eventos registrados en la base de auditoría.' }}
       </div>
       <div v-else class="overflow-x-auto">
         <table class="w-full text-left text-[13px]">
@@ -318,6 +474,7 @@ useHead({ title: 'Auditoría · bonking' });
               <th class="pb-2 font-medium">Tipo de evento</th>
               <th class="pb-2 font-medium">Servicio</th>
               <th class="pb-2 font-medium">Código de seguimiento</th>
+              <th class="pb-2 pr-4 font-medium">Traza</th>
               <th class="pb-2 font-medium">Estado</th>
               <th class="pb-2 font-medium">Severidad</th>
               <th class="pb-2 text-right font-medium">Acción</th>
@@ -338,6 +495,18 @@ useHead({ title: 'Auditoría · bonking' });
               </td>
               <td class="py-3 font-mono text-[11px] text-[#75767F]">
                 {{ evt.correlationId }}
+              </td>
+              <!--
+                Eight characters and the rest in the tooltip: the whole id is 32
+                and would make this one column wider than the screen. Searching by
+                it is what the Traza filter is for, and the detail panel shows it whole.
+              -->
+              <td class="py-3 pr-4 font-mono text-[11px] text-[#75767F]" data-testid="event-trace">
+                <span v-if="evt.traceId" :title="evt.traceId">{{ evt.traceId.slice(0, 8) }}…</span>
+                <span
+                  v-else
+                  title="Ninguna traza se registró para este evento: la telemetría no estaba activa."
+                >—</span>
               </td>
               <td class="py-3">
                 <UBadge
