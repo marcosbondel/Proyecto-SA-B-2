@@ -21,6 +21,7 @@ const TONE: Record<string, string> = {
   DEBIT: 'text-[#8A1010]',
   CREDIT: 'text-[#186A32]',
   COMPENSATION: 'text-[#186A32]',
+  COMMISSION: 'text-[#8A1010]',
 };
 </script>
 

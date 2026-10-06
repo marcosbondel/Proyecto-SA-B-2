@@ -16,7 +16,7 @@ import type { AuditEvent, CommandOutcome } from './customer';
 
 export type AccountType = 'MONETARIA' | 'AHORRO';
 export type AccountStatus = 'ACTIVE' | 'INACTIVE';
-export type OperationType = 'DEBIT' | 'CREDIT' | 'COMPENSATION';
+export type OperationType = 'DEBIT' | 'CREDIT' | 'COMPENSATION' | 'COMMISSION';
 export type OperationStatus = 'APPLIED' | 'COMPENSATED';
 
 /** Money as `GET /api/accounts` sends it. */
@@ -132,6 +132,12 @@ export const OPERATION_PRESENTATION: Readonly<
   DEBIT: { label: 'Débito', sign: '−' },
   CREDIT: { label: 'Crédito', sign: '+' },
   COMPENSATION: { label: 'Compensación', sign: '+' },
+  /*
+   * The Q3.00 a savings account charges on every debit (T-27). It was missing
+   * from this table, and an account with one such debit lost its whole statement:
+   * the row's label was read off `undefined` and the screen stopped drawing.
+   */
+  COMMISSION: { label: 'Comisión', sign: '−' },
 };
 
 /**
