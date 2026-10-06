@@ -181,6 +181,19 @@ export const MIGRATIONS: readonly Migration[] = [
          CHECK (kyc_status IN ('PENDING', 'VERIFIED', 'REJECTED'))`,
     ],
   },
+  {
+    /**
+     * T-41: the W3C `traceparent` of the span that recorded the creation.
+     *
+     * A KYC decision arrives as a different message, possibly hours later, so
+     * it cannot be in the same trace as the creation by being in the same call.
+     * It links back to this stored context instead. Nullable and unindexed: it
+     * is read by customer id only, and is `NULL` for every customer created
+     * before this migration or while no tracing SDK was registered.
+     */
+    name: '008_customers_creation_trace',
+    statements: [`ALTER TABLE customers ADD COLUMN IF NOT EXISTS creation_trace VARCHAR(80)`],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

@@ -62,9 +62,18 @@ export interface CustomerRepository {
     readonly emailVerifiedAt?: string | null;
     readonly idempotency: ProcessedMessage;
     readonly now: Date;
+    /** The `traceparent` of the span that records this creation (T-41), stored with the row. */
+    readonly creationTrace?: string | null;
   }): Promise<Customer>;
 
   findById(customerId: string): Promise<Customer | null>;
+
+  /**
+   * The trace context stored when the customer was created, for a later
+   * decision to link back to. `null` for customers created before it existed,
+   * or while no tracing SDK was registered.
+   */
+  findCreationTrace(customerId: string): Promise<string | null>;
 
   /** By email, because email is the login identifier (D-05). */
   findByEmail(email: string): Promise<{ readonly customer: Customer; readonly credentialHash: string } | null>;
@@ -315,4 +324,85 @@ export interface IdentityDocumentStager {
 /** Injected so a test can decide what "now" is. */
 export interface Clock {
   now(): Date;
+}
+
+/**
+ * A step in a customer's lifecycle that the system can observe (T-41).
+ *
+ * `path` says how the decision was reached, which keeps the time-to-verification
+ * percentile honest: a customer registered at the counter is verified in the
+ * same instant it is created (`counter`), and mixing that in with customers
+ * waiting for a review (`review`) would pull the p95 towards a number nobody
+ * experiences. It is a closed set on purpose — it is a metric label, and a
+ * label drawn from user data is how a metric explodes.
+ */
+export type LifecycleTransition = 'created' | 'verified' | 'rejected';
+export type LifecyclePath = 'counter' | 'review';
+
+/** Why a registration was turned away: a closed set, safe as a metric label. */
+export type RegistrationRefusal =
+  | 'DOCUMENT_ALREADY_REGISTERED'
+  | 'EMAIL_ALREADY_REGISTERED'
+  | 'INVALID_BIRTH_DATE'
+  | 'ROLE_NOT_ELIGIBLE';
+
+/** A KYC decision on a customer that already exists. */
+export interface LifecycleEvent {
+  readonly transition: 'verified' | 'rejected';
+  readonly customerId: string;
+  readonly path: LifecyclePath;
+  /** When the customer was created, to measure the wait until a decision. */
+  readonly createdAt: string;
+  readonly at: Date;
+  /**
+   * The W3C `traceparent` of the span that recorded the creation, or `null`.
+   *
+   * Creation and decision are different messages, often hours apart, so they
+   * can never share a trace by being in the same call stack. The decision span
+   * carries a *link* to this context instead, which is how a trace viewer can
+   * walk from "verified" back to "created".
+   */
+  readonly creationTrace: string | null;
+}
+
+/**
+ * The span opened for a registration, which ends as either of two facts: the
+ * customer was created, or the registration was refused.
+ *
+ * It is opened **before** the insert so its context can be stored in the same
+ * transaction as the row — the link a later decision needs cannot be written
+ * afterwards without a second, non-atomic write.
+ */
+export interface CreationSpan {
+  /** What to store beside the customer; `null` when no tracing SDK is registered. */
+  readonly traceparent: string | null;
+
+  created(event: {
+    readonly customerId: string;
+    readonly path: LifecyclePath;
+    readonly createdAt: string;
+  }): void;
+
+  refused(event: { readonly customerId: string; readonly reason: RegistrationRefusal }): void;
+}
+
+/**
+ * What the lifecycle reports about itself: a span, a log line and, for a KYC
+ * decision, two metrics.
+ *
+ * The use cases name the fact; the adapter decides how it is shown. Nothing
+ * here can carry a document, an address, a photo or a token — the shape has no
+ * field for them, which is a stronger guarantee than a filter.
+ */
+export interface LifecycleTelemetry {
+  beginCreation(): CreationSpan;
+
+  record(event: LifecycleEvent): void;
+
+  /** A decision that changed nothing (an unknown customer, a terminal state). */
+  ignored(event: {
+    readonly transition: 'verified' | 'rejected';
+    readonly customerId: string;
+    readonly reason: string;
+  }): void;
 }

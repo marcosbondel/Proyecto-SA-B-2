@@ -11,6 +11,7 @@ import type {
   CustomerRepository,
   EventPublisher,
   IdentityDocumentReader,
+  LifecycleTelemetry,
 } from './ports';
 
 const MESSAGE_TYPE = 'customer.validate-identity.v1';
@@ -34,17 +35,20 @@ export class ValidateIdentityUseCase {
   readonly #publisher: EventPublisher;
   readonly #documents: IdentityDocumentReader;
   readonly #clock: Clock;
+  readonly #telemetry: LifecycleTelemetry;
 
   constructor(dependencies: {
     readonly repository: CustomerRepository;
     readonly publisher: EventPublisher;
     readonly documents: IdentityDocumentReader;
     readonly clock: Clock;
+    readonly telemetry: LifecycleTelemetry;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#documents = dependencies.documents;
     this.#clock = dependencies.clock;
+    this.#telemetry = dependencies.telemetry;
   }
 
   public async execute(command: CustomerValidateIdentityV1, idempotencyKey: string): Promise<void> {
@@ -64,6 +68,11 @@ export class ValidateIdentityUseCase {
         idempotencyKey,
         messageType: MESSAGE_TYPE,
         resultSummary: { outcome: 'IGNORED', reason: 'UNKNOWN_CUSTOMER' },
+      });
+      this.#telemetry.ignored({
+        transition: 'rejected',
+        customerId: command.customerId,
+        reason: 'UNKNOWN_CUSTOMER',
       });
       return;
     }
@@ -98,6 +107,11 @@ export class ValidateIdentityUseCase {
           messageType: MESSAGE_TYPE,
           resultSummary: { outcome: 'IGNORED', reason: error.code },
         });
+        this.#telemetry.ignored({
+          transition: verdict.outcome === 'VALIDATED' ? 'verified' : 'rejected',
+          customerId: command.customerId,
+          reason: error.code,
+        });
         return;
       }
 
@@ -125,6 +139,17 @@ export class ValidateIdentityUseCase {
           customerId: updated.customerId,
         },
       },
+    });
+
+    // `recordIdentityVerdict` moves the KYC status with the identity one, so
+    // this path decides a KYC verdict too and must be counted like the others.
+    this.#telemetry.record({
+      transition: verdict.outcome === 'VALIDATED' ? 'verified' : 'rejected',
+      customerId: updated.customerId,
+      path: 'review',
+      createdAt: customer.createdAt,
+      at: now,
+      creationTrace: await this.#repository.findCreationTrace(command.customerId),
     });
 
     if (verdict.outcome === 'VALIDATED') {

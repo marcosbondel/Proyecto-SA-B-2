@@ -7,7 +7,7 @@ import {
 import type { CustomerSetKycStatusV1, Identity } from '@bank/contracts';
 
 import { DomainRejection, mayManageKyc, setKycStatus } from '../domain/customer';
-import type { Clock, CustomerRepository, EventPublisher } from './ports';
+import type { Clock, CustomerRepository, EventPublisher, LifecycleTelemetry } from './ports';
 
 const MESSAGE_TYPE = 'customer.set-kyc-status.v1';
 
@@ -24,15 +24,18 @@ export class SetKycStatusUseCase {
   readonly #repository: CustomerRepository;
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
+  readonly #telemetry: LifecycleTelemetry;
 
   constructor(dependencies: {
     readonly repository: CustomerRepository;
     readonly publisher: EventPublisher;
     readonly clock: Clock;
+    readonly telemetry: LifecycleTelemetry;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
+    this.#telemetry = dependencies.telemetry;
   }
 
   public async execute(
@@ -56,6 +59,11 @@ export class SetKycStatusUseCase {
         messageType: MESSAGE_TYPE,
         resultSummary: { outcome: 'IGNORED', reason: 'UNKNOWN_CUSTOMER' },
       });
+      this.#telemetry.ignored({
+        transition: transitionOf(command.status),
+        customerId: command.customerId,
+        reason: 'UNKNOWN_CUSTOMER',
+      });
       return;
     }
 
@@ -74,6 +82,11 @@ export class SetKycStatusUseCase {
           messageType: MESSAGE_TYPE,
           resultSummary: { outcome: 'IGNORED', reason: error.code },
         });
+        this.#telemetry.ignored({
+          transition: transitionOf(command.status),
+          customerId: command.customerId,
+          reason: error.code,
+        });
         return;
       }
 
@@ -91,6 +104,15 @@ export class SetKycStatusUseCase {
           status: command.status,
         },
       },
+    });
+
+    this.#telemetry.record({
+      transition: transitionOf(command.status),
+      customerId: updated.customerId,
+      path: 'review',
+      createdAt: existing.createdAt,
+      at: now,
+      creationTrace: await this.#repository.findCreationTrace(command.customerId),
     });
 
     if (command.status === 'VERIFIED') {
@@ -135,4 +157,8 @@ export class SetKycStatusUseCase {
       },
     });
   }
+}
+
+function transitionOf(status: CustomerSetKycStatusV1['status']): 'verified' | 'rejected' {
+  return status === 'VERIFIED' ? 'verified' : 'rejected';
 }

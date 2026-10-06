@@ -18,6 +18,7 @@ import {
   FixedClock,
   InMemoryCustomerRepository,
   PredictableTokens,
+  RecordingLifecycleTelemetry,
   RecordingPublisher,
   StubDocumentReader,
   StubDocumentStager,
@@ -61,9 +62,11 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
   const clock = new FixedClock(NOW);
   const tokens = new PredictableTokens();
   const hasher = new FakeHasher();
+  const telemetry = new RecordingLifecycleTelemetry();
 
   return {
     repository,
+    telemetry,
     publisher,
     documents,
     stager,
@@ -77,17 +80,18 @@ function build(bytes: Buffer | null = PHOTO_BYTES) {
       tokens,
       documents,
       clock,
+      telemetry,
     }),
     update: new UpdateCustomerUseCase({ repository, publisher, clock }),
     getCustomer: new GetCustomerUseCase({ repository, publisher }),
     getIdentityDocument: new GetIdentityDocumentUseCase({ repository, publisher, stager }),
-    setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
-    setKycStatus: new SetKycStatusUseCase({ repository, publisher, clock }),
+    setVerdict: new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens, telemetry }),
+    setKycStatus: new SetKycStatusUseCase({ repository, publisher, clock, telemetry }),
     checkKyc: new CheckKycUseCase({ repository, publisher }),
     pending: new GetPendingValidationUseCase({ repository, publisher }),
     authenticate: new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
     verifyEmail: new VerifyEmailActivationUseCase({ repository, publisher, tokens, clock }),
-    validateIdentity: new ValidateIdentityUseCase({ repository, publisher, documents, clock }),
+    validateIdentity: new ValidateIdentityUseCase({ repository, publisher, documents, clock, telemetry }),
   };
 }
 
@@ -816,6 +820,40 @@ describe('validating an identity again', () => {
 
     expect(context.repository.customers.get(REGISTER.customerId)!.identityStatus).toBe('VALIDATED');
     expect(context.publisher.typesPublished()).toContain('customer.identity.validated.v1');
+  });
+
+  it('counts the re-validation as a KYC decision, linked to the creation (T-41)', async () => {
+    const context = build(null);
+    await context.register.execute(REGISTER, 'key-1');
+
+    const bytes = Buffer.from('a better photograph');
+    context.documents.setBytes(bytes);
+
+    await context.validateIdentity.execute(
+      {
+        customerId: REGISTER.customerId,
+        photo: {
+          objectKey: 'better.jpg',
+          contentType: 'image/jpeg',
+          sizeBytes: bytes.byteLength,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+        },
+      },
+      'key-identity',
+    );
+
+    // `recordIdentityVerdict` moves kycStatus with the identity, so this path
+    // decides a KYC verdict and must reach the same counter as the others.
+    expect(context.repository.customers.get(REGISTER.customerId)!.kycStatus).toBe('VERIFIED');
+    expect(context.telemetry.recorded.map((event) => event.transition)).toEqual([
+      'rejected',
+      'verified',
+    ]);
+    expect(context.telemetry.recorded[1]).toMatchObject({
+      customerId: REGISTER.customerId,
+      path: 'review',
+      creationTrace: RecordingLifecycleTelemetry.TRACEPARENT,
+    });
   });
 
   it('does nothing when the same validation command arrives twice', async () => {

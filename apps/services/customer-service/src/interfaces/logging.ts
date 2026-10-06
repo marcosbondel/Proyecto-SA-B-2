@@ -16,6 +16,13 @@ export interface LogFields {
   readonly messageType?: string;
   readonly customerId?: string;
   readonly outcome?: string;
+  /** A lifecycle step (T-41): created, verified or rejected. */
+  readonly transition?: string;
+  /** How a KYC decision was reached: counter or review. */
+  readonly path?: string;
+  /** The span a log line belongs to, so a trace and its logs can be joined (T-41). */
+  readonly traceId?: string;
+  readonly spanId?: string;
   readonly reason?: string;
   readonly durationMs?: number;
   readonly error?: string;
