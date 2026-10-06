@@ -35,8 +35,8 @@ auditoría) pertenece a T-45.
 | Span | Cuándo | Atributos |
 | --- | --- | --- |
 | `customer.lifecycle created` | Cliente creado | `bank.customer.transition`, `bank.customer.path`, `bank.customer.id`, `bank.correlation_id` |
-| `customer.lifecycle verified` | KYC verificado | los mismos, más un *link* al span de creación |
-| `customer.lifecycle rejected` | KYC rechazado | los mismos, más un *link* al span de creación |
+| `customer.lifecycle verified` | KYC verificado | los mismos; **hijo** del span de creación (misma traza) |
+| `customer.lifecycle rejected` | KYC rechazado | los mismos; **hijo** del span de creación (misma traza) |
 | `customer.lifecycle refused` | Registro rechazado antes de existir el cliente | `bank.customer.transition`, `bank.customer.refusal`, `bank.customer.id`, `bank.correlation_id` |
 
 `path` es `counter` (registrado por personal: se crea y verifica en el mismo
@@ -63,12 +63,20 @@ cubo. Ninguna etiqueta es un identificador.
 
 ## Decisiones de diseño
 
-- **La creación y la decisión comparten traza por *link*, no por padre.** Son
-  mensajes distintos, a veces separados por horas. El contexto del span de creación
-  se guarda en `customers.creation_trace` **dentro de la misma transacción** que la
-  fila (el span se abre antes del insert), y la decisión posterior abre su span con
-  un enlace a ese contexto. Sin SDK el contexto no es válido y la columna queda en
-  `NULL`; una decisión sobre un cliente sin contexto se registra igual, sin enlace.
+- **La creación y la decisión comparten una sola traza, por padre.** El enunciado
+  (§4.1, Customer Service) pide la traza del "flujo completo desde creación hasta
+  verificación", y dos trazas unidas por un *link* no lo muestran en Jaeger ni en
+  Tempo: buscar la de creación no traía la verificación. El contexto del span de
+  creación se guarda en `customers.creation_trace` **dentro de la misma
+  transacción** que la fila (el span se abre antes del insert), y la decisión
+  posterior abre su span como **hijo** de ese contexto remoto. Primera versión de
+  este ticket: *link*; se cambió al contrastarla con el texto del enunciado.
+  **Costo asumido:** una traza que puede abarcar horas o días (la verificación
+  humana puede tardar); Tempo la admite. La petición que provocó la decisión
+  (p. ej. la del Gateway cuando T-48 propague el contexto) queda alcanzable como
+  *link* del span de decisión. Sin SDK el contexto no es válido y la columna queda
+  en `NULL`; una decisión sobre un cliente sin contexto, o con uno malformado, se
+  registra igual, sin padre.
 - **El `customerId` va en spans y logs, nunca como etiqueta de métrica.**
 - **Una repetición cuenta de nuevo.** Rechazar a un cliente que ya está `REJECTED`
   es legal en el dominio (`REJECTED → REJECTED`), así que el contador suma otra vez.
@@ -98,7 +106,7 @@ Todos con `--force` (sin caché de Turbo), salvo lo indicado.
 
 **Mutaciones** (se quitó una pieza y se comprobó que los tests la echan de menos,
 y luego se restauró): sin `telemetry.record` en `set-kyc-status`, fallan 3 casos;
-sin los *links*, fallan 3; sin el contador de rechazos, falla 1.
+sin el padre (volver a abrir la decisión en el contexto activo), fallan 3; sin el contador de rechazos, falla 1.
 
 **Contra el stack real** (siete imágenes con `pnpm images:build --allow-dirty`,
 Gateway en `:3100`): la migración `008_customers_creation_trace` se aplicó al
