@@ -144,6 +144,17 @@ export const QUEUES: readonly QueueDescriptor[] = [
   },
   {
     /*
+     * What the monitoring stack says about the bank (T-45). Its own queue, like
+     * each family's, because an alert storm must not sit in front of the audit
+     * of a transfer — and because the alert is a command the Gateway publishes
+     * on `bank.commands`, which none of the four event queues listen to.
+     */
+    name: 'audit.alert',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.commands, pattern: 'alert.slo.received.v1' }],
+  },
+  {
+    /*
      * The questions, kept off the event queues on purpose. A `correlationId`
      * lookup is a person waiting in front of a screen; putting it behind a
      * backlog of recorded events would make the one synchronous thing this
