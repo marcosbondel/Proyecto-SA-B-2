@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { AlertWebhookUseCase } from '../application/routes/alert-webhook.use-case';
 import type { ReceivedAlerts } from '../application/routes/alert-webhook.use-case';
@@ -33,6 +33,10 @@ export class AlertsController {
       'responde 202 sin esperar. Cuerpo: el formato de webhook de Grafana (`alerts[]` con ' +
       '`labels.alertname`, `labels.severity`, `annotations.summary`, `annotations.runbook_url`).',
   })
+  @ApiBearerAuth('alertWebhook')
+  @ApiResponse({ status: 202, description: 'Alertas aceptadas y publicadas en el broker.' })
+  @ApiResponse({ status: 400, description: 'El cuerpo no trae alertas utilizables.' })
+  @ApiResponse({ status: 401, description: 'Falta el secreto, es incorrecto o el Gateway no tiene uno configurado.' })
   @Public()
   @UseGuards(AlertTokenGuard)
   @Post('slo')

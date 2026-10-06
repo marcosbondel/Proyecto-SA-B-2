@@ -215,19 +215,19 @@ describe('the versioned API contract', () => {
     });
 
     /**
-     * The eight public routes, and only those. If a ninth ever appears here
+     * The seven public routes, and only those. If an eighth ever appears here
      * without a bearer requirement, this is where it is noticed.
      *
-     * The eighth is T-45's SLO webhook: Grafana has no session, so it is public
-     * to the session guards and guarded by a shared secret instead (see
-     * `AlertTokenGuard`, whose own tests prove it refuses everything else).
+     * T-45's SLO webhook is not among them although the session guards let it
+     * through: it declares the `alertWebhook` scheme, because a route that needs a
+     * shared secret should not be described as one that needs nothing.
      *
      * The two password-recovery routes are public because they have to be: the
      * whole premise is somebody who cannot sign in. The token in the emailed
      * link is the credential for the second, and the first is deliberately
      * uninformative so being open costs nothing.
      */
-    it('marks exactly the eight public routes as needing no token', () => {
+    it('marks exactly the seven public routes as needing no token', () => {
       const withoutAuth: string[] = [];
 
       for (const [path, operations] of Object.entries(committed.paths)) {
@@ -242,7 +242,6 @@ describe('the versioned API contract', () => {
         [
           'GET /health',
           'GET /ready',
-          'POST /api/alerts/slo',
           'POST /api/auth/login',
           'POST /api/auth/password-reset',
           'POST /api/auth/password-reset/confirm',

@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, Query, Req } from '@nestjs/common';
 
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { producer } from '@bank/contracts';
 import type { Producer } from '@bank/contracts';
@@ -78,6 +78,12 @@ export class AuditController {
       'por los cuatro filtros de §4.1, combinables: severity (INFO/WARNING/ERROR), ' +
       'correlationId, traceId y service (el servicio que publicó el evento).',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Página, desde 1.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Eventos por página, de 1 a 100 (10 por omisión).' })
+  @ApiQuery({ name: 'severity', required: false, enum: ['INFO', 'WARNING', 'ERROR'], description: 'Nivel del evento.' })
+  @ApiQuery({ name: 'correlationId', required: false, type: String, description: 'UUID v4 del flujo de negocio.' })
+  @ApiQuery({ name: 'traceId', required: false, type: String, description: 'trace-id W3C: 32 hexadecimales en minúscula, no todo ceros.' })
+  @ApiQuery({ name: 'service', required: false, enum: producer.options, description: 'Servicio que publicó el evento.' })
   @Roles('ADMINISTRADOR')
   @Get('recent')
   public async recent(

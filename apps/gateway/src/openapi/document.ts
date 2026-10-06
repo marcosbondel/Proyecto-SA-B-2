@@ -31,6 +31,9 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
       { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
       'session',
     )
+    // The monitoring stack's door (T-45): a shared secret, not a session. Declared
+    // so the contract says what the route needs instead of calling it public.
+    .addBearerAuth({ type: 'http', scheme: 'bearer' }, 'alertWebhook')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
