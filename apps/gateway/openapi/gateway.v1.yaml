@@ -610,7 +610,54 @@ paths:
         por los cuatro filtros de §4.1, combinables: severity (INFO/WARNING/ERROR), correlationId,
         traceId y service (el servicio que publicó el evento)."
       operationId: AuditController_recent
-      parameters: []
+      parameters:
+        - name: service
+          required: false
+          in: query
+          description: Servicio que publicó el evento.
+          schema:
+            enum:
+              - gateway
+              - customer-service
+              - account-service
+              - transaction-service
+              - payment-service
+              - notification-audit-service
+            type: string
+        - name: traceId
+          required: false
+          in: query
+          description: "trace-id W3C: 32 hexadecimales en minúscula, no todo ceros."
+          schema:
+            type: string
+        - name: correlationId
+          required: false
+          in: query
+          description: UUID v4 del flujo de negocio.
+          schema:
+            type: string
+        - name: severity
+          required: false
+          in: query
+          description: Nivel del evento.
+          schema:
+            enum:
+              - INFO
+              - WARNING
+              - ERROR
+            type: string
+        - name: limit
+          required: false
+          in: query
+          description: Eventos por página, de 1 a 100 (10 por omisión).
+          schema:
+            type: number
+        - name: page
+          required: false
+          in: query
+          description: Página, desde 1.
+          schema:
+            type: number
       responses:
         "200":
           description: ""
@@ -651,7 +698,13 @@ paths:
       parameters: []
       responses:
         "202":
-          description: ""
+          description: Alertas aceptadas y publicadas en el broker.
+        "400":
+          description: El cuerpo no trae alertas utilizables.
+        "401":
+          description: Falta el secreto, es incorrecto o el Gateway no tiene uno configurado.
+      security:
+        - alertWebhook: []
       summary: Recibe el webhook de alertas de SLO de Grafana
       tags:
         - alerts
@@ -732,6 +785,10 @@ servers: []
 components:
   securitySchemes:
     session:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
+    alertWebhook:
       scheme: bearer
       bearerFormat: JWT
       type: http
