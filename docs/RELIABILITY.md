@@ -100,7 +100,7 @@ Estos indicadores solo pueden medirse si el código incluye la instrumentación 
 ## Observabilidad y Bitácora Distribuida
 
 `Notification & Audit Service` es la base del dominio para la auditoría distribuida:
-* Dispone de **5 colas dedicadas en RabbitMQ**: `audit.customer`, `audit.account`, `audit.transaction`, `audit.payment` y `audit.query`.
+* Dispone de **6 colas dedicadas en RabbitMQ**: `audit.customer`, `audit.account`, `audit.transaction`, `audit.payment`, `audit.alert` (las alertas de SLO que entran por el webhook del Gateway, T-45) y `audit.query`.
 * **Deduplicación estricta** mediante la clave primaria `(event_id, consumer)`.
 * **Redacción previa a la inserción (*Pre-insert Redaction*):** Ningún número de documento (DPI), dirección física o saldo sensible se almacena en texto plano dentro de la bitácora de auditoría.
 * **Captura de errores:** Los mensajes no procesables se canalizan desde el exchange `bank.errors` y se registran bajo el estado `INVALID` en lugar de ser descartados silenciosamente (resolviendo la deuda técnica **TD-048**).
