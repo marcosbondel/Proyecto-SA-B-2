@@ -19,9 +19,11 @@ import { usernameCandidates } from '../domain/username';
 import type {
   ActivationTokenFactory,
   Clock,
+  CreationSpan,
   CustomerRepository,
   EventPublisher,
   IdentityDocumentReader,
+  LifecycleTelemetry,
   PasswordHasher,
 } from './ports';
 
@@ -60,6 +62,7 @@ export class RegisterCustomerUseCase {
   readonly #tokens: ActivationTokenFactory;
   readonly #documents: IdentityDocumentReader;
   readonly #clock: Clock;
+  readonly #telemetry: LifecycleTelemetry;
 
   constructor(dependencies: {
     readonly repository: CustomerRepository;
@@ -68,6 +71,7 @@ export class RegisterCustomerUseCase {
     readonly tokens: ActivationTokenFactory;
     readonly documents: IdentityDocumentReader;
     readonly clock: Clock;
+    readonly telemetry: LifecycleTelemetry;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
@@ -75,6 +79,7 @@ export class RegisterCustomerUseCase {
     this.#tokens = dependencies.tokens;
     this.#documents = dependencies.documents;
     this.#clock = dependencies.clock;
+    this.#telemetry = dependencies.telemetry;
   }
 
   public async execute(
@@ -91,6 +96,12 @@ export class RegisterCustomerUseCase {
     const now = this.#clock.now();
 
     /**
+     * Opened before the insert, so the context it carries is stored in the
+     * same transaction as the row (T-41). It ends as `created` or `refused`.
+     */
+    const creation = this.#telemetry.beginCreation();
+
+    /**
      * Only an administrator may create staff; anyone may create a `CLIENTE`
      * (D-06). Checked here and not only at the Gateway: a command reaching the
      * broker with no actor and `role: ADMINISTRADOR` would otherwise mint an
@@ -98,7 +109,13 @@ export class RegisterCustomerUseCase {
      * regardless of the document.
      */
     if (!mayRegisterWithRole(identity, command.role)) {
-      await this.#refuse(new DomainRejection('ROLE_NOT_ELIGIBLE'), idempotencyKey, now);
+      await this.#refuse(
+        new DomainRejection('ROLE_NOT_ELIGIBLE'),
+        idempotencyKey,
+        now,
+        command.customerId,
+        creation,
+      );
       return;
     }
 
@@ -186,15 +203,22 @@ export class RegisterCustomerUseCase {
           resultSummary: { outcome: 'REGISTERED', customerId: command.customerId },
         },
         now,
+        creationTrace: creation.traceparent,
       });
     } catch (error) {
       if (error instanceof DomainRejection) {
-        await this.#refuse(error, idempotencyKey, now);
+        await this.#refuse(error, idempotencyKey, now, command.customerId, creation);
         return;
       }
 
       throw error;
     }
+
+    creation.created({
+      customerId: customer.customerId,
+      path: registeredByStaff ? 'counter' : 'review',
+      createdAt: customer.createdAt,
+    });
 
     await this.#publisher.publish({
       messageType: customerRegisteredV1.name,
@@ -226,6 +250,15 @@ export class RegisterCustomerUseCase {
     }
 
     if (registeredByStaff && identityStatus === 'VALIDATED') {
+      this.#telemetry.record({
+        transition: 'verified',
+        customerId: customer.customerId,
+        path: 'counter',
+        createdAt: customer.createdAt,
+        at: now,
+        creationTrace: creation.traceparent,
+      });
+
       await this.#publisher.publish({
         messageType: customerIdentityValidatedV1.name,
         payload: {
@@ -244,6 +277,15 @@ export class RegisterCustomerUseCase {
         },
       });
     } else if (!registeredByStaff && verdict !== null && verdict.outcome === 'REJECTED') {
+      this.#telemetry.record({
+        transition: 'rejected',
+        customerId: customer.customerId,
+        path: 'review',
+        createdAt: customer.createdAt,
+        at: now,
+        creationTrace: creation.traceparent,
+      });
+
       await this.#publishVerdict(customer, verdict, now);
     }
   }
@@ -272,7 +314,13 @@ export class RegisterCustomerUseCase {
   }
 
   /** Records the refusal and says so, since the caller was told `202` long ago. */
-  async #refuse(rejection: DomainRejection, idempotencyKey: string, now: Date): Promise<void> {
+  async #refuse(
+    rejection: DomainRejection,
+    idempotencyKey: string,
+    now: Date,
+    customerId: string,
+    creation: CreationSpan,
+  ): Promise<void> {
     const reason = REGISTRATION_REJECTIONS.has(rejection.code)
       ? (rejection.code as
           | 'DOCUMENT_ALREADY_REGISTERED'
@@ -286,6 +334,8 @@ export class RegisterCustomerUseCase {
       messageType: MESSAGE_TYPE,
       resultSummary: { outcome: 'REJECTED', reason },
     });
+
+    creation.refused({ customerId, reason });
 
     await this.#publisher.publish({
       messageType: customerRegisterRejectedV1.name,

@@ -116,6 +116,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-29-payment-provider-evidence.md` | project | David Barrios | current | 2026-09-11 |
 | `docs/qa/backend/T-30-event-classification-evidence.md` | project | Marcos Bonifasi | current | 2026-09-12 |
 | `docs/qa/backend/T-31-integration-evidence.md` | project | Marcos Bonifasi | current | 2026-09-12 |
+| `docs/qa/backend/T-41-customer-lifecycle-telemetry-evidence.md` | project | Enner Mendizabal | current | 2026-10-04 |
 | `docs/process/implementations.md` | project | David Barrios | current | 2026-09-12 |
 | `docs/images/kubernetes/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `context/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |

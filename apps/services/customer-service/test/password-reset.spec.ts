@@ -13,6 +13,7 @@ import {
   FixedClock,
   InMemoryCustomerRepository,
   PredictableTokens,
+  RecordingLifecycleTelemetry,
   RecordingPublisher,
   StubDocumentReader,
 } from './support/in-memory';
@@ -73,6 +74,7 @@ function build() {
       tokens,
       documents: new StubDocumentReader(PHOTO_BYTES),
       clock,
+      telemetry: new RecordingLifecycleTelemetry(),
     }),
     request: new RequestPasswordResetUseCase({ repository, publisher, tokens, clock }),
     confirm: new ConfirmPasswordResetUseCase({ repository, publisher, hasher, tokens, clock }),
