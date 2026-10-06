@@ -62,6 +62,14 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: JWT_EXPIRES_IN
+            # The SLO webhook's shared secret (T-45). `optional` so a release
+            # without one still starts — and then the webhook refuses everybody.
+            - name: ALERT_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: ALERT_WEBHOOK_TOKEN
+                  optional: true
             # Names this replica's private reply queue, which the broker
             # declares `exclusive` (apps/packages/messaging/src/broker.ts) so
             # that two replicas cannot share one — a shared queue would have

@@ -173,6 +173,9 @@ services:
       # let this value reach anything but a laptop.
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-not-for-any-deployed-environment}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
+      # The SLO webhook's shared secret (T-45), 32 characters or more. Empty by
+      # default on purpose: with none the webhook refuses everybody.
+      ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:-}
       # Fixed rather than random, so the reply queue survives a restart instead
       # of leaving an orphan behind on every reload.
       GATEWAY_INSTANCE_ID: gateway-dev

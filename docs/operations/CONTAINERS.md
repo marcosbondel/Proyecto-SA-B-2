@@ -51,7 +51,7 @@ serve Compose, kind and a demonstration alike.
 | `transaction-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | — |
 | `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` `PAYMENT_SIM_FAILURE_RATE` `PAYMENT_SIM_TIMEOUT_RATE` `PAYMENT_SIM_LATENCY_MS` |
 | `notification-audit-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `REVEAL_ACTIVATION_LINKS` `NOTIFICATION_CHANNEL` `RESEND_API_KEY`¹ `EMAIL_FROM`¹ `APP_BASE_URL`¹ `RESEND_API_URL` |
-| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) |
+| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) `ALERT_WEBHOOK_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/alerts/slo` refuses every caller) |
 | `web` | — | `NUXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:3000`) |
 
 The Gateway has **no** `DATABASE_URL` and no way to acquire one: it holds no

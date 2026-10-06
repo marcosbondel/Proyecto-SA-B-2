@@ -355,6 +355,11 @@ secrets:
   # the notification-audit template, not here — the moment
   # services.notificationAudit.notificationChannel is "resend".
   resendApiKey: ""
+  # What Grafana's contact point sends as `Authorization: Bearer ...` to the
+  # Gateway's SLO webhook (T-45). Not `required`: without it the webhook refuses
+  # everybody, which is the safe default. At least 32 characters when set — the
+  # Gateway refuses to start on a shorter one. T-50 supplies it from the pipeline.
+  alertWebhookToken: ""
   rabbitmq:
     user: bank_app # the app account provisioned by infra/docker/scripts/init-rabbitmq.sh
     password: ""
