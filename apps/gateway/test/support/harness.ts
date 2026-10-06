@@ -20,6 +20,7 @@ import type {
 } from '../../src/application/ports';
 import { GatewayError } from '../../src/application/errors/gateway-error';
 import type { ReplyKind } from '../../src/application/errors/gateway-error';
+import { AlertWebhookUseCase } from '../../src/application/routes/alert-webhook.use-case';
 import { CommandsUseCase } from '../../src/application/routes/commands.use-case';
 import { ChangePasswordUseCase } from '../../src/application/routes/change-password.use-case';
 import { DepositUseCase } from '../../src/application/routes/deposit.use-case';
@@ -33,6 +34,7 @@ import { RegisterCustomerUseCase } from '../../src/application/routes/register-c
 import { VerifyEmailUseCase } from '../../src/application/routes/verify-email.use-case';
 import { SessionTokenService } from '../../src/infrastructure/auth/jwt.service';
 import { GatewayExceptionFilter } from '../../src/interfaces/filters/gateway-exception.filter';
+import { ALERT_WEBHOOK_TOKEN } from '../../src/interfaces/guards/alert-token.guard';
 import { JwtGuard, SESSION_VERIFIER } from '../../src/interfaces/guards/jwt.guard';
 import { RolesGuard } from '../../src/interfaces/guards/roles.guard';
 import { BROKER_HEALTH } from '../../src/interfaces/health.controller';
@@ -176,6 +178,9 @@ export class FakeObjectStorage implements ObjectStoragePort {
 
 export const TEST_SECRET = 'a-test-secret-of-at-least-32-chars!!';
 
+/** The SLO webhook's shared secret in every harness (T-45). */
+export const TEST_ALERT_TOKEN = 'an-alert-webhook-token-of-32-chars!!';
+
 export interface Harness {
   readonly app: INestApplication;
   readonly publisher: RecordingPublisher;
@@ -208,6 +213,7 @@ export async function buildHarness(
        * dependency would otherwise break every suite that had not listed it,
        * with a DI error that says nothing about the actual change.
        */
+      AlertWebhookUseCase,
       ChangePasswordUseCase,
       DepositUseCase,
       DashboardUseCase,
@@ -224,6 +230,7 @@ export async function buildHarness(
       { provide: OBJECT_STORAGE, useValue: storage },
       { provide: SESSION_VERIFIER, useValue: tokens },
       { provide: SESSION_SIGNER, useValue: tokens },
+      { provide: ALERT_WEBHOOK_TOKEN, useValue: TEST_ALERT_TOKEN },
       { provide: BROKER_HEALTH, useValue: { isConnected: () => brokerUp.value } },
       { provide: APP_GUARD, useClass: JwtGuard },
       { provide: APP_GUARD, useClass: RolesGuard },

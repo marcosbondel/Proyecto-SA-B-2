@@ -6,6 +6,7 @@ import { catalogByName } from '@bank/contracts';
 import { parse, stringify } from 'yaml';
 
 import { AccountsController } from '../src/interfaces/accounts.controller';
+import { AlertsController } from '../src/interfaces/alerts.controller';
 import { AuditController } from '../src/interfaces/audit.controller';
 import { DashboardController } from '../src/interfaces/dashboard.controller';
 import { NotificationsController } from '../src/interfaces/notifications.controller';
@@ -36,6 +37,7 @@ const CONTROLLERS = [
   TransfersController,
   PaymentsController,
   AuditController,
+  AlertsController,
   NotificationsController,
   DashboardController,
 ];
@@ -100,6 +102,8 @@ describe('the versioned API contract', () => {
         '/api/accounts/{accountId}/deposit',
         '/api/accounts/{accountId}/operations',
         '/api/accounts/{accountId}/status',
+        // Added by T-45: the webhook Grafana calls with a shared secret, not a session.
+        '/api/alerts/slo',
         '/api/audit',
         '/api/audit/recent',
         // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
@@ -176,7 +180,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(28);
+      expect(functional).toHaveLength(29);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
@@ -211,15 +215,19 @@ describe('the versioned API contract', () => {
     });
 
     /**
-     * The seven public routes, and only those. If an eighth ever appears here
+     * The eight public routes, and only those. If a ninth ever appears here
      * without a bearer requirement, this is where it is noticed.
+     *
+     * The eighth is T-45's SLO webhook: Grafana has no session, so it is public
+     * to the session guards and guarded by a shared secret instead (see
+     * `AlertTokenGuard`, whose own tests prove it refuses everything else).
      *
      * The two password-recovery routes are public because they have to be: the
      * whole premise is somebody who cannot sign in. The token in the emailed
      * link is the credential for the second, and the first is deliberately
      * uninformative so being open costs nothing.
      */
-    it('marks exactly the seven public routes as needing no token', () => {
+    it('marks exactly the eight public routes as needing no token', () => {
       const withoutAuth: string[] = [];
 
       for (const [path, operations] of Object.entries(committed.paths)) {
@@ -234,6 +242,7 @@ describe('the versioned API contract', () => {
         [
           'GET /health',
           'GET /ready',
+          'POST /api/alerts/slo',
           'POST /api/auth/login',
           'POST /api/auth/password-reset',
           'POST /api/auth/password-reset/confirm',

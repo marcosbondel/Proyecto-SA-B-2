@@ -38,7 +38,7 @@ async function bootstrap(): Promise<void> {
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Correlation-Id'],
-    exposedHeaders: ['X-Correlation-Id'],
+    exposedHeaders: ['X-Correlation-Id', 'X-Trace-Id'],
     maxAge: 600,
   });
   logger.log(`CORS allows: ${allowedOrigins.join(', ')}`);

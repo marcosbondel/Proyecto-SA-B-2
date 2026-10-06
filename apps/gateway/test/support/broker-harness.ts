@@ -31,6 +31,9 @@ import { SessionTokenService } from '../../src/infrastructure/auth/jwt.service';
 /** A fixed, valid HS256 secret — same shape `test/support/harness.ts` uses. */
 export const TEST_JWT_SECRET = 'a-real-broker-test-secret-of-32-chars!!';
 
+/** The SLO webhook's shared secret in the real-broker harness (T-45). */
+export const TEST_ALERT_WEBHOOK_TOKEN = 'a-real-broker-alert-token-of-32-chars!!';
+
 export interface BrokerHarness {
   readonly app: INestApplication;
   readonly environment: GatewayEnvironment;
@@ -91,6 +94,7 @@ export async function buildBrokerHarness(
     OBJECT_STORAGE_BUCKET: 'customer-identity-documents',
     OBJECT_STORAGE_REGION: 'us-east-1',
     CORS_ALLOWED_ORIGINS: 'http://localhost:3010',
+    ALERT_WEBHOOK_TOKEN: TEST_ALERT_WEBHOOK_TOKEN,
   });
 
   const app = await NestFactory.create(AppModule.forRoot(environment), {
