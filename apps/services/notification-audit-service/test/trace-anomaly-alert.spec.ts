@@ -357,7 +357,32 @@ describe('account.anomaly.detected.v1 becomes a WARNING notification (§4.1, Acc
     expect(sender.sent).toHaveLength(1);
   });
 
-  it('stays visible to the administrator when the event names no customer', async () => {
+  it('is delivered by the real simulated channel when it goes to the operators, not reported as failed', async () => {
+    const repository = new InMemoryAuditRepository();
+    const warnings: string[] = [];
+    const channel = new SimulatedNotificationAdapter({
+      info: () => undefined,
+      warn: (message) => warnings.push(message),
+    });
+    const handler = new RecordEventHandler(
+      new RecordEventUseCase({
+        repository,
+        sender: channel,
+        clock: new FixedClock(),
+        ids: new CountingIds(),
+      }),
+      'audit.account',
+      new StructuredLogger('test', () => {}),
+    );
+    const { customerId: _omitted, ...withoutCustomer } = ANOMALY;
+
+    await handler.handle(anomaly(withoutCustomer));
+
+    expect(repository.notifications[0]?.status).toBe('SENT');
+    expect(warnings).not.toContain('notification has no recipient');
+  });
+
+  it('goes to the operators when the event names no customer, in words that claim no owner', async () => {
     const { repository, sender, handlerFor } = harness();
     const { customerId: _omitted, ...withoutCustomer } = ANOMALY;
 
@@ -365,8 +390,38 @@ describe('account.anomaly.detected.v1 becomes a WARNING notification (§4.1, Acc
 
     expect(subjectCustomerIdFrom('account.anomaly.detected.v1', withoutCustomer)).toBeNull();
     expect(repository.notifications).toHaveLength(1);
-    expect(repository.notifications[0]?.customerId).toBeNull();
+
+    const [notification] = repository.notifications;
+
+    expect(notification).toMatchObject({
+      type: 'account.anomaly',
+      severity: 'WARNING',
+      customerId: null,
+      recipient: OPERATORS_RECIPIENT,
+      referenceId: ACCOUNT,
+    });
+    expect(notification?.subject).not.toMatch(/\d|\btu\b/i);
     expect(sender.sent).toHaveLength(1);
+  });
+
+  it('keeps the holder as the audience whenever the event names one', () => {
+    const intent = notificationFor('account.anomaly.detected.v1', ANOMALY);
+
+    expect(intent?.audience).toBeUndefined();
+    expect(intent?.subject).toBe('Detectamos actividad inusual en tu cuenta');
+  });
+
+  it('chooses the operators for an anomaly without a customer, whatever else the payload says', () => {
+    const { customerId: _omitted, ...withoutCustomer } = ANOMALY;
+    const intent = notificationFor('account.anomaly.detected.v1', withoutCustomer);
+
+    expect(intent?.audience).toBe('OPERATORS');
+    expect(intent?.severity).toBe('WARNING');
+    expect(intent?.referenceId).toBe(ACCOUNT);
+  });
+
+  it('does not send any other event to the operators for lacking a customer', () => {
+    expect(notificationFor('account.deactivated.v1', { accountId: ACCOUNT })?.audience).toBeUndefined();
   });
 
   it('tells the holder once when the producer announces the same window twice', async () => {

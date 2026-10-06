@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 
 import type { InboundRecord } from '../src/application/ports';
-import type { NotificationIntent } from '../src/domain/notification';
+import { OPERATORS_RECIPIENT, type NotificationIntent } from '../src/domain/notification';
 import { RecordEventUseCase } from '../src/application/record-event.use-case';
 import { migrate } from '../src/infrastructure/persistence/migrations';
 import { PostgresAuditRepository } from '../src/infrastructure/persistence/postgres-audit.repository';
@@ -310,6 +310,41 @@ describeIntegration('trace ids and the anomaly notification, in PostgreSQL', () 
       const { rows } = await pool.query<{ status: string }>('SELECT status FROM notifications');
 
       expect(rows).toEqual([{ status: 'SENT' }]);
+    });
+
+    it('addresses an anomaly that names no customer to the operators, once, and settles it SENT', async () => {
+      const { record, sender } = useCase();
+      const withoutCustomer = () =>
+        arriving({
+          messageType: 'account.anomaly.detected.v1',
+          producer: 'account-service',
+          consumer: 'audit.account',
+          severity: 'WARNING',
+          payload: { accountId: ACCOUNT, windowStart: WINDOW },
+        });
+
+      await record.execute({ event: withoutCustomer(), customerId: null });
+      await record.execute({ event: withoutCustomer(), customerId: null });
+
+      expect(sender.sent).toHaveLength(1);
+
+      const { rows } = await pool.query<{
+        status: string;
+        recipient: string | null;
+        customer_id: string | null;
+        subject: string;
+        severity: string;
+      }>('SELECT status, recipient, customer_id, subject, severity FROM notifications');
+
+      expect(rows).toEqual([
+        {
+          status: 'SENT',
+          recipient: OPERATORS_RECIPIENT,
+          customer_id: null,
+          subject: 'Actividad inusual detectada en una cuenta',
+          severity: 'WARNING',
+        },
+      ]);
     });
 
     it('sends it once even when eight replicas announce it at the same instant', async () => {

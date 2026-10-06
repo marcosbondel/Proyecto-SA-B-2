@@ -224,7 +224,8 @@ const POLICY: Readonly<
    * event carries a `customerId` — and, like every notification, to the
    * administrator's console. It says only that something unusual happened:
    * no count, no window and no amount, because the inbox is a customer's and
-   * the numbers belong to the audit trail.
+   * the numbers belong to the audit trail. When the event names no customer it
+   * goes to the operators instead — see `isAnomalyWithoutHolder`.
    */
   'account.anomaly.detected.v1': {
     type: 'account.anomaly',
@@ -260,15 +261,39 @@ export function notificationFor(messageType: string, payload: unknown): Notifica
 
   const link = linkFrom(messageType, payload);
   const dedupeKey = dedupeKeyFor(messageType, payload);
+  const forOperators = isAnomalyWithoutHolder(messageType, payload);
 
   return {
     type: rule.type,
-    subject: rule.subject,
+    subject: forOperators ? ANOMALY_FOR_OPERATORS_SUBJECT : rule.subject,
     referenceId: readString(payload, rule.reference),
     severity: classify({ messageType, processingStatus: 'PROCESSED' }),
     ...(link === null ? {} : { link }),
     ...(dedupeKey === null ? {} : { dedupeKey }),
+    ...(forOperators ? { audience: 'OPERATORS' as const } : {}),
   };
+}
+
+/**
+ * What the operators read when an anomaly names no customer. The holder's
+ * subject speaks to the holder ("tu cuenta"); said to the operators it would
+ * claim an owner the event never named. Like the holder's, it carries no count,
+ * window or amount — those are in the audit trail.
+ */
+const ANOMALY_FOR_OPERATORS_SUBJECT = 'Actividad inusual detectada en una cuenta';
+
+/**
+ * An anomaly whose `customerId` the contract left optional and the producer did
+ * not send (T-45). There is no inbox to put it in, and a notification with no
+ * recipient is reported `FAILED` by the channel, so the warning would be
+ * recorded and told to nobody. It goes to the operators instead — the audience
+ * an SLO alert already uses — rather than being dropped or invented a holder.
+ */
+function isAnomalyWithoutHolder(messageType: string, payload: unknown): boolean {
+  return (
+    messageType === 'account.anomaly.detected.v1' &&
+    subjectCustomerIdFrom(messageType, payload) === null
+  );
 }
 
 /**
