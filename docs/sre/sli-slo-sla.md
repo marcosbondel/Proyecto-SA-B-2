@@ -375,3 +375,21 @@ Dos precisiones. El inicio de la duración es el `occurredAt` del mensaje `trans
 | Cambios de la simulación en caliente | `bank.payment.simulation.changes` (`action`) | `sum by (action) (increase(bank_payment_simulation_changes_total[1h]))` |
 
 Dos precisiones. La etiqueta `source` (`scenario` / `configuration`) separa los fallos que alguien guionó en la transferencia de los que produjo la perilla del administrador, de modo que un panel puede mostrar solo estos últimos: `...{source="configuration"}`. Y el latency es la espera simulada **medida**, no la configurada: con `latencyMs = 0` o con un `scenario` explícito el histograma registra cero.
+
+
+---
+
+## Anexo: cómo se mide hoy la auditoría y las alertas (Fase 3, T-45)
+
+`notification-audit-service` emite, contra `@opentelemetry/api`, las métricas con las que se observa a sí mismo y a las alertas que le llegan por el webhook del Gateway. Sin SDK registrado (T-48) son no-op: hoy solo las comprueban los tests con exporters en memoria.
+
+| Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
+|---|---|---|
+| Eventos auditados por familia y nivel | `bank.audit.events` (`family`, `severity`, `outcome`, `processing`) | `sum by (family, severity) (rate(bank_audit_events_total{outcome="recorded"}[5m]))` |
+| Reentregas del broker que la auditoría rechazó | `bank.audit.events` con `outcome="duplicate"` | `sum(rate(bank_audit_events_total{outcome="duplicate"}[5m]))` |
+| Mensajes que la auditoría no pudo leer | `bank.audit.events` con `processing="invalid"` | `sum(rate(bank_audit_events_total{processing="invalid"}[5m]))` |
+| Notificaciones por resultado | `bank.audit.notifications` (`severity`, `result`) | `sum by (result) (rate(bank_audit_notifications_total[5m]))` |
+| Avisos repetidos que se suprimieron (anomalía republicada) | `bank.audit.notifications` con `result="suppressed"` | `sum(increase(bank_audit_notifications_total{result="suppressed"}[1h]))` |
+| Alertas de SLO recibidas | `bank.audit.alerts.received` (`status`, `severity`) | `sum by (status, severity) (increase(bank_audit_alerts_received_total[1h]))` |
+
+Tres precisiones. `suppressed` no es un error: es la segunda notificación de una misma anomalía (misma cuenta, misma ventana), que Account Service republica si falló su primera publicación; su tasa sostenida sí dice que ese servicio no está logrando publicar. Las alertas se cuentan **una por alerta**, no una por lote, y solo si el contrato las aceptó. Y `family` es la primera palabra del tipo de mensaje con un conjunto cerrado (`customer`, `account`, `transaction`, `payment`, `alert`, `other`): un nombre imprevisto cae en `other` y no crea una serie nueva.
