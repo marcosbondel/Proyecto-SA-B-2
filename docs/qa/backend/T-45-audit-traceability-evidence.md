@@ -253,6 +253,35 @@ funcionan (traza pegada en mayúsculas → «Ningún evento coincide con los fil
 quedaban truncados. Se corrigió (ocho caracteres en la tabla y el id completo en el
 tooltip y en el panel de detalle; los filtros en rejilla de dos columnas hasta `xl`).
 
+### Las dos pantallas restantes, vistas en el navegador (y lo que encontraron)
+
+Se abrieron la bandeja del cliente y la consola de operadores contra el stack. **Las dos
+revisiones encontraron un defecto** que ni las pruebas ni el guion de punta a punta veían:
+
+- **La alerta de SLO salía «No enviada»** (`sin destinatario`) y encendía el aviso rojo
+  «2 notificaciones no se entregaron». El canal simulado reporta `FAILED` para una
+  notificación sin destinatario, y una alerta no tiene cliente. El guion solo comprobaba
+  que la notificación *existía*, y el doble de pruebas (`RecordingSender`) siempre contesta
+  `SENT`, así que ninguna prueba podía verlo. **Corregido**: las notificaciones para los
+  operadores llevan el destinatario simulado `operadores@simulado.bonking.gt` (no nombra a
+  nadie), y la prueba nueva usa el **canal simulado real**: falla con el defecto y pasa sin
+  él. Comprobado otra vez en el stack: `SENT`, severidad `ERROR`. (Las dos filas `FAILED`
+  que siguen en la consola de desarrollo son sondas de antes del arreglo; la auditoría es
+  *append-only*.)
+- **La cuenta de ahorro con un débito perdía todo su estado de movimientos.** El enlace
+  «Ver →» de la notificación de anomalía aterrizó en `/cuentas/<id>` con un `TypeError`
+  (`reading 'label'`): la API devuelve operaciones `COMMISSION` (la comisión de Q3 de T-27)
+  y la tabla del frontend solo conocía `DEBIT`, `CREDIT` y `COMPENSATION`. **Anterior a
+  T-45** y sin relación con él, pero el flujo de T-45 desemboca ahí. **Corregido**
+  (`Comisión`, con signo de salida) y blindado: una prueba lee los tipos de operación **del
+  contrato** y exige que cada uno tenga nombre en la pantalla, de modo que el siguiente tipo
+  que se agregue no vuelva a romperla. Comprobado en el navegador: el estado de movimientos
+  dibuja `Crédito`, `Comisión`, `Débito` y `Compensación`.
+
+La bandeja del cliente muestra «Detectamos actividad inusual en tu cuenta» con la
+insignia «Advertencia», la etiqueta «Actividad inusual en la cuenta» y ninguna cifra; y
+«Ver →» lleva a la cuenta correcta.
+
 ## Lo que no se verificó
 
 - **Nada de esto se ha visto en Prometheus, Jaeger o Grafana**: no hay SDK registrado
