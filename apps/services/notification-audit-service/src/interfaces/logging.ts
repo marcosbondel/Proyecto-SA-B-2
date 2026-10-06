@@ -21,6 +21,8 @@
  */
 export interface LogFields {
   readonly correlationId?: string;
+  /** The W3C trace id, when an SDK records one (T-45). */
+  readonly traceId?: string;
   readonly causationId?: string | null;
   readonly eventId?: string;
   readonly messageType?: string;

@@ -28,6 +28,8 @@ import { BrokerReplyPublisher } from './infrastructure/messaging/broker-reply.pu
 import { ResendNotificationAdapter } from './infrastructure/notification/resend-notification.adapter';
 import { SimulatedNotificationAdapter } from './infrastructure/notification/simulated-notification.adapter';
 import { migrate } from './infrastructure/persistence/migrations';
+import { activeTraceId } from './infrastructure/telemetry/active-trace';
+import { OtelAuditTelemetry } from './infrastructure/telemetry/otel-audit.telemetry';
 import { PostgresAuditRepository } from './infrastructure/persistence/postgres-audit.repository';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
@@ -170,11 +172,16 @@ async function bootstrap(): Promise<void> {
   const ids = { next: (): string => randomUUID() };
   const publisherFactory = new BrokerReplyPublisher(broker);
 
+  // Built here, after T-48 (or a test) has registered a provider, so its
+  // instruments are bound to it and not to the no-op meter.
+  const auditTelemetry = new OtelAuditTelemetry();
+
   const recorderFor = (consumer: string): RecordEventHandler =>
     new RecordEventHandler(
-      new RecordEventUseCase({ repository, sender, clock, ids }),
+      new RecordEventUseCase({ repository, sender, clock, ids, telemetry: auditTelemetry }),
       consumer,
       logger,
+      activeTraceId,
     );
 
   /**
@@ -263,7 +270,13 @@ async function bootstrap(): Promise<void> {
    * never re-parked (the drain acknowledges whatever happens), so this closes the
    * hole without adding a new failure of its own.
    */
-  const drainRecorder = new RecordEventUseCase({ repository, sender, clock, ids });
+  const drainRecorder = new RecordEventUseCase({
+    repository,
+    sender,
+    clock,
+    ids,
+    telemetry: auditTelemetry,
+  });
 
   const drainErrors = async (): Promise<void> => {
     await broker.drainErrors(async (parked: ParkedMessage): Promise<void> => {
@@ -305,6 +318,7 @@ async function bootstrap(): Promise<void> {
                 processingStatus: 'INVALID',
                 parked: true,
               }),
+              traceId: activeTraceId(),
             }
           : {
               eventId: envelope.messageId,
@@ -322,6 +336,7 @@ async function bootstrap(): Promise<void> {
                 processingStatus: 'INVALID',
                 parked: true,
               }),
+              traceId: activeTraceId(),
             };
 
       const outcome = await drainRecorder.execute({ event, customerId: null });
