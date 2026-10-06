@@ -7,7 +7,7 @@
  * second `if` in a handler is how one event ends up notifying twice.
  */
 
-import { classify, type EventSeverity } from './classification';
+import { classify, classifyAlerts, type EventSeverity } from './classification';
 
 export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED';
 
@@ -67,6 +67,16 @@ export interface NotificationIntent {
    * `SimulatedNotificationAdapter`.
    */
   readonly link?: string;
+  /**
+   * What makes two notifications the same one even when two different events
+   * caused them (T-45). `caused_by` already makes a *redelivery* of one event
+   * produce one notification; this is for the event the producer announces
+   * twice under two message ids — Account Service republishes an anomaly whose
+   * first publication failed, and a person told twice about the same window
+   * stops believing the second warning. Absent for the great majority, whose
+   * event id is identity enough.
+   */
+  readonly dedupeKey?: string;
 }
 
 /**
@@ -191,7 +201,25 @@ const POLICY: Readonly<
     subject: 'Tu cuenta volvió a estar activa',
     reference: 'accountId',
   },
+  /*
+   * T-45 (Fase 3, §4.1 — Account Service): the anomaly the producer detected
+   * becomes a `WARNING` notification. It goes to the account's holder — the
+   * event carries a `customerId` — and, like every notification, to the
+   * administrator's console. It says only that something unusual happened:
+   * no count, no window and no amount, because the inbox is a customer's and
+   * the numbers belong to the audit trail.
+   */
+  'account.anomaly.detected.v1': {
+    type: 'account.anomaly',
+    subject: 'Detectamos actividad inusual en tu cuenta',
+    reference: 'accountId',
+  },
 };
+
+const SLO_ALERT = 'alert.slo.received.v1';
+
+/** The longest subject a notification row holds (`VARCHAR(200)`). */
+const MAX_SUBJECT = 200;
 
 /**
  * The notification this message calls for, or `null` for the great majority
@@ -203,6 +231,10 @@ const POLICY: Readonly<
  * happens to hide this week.
  */
 export function notificationFor(messageType: string, payload: unknown): NotificationIntent | null {
+  if (messageType === SLO_ALERT) {
+    return sloAlertNotification(payload);
+  }
+
   const rule = POLICY[messageType];
 
   if (rule === undefined) {
@@ -210,6 +242,7 @@ export function notificationFor(messageType: string, payload: unknown): Notifica
   }
 
   const link = linkFrom(messageType, payload);
+  const dedupeKey = dedupeKeyFor(messageType, payload);
 
   return {
     type: rule.type,
@@ -217,7 +250,72 @@ export function notificationFor(messageType: string, payload: unknown): Notifica
     referenceId: readString(payload, rule.reference),
     severity: classify({ messageType, processingStatus: 'PROCESSED' }),
     ...(link === null ? {} : { link }),
+    ...(dedupeKey === null ? {} : { dedupeKey }),
   };
+}
+
+/**
+ * The same anomaly, however many times it is announced: one account and one
+ * window. `windowStart` is part of the key because the next window on the same
+ * account is a different anomaly and deserves its own warning.
+ */
+function dedupeKeyFor(messageType: string, payload: unknown): string | null {
+  if (messageType !== 'account.anomaly.detected.v1') {
+    return null;
+  }
+
+  const accountId = readString(payload, 'accountId');
+  const windowStart = readString(payload, 'windowStart');
+
+  return accountId === null || windowStart === null ? null : `anomaly:${accountId}:${windowStart}`;
+}
+
+/**
+ * One notification for one webhook, however many alerts it batches (T-45).
+ *
+ * A Grafana notification groups alerts that fire together; telling the
+ * operators fifty times about one incident would bury the one that matters. The
+ * subject names the alert when there is one and counts them when there are
+ * several; the details are in the audit trail, which stores every alert of the
+ * batch. The severity is the batch's worst (`classifyAlerts`), so the
+ * notification and the audit row it came from cannot disagree.
+ *
+ * Tolerant of a payload that is not what the contract says, because this runs
+ * before anybody has checked: it falls back to a generic subject rather than
+ * throwing, and the audit row carries the `INVALID` verdict.
+ */
+function sloAlertNotification(payload: unknown): NotificationIntent {
+  const alerts = alertsIn(payload);
+  const firing = alerts.filter((alert) => alert.status === 'firing').length;
+
+  const subject =
+    alerts.length === 0
+      ? 'Alerta de SLO'
+      : alerts.length === 1
+        ? `Alerta de SLO ${firing === 1 ? 'activa' : 'resuelta'}: ${alerts[0]?.alertName ?? ''}`
+        : `${String(alerts.length)} alertas de SLO (${String(firing)} activas)`;
+
+  return {
+    type: 'alert.slo',
+    subject: subject.slice(0, MAX_SUBJECT),
+    referenceId: null,
+    severity: classifyAlerts(payload),
+  };
+}
+
+function alertsIn(
+  payload: unknown,
+): readonly { readonly alertName?: string; readonly status?: string }[] {
+  const alerts =
+    typeof payload === 'object' && payload !== null
+      ? (payload as { alerts?: unknown }).alerts
+      : undefined;
+
+  return Array.isArray(alerts)
+    ? alerts.filter((alert): alert is { alertName?: string; status?: string } =>
+        typeof alert === 'object' && alert !== null,
+      )
+    : [];
 }
 
 /**
@@ -252,7 +350,7 @@ function linkFrom(messageType: string, payload: unknown): string | null {
 
 /** Every message type that notifies. For the tests, and for the documentation. */
 export function notifyingMessageTypes(): readonly string[] {
-  return Object.keys(POLICY);
+  return [...Object.keys(POLICY), SLO_ALERT];
 }
 
 /**
@@ -307,7 +405,8 @@ export function subjectCustomerIdFrom(messageType: string, payload: unknown): st
     !messageType.startsWith('transaction.') &&
     messageType !== 'account.opened.v1' &&
     messageType !== 'account.deactivated.v1' &&
-    messageType !== 'account.reactivated.v1'
+    messageType !== 'account.reactivated.v1' &&
+    messageType !== 'account.anomaly.detected.v1'
   ) {
     return null;
   }

@@ -32,6 +32,9 @@ export class ListAuditEventsUseCase {
       limit,
       offset,
       ...(query.severity === undefined ? {} : { severity: query.severity }),
+      ...(query.correlationId === undefined ? {} : { correlationId: query.correlationId }),
+      ...(query.traceId === undefined ? {} : { traceId: query.traceId }),
+      ...(query.service === undefined ? {} : { service: query.service }),
     });
 
     const payload: unknown = {
@@ -41,6 +44,8 @@ export class ListAuditEventsUseCase {
         producer: event.producer,
         occurredAt: event.occurredAt.toISOString(),
         correlationId: event.correlationId,
+        ...(event.traceId === null ? {} : { traceId: event.traceId }),
+        ...(event.causationId === null ? {} : { causationId: event.causationId }),
         processingStatus: event.processingStatus,
         consumer: event.consumer,
         payload: event.payload as Record<string, unknown>,

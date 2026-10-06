@@ -34,6 +34,14 @@ export interface AuditEvent {
    * paper over with a default (see `migrations.ts`).
    */
   readonly severity: EventSeverity | null;
+  /**
+   * The W3C trace id the message was handled under (T-45): the technical trace,
+   * where `correlationId` is the business flow. `null` when no SDK recorded one —
+   * before T-48 registers it, or for a row written before this column existed —
+   * and never a placeholder: an id of zeros would look like data and join
+   * unrelated events.
+   */
+  readonly traceId: string | null;
 }
 
 /**
