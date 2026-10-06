@@ -361,7 +361,8 @@ Cada microservicio gestiona su propio esquema relacional independiente en Postgr
 * `payment_simulation_settings`: `(id PK CHECK (id = 1), failure_rate_percent, timeout_rate_percent, latency_ms, updated_at)` — a lo sumo una fila (T-44): el cambio en caliente de la simulación del proveedor, que leen todas las réplicas en cada intento; sin fila rigen los valores del ConfigMap (`PAYMENT_SIM_*`) y un reset la borra
 
 ### 6.5 Base de Datos `notification_audit`
-* `audit_events`: `(event_id, consumer PK, event_type, correlation_id, severity, sanitized_payload, recorded_at)`
+* `audit_events`: `(event_id, consumer PK, event_type, correlation_id, trace_id, severity, sanitized_payload, recorded_at)` — `trace_id` (T-45) es el trace-id W3C bajo el que se manejó el mensaje; `NULL` si ningún SDK registró una traza, y nunca un valor de relleno. Se consulta por `correlation_id`, `trace_id`, `producer` (servicio) y `severity` (nivel), combinables, con `GET /api/audit/recent`.
+* `notifications.dedupe_key` (T-45): identidad de una notificación cuando dos eventos distintos dicen lo mismo (una anomalía republicada por Account Service); índice único parcial, de modo que el segundo se registra en la auditoría pero no vuelve a notificar.
 * `notifications_inbox`: `(notification_id PK, customer_id, title, message, channel, delivered_at)`
 
 ---
