@@ -77,7 +77,24 @@ export interface NotificationIntent {
    * event id is identity enough.
    */
   readonly dedupeKey?: string;
+  /**
+   * Who the notification is *for* when it is not a customer (T-45): the people
+   * who operate the bank. An SLO alert has no customer, and a notification with
+   * no recipient is reported `FAILED` by the channel — which is exactly how the
+   * first version of this feature showed up in the operators' console, as an
+   * alert nobody had been told about and a red banner saying so.
+   */
+  readonly audience?: 'OPERATORS';
 }
+
+/**
+ * The simulated address of the operators, for the notifications that are theirs.
+ *
+ * Derived from nothing and naming nobody: like a customer's simulated address it
+ * exists so the channel has somewhere to say it delivered, and unlike one it
+ * could never be mistaken for a person's.
+ */
+export const OPERATORS_RECIPIENT = 'operadores@simulado.bonking.gt';
 
 /**
  * Which events produce a notification, and what it says.
@@ -300,6 +317,7 @@ function sloAlertNotification(payload: unknown): NotificationIntent {
     subject: subject.slice(0, MAX_SUBJECT),
     referenceId: null,
     severity: classifyAlerts(payload),
+    audience: 'OPERATORS',
   };
 }
 
