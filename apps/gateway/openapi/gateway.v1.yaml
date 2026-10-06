@@ -524,6 +524,47 @@ paths:
       x-bank-publishes: payment.list.query.v1
       x-bank-awaits:
         - payment.list.replied.v1
+  /api/payments/simulation:
+    get:
+      description: Solo ADMINISTRADOR. Devuelve la tasa de fallos, la tasa de timeouts y la latencia
+        vigentes, y si vienen del ConfigMap (DEFAULTS) o de un cambio en caliente (RUNTIME).
+      operationId: PaymentsController_simulation
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta la simulación del proveedor de pagos
+      tags:
+        - payments
+      x-bank-publishes: payment.simulation.query.v1
+      x-bank-awaits:
+        - payment.simulation.replied.v1
+    put:
+      description: 'Solo ADMINISTRADOR. Cuerpo: failureRatePercent, timeoutRatePercent (0–100, su suma no
+        puede superar 100) y latencyMs (0–30 000), o bien { "reset": true } para volver a los
+        valores del ConfigMap. Aplica solo a pagos cuya transferencia no indicó un scenario.
+        Responde con la simulación que quedó vigente.'
+      operationId: PaymentsController_updateSimulation
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePaymentSimulationDto"
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Cambia en caliente la simulación del proveedor de pagos
+      tags:
+        - payments
+      x-bank-publishes: payment.simulation.update.v1
+      x-bank-awaits:
+        - payment.simulation.replied.v1
   /api/payments/{paymentId}:
     get:
       description: Un 504 aquí no significa que el pago falló. Los intentos vienen de la tabla de
@@ -712,6 +753,9 @@ components:
       type: object
       properties: {}
     TransferDto:
+      type: object
+      properties: {}
+    UpdatePaymentSimulationDto:
       type: object
       properties: {}
     MarkNotificationsReadDto:

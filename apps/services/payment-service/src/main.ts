@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import { EXCHANGES, QUEUES, validateMessage } from '@bank/contracts';
 import type { MessageEnvelope, QueueDescriptor } from '@bank/contracts';
@@ -8,6 +9,7 @@ import { MessageBroker } from '@bank/messaging';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
+import { SimulationUseCase } from './application/manage-simulation.use-case';
 import { ProcessPaymentUseCase } from './application/process-payment.use-case';
 import { GetPaymentStatsUseCase } from './application/get-payment-stats.use-case';
 import { QueryPaymentUseCase } from './application/query-payment.use-case';
@@ -16,11 +18,13 @@ import {
   loadDotEnvFile,
   loadEnvironment,
   parseRetryDelays,
+  simulationDefaults,
 } from './infrastructure/config/environment';
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresPaymentRepository } from './infrastructure/persistence/postgres-payment.repository';
 import { OutboxRelay } from './infrastructure/scheduler/outbox.scheduler';
+import { OtelProviderTelemetry } from './infrastructure/telemetry/otel-provider.telemetry';
 import { RetryScheduler } from './infrastructure/scheduler/retry.scheduler';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
@@ -29,6 +33,8 @@ import {
   PaymentStatsHandler,
   PaymentStatusHandler,
   ProcessPaymentHandler,
+  SimulationQueryHandler,
+  SimulationUpdateHandler,
 } from './interfaces/message-handlers';
 
 /** The queue this service owns, as `@bank/contracts` declares it. */
@@ -110,7 +116,23 @@ async function bootstrap(): Promise<void> {
   const ids = { next: (): string => randomUUID() };
   const publisherFactory = new BrokerEventPublisher(broker);
 
-  const processPayment = new ProcessPaymentUseCase({ repository, clock, ids, delays });
+  const telemetry = new OtelProviderTelemetry(logger);
+  const simulation = new SimulationUseCase({
+    repository,
+    defaults: simulationDefaults(environment),
+    clock,
+    telemetry,
+  });
+  const processPayment = new ProcessPaymentUseCase({
+    repository,
+    clock,
+    ids,
+    delays,
+    simulation,
+    random: { next: (): number => Math.random() },
+    sleeper: { sleep: async (ms: number): Promise<void> => await delay(ms) },
+    telemetry,
+  });
   const queryPayment = new QueryPaymentUseCase({ repository });
 
   /**
@@ -127,6 +149,8 @@ async function bootstrap(): Promise<void> {
       new ListPaymentsHandler(queryPayment, publisher),
       new PaymentStatusHandler(queryPayment, publisher),
       new PaymentStatsHandler(new GetPaymentStatsUseCase({ repository, publisher })),
+      new SimulationUpdateHandler(simulation, publisher),
+      new SimulationQueryHandler(simulation, publisher),
     ]);
   };
 

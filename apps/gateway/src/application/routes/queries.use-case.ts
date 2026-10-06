@@ -27,6 +27,9 @@ import {
   notificationListRepliedV1,
   paymentListQueryV1,
   paymentListRepliedV1,
+  paymentSimulationQueryV1,
+  paymentSimulationRepliedV1,
+  paymentSimulationUpdateV1,
   paymentStatusQueryV1,
   paymentStatusRepliedV1,
   transactionListQueryV1,
@@ -34,9 +37,10 @@ import {
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
 } from '@bank/contracts';
-import type { Identity } from '@bank/contracts';
+import type { Identity, PaymentSimulationUpdateV1 } from '@bank/contracts';
 
 import { GatewayError } from '../errors/gateway-error';
+import type { ReplyKind } from '../errors/gateway-error';
 import {
   MESSAGE_PUBLISHER,
   REPLY_WAITER,
@@ -374,6 +378,46 @@ export class QueriesUseCase {
   }
 
   /**
+   * How the simulated provider is set up right now (T-44).
+   *
+   * Staff-only at the controller; the owning service answers it for anybody who
+   * reaches it, because nothing in the answer is a secret.
+   */
+  public async paymentSimulation(context: QueryContext): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentSimulationQueryV1.name, {}, context);
+    const parsed = paymentSimulationRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * Changes how the simulated provider misbehaves, while the system runs.
+   *
+   * Asked as a command and answered with the simulation now in force, so the
+   * reply is its own confirmation. A timeout here uses the **command** wording,
+   * "no confirmation, the operation was NOT cancelled": the change may well
+   * have landed, and telling an administrator otherwise would have them apply
+   * it twice.
+   */
+  public async updatePaymentSimulation(
+    command: PaymentSimulationUpdateV1,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentSimulationUpdateV1.name, command, context, 'command');
+    const parsed = paymentSimulationRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
    * One payment, with the rungs of its retry ladder.
    *
    * The reply carries no code for absence, so the gateway supplies the nearest
@@ -471,12 +515,17 @@ export class QueriesUseCase {
    * A shared generic here would have to widen the return type, and the widening
    * is exactly what lets an unparsed shape slip through to a browser.
    */
-  async #ask(messageType: string, payload: unknown, context: QueryContext): Promise<unknown> {
+  async #ask(
+    messageType: string,
+    payload: unknown,
+    context: QueryContext,
+    kind: ReplyKind = 'read',
+  ): Promise<unknown> {
     const reply = await askAndWait(
       this.#publisher,
       this.#replies,
       envelopeForRequest(payload, messageType, context.actor, context.correlationId),
-      'read',
+      kind,
     );
 
     return reply.payload;

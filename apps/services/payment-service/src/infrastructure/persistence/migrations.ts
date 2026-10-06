@@ -192,6 +192,41 @@ export const MIGRATIONS: readonly Migration[] = [
          CHECK (provider_result IS NULL OR provider_result IN ('SUCCESS','FAILURE','TIMEOUT'))`,
     ],
   },
+  {
+    /*
+     * The administrator's override of the simulated provider (T-44).
+     *
+     * **At most one row**, which `id = 1` enforces rather than hopes for: there
+     * is one simulation per bank, and a second row would be two answers to "how
+     * is the provider set up". It lives here, and not in memory, because the HPA
+     * can run up to five replicas and a value held by one of them is a value the
+     * other four do not have. No row means the ConfigMap's values are in force,
+     * which is why a reset is a `DELETE` and not an `UPDATE` back to defaults
+     * this table would have to know.
+     *
+     * `DOUBLE PRECISION` and not `NUMERIC`: a rate of 12.5 % must come back as
+     * 12.5, and the two-decimal rounding of a fixed scale could push two rates
+     * that add up to exactly 100 over it.
+     */
+    name: '005_payment_simulation_settings',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS payment_simulation_settings (
+         id                   SMALLINT PRIMARY KEY DEFAULT 1,
+         failure_rate_percent DOUBLE PRECISION NOT NULL,
+         timeout_rate_percent DOUBLE PRECISION NOT NULL,
+         latency_ms           INTEGER NOT NULL,
+         updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+         CONSTRAINT payment_simulation_single_row CHECK (id = 1),
+         CONSTRAINT payment_simulation_rates_in_range
+           CHECK (failure_rate_percent BETWEEN 0 AND 100
+              AND timeout_rate_percent BETWEEN 0 AND 100
+              AND failure_rate_percent + timeout_rate_percent <= 100),
+         CONSTRAINT payment_simulation_latency_in_range
+           CHECK (latency_ms BETWEEN 0 AND 30000)
+       )`,
+    ],
+  },
 ];
 
 /**

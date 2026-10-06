@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(104);
+    expect(catalog).toHaveLength(107);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the fifty-seven messages recorded as an extension, and no others', () => {
+  it('adds exactly the sixty messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -264,6 +264,14 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'payment.attempt.failed.v1',
       'payment.list.query.v1',
       'payment.list.replied.v1',
+      /*
+       * Added by T-44 (Fase 3, §4.1 — Payment Service). The administrator's way to
+       * change how the simulated provider misbehaves without a redeploy: one
+       * command to set it, one to read it, and the reply both of them share.
+       */
+      'payment.simulation.query.v1',
+      'payment.simulation.replied.v1',
+      'payment.simulation.update.v1',
       'payment.stats.query.v1',
       'payment.stats.replied.v1',
       'payment.status.query.v1',

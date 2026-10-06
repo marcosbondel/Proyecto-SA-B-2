@@ -266,6 +266,16 @@ services:
     # shorten it explicitly with --set if a live walkthrough needs to.
     retryDelaysMs: "1000,5000,30000"
     retrySweepMs: "500"
+    # T-44: como se porta el proveedor simulado mientras nadie lo cambie. Los tres
+    # valores son los de antes de la ficha: ningun fallo, ninguna espera. Un
+    # administrador los cambia en caliente con `PUT /api/payments/simulation`
+    # (sin reiniciar nada), y ese cambio gana sobre estos valores hasta un
+    # `{"reset": true}`. Aplican solo a un pago cuya transferencia no indico un
+    # `scenario`. `failureRatePercent` + `timeoutRatePercent` no pueden pasar de 100.
+    simulation:
+      failureRatePercent: "0"
+      timeoutRatePercent: "0"
+      latencyMs: "0"
   notificationAudit:
     component: notification-audit-service
     port: 3005

@@ -48,6 +48,9 @@ import {
   customerVerifyEmailV1,
   paymentListQueryV1,
   paymentListRepliedV1,
+  paymentSimulationQueryV1,
+  paymentSimulationRepliedV1,
+  paymentSimulationUpdateV1,
   paymentStatusQueryV1,
   notificationInboxQueryV1,
   notificationInboxRepliedV1,
@@ -186,6 +189,14 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'GET /api/payments': {
     publishes: paymentListQueryV1.name,
     awaits: [paymentListRepliedV1.name],
+  },
+  'GET /api/payments/simulation': {
+    publishes: paymentSimulationQueryV1.name,
+    awaits: [paymentSimulationRepliedV1.name],
+  },
+  'PUT /api/payments/simulation': {
+    publishes: paymentSimulationUpdateV1.name,
+    awaits: [paymentSimulationRepliedV1.name],
   },
   'GET /api/payments/{paymentId}': {
     publishes: paymentStatusQueryV1.name,

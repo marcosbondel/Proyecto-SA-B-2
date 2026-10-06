@@ -149,6 +149,9 @@ messages, nothing that reveals whether an account or an email exists.
 | `transaction.stats.replied.v1` | reply | transaction-service | gateway |
 | `payment.stats.query.v1` | command | gateway | payment-service |
 | `payment.stats.replied.v1` | reply | payment-service | gateway |
+| `payment.simulation.query.v1` | command | gateway | payment-service |
+| `payment.simulation.update.v1` | command | gateway | payment-service |
+| `payment.simulation.replied.v1` | reply | payment-service | gateway |
 | `audit.stats.query.v1` | command | gateway | notification-audit-service |
 | `audit.stats.replied.v1` | reply | notification-audit-service | gateway |
 
@@ -2824,6 +2827,66 @@ The payload is an empty object.
 | `retrying` | integer ≥ 0 | yes |
 
 `retrying` — payments that have failed at least once and are still due another attempt — is what makes the retry ladder visible from outside this service, and it is the operational number here: `failedToday` is history, `retrying` is a thing that is happening. Not scoped to today.
+
+### `payment.simulation.query.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | payment-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `payment.simulation.query.v1` |
+| **Contract** | [`payment.simulation.query.v1.ts`](../../apps/packages/contracts/src/events/payment/payment.simulation.query.v1.ts) |
+
+The payload is an empty object. There is one simulation per bank, so there is nothing to select. Staff only, enforced at the Gateway (`GET /api/payments/simulation`).
+
+### `payment.simulation.update.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | payment-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `payment.simulation.update.v1` |
+| **Contract** | [`payment.simulation.update.v1.ts`](../../apps/packages/contracts/src/events/payment/payment.simulation.update.v1.ts) |
+
+Either all three parameters, or `reset`; never a mixture and never a partial set.
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `failureRatePercent` | number, 0–100 | yes |
+| `timeoutRatePercent` | number, 0–100 | yes |
+| `latencyMs` | integer, 0–30 000 | yes |
+| `reset` | `true` (instead of the three above) | no |
+
+**Preconditions.** `failureRatePercent + timeoutRatePercent ≤ 100`: a failure and a timeout are two ways one attempt can go wrong, so together they cannot exceed every attempt. A partial set is refused by the schema rather than merged, so no reply has to describe a refusal.
+
+**Effects.** Payment Service stores the values in its own database, in one row that every replica reads on every attempt, so a change holds everywhere at once and survives a restart. `reset` deletes that row and the ConfigMap's values (`PAYMENT_SIM_FAILURE_RATE`, `PAYMENT_SIM_TIMEOUT_RATE`, `PAYMENT_SIM_LATENCY_MS`) apply again. The simulation only applies to a payment whose transfer named no `scenario`; an explicit `scenario` stays deterministic.
+
+**On error.** Retry, then dead-letter. Answered with `payment.simulation.replied.v1`.
+
+### `payment.simulation.replied.v1`
+
+| | |
+| --- | --- |
+| **Category** | reply |
+| **Producer** | payment-service |
+| **Consumers** | gateway |
+| **Exchange** | `bank.replies` |
+| **Routing key** | `payment.simulation.replied.v1` |
+| **Contract** | [`payment.simulation.replied.v1.ts`](../../apps/packages/contracts/src/events/payment/payment.simulation.replied.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `failureRatePercent` | number, 0–100 | yes |
+| `timeoutRatePercent` | number, 0–100 | yes |
+| `latencyMs` | integer, 0–30 000 | yes |
+| `source` | `DEFAULTS` \| `RUNTIME` | yes |
+| `updatedAt` | ISO-8601 timestamp or `null` | yes |
+
+The answer to both the query and the update, so an update's reply is also its confirmation. `source` says whether the ConfigMap's values or an administrator's override are in force.
 
 ### `audit.stats.query.v1`
 

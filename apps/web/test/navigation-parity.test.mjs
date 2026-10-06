@@ -111,7 +111,9 @@ describe('the frontend matrix agrees with the Gateway', () => {
     );
 
     // The single-payment route stays open, like the transfer status it mirrors.
-    assert.equal((source.match(/@Roles\(/g) ?? []).length, 1);
+    // The other two restricted routes are the administrator's simulation dial
+    // (T-44), pinned by the next test: three decorators in all, and no more.
+    assert.equal((source.match(/@Roles\(/g) ?? []).length, 3);
 
     /*
      * The module itself is no longer restricted — paying a bill is what a
@@ -128,6 +130,34 @@ describe('the frontend matrix agrees with the Gateway', () => {
     assert.equal(mayMonitorPayments('ADMINISTRADOR'), true);
     assert.equal(mayMonitorPayments('CLIENTE'), false);
     assert.equal(mayMonitorPayments(null), false);
+  });
+
+  /**
+   * The fourth and fifth role-restricted routes, added by T-44: reading and
+   * changing how the simulated payment provider misbehaves. `ADMINISTRADOR`
+   * alone, because changing it changes what every customer's payment does.
+   *
+   * There is **no screen** for it, so the frontend matrix has nothing to grow:
+   * no navigation entry and no `may…` helper to offer a button that would fail.
+   * This test is the other half of that decision — if a screen is ever built, it
+   * has to filter on this role, and the route below is what it must agree with.
+   */
+  test('the Gateway restricts the payment simulation dial to ADMINISTRADOR', async () => {
+    const source = await readFile(
+      new URL('../../gateway/src/interfaces/payments.controller.ts', import.meta.url),
+      'utf8',
+    );
+
+    assert.match(
+      source,
+      /@Roles\('ADMINISTRADOR'\)\s*\n\s*@Get\('simulation'\)/,
+      'reading the payment simulation no longer restricts itself to ADMINISTRADOR',
+    );
+    assert.match(
+      source,
+      /@Roles\('ADMINISTRADOR'\)\s*\n\s*@Put\('simulation'\)/,
+      'changing the payment simulation no longer restricts itself to ADMINISTRADOR',
+    );
   });
 
   test('no other Gateway controller restricts by role', async () => {

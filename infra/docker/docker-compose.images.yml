@@ -222,6 +222,12 @@ services:
       # they understood at the second rung. Shortened here and nowhere else.
       PAYMENT_RETRY_DELAYS_MS: ${PAYMENT_RETRY_DELAYS_MS:-1000,2000,3000}
       PAYMENT_RETRY_SWEEP_MS: ${PAYMENT_RETRY_SWEEP_MS:-500}
+      # T-44: how the simulated provider behaves until an administrator changes it
+      # with PUT /api/payments/simulation. Zeroes are the behaviour before the
+      # ticket: nothing fails by chance and nothing is slow.
+      PAYMENT_SIM_FAILURE_RATE: ${PAYMENT_SIM_FAILURE_RATE:-0}
+      PAYMENT_SIM_TIMEOUT_RATE: ${PAYMENT_SIM_TIMEOUT_RATE:-0}
+      PAYMENT_SIM_LATENCY_MS: ${PAYMENT_SIM_LATENCY_MS:-0}
     depends_on:
       postgres-payment:
         condition: service_healthy
