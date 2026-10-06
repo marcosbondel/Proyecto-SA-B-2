@@ -262,6 +262,7 @@ export class PaymentAttemptFailedHandler implements InboundMessageHandler {
     const outcome = await this.#useCase.execute(payload, {
       messageId: envelope.messageId,
       messageType: envelope.messageType,
+      correlationId: envelope.correlationId,
     });
 
     const fields = {
@@ -320,6 +321,7 @@ export class RequestTransferHandler implements InboundMessageHandler {
       correlationId: envelope.correlationId,
       idempotencyKey: envelope.idempotencyKey,
       identity: envelope.identity,
+      occurredAt: envelope.occurredAt,
     });
 
     const fields = {

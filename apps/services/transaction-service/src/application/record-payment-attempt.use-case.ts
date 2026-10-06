@@ -1,6 +1,6 @@
 import type { PaymentAttemptFailedV1 } from '@bank/contracts';
 
-import type { PaymentAttemptOutcome, TransactionRepository } from './ports';
+import type { PaymentAttemptOutcome, TransactionRepository, TransferTelemetry } from './ports';
 
 /**
  * Step 4½ of the Saga, and the one that closes the observability gap
@@ -23,20 +23,44 @@ import type { PaymentAttemptOutcome, TransactionRepository } from './ports';
  */
 export class RecordPaymentAttemptUseCase {
   readonly #repository: TransactionRepository;
+  readonly #telemetry: TransferTelemetry;
 
-  constructor(dependencies: { readonly repository: TransactionRepository }) {
+  constructor(dependencies: {
+    readonly repository: TransactionRepository;
+    readonly telemetry: TransferTelemetry;
+  }) {
     this.#repository = dependencies.repository;
+    this.#telemetry = dependencies.telemetry;
   }
 
   public async execute(
     payload: PaymentAttemptFailedV1,
-    envelope: { readonly messageId: string; readonly messageType: string },
+    envelope: {
+      readonly messageId: string;
+      readonly messageType: string;
+      readonly correlationId: string;
+    },
   ): Promise<PaymentAttemptOutcome> {
-    return await this.#repository.recordPaymentAttempt({
+    const outcome = await this.#repository.recordPaymentAttempt({
       transactionId: payload.transactionId,
       messageId: envelope.messageId,
       messageType: envelope.messageType,
       payload,
     });
+
+    // Reported only for the rung that was just recorded: a redelivery of the same
+    // attempt is a `DUPLICATE`, and must not become a second span.
+    if (outcome.kind === 'RECORDED') {
+      this.#telemetry.paymentAttempt({
+        transactionId: payload.transactionId,
+        correlationId: envelope.correlationId,
+        attempt: payload.attempt,
+        errorType: payload.errorType,
+        willRetry: payload.willRetry,
+        observation: outcome.observation,
+      });
+    }
+
+    return outcome;
   }
 }

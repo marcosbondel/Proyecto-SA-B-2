@@ -19,6 +19,7 @@ import type {
   PaymentOutcome,
   StartOutcome,
   TransactionRepository,
+  TransferObservation,
 } from '../../application/ports';
 
 /**
@@ -54,6 +55,8 @@ export class PostgresTransactionRepository implements TransactionRepository {
   public async start(input: {
     readonly transaction: Transaction;
     readonly outbound?: (transaction: Transaction) => OutboxMessage;
+    readonly requestedAt?: Date;
+    readonly traceContext?: string | null;
   }): Promise<StartOutcome> {
     const { transaction } = input;
 
@@ -62,8 +65,9 @@ export class PostgresTransactionRepository implements TransactionRepository {
         `INSERT INTO transactions
            (transaction_id, source_account, target_account, amount, status,
             correlation_id, idempotency_key, customer_id, reference, failure_reason,
-            payment_scenario, created_at, updated_at, completed_at)
-         VALUES ($1, $2, $3, $4::NUMERIC, $5, $6, $7, $8, $9, NULL, $10, $11, $11, NULL)
+            payment_scenario, created_at, updated_at, completed_at,
+            requested_at, trace_context)
+         VALUES ($1, $2, $3, $4::NUMERIC, $5, $6, $7, $8, $9, NULL, $10, $11, $11, NULL, $12, $13)
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
@@ -78,6 +82,8 @@ export class PostgresTransactionRepository implements TransactionRepository {
           transaction.reference,
           transaction.paymentScenario,
           transaction.createdAt,
+          input.requestedAt ?? transaction.createdAt,
+          input.traceContext ?? null,
         ],
       );
 
@@ -473,6 +479,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
         kind: 'APPLIED',
         transaction: applied,
         transition,
+        observation: observationFrom(updated.rows[0]),
       };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -510,9 +517,10 @@ export class PostgresTransactionRepository implements TransactionRepository {
        * `applyEvent` does for every other Saga event, rather than tripping the
        * foreign key on `transaction_events`.
        */
-      const found = await client.query('SELECT 1 FROM transactions WHERE transaction_id = $1', [
-        input.transactionId,
-      ]);
+      const found = await client.query<TransactionRow>(
+        `SELECT ${COLUMNS} FROM transactions WHERE transaction_id = $1`,
+        [input.transactionId],
+      );
 
       if (found.rowCount === 0) {
         await client.query('ROLLBACK');
@@ -538,7 +546,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
 
       await client.query('COMMIT');
 
-      return { kind: 'RECORDED' };
+      return { kind: 'RECORDED', observation: observationFrom(found.rows[0]!) };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
 
@@ -781,7 +789,8 @@ const TERMINAL: ReadonlySet<TransactionStatus> = new Set<TransactionStatus>([
 
 const COLUMNS = `transaction_id, source_account, target_account, amount::TEXT AS amount,
                  status, correlation_id, idempotency_key, customer_id, reference, failure_reason,
-                 payment_scenario, created_at, updated_at, completed_at`;
+                 payment_scenario, created_at, updated_at, completed_at,
+                 requested_at, trace_context`;
 
 interface TransactionRow {
   transaction_id: string;
@@ -799,6 +808,9 @@ interface TransactionRow {
   created_at: Date;
   updated_at: Date;
   completed_at: Date | null;
+  /** T-43. `null` for a row from before migration 010. */
+  requested_at: Date | null;
+  trace_context: string | null;
 }
 
 interface TransitionRow {
@@ -825,6 +837,14 @@ interface PaymentEventPayload {
   errorType?: 'TRANSIENT' | 'PERMANENT';
   succeededAt?: string;
   failedAt?: string;
+}
+
+/**
+ * What the telemetry needs beyond the state. A row from before migration 010
+ * has neither column, and falls back to when it was created and to no trace.
+ */
+function observationFrom(row: TransactionRow): TransferObservation {
+  return { requestedAt: row.requested_at ?? row.created_at, traceContext: row.trace_context };
 }
 
 function transactionFrom(row: TransactionRow): Transaction {
