@@ -172,6 +172,10 @@ async function collected() {
     .flatMap((scope) => scope.metrics);
 }
 
+/** The labels of every data point, without the time each one covers. */
+const labelsOfMetrics = (all: Awaited<ReturnType<typeof collected>>) =>
+  all.flatMap((metric) => metric.dataPoints.map((point) => point.attributes));
+
 const sumOf = (all: Awaited<ReturnType<typeof collected>>, name: string) =>
   all.find((metric) => metric.descriptor.name === name) as SumMetricData | undefined;
 
@@ -626,10 +630,15 @@ describe('the log', () => {
     const w = world();
     await completedTransfer(w);
 
+    // What a metric says about *who* is its labels. The data points are not
+    // serialised whole: they carry the time they cover as `[seconds, nanoseconds]`,
+    // and a nanosecond count whose milliseconds end in `15` (`…515000000`)
+    // contains `15000` by chance, which made this test fail intermittently
+    // depending on the millisecond it ran in.
     const everything = JSON.stringify([
       w.lines.filter((line) => line.includes('"transfer ')),
       spans.getFinishedSpans().map((span) => span.attributes),
-      await collected(),
+      labelsOfMetrics(await collected()),
     ]);
 
     for (const secret of [SOURCE, TARGET, OWNER.customerId]) {
@@ -637,6 +646,27 @@ describe('the log', () => {
     }
 
     expect(everything).not.toMatch(/amountMinor|15000|credential|password|token|eyJ[\w-]+\.[\w-]+\.[\w-]+/i);
+  });
+
+  it('does not mistake the time of a data point for an amount', () => {
+    // The shape the SDK gives, at a moment whose nanoseconds contain the amount's digits.
+    const metrics = [
+      {
+        dataPoints: [
+          {
+            attributes: { result: 'completed' },
+            startTime: [1_791_256_837, 515_000_000],
+            endTime: [1_791_256_837, 515_000_000],
+            value: 1,
+          },
+        ],
+      },
+    ] as unknown as Parameters<typeof labelsOfMetrics>[0];
+
+    // Why the check above reads labels: the whole metric would be flagged for nothing...
+    expect(JSON.stringify(metrics)).toContain('15000');
+    // ...and the labels, which are all a person could be identified by, are not.
+    expect(JSON.stringify(labelsOfMetrics(metrics))).not.toContain('15000');
   });
 });
 
