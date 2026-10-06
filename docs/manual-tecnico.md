@@ -358,6 +358,7 @@ Cada microservicio gestiona su propio esquema relacional independiente en Postgr
 ### 6.4 Base de Datos `payment`
 * `payments`: `(payment_id PK, transaction_id UNIQUE, status, attempt_count, max_attempts, next_due_at)`
 * `payment_attempts`: `(attempt_id PK, payment_id FK, attempt_number, status, failure_reason, simulated_latency_ms, created_at)`
+* `payment_simulation_settings`: `(id PK CHECK (id = 1), failure_rate_percent, timeout_rate_percent, latency_ms, updated_at)` — a lo sumo una fila (T-44): el cambio en caliente de la simulación del proveedor, que leen todas las réplicas en cada intento; sin fila rigen los valores del ConfigMap (`PAYMENT_SIM_*`) y un reset la borra
 
 ### 6.5 Base de Datos `notification_audit`
 * `audit_events`: `(event_id, consumer PK, event_type, correlation_id, severity, sanitized_payload, recorded_at)`

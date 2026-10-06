@@ -93,6 +93,9 @@ import { paymentListRepliedV1 } from './payment/payment.list.replied.v1';
 import { paymentRequestedV1 } from './payment/payment.requested.v1';
 import { paymentStatusQueryV1 } from './payment/payment.status.query.v1';
 import { paymentStatusRepliedV1 } from './payment/payment.status.replied.v1';
+import { paymentSimulationQueryV1 } from './payment/payment.simulation.query.v1';
+import { paymentSimulationRepliedV1 } from './payment/payment.simulation.replied.v1';
+import { paymentSimulationUpdateV1 } from './payment/payment.simulation.update.v1';
 import { paymentSucceededV1 } from './payment/payment.succeeded.v1';
 import { notificationInboxQueryV1 } from './notification/notification.inbox.query.v1';
 import { notificationInboxRepliedV1 } from './notification/notification.inbox.replied.v1';
@@ -202,6 +205,9 @@ export * from './payment/payment.list.replied.v1';
 export * from './payment/payment.status.query.v1';
 export * from './payment/payment.status.replied.v1';
 export * from './payment/payment.requested.v1';
+export * from './payment/payment.simulation.query.v1';
+export * from './payment/payment.simulation.replied.v1';
+export * from './payment/payment.simulation.update.v1';
 export * from './payment/payment.succeeded.v1';
 export * from './notification/notification-view';
 export * from './notification/notification.inbox.query.v1';
@@ -316,6 +322,9 @@ export const catalog: readonly MessageContract[] = [
   paymentRequestedV1,
   paymentStatusQueryV1,
   paymentStatusRepliedV1,
+  paymentSimulationQueryV1,
+  paymentSimulationRepliedV1,
+  paymentSimulationUpdateV1,
   paymentSucceededV1,
   notificationInboxQueryV1,
   notificationInboxRepliedV1,

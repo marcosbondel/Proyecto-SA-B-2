@@ -8,9 +8,30 @@ import type {
   OutboxMessage,
   PaymentFilter,
   PaymentRepository,
+  StoredSimulation,
 } from '../../application/ports';
 import { minorUnitsFromNumeric, numericFromMinorUnits, quetzales } from '../../domain/money';
 import type { Payment, PaymentAttempt } from '../../domain/payment';
+import type { SimulationSettings } from '../../domain/simulation';
+
+/** The one row of `payment_simulation_settings`. */
+interface SimulationRow {
+  failure_rate_percent: number;
+  timeout_rate_percent: number;
+  latency_ms: number;
+  updated_at: Date;
+}
+
+function simulationOf(row: SimulationRow): StoredSimulation {
+  return {
+    settings: {
+      failureRatePercent: row.failure_rate_percent,
+      timeoutRatePercent: row.timeout_rate_percent,
+      latencyMs: row.latency_ms,
+    },
+    updatedAt: row.updated_at,
+  };
+}
 
 /** One row of `payments`, as `pg` hands it over. */
 interface PaymentRow {
@@ -439,6 +460,38 @@ export class PostgresPaymentRepository implements PaymentRepository {
     );
 
     return found.rows.map(paymentOf);
+  }
+
+  public async loadSimulation(): Promise<StoredSimulation | null> {
+    const found = await this.#pool.query<SimulationRow>(
+      `SELECT failure_rate_percent, timeout_rate_percent, latency_ms, updated_at
+         FROM payment_simulation_settings
+        WHERE id = 1`,
+    );
+    const row = found.rows[0];
+
+    return row === undefined ? null : simulationOf(row);
+  }
+
+  public async saveSimulation(settings: SimulationSettings, now: Date): Promise<StoredSimulation> {
+    const saved = await this.#pool.query<SimulationRow>(
+      `INSERT INTO payment_simulation_settings
+         (id, failure_rate_percent, timeout_rate_percent, latency_ms, updated_at)
+       VALUES (1, $1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE
+         SET failure_rate_percent = EXCLUDED.failure_rate_percent,
+             timeout_rate_percent = EXCLUDED.timeout_rate_percent,
+             latency_ms           = EXCLUDED.latency_ms,
+             updated_at           = EXCLUDED.updated_at
+       RETURNING failure_rate_percent, timeout_rate_percent, latency_ms, updated_at`,
+      [settings.failureRatePercent, settings.timeoutRatePercent, settings.latencyMs, now],
+    );
+
+    return simulationOf(saved.rows[0]!);
+  }
+
+  public async clearSimulation(): Promise<void> {
+    await this.#pool.query('DELETE FROM payment_simulation_settings WHERE id = 1');
   }
 
   public async isReachable(): Promise<boolean> {

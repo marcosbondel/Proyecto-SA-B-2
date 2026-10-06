@@ -37,5 +37,8 @@ data:
   ANOMALY_WINDOW_MINUTES: {{ .Values.services.account.anomaly.windowMinutes | quote }}
   PAYMENT_RETRY_DELAYS_MS: {{ .Values.services.payment.retryDelaysMs | quote }}
   PAYMENT_RETRY_SWEEP_MS: {{ .Values.services.payment.retrySweepMs | quote }}
+  PAYMENT_SIM_FAILURE_RATE: {{ .Values.services.payment.simulation.failureRatePercent | quote }}
+  PAYMENT_SIM_TIMEOUT_RATE: {{ .Values.services.payment.simulation.timeoutRatePercent | quote }}
+  PAYMENT_SIM_LATENCY_MS: {{ .Values.services.payment.simulation.latencyMs | quote }}
   SEED_DEMO_DATA: "true"
   SEED_PASSWORD: "BankUsac#2026"

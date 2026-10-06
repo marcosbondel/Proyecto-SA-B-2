@@ -1,4 +1,6 @@
 import type { PaymentErrorType, PaymentScenario } from './payment';
+import { answerFor } from './simulation';
+import type { SimulationSettings } from './simulation';
 
 /**
  * The simulated external provider, as a pure function — T-29.
@@ -28,7 +30,24 @@ export type ProviderResponse =
   | { readonly result: 'TIMEOUT' };
 
 /**
+ * The unscripted half of the provider (T-44): the configured rates and the roll
+ * of the dice that decides this attempt. Both are handed in; neither is read
+ * from the clock, the environment or `Math.random` in here.
+ */
+export interface Simulation {
+  readonly settings: SimulationSettings;
+  /** A number in `[0, 1)`. */
+  readonly roll: number;
+}
+
+/**
  * Asks the simulated provider what happened to this attempt.
+ *
+ * A transfer that names a `scenario` gets exactly that answer, as it always
+ * has: a rehearsal has to be repeatable. Only a transfer that said nothing
+ * (`scenario` is `null`) is left to `simulation`, which is what lets an
+ * administrator turn the failure rate up under load without changing what a
+ * scripted transfer does.
  *
  * `reference` is passed in rather than generated here, for the same reason
  * `decideAttempt` already took it: a test has to be able to assert on the
@@ -37,8 +56,9 @@ export type ProviderResponse =
 export function callProvider(input: {
   readonly scenario: PaymentScenario | null;
   readonly reference: string;
+  readonly simulation?: Simulation | null;
 }): ProviderResponse {
-  const { scenario, reference } = input;
+  const { scenario, reference, simulation } = input;
 
   if (scenario === 'REJECT') {
     return { result: 'FAILURE', errorType: 'PERMANENT' };
@@ -52,6 +72,44 @@ export function callProvider(input: {
     return { result: 'TIMEOUT' };
   }
 
-  // `APPROVE`, and `null` — a transfer that said nothing about payment.
+  if (scenario === null && simulation !== undefined && simulation !== null) {
+    const answer = answerFor(simulation.settings, simulation.roll);
+
+    if (answer === 'TIMEOUT') {
+      return { result: 'TIMEOUT' };
+    }
+
+    // An intermittent failure is the transient kind: a provider that is flaky
+    // today may answer tomorrow, so the ladder retries it. A permanent refusal
+    // is something only a scripted `REJECT` produces.
+    if (answer === 'FAILURE') {
+      return { result: 'FAILURE', errorType: 'TRANSIENT' };
+    }
+  }
+
+  // `APPROVE`, and `null` with nothing simulated — a transfer that said nothing.
   return { result: 'SUCCESS', providerReference: reference };
+}
+
+/**
+ * How long this attempt takes to be answered, in milliseconds.
+ *
+ * Only an unscripted attempt is slow, and only one the provider actually
+ * answers: a timeout is the absence of an answer, so it is returned at once,
+ * as it always was — waiting out a "timeout" would only hold a database row
+ * and the Saga's latency budget for nothing anybody asserts.
+ */
+export function providerLatencyMs(input: {
+  readonly scenario: PaymentScenario | null;
+  readonly simulation?: Simulation | null;
+}): number {
+  const { scenario, simulation } = input;
+
+  if (scenario !== null || simulation === undefined || simulation === null) {
+    return 0;
+  }
+
+  return answerFor(simulation.settings, simulation.roll) === 'TIMEOUT'
+    ? 0
+    : simulation.settings.latencyMs;
 }

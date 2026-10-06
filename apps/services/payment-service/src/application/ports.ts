@@ -9,6 +9,7 @@ import type {
   PaymentStatus,
 } from '../domain/payment';
 import type { ProviderResult } from '../domain/provider';
+import type { SimulationSettings } from '../domain/simulation';
 
 /**
  * Everything this service needs from the outside, named by what it is for.
@@ -138,8 +139,93 @@ export interface PaymentRepository {
    */
   due(now: Date, limit: number): Promise<readonly Payment[]>;
 
+  /**
+   * The administrator's override of the provider's simulation, or `null` while
+   * the ConfigMap's values are in force (T-44).
+   *
+   * One row, in this service's own database, read on every attempt: that is
+   * what makes a change hold for every replica at once and survive a restart.
+   * A value held in memory would be whichever replica happened to take the
+   * command.
+   */
+  loadSimulation(): Promise<StoredSimulation | null>;
+
+  /** Stores the override, replacing any earlier one. */
+  saveSimulation(settings: SimulationSettings, now: Date): Promise<StoredSimulation>;
+
+  /** Removes the override, so the ConfigMap's values apply again. */
+  clearSimulation(): Promise<void>;
+
   /** For the readiness probe: can this service reach its own database? */
   isReachable(): Promise<boolean>;
+}
+
+/** The override as stored: the three numbers and when they were set. */
+export interface StoredSimulation {
+  readonly settings: SimulationSettings;
+  readonly updatedAt: Date;
+}
+
+/** The simulation in force, and where it came from. */
+export interface SimulationInForce {
+  readonly settings: SimulationSettings;
+  readonly source: 'DEFAULTS' | 'RUNTIME';
+  readonly updatedAt: Date | null;
+}
+
+/** What the attempt path needs to know about the simulation, and nothing more. */
+export interface SimulationSource {
+  current(): Promise<SimulationInForce>;
+}
+
+/**
+ * Where the dice come from. Injected so a test can say "the next roll is 0.29"
+ * and the provider, which never calls `Math.random` itself, can stay pure.
+ */
+export interface Randomness {
+  /** A number in `[0, 1)`. */
+  next(): number;
+}
+
+/** Injected so a test does not wait out a simulated latency. */
+export interface Sleeper {
+  sleep(milliseconds: number): Promise<void>;
+}
+
+/** One call to the simulated provider, as telemetry wants to hear about it. */
+export interface ProviderCall {
+  readonly paymentId: string;
+  readonly transactionId: string;
+  readonly correlationId: string | null;
+  readonly attempt: number;
+  readonly result: ProviderResult;
+  readonly errorType: PaymentErrorType | null;
+  /** Whether a further attempt is owed. Only meaningful for a failure or a timeout. */
+  readonly willRetry: boolean;
+  /**
+   * `SCENARIO` when the transfer scripted the answer, `CONFIGURATION` when the
+   * provider's rates did. Either way the failure is simulated: there is no real
+   * provider in this system.
+   */
+  readonly source: 'SCENARIO' | 'CONFIGURATION';
+  /** How long the provider took to answer, in milliseconds. */
+  readonly latencyMs: number;
+}
+
+/**
+ * What this service tells OpenTelemetry about the provider (T-44).
+ *
+ * Implementations never throw: by the time it is called the attempt has
+ * committed and its events are in the outbox, so a failing log sink must not
+ * turn a settled payment into a retried one.
+ */
+export interface ProviderTelemetry {
+  providerCall(call: ProviderCall): void;
+  simulationChanged(change: {
+    readonly action: 'UPDATE' | 'RESET' | 'DENIED';
+    readonly settings: SimulationSettings;
+    readonly correlationId: string | null;
+  }): void;
 }
 
 /** What `decide` tells the repository to write. */
