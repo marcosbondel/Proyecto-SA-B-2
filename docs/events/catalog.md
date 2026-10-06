@@ -135,6 +135,7 @@ messages, nothing that reveals whether an account or an email exists.
 | `audit.query.replied.v1` | reply | notification-audit-service | gateway |
 | `audit.events.list.query.v1` | command | gateway | notification-audit-service |
 | `audit.events.list.replied.v1` | reply | notification-audit-service | gateway |
+| `alert.slo.received.v1` | command | gateway | notification-audit-service |
 | `notification.list.query.v1` | command | gateway | notification-audit-service |
 | `notification.list.replied.v1` | reply | notification-audit-service | gateway |
 | `notification.inbox.query.v1` | command | gateway | notification-audit-service |
@@ -2470,6 +2471,38 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 
 **On error.** On timeout the Gateway stops waiting.
 
+### `alert.slo.received.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `alert.slo.received.v1` |
+| **Contract** | [`alert.slo.received.v1.ts`](../../apps/packages/contracts/src/events/alert/alert.slo.received.v1.ts) |
+
+An SLO alert from the monitoring stack, as `POST /api/alerts/slo` mapped it (T-45). A command and not an event: the Gateway publishes intentions, and this one says "record this alert and tell the operators". It is answered by nothing — the webhook replies `202` as soon as the broker has it.
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `source` | `grafana` | yes |
+| `alerts` | array of 1–50 object | yes |
+| `alerts[].alertName` | string, 1–200 | yes |
+| `alerts[].status` | `firing` \| `resolved` | yes |
+| `alerts[].severity` | `critical` \| `warning` \| `info` | yes |
+| `alerts[].summary` | string, ≤ 500 | no |
+| `alerts[].runbookUrl` | string, ≤ 500 | no |
+| `alerts[].slo` | string, ≤ 100 | no |
+| `alerts[].startsAt` | ISO-8601 UTC | yes |
+| `alerts[].fingerprint` | string, ≤ 100 | no |
+
+**Preconditions.** Reaches the Gateway authenticated with the shared secret `ALERT_WEBHOOK_TOKEN`, not a session; the Gateway refuses every caller when none is configured. It forwards what the alert *said* — name, state, severity, summary, runbook, SLO — and none of the labels, URLs or annotations Grafana adds.
+
+**Effects.** Notification & Audit records it in the audit trail as an event of the `gateway`, classified by what it says (a firing critical alert is `ERROR`, a firing warning `WARNING`, anything resolved or informational `INFO`), and writes one operator notification for the whole batch.
+
+**On error.** An alert that fails its own contract is recorded `INVALID` and notifies nobody. A redelivery is recorded once.
+
 ### `audit.events.list.query.v1`
 
 | | |
@@ -2486,10 +2519,13 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `limit` | integer, 1–100 (default 10) | no |
 | `page` | integer ≥ 1 (default 1) | no |
 | `severity` | `INFO` \| `WARNING` \| `ERROR` | no |
+| `correlationId` | UUID v4 | no |
+| `traceId` | W3C trace-id, 32 lowercase hex digits, not all zeros | no |
+| `service` | a producer: `gateway`, `customer-service`, `account-service`, `transaction-service`, `payment-service` or `notification-audit-service` | no |
 
 **Preconditions.** Restricted to `ADMINISTRADOR`.
 
-**Effects.** Paginated raw audit events query across all event families, optionally narrowed by severity (T-30).
+**Effects.** Paginated raw audit events query across all event families, narrowed by the four filters §4.1 names — correlation, trace, service and level (`severity`; T-30, T-45). Every filter is optional and they combine with AND; a filter left off is a parameter left out.
 
 **On error.** On timeout the Gateway stops waiting.
 
@@ -2512,6 +2548,8 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `events[].producer` | string | yes |
 | `events[].occurredAt` | ISO-8601 UTC | yes |
 | `events[].correlationId` | UUID v4 | yes |
+| `events[].traceId` | W3C trace-id | no — absent when no SDK recorded a trace for the event (T-45) |
+| `events[].causationId` | UUID v4 | no |
 | `events[].processingStatus` | string | yes |
 | `events[].consumer` | string | yes |
 | `events[].payload` | object, redacted | yes |

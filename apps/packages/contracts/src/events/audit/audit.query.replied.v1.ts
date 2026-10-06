@@ -7,6 +7,7 @@ import {
   messageTypeName,
   notificationChannel,
   producer,
+  traceId,
   uuidV4,
 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
@@ -48,6 +49,8 @@ export const auditQueryRepliedV1 = defineContract({
         processingStatus: auditProcessingStatus.optional(),
         /** §4.1's classification (T-30). Absent for a row recorded before it existed. */
         severity: eventSeverity.optional(),
+        /** T-45. Absent when no SDK recorded a trace for the event. */
+        traceId: traceId.optional(),
         /**
          * The published payload with its sensitive fields removed.
          *

@@ -107,6 +107,7 @@ import { auditQueryRepliedV1 } from './audit/audit.query.replied.v1';
 import { auditQueryRequestedV1 } from './audit/audit.query.requested.v1';
 import { auditEventsListQueryV1 } from './audit/audit.events.list.query.v1';
 import { auditEventsListRepliedV1 } from './audit/audit.events.list.replied.v1';
+import { alertSloReceivedV1 } from './alert/alert.slo.received.v1';
 
 export type { Category, MessageContract } from './contract';
 export { defineContract } from './contract';
@@ -220,6 +221,7 @@ export * from './audit/audit.query.replied.v1';
 export * from './audit/audit.query.requested.v1';
 export * from './audit/audit.events.list.query.v1';
 export * from './audit/audit.events.list.replied.v1';
+export * from './alert/alert.slo.received.v1';
 
 /**
  * Every message the system can put on the broker.
@@ -336,6 +338,7 @@ export const catalog: readonly MessageContract[] = [
   auditQueryRequestedV1,
   auditEventsListQueryV1,
   auditEventsListRepliedV1,
+  alertSloReceivedV1,
 ];
 
 /**

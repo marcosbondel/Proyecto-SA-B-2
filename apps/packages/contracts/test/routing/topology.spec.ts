@@ -52,14 +52,14 @@ describe('topic pattern matching', () => {
 
 describe('queues', () => {
   /**
-   * Ten and not seven: `notification-audit-service` owns five of them, because
+   * Eleven and not seven: `notification-audit-service` owns six of them, because
    * T-20 split the single `audit.all` into one queue per event family plus the
-   * query queue. A queue per *consumer* was never the rule — a queue never
+   * query queue, and T-45 gave the SLO alerts a queue of their own. A queue per *consumer* was never the rule — a queue never
    * shared between two consumers is, and the test below is the one that
    * enforces it.
    */
   it('gives every logical consumer at least one queue of its own', () => {
-    expect(QUEUES).toHaveLength(10);
+    expect(QUEUES).toHaveLength(11);
 
     expect(new Set(QUEUES.map((queue) => queue.owner)).size).toBe(5);
   });
