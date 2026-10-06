@@ -26,6 +26,7 @@
     - [ADR-014: Proveedor de Nube](#adr-014-proveedor-de-nube)
     - [ADR-015: Plataforma de CI/CD](#adr-015-plataforma-de-cicd)
     - [ADR-016: Topología de Infraestructura en la Nube](#adr-016-topología-de-infraestructura-en-la-nube)
+    - [ADR-017: Una Anomalía de Cuenta se Reporta, no se Bloquea](#adr-017-una-anomalía-de-cuenta-se-reporta-no-se-bloquea)
   - [4. Decisiones de Dominio y Reglas de Negocio (D-01 a D-06)](#4-decisiones-de-dominio-y-reglas-de-negocio-d-01-a-d-06)
     - [D-01: Modelado Unificado de Usuarios y Personal Bancario](#d-01-modelado-unificado-de-usuarios-y-personal-bancario)
     - [D-02: Clasificación de Cuentas (Monetarias vs. Ahorro)](#d-02-clasificación-de-cuentas-monetarias-vs-ahorro)
@@ -65,6 +66,7 @@ Este documento unifica y traduce al español todas las decisiones distribuidas e
 | **ADR-014** | Proveedor de Nube (Fase II) | **Google Cloud Platform** (GKE, Compute Engine, Cloud Run, Artifact Registry) | AWS (EKS factura el plano de control por hora) / Azure (Container Apps no es el servicio que nombra el enunciado) | El enunciado nombra Cloud Run como ejemplo aceptado; GKE incluye el HPA en el plano de control. |
 | **ADR-015** | Plataforma de CI/CD (Fase II) | **GitHub Actions**, cuatro workflows (`ci`, `changes`, `release`, `cd`) | GitLab CI (exigiría espejar el repositorio entregable) / Cloud Build (los triggers viven fuera del repositorio) / Jenkins | Las tres fases obligatorias son tres jobs y, por tanto, tres checks: «no se omitió ninguna etapa» se ve, no se afirma. |
 | **ADR-016** | Topología de Infraestructura (Fase II) | **Terraform**: VPC con dos subredes, 5 VMs Compute Engine sin IP pública, GKE zonal, Cloud Run, **y el mismo chart de Helm que en kind** | Cloud SQL (prohibido por §4.2) / GKE Autopilot / dos clústeres, uno por entorno | Reproducibilidad en un comando y paridad total entre el clúster local y el de la nube. |
+| **ADR-017** | Anomalía de Cuenta (Fase III) | **Reportar, no bloquear**: ventana deslizante de M minutos, conteo desde la base de datos, un evento por ventana y cuenta | Bloquear la cuenta / cubetas fijas / conteo en memoria | Una regla mal calibrada cuesta un panel ruidoso y no un cliente bloqueado |
 
 > **ADR-011 está superada por ADR-013.** La fila de ADR-011 en esta matriz describe ya la
 > decisión vigente (fuentes de texto versionadas); el registro canónico de por qué Lucid dejó
@@ -453,6 +455,41 @@ dice, para que nadie las lea como decisiones tomadas después de los hechos.
   * *Negativo:* RabbitMQ y MinIO dentro del clúster no declaran volúmenes: su estado es efímero
     (**TD-082**).
 * **Registro canónico:** [`architecture/adr/ADR-016-cloud-infrastructure.md`](architecture/adr/ADR-016-cloud-infrastructure.md)
+
+---
+
+### ADR-017: Una Anomalía de Cuenta se Reporta, no se Bloquea
+
+* **Título:** Reportar la alta frecuencia de operaciones sin bloquear la cuenta, contarla desde la
+  base de datos y emitirla una sola vez por ventana.
+* **Contexto:** El enunciado de la Fase III (§4.1, Account Service) hace obligatorio *detectar*
+  más de N operaciones sobre una cuenta en M minutos y emitir `AccountAnomalyDetected`, y deja
+  como opcional el bloqueo, pidiendo justificarlo en la documentación. El registro canónico, con
+  la discusión completa, es
+  [ADR-017](architecture/adr/ADR-017-account-anomaly-reports-not-blocks.md).
+* **Decisión:**
+  1. **La cuenta no se bloquea.** La anomalía se registra (`account_anomalies`), se publica
+     (`account.anomaly.detected.v1`) y se notifica como `WARNING` (T-45).
+  2. **N y M vienen del ConfigMap** (10 y 5 por defecto). «Más de N» es la operación N + 1; la
+     ventana es deslizante (los M minutos previos a la operación) y, tras una anomalía, la misma
+     cuenta calla durante M minutos: una ráfaga de treinta es un solo evento. Cuentan solo débitos
+     y créditos; comisiones y compensaciones no.
+  3. **El conteo es de la base de datos**, bajo un cerrojo consultivo por cuenta y **fuera** del
+     cerrojo de la fila de saldo, después de que el movimiento se confirmó. La anomalía se escribe
+     antes de publicarse, con un arrendamiento (`claimed_at`) sobre el derecho a publicarla.
+* **Alternativas Descartadas:**
+  * *Bloquear la cuenta:* los falsos positivos son rutina (un cajero con varios depósitos, un
+    cliente pagando varios servicios), choca con la invariante A-3 (un crédito reactiva una cuenta
+    inactiva), cae en medio de una Saga y no existe un estado al que bloquear — `INACTIVE` ya
+    significa «dormida».
+  * *Cubetas fijas de reloj:* una ráfaga de diez que cruza el borde sería cinco y cinco.
+  * *Contar en memoria por réplica:* depende de cuántas réplicas hay y olvida todo al reiniciar.
+  * *Publicar en cada operación sobre el límite:* veinte eventos para una ráfaga entierran el que
+    importa.
+* **Consecuencias:** Una regla mal calibrada cuesta un panel ruidoso y no un cliente bloqueado, y
+  el monitor puede fallar sin hacer fallar un débito. **Nada detiene automáticamente un patrón
+  abusivo:** una persona debe leer el `WARNING` y actuar, y el personal ya puede cambiar el
+  estado de la cuenta.
 
 ---
 

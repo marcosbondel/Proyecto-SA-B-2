@@ -64,7 +64,7 @@ describeIntegration('PostgresAccountRepository, continued', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('TRUNCATE account_operations, accounts, processed_messages, deactivation_runs');
+    await pool.query('TRUNCATE account_anomalies, account_operations, accounts, processed_messages, deactivation_runs');
   });
 
   async function seed(

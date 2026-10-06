@@ -20,6 +20,12 @@ spec:
       {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # The ConfigMap is read as environment variables, which a running pod
+        # never re-reads. Hashing it here is what makes a changed N or M (T-42)
+        # roll the pods on `helm upgrade` instead of waiting for a restart
+        # somebody has to remember.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
     spec:
@@ -75,6 +81,16 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: INACTIVITY_MIN_BALANCE_MINOR
+            - name: ANOMALY_MAX_OPERATIONS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: ANOMALY_MAX_OPERATIONS
+            - name: ANOMALY_WINDOW_MINUTES
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: ANOMALY_WINDOW_MINUTES
             - name: SEED_DEMO_DATA
               valueFrom:
                 configMapKeyRef:

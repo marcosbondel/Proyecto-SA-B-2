@@ -348,6 +348,7 @@ Cada microservicio gestiona su propio esquema relacional independiente en Postgr
 * `account_operations`: `(operation_id PK, account_id FK, type, amount_minor, balance_after_minor, transaction_id, created_at)`
 * `biller_accounts`: `(biller_id PK, biller_name, account_id FK)`
 * `deactivation_runs`: `(run_id PK, executed_at, deactivated_count)`
+* `account_anomalies`: `(anomaly_id PK, account_id FK, rule, operation_count, threshold, window_minutes, window_start, detected_at, claimed_at, published_at)` — las anomalías de alta frecuencia (T-42); se escribe antes de publicar y `published_at` nulo significa «detectada, aún sin anunciar»
 
 ### 6.3 Base de Datos `transaction`
 * `transactions`: `(transaction_id PK, source_account, target_account, amount_minor, status, failure_reason, created_at)`
