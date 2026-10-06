@@ -13,7 +13,12 @@ import { ListAuditEventsUseCase } from '../src/application/list-audit-events.use
 import { QueryAuditUseCase } from '../src/application/query-audit.use-case';
 import { RecordEventUseCase } from '../src/application/record-event.use-case';
 import { classify, classifyAlerts } from '../src/domain/classification';
-import { notificationFor, subjectCustomerIdFrom } from '../src/domain/notification';
+import {
+  OPERATORS_RECIPIENT,
+  notificationFor,
+  subjectCustomerIdFrom,
+} from '../src/domain/notification';
+import { SimulatedNotificationAdapter } from '../src/infrastructure/notification/simulated-notification.adapter';
 import { activeTraceId } from '../src/infrastructure/telemetry/active-trace';
 import { StructuredLogger } from '../src/interfaces/logging';
 import { RecordEventHandler } from '../src/interfaces/message-handlers';
@@ -498,10 +503,44 @@ describe('an SLO alert from the webhook is recorded and notified (§4.1, Notific
       type: 'alert.slo',
       severity: repository.events[0]?.severity,
       customerId: null,
-      recipient: null,
+      recipient: OPERATORS_RECIPIENT,
     });
     expect(repository.notifications[0]?.subject).toBe('2 alertas de SLO (2 activas)');
     expect(sender.sent).toEqual([expect.objectContaining({ type: 'alert.slo' })]);
+  });
+
+  /**
+   * With the *real* simulated channel, which reports `FAILED` for a notification
+   * with nobody to tell. The recording double used everywhere else always answers
+   * `SENT`, and that is how the first version of this feature reached a browser
+   * as an alert marked "No enviada" under a red banner.
+   */
+  it('is delivered by the simulated channel, not reported as failed for want of somebody to tell', async () => {
+    const repository = new InMemoryAuditRepository();
+    const warnings: string[] = [];
+    const channel = new SimulatedNotificationAdapter({
+      info: () => undefined,
+      warn: (message) => warnings.push(message),
+    });
+    const handler = new RecordEventHandler(
+      new RecordEventUseCase({
+        repository,
+        sender: channel,
+        clock: new FixedClock(),
+        ids: new CountingIds(),
+      }),
+      'audit.alert',
+      new StructuredLogger('test', () => {}),
+    );
+
+    await handler.handle(alertEnvelope([ALERT]));
+
+    expect(repository.notifications[0]?.status).toBe('SENT');
+    expect(repository.notifications[0]?.recipient).toBe(OPERATORS_RECIPIENT);
+    // An ERROR is logged as a warning by design; what must not appear is the complaint about nobody to tell.
+    expect(warnings).not.toContain('notification has no recipient');
+    // Simulated and anonymous: nothing in it names a person.
+    expect(OPERATORS_RECIPIENT).not.toMatch(/\d/);
   });
 
   it('names the alert when there is one, and says whether it fired or resolved', () => {

@@ -1,4 +1,5 @@
 import {
+  OPERATORS_RECIPIENT,
   deliverableEmailFrom,
   notificationFor,
   simulatedRecipientFor,
@@ -95,7 +96,10 @@ export class RecordEventUseCase {
              * falling back to the session customer when the role is a client.
              * Staff (tellers and admins) never receive personal client notifications.
              */
-            recipient: simulatedRecipientFor(subjectOf(input)),
+            recipient:
+              intent.audience === 'OPERATORS'
+                ? OPERATORS_RECIPIENT
+                : simulatedRecipientFor(subjectOf(input)),
             customerId: subjectOf(input),
           };
 
