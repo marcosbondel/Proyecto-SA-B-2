@@ -117,6 +117,32 @@ cajero y `customer registration refused` (`DOCUMENT_ALREADY_REGISTERED`) para un
 DPI duplicado. Ninguna de esas líneas contiene correo, documento, nombre,
 dirección, contraseña ni JWT (búsqueda por esos patrones: 0 coincidencias).
 
+## Defecto hallado después, por la suite E2E: el rechazo manual no se guardaba
+
+Al correr `test/e2e/run-all.mjs` contra el stack de imágenes, `kyc-identity`
+`REJECT-01` falló, y detrás había dos defectos de Customer Service, ambos del
+mecanismo con el que un rechazo libera el documento, el correo y el usuario:
+
+1. **El `UPDATE` fallaba.** `saveIdentityVerdict` añade `#rejected#<customerId>`
+   (46 caracteres) a esas tres columnas. `document_number` era `VARCHAR(50)` y
+   `username` `VARCHAR(60)`: un DPI de 13 dígitos llegaba a 59 y la base respondía
+   `value too long for type character varying(50)`. Un veredicto `REJECTED` del
+   cajero **nunca** se guardaba. La prueba de concurrencia de
+   `repository.integration.spec.ts` lo ocultaba: espera que una de sus dos
+   escrituras falle, y la del rechazo fallaba por esto.
+2. **La consulta del cliente rechazado fallaba.** `GetCustomerUseCase` respondía
+   con el correo guardado (`x@dominio#rejected#…`), que no es un correo, y
+   `customer.get.replied.v1` rechazaba su propio payload (`Invalid email address`).
+   El listado de clientes ya quitaba la marca; la consulta individual no.
+
+**Arreglo.** Migración `009_customers_room_for_rejection_suffix` (documento a 100,
+usuario a 120, correo a 400; ensanchar un `VARCHAR` no reescribe la tabla) y
+`domain/rejection-marker.ts`, que quita la marca en las dos consultas.
+**Pruebas:** un caso de integración (rechazar con datos de tamaño real y registrar
+de nuevo el mismo documento y correo; falla sin la migración) y uno unitario (la
+respuesta no lleva `#rejected#`). Con PostgreSQL 18.4 real: 203/203, sin omitidos.
+Contra el stack: `kyc-identity` 11/11 y `run-all` 152/152.
+
 ## Lo que no se verificó
 
 - **Spans y métricas en ejecución real.** Sin SDK registrado la API de
