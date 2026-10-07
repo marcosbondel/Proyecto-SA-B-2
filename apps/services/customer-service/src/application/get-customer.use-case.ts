@@ -2,6 +2,7 @@ import { customerGetRepliedV1 } from '@bank/contracts';
 import type { CustomerGetQueryV1, Identity } from '@bank/contracts';
 
 import { mayReadCustomer } from '../domain/customer';
+import { withoutRejectionMarker } from '../domain/rejection-marker';
 import type { CustomerRepository, EventPublisher } from './ports';
 
 /**
@@ -48,11 +49,13 @@ export class GetCustomerUseCase {
         outcome: 'FOUND',
         customerId: customer.customerId,
         fullName: customer.fullName,
-        identityDocument: customer.identityDocument,
-        email: customer.email,
+        // A rejected customer is stored with a marker on these three; the reply
+        // carries what they submitted, which is also what the contract validates.
+        identityDocument: withoutRejectionMarker(customer.identityDocument),
+        email: withoutRejectionMarker(customer.email),
         dateOfBirth: customer.dateOfBirth,
         address: customer.address,
-        username: customer.username,
+        username: withoutRejectionMarker(customer.username),
         role: customer.role,
         status: customer.status,
         identityStatus: customer.identityStatus,

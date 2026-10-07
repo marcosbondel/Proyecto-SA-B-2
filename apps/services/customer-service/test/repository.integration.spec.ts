@@ -268,6 +268,43 @@ describeIntegration('PostgresCustomerRepository', () => {
   });
 
   /**
+   * A rejection releases the customer's document, email and username by
+   * appending `#rejected#<customerId>` to each, so the same person can register
+   * again. That suffix is 46 characters, and the columns used to be too narrow
+   * for it: a 13-digit DPI became 59 characters in a VARCHAR(50), the UPDATE
+   * failed with "value too long", and a teller's REJECTED verdict could never be
+   * stored. The concurrency test above did not notice because it expects one of
+   * its two writes to fail, and the rejection was failing for this reason.
+   */
+  it('stores a rejected identity verdict for a real-sized document, email and username, and frees them for a new registration', async () => {
+    const dpi = String(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
+    const first = registration({ identityDocument: dpi, email: `${'a'.repeat(60)}-${dpi}@correo.test` });
+    const stored = await repository.registerCustomer(inputFor(first));
+    const base = await repository.findById(stored.customerId);
+
+    await repository.saveIdentityVerdict({
+      customer: recordIdentityVerdict(base!, 'REJECTED', NOW),
+      document: null,
+      idempotency: {
+        idempotencyKey: randomUUID(),
+        messageType: 'customer.set-identity-verdict.v1',
+        resultSummary: { outcome: 'APPLIED', verdict: 'REJECTED' },
+      },
+    });
+
+    const after = await repository.findById(stored.customerId);
+    expect(after?.identityStatus).toBe('REJECTED');
+    expect(after?.kycStatus).toBe('REJECTED');
+    expect(after?.identityDocument).toBe(`${dpi}#rejected#${stored.customerId}`);
+
+    // The point of the rename: the same document and email register again.
+    const again = await repository.registerCustomer(
+      inputFor(registration({ identityDocument: dpi, email: first.email })),
+    );
+    expect(again.customerId).not.toBe(stored.customerId);
+  });
+
+  /**
    * A KYC verdict carries `identity_status` with it: `VERIFIED` also validates
    * the document review, `REJECTED` also rejects it. The two columns are
    * written by one statement because the verdict is one decision — a teller who
