@@ -323,3 +323,27 @@ insignia «Advertencia», la etiqueta «Actividad inusual en la cuenta» y ningu
   mismatches`) en todas las pantallas probadas (`/auditoria`, `/cuentas`,
   `/transferencias`): es anterior a T-45 (la sesión vive en `sessionStorage` y el servidor
   no la tiene) y no se tocó. Es el tipo de cosa que TD-054 dice que nadie había visto.
+
+## Suite E2E `observability` (contra el stack de imágenes)
+
+`test/e2e/suites/observability.e2e.mjs`, 17 casos, descubierta sola por
+`run-all.mjs`. Se verifica por lo que el sistema hizo (una notificación que llegó,
+un saldo que volvió), no por una etiqueta:
+
+| Área | Casos |
+| --- | --- |
+| Auditoría | filtros por servicio y `correlationId`, su combinación (Y), una traza inexistente da lista vacía, cinco filtros mal formados dan 400 |
+| Webhook de SLO | 401 sin secreto, con uno equivocado y con un JWT de sesión; 400 con cuerpo inutilizable; una alerta válida queda `ERROR` en la auditoría y notificada a operadores |
+| Anomalía | once depósitos dejan una notificación `WARNING` al titular y un evento en la auditoría |
+| Simulación (T-44) | solo el administrador; una simulación imposible da 400; con 100 % de fallo la Saga compensa y los dos saldos vuelven; `reset` devuelve los valores del ConfigMap |
+| Pantalla `/auditoria` | avisa del filtro mal escrito y filtra de verdad |
+
+Resultado de `node test/e2e/run-all.mjs`: **152/152**. Requisitos de la corrida:
+`ALERT_WEBHOOK_TOKEN` en el entorno (sin él los casos del webhook se omiten, con el
+motivo) y el servicio de notificaciones con `NOTIFICATION_CHANNEL=simulated`: con
+`resend` el enlace de activación no sale en los logs y las suites no pueden
+aprovisionar clientes. Con el stack de `infra/docker/.env` hay que fijar también
+`COMPOSE_PROJECT_NAME=bonking`.
+
+Lo que no cubre: `traceId` es `NULL` hasta T-48, así que el filtro por traza se
+comprueba por lo que debe hacer hoy (validar y devolver vacío), no por un acierto.
