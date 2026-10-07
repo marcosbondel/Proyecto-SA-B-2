@@ -41,8 +41,11 @@ export async function run() {
     await page.waitForTimeout(1500);
     await shot(page, 'auth-02-login-error-credenciales');
     const stillOnLogin = page.url().includes('/login');
+    // The generic D-04 message ("No pudimos iniciar sesión con esos datos."). The old
+    // union selector took its `.first()` match from a hidden element, so the case
+    // failed while the error was plainly on screen.
     const errorVisible = await page
-      .locator('[class*="error"], [class*="alert"], [role="alert"], text=/credencia/i')
+      .getByText(/No pudimos iniciar sesi/i)
       .first()
       .isVisible()
       .catch(() => false);
