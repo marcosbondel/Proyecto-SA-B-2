@@ -70,6 +70,7 @@ function event(overrides: Partial<InboundRecord> = {}): InboundRecord {
 
   return {
     ...base,
+    traceId: null,
     severity:
       overrides.severity ??
       classify({ messageType: base.messageType, processingStatus: base.processingStatus }),

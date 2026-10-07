@@ -1,6 +1,6 @@
 ﻿import { z } from 'zod';
 
-import { eventSeverity } from '../../schemas/primitives';
+import { eventSeverity, producer, traceId, uuidV4 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
 
 export const auditEventsListQueryV1 = defineContract({
@@ -13,6 +13,14 @@ export const auditEventsListQueryV1 = defineContract({
     page: z.coerce.number().int().positive().optional().default(1),
     /** §4.1's classification (T-30), added additively. Absent means unfiltered. */
     severity: eventSeverity.optional(),
+    /*
+     * T-45: the four filters §4.1 names ("por correlationId, traceId, servicio y
+     * nivel"), all optional and all combinable. `service` is the producer that
+     * published the event.
+     */
+    correlationId: uuidV4.optional(),
+    traceId: traceId.optional(),
+    service: producer.optional(),
   }),
 });
 

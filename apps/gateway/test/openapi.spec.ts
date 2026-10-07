@@ -6,6 +6,7 @@ import { catalogByName } from '@bank/contracts';
 import { parse, stringify } from 'yaml';
 
 import { AccountsController } from '../src/interfaces/accounts.controller';
+import { AlertsController } from '../src/interfaces/alerts.controller';
 import { AuditController } from '../src/interfaces/audit.controller';
 import { DashboardController } from '../src/interfaces/dashboard.controller';
 import { NotificationsController } from '../src/interfaces/notifications.controller';
@@ -36,6 +37,7 @@ const CONTROLLERS = [
   TransfersController,
   PaymentsController,
   AuditController,
+  AlertsController,
   NotificationsController,
   DashboardController,
 ];
@@ -100,6 +102,8 @@ describe('the versioned API contract', () => {
         '/api/accounts/{accountId}/deposit',
         '/api/accounts/{accountId}/operations',
         '/api/accounts/{accountId}/status',
+        // Added by T-45: the webhook Grafana calls with a shared secret, not a session.
+        '/api/alerts/slo',
         '/api/audit',
         '/api/audit/recent',
         // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
@@ -176,7 +180,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(28);
+      expect(functional).toHaveLength(29);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
@@ -213,6 +217,10 @@ describe('the versioned API contract', () => {
     /**
      * The seven public routes, and only those. If an eighth ever appears here
      * without a bearer requirement, this is where it is noticed.
+     *
+     * T-45's SLO webhook is not among them although the session guards let it
+     * through: it declares the `alertWebhook` scheme, because a route that needs a
+     * shared secret should not be described as one that needs nothing.
      *
      * The two password-recovery routes are public because they have to be: the
      * whole premise is somebody who cannot sign in. The token in the emailed

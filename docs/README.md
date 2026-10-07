@@ -42,7 +42,7 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | Documento | Qué responde |
 | --- | --- |
 | [domain/](domain/README.md) | El modelo de dominio como contrato funcional: quién posee qué dato, qué invariante protege, qué comandos acepta. Léelo antes de implementar cualquier servicio. |
-| [events/](events/README.md) | Cómo el sistema se habla a sí mismo: el sobre, el catálogo de los 107 contratos, la topología del broker y la Saga de transferencia. |
+| [events/](events/README.md) | Cómo el sistema se habla a sí mismo: el sobre, el catálogo de los 108 contratos, la topología del broker y la Saga de transferencia. |
 | [generated/db-schema.md](generated/db-schema.md) | El catálogo de las cinco bases de datos: tabla, columna, tipo, restricción e índice. |
 | [architecture/diagrams/er/](architecture/diagrams/er/README.md) | Los diagramas entidad-relación por microservicio, en DBML y PNG. |
 

@@ -64,6 +64,7 @@ describeIntegration('PostgresAuditRepository', () => {
     processingStatus: 'PROCESSED',
     consumer: 'audit.transaction',
     severity: 'INFO',
+    traceId: null,
     ...overrides,
   });
 

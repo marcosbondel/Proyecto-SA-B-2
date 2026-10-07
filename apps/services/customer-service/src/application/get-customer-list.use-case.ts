@@ -2,6 +2,7 @@ import { customerListRepliedV1 } from '@bank/contracts';
 import type { CustomerListQueryV1, Identity } from '@bank/contracts';
 
 import { mayValidateIdentity } from '../domain/customer';
+import { withoutRejectionMarker } from '../domain/rejection-marker';
 import type { CustomerRepository, EventPublisher } from './ports';
 
 export class GetCustomerListUseCase {
@@ -34,9 +35,9 @@ export class GetCustomerListUseCase {
         customers: customers.map((c) => ({
           customerId: c.customerId,
           fullName: c.fullName,
-          email: c.email.split('#rejected#')[0] ?? c.email,
-          username: c.username.split('#rejected#')[0] ?? c.username,
-          documentNumber: c.identityDocument.split('#rejected#')[0] ?? c.identityDocument,
+          email: withoutRejectionMarker(c.email),
+          username: withoutRejectionMarker(c.username),
+          documentNumber: withoutRejectionMarker(c.identityDocument),
           identityStatus: c.identityStatus,
           role: c.role,
           status: c.status,

@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startNitro, type NitroHandle } from './support/nitro-process';
-import { fakeJpegBytes, startUpstreamStub, type UpstreamStub } from './support/upstream-stub';
+import {
+  UPSTREAM_TRACE_ID,
+  fakeJpegBytes,
+  startUpstreamStub,
+  type UpstreamStub,
+} from './support/upstream-stub';
 
 /**
  * `apps/web/server/routes/api/[...slug].ts` end to end: a real Nitro process
@@ -121,6 +126,19 @@ describe('headers', () => {
 
     expect(body.headers['x-correlation-id']).toBe('corr-abc-999');
     expect(response.headers.get('x-correlation-id')).toBe('corr-abc-999');
+  });
+
+  /**
+   * T-45: the trace id is what the frontend shows beside the correlation id, and
+   * it reaches the browser through this proxy whenever the page is served over
+   * HTTPS and talks to the Gateway same-origin. A proxy that kept only the
+   * headers it knew by name would drop it and the screen would show nothing.
+   */
+  it('returns the x-trace-id the upstream chose', async () => {
+    const response = await fetch(new URL('/api/traced', main.baseUrl));
+
+    expect(response.headers.get('x-trace-id')).toBe(UPSTREAM_TRACE_ID);
+    expect(response.headers.get('x-correlation-id')).toBe('corr-traced');
   });
 
   it('preserves Content-Type from the client to the upstream', async () => {

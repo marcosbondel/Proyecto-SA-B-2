@@ -4,6 +4,7 @@ import type { NextFunction, Response } from 'express';
 
 import type { GatewayRequest } from '../http-request';
 
+import { activeTraceId } from '../../application/active-trace';
 import {
   CORRELATION_HEADER,
   IDEMPOTENCY_HEADER,
@@ -28,6 +29,15 @@ export class CorrelationMiddleware implements NestMiddleware {
     request.idempotencyKey = idempotencyKeyFrom(request.headers[IDEMPOTENCY_HEADER]);
 
     response.setHeader('X-Correlation-Id', request.correlationId);
+
+    // The technical trace beside the business flow (T-45). Absent, not empty,
+    // while no SDK records one: a header of zeros would look like a trace.
+    const traceId = activeTraceId();
+
+    if (traceId !== null) {
+      response.setHeader('X-Trace-Id', traceId);
+    }
+
     next();
   }
 }

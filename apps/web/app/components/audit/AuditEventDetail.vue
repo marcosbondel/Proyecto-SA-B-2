@@ -122,6 +122,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
             <span v-else class="text-[#5A5B63]">Primer mensaje del flujo</span>
           </dd>
         </div>
+        <!--
+          The technical trace the event was handled under (T-45). Absent, and
+          said to be absent, when no SDK recorded one: a dash would read as
+          "this event has no trace", which is a claim about the event rather
+          than about whether telemetry was running.
+        -->
+        <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+          <dt class="text-[13px] text-[#75767F]">Traza</dt>
+          <dd class="text-right text-[13px] font-medium text-[#23242A]">
+            <code
+              v-if="event.traceId"
+              class="break-all font-mono text-[11px]"
+              style="font-variant-numeric: tabular-nums lining-nums"
+              data-testid="event-trace-id"
+            >{{ event.traceId }}</code>
+            <span v-else class="text-[#5A5B63]">Sin traza registrada</span>
+          </dd>
+        </div>
         <div
           v-if="event.processingStatus"
           class="flex items-start justify-between gap-4 border-t border-[#E9E9EC] py-3"

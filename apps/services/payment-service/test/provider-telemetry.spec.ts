@@ -339,15 +339,35 @@ describe('the log of a simulated failure', () => {
 
     await payments.open(ORDER, publisher);
 
+    // The labels of the points, and not the points: a data point also carries the
+    // time it covers, as `[seconds, nanoseconds]`, and a nanosecond count whose
+    // milliseconds end in `25` (`…525000000`) contains `25000` by chance. The
+    // first version of this test serialised whole points and failed intermittently,
+    // depending on the millisecond it ran in.
     const everything = JSON.stringify([
       lines,
       spans.getFinishedSpans().map((span) => span.attributes),
-      await pointsOf(CALLS_COUNTER),
+      labelsOf((await pointsOf(CALLS_COUNTER)) as SumMetricData['dataPoints']),
     ]);
 
     expect(everything).not.toMatch(/email|document|password|token|photo|fotograf/i);
     // No amount either: what was paid is the transfer's business, not the provider's.
     expect(everything).not.toContain('25000');
+  });
+
+  it('does not mistake the time of a data point for an amount', () => {
+    // The shape the SDK gives, at a moment whose nanoseconds contain the amount's digits.
+    const point = {
+      attributes: { result: 'failure', source: 'configuration' },
+      startTime: [1_791_256_837, 525_000_000],
+      endTime: [1_791_256_837, 525_000_000],
+      value: 1,
+    };
+
+    // Why the check above reads labels: the whole point would be flagged for nothing...
+    expect(JSON.stringify([point])).toContain('25000');
+    // ...and the labels, which are all a person could be identified by, are not.
+    expect(labelsOf([point]).join()).not.toContain('25000');
   });
 });
 

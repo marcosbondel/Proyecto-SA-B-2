@@ -248,6 +248,18 @@ Verifiable against the tables above without reading any code.
 | M-5 | No message carries data from the "does not cross" list | The single exception is the email in `customer.activation.requested` |
 | M-6 | Every message propagates `correlationId` | Cross-cutting invariant X-3, no exceptions |
 
+## Fase 3 extension: audit by trace, the anomaly and the SLO alert (T-45)
+
+The assignment's Fase 3 (§4.1, Notification & Audit Service) asks the audit to be queryable "por correlationId, traceId, servicio y nivel",
+and to notify on `AccountAnomalyDetected` and on an SLO alert. The first is two additive fields on existing contracts; the anomaly
+needed no new message (T-42 made it); only the alert, which comes from outside the bank, is new.
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| command | `alert.slo.received` | **Added by T-45.** An SLO alert from the monitoring stack, mapped by the Gateway's webhook and recorded and notified by Notification & Audit |
+
+`audit.events.list.query.v1` gained `correlationId`, `traceId` and `service`; its reply and `audit.query.replied.v1` gained `traceId`. All of them optional.
+
 ## Fase 3 extension: advanced provider simulation (T-44)
 
 The assignment's Fase 3 (§4.1, Payment Service) asks for intermittent failures with a configurable rate, timeouts and slow

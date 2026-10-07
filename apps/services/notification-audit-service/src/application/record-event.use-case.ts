@@ -1,12 +1,15 @@
 import {
+  OPERATORS_RECIPIENT,
   deliverableEmailFrom,
   notificationFor,
   simulatedRecipientFor,
   subjectCustomerIdFrom,
 } from '../domain/notification';
+import { alertSummaries } from '../domain/classification';
 import type { RecordOutcome } from '../domain/deduplication';
 import type {
   AuditRepository,
+  AuditTelemetry,
   Clock,
   IdGenerator,
   InboundRecord,
@@ -41,17 +44,21 @@ export class RecordEventUseCase {
   readonly #sender: NotificationSender;
   readonly #clock: Clock;
   readonly #ids: IdGenerator;
+  readonly #telemetry: AuditTelemetry | null;
 
   constructor(dependencies: {
     repository: AuditRepository;
     sender: NotificationSender;
     clock: Clock;
     ids: IdGenerator;
+    /** What the trail reports about itself (T-45). Absent in a test of the rule alone. */
+    telemetry?: AuditTelemetry;
   }) {
     this.#repository = dependencies.repository;
     this.#sender = dependencies.sender;
     this.#clock = dependencies.clock;
     this.#ids = dependencies.ids;
+    this.#telemetry = dependencies.telemetry ?? null;
   }
 
   public async execute(input: {
@@ -89,7 +96,10 @@ export class RecordEventUseCase {
              * falling back to the session customer when the role is a client.
              * Staff (tellers and admins) never receive personal client notifications.
              */
-            recipient: simulatedRecipientFor(subjectOf(input)),
+            recipient:
+              intent.audience === 'OPERATORS'
+                ? OPERATORS_RECIPIENT
+                : simulatedRecipientFor(subjectOf(input)),
             customerId: subjectOf(input),
           };
 
@@ -99,7 +109,15 @@ export class RecordEventUseCase {
       now,
     });
 
-    if (outcome.kind !== 'RECORDED' || planned === null) {
+    /*
+     * `notified: false` on a recorded event means the repository declined the
+     * notification: a different event had already told this person the same
+     * thing (`dedupeKey`). Sending it anyway would be the duplicate the key
+     * exists to prevent, and there is no row to settle.
+     */
+    if (outcome.kind !== 'RECORDED' || planned === null || !outcome.notified) {
+      this.#observe(input.event, outcome, planned === null ? 'NONE' : 'SUPPRESSED');
+
       return outcome;
     }
 
@@ -127,7 +145,48 @@ export class RecordEventUseCase {
       processedAt: this.#clock.now(),
     });
 
+    this.#observe(input.event, outcome, status);
+
     return { kind: 'RECORDED', notified: true };
+  }
+
+  /**
+   * Reports what this delivery came to. **Never throws:** by the time it runs the
+   * event is written and the notification is settled, and a failure of the
+   * service's own telemetry must not turn a recorded event into a retry that
+   * would find it already there.
+   */
+  #observe(
+    event: InboundRecord,
+    outcome: RecordOutcome,
+    notification: 'SENT' | 'FAILED' | 'SUPPRESSED' | 'NONE',
+  ): void {
+    if (this.#telemetry === null || outcome.kind === 'INVALID') {
+      return;
+    }
+
+    try {
+      const duplicate = outcome.kind === 'DUPLICATE';
+
+      this.#telemetry.recorded({
+        messageType: event.messageType,
+        severity: event.severity,
+        processingStatus: event.processingStatus,
+        outcome: duplicate ? 'DUPLICATE' : 'RECORDED',
+        // A redelivery told nobody anything, whatever the first delivery did.
+        notification: duplicate ? 'NONE' : notification,
+        correlationId: event.correlationId,
+        // Only a webhook the contract accepted: its states and severities are a
+        // closed set, so they are safe to count. An unreadable one counts none.
+        ...(event.messageType === 'alert.slo.received.v1' &&
+        event.processingStatus === 'PROCESSED' &&
+        !duplicate
+          ? { alerts: alertSummaries(event.payload) }
+          : {}),
+      });
+    } catch {
+      // Nothing is left to tell anyone: the service's own report failed.
+    }
   }
 }
 

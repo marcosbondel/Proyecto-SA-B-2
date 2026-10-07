@@ -210,6 +210,36 @@ export const MIGRATIONS: readonly Migration[] = [
          CHECK (severity IS NULL OR severity IN ('INFO','WARNING','ERROR'))`,
     ],
   },
+  {
+    /*
+     * T-45. The technical trace beside the business flow, and a way for two
+     * events to be one notification.
+     *
+     * `trace_id` is nullable for the same reason `severity` was: a row recorded
+     * before this column existed has no trace, and so does one recorded while no
+     * SDK is registered. `NULL` is the honest answer; a zero-filled id would be
+     * a lie that looks like data. The CHECK is the W3C `trace-id` shape and
+     * refuses the reserved all-zero value.
+     *
+     * `dedupe_key` is unique where present. Account Service can announce the same
+     * anomaly twice under two message ids (its first publication failed and the
+     * next movement republished it), and `caused_by` — the event id — cannot see
+     * that they are one. A partial index leaves every other notification alone.
+     */
+    name: '006_trace_id_and_dedupe_key',
+    statements: [
+      `ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS trace_id VARCHAR(32)`,
+      `ALTER TABLE audit_events ADD CONSTRAINT audit_events_trace_id_shape
+         CHECK (trace_id IS NULL OR (trace_id ~ '^[0-9a-f]{32}$' AND trace_id <> repeat('0', 32)))`,
+      `CREATE INDEX IF NOT EXISTS audit_events_trace_idx
+         ON audit_events (trace_id, occurred_at) WHERE trace_id IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS audit_events_producer_idx
+         ON audit_events (producer, occurred_at DESC)`,
+      `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(200)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS notifications_one_per_dedupe_key_idx
+         ON notifications (dedupe_key) WHERE dedupe_key IS NOT NULL`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

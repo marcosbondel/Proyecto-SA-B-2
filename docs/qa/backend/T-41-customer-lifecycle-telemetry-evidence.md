@@ -35,8 +35,8 @@ auditoría) pertenece a T-45.
 | Span | Cuándo | Atributos |
 | --- | --- | --- |
 | `customer.lifecycle created` | Cliente creado | `bank.customer.transition`, `bank.customer.path`, `bank.customer.id`, `bank.correlation_id` |
-| `customer.lifecycle verified` | KYC verificado | los mismos, más un *link* al span de creación |
-| `customer.lifecycle rejected` | KYC rechazado | los mismos, más un *link* al span de creación |
+| `customer.lifecycle verified` | KYC verificado | los mismos; **hijo** del span de creación (misma traza) |
+| `customer.lifecycle rejected` | KYC rechazado | los mismos; **hijo** del span de creación (misma traza) |
 | `customer.lifecycle refused` | Registro rechazado antes de existir el cliente | `bank.customer.transition`, `bank.customer.refusal`, `bank.customer.id`, `bank.correlation_id` |
 
 `path` es `counter` (registrado por personal: se crea y verifica en el mismo
@@ -63,12 +63,20 @@ cubo. Ninguna etiqueta es un identificador.
 
 ## Decisiones de diseño
 
-- **La creación y la decisión comparten traza por *link*, no por padre.** Son
-  mensajes distintos, a veces separados por horas. El contexto del span de creación
-  se guarda en `customers.creation_trace` **dentro de la misma transacción** que la
-  fila (el span se abre antes del insert), y la decisión posterior abre su span con
-  un enlace a ese contexto. Sin SDK el contexto no es válido y la columna queda en
-  `NULL`; una decisión sobre un cliente sin contexto se registra igual, sin enlace.
+- **La creación y la decisión comparten una sola traza, por padre.** El enunciado
+  (§4.1, Customer Service) pide la traza del "flujo completo desde creación hasta
+  verificación", y dos trazas unidas por un *link* no lo muestran en Jaeger ni en
+  Tempo: buscar la de creación no traía la verificación. El contexto del span de
+  creación se guarda en `customers.creation_trace` **dentro de la misma
+  transacción** que la fila (el span se abre antes del insert), y la decisión
+  posterior abre su span como **hijo** de ese contexto remoto. Primera versión de
+  este ticket: *link*; se cambió al contrastarla con el texto del enunciado.
+  **Costo asumido:** una traza que puede abarcar horas o días (la verificación
+  humana puede tardar); Tempo la admite. La petición que provocó la decisión
+  (p. ej. la del Gateway cuando T-48 propague el contexto) queda alcanzable como
+  *link* del span de decisión. Sin SDK el contexto no es válido y la columna queda
+  en `NULL`; una decisión sobre un cliente sin contexto, o con uno malformado, se
+  registra igual, sin padre.
 - **El `customerId` va en spans y logs, nunca como etiqueta de métrica.**
 - **Una repetición cuenta de nuevo.** Rechazar a un cliente que ya está `REJECTED`
   es legal en el dominio (`REJECTED → REJECTED`), así que el contador suma otra vez.
@@ -98,7 +106,7 @@ Todos con `--force` (sin caché de Turbo), salvo lo indicado.
 
 **Mutaciones** (se quitó una pieza y se comprobó que los tests la echan de menos,
 y luego se restauró): sin `telemetry.record` en `set-kyc-status`, fallan 3 casos;
-sin los *links*, fallan 3; sin el contador de rechazos, falla 1.
+sin el padre (volver a abrir la decisión en el contexto activo), fallan 3; sin el contador de rechazos, falla 1.
 
 **Contra el stack real** (siete imágenes con `pnpm images:build --allow-dirty`,
 Gateway en `:3100`): la migración `008_customers_creation_trace` se aplicó al
@@ -108,6 +116,32 @@ arrancar; los logs de `customer-service` mostraron `customer created`,
 cajero y `customer registration refused` (`DOCUMENT_ALREADY_REGISTERED`) para un
 DPI duplicado. Ninguna de esas líneas contiene correo, documento, nombre,
 dirección, contraseña ni JWT (búsqueda por esos patrones: 0 coincidencias).
+
+## Defecto hallado después, por la suite E2E: el rechazo manual no se guardaba
+
+Al correr `test/e2e/run-all.mjs` contra el stack de imágenes, `kyc-identity`
+`REJECT-01` falló, y detrás había dos defectos de Customer Service, ambos del
+mecanismo con el que un rechazo libera el documento, el correo y el usuario:
+
+1. **El `UPDATE` fallaba.** `saveIdentityVerdict` añade `#rejected#<customerId>`
+   (46 caracteres) a esas tres columnas. `document_number` era `VARCHAR(50)` y
+   `username` `VARCHAR(60)`: un DPI de 13 dígitos llegaba a 59 y la base respondía
+   `value too long for type character varying(50)`. Un veredicto `REJECTED` del
+   cajero **nunca** se guardaba. La prueba de concurrencia de
+   `repository.integration.spec.ts` lo ocultaba: espera que una de sus dos
+   escrituras falle, y la del rechazo fallaba por esto.
+2. **La consulta del cliente rechazado fallaba.** `GetCustomerUseCase` respondía
+   con el correo guardado (`x@dominio#rejected#…`), que no es un correo, y
+   `customer.get.replied.v1` rechazaba su propio payload (`Invalid email address`).
+   El listado de clientes ya quitaba la marca; la consulta individual no.
+
+**Arreglo.** Migración `009_customers_room_for_rejection_suffix` (documento a 100,
+usuario a 120, correo a 400; ensanchar un `VARCHAR` no reescribe la tabla) y
+`domain/rejection-marker.ts`, que quita la marca en las dos consultas.
+**Pruebas:** un caso de integración (rechazar con datos de tamaño real y registrar
+de nuevo el mismo documento y correo; falla sin la migración) y uno unitario (la
+respuesta no lleva `#rejected#`). Con PostgreSQL 18.4 real: 203/203, sin omitidos.
+Contra el stack: `kyc-identity` 11/11 y `run-all` 152/152.
 
 ## Lo que no se verificó
 

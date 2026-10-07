@@ -1,5 +1,6 @@
 import { normaliseError, isSessionFailure } from '../lib/gateway-error';
 import type { GatewayError } from '../lib/gateway-error';
+import { traceIdFrom } from '../lib/trace';
 
 export interface GatewayRequestOptions {
   readonly method?: 'GET' | 'POST' | 'PATCH';
@@ -12,7 +13,13 @@ export interface GatewayRequestOptions {
 
 /** Either an answer or a failure, never a thrown surprise. */
 export type GatewayResult<T> =
-  | { readonly ok: true; readonly data: T; readonly correlationId: string | null }
+  | {
+      readonly ok: true;
+      readonly data: T;
+      readonly correlationId: string | null;
+      /** The trace the Gateway served it under, when an SDK recorded one (T-45). */
+      readonly traceId: string | null;
+    }
   | { readonly ok: false; readonly error: GatewayError };
 
 /**
@@ -34,6 +41,7 @@ export function useGatewayApi() {
   const config = useRuntimeConfig();
   const route = useRoute();
   const { session, end } = useSession();
+  const traces = useTraces();
 
   async function call<T>(
     path: string,
@@ -75,13 +83,24 @@ export function useGatewayApi() {
         ...(options.query === undefined ? {} : { query: options.query }),
       });
 
-      return {
-        ok: true,
-        data: response._data as T,
-        correlationId: response.headers.get('x-correlation-id'),
-      };
+      const correlationId = response.headers.get('x-correlation-id');
+      const traceId = traceIdFrom(response.headers.get('x-trace-id'));
+
+      // Remembered by the correlation, so `SharedCorrelationIdBadge` can show the
+      // trace of any operation without the screen that started it being told.
+      traces.record(correlationId, traceId);
+
+      return { ok: true, data: response._data as T, correlationId, traceId };
     } catch (cause) {
       const error = normaliseError(cause);
+
+      // A refusal has a trace too, and it is the one somebody will be asked for.
+      const failed = (cause as { response?: { headers?: Headers } }).response?.headers;
+
+      traces.record(
+        error.correlationId ?? failed?.get('x-correlation-id') ?? null,
+        traceIdFrom(failed?.get('x-trace-id')),
+      );
 
       /**
        * The session is over. Ending it here, once, is what keeps every module

@@ -1,39 +1,41 @@
 {
-  "generatedAt": "2026-09-25T22:37:31.192Z",
+  "generatedAt": "2026-10-07T03:57:39.240Z",
   "suites": [
     {
       "name": "accounts-deposits",
-      "cases": 16,
-      "passed": 16,
-      "failed": 0,
-      "skipped": 2
+      "cases": 18,
+      "passed": 18,
+      "failed": 0
     },
     {
       "name": "auth-session",
       "cases": 12,
-      "passed": 11,
-      "failed": 1
+      "passed": 12,
+      "failed": 0
     },
     {
       "name": "kyc-identity",
-      "cases": 9,
-      "passed": 7,
-      "failed": 2,
-      "skipped": 2
+      "cases": 11,
+      "passed": 11,
+      "failed": 0
     },
     {
       "name": "notifications-audit",
-      "cases": 8,
-      "passed": 8,
-      "failed": 0,
-      "skipped": 5
+      "cases": 13,
+      "passed": 13,
+      "failed": 0
+    },
+    {
+      "name": "observability",
+      "cases": 17,
+      "passed": 17,
+      "failed": 0
     },
     {
       "name": "payments",
-      "cases": 3,
-      "passed": 3,
-      "failed": 0,
-      "skipped": 9
+      "cases": 13,
+      "passed": 13,
+      "failed": 0
     },
     {
       "name": "rbac-matrix",
@@ -43,30 +45,27 @@
     },
     {
       "name": "registration-activation",
-      "cases": 19,
-      "passed": 18,
-      "failed": 1,
-      "skipped": 1
+      "cases": 20,
+      "passed": 20,
+      "failed": 0
     },
     {
       "name": "resilience",
-      "cases": 3,
-      "passed": 3,
-      "failed": 0,
-      "skipped": 3
+      "cases": 6,
+      "passed": 6,
+      "failed": 0
     },
     {
       "name": "transfers-saga",
-      "cases": 2,
-      "passed": 2,
-      "failed": 0,
-      "skipped": 14
+      "cases": 16,
+      "passed": 16,
+      "failed": 0
     }
   ],
   "totals": {
-    "cases": 98,
-    "passed": 94,
-    "failed": 4
+    "cases": 152,
+    "passed": 152,
+    "failed": 0
   },
   "tests": [
     {
@@ -75,7 +74,7 @@
       "category": "Cuentas",
       "name": "Apertura de cuenta MONETARIA para un cliente recién aprovisionado",
       "expected": "accountId presente y con formato UUID v4",
-      "actual": "accountId=df12fdfb-c9d5-4398-bdc2-d3e5ed98816c",
+      "actual": "accountId=3705a099-1cbf-474e-998f-8ea18af25fa2",
       "pass": true,
       "detail": ""
     },
@@ -85,7 +84,7 @@
       "category": "Cuentas",
       "name": "Apertura de cuenta AHORRO con depósito inicial que cumple el mínimo (Q100.00)",
       "expected": "GET /api/accounts muestra ambas cuentas con su accountType real (MONETARIA y AHORRO)",
-      "actual": "openStatus=202 ahorroId=7afd879a-4de2-4783-962e-d6197c4bb18d confirmedTypes=true",
+      "actual": "openStatus=202 ahorroId=ea5df65c-3a0e-4c8a-8cd4-3b0ab0040644 confirmedTypes=true",
       "pass": true,
       "detail": ""
     },
@@ -94,8 +93,8 @@
       "id": "ACC-LIST-01",
       "category": "Cuentas",
       "name": "GET /api/accounts devuelve exactamente las cuentas creadas para el cliente",
-      "expected": "{df12fdfb-c9d5-4398-bdc2-d3e5ed98816c, 7afd879a-4de2-4783-962e-d6197c4bb18d}",
-      "actual": "status=200 ids={7afd879a-4de2-4783-962e-d6197c4bb18d, df12fdfb-c9d5-4398-bdc2-d3e5ed98816c}",
+      "expected": "{3705a099-1cbf-474e-998f-8ea18af25fa2, ea5df65c-3a0e-4c8a-8cd4-3b0ab0040644}",
+      "actual": "status=200 ids={ea5df65c-3a0e-4c8a-8cd4-3b0ab0040644, 3705a099-1cbf-474e-998f-8ea18af25fa2}",
       "pass": true,
       "detail": ""
     },
@@ -165,7 +164,7 @@
       "category": "Depósitos",
       "name": "Repetir la misma Idempotency-Key para el mismo depósito no lo duplica",
       "expected": "Mismo operationId en ambas respuestas y el saldo no se mueve una segunda vez",
-      "actual": "firstOperationId=fa585abb-1c42-4645-aef2-4d76dbfaef39 replayOperationId=fa585abb-1c42-4645-aef2-4d76dbfaef39 balanceAfterFirst=500000 balanceAfterReplay=500000",
+      "actual": "firstOperationId=1337bb38-e69d-482e-84fd-537a80a4e635 replayOperationId=1337bb38-e69d-482e-84fd-537a80a4e635 balanceAfterFirst=500000 balanceAfterReplay=500000",
       "pass": true,
       "detail": ""
     },
@@ -175,7 +174,7 @@
       "category": "Movimientos",
       "name": "GET /api/accounts/:id/operations refleja el depósito real hecho en DEP-04",
       "expected": "Una entrada CREDIT con amount.amountMinor = 500000",
-      "actual": "status=200 found=true operationId=fa585abb-1c42-4645-aef2-4d76dbfaef39",
+      "actual": "status=200 found=true operationId=1337bb38-e69d-482e-84fd-537a80a4e635",
       "pass": true,
       "detail": ""
     },
@@ -194,11 +193,10 @@
       "id": "FORBIDDEN-ACCESS-01",
       "category": "RBAC",
       "name": "El token del cliente A consultando el saldo de una cuenta del cliente B",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar al segundo cliente en el paso 'login': 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"bdc88339-e00b-488e-aaac-903922e6b1fe\"}"
+      "expected": "404 con failureCode ACCOUNT_NOT_FOUND (no 403: un read no debe distinguir \"ajena\" de \"inexistente\")",
+      "actual": "404: ACCOUNT_NOT_FOUND",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "accounts-deposits",
@@ -224,12 +222,11 @@
       "suite": "accounts-deposits",
       "id": "RBAC-STATUS-03",
       "category": "RBAC",
-      "name": "Un CLIENTE no puede cambiar el estado de una cuenta que no es suya",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar al segundo cliente en el paso 'login': 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"bdc88339-e00b-488e-aaac-903922e6b1fe\"}"
+      "name": "Un CLIENTE no puede cambiar el estado de una cuenta que no es suya (rechazo silencioso, no HTTP)",
+      "expected": "202 en la respuesta (comando fire-and-forget) pero el status real permanece ACTIVE",
+      "actual": "status=202 stillActive=true",
+      "pass": true,
+      "detail": "set-account-status.use-case.ts descarta el mensaje sin publicar nada cuando el CLIENTE no es dueño de la cuenta: el 202 no es una garantía de que algo cambió."
     },
     {
       "suite": "accounts-deposits",
@@ -237,7 +234,7 @@
       "category": "Cuentas",
       "name": "Abrir AHORRO con un depósito inicial de Q50.00 (< Q100.00 mínimo, T-27) es rechazado en silencio",
       "expected": "La Gateway responde 202 con accountId (no valida la regla), pero esa cuenta nunca aparece en GET /api/accounts",
-      "actual": "openStatus=202 accountId=e918ac5c-992f-401d-a2c6-e0a69eb223f2 neverAppeared=true",
+      "actual": "openStatus=202 accountId=5c49e4a6-f6ab-495a-9aa3-4ec71e9fe597 neverAppeared=true",
       "pass": true,
       "detail": "openingDepositRefusal() en account.ts refusa con MINIMUM_BALANCE_VIOLATION; el 202 de la Gateway no es prueba de apertura real."
     },
@@ -267,8 +264,8 @@
       "category": "Autenticación",
       "name": "Login con credenciales inválidas (UI)",
       "expected": "Permanece en /login y muestra un error",
-      "actual": "stillOnLogin=true errorVisible=false",
-      "pass": false,
+      "actual": "stillOnLogin=true errorVisible=true",
+      "pass": true,
       "detail": "D-04: el mensaje debe ser genérico para no permitir enumeración de cuentas."
     },
     {
@@ -376,9 +373,9 @@
       "id": "PENDING-01",
       "category": "KYC",
       "name": "Cliente recién registrado sin validar aparece en GET /api/customers/pending-validation",
-      "expected": "customerId d38d4546-db7a-4c17-b266-61bde93e7b44 presente en la lista",
-      "actual": "status=200 presente=false total=100",
-      "pass": false,
+      "expected": "customerId 1239a92c-a764-49fd-b1c9-ef9bb26f69e0 presente en la lista",
+      "actual": "status=200 presente=true total=39",
+      "pass": true,
       "detail": ""
     },
     {
@@ -386,9 +383,9 @@
       "id": "PENDING-02",
       "category": "KYC",
       "name": "Cola de validaciones (UI) muestra la fila del cliente pendiente",
-      "expected": "El nombre \"QA kyc-pending-a 353447\" aparece en la lista",
-      "actual": "rowVisible=false",
-      "pass": false,
+      "expected": "El nombre \"QA kyc-pending-a 913511\" aparece en la lista",
+      "actual": "rowVisible=true",
+      "pass": true,
       "detail": ""
     },
     {
@@ -397,7 +394,7 @@
       "category": "KYC",
       "name": "Detalle de validación (UI) muestra los datos declarados y el visor de documento",
       "expected": "Nombre completo visible en los datos declarados, y el visor de documento (foto, vacío o error) renderiza algo",
-      "actual": "declaredShowsName=true photoStateVisible=true declaredText=\"Nombre completo | QA kyc-pending-a 353447 | Número de documento | 2353447935344 | Fecha de nacimiento | 1995-06-20 | Dirección | Ciuda\"",
+      "actual": "declaredShowsName=true photoStateVisible=true declaredText=\"Nombre completo | QA kyc-pending-a 913511 | Número de documento | 2913511991351 | Fecha de nacimiento | 1995-06-20 | Dirección | Ciuda\"",
       "pass": true,
       "detail": ""
     },
@@ -407,7 +404,7 @@
       "category": "Defecto conocido (TD-074)",
       "name": "POST /api/accounts no exige identidad/KYC validados — hallazgo real",
       "expected": "Un cliente con identityStatus=PENDING/kycStatus=PENDING NO debería poder abrir cuenta, pero el backend (account-service create-account.use-case.ts) no verifica esos estados",
-      "actual": "status=202 body={\"accountId\":\"9aee5274-c939-48a1-85c9-7f23013e09c6\",\"correlationId\":\"4f7ddbf2-8ab2-44f3-9668-6082831ffc01\"}",
+      "actual": "status=202 body={\"accountId\":\"1de85cfe-b0e5-401a-ba1a-76602a1e588f\",\"correlationId\":\"f1d78c0d-84b7-4292-bcd3-820955b73e80\"}",
       "pass": true,
       "detail": "CONOCIDO: esto es la prueba reproducida del defecto TD-074, no un resultado deseable. apps/gateway/src/interfaces/accounts.controller.ts y apps/services/account-service/src/application/create-account.use-case.ts no consultan identityStatus/kycStatus antes de abrir la cuenta. El bloqueo visto en PENDING-02/03 y en UI-BLOCKED-01 es exclusivamente del frontend (validate() en AccountCreateForm.vue), y una llamada directa a la API lo evade por completo."
     },
@@ -437,7 +434,7 @@
       "category": "KYC",
       "name": "Tras aprobación de identidad y KYC, POST /api/accounts abre la cuenta (contraste con TD074-01)",
       "expected": "202 + accountId",
-      "actual": "status=202 body={\"accountId\":\"c84370dd-f533-41e6-89c6-d5e735924361\",\"correlationId\":\"d5cc50b2-d89f-424e-a2e3-c29cc5adea20\"}",
+      "actual": "status=202 body={\"accountId\":\"63b29295-67b9-4e51-9c6d-418a979cc23a\",\"correlationId\":\"9f7c2aa4-f7d5-42fc-a85c-6def618e164e\"}",
       "pass": true,
       "detail": ""
     },
@@ -445,23 +442,21 @@
       "suite": "kyc-identity",
       "id": "REJECT-01",
       "category": "KYC",
-      "name": "Cajero rechaza la identidad de un cliente",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente B: paso=activate 409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El enlace de activación no es válido o ya fue utilizado.\",\"correlationId\":\"fde59765-e584-490c-9212-c7b4203695c9\",\"failureCode\":\"ACTIVATION_TOKEN_INVALID\"}"
+      "name": "Cajero rechaza la identidad (REJECTED) de un cliente pendiente",
+      "expected": "identityStatus refleja el rechazo (valor real observado, no asumido)",
+      "actual": "identityStatus=REJECTED",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "kyc-identity",
       "id": "REJECT-02",
-      "category": "KYC",
-      "name": "POST /api/accounts tras rechazo de identidad",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "Depende del aprovisionamiento del cliente B"
+      "category": "Defecto conocido (TD-074)",
+      "name": "POST /api/accounts tras un rechazo de identidad (mismo hallazgo que TD074-01)",
+      "expected": "Reporta el resultado real observado — no hay gate en el backend, así que se espera el mismo resultado que con PENDING",
+      "actual": "status=202 body={\"accountId\":\"d736b309-68e2-4f97-a2ca-0cf1f745970a\",\"correlationId\":\"7f3220d6-2dec-4b9a-8bd3-a79ed1f68c12\"}",
+      "pass": true,
+      "detail": "Confirma que el defecto TD-074 es independiente del veredicto: ni PENDING ni REJECTED bloquean la apertura vía API."
     },
     {
       "suite": "kyc-identity",
@@ -497,45 +492,41 @@
       "suite": "notifications-audit",
       "id": "NOTIF-OWN-01",
       "category": "Notificaciones",
-      "name": "Bandeja propia tras provisión",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo provisionar el cliente A: paso login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"2d3811f1-42c9-4a2c-968b-63f1c230b569\"}"
+      "name": "Bandeja propia de un cliente recién provisionado",
+      "expected": "Al menos una notificación real, con un campo type reconocible",
+      "actual": "count=7 first.type=kyc.verified first.subject=Verificamos tu identidad para operaciones (KYC)",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "notifications-audit",
       "id": "NOTIF-READ-01",
       "category": "Notificaciones",
-      "name": "Marcar como leída",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "Depende de NOTIF-OWN-01, que fue saltado."
+      "name": "POST /api/notifications/read marca una notificación puntual",
+      "expected": "200 con ReadResult numérico; la fila queda con readAt no nulo, y entre las notificaciones ya conocidas el conteo de no leídas baja en 1",
+      "actual": "POST status=200 changed=1 unread(resp)=7 unreadAmongBeforeIds: antes=7 después=6 readAtAntes=null readAtDespués=2026-10-07T03:55:07.350Z",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "notifications-audit",
       "id": "NOTIF-UI-01",
       "category": "Notificaciones",
-      "name": "Bandeja en la UI",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "Depende de NOTIF-OWN-01, que fue saltado."
+      "name": "La UI de /notificaciones muestra las notificaciones reales del cliente",
+      "expected": "renderedCount === apiCount y ambos > 0",
+      "actual": "renderedCount=8 apiCount=8",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "notifications-audit",
       "id": "NOTIF-ISOLATION-01",
       "category": "Notificaciones",
-      "name": "Aislamiento entre clientes",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo provisionar el cliente B: paso login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"973a952a-5c41-4b8b-a779-afe7daa76357\"}"
+      "name": "La bandeja de un cliente B no contiene notificaciones del cliente A",
+      "expected": "countB > 0, sin correlationId ni referenceId compartidos con A",
+      "actual": "countB=7 crossCorrelationMatches=0 crossReferenceMatches=0",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "notifications-audit",
@@ -543,7 +534,7 @@
       "category": "Auditoría",
       "name": "GET /api/audit/recent como admin",
       "expected": "200 con eventos reales (messageType/severity presentes)",
-      "actual": "status=200 count=20 first.messageType=customer.activation.requested.v1 first.processingStatus=PROCESSED",
+      "actual": "status=200 count=20 first.messageType=account.opened.v1 first.processingStatus=PROCESSED",
       "pass": true,
       "detail": ""
     },
@@ -573,7 +564,7 @@
       "category": "Auditoría",
       "name": "GET /api/audit?correlationId= incluye el evento de registro real",
       "expected": "events incluye un customer.register*.v1 para ese correlationId exacto",
-      "actual": "status=200 correlationId=02ceb32c-d8dd-4293-a76a-6cdf52a695ee eventCount=3 messageTypes=customer.registered.v1,customer.activation.requested.v1,customer.identity.rejected.v1",
+      "actual": "status=200 correlationId=f3593380-4a2a-45ca-8f79-4ebbbae3d6cf eventCount=4 messageTypes=customer.registered.v1,customer.activation.requested.v1,customer.identity.rejected.v1,customer.kyc.rejected.v1",
       "pass": true,
       "detail": ""
     },
@@ -582,8 +573,8 @@
       "id": "AUDIT-UI-01",
       "category": "Auditoría",
       "name": "/auditoria busca por correlationId y muestra el rastro real",
-      "expected": "La página refleja correlationId=02ceb32c-d8dd-4293-a76a-6cdf52a695ee y al menos un evento (API tenía 3)",
-      "actual": "inputValue=02ceb32c-d8dd-4293-a76a-6cdf52a695ee correlationIdInBody=true apiEventCount=3",
+      "expected": "La página refleja correlationId=f3593380-4a2a-45ca-8f79-4ebbbae3d6cf y al menos un evento (API tenía 4)",
+      "actual": "inputValue=f3593380-4a2a-45ca-8f79-4ebbbae3d6cf correlationIdInBody=true apiEventCount=4",
       "pass": true,
       "detail": ""
     },
@@ -611,89 +602,251 @@
       "suite": "notifications-audit",
       "id": "NOTIF-READ-02",
       "category": "Notificaciones",
-      "name": "Marcar todas como leídas (sin notificationIds)",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo provisionar el cliente C: paso login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"330045db-cc75-47a6-9dea-0f38469b8314\"}"
+      "name": "POST /api/notifications/read sin notificationIds marca TODAS como leídas",
+      "expected": "changed > 0 y, entre las notificaciones ya conocidas antes de la llamada, ninguna queda con readAt=null",
+      "actual": "beforeCount=7 unreadBefore=7 markAll.status=200 markAll.changed=8 markAll.unread=0 stillUnreadAmongBeforeIds=0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-AUDIT-SERVICE-01",
+      "category": "Auditoría",
+      "name": "GET /api/audit/recent?service=customer-service devuelve solo ese servicio",
+      "expected": "200, al menos un evento y todos con el productor pedido",
+      "actual": "status=200 count=100 productores=customer-service",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-AUDIT-CORRELATION-01",
+      "category": "Auditoría",
+      "name": "GET /api/audit/recent?correlationId= devuelve solo esa correlación",
+      "expected": "200, al menos un evento y todos con ese correlationId",
+      "actual": "status=200 count=1",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-AUDIT-COMBINED-01",
+      "category": "Auditoría",
+      "name": "Los filtros se combinan con AND",
+      "expected": "Los tres juntos devuelven el evento de muestra; con otra severidad solo los de esa severidad",
+      "actual": "combinado=1 contieneMuestra=true severidadContraria(ERROR)=0 esperados=0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-AUDIT-TRACE-01",
+      "category": "Auditoría",
+      "name": "GET /api/audit/recent?traceId= con una traza que no existe",
+      "expected": "200 con lista vacía y total 0",
+      "actual": "status=200 count=0 total=0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-AUDIT-VALIDATION-01",
+      "category": "Auditoría",
+      "name": "Un filtro mal formado se rechaza en el borde",
+      "expected": "400 en los cinco casos",
+      "actual": "traceId=400 traceId (todo ceros)=400 correlationId=400 service=400 severity=400",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-WEBHOOK-AUTH-01",
+      "category": "Webhook de alertas",
+      "name": "El webhook rechaza sin secreto, con un secreto equivocado y con un JWT de sesión",
+      "expected": "401 en los tres",
+      "actual": "sin=401 equivocado=401 jwtDeSesion=401",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-WEBHOOK-VALIDATION-01",
+      "category": "Webhook de alertas",
+      "name": "Con el secreto correcto, un cuerpo inutilizable es un 400",
+      "expected": "400 sin alertas y 400 sin alertname",
+      "actual": "vacío=400 sinNombre=400",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-WEBHOOK-RECORDED-01",
+      "category": "Webhook de alertas",
+      "name": "Una alerta válida queda registrada en la auditoría como ERROR y notificada a los operadores",
+      "expected": "202; evento alert.slo.received.v1 con severity ERROR; notificación alert.slo con destinatario, estado SENT",
+      "actual": "status=202 accepted=1 evento=ERROR notificación=SENT destinatario=operadores@simulado.bonking.gt",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-SIM-RBAC-01",
+      "category": "Simulación de pagos",
+      "name": "/api/payments/simulation solo responde al administrador",
+      "expected": "GET sin sesión 401; GET y PUT como cajero y como cliente 403",
+      "actual": "anon=401 getCajero=403 getCliente=403 putCajero=403 putCliente=403",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-SIM-VALIDATION-01",
+      "category": "Simulación de pagos",
+      "name": "El administrador no puede fijar una simulación imposible",
+      "expected": "400 si las tasas suman más de 100 y 400 si una sale del rango 0–100",
+      "actual": "suma>100=400 fueraDeRango=400",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-ANOMALY-01",
+      "category": "Anomalías",
+      "name": "Superar el umbral de operaciones deja exactamente una notificación WARNING en la bandeja del titular",
+      "expected": "11 depósitos aceptados; una notificación account.anomaly con severity WARNING sobre esa cuenta",
+      "actual": "depósitosFallidos=0 anomalías=1 severity=WARNING referencia=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-ANOMALY-02",
+      "category": "Anomalías",
+      "name": "La anomalía se encuentra en la auditoría por servicio y nivel, una sola vez",
+      "expected": "Un account.anomaly.detected.v1 de esa cuenta, WARNING, con el umbral configurado",
+      "actual": "coincidencias=1 severity=WARNING operationCount=11 threshold=10",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-SIM-LIVE-01",
+      "category": "Simulación de pagos",
+      "name": "PUT cambia la simulación sin reiniciar nada, y GET la devuelve como RUNTIME",
+      "expected": "200; failureRatePercent 100 y source RUNTIME",
+      "actual": "antes=0/DEFAULTS put=200 después=100/RUNTIME",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-SIM-SAGA-01",
+      "category": "Simulación de pagos",
+      "name": "Con 100 % de fallo la Saga compensa: el origen recupera el monto y el destino no recibe nada",
+      "expected": "status COMPENSATED; saldo del origen igual al de antes; saldo del destino igual al de antes",
+      "actual": "POST=202 status=COMPENSATED origen 50000→50000 destino 0→0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-SIM-RESET-01",
+      "category": "Simulación de pagos",
+      "name": "PUT { reset: true } devuelve la simulación a los valores del ConfigMap",
+      "expected": "200 y source DEFAULTS con tasa de fallo 0",
+      "actual": "status=200 source=DEFAULTS failureRatePercent=0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-UI-VALIDATION-01",
+      "category": "Auditoría (UI)",
+      "name": "/auditoria dice qué filtro está mal en lugar de mostrar una lista vacía",
+      "expected": "Aparecen el aviso de la traza y el del código de seguimiento",
+      "actual": "avisoTraza=true avisoCorrelación=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "observability",
+      "id": "OBS-UI-FILTER-01",
+      "category": "Auditoría (UI)",
+      "name": "Filtrar por correlación en /auditoria muestra los eventos reales de esa correlación",
+      "expected": "La tabla tiene tantas filas como devuelve la API para ese filtro (y al menos una)",
+      "actual": "filasEnPantalla=1 filasEnApi=1",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
       "id": "PAY-RBAC-01",
       "category": "Pagos",
-      "name": "CLIENTE no puede listar pagos",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar un cliente para obtener un token CLIENTE real: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+      "name": "Un CLIENTE no puede listar pagos (D-06 / TD-037)",
+      "expected": "403",
+      "actual": "403",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
       "id": "PAY-RBAC-02",
       "category": "Pagos",
-      "name": "CAJERO puede listar pagos",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "Sin cliente aprovisionado, se omite el bloque completo por consistencia."
+      "name": "Un CAJERO_RECEPTOR puede listar pagos",
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
       "id": "PAY-RBAC-03",
       "category": "Pagos",
-      "name": "ADMIN puede listar pagos",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "Sin cliente aprovisionado, se omite el bloque completo por consistencia."
+      "name": "Un ADMINISTRADOR puede listar pagos",
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
       "id": "PAY-CREATE-APPROVE-01",
       "category": "Pagos",
       "name": "Transferencia APPROVE crea un pago SUCCEEDED",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el fixture de dos clientes: origen: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+      "expected": "transfer.status=COMPLETED, payment.status=SUCCEEDED",
+      "actual": "transfer.status=COMPLETED, payments.length=1, row.status=SUCCEEDED",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
       "id": "PAY-CREATE-REJECT-01",
       "category": "Pagos",
       "name": "Transferencia REJECT crea un pago FAILED/PERMANENT",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el fixture de dos clientes: origen: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+      "expected": "transfer.status=COMPENSATED, payment.status=FAILED, payment.errorType=PERMANENT",
+      "actual": "transfer.status=COMPENSATED, payment.reason=PAYMENT_DECLINED, row.status=FAILED, row.errorType=PERMANENT",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
       "id": "PAY-DETAIL-01",
       "category": "Pagos",
       "name": "GET /api/payments/:paymentId devuelve el pago creado",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el fixture de dos clientes: origen: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+      "expected": "200, outcome=FOUND, payment.transactionId=b930df5b-0526-429e-89dc-f1e23881ddc2",
+      "actual": "200: outcome=FOUND, payment.transactionId=b930df5b-0526-429e-89dc-f1e23881ddc2",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
       "id": "PAY-FILTER-01",
       "category": "Pagos",
-      "name": "GET /api/payments?status= filtra realmente",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el fixture de dos clientes: origen: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"fea9abe2-f138-48c2-a715-bea521baf8f3\"}"
+      "name": "GET /api/payments?status=SUCCEEDED filtra realmente, no decora",
+      "expected": "status 200, al menos una fila, y CADA fila tiene status=SUCCEEDED",
+      "actual": "200: 79 filas, statuses=[\"SUCCEEDED\"]",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
@@ -720,19 +873,18 @@
       "id": "BILLERS-ROLE-01",
       "category": "Pagos",
       "name": "Un CLIENTE también puede leer el catálogo de billers (sin @Roles)",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "Sin cliente aprovisionado."
+      "expected": "200",
+      "actual": "200",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "payments",
       "id": "PAY-UI-MONITOR-01",
       "category": "Pagos",
       "name": "/pagos/monitor (staff) muestra pagos reales, no un estado genérico",
-      "expected": "El texto de la página referencia la transacción creada (N/A) o al menos un monto real, con GET /api/payments devolviendo 6 filas",
-      "actual": "apiCount=6, showsOurTransfer=false, showsAnyPaymentRow=true",
+      "expected": "El texto de la página referencia la transacción creada (b930df5b-0526-429e-89dc-f1e23881ddc2) o al menos un monto real, con GET /api/payments devolviendo 122 filas",
+      "actual": "apiCount=122, showsOurTransfer=true, showsAnyPaymentRow=true",
       "pass": true,
       "detail": ""
     },
@@ -740,12 +892,21 @@
       "suite": "payments",
       "id": "PAY-UI-NEW-01",
       "category": "Pagos",
-      "name": "/pagos/nuevo (cliente) renderiza el formulario y produce una transferencia real",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar un cliente para probar esta pantalla."
+      "name": "/pagos/nuevo (cliente) renderiza los controles reales del formulario",
+      "expected": "Etiquetas visibles: Cuenta origen, Servicio público o factura, Monto, Número de contrato o referencia",
+      "actual": "sourceAccount=true biller=true amount=true reference=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "payments",
+      "id": "PAY-UI-NEW-SUBMIT-01",
+      "category": "Pagos",
+      "name": "/pagos/nuevo envía POST /api/transfers real y navega a la transferencia creada",
+      "expected": "Redirige a /transferencias/:id, y ese id existe según GET /api/transfers/:id",
+      "actual": "url=http://localhost:3010/transferencias/01f52de3-b5db-4c67-a990-508d603b2481, requestBodySeen=true, confirmedViaApi=true",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "rbac-matrix",
@@ -1133,7 +1294,7 @@
       "category": "Activación",
       "name": "El enlace de activación recuperado tiene la forma esperada (/activar?token=<token largo>)",
       "expected": "Coincide con /^\\/activar\\?token=[a-zA-Z0-9_-]{16,}$/",
-      "actual": "activationPath=\"/activar?token=9bf8719a-9abf-4d86-8993-14f8139ae9dde3d2fbe8b24aab2eefa7c2001cbc424d088d1aa5fa2b568681fbd6b45a612f58\"",
+      "actual": "activationPath=\"/activar?token=1673a568-06be-4710-869e-1b691be0139277ab0bbf44d7dd98ec9d3228396281fff4cc7d9b793566f5a96a8451d0c125be\"",
       "pass": true,
       "detail": ""
     },
@@ -1143,8 +1304,8 @@
       "category": "Activación",
       "name": "Activar la cuenta con el enlace real y luego iniciar sesión con las nuevas credenciales",
       "expected": "loginApi devuelve un token no nulo tras visitar el enlace de activación",
-      "actual": "loginStatus=401 token=null",
-      "pass": false,
+      "actual": "loginStatus=200 token=presente",
+      "pass": true,
       "detail": ""
     },
     {
@@ -1153,7 +1314,7 @@
       "category": "Activación",
       "name": "Reutilizar el mismo token de activación una segunda vez",
       "expected": "GET /api/customers/verify-email devuelve un status distinto de 200 (token de un solo uso)",
-      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El enlace de activación no es válido o ya fue utilizado.\",\"correlationId\":\"f3572740-59b4-4d87-b170-d3f0f4d57dbf\",\"failureCode\":\"ACTIVATION_TOKEN_INVALID\"}",
+      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El enlace de activación no es válido o ya fue utilizado.\",\"correlationId\":\"032457dd-f7de-4030-aaeb-cccb3969f518\",\"failureCode\":\"ACTIVATION_TOKEN_INVALID\"}",
       "pass": true,
       "detail": ""
     },
@@ -1171,12 +1332,11 @@
       "suite": "registration-activation",
       "id": "PWRESET-01",
       "category": "Recuperación de contraseña",
-      "name": "Solicitar restablecimiento para un correo real y confirmarlo",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "Depende de ACT-01 (una cuenta realmente activada) para tener credenciales válidas que probar; ACT-01 no pasó en esta corrida."
+      "name": "Solicitar restablecimiento, confirmarlo con el token real, iniciar sesión con la nueva contraseña y confirmar que la vieja ya NO funciona",
+      "expected": "202 + 200 al confirmar + login nuevo con token válido + login viejo con 401",
+      "actual": "requestStatus=202 confirmStatus=200 newLoginToken=true oldLoginStatus=401",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "registration-activation",
@@ -1194,7 +1354,7 @@
       "category": "Recuperación de contraseña",
       "name": "Confirmar restablecimiento con un resetToken fabricado a mano",
       "expected": "Distinto de 200",
-      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El enlace para restablecer la contraseña no es válido o ya fue utilizado.\",\"correlationId\":\"53238b5c-4105-46ba-b6a2-e2910184791f\",\"failureCode\":\"RESET_TOKEN_INVALID\"}",
+      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El enlace para restablecer la contraseña no es válido o ya fue utilizado.\",\"correlationId\":\"4fbca38f-b912-4aab-8bc1-931e3486cce8\",\"failureCode\":\"RESET_TOKEN_INVALID\"}",
       "pass": true,
       "detail": ""
     },
@@ -1234,7 +1394,7 @@
       "category": "Resiliencia",
       "name": "GET a una ruta que no existe",
       "expected": "404, no 500 y no una redirección",
-      "actual": "404: {\"type\":\"VALIDATION_ERROR\",\"message\":\"La ruta solicitada no existe.\",\"correlationId\":\"ef76ab58-98c5-4aff-9b9a-ffb246402ef8\"}",
+      "actual": "404: {\"type\":\"VALIDATION_ERROR\",\"message\":\"La ruta solicitada no existe.\",\"correlationId\":\"20995780-498b-4af4-93a9-70f63beda438\"}",
       "pass": true,
       "detail": ""
     },
@@ -1242,188 +1402,141 @@
       "suite": "resilience",
       "id": "CONCURRENT-DEPOSIT-RACE-01",
       "category": "Resiliencia",
-      "name": "Depósito concurrente con la misma Idempotency-Key",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente de origen: paso=login detalle=401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b9d05ac7-63bf-44db-a426-e29eed33737e\"}"
+      "name": "Dos depósitos simultáneos con la misma Idempotency-Key y el mismo cuerpo",
+      "expected": "Mismo operationId en ambas respuestas; saldo final = saldo previo (0) + un depósito (10000) = 10000",
+      "actual": "A.status=200 B.status=200 A.operationId=b8ec1a5b-34fb-4928-82e7-1df954b1f02e B.operationId=b8ec1a5b-34fb-4928-82e7-1df954b1f02e saldoFinal=10000",
+      "pass": true,
+      "detail": "El campo real del contrato es operationId (DepositResult), no movementId — no existe ningún campo movementId en la respuesta."
     },
     {
       "suite": "resilience",
       "id": "INVALID-CURRENCY-01",
       "category": "Resiliencia",
-      "name": "Depósito con una moneda distinta de GTQ",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente de origen: paso=login detalle=401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b9d05ac7-63bf-44db-a426-e29eed33737e\"}"
+      "name": "Depósito con una moneda distinta de GTQ (USD)",
+      "expected": "4xx (no 200, no aceptado silenciosamente)",
+      "actual": "422: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"El monto debe tener como máximo dos decimales y ser mayor que cero.\",\"correlationId\":\"30b411da-0106-484c-8fde-82d8ed753203\",\"failureCode\":\"INVALID_AMOUNT_PRECISION\"}",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "resilience",
       "id": "CONCURRENT-TRANSFER-RACE-01",
       "category": "Resiliencia",
-      "name": "Dos transferencias concurrentes que sobregirarían la cuenta",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente de origen: paso=login detalle=401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b9d05ac7-63bf-44db-a426-e29eed33737e\"}"
+      "name": "Dos transferencias simultáneas desde la misma cuenta que juntas la sobregirarían",
+      "expected": "A lo sumo una COMPLETED, saldo de origen nunca negativo y consistente con 1 débito(s) real(es)",
+      "actual": "estados=[COMPLETED, FAILED] saldoOrigenAntes=10000 saldoOrigenDespués=2000",
+      "pass": true,
+      "detail": "Q80.00 x2 = Q160.00 sobre un saldo de Q100.00: como máximo una puede completarse. reason A=null reason B=INSUFFICIENT_FUNDS"
     },
     {
       "suite": "transfers-saga",
       "id": "TX-SELF-01",
       "category": "Transferencias",
-      "name": "TX-SELF-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "sourceAccount === targetAccount es rechazado",
+      "expected": "status !== 202 (rechazo síncrono) o, si se acepta, la Saga termina FAILED con SAME_ACCOUNT_TRANSFER",
+      "actual": "400: {\"type\":\"VALIDATION_ERROR\",\"message\":\"La cuenta de destino debe ser distinta de la de origen.\",\"correlationId\":\"7a17130c-fe56-45cd-bda1-88616772de47\",\"field\":\"targetAccount\"}",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-ZERO-01",
       "category": "Transferencias",
-      "name": "TX-ZERO-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "amountMinor = 0 es rechazado",
+      "expected": "status !== 202",
+      "actual": "400: {\"type\":\"VALIDATION_ERROR\",\"message\":\"El monto debe ser mayor que cero.\",\"correlationId\":\"3ed7b5dc-4dd8-498c-9813-d6c8b3d3841d\",\"field\":\"amount.amountMinor\"}",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-NEG-01",
       "category": "Transferencias",
-      "name": "TX-NEG-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "amountMinor negativo es rechazado",
+      "expected": "status !== 202",
+      "actual": "400: {\"type\":\"VALIDATION_ERROR\",\"message\":\"El monto debe ser mayor que cero.\",\"correlationId\":\"1a9b0950-a1f6-4d99-aac9-2892d45cac5e\",\"field\":\"amount.amountMinor\"}",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-NOFUNDS-01",
       "category": "Transferencias",
-      "name": "TX-NOFUNDS-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "Transferencia por más del saldo real termina FAILED sin mover dinero",
+      "expected": "status=FAILED y saldo de origen sin cambios",
+      "actual": "before=10000 after=10000 status=FAILED reason=INSUFFICIENT_FUNDS",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-HAPPY-01",
       "category": "Transferencias",
-      "name": "TX-HAPPY-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "Transferencia exitosa mueve exactamente el monto en ambas cuentas",
+      "expected": "status=COMPLETED, origen -25000, destino +25000",
+      "actual": "status=COMPLETED srcBefore=500000 srcAfter=475000 dstBefore=0 dstAfter=25000",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-REJECT-01",
       "category": "Transferencias",
-      "name": "TX-REJECT-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "Pago rechazado por el proveedor compensa y restaura el saldo exacto",
+      "expected": "status=COMPENSATED, saldo de origen === saldo previo, saldo de destino sin cambios",
+      "actual": "status=COMPENSATED reason=PAYMENT_DECLINED srcBefore=475000 srcAfter=475000 dstBefore=25000 dstAfter=25000",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-TRANSIENT-01",
       "category": "Transferencias",
-      "name": "TX-TRANSIENT-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "Fallo transitorio agota la escalera de reintentos y compensa con saldo exacto",
+      "expected": "status=COMPENSATED, saldo restaurado, payment.attempt > 1 (evidencia real de reintento)",
+      "actual": "status=COMPENSATED reason=PAYMENT_RETRIES_EXHAUSTED payment.attempt=4 elapsedMs=10061 srcBefore=475000 srcAfter=475000",
+      "pass": true,
+      "detail": "Se verificó payment.attempt (4 de MAX_ATTEMPTS=4) como evidencia de reintento real, porque transitions[] solo registra el borde final PAYMENT_PENDING→COMPENSATED, no cada intento."
     },
     {
       "suite": "transfers-saga",
       "id": "TX-TIMEOUT-01",
       "category": "Transferencias",
-      "name": "TX-TIMEOUT-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "El proveedor no responde (timeout) agota la escalera y compensa con saldo exacto",
+      "expected": "status=COMPENSATED, saldo restaurado",
+      "actual": "status=COMPENSATED reason=PAYMENT_RETRIES_EXHAUSTED payment.attempt=4 srcBefore=475000 srcAfter=475000",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-IDEMPOTENT-01",
-      "category": "Transferencias",
-      "name": "TX-IDEMPOTENT-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "category": "Idempotencia",
+      "name": "Misma Idempotency-Key repetida resuelve a la misma transferencia y debita una sola vez",
+      "expected": "ambas solicitudes resuelven a la misma transferencia COMPLETED, saldo -1000 exactamente una vez",
+      "actual": "first=57b3fb65-c529-4850-b2ca-6074c3cf85aa second=66251f4a-3ed2-46d5-bb52-45b7120c79db sameTransfer=true srcBefore=475000 srcAfter=474000",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-OWNACCOUNTS-01",
       "category": "Transferencias",
-      "name": "TX-OWNACCOUNTS-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "Transferencia entre dos cuentas propias (no self-account) se completa y mueve el saldo exacto",
+      "expected": "status=COMPLETED, MONETARIA -7500, AHORRO +7500",
+      "actual": "status=COMPLETED srcBefore=474000 srcAfter=466500 dstBefore=10000 dstAfter=17500",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
       "id": "TX-SCOPE-01",
       "category": "Transferencias",
-      "name": "TX-SCOPE-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
-    },
-    {
-      "suite": "transfers-saga",
-      "id": "TX-HISTORY-01",
-      "category": "Transferencias",
-      "name": "TX-HISTORY-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
-    },
-    {
-      "suite": "transfers-saga",
-      "id": "TX-DETAIL-01",
-      "category": "Transferencias",
-      "name": "TX-DETAIL-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
-    },
-    {
-      "suite": "transfers-saga",
-      "id": "TX-UI-HAPPY-01",
-      "category": "Transferencias",
-      "name": "TX-UI-HAPPY-01",
-      "expected": null,
-      "actual": null,
-      "pass": null,
-      "skipped": true,
-      "detail": "No se pudo aprovisionar el cliente origen tras varios reintentos: login — 401: {\"type\":\"UNAUTHENTICATED\",\"message\":\"Credenciales inválidas o sesión no válida.\",\"correlationId\":\"b541e747-04f0-4bae-a231-3eaf1eef090f\"}"
+      "name": "El listado de un cliente que solo RECIBIÓ dinero no incluye transferencias que no inició",
+      "expected": "happyTxId ausente del listado de custB (alcance por customer_id iniciador, no por cuenta tocada)",
+      "actual": "status=200 total=0 contieneHappyTx=false",
+      "pass": true,
+      "detail": ""
     },
     {
       "suite": "transfers-saga",
@@ -1431,7 +1544,37 @@
       "category": "Transferencias",
       "name": "Consultar un transactionId que nunca existió",
       "expected": "409 BUSINESS_REJECTION/ILLEGAL_TRANSITION (el borrowed code que queries.use-case.ts documenta; no hay 404 real en el catálogo)",
-      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"No existe una transacción con ese identificador.\",\"correlationId\":\"71b56d7a-668e-4df5-ae4c-e3f3114b25dc\",\"failureCode\":\"ILLEGAL_TRANSITION\"}",
+      "actual": "409: {\"type\":\"BUSINESS_REJECTION\",\"message\":\"No existe una transacción con ese identificador.\",\"correlationId\":\"e214f746-1375-4f73-9ecd-ec53f9603e0a\",\"failureCode\":\"ILLEGAL_TRANSITION\"}",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-HISTORY-01",
+      "category": "Transferencias",
+      "name": "El historial UI del cliente muestra ambos desenlaces reales, igual que la API",
+      "expected": ">=1 COMPLETED y >=1 COMPENSATED/FAILED en pantalla; el conteo por estado coincide con GET /api/transfers",
+      "actual": "DOM: COMPLETED=3 COMPENSATED=3 FAILED=1 — API: COMPLETED=3 COMPENSATED=3 total=7",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-DETAIL-01",
+      "category": "Transferencias",
+      "name": "La pantalla de detalle de una transferencia concreta refleja el estado real de la API",
+      "expected": "Insignia con data-status=\"COMPLETED\" visible en /transferencias/dea95951-20fc-4a5e-ab24-888f93252e23",
+      "actual": "API status=COMPLETED, insignia visible=true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "suite": "transfers-saga",
+      "id": "TX-UI-HAPPY-01",
+      "category": "Transferencias",
+      "name": "Una transferencia enviada por el formulario real llega a COMPLETED y mueve el saldo exacto",
+      "expected": "Redirige a /transferencias/:id, la Saga termina COMPLETED, origen -15000, destino +15000",
+      "actual": "uiTransactionId=8fe11908-fb62-4128-b60b-5ae49e46578f isCompleted=true srcBefore=466500 srcAfter=451500 dstBefore=26000 dstAfter=41000",
       "pass": true,
       "detail": ""
     },
@@ -1441,7 +1584,7 @@
       "category": "Transferencias",
       "name": "El monitor de Sagas (staff) carga filas reales y no más de las que la API reporta",
       "expected": "Sin estado vacío, >=1 fila en la tabla, y el conteo de filas no excede el total real de la API",
-      "actual": "emptyState=false rowCount=24 apiTotal=24",
+      "actual": "emptyState=false rowCount=100 apiTotal=198",
       "pass": true,
       "detail": ""
     }
