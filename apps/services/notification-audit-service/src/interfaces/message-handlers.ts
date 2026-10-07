@@ -57,11 +57,23 @@ export class RecordEventHandler {
   readonly #useCase: RecordEventUseCase;
   readonly #consumer: string;
   readonly #logger: StructuredLogger;
+  readonly #traceIdOf: () => string | null;
 
-  constructor(useCase: RecordEventUseCase, consumer: string, logger: StructuredLogger) {
+  /**
+   * `traceIdOf` is how this handler learns the trace the message is being handled
+   * under (T-45). It is a function handed in, not an import, so a test can say
+   * which trace it is in and the handler stays free of the telemetry library.
+   */
+  constructor(
+    useCase: RecordEventUseCase,
+    consumer: string,
+    logger: StructuredLogger,
+    traceIdOf: () => string | null = () => null,
+  ) {
     this.#useCase = useCase;
     this.#consumer = consumer;
     this.#logger = logger;
+    this.#traceIdOf = traceIdOf;
   }
 
   public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
@@ -83,6 +95,7 @@ export class RecordEventHandler {
           : null;
 
     const processingStatus = invalidReason === null ? 'PROCESSED' : 'INVALID';
+    const traceId = this.#traceIdOf();
 
     const outcome = await this.#useCase.execute({
       event: {
@@ -96,7 +109,12 @@ export class RecordEventHandler {
         payload: envelope.payload,
         processingStatus,
         consumer: this.#consumer,
-        severity: classify({ messageType: envelope.messageType, processingStatus }),
+        severity: classify({
+          messageType: envelope.messageType,
+          processingStatus,
+          payload: envelope.payload,
+        }),
+        traceId,
       },
       customerId: envelope.identity?.customerId ?? null,
       role: envelope.identity?.role ?? null,
@@ -109,6 +127,7 @@ export class RecordEventHandler {
       consumer: this.#consumer,
       correlationId: envelope.correlationId,
       causationId: envelope.causationId,
+      ...(traceId === null ? {} : { traceId }),
       outcome: outcome.kind,
       ...(invalidReason === null ? {} : { reason: invalidReason }),
     });

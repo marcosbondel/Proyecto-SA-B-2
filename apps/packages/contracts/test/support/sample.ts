@@ -31,6 +31,8 @@ function uuidFor(field: string): string {
 const BY_PATTERN: readonly (readonly [RegExp, string])[] = [
   [/\^\[A-Z\]\{3\}\$/, 'GTQ'],
   [/\[0-9a-f\]\{64\}/, 'a'.repeat(64)],
+  // A W3C trace id (T-45): the specification's own example.
+  [/\[0-9a-f\]\{32\}/, '4bf92f3577b34da6a3ce929d0e0e4736'],
   [/\\\.v\[0-9\]\+\$/, 'account.debited.v1'],
 ];
 

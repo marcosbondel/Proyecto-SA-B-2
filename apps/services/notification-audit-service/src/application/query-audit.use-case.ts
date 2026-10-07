@@ -63,6 +63,8 @@ export class QueryAuditUseCase {
         processingStatus: event.processingStatus,
         /** `null` for a row recorded before T-30. See `migrations.ts`. */
         ...(event.severity === null ? {} : { severity: event.severity }),
+        /** `null` while no SDK records a trace (T-45). Omitted, never a placeholder. */
+        ...(event.traceId === null ? {} : { traceId: event.traceId }),
         /*
          * Omitted rather than sent empty when redaction left nothing. An empty
          * object on screen reads as "this message carried no data", which is a

@@ -156,8 +156,8 @@ describe('which events are worth telling somebody about', () => {
     }
   });
 
-  it('notifies on seventeen message types and no more', () => {
-    expect(notifyingMessageTypes()).toHaveLength(17);
+  it('notifies on nineteen message types and no more', () => {
+    expect(notifyingMessageTypes()).toHaveLength(19);
   });
 
   /** T-31: the customer hears the KYC verdict, not just its downstream refusal. */

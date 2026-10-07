@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(107);
+    expect(catalog).toHaveLength(108);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the sixty messages recorded as an extension, and no others', () => {
+  it('adds exactly the sixty-one messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -136,6 +136,12 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        */
       'account.stats.query.v1',
       'account.stats.replied.v1',
+      /*
+       * Added by T-45 (Fase 3, §4.1 — Notification & Audit Service). What the
+       * monitoring stack says about an SLO reaches the audit trail and the
+       * operators through the Gateway's webhook, as a command.
+       */
+      'alert.slo.received.v1',
       'audit.events.list.query.v1',
       'audit.events.list.replied.v1',
       'audit.query.replied.v1',

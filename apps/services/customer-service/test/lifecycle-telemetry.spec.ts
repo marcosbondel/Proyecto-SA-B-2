@@ -432,10 +432,10 @@ describe('a registration that is refused', () => {
   });
 });
 
-describe('the creation and the decision share a trace by link', () => {
+describe('the creation and the decision share one trace, by parent', () => {
   const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/;
 
-  it('stores the creation context and links the later decision back to it', async () => {
+  it('stores the creation context and parents the later decision on it', async () => {
     const context = build();
 
     await context.register.execute(REGISTER, 'key-1');
@@ -457,12 +457,12 @@ describe('the creation and the decision share a trace by link', () => {
 
     const verified = spans.getFinishedSpans()[0]!;
 
-    expect(verified.links).toHaveLength(1);
-    expect(verified.links[0]!.context.traceId).toBe(created.spanContext().traceId);
-    expect(verified.links[0]!.context.spanId).toBe(created.spanContext().spanId);
+    expect(verified.spanContext().traceId).toBe(created.spanContext().traceId);
+    expect(verified.parentSpanContext?.spanId).toBe(created.spanContext().spanId);
+    expect(verified.links).toEqual([]);
   });
 
-  it('links a teller verdict and a rejection the same way', async () => {
+  it('parents a teller verdict and a rejection the same way', async () => {
     const context = build();
     await context.register.execute(REGISTER, 'key-1');
     const created = spans.getFinishedSpans()[0]!;
@@ -474,23 +474,24 @@ describe('the creation and the decision share a trace by link', () => {
       'verdict-1',
     );
 
-    expect(spans.getFinishedSpans()[0]!.links[0]!.context.spanId).toBe(
-      created.spanContext().spanId,
-    );
+    const rejected = spans.getFinishedSpans()[0]!;
+
+    expect(rejected.spanContext().traceId).toBe(created.spanContext().traceId);
+    expect(rejected.parentSpanContext?.spanId).toBe(created.spanContext().spanId);
   });
 
-  it('links the verification of a counter registration to its own creation', async () => {
+  it('parents the verification of a counter registration on its own creation', async () => {
     const context = build();
 
     await context.register.execute({ ...REGISTER, photo: null }, 'key-staff', STAFF);
 
     const [created, verified] = spans.getFinishedSpans();
 
-    expect(verified!.links[0]!.context.spanId).toBe(created!.spanContext().spanId);
-    expect(verified!.links[0]!.context.traceId).toBe(created!.spanContext().traceId);
+    expect(verified!.parentSpanContext?.spanId).toBe(created!.spanContext().spanId);
+    expect(verified!.spanContext().traceId).toBe(created!.spanContext().traceId);
   });
 
-  it('records no link for a customer created before the context was stored', async () => {
+  it('opens no parent for a customer created before the context was stored', async () => {
     const context = build();
     await context.register.execute(REGISTER, 'key-1');
     context.repository.creationTraces.delete(REGISTER.customerId);
@@ -502,7 +503,25 @@ describe('the creation and the decision share a trace by link', () => {
       'key-kyc-1',
     );
 
-    expect(spans.getFinishedSpans()[0]!.links).toEqual([]);
+    const decision = spans.getFinishedSpans()[0]!;
+
+    expect(decision.parentSpanContext).toBeUndefined();
+    expect(decision.links).toEqual([]);
+  });
+
+  it('opens no parent for a stored context that is malformed', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+    context.repository.creationTraces.set(REGISTER.customerId, 'not-a-traceparent');
+    spans.reset();
+
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'VERIFIED' },
+      STAFF,
+      'key-kyc-1',
+    );
+
+    expect(spans.getFinishedSpans()[0]!.parentSpanContext).toBeUndefined();
   });
 });
 

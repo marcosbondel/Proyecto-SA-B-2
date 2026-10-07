@@ -29,6 +29,8 @@ export interface AuditEventRow {
   readonly processingStatus?: 'PROCESSED' | 'INVALID' | 'ERROR';
   /** Added by T-30, optional on the wire. Absent from a row recorded before it existed. */
   readonly severity?: EventSeverity;
+  /** Added by T-45. Absent when no SDK recorded a trace for the event. */
+  readonly traceId?: string;
   /** Redacted by the owning service. Absent when nothing survived. */
   readonly payload?: Record<string, unknown>;
 }
@@ -457,6 +459,9 @@ const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
   'account.opened': 'Cuenta creada',
   'account.deactivated': 'Cuenta desactivada',
   'account.reactivated': 'Cuenta reactivada',
+  // T-45. The first is the holder's; the second only ever reaches the staff console.
+  'account.anomaly': 'Actividad inusual en la cuenta',
+  'alert.slo': 'Alerta de SLO',
 };
 
 export function notificationLabel(type: string): string {
@@ -480,6 +485,7 @@ export function notificationLabel(type: string): string {
  * entry for every reply the audit trail will never actually show.
  */
 const MESSAGE_TYPE_LABELS: Readonly<Record<string, string>> = {
+  'account.anomaly.detected.v1': 'Actividad inusual detectada en la cuenta',
   'account.credit.rejected.v1': 'Crédito a la cuenta rechazado',
   'account.credited.v1': 'Cuenta acreditada',
   'account.deactivated.v1': 'Cuenta desactivada',
@@ -491,6 +497,7 @@ const MESSAGE_TYPE_LABELS: Readonly<Record<string, string>> = {
   'account.open.rejected.v1': 'Apertura de cuenta rechazada',
   'account.opened.v1': 'Cuenta abierta',
   'account.reactivated.v1': 'Cuenta reactivada',
+  'alert.slo.received.v1': 'Alerta de SLO recibida',
   'audit.query.replied.v1': 'Consulta de auditoría respondida',
   'audit.query.requested.v1': 'Consulta de auditoría solicitada',
   'audit.stats.query.v1': 'Estadísticas de auditoría solicitadas',
@@ -533,6 +540,7 @@ const MESSAGE_FAMILY_LABELS: Readonly<Record<string, string>> = {
   payment: 'pago',
   notification: 'notificación',
   audit: 'auditoría',
+  alert: 'alerta',
 };
 
 export function messageTypeLabel(messageType: string): string {
@@ -545,4 +553,132 @@ export function messageTypeLabel(messageType: string): string {
   const family = MESSAGE_FAMILY_LABELS[messageType.split('.')[0] ?? ''];
 
   return family !== undefined ? `Evento de ${family}` : 'Evento del sistema';
+}
+
+/**
+ * One event of the recent-events listing, as `audit.events.list.replied.v1`
+ * carries it. Richer than a row of one flow's trail: it names the flow it
+ * belongs to, because the listing crosses flows.
+ */
+export interface RecentAuditEvent {
+  readonly eventId: string;
+  readonly messageType: string;
+  readonly producer: string;
+  readonly occurredAt: string;
+  readonly correlationId: string;
+  /** Absent when no SDK recorded a trace for the event (T-45). */
+  readonly traceId?: string;
+  readonly causationId?: string;
+  readonly processingStatus: string;
+  readonly consumer: string;
+  readonly payload: Record<string, unknown>;
+  /** Absent for an event recorded before T-30 added the classification. */
+  readonly severity?: EventSeverity;
+}
+
+/**
+ * Whether this string is a W3C `trace-id`: thirty-two lowercase hex digits, and
+ * not the all-zero value the specification reserves for "no trace".
+ *
+ * The Gateway applies the same rule to `?traceId=`, and the duplication is
+ * deliberate for the reason `isCorrelationId` gives: a mistyped identifier is
+ * caught next to the field, where it can be explained, instead of as a `400`
+ * the person has to interpret. The Gateway still checks.
+ */
+export function isTraceId(value: string): boolean {
+  return /^(?!0{32}$)[0-9a-f]{32}$/.test(value);
+}
+
+/**
+ * What a person pasted, made into what is askable: trimmed, and lowercased for
+ * an identifier that is hexadecimal. Trace ids reach people from Grafana and
+ * from logs in either case, and `4BF9…` is the same trace as `4bf9…`.
+ */
+export function normaliseTraceId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/**
+ * The services that publish events — the producers the contracts name, which is
+ * what the `service` filter of §4.1 means. Written out because the browser has
+ * no business importing the contracts package; the Gateway validates against the
+ * real list, so a service missing here would be unselectable, never wrong.
+ */
+export const AUDIT_SERVICES: readonly string[] = [
+  'gateway',
+  'customer-service',
+  'account-service',
+  'transaction-service',
+  'payment-service',
+  'notification-audit-service',
+];
+
+/** What the audit screen's four filters hold, as the person typed them. */
+export interface AuditFilterInput {
+  readonly correlationId: string;
+  readonly traceId: string;
+  /** `TODOS` for every service. */
+  readonly service: string;
+  /** `TODOS` for every severity. */
+  readonly severity: string;
+}
+
+export interface AuditFilterProblems {
+  readonly correlationId?: string;
+  readonly traceId?: string;
+}
+
+/**
+ * What is wrong with a filter, in words, next to the field it is wrong in.
+ *
+ * Only the two free-text fields can be wrong — the other two are menus — and an
+ * empty field is not wrong, it is a filter left off.
+ */
+export function auditFilterProblems(input: AuditFilterInput): AuditFilterProblems {
+  const correlation = input.correlationId.trim();
+  const trace = normaliseTraceId(input.traceId);
+
+  return {
+    ...(correlation.length > 0 && !isCorrelationId(correlation)
+      ? { correlationId: 'Debe ser un UUID versión 4, como 7d41e8b2-9a3f-4c15-8ee0-1b2f9a4c7d10.' }
+      : {}),
+    ...(trace.length > 0 && !isTraceId(trace)
+      ? { traceId: 'Debe tener 32 caracteres hexadecimales, como 4bf92f3577b34da6a3ce929d0e0e4736.' }
+      : {}),
+  };
+}
+
+/**
+ * The query string of the recent-events listing for a set of filters.
+ *
+ * A filter left off is a parameter left out — never sent empty, because the
+ * Gateway refuses an empty `traceId` as malformed rather than reading it as
+ * "any". `TODOS` is the menus' way of saying the same thing.
+ */
+export function recentAuditQuery(
+  input: AuditFilterInput,
+  page: number,
+  limit: number,
+): Record<string, string> {
+  const correlation = input.correlationId.trim();
+  const trace = normaliseTraceId(input.traceId);
+
+  return {
+    page: String(page),
+    limit: String(limit),
+    ...(correlation.length > 0 ? { correlationId: correlation.toLowerCase() } : {}),
+    ...(trace.length > 0 ? { traceId: trace } : {}),
+    ...(input.service !== 'TODOS' ? { service: input.service } : {}),
+    ...(input.severity !== 'TODOS' ? { severity: input.severity } : {}),
+  };
+}
+
+/** Whether any filter is on, which is what the screen says it is "filtrando" by. */
+export function auditFilterIsActive(input: AuditFilterInput): boolean {
+  return (
+    input.correlationId.trim().length > 0 ||
+    input.traceId.trim().length > 0 ||
+    input.service !== 'TODOS' ||
+    input.severity !== 'TODOS'
+  );
 }

@@ -183,6 +183,13 @@ intento, y uno que agota la escalera de reintentos y **COMPENSA** igual. Lee el
 saldo antes y después de cada una, así que la compensación queda afirmada como
 un hecho sobre el dinero y no como un estado que alguien escribió.
 
+Desde T-44 ejecuta además una cuarta forma de compensación, la que alcanza un operador:
+el administrador sube a 100 % la tasa de fallo del proveedor simulado por
+`PUT /api/payments/simulation` (un `CLIENTE` recibe 403), la transferencia hecha mientras
+tanto termina `COMPENSATED` con el saldo intacto, y la simulación se restaura y se
+comprueba con una transferencia que **COMPLETA**. Usa al administrador sembrado, así que
+también necesita `SEED_DEMO_DATA=true`.
+
 ## Escalado
 
 `replicaCount` y `resources` se pueden fijar globalmente o por componente:

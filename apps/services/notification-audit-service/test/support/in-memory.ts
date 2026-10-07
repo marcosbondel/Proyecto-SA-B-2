@@ -29,6 +29,7 @@ export class InMemoryAuditRepository implements AuditRepository {
   public readonly events: AuditEvent[] = [];
   public readonly notifications: Notification[] = [];
   public readonly deliveries = new Map<string, number>();
+  public readonly dedupeKeys = new Set<string>();
 
   public async record(input: {
     readonly event: InboundRecord;
@@ -62,7 +63,23 @@ export class InMemoryAuditRepository implements AuditRepository {
       processingStatus: event.processingStatus,
       consumer: event.consumer,
       severity: event.severity,
+      traceId: event.traceId,
     });
+
+    const dedupeKey = notification?.intent.dedupeKey;
+
+    if (
+      notification !== null &&
+      dedupeKey !== undefined &&
+      this.dedupeKeys.has(dedupeKey)
+    ) {
+      // The partial unique index of the real repository: same thing, already told.
+      return await Promise.resolve({ kind: 'RECORDED', notified: false });
+    }
+
+    if (dedupeKey !== undefined) {
+      this.dedupeKeys.add(dedupeKey);
+    }
 
     if (notification !== null) {
       this.notifications.push({
@@ -215,9 +232,16 @@ export class InMemoryAuditRepository implements AuditRepository {
     readonly limit: number;
     readonly offset: number;
     readonly severity?: string;
+    readonly correlationId?: string;
+    readonly traceId?: string;
+    readonly service?: string;
   }): Promise<{ readonly events: readonly AuditEvent[]; readonly total: number }> {
     const matched = this.events.filter(
-      (event) => input.severity === undefined || event.severity === input.severity,
+      (event) =>
+        (input.severity === undefined || event.severity === input.severity) &&
+        (input.correlationId === undefined || event.correlationId === input.correlationId) &&
+        (input.traceId === undefined || event.traceId === input.traceId) &&
+        (input.service === undefined || event.producer === input.service),
     );
     const sorted = [...matched].sort(
       (left, right) => right.occurredAt.getTime() - left.occurredAt.getTime(),

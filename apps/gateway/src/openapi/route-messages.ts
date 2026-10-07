@@ -18,6 +18,7 @@ import {
   accountOperationsQueryV1,
   accountOperationsRepliedV1,
   accountSetStatusV1,
+  alertSloReceivedV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
   auditEventsListQueryV1,
@@ -205,6 +206,10 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'GET /api/audit': {
     publishes: auditQueryRequestedV1.name,
     awaits: [auditQueryRepliedV1.name],
+  },
+  // T-45: the webhook Grafana calls, with no session. It answers `202` and awaits nothing.
+  'POST /api/alerts/slo': {
+    publishes: alertSloReceivedV1.name,
   },
   'GET /api/audit/recent': {
     publishes: auditEventsListQueryV1.name,

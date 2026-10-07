@@ -407,6 +407,36 @@ describe('reading a customer (US6)', () => {
     expect(context.publisher.replies.at(-1)?.payload).toMatchObject({ outcome: 'NOT_FOUND' });
   });
 
+  it('answers a rejected customer with what they submitted, not the marker that released it', async () => {
+    const context = build();
+    await context.register.execute(REGISTER, 'key-1');
+
+    // What `saveIdentityVerdict` leaves in the three unique columns on a rejection.
+    const stored = context.repository.customers.get(REGISTER.customerId)!;
+    const marker = `#rejected#${REGISTER.customerId}`;
+    context.repository.customers.set(REGISTER.customerId, {
+      ...stored,
+      identityStatus: 'REJECTED',
+      identityDocument: `${stored.identityDocument}${marker}`,
+      email: `${stored.email}${marker}`,
+      username: `${stored.username}${marker}`,
+    });
+
+    await context.getCustomer.execute(
+      { customerId: REGISTER.customerId },
+      { role: 'CAJERO_RECEPTOR', customerId: '22222222-2222-4222-8222-222222222222' },
+    );
+
+    const payload = context.publisher.replies.at(-1)?.payload as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      outcome: 'FOUND',
+      identityDocument: stored.identityDocument,
+      email: stored.email,
+      username: stored.username,
+    });
+    expect(JSON.stringify(payload)).not.toContain('#rejected#');
+  });
+
   it('never carries the credential or the activation token in the reply', async () => {
     const context = build();
     await context.register.execute(REGISTER, 'key-1');

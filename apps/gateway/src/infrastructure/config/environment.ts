@@ -9,6 +9,7 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   IsUrl,
   Max,
@@ -128,6 +129,18 @@ export class GatewayEnvironment {
   @IsString()
   @IsNotEmpty()
   public CORS_ALLOWED_ORIGINS!: string;
+
+  /**
+   * The shared secret the SLO webhook demands (T-45). Optional on purpose: a
+   * Gateway without one still serves everything else, and the webhook refuses
+   * every call rather than opening — see `AlertTokenGuard`. In a cluster it
+   * comes from a Secret; it must be as long as the session secret, because a
+   * short one is brute-forceable from outside the cluster.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(32)
+  public ALERT_WEBHOOK_TOKEN?: string;
 }
 
 /**
@@ -163,6 +176,8 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Gatewa
     // development working without every operator setting it, the same way
     // GATEWAY_INSTANCE_ID and REPLY_TIMEOUT_MS carry theirs.
     CORS_ALLOWED_ORIGINS: source.CORS_ALLOWED_ORIGINS ?? 'http://localhost:3010',
+    // An empty string is how an unset Secret reaches a container: absent, not a token.
+    ALERT_WEBHOOK_TOKEN: source.ALERT_WEBHOOK_TOKEN === '' ? undefined : source.ALERT_WEBHOOK_TOKEN,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

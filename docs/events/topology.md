@@ -57,9 +57,10 @@ assignment refuses to award (§8.2, page 25).
 | `audit.account` | Notification & Audit | `account.#` on `bank.events` |
 | `audit.transaction` | Notification & Audit | `transaction.#` on `bank.events` |
 | `audit.payment` | Notification & Audit | `payment.#` on `bank.events` |
+| `audit.alert` | Notification & Audit | `alert.slo.received.v1` on `bank.commands` (T-45) |
 | `audit.query` | Notification & Audit | `audit.query.requested.v1`, `audit.events.list.query.v1`, `notification.list.query.v1`, `notification.inbox.query.v1`, `notification.mark-read.v1`, `audit.stats.query.v1` on `bank.commands` |
 
-Ten declared queues, plus one more that is not declared here — see below.
+Eleven declared queues, plus one more that is not declared here — see below.
 
 **Seven of them are wildcards and three enumerate their messages, and the split is deliberate.**
 The wide ones are wide because enumerating names in the broker means every new question needs a

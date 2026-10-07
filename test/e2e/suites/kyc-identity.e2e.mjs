@@ -52,7 +52,11 @@ async function registerAndActivateUnvalidated(label) {
   form.set('address', 'Ciudad de Guatemala');
   form.set('role', 'CLIENTE');
   form.set('credential', password);
-  form.set('photo', new Blob([DUMMY_PNG], { type: 'image/png' }), 'dpi.png');
+  // A photo no customer has uploaded before: Customer Service rejects a repeated
+  // digest as unreadable, so with the shared 1x1 PNG only the first registration
+  // ever stays PENDING and the queue cases below could never find their customer.
+  const uniquePhoto = Buffer.concat([DUMMY_PNG, Buffer.from(`${dpi}-${Date.now()}-${Math.random()}`)]);
+  form.set('photo', new Blob([uniquePhoto], { type: 'image/png' }), 'dpi.png');
 
   const regRes = await fetch(`${GW}/api/customers`, { method: 'POST', body: form });
   const reg = await regRes.json().catch(() => ({}));
