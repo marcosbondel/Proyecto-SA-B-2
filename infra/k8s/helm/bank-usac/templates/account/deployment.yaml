@@ -49,6 +49,7 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: NODE_ENV
+            {{- include "bank-usac.telemetryEnv" (dict "root" $ "tag" .Values.services.account.image.tag) | nindent 12 }}
             - name: PORT
               value: {{ .Values.services.account.port | quote }}
             - name: DATABASE_URL

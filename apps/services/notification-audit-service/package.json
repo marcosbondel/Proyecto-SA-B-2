@@ -15,10 +15,11 @@
   "dependencies": {
     "@bank/contracts": "workspace:*",
     "@bank/messaging": "workspace:*",
+    "@bank/observability": "workspace:*",
     "@nestjs/common": "catalog:",
-    "@opentelemetry/api": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
+    "@opentelemetry/api": "catalog:",
     "class-transformer": "catalog:",
     "class-validator": "catalog:",
     "pg": "catalog:",

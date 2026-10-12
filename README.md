@@ -117,7 +117,7 @@ The system models the core flows of a banking platform:
 - Internal and external payment processing.
 - Notifications, audit events, and distributed observability foundations.
 
-All seven applications and three shared packages install, build, lint and test
+All seven applications and four shared packages install, build, lint and test
 from a clean checkout, and every component is containerised (T-21).
 
 **The API Gateway is implemented** (T-15): seventeen HTTP routes over fourteen
@@ -427,7 +427,8 @@ pnpm --filter customer-service test        # still works — but builds nothing
 
 Application names are `gateway`, `web`, `customer-service`, `account-service`,
 `transaction-service`, `payment-service`, `notification-audit-service`. The
-shared packages are `@bank/contracts`, `@bank/messaging` and `@bank/tooling`.
+shared packages are `@bank/contracts`, `@bank/messaging`, `@bank/observability`
+and `@bank/tooling`.
 
 **`pnpm --filter <app> <task>` builds nothing.** The shared packages are
 consumed from `dist/`, so on a fresh clone that form needs a `pnpm build` first.

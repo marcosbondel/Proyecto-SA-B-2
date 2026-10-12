@@ -282,7 +282,7 @@ describe('the log of a simulated failure', () => {
 
     expect(failure).toMatchObject({
       level: 'warn',
-      service: 'payment-service',
+      serviceName: 'payment-service',
       correlationId: CORRELATION,
       transactionId: TRANSACTION_ID,
       paymentId: PAYMENT_ID,

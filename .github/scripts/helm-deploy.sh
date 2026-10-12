@@ -25,6 +25,11 @@
 #                    exige (`external.*.dockerNetwork.host`) y falla el render
 #                    si faltan, que es preferible a desplegar siete pods que no
 #                    pueden alcanzar su base de datos.
+#   OTEL_EXPORTER_OTLP_ENDPOINT  opcional — el Collector al que los seis
+#                    componentes instrumentados envian trazas y metricas (T-49). Vacio, el SDK
+#                    registra igual y no exporta. `observability.environment`
+#                    no se pide: es el namespace, para que la telemetria de dev
+#                    y la de prod nunca se confundan en el mismo Grafana (T-48).
 #   UPDATED_COMPONENTS  opcional — los componentes que cambiaron, separados por
 #                    espacios. Solo esos reciben la etiqueta nueva; el resto
 #                    conserva la suya. Sin definir, todos se actualizan.
@@ -325,6 +330,8 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   --set-string "web.apiBaseUrl=${GATEWAY_PUBLIC_URL}" \
   ${INFRA_PROPIA_ARGS[@]+"${INFRA_PROPIA_ARGS[@]}"} \
   --set-string "databaseSuffix=${DATABASE_SUFFIX:-}" \
+  --set-string "observability.environment=${NAMESPACE}" \
+  ${OTEL_EXPORTER_OTLP_ENDPOINT:+--set-string "observability.otlpEndpoint=${OTEL_EXPORTER_OTLP_ENDPOINT}"} \
   ${WEB_PUBLIC_URL:+--set-string "gateway.corsAllowedOrigins=${WEB_PUBLIC_URL}"} \
   "${SECRET_ARGS[@]}" \
   "${INFRA_ARGS[@]}" \

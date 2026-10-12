@@ -166,6 +166,30 @@ minio:
 # migraciones, pero no crean la base. Mientras no existan, dejar esto vacio.
 databaseSuffix: ''
 
+# ---------------------------------------------------------------------------
+# Telemetry (Fase 3, T-48). Read by `@bank/observability` in the five services
+# and the Gateway; the variables they become are listed per component in
+# docs/operations/CONTAINERS.md.
+#
+#   environment     `deployment.environment` on every span and metric and
+#                   `environment` on every log line. cd.yml sets it to the
+#                   namespace (`dev` / `prod`), which is what keeps the two
+#                   environments apart in one Grafana.
+#   otlpEndpoint    Where spans and metrics go, over OTLP/HTTP. Empty until the
+#                   Collector of T-49 exists: the SDK still records (so logs
+#                   carry their traceId and the broker propagates context) and
+#                   simply exports nothing.
+#   sdkDisabled     The standard kill switch, `OTEL_SDK_DISABLED`.
+#   metricExportIntervalMs  How often metrics are pushed. 15 s is enough
+#                   resolution for a burn-rate alert.
+#   logLevel        `debug`, `info`, `warn` or `error`.
+observability:
+  environment: local
+  otlpEndpoint: ''
+  sdkDisabled: false
+  metricExportIntervalMs: 15000
+  logLevel: info
+
 databases:
   customer:
     name: customer

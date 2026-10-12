@@ -79,7 +79,9 @@ export class GatewayExceptionFilter implements ExceptionFilter {
   #normalise(exception: unknown, correlationId: string): GatewayError {
     if (isGatewayError(exception)) {
       if (exception.type === 'BROKER_UNAVAILABLE' || exception.type === 'INTERNAL_ERROR') {
-        this.#logger.error(`[${correlationId}] ${exception.type}: ${exception.message}`);
+        this.#logger.error(`[${correlationId}] ${exception.type}: ${exception.message}`, {
+          correlationId,
+        });
       }
 
       return exception;
@@ -91,6 +93,7 @@ export class GatewayExceptionFilter implements ExceptionFilter {
 
     this.#logger.error(
       `[${correlationId}] unhandled: ${exception instanceof Error ? exception.stack : String(exception)}`,
+      { correlationId },
     );
 
     return GatewayError.internal();
@@ -120,7 +123,9 @@ export class GatewayExceptionFilter implements ExceptionFilter {
     }
 
     if (status >= 500) {
-      this.#logger.error(`[${correlationId}] http ${String(status)}: ${exception.message}`);
+      this.#logger.error(`[${correlationId}] http ${String(status)}: ${exception.message}`, {
+        correlationId,
+      });
       return GatewayError.internal();
     }
 

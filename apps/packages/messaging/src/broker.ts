@@ -6,6 +6,7 @@ import type { MessageEnvelope } from '@bank/contracts';
 
 import { deadLetterHeaders, deadLetterQueueFor } from './dead-letter';
 import { ATTEMPT_HEADER, RetryPolicy } from './retry-policy';
+import { traceDelivery, tracePublish } from './telemetry';
 
 /** What a caller needs to open a connection. Nothing about the business. */
 export interface BrokerOptions {
@@ -68,6 +69,13 @@ export interface ExclusiveSubscriptionOptions {
   readonly queue: string;
   readonly bindings: readonly Binding[];
   readonly prefetch?: number;
+  /**
+   * The name this queue goes by in spans and metrics. An exclusive queue is
+   * named per process (`gateway.replies.<pod>`), and a metric attribute that
+   * changes with every pod is a new time series per restart — so the caller
+   * names the *role* here. Defaults to `exclusive`.
+   */
+  readonly telemetryName?: string;
 }
 
 /**
@@ -185,21 +193,27 @@ export class MessageBroker {
       throw new Error('MessageBroker.publish called before start().');
     }
 
-    await publisher.publish(exchange, routingKey, Buffer.from(JSON.stringify(envelope)), {
-      contentType: 'application/json',
-      persistent: true,
-      // Rejects rather than buffering forever while the broker is unreachable.
-      timeout: this.#publishTimeoutMs,
-      messageId: envelope.messageId,
-      correlationId: envelope.correlationId,
-      type: envelope.messageType,
-      timestamp: Date.parse(envelope.occurredAt),
-      ...(options.replyTo === undefined ? {} : { replyTo: options.replyTo }),
-      headers: {
-        'x-causation-id': envelope.causationId,
-        'x-idempotency-key': envelope.idempotencyKey,
-        ...options.headers,
-      },
+    const headers = {
+      'x-causation-id': envelope.causationId,
+      'x-idempotency-key': envelope.idempotencyKey,
+      ...options.headers,
+    };
+
+    // The PRODUCER span, and `traceparent` injected beside the headers above
+    // (T-48). See `telemetry.ts`.
+    await tracePublish(exchange, routingKey, envelope, headers, async (traced) => {
+      await publisher.publish(exchange, routingKey, Buffer.from(JSON.stringify(envelope)), {
+        contentType: 'application/json',
+        persistent: true,
+        // Rejects rather than buffering forever while the broker is unreachable.
+        timeout: this.#publishTimeoutMs,
+        messageId: envelope.messageId,
+        correlationId: envelope.correlationId,
+        type: envelope.messageType,
+        timestamp: Date.parse(envelope.occurredAt),
+        ...(options.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+        headers: traced,
+      });
     });
   }
 
@@ -303,7 +317,13 @@ export class MessageBroker {
             return;
           }
 
-          void this.#deliverReply(channel, message, handler, validate);
+          void this.#deliverReply(
+            channel,
+            message,
+            handler,
+            validate,
+            options.telemetryName ?? 'exclusive',
+          );
         });
       },
     });
@@ -338,20 +358,27 @@ export class MessageBroker {
             return;
           }
 
-          void (async () => {
+          const headers = (message.properties.headers ?? {}) as Record<string, unknown>;
+          // A parked message still carries the `traceparent` it was published
+          // with, so recording it lands in the trace of the flow that failed.
+          const delivery = traceDelivery(ERROR_DRAIN_QUEUE, message.fields.routingKey, headers, 1);
+
+          void delivery.run(async () => {
             try {
               await handler({
                 content: message.content,
                 routingKey: message.fields.routingKey,
-                headers: (message.properties.headers ?? {}) as Record<string, unknown>,
+                headers,
               });
-            } catch {
+              delivery.finish('ack');
+            } catch (error) {
               // A recorder that throws must not stop the drain or re-park the
               // message: the whole point is that these deliveries stop moving.
+              delivery.finish('dropped', error);
             } finally {
               channel.ack(message);
             }
-          })();
+          });
         });
       },
     });
@@ -376,19 +403,34 @@ export class MessageBroker {
     message: ConsumeMessage,
     handler: MessageHandler,
     validate: MessageValidator | undefined,
+    telemetryName: string,
   ): Promise<void> {
-    try {
-      const envelope = parseEnvelope(message.content);
+    const delivery = traceDelivery(
+      telemetryName,
+      message.fields.routingKey,
+      message.properties.headers as Record<string, unknown> | undefined,
+      1,
+    );
 
-      if (validate?.(envelope).ok ?? true) {
-        await handler(envelope);
+    await delivery.run(async () => {
+      try {
+        const envelope = parseEnvelope(message.content);
+        delivery.describe(envelope);
+
+        if (validate?.(envelope).ok ?? true) {
+          await handler(envelope);
+          delivery.finish('ack');
+        } else {
+          delivery.finish('invalid');
+        }
+      } catch (error) {
+        // Swallowed on purpose: see the method comment. A reply that cannot be
+        // delivered is dropped, never retried and never dead-lettered.
+        delivery.finish('dropped', error);
+      } finally {
+        channel.ack(message);
       }
-    } catch {
-      // Swallowed on purpose: see the method comment. A reply that cannot be
-      // delivered is dropped, never retried and never dead-lettered.
-    } finally {
-      channel.ack(message);
-    }
+    });
   }
 
   async #dispatch(
@@ -403,61 +445,81 @@ export class MessageBroker {
       (message.properties.headers?.['x-original-routing-key'] as string | undefined) ?? routingKey;
     const attempt = this.#retryPolicy.attemptOf(message.properties.headers);
 
-    let envelope: MessageEnvelope<unknown>;
-    try {
-      envelope = parseEnvelope(message.content);
-    } catch (error) {
-      // Unparseable. No ladder: waiting will not make it parse.
-      this.#park(channel, message, {
-        attempt,
-        kind: 'invalid',
-        reason: describe(error),
-        routingKey: originalRoutingKey,
-      });
-      return;
-    }
+    // The CONSUMER span, a child of the `traceparent` the producer injected
+    // (T-48). The handler runs inside it, so every span, query, log line and
+    // publish it causes joins the same trace. A retried delivery keeps its
+    // headers, so a retry is a second CONSUMER span under the same producer.
+    const delivery = traceDelivery(
+      queue,
+      originalRoutingKey,
+      message.properties.headers as Record<string, unknown> | undefined,
+      attempt,
+    );
 
-    const verdict = validate?.(envelope) ?? { ok: true };
-    if (!verdict.ok) {
-      this.#park(channel, message, {
-        attempt,
-        kind: 'invalid',
-        reason: verdict.reason,
-        routingKey: originalRoutingKey,
-      });
-      return;
-    }
-
-    try {
-      await handler(envelope);
-      channel.ack(message);
-    } catch (error) {
-      const decision = this.#retryPolicy.decide(attempt);
-
-      if (decision.kind === 'dead-letter') {
+    await delivery.run(async () => {
+      let envelope: MessageEnvelope<unknown>;
+      try {
+        envelope = parseEnvelope(message.content);
+      } catch (error) {
+        // Unparseable. No ladder: waiting will not make it parse.
         this.#park(channel, message, {
           attempt,
-          kind: 'handler-error',
+          kind: 'invalid',
           reason: describe(error),
           routingKey: originalRoutingKey,
         });
+        delivery.finish('invalid', error);
         return;
       }
 
-      channel.sendToQueue(
-        this.#retryPolicy.retryQueueFor(queue, decision.delayMs),
-        message.content,
-        {
-          ...message.properties,
-          headers: {
-            ...message.properties.headers,
-            [ATTEMPT_HEADER]: attempt + 1,
-            'x-original-routing-key': originalRoutingKey,
+      delivery.describe(envelope);
+
+      const verdict = validate?.(envelope) ?? { ok: true };
+      if (!verdict.ok) {
+        this.#park(channel, message, {
+          attempt,
+          kind: 'invalid',
+          reason: verdict.reason,
+          routingKey: originalRoutingKey,
+        });
+        delivery.finish('invalid', verdict.reason);
+        return;
+      }
+
+      try {
+        await handler(envelope);
+        channel.ack(message);
+        delivery.finish('ack');
+      } catch (error) {
+        const decision = this.#retryPolicy.decide(attempt);
+
+        if (decision.kind === 'dead-letter') {
+          this.#park(channel, message, {
+            attempt,
+            kind: 'handler-error',
+            reason: describe(error),
+            routingKey: originalRoutingKey,
+          });
+          delivery.finish('dead_letter', error);
+          return;
+        }
+
+        channel.sendToQueue(
+          this.#retryPolicy.retryQueueFor(queue, decision.delayMs),
+          message.content,
+          {
+            ...message.properties,
+            headers: {
+              ...message.properties.headers,
+              [ATTEMPT_HEADER]: attempt + 1,
+              'x-original-routing-key': originalRoutingKey,
+            },
           },
-        },
-      );
-      channel.ack(message);
-    }
+        );
+        channel.ack(message);
+        delivery.finish('retry', error);
+      }
+    });
   }
 
   /** Sends a delivery to the error exchange and acknowledges the original. */

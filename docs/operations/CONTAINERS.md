@@ -57,6 +57,38 @@ serve Compose, kind and a demonstration alike.
 The Gateway has **no** `DATABASE_URL` and no way to acquire one: it holds no
 business data (constitution II and V).
 
+#### Telemetry, the same in six images (T-48)
+
+The five services and the Gateway register the OpenTelemetry SDK through
+`@bank/observability` before anything else loads (`src/instrumentation.ts`), and
+read the same six variables. **All of them are optional**: with none set, a
+container behaves as before T-48, except that its log lines now carry a
+`traceId`. `web` is not instrumented and reads none of them.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Where spans and metrics go, over OTLP/HTTP (`/v1/traces`, `/v1/metrics` are appended). **Empty means record and drop**: the SDK is still registered, so `traceparent` still crosses the broker and every log line still names its trace, but nothing leaves the process and nothing retries a collector that is not there. The chart sets it to the Collector of T-49. |
+| `DEPLOYMENT_ENVIRONMENT` | `local` | `deployment.environment(.name)` on every span and metric, `environment` on every log line. `helm-deploy.sh` sets it to the namespace, `dev` or `prod`, so the two never mix in one Grafana. |
+| `SERVICE_VERSION` | `dev` | `service.version` and the log line's `version`. The chart sets it to the tag of the image the Deployment runs — the same value as its `image:` — so it cannot drift from the code. The images Compose sets it to `BANK_IMAGE_TAG`. |
+| `OTEL_SDK_DISABLED` | `false` | `true` registers nothing at all: no spans, no metrics, no `traceId` in the logs. The standard switch, and the escape hatch if instrumentation is ever the suspect. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `15000` | Milliseconds between metric pushes. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
+
+`HOSTNAME`, which Docker and Kubernetes already set to the container or pod
+name, becomes `service.instance.id`, so two replicas are two instances of one
+service in a trace rather than two services. None of these is a secret, and
+none is baked into an image: `images:smoke` still finds only `NODE_ENV` there.
+
+**Every log line is JSON with a fixed head**, in this order: `timestamp`,
+`level`, `serviceName`, `environment`, `version`, `message`, then
+`correlationId`, `traceId` and `spanId` when there are any, then the component's
+own fields. A field whose name suggests a secret or personal data (`password`,
+`token`, `authorization`, `jwt`, `email`, `document`, `dpi`, `photo`,
+`recipient`, `phone`, `address`, …) is dropped, and a JWT, a `Bearer` token or an
+email address is masked wherever it appears in a value. Nest's own lines go
+through the same logger. Logs are written to stdout only: the collection agent
+of T-49 ships them, and no service sends its logs anywhere itself.
+
 Two of the optional ones are worth reading before a deployment.
 
 `PAYMENT_RETRY_DELAYS_MS` is the ladder between payment attempts, defaulting to
@@ -239,8 +271,23 @@ pnpm images:build -- --kind bank-usac  # and load them into a kind cluster
 pnpm images:up                       # the stack, from the built images
 pnpm images:smoke                    # every check the ticket asks for
 pnpm images:flow                     # register, open accounts, transfer
+pnpm images:trace                    # one transfer is one trace (needs the telemetry profile)
 pnpm images:down
 ```
+
+`images:trace` needs somewhere for the spans to go. The images Compose carries a
+Jaeger behind the `telemetry` profile — off unless asked for, in-memory, and on
+the loopback only — and the services export to it when told to:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 \
+  docker compose -f infra/docker/docker-compose.images.yml --profile telemetry up -d
+SEED_DEMO_DATA=true pnpm images:flow
+pnpm images:trace                    # Jaeger's UI is at http://localhost:16686
+```
+
+It is a check for a laptop, not the cluster's tracing backend; that is Tempo,
+in T-49.
 
 `infra/docker/docker-compose.images.yml` is the third of three Compose files and
 they answer three different questions:
