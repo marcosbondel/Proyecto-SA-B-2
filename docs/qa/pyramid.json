@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-26T00:30:04.512Z",
+  "generatedAt": "2026-10-11T23:58:59.063Z",
   "targets": {
     "unit": 70,
     "integration": 20,
@@ -13,8 +13,8 @@
       "dir": "apps/gateway",
       "runner": "jest",
       "tier": "app",
-      "unit": 321,
-      "integration": 95,
+      "unit": 406,
+      "integration": 111,
       "e2e": 0,
       "skipped": {
         "unit": 0,
@@ -23,21 +23,15 @@
       },
       "files": [
         {
-          "path": "apps/gateway/test/identity-document.spec.ts",
+          "path": "apps/gateway/test/auth-login.spec.ts",
           "layer": "unit",
-          "cases": 7,
+          "cases": 12,
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/reply-timeout.spec.ts",
+          "path": "apps/gateway/test/verify-email.spec.ts",
           "layer": "unit",
-          "cases": 7,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/photo-upload.spec.ts",
-          "layer": "unit",
-          "cases": 8,
+          "cases": 20,
           "skipped": 0
         },
         {
@@ -47,7 +41,7 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/change-password.spec.ts",
+          "path": "apps/gateway/test/photo-upload.spec.ts",
           "layer": "unit",
           "cases": 8,
           "skipped": 0
@@ -59,27 +53,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/openapi.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/verify-email.spec.ts",
-          "layer": "unit",
-          "cases": 20,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/broker-down.spec.ts",
-          "layer": "unit",
-          "cases": 12,
-          "skipped": 0
-        },
-        {
           "path": "apps/gateway/test/password-reset.spec.ts",
           "layer": "unit",
           "cases": 17,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/openapi.spec.ts",
+          "layer": "unit",
+          "cases": 8,
           "skipped": 0
         },
         {
@@ -89,27 +71,81 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/commands-validation.spec.ts",
-          "layer": "unit",
-          "cases": 20,
-          "skipped": 0
-        },
-        {
           "path": "apps/gateway/test/commands-publish.spec.ts",
           "layer": "unit",
           "cases": 18,
           "skipped": 0
         },
         {
+          "path": "apps/gateway/test/payment-simulation-routes.spec.ts",
+          "layer": "unit",
+          "cases": 29,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/commands-validation.spec.ts",
+          "layer": "unit",
+          "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/alert-webhook.spec.ts",
+          "layer": "unit",
+          "cases": 35,
+          "skipped": 0
+        },
+        {
           "path": "apps/gateway/test/queries-reply.spec.ts",
           "layer": "unit",
-          "cases": 32,
+          "cases": 43,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/environment.spec.ts",
+          "layer": "unit",
+          "cases": 22,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/identity-document.spec.ts",
+          "layer": "unit",
+          "cases": 7,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/reply-correlation.integration.spec.ts",
+          "layer": "integration",
+          "cases": 24,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/change-password.spec.ts",
+          "layer": "unit",
+          "cases": 8,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/trace-header.spec.ts",
+          "layer": "unit",
+          "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/reply-timeout.spec.ts",
+          "layer": "unit",
+          "cases": 7,
           "skipped": 0
         },
         {
           "path": "apps/gateway/test/no-database-no-http.spec.ts",
           "layer": "unit",
           "cases": 22,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/auth-guard.spec.ts",
+          "layer": "unit",
+          "cases": 11,
           "skipped": 0
         },
         {
@@ -125,51 +161,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/environment.spec.ts",
-          "layer": "unit",
-          "cases": 18,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/reply-correlation.integration.spec.ts",
-          "layer": "integration",
-          "cases": 22,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/auth-guard.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
           "path": "apps/gateway/test/identity-envelope.spec.ts",
           "layer": "unit",
           "cases": 6,
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/payment-scenario.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/auth-login.spec.ts",
+          "path": "apps/gateway/test/broker-down.spec.ts",
           "layer": "unit",
           "cases": 12,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/auth-login-secrets.spec.ts",
-          "layer": "unit",
-          "cases": 7,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/register-role-authorization.spec.ts",
-          "layer": "unit",
-          "cases": 6,
           "skipped": 0
         },
         {
@@ -185,9 +185,27 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/publish-routing.integration.spec.ts",
+          "path": "apps/gateway/test/auth-login-secrets.spec.ts",
+          "layer": "unit",
+          "cases": 7,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/register-role-authorization.spec.ts",
+          "layer": "unit",
+          "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/payment-scenario.spec.ts",
+          "layer": "unit",
+          "cases": 8,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/alert-webhook.integration.spec.ts",
           "layer": "integration",
-          "cases": 37,
+          "cases": 11,
           "skipped": 0
         },
         {
@@ -195,18 +213,24 @@
           "layer": "integration",
           "cases": 36,
           "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/publish-routing.integration.spec.ts",
+          "layer": "integration",
+          "cases": 40,
+          "skipped": 0
         }
       ],
-      "own": 416,
-      "integrationShare": 22.83653846153846
+      "own": 517,
+      "integrationShare": 21.470019342359766
     },
     {
       "name": "web",
       "dir": "apps/web",
       "runner": "web",
       "tier": "app",
-      "unit": 272,
-      "integration": 84,
+      "unit": 309,
+      "integration": 94,
       "e2e": 0,
       "skipped": {
         "unit": 0,
@@ -217,12 +241,18 @@
         {
           "path": "apps/web/test/**/*.test.mjs",
           "layer": "unit",
-          "cases": 272
+          "cases": 309
+        },
+        {
+          "path": "apps/web/test/integration/audit-screen.integration.spec.ts",
+          "layer": "integration",
+          "cases": 9,
+          "skipped": 0
         },
         {
           "path": "apps/web/test/integration/gateway-proxy.integration.spec.ts",
           "layer": "integration",
-          "cases": 41,
+          "cases": 42,
           "skipped": 0
         },
         {
@@ -238,8 +268,8 @@
           "skipped": 0
         }
       ],
-      "own": 356,
-      "integrationShare": 23.595505617977526
+      "own": 403,
+      "integrationShare": 23.325062034739457
     },
     {
       "name": "customer-service",
@@ -247,8 +277,8 @@
       "runner": "jest",
       "tier": "app",
       "database": "customer",
-      "unit": 137,
-      "integration": 40,
+      "unit": 160,
+      "integration": 43,
       "e2e": 0,
       "skipped": {
         "unit": 0,
@@ -263,21 +293,27 @@
           "skipped": 0
         },
         {
+          "path": "apps/services/customer-service/test/lifecycle-telemetry.spec.ts",
+          "layer": "unit",
+          "cases": 21,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/customer-service/test/repository.integration.spec.ts",
+          "layer": "integration",
+          "cases": 17,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/customer-service/test/health.controller.spec.ts",
           "layer": "unit",
           "cases": 5,
           "skipped": 0
         },
         {
-          "path": "apps/services/customer-service/test/use-cases.spec.ts",
-          "layer": "unit",
-          "cases": 57,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/customer-service/test/repository.integration.spec.ts",
+          "path": "apps/services/customer-service/test/constraints.integration.spec.ts",
           "layer": "integration",
-          "cases": 14,
+          "cases": 10,
           "skipped": 0
         },
         {
@@ -287,9 +323,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/customer-service/test/constraints.integration.spec.ts",
-          "layer": "integration",
-          "cases": 10,
+          "path": "apps/services/customer-service/test/use-cases.spec.ts",
+          "layer": "unit",
+          "cases": 59,
           "skipped": 0
         },
         {
@@ -311,20 +347,20 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/customer-service/test/isolation.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/customer-service/test/domain.spec.ts",
           "layer": "unit",
           "cases": 35,
           "skipped": 0
+        },
+        {
+          "path": "apps/services/customer-service/test/isolation.spec.ts",
+          "layer": "unit",
+          "cases": 8,
+          "skipped": 0
         }
       ],
-      "own": 177,
-      "integrationShare": 22.598870056497177
+      "own": 203,
+      "integrationShare": 21.182266009852217
     },
     {
       "name": "account-service",
@@ -332,8 +368,8 @@
       "runner": "jest",
       "tier": "app",
       "database": "account",
-      "unit": 130,
-      "integration": 37,
+      "unit": 188,
+      "integration": 56,
       "e2e": 0,
       "skipped": {
         "unit": 0,
@@ -344,7 +380,7 @@
         {
           "path": "apps/services/account-service/test/repository.integration.spec.ts",
           "layer": "integration",
-          "cases": 22,
+          "cases": 41,
           "skipped": 0
         },
         {
@@ -354,39 +390,51 @@
           "skipped": 0
         },
         {
+          "path": "apps/services/account-service/test/otel-activity.telemetry.spec.ts",
+          "layer": "unit",
+          "cases": 7,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/account-service/test/health.controller.spec.ts",
           "layer": "unit",
           "cases": 5,
           "skipped": 0
         },
         {
-          "path": "apps/services/account-service/test/use-cases.spec.ts",
-          "layer": "unit",
-          "cases": 46,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/account-service/test/environment.spec.ts",
           "layer": "unit",
-          "cases": 3,
+          "cases": 11,
           "skipped": 0
         },
         {
           "path": "apps/services/account-service/test/deactivation-scheduler.spec.ts",
           "layer": "unit",
-          "cases": 12,
+          "cases": 17,
           "skipped": 0
         },
         {
-          "path": "apps/services/account-service/test/deposit.spec.ts",
+          "path": "apps/services/account-service/test/use-cases.spec.ts",
           "layer": "unit",
-          "cases": 9,
+          "cases": 53,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/account-service/test/activity-monitor.spec.ts",
+          "layer": "unit",
+          "cases": 18,
           "skipped": 0
         },
         {
           "path": "apps/services/account-service/test/inbound-message.handler.spec.ts",
           "layer": "unit",
           "cases": 3,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/account-service/test/deposit.spec.ts",
+          "layer": "unit",
+          "cases": 11,
           "skipped": 0
         },
         {
@@ -400,10 +448,16 @@
           "layer": "unit",
           "cases": 8,
           "skipped": 0
+        },
+        {
+          "path": "apps/services/account-service/test/activity-policy.spec.ts",
+          "layer": "unit",
+          "cases": 11,
+          "skipped": 0
         }
       ],
-      "own": 167,
-      "integrationShare": 22.15568862275449
+      "own": 244,
+      "integrationShare": 22.950819672131146
     },
     {
       "name": "transaction-service",
@@ -411,8 +465,8 @@
       "runner": "jest",
       "tier": "app",
       "database": "transaction",
-      "unit": 173,
-      "integration": 48,
+      "unit": 203,
+      "integration": 55,
       "e2e": 0,
       "skipped": {
         "unit": 0,
@@ -421,63 +475,9 @@
       },
       "files": [
         {
-          "path": "apps/services/transaction-service/test/repository.integration.spec.ts",
-          "layer": "integration",
-          "cases": 48,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/health.controller.spec.ts",
+          "path": "apps/services/transaction-service/test/isolation.spec.ts",
           "layer": "unit",
-          "cases": 6,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/environment.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/outbox-scheduler.spec.ts",
-          "layer": "unit",
-          "cases": 6,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/use-cases.spec.ts",
-          "layer": "unit",
-          "cases": 36,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/routing-coverage.spec.ts",
-          "layer": "unit",
-          "cases": 15,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/saga-transition-matrix.spec.ts",
-          "layer": "unit",
-          "cases": 16,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/query-handlers.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/listing-and-scope.spec.ts",
-          "layer": "unit",
-          "cases": 20,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/transaction-service/test/inbound-message.handler.spec.ts",
-          "layer": "unit",
-          "cases": 3,
+          "cases": 9,
           "skipped": 0
         },
         {
@@ -487,9 +487,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/isolation.spec.ts",
+          "path": "apps/services/transaction-service/test/environment.spec.ts",
           "layer": "unit",
-          "cases": 9,
+          "cases": 3,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/inbound-message.handler.spec.ts",
+          "layer": "unit",
+          "cases": 3,
           "skipped": 0
         },
         {
@@ -497,10 +503,64 @@
           "layer": "unit",
           "cases": 9,
           "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/query-handlers.spec.ts",
+          "layer": "unit",
+          "cases": 3,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/saga-transition-matrix.spec.ts",
+          "layer": "unit",
+          "cases": 16,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/listing-and-scope.spec.ts",
+          "layer": "unit",
+          "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/use-cases.spec.ts",
+          "layer": "unit",
+          "cases": 36,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/health.controller.spec.ts",
+          "layer": "unit",
+          "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/outbox-scheduler.spec.ts",
+          "layer": "unit",
+          "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/routing-coverage.spec.ts",
+          "layer": "unit",
+          "cases": 15,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/transfer-telemetry.spec.ts",
+          "layer": "unit",
+          "cases": 30,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/repository.integration.spec.ts",
+          "layer": "integration",
+          "cases": 55,
+          "skipped": 0
         }
       ],
-      "own": 221,
-      "integrationShare": 21.71945701357466
+      "own": 258,
+      "integrationShare": 21.31782945736434
     },
     {
       "name": "payment-service",
@@ -508,8 +568,8 @@
       "runner": "jest",
       "tier": "app",
       "database": "payment",
-      "unit": 60,
-      "integration": 17,
+      "unit": 151,
+      "integration": 45,
       "e2e": 0,
       "skipped": {
         "unit": 0,
@@ -518,9 +578,27 @@
       },
       "files": [
         {
+          "path": "apps/services/payment-service/test/simulation-handlers.integration.spec.ts",
+          "layer": "integration",
+          "cases": 14,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/payment-service/test/repository.integration.spec.ts",
           "layer": "integration",
+          "cases": 24,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/provider-telemetry.spec.ts",
+          "layer": "unit",
           "cases": 17,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/simulation.integration.spec.ts",
+          "layer": "integration",
+          "cases": 7,
           "skipped": 0
         },
         {
@@ -532,13 +610,31 @@
         {
           "path": "apps/services/payment-service/test/environment.spec.ts",
           "layer": "unit",
-          "cases": 3,
+          "cases": 11,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/simulation-use-case.spec.ts",
+          "layer": "unit",
+          "cases": 25,
           "skipped": 0
         },
         {
           "path": "apps/services/payment-service/test/use-cases.spec.ts",
           "layer": "unit",
           "cases": 13,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/simulation.spec.ts",
+          "layer": "unit",
+          "cases": 32,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/simulation-handlers.spec.ts",
+          "layer": "unit",
+          "cases": 9,
           "skipped": 0
         },
         {
@@ -566,8 +662,8 @@
           "skipped": 0
         }
       ],
-      "own": 77,
-      "integrationShare": 22.07792207792208
+      "own": 196,
+      "integrationShare": 22.95918367346939
     },
     {
       "name": "notification-audit-service",
@@ -575,8 +671,8 @@
       "runner": "jest",
       "tier": "app",
       "database": "notification_audit",
-      "unit": 130,
-      "integration": 39,
+      "unit": 201,
+      "integration": 56,
       "e2e": 0,
       "skipped": {
         "unit": 0,
@@ -591,21 +687,39 @@
           "skipped": 0
         },
         {
+          "path": "apps/services/notification-audit-service/test/trace-anomaly-alert.spec.ts",
+          "layer": "unit",
+          "cases": 37,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/notification-audit-service/test/trace-and-dedupe.integration.spec.ts",
+          "layer": "integration",
+          "cases": 17,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/notification-audit-service/test/health.controller.spec.ts",
           "layer": "unit",
           "cases": 6,
           "skipped": 0
         },
         {
-          "path": "apps/services/notification-audit-service/test/use-cases.spec.ts",
+          "path": "apps/services/notification-audit-service/test/otel-audit.telemetry.spec.ts",
           "layer": "unit",
-          "cases": 31,
+          "cases": 18,
           "skipped": 0
         },
         {
           "path": "apps/services/notification-audit-service/test/environment.spec.ts",
           "layer": "unit",
           "cases": 8,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/notification-audit-service/test/audit-filters-and-alerts.spec.ts",
+          "layer": "unit",
+          "cases": 16,
           "skipped": 0
         },
         {
@@ -621,9 +735,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/notification-audit-service/test/simulated-notification.spec.ts",
+          "path": "apps/services/notification-audit-service/test/use-cases.spec.ts",
           "layer": "unit",
-          "cases": 11,
+          "cases": 31,
           "skipped": 0
         },
         {
@@ -643,18 +757,24 @@
           "layer": "unit",
           "cases": 1,
           "skipped": 0
+        },
+        {
+          "path": "apps/services/notification-audit-service/test/simulated-notification.spec.ts",
+          "layer": "unit",
+          "cases": 11,
+          "skipped": 0
         }
       ],
-      "own": 169,
-      "integrationShare": 23.076923076923077
+      "own": 257,
+      "integrationShare": 21.78988326848249
     },
     {
       "name": "@bank/messaging",
       "dir": "apps/packages/messaging",
       "runner": "jest",
       "tier": "library",
-      "unit": 42,
-      "integration": 12,
+      "unit": 57,
+      "integration": 16,
       "e2e": 0,
       "skipped": {
         "unit": 0,
@@ -681,6 +801,12 @@
           "skipped": 0
         },
         {
+          "path": "apps/packages/messaging/test/request-reply.spec.ts",
+          "layer": "unit",
+          "cases": 10,
+          "skipped": 0
+        },
+        {
           "path": "apps/packages/messaging/test/publish-timeout.spec.ts",
           "layer": "unit",
           "cases": 4,
@@ -693,9 +819,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/messaging/test/request-reply.spec.ts",
+          "path": "apps/packages/messaging/test/trace-propagation.spec.ts",
           "layer": "unit",
-          "cases": 10,
+          "cases": 15,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/messaging/test/trace-propagation.integration.spec.ts",
+          "layer": "integration",
+          "cases": 4,
           "skipped": 0
         },
         {
@@ -711,8 +843,44 @@
           "skipped": 0
         }
       ],
-      "own": 54,
-      "integrationShare": 22.22222222222222
+      "own": 73,
+      "integrationShare": 21.91780821917808
+    },
+    {
+      "name": "@bank/observability",
+      "dir": "apps/packages/observability",
+      "runner": "jest",
+      "tier": "library",
+      "unit": 48,
+      "integration": 13,
+      "e2e": 0,
+      "skipped": {
+        "unit": 0,
+        "integration": 0,
+        "e2e": 0
+      },
+      "files": [
+        {
+          "path": "apps/packages/observability/test/telemetry.integration.spec.ts",
+          "layer": "integration",
+          "cases": 13,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/observability/test/logger.spec.ts",
+          "layer": "unit",
+          "cases": 33,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/observability/test/context-and-nest.spec.ts",
+          "layer": "unit",
+          "cases": 15,
+          "skipped": 0
+        }
+      ],
+      "own": 61,
+      "integrationShare": 21.311475409836063
     },
     {
       "name": "@bank/contracts",
@@ -720,7 +888,7 @@
       "runner": "jest",
       "tier": "library",
       "exception": "Paquete de esquemas con cero E/S: no abre un socket, no toca un disco y no tiene proceso al que cruzar. Integración y E2E no son difíciles aquí, son imposibles, así que no se le exige proporción.",
-      "unit": 775,
+      "unit": 875,
       "integration": 0,
       "e2e": 0,
       "skipped": {
@@ -730,81 +898,27 @@
       },
       "files": [
         {
-          "path": "apps/packages/contracts/test/routing/topology.spec.ts",
-          "layer": "unit",
-          "cases": 20,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/validation/valid-and-invalid.spec.ts",
-          "layer": "unit",
-          "cases": 206,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/no-secrets.spec.ts",
-          "layer": "unit",
-          "cases": 309,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/payload-size.spec.ts",
-          "layer": "unit",
-          "cases": 106,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/catalog-completeness.spec.ts",
-          "layer": "unit",
-          "cases": 9,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/validation/validate-message.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/saga-chain.spec.ts",
-          "layer": "unit",
-          "cases": 23,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/routing/gateway-reply-queue.spec.ts",
-          "layer": "unit",
-          "cases": 10,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/safe-rejections.spec.ts",
-          "layer": "unit",
-          "cases": 6,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/customer-trim.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/contracts/test/events/transaction-status-reply.spec.ts",
           "layer": "unit",
           "cases": 10,
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/schemas/primitives.spec.ts",
-          "layer": "unit",
-          "cases": 24,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/contracts/test/events/payment-scenario.spec.ts",
           "layer": "unit",
           "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/envelope/causation.spec.ts",
+          "layer": "unit",
+          "cases": 4,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/schemas/primitives.spec.ts",
+          "layer": "unit",
+          "cases": 24,
           "skipped": 0
         },
         {
@@ -820,63 +934,137 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/envelope/causation.spec.ts",
+          "path": "apps/packages/contracts/test/events/safe-rejections.spec.ts",
           "layer": "unit",
-          "cases": 4,
+          "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/customer-trim.spec.ts",
+          "layer": "unit",
+          "cases": 3,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/saga-chain.spec.ts",
+          "layer": "unit",
+          "cases": 23,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/routing/gateway-reply-queue.spec.ts",
+          "layer": "unit",
+          "cases": 10,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/catalog-completeness.spec.ts",
+          "layer": "unit",
+          "cases": 9,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/validation/validate-message.spec.ts",
+          "layer": "unit",
+          "cases": 11,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/payload-size.spec.ts",
+          "layer": "unit",
+          "cases": 111,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/payment-simulation.spec.ts",
+          "layer": "unit",
+          "cases": 22,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/account-anomaly-detected.spec.ts",
+          "layer": "unit",
+          "cases": 25,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/alert-slo-received.spec.ts",
+          "layer": "unit",
+          "cases": 23,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/routing/topology.spec.ts",
+          "layer": "unit",
+          "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/no-secrets.spec.ts",
+          "layer": "unit",
+          "cases": 324,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/validation/valid-and-invalid.spec.ts",
+          "layer": "unit",
+          "cases": 216,
           "skipped": 0
         }
       ],
-      "own": 775,
+      "own": 875,
       "integrationShare": 0
     }
   ],
   "system": {
-    "unit": 1223,
-    "integration": 360,
-    "e2e": 134,
-    "total": 1717,
-    "unitShare": 71.22888759464182,
-    "integrationShare": 20.966802562609203,
-    "e2eShare": 7.804309842748982
+    "unit": 1618,
+    "integration": 460,
+    "e2e": 152,
+    "total": 2230,
+    "unitShare": 72.5560538116592,
+    "integrationShare": 20.62780269058296,
+    "e2eShare": 6.816143497757847
   },
   "e2e": {
-    "cases": 134,
-    "skipped": 36,
+    "cases": 152,
+    "skipped": 0,
     "stale": false,
     "suites": [
       {
         "name": "accounts-deposits",
-        "cases": 16,
-        "passed": 16,
-        "failed": 0,
-        "skipped": 2
+        "cases": 18,
+        "passed": 18,
+        "failed": 0
       },
       {
         "name": "auth-session",
         "cases": 12,
-        "passed": 11,
-        "failed": 1
+        "passed": 12,
+        "failed": 0
       },
       {
         "name": "kyc-identity",
-        "cases": 9,
-        "passed": 7,
-        "failed": 2,
-        "skipped": 2
+        "cases": 11,
+        "passed": 11,
+        "failed": 0
       },
       {
         "name": "notifications-audit",
-        "cases": 8,
-        "passed": 8,
-        "failed": 0,
-        "skipped": 5
+        "cases": 13,
+        "passed": 13,
+        "failed": 0
+      },
+      {
+        "name": "observability",
+        "cases": 17,
+        "passed": 17,
+        "failed": 0
       },
       {
         "name": "payments",
-        "cases": 3,
-        "passed": 3,
-        "failed": 0,
-        "skipped": 9
+        "cases": 13,
+        "passed": 13,
+        "failed": 0
       },
       {
         "name": "rbac-matrix",
@@ -886,27 +1074,24 @@
       },
       {
         "name": "registration-activation",
-        "cases": 19,
-        "passed": 18,
-        "failed": 1,
-        "skipped": 1
+        "cases": 20,
+        "passed": 20,
+        "failed": 0
       },
       {
         "name": "resilience",
-        "cases": 3,
-        "passed": 3,
-        "failed": 0,
-        "skipped": 3
+        "cases": 6,
+        "passed": 6,
+        "failed": 0
       },
       {
         "name": "transfers-saga",
-        "cases": 2,
-        "passed": 2,
-        "failed": 0,
-        "skipped": 14
+        "cases": 16,
+        "passed": 16,
+        "failed": 0
       }
     ],
-    "generatedAt": "2026-09-25T22:37:31.192Z"
+    "generatedAt": "2026-10-07T03:57:39.240Z"
   },
   "deviations": []
 }

@@ -7,9 +7,9 @@ Short map for AI agents working in this repository. Durable knowledge lives in
 
 A pnpm workspace with everything under `apps/`: the Gateway and the Nuxt
 frontend at the top level, the five domain services under `apps/services/`, and
-`@bank/contracts`, `@bank/messaging` and `@bank/tooling` under
-`apps/packages/`. All seven applications install, build, lint and test from a
-clean checkout.
+`@bank/contracts`, `@bank/messaging`, `@bank/observability` and `@bank/tooling`
+under `apps/packages/`. All seven applications install, build, lint and test
+from a clean checkout.
 
 **The API Gateway is implemented** (T-15, extended by T-17, T-19, T-20 and the
 prototype-parity work): twenty-four paths, JWT authentication, role

@@ -32,6 +32,7 @@
     "images:logs": "docker compose -f infra/docker/docker-compose.images.yml logs -f",
     "images:smoke": "./infra/docker/scripts/smoke-images.sh",
     "images:flow": "./infra/docker/scripts/flow-images.sh",
+    "images:trace": "./infra/docker/scripts/trace-images.sh",
     "k8s:cluster": "./infra/k8s/scripts/create-cluster.sh",
     "k8s:cluster:down": "kind delete cluster --name bank-usac",
     "k8s:ips": "./infra/k8s/kind/scripts/discover-external-ips.sh",

@@ -227,6 +227,28 @@ export const MIGRATIONS: readonly Migration[] = [
        )`,
     ],
   },
+  {
+    /*
+     * T-48: the W3C `traceparent` that was active when a row was written, so
+     * work that happens later, from a timer, continues the trace that caused it
+     * instead of starting a new one.
+     *
+     * - `outbox_messages.trace_context`: the relay publishes each event inside
+     *   the context of the attempt that wrote it.
+     * - `payments.trace_context`: the retry sweep runs each later rung of the
+     *   1 s / 5 s / 30 s ladder as a step of the trace in which the payment
+     *   was opened — the Saga's trace.
+     *
+     * Nullable, and `NULL` means what it always meant: no SDK was recording
+     * when the row was written, so there is no trace to continue.
+     * `VARCHAR(80)` holds a version-00 traceparent (55 characters) with room.
+     */
+    name: '006_trace_context',
+    statements: [
+      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
+      `ALTER TABLE outbox_messages ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
+    ],
+  },
 ];
 
 /**

@@ -49,6 +49,14 @@ x-app: &app
 x-rabbitmq-url: &rabbitmq-url
   RABBITMQ_URL: amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@rabbitmq:5672
 
+# Telemetry (T-48), for the five services and the Gateway. The version is the
+# tag of the image actually running, so a log line names the build it came
+# from. With no OTEL_EXPORTER_OTLP_ENDPOINT the SDK records and exports nothing.
+x-telemetry: &telemetry
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-local}
+  SERVICE_VERSION: ${BANK_IMAGE_TAG:-dev}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
 x-object-storage: &object-storage
   OBJECT_STORAGE_ENDPOINT: http://minio:9000
   OBJECT_STORAGE_ACCESS_KEY: ${MINIO_APP_USER}
@@ -103,7 +111,7 @@ services:
       dockerfile: apps/services/customer-service/Dockerfile
     container_name: customer-service
     environment:
-      <<: [*rabbitmq-url, *object-storage]
+      <<: [*rabbitmq-url, *object-storage, *telemetry]
       NODE_ENV: production
       PORT: 3001
       DATABASE_URL: postgresql://${CUSTOMER_POSTGRES_USER}:${CUSTOMER_POSTGRES_PASSWORD}@postgres-customer:5432/${CUSTOMER_POSTGRES_DB}
@@ -143,7 +151,7 @@ services:
       dockerfile: apps/services/account-service/Dockerfile
     container_name: account-service
     environment:
-      <<: *rabbitmq-url
+      <<: [*rabbitmq-url, *telemetry]
       NODE_ENV: production
       PORT: 3002
       DATABASE_URL: postgresql://${ACCOUNT_POSTGRES_USER}:${ACCOUNT_POSTGRES_PASSWORD}@postgres-account:5432/${ACCOUNT_POSTGRES_DB}
@@ -183,7 +191,7 @@ services:
       dockerfile: apps/services/transaction-service/Dockerfile
     container_name: transaction-service
     environment:
-      <<: *rabbitmq-url
+      <<: [*rabbitmq-url, *telemetry]
       NODE_ENV: production
       PORT: 3003
       DATABASE_URL: postgresql://${TRANSACTION_POSTGRES_USER}:${TRANSACTION_POSTGRES_PASSWORD}@postgres-transaction:5432/${TRANSACTION_POSTGRES_DB}
@@ -212,7 +220,7 @@ services:
       dockerfile: apps/services/payment-service/Dockerfile
     container_name: payment-service
     environment:
-      <<: *rabbitmq-url
+      <<: [*rabbitmq-url, *telemetry]
       NODE_ENV: production
       PORT: 3004
       DATABASE_URL: postgresql://${PAYMENT_POSTGRES_USER}:${PAYMENT_POSTGRES_PASSWORD}@postgres-payment:5432/${PAYMENT_POSTGRES_DB}
@@ -249,7 +257,7 @@ services:
       dockerfile: apps/services/notification-audit-service/Dockerfile
     container_name: notification-audit-service
     environment:
-      <<: *rabbitmq-url
+      <<: [*rabbitmq-url, *telemetry]
       NODE_ENV: production
       PORT: 3005
       DATABASE_URL: postgresql://${NOTIFICATION_AUDIT_POSTGRES_USER}:${NOTIFICATION_AUDIT_POSTGRES_PASSWORD}@postgres-notification-audit:5432/${NOTIFICATION_AUDIT_POSTGRES_DB}
@@ -300,7 +308,7 @@ services:
       dockerfile: apps/gateway/Dockerfile
     container_name: gateway
     environment:
-      <<: [*rabbitmq-url, *object-storage]
+      <<: [*rabbitmq-url, *object-storage, *telemetry]
       NODE_ENV: production
       PORT: 3000
       # A development-only default, long enough to satisfy the 32-character
@@ -370,3 +378,28 @@ services:
     healthcheck:
       <<: *ready-probe
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3010/ready']
+
+  # ---------------------------------------------------------------- jaeger
+
+  # A trace receiver for this laptop, and nothing more (T-48). It exists so the
+  # claim "one transfer is one trace across the Gateway, the broker and the five
+  # services" can be checked against the images before the cluster's stack of
+  # T-49 exists — `scripts/trace-images.sh` asks it exactly that question.
+  #
+  # Behind a profile, so `up -d` without `--profile telemetry` starts the same
+  # stack as before. In-memory storage: a restart forgets every trace, which is
+  # right for a check and wrong for anything else. The cluster uses Tempo
+  # (T-49), not this.
+  #
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 \
+  #     docker compose -f infra/docker/docker-compose.images.yml --profile telemetry up -d
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    container_name: jaeger
+    profiles: ['telemetry']
+    restart: unless-stopped
+    networks:
+      - bank-usac-local
+    ports:
+      # The UI and the query API, on the loopback only.
+      - '127.0.0.1:${BANK_JAEGER_PORT:-16686}:16686'

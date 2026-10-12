@@ -15,6 +15,7 @@
   "dependencies": {
     "@bank/contracts": "workspace:*",
     "@bank/messaging": "workspace:*",
+    "@bank/observability": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",

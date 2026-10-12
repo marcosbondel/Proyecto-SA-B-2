@@ -27,6 +27,7 @@ WORKDIR /repo
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/packages/contracts/package.json ./apps/packages/contracts/
 COPY apps/packages/messaging/package.json ./apps/packages/messaging/
+COPY apps/packages/observability/package.json ./apps/packages/observability/
 COPY apps/packages/tooling/package.json ./apps/packages/tooling/
 COPY apps/gateway/package.json ./apps/gateway/
 COPY apps/web/package.json ./apps/web/
@@ -42,7 +43,7 @@ RUN pnpm install --frozen-lockfile --filter payment-service...
 
 COPY apps ./apps
 
-RUN pnpm --filter @bank/contracts --filter @bank/messaging build
+RUN pnpm --filter @bank/contracts --filter @bank/messaging --filter @bank/observability build
 RUN pnpm --filter payment-service build
 
 # Drops every devDependency, so the image carries no compiler and no test runner.
