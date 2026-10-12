@@ -2,7 +2,7 @@
   "name": "customer-service",
   "version": "0.0.0",
   "private": true,
-  "description": "Bank USAC customer-service — Customer registration, identity documents and profile data.",
+  "description": "Bank USAC customer-service \u2014 Customer registration, identity documents and profile data.",
   "license": "MIT",
   "scripts": {
     "build": "nest build",
@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "catalog:",
     "@bank/contracts": "workspace:*",
     "@bank/messaging": "workspace:*",
+    "@bank/observability": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",

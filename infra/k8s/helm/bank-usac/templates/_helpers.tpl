@@ -178,3 +178,48 @@ las peticiones en vuelo terminen.
 {{- define "bank-usac.gracefulShutdown" -}}
 terminationGracePeriodSeconds: 30
 {{- end }}
+
+{{/*
+Telemetry (T-48): the variables `@bank/observability` reads, identical in the
+five services and the Gateway.
+
+- `DEPLOYMENT_ENVIRONMENT` and `OTEL_*` come from the ConfigMap, so `dev` and
+  `prod` differ by the values of the release, never by a template.
+- `SERVICE_VERSION` is the tag of the image this very Deployment runs — taken
+  from the same value as `image:` two lines above it, so the version a span or a
+  log line reports cannot drift from the code that wrote it.
+- `HOSTNAME` is not set: Kubernetes already sets it to the pod name, which is
+  what `service.instance.id` needs.
+
+Usage: {{ include "bank-usac.telemetryEnv" (dict "root" $ "tag" .Values.services.payment.image.tag) }}
+*/}}
+{{- define "bank-usac.telemetryEnv" -}}
+{{- $config := printf "%s-config" (include "bank-usac.fullname" .root) -}}
+- name: DEPLOYMENT_ENVIRONMENT
+  valueFrom:
+    configMapKeyRef:
+      name: {{ $config }}
+      key: DEPLOYMENT_ENVIRONMENT
+- name: SERVICE_VERSION
+  value: {{ .tag | quote }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  valueFrom:
+    configMapKeyRef:
+      name: {{ $config }}
+      key: OTEL_EXPORTER_OTLP_ENDPOINT
+- name: OTEL_SDK_DISABLED
+  valueFrom:
+    configMapKeyRef:
+      name: {{ $config }}
+      key: OTEL_SDK_DISABLED
+- name: OTEL_METRIC_EXPORT_INTERVAL
+  valueFrom:
+    configMapKeyRef:
+      name: {{ $config }}
+      key: OTEL_METRIC_EXPORT_INTERVAL
+- name: LOG_LEVEL
+  valueFrom:
+    configMapKeyRef:
+      name: {{ $config }}
+      key: LOG_LEVEL
+{{- end }}

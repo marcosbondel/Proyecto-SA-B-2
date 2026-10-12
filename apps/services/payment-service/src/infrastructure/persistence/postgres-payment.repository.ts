@@ -1,4 +1,5 @@
 import type { MessageEnvelope } from '@bank/contracts';
+import { currentTraceparent } from '@bank/observability';
 import type { Pool, PoolClient } from 'pg';
 
 import type {
@@ -66,6 +67,7 @@ interface OutboxRow {
   routing_key: string;
   /** JSONB, parsed by the driver back into the envelope it was stored as. */
   envelope: MessageEnvelope<unknown>;
+  trace_context: string | null;
 }
 
 /** Whether a thrown error is a PostgreSQL unique violation on a named constraint. */
@@ -161,8 +163,9 @@ export class PostgresPaymentRepository implements PaymentRepository {
     try {
       inserted = await this.#pool.query<PaymentRow>(
         `INSERT INTO payments (payment_id, transaction_id, amount, status, scenario,
-                               origin_correlation_id, next_attempt_at, created_at, updated_at)
-         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $7)
+                               origin_correlation_id, next_attempt_at, created_at, updated_at,
+                               trace_context)
+         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $7, $8)
          ON CONFLICT (payment_id) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
@@ -173,6 +176,8 @@ export class PostgresPaymentRepository implements PaymentRepository {
           payment.originCorrelationId,
           payment.nextAttemptAt,
           payment.createdAt,
+          // The Saga's trace, so the retry sweep can rejoin it (T-48).
+          currentTraceparent(),
         ],
       );
     } catch (error) {
@@ -296,13 +301,16 @@ export class PostgresPaymentRepository implements PaymentRepository {
       if (input.outbound !== undefined) {
         for (const message of input.outbound(recorded, input.expectedAttempt)) {
           await client.query(
-            `INSERT INTO outbox_messages (payment_id, exchange, routing_key, envelope)
-             VALUES ($1, $2, $3, $4::JSONB)`,
+            `INSERT INTO outbox_messages (payment_id, exchange, routing_key, envelope,
+                                         trace_context)
+             VALUES ($1, $2, $3, $4::JSONB, $5)`,
             [
               input.paymentId,
               message.exchange,
               message.routingKey,
               JSON.stringify(message.envelope),
+              // The attempt's trace, so the relay publishes inside it (T-48).
+              currentTraceparent(),
             ],
           );
         }
@@ -332,7 +340,7 @@ export class PostgresPaymentRepository implements PaymentRepository {
        * an `attempt.failed` never overtakes the terminal event that followed it.
        */
       const pending = await client.query<OutboxRow>(
-        `SELECT id, exchange, routing_key, envelope
+        `SELECT id, exchange, routing_key, envelope, trace_context
            FROM outbox_messages
           WHERE dispatch_status = 'PENDING'
           ORDER BY id
@@ -354,6 +362,7 @@ export class PostgresPaymentRepository implements PaymentRepository {
           exchange: row.exchange,
           routingKey: row.routing_key,
           envelope: row.envelope,
+          traceparent: row.trace_context,
         });
 
         await client.query(
@@ -374,6 +383,20 @@ export class PostgresPaymentRepository implements PaymentRepository {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * The trace the payment was opened in, for the retry sweep to rejoin (T-48).
+   * Not on the port: only the composition root uses it, to wrap a retry, and
+   * nothing in the application decides anything from a trace.
+   */
+  public async traceContextOf(paymentId: string): Promise<string | null> {
+    const found = await this.#pool.query<{ trace_context: string | null }>(
+      'SELECT trace_context FROM payments WHERE payment_id = $1',
+      [paymentId],
+    );
+
+    return found.rows[0]?.trace_context ?? null;
   }
 
   public async findById(paymentId: string): Promise<Payment | null> {

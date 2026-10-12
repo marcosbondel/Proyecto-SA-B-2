@@ -301,6 +301,17 @@ export const MIGRATIONS: readonly Migration[] = [
       `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
     ],
   },
+  {
+    /*
+     * T-48: the W3C `traceparent` active when an outbox row was written. The
+     * relay publishes each command inside it, so the hop from this service to
+     * the next is a continuation of the Saga's trace rather than the start of a
+     * new one opened by the relay's timer. Nullable: `NULL` means no SDK was
+     * recording when the row was written, and the relay publishes as before.
+     */
+    name: '011_outbox_trace_context',
+    statements: [`ALTER TABLE outbox_messages ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

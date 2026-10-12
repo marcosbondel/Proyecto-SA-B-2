@@ -34,6 +34,9 @@ name: CD
 #                            navegador (terraform: gateway_public_url)
 #   var    WEB_PUBLIC_URL    opcional — origen del frontend, para el CORS del
 #                            Gateway
+#   var    OTEL_EXPORTER_OTLP_ENDPOINT  opcional — el Collector de T-49
+#                            (OTLP/HTTP). Sin ella no se exporta telemetria
+#                            (T-48)
 #   secret HELM_SECRETS      valores `--set` de secrets.* que pide el chart,
 #                            uno por linea (ver infra/k8s/scripts/install.sh)
 #   secret INFRA_ADDRESSES   direcciones de la infraestructura fuera del
@@ -298,6 +301,9 @@ jobs:
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
           GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
+          # El Collector de T-49. Opcional: sin la variable, los pods registran
+          # trazas y metricas y no las exportan (T-48).
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
           WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
 
       - name: Resumen del despliegue
@@ -463,6 +469,9 @@ jobs:
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
           GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
+          # El Collector de T-49. Opcional: sin la variable, los pods registran
+          # trazas y metricas y no las exportan (T-48).
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
           WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
           # Mide la disponibilidad mientras el rolling update ocurre. El chart
           # declara `maxUnavailable: 0`; esto es lo que lo demuestra.

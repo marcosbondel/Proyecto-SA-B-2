@@ -350,7 +350,7 @@ En la arquitectura de Bank USAC, la gestión de documentos de identidad (fotogra
 
 ## Anexo: cómo se miden hoy los SLI de transferencias (Fase 3, T-43)
 
-`transaction-service` ya emite, contra `@opentelemetry/api`, las métricas con las que se calculan **SLI-2**, **SLI-3** y **SLO-2**. Sin SDK registrado (T-48) son no-op: hoy solo las comprueban los tests con exporters en memoria, y las consultas de abajo **no se han ejecutado** porque todavía no hay Prometheus.
+`transaction-service` ya emite, contra `@opentelemetry/api`, las métricas con las que se calculan **SLI-2**, **SLI-3** y **SLO-2**. Desde T-48 el SDK está registrado y se exportan en cuanto el pod tiene `OTEL_EXPORTER_OTLP_ENDPOINT`; las consultas de abajo **todavía no se han ejecutado** contra un Prometheus, que llega con T-49.
 
 | Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
 |---|---|---|
@@ -366,7 +366,7 @@ Dos precisiones. El inicio de la duración es el `occurredAt` del mensaje `trans
 
 ## Anexo: cómo se mide hoy el proveedor de pagos simulado (Fase 3, T-44)
 
-`payment-service` emite, contra `@opentelemetry/api`, las métricas con las que se calculan la **tasa de fallos externos** y el **p95 de latencia del sistema externo simulado** (§4.1, *Payment Service*) y alimentan **SLI-23** y **SLO-11**. Sin SDK registrado (T-48) son no-op: hoy solo las comprueban los tests con exporters en memoria, y las consultas de abajo **no se han ejecutado** porque todavía no hay Prometheus.
+`payment-service` emite, contra `@opentelemetry/api`, las métricas con las que se calculan la **tasa de fallos externos** y el **p95 de latencia del sistema externo simulado** (§4.1, *Payment Service*) y alimentan **SLI-23** y **SLO-11**. Desde T-48 el SDK está registrado y se exportan en cuanto el pod tiene `OTEL_EXPORTER_OTLP_ENDPOINT`; las consultas de abajo **todavía no se han ejecutado** contra un Prometheus, que llega con T-49.
 
 | Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
 |---|---|---|
@@ -381,7 +381,7 @@ Dos precisiones. La etiqueta `source` (`scenario` / `configuration`) separa los 
 
 ## Anexo: cómo se mide hoy la auditoría y las alertas (Fase 3, T-45)
 
-`notification-audit-service` emite, contra `@opentelemetry/api`, las métricas con las que se observa a sí mismo y a las alertas que le llegan por el webhook del Gateway. Sin SDK registrado (T-48) son no-op: hoy solo las comprueban los tests con exporters en memoria.
+`notification-audit-service` emite, contra `@opentelemetry/api`, las métricas con las que se observa a sí mismo y a las alertas que le llegan por el webhook del Gateway. Desde T-48 el SDK está registrado y se exportan en cuanto el pod tiene `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 | Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
 |---|---|---|
@@ -393,3 +393,21 @@ Dos precisiones. La etiqueta `source` (`scenario` / `configuration`) separa los 
 | Alertas de SLO recibidas | `bank.audit.alerts.received` (`status`, `severity`) | `sum by (status, severity) (increase(bank_audit_alerts_received_total[1h]))` |
 
 Tres precisiones. `suppressed` no es un error: es la segunda notificación de una misma anomalía (misma cuenta, misma ventana), que Account Service republica si falló su primera publicación; su tasa sostenida sí dice que ese servicio no está logrando publicar. Las alertas se cuentan **una por alerta**, no una por lote, y solo si el contrato las aceptó. Y `family` es la primera palabra del tipo de mensaje con un conjunto cerrado (`customer`, `account`, `transaction`, `payment`, `alert`, `other`): un nombre imprevisto cae en `other` y no crea una serie nueva.
+
+
+---
+
+## Anexo: las métricas base de todos los componentes (Fase 3, T-48)
+
+T-48 registra el SDK en los cinco servicios y el Gateway (`@bank/observability`) y agrega las métricas que no pertenecen a ningún dominio: el **throughput** por servicio y por cola, y la **disponibilidad** del Gateway (§4.1, *Métricas (SLI base)*). Las dos primeras salen de `@bank/messaging`, que las emite en cada publicación y en cada entrega; la tercera, de la instrumentación HTTP del SDK, con las convenciones semánticas estables. Ninguna lleva un identificador como etiqueta: servicio, cola o exchange, operación y resultado, todos conjuntos cerrados.
+
+| Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
+|---|---|---|
+| **Throughput** por servicio y por cola | `messaging.client.consumed.messages` (`messaging.destination.name`, `bank.delivery.outcome`) | `sum by (service_name, messaging_destination_name) (rate(messaging_client_consumed_messages_total[5m]))` |
+| Mensajes publicados por exchange | `messaging.client.sent.messages` (`messaging.destination.name`, `error.type`) | `sum by (service_name, messaging_destination_name) (rate(messaging_client_sent_messages_total[5m]))` |
+| Entregas que fallaron (reintento, cola muerta, ilegibles) | `messaging.client.consumed.messages` con `bank.delivery.outcome!="ack"` | `sum by (messaging_destination_name, bank_delivery_outcome) (rate(messaging_client_consumed_messages_total{bank_delivery_outcome!="ack"}[5m]))` |
+| Tiempo de proceso por cola (p95) | `messaging.process.duration` (`s`) | `histogram_quantile(0.95, sum by (le, messaging_destination_name) (rate(messaging_process_duration_seconds_bucket[5m])))` |
+| **Disponibilidad del Gateway** (respuestas distintas de 5xx) | `http.server.request.duration` (`http.response.status_code`, `http.route`) | `sum(rate(http_server_request_duration_seconds_count{service_name="gateway",http_response_status_code!~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="gateway"}[5m]))` |
+| **SLO-6** / **SLO-7** Latencia del Gateway (p95 por método) | la misma | `histogram_quantile(0.95, sum by (le, http_request_method) (rate(http_server_request_duration_seconds_bucket{service_name="gateway"}[5m])))` |
+
+Tres precisiones. Los sondeos `/health` y `/ready` **no** se cuentan: los pide el kubelet cada pocos segundos y diluirían la disponibilidad real con tráfico que no es de nadie. El **consumer lag** (mensajes pendientes por cola) no es una métrica de la aplicación sino del broker: lo expone RabbitMQ y lo recolecta T-49. Y `service_name` es el `service.name` del recurso, que el Collector convierte en etiqueta; el entorno (`dev` / `prod`) viaja igual, como `deployment_environment_name`.

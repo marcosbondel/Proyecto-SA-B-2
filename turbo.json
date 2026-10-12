@@ -129,11 +129,17 @@
         "INACTIVITY_*",
         "NUXT_*",
         "CHOKIDAR_*",
-        "TSC_WATCH*"
+        "TSC_WATCH*",
+        // Telemetry (T-48): without these, strict mode strips a local
+        // collector's endpoint before `@bank/observability` can read it.
+        "OTEL_*",
+        "DEPLOYMENT_ENVIRONMENT",
+        "SERVICE_VERSION",
+        "LOG_LEVEL"
       ]
     },
 
-    // The two shared packages compile themselves twice otherwise: once as the
+    // The shared packages compile themselves twice otherwise: once as the
     // `^build` every application's watcher waits for, and once as their own
     // `tsc --watch`. Both write the same `dist/` and the same `.tsbuildinfo`,
     // and a reader that catches the overlap sees a half-written declaration
@@ -145,6 +151,11 @@
       "persistent": true
     },
     "@bank/messaging#dev": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "persistent": true
+    },
+    "@bank/observability#dev": {
       "dependsOn": ["build"],
       "cache": false,
       "persistent": true

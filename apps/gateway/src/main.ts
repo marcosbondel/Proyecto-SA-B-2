@@ -1,6 +1,8 @@
+// First, before anything else: see `instrumentation.ts` for why the order matters.
+import { otel } from './instrumentation';
 import 'reflect-metadata';
 
-import { Logger } from '@nestjs/common';
+import { JsonLogger, nestLoggerFor } from '@bank/observability';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule, GATEWAY_RUNTIME } from './app.module';
@@ -15,9 +17,14 @@ import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environ
 async function bootstrap(): Promise<void> {
   loadDotEnvFile();
   const environment = loadEnvironment();
-  const logger = new Logger('gateway');
+  const logger = new JsonLogger({ service: 'gateway' });
 
-  const app = await NestFactory.create(AppModule.forRoot(environment), { bufferLogs: false });
+  // Nest's own lines — and every `new Logger(...)` in the filter and the
+  // controllers — through the same JSON as everything else (T-48).
+  const app = await NestFactory.create(AppModule.forRoot(environment), {
+    bufferLogs: false,
+    logger: nestLoggerFor(logger),
+  });
   const runtime = app.get<GatewayRuntime>(GATEWAY_RUNTIME);
 
   /**
@@ -41,7 +48,7 @@ async function bootstrap(): Promise<void> {
     exposedHeaders: ['X-Correlation-Id', 'X-Trace-Id'],
     maxAge: 600,
   });
-  logger.log(`CORS allows: ${allowedOrigins.join(', ')}`);
+  logger.info('CORS configured', { allowedOrigins });
 
   /**
    * The broker is brought up before the port opens, but **not waited on
@@ -65,7 +72,7 @@ async function bootstrap(): Promise<void> {
   });
 
   if (connected) {
-    logger.log(`listening for replies on ${runtime.replyQueue.queueName}`);
+    logger.info('listening for replies', { queue: runtime.replyQueue.queueName });
   } else {
     logger.warn(
       'broker not reachable at boot; serving health and refusing writes until it returns',
@@ -81,6 +88,8 @@ async function bootstrap(): Promise<void> {
   const shutdown = async (): Promise<void> => {
     runtime.replyQueue.stop();
     await runtime.broker.stop();
+    // Last: flushes the spans and metrics the shutdown itself produced.
+    await otel.shutdown();
   };
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -90,7 +99,7 @@ async function bootstrap(): Promise<void> {
   }
 
   await app.listen(environment.PORT);
-  logger.log(`gateway listening on port ${String(environment.PORT)}`);
+  logger.info('gateway listening', { port: environment.PORT });
 }
 
 /** How long boot waits for the broker before coming up degraded. */
@@ -126,6 +135,10 @@ async function within(milliseconds: number, work: () => Promise<void>): Promise<
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // JSON like every other line: the one that explains a crash is the one the
+  // collection agent most needs to parse.
+  new JsonLogger({ service: 'gateway' }).error('boot failed', {
+    error: error instanceof Error ? error.message : String(error),
+  });
   process.exit(1);
 });
