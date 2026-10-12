@@ -314,6 +314,11 @@ export interface OutboxMessage {
   readonly exchange: string;
   readonly routingKey: string;
   readonly envelope: MessageEnvelope<unknown>;
+  /**
+   * The W3C `traceparent` active when the row was written, or `null` (T-48).
+   * Set by the repository, read by the relay; the use cases never touch it.
+   */
+  readonly traceparent?: string | null;
 }
 
 /**

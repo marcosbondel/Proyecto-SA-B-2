@@ -55,6 +55,7 @@
       "database": "notification_audit"
     },
     { "name": "@bank/messaging", "dir": "apps/packages/messaging", "runner": "jest", "tier": "library" },
+    { "name": "@bank/observability", "dir": "apps/packages/observability", "runner": "jest", "tier": "library" },
     {
       "name": "@bank/contracts",
       "dir": "apps/packages/contracts",

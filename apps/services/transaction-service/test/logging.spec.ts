@@ -30,7 +30,7 @@ describe('StructuredLogger', () => {
     const [line] = lines();
     expect(line).toMatchObject({
       level: 'info',
-      service: 'transaction-service',
+      serviceName: 'transaction-service',
       message: 'saga advanced',
       correlationId: 'corr-1',
       transactionId: 'txn-1',
@@ -47,8 +47,10 @@ describe('StructuredLogger', () => {
     const [line] = lines();
     expect(line).not.toHaveProperty('transactionId');
     expect(line).not.toHaveProperty('reason');
+    // T-48: every line now also names its environment and image version — the
+    // fields the assignment requires — and the service as `serviceName`.
     expect(Object.keys(line ?? {}).sort()).toEqual(
-      ['correlationId', 'level', 'message', 'service', 'timestamp'].sort(),
+      ['correlationId', 'environment', 'level', 'message', 'serviceName', 'timestamp', 'version'].sort(),
     );
   });
 

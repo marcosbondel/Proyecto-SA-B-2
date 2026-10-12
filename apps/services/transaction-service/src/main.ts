@@ -1,3 +1,5 @@
+// First, before anything else: see `instrumentation.ts` for why the order matters.
+import { otel } from './instrumentation';
 import 'reflect-metadata';
 
 import { randomUUID } from 'node:crypto';
@@ -5,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { EXCHANGES, QUEUES } from '@bank/contracts';
 import type { MessageEnvelope, QueueDescriptor } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
+import { nestLoggerFor } from '@bank/observability';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
@@ -258,6 +261,7 @@ async function bootstrap(): Promise<void> {
       isDatabaseReachable: async () => await repository.isReachable(),
       isConsuming: () => consuming,
     }),
+    { logger: nestLoggerFor(logger) },
   );
 
   await application.listen(environment.PORT);
@@ -274,6 +278,8 @@ async function bootstrap(): Promise<void> {
     await application.close();
     await broker.stop();
     await pool.end();
+    // Last: flushes the spans and metrics the shutdown itself produced.
+    await otel.shutdown();
   };
 
   process.on('SIGTERM', () => void shutdown());
@@ -281,6 +287,10 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // JSON like every other line: the one that explains a crash is the one the
+  // collection agent most needs to parse.
+  new StructuredLogger().error('boot failed', {
+    error: error instanceof Error ? error.message : String(error),
+  });
   process.exit(1);
 });

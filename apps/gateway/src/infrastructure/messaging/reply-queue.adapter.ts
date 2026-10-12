@@ -46,7 +46,13 @@ export class ReplyQueueAdapter implements ReplyWaiterPort {
 
   public async start(): Promise<void> {
     await this.#broker.subscribeExclusive(
-      { queue: this.#queueName, bindings: GATEWAY_REPLY_BINDINGS },
+      {
+        queue: this.#queueName,
+        bindings: GATEWAY_REPLY_BINDINGS,
+        // One name for every replica's mailbox in spans and metrics; the queue
+        // itself is named per pod, which would be a new series per restart.
+        telemetryName: 'gateway.replies',
+      },
       (envelope: MessageEnvelope<unknown>) => {
         // `settle` returns false when nobody was waiting — a reply that
         // outlived its timeout, or one for a sibling replica. Both are

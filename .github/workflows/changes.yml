@@ -9,8 +9,8 @@ name: Detectar componentes modificados
 # desde un workflow y no desde el otro sin que nadie lo decida.
 #
 # **Lo compartido dispara todo, a proposito.** `apps/packages/**` son
-# `@bank/contracts`, `@bank/messaging` y `@bank/tooling`, que los siete
-# consumen desde `dist/`: un cambio de contrato que solo reconstruyera el
+# `@bank/contracts`, `@bank/messaging`, `@bank/observability` y `@bank/tooling`,
+# que los siete consumen desde `dist/`: un cambio de contrato que solo reconstruyera el
 # servicio que lo edito dejaria a los otros seis hablando la version anterior.
 # Lo mismo vale para el lockfile, `turbo.json` y los propios workflows.
 

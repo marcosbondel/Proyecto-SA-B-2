@@ -40,6 +40,7 @@ x-workspace-volumes:
   - node-modules-notification-audit:/repo/apps/services/notification-audit-service/node_modules
   - node-modules-contracts:/repo/apps/packages/contracts/node_modules
   - node-modules-messaging:/repo/apps/packages/messaging/node_modules
+  - node-modules-observability:/repo/apps/packages/observability/node_modules
   - node-modules-tooling:/repo/apps/packages/tooling/node_modules
 
   # Nuxt writes absolute paths into `.nuxt`. Shared with the host, whichever ran
@@ -87,6 +88,11 @@ x-pnpm-env: &pnpm-env
 # Shared by the six NestJS applications.
 x-node-env: &node-env
   NODE_ENV: development
+  # Telemetry (T-48). `local` names this stack apart from the cluster's `dev`
+  # and `prod`. With no OTEL_EXPORTER_OTLP_ENDPOINT the SDK records and exports
+  # nothing — the log lines still carry their traceId.
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-local}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   # `nest start --watch` is `tsc --watch`, and tsc's default watcher does not
   # see host edits through a bind mount reliably. Polling is what makes an edit
   # in the editor trigger a rebuild in the container. Comment both out if the
@@ -136,19 +142,29 @@ services:
       - |
         set -e
         pnpm install --frozen-lockfile
-        pnpm --filter @bank/contracts --filter @bank/messaging build
+        pnpm --filter @bank/contracts --filter @bank/messaging --filter @bank/observability build
     environment:
       <<: *pnpm-env
     restart: 'no'
 
-  # Keeps the two shared packages compiled while you edit them. Without it, a
+  # Keeps the three shared packages compiled while you edit them. Without it, a
   # change to a contract would need a full restart to reach the applications
   # that import it.
   packages:
     <<: *node-app
     container_name: bonking-packages
     command:
-      ['pnpm', '--filter', '@bank/contracts', '--filter', '@bank/messaging', '--parallel', 'dev']
+      [
+        'pnpm',
+        '--filter',
+        '@bank/contracts',
+        '--filter',
+        '@bank/messaging',
+        '--filter',
+        '@bank/observability',
+        '--parallel',
+        'dev',
+      ]
     environment:
       <<: [*pnpm-env, *node-env]
     depends_on:
@@ -411,6 +427,7 @@ volumes:
   node-modules-notification-audit:
   node-modules-contracts:
   node-modules-messaging:
+  node-modules-observability:
   node-modules-tooling:
   nuxt-build:
   pnpm-store:

@@ -1,4 +1,5 @@
 import type { MessageBroker } from '@bank/messaging';
+import { withTraceparent } from '@bank/observability';
 
 import type { OutboxMessage, TransactionRepository } from '../../application/ports';
 
@@ -83,8 +84,12 @@ export class OutboxRelay {
 
     try {
       const dispatched = await this.#repository.dispatchPendingOutbox(
+        // Inside the trace the row was written in, or the command would open a
+        // new trace and cut the Saga in two at this hop (T-48).
         (message: OutboxMessage) =>
-          this.#broker.publish(message.exchange, message.routingKey, message.envelope),
+          withTraceparent(message.traceparent ?? null, () =>
+            this.#broker.publish(message.exchange, message.routingKey, message.envelope),
+          ),
         this.#batchSize,
       );
 

@@ -1,4 +1,5 @@
 import type { MessageEnvelope } from '@bank/contracts';
+import { currentTraceparent } from '@bank/observability';
 import type { Pool, PoolClient } from 'pg';
 
 import { IllegalTransition } from '../../domain/transaction';
@@ -573,7 +574,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
        * arrive in.
        */
       const pending = await client.query<OutboxRow>(
-        `SELECT id, exchange, routing_key, envelope
+        `SELECT id, exchange, routing_key, envelope, trace_context
            FROM outbox_messages
           WHERE dispatch_status = 'PENDING'
           ORDER BY id
@@ -596,6 +597,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
           exchange: row.exchange,
           routingKey: row.routing_key,
           envelope: row.envelope,
+          traceparent: row.trace_context,
         });
 
         await client.query(
@@ -755,9 +757,16 @@ export class PostgresTransactionRepository implements TransactionRepository {
     message: OutboxMessage,
   ): Promise<void> {
     await client.query(
-      `INSERT INTO outbox_messages (transaction_id, exchange, routing_key, envelope)
-       VALUES ($1, $2, $3, $4::JSONB)`,
-      [transactionId, message.exchange, message.routingKey, JSON.stringify(message.envelope)],
+      `INSERT INTO outbox_messages (transaction_id, exchange, routing_key, envelope, trace_context)
+       VALUES ($1, $2, $3, $4::JSONB, $5)`,
+      [
+        transactionId,
+        message.exchange,
+        message.routingKey,
+        JSON.stringify(message.envelope),
+        // The Saga step's trace, so the relay publishes inside it (T-48).
+        currentTraceparent(),
+      ],
     );
   }
 
@@ -827,6 +836,7 @@ interface OutboxRow {
   routing_key: string;
   /** JSONB, parsed by the driver back into the envelope it was stored as. */
   envelope: MessageEnvelope<unknown>;
+  trace_context: string | null;
 }
 
 interface PaymentEventPayload {
