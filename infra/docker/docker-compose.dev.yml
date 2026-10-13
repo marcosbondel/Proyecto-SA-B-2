@@ -192,6 +192,7 @@ services:
       # The SLO webhook's shared secret (T-45), 32 characters or more. Empty by
       # default on purpose: with none the webhook refuses everybody.
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:-}
+      INTERBANK_PARTNER_TOKEN: ${INTERBANK_PARTNER_TOKEN:-}
       # Fixed rather than random, so the reply queue survives a restart instead
       # of leaving an orphan behind on every reload.
       GATEWAY_INSTANCE_ID: gateway-dev
@@ -337,6 +338,11 @@ services:
       PAYMENT_SIM_FAILURE_RATE: ${PAYMENT_SIM_FAILURE_RATE:-0}
       PAYMENT_SIM_TIMEOUT_RATE: ${PAYMENT_SIM_TIMEOUT_RATE:-0}
       PAYMENT_SIM_LATENCY_MS: ${PAYMENT_SIM_LATENCY_MS:-0}
+      INTERBANK_PARTNER_TOKEN: ${INTERBANK_PARTNER_TOKEN:-}
+      INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK_USAC}
+      INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-PARTNER_MOCK}
+      INTERBANK_MAX_AMOUNT_MINOR: ${INTERBANK_MAX_AMOUNT_MINOR:-100000000}
+      INTERBANK_CALLBACK_URL: ${INTERBANK_CALLBACK_URL:-http://partner-bank-mock:3021/callbacks/interbank}
     ports:
       - '3004:3004'
     depends_on:
@@ -353,6 +359,27 @@ services:
     healthcheck:
       <<: *node-healthcheck
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3004/health']
+
+  partner-bank-mock:
+    image: node:24-alpine
+    profiles: ['interbank']
+    command: ['node', '/app/partner-bank-mock.mjs']
+    volumes:
+      - ../../apps/partner-bank-mock/server.mjs:/app/partner-bank-mock.mjs:ro
+    environment:
+      PARTNER_MOCK_PORT: 3021
+      PARTNER_GATEWAY_URL: http://gateway:3000
+      INTERBANK_PARTNER_TOKEN: ${INTERBANK_PARTNER_TOKEN:-}
+      INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK_USAC}
+      INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-PARTNER_MOCK}
+      PARTNER_CALLBACK_FAIL_COUNT: ${PARTNER_CALLBACK_FAIL_COUNT:-0}
+      PARTNER_CALLBACK_MODE: ${PARTNER_CALLBACK_MODE:-ACCEPT}
+      PARTNER_CALLBACK_DELAY_MS: ${PARTNER_CALLBACK_DELAY_MS:-1000}
+    ports:
+      - '3021:3021'
+    depends_on:
+      gateway:
+        condition: service_healthy
 
   notification-audit-service:
     <<: *node-app
