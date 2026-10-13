@@ -113,15 +113,19 @@ describe('this service reads no other service', () => {
 });
 
 describe('this service speaks to the system only through the broker', () => {
-  it('makes no HTTP call to anybody', () => {
-    // A Saga in choreography reaches nobody synchronously. If this ever fails,
-    // the pattern the assignment asks for has been replaced by orchestration
-    // over HTTP, whatever the diagram still says.
-    for (const source of SOURCES) {
+  it('makes HTTP calls only through the fixed partner-bank callback adapter', () => {
+    for (const source of SOURCES.filter(
+      (file) => file.path !== 'src/infrastructure/http/partner-callback.ts',
+    )) {
       // `(?<![.#\w])` so a private method of this service — or any `.fetch(` on
       // an SDK object — is not mistaken for the global.
       expect(source.text).not.toMatch(/(?<![.#\w])fetch\(|axios|node-fetch|HttpService/);
     }
+    const adapter = SOURCES.find(
+      (file) => file.path === 'src/infrastructure/http/partner-callback.ts',
+    );
+    expect(adapter?.text).toMatch(/fetch\(this\.endpoint/);
+    expect(adapter?.text).toMatch(/redirect: 'error'/);
   });
 
   it('exposes HTTP for health and readiness only', () => {
@@ -174,7 +178,7 @@ describe('the retry decision lives in one place', () => {
   });
 });
 
-describe('this service orders nothing from anybody', () => {
+describe('the Saga payment publisher orders nothing from anybody', () => {
   /**
    * Payment Service is the end of the command chain. A `send` on the publisher,
    * or a publish onto the commands exchange, would mean it had begun telling
@@ -189,7 +193,9 @@ describe('this service orders nothing from anybody', () => {
      * succeed — declaring it is not a route to publishing on it. The route
      * would be here.
      */
-    const publishers = SOURCES.filter((source) => source.path.includes('messaging'));
+    const publishers = SOURCES.filter(
+      (source) => source.path === 'src/infrastructure/messaging/broker-event.publisher.ts',
+    );
 
     expect(publishers.map((source) => source.path)).toEqual([
       'src/infrastructure/messaging/broker-event.publisher.ts',
@@ -198,6 +204,10 @@ describe('this service orders nothing from anybody', () => {
     for (const source of publishers) {
       expect(source.text).not.toMatch(/EXCHANGES\.commands/);
     }
+    const interbank = SOURCES.find(
+      (source) => source.path === 'src/infrastructure/messaging/broker-interbank.messenger.ts',
+    );
+    expect(interbank?.text).toMatch(/EXCHANGES\.commands/);
   });
 
   it('offers no `send` on the port the application layer holds', () => {

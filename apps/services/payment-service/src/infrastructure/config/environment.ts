@@ -2,7 +2,16 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { plainToInstance } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsNumber, IsString, Max, Min, validateSync } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsString,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
 
 import { MAX_LATENCY_MS, isValidSettings } from '../../domain/simulation';
 
@@ -92,6 +101,25 @@ export class PaymentServiceEnvironment {
   @Min(0)
   @Max(MAX_LATENCY_MS)
   public PAYMENT_SIM_LATENCY_MS!: number;
+
+  @IsString()
+  @IsNotEmpty()
+  public INTERBANK_BANK_CODE!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  public INTERBANK_PARTNER_BANK_CODE!: string;
+
+  @IsInt()
+  @Min(1)
+  public INTERBANK_MAX_AMOUNT_MINOR!: number;
+
+  @IsString()
+  @IsNotEmpty()
+  public INTERBANK_CALLBACK_URL!: string;
+
+  @IsString()
+  public INTERBANK_PARTNER_TOKEN!: string;
 }
 
 /**
@@ -147,6 +175,12 @@ export function loadEnvironment(
     PAYMENT_SIM_FAILURE_RATE: toNumber(source.PAYMENT_SIM_FAILURE_RATE) ?? 0,
     PAYMENT_SIM_TIMEOUT_RATE: toNumber(source.PAYMENT_SIM_TIMEOUT_RATE) ?? 0,
     PAYMENT_SIM_LATENCY_MS: toInteger(source.PAYMENT_SIM_LATENCY_MS) ?? 0,
+    INTERBANK_BANK_CODE: source.INTERBANK_BANK_CODE ?? 'BANK_USAC',
+    INTERBANK_PARTNER_BANK_CODE: source.INTERBANK_PARTNER_BANK_CODE ?? 'PARTNER_MOCK',
+    INTERBANK_MAX_AMOUNT_MINOR: toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? 100_000_000,
+    INTERBANK_CALLBACK_URL:
+      source.INTERBANK_CALLBACK_URL ?? 'http://localhost:3021/callbacks/interbank',
+    INTERBANK_PARTNER_TOKEN: source.INTERBANK_PARTNER_TOKEN ?? '',
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

@@ -13,6 +13,7 @@ import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
 import { SimulationUseCase } from './application/manage-simulation.use-case';
+import { InterbankUseCase } from './application/interbank.use-case';
 import { ProcessPaymentUseCase } from './application/process-payment.use-case';
 import { GetPaymentStatsUseCase } from './application/get-payment-stats.use-case';
 import { QueryPaymentUseCase } from './application/query-payment.use-case';
@@ -24,15 +25,23 @@ import {
   simulationDefaults,
 } from './infrastructure/config/environment';
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
+import { BrokerInterbankMessenger } from './infrastructure/messaging/broker-interbank.messenger';
+import { HttpPartnerCallback } from './infrastructure/http/partner-callback';
 import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresPaymentRepository } from './infrastructure/persistence/postgres-payment.repository';
+import { PostgresInterbankRepository } from './infrastructure/persistence/postgres-interbank.repository';
 import { OutboxRelay } from './infrastructure/scheduler/outbox.scheduler';
 import { OtelProviderTelemetry } from './infrastructure/telemetry/otel-provider.telemetry';
+import { OtelInterbankTelemetry } from './infrastructure/telemetry/otel-interbank.telemetry';
 import { RetryScheduler } from './infrastructure/scheduler/retry.scheduler';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   ListPaymentsHandler,
+  InterbankReceiveHandler,
+  InterbankEligibilityReplyHandler,
+  InterbankCreditedHandler,
+  InterbankCreditRejectedHandler,
   PaymentStatsHandler,
   PaymentStatusHandler,
   ProcessPaymentHandler,
@@ -41,7 +50,10 @@ import {
 } from './interfaces/message-handlers';
 
 /** The queue this service owns, as `@bank/contracts` declares it. */
-const QUEUE: QueueDescriptor = QUEUES.find((queue) => queue.owner === 'payment-service')!;
+const QUEUE: QueueDescriptor = QUEUES.find((queue) => queue.name === 'payment.commands')!;
+const INTERBANK_QUEUE: QueueDescriptor = QUEUES.find(
+  (queue) => queue.name === 'payment.interbank',
+)!;
 
 /**
  * How long to wait before trying the database again when it is unreachable.
@@ -108,6 +120,7 @@ async function bootstrap(): Promise<void> {
     });
   });
   const repository = new PostgresPaymentRepository(pool);
+  const interbankRepository = new PostgresInterbankRepository(pool);
 
   const broker = new MessageBroker({
     url: environment.RABBITMQ_URL,
@@ -118,6 +131,23 @@ async function bootstrap(): Promise<void> {
   const clock = { now: (): Date => new Date() };
   const ids = { next: (): string => randomUUID() };
   const publisherFactory = new BrokerEventPublisher(broker);
+  const interbank = new InterbankUseCase({
+    repository: interbankRepository,
+    messenger: new BrokerInterbankMessenger(broker),
+    callback: new HttpPartnerCallback(
+      environment.INTERBANK_CALLBACK_URL,
+      environment.INTERBANK_PARTNER_TOKEN,
+    ),
+    bankCode: environment.INTERBANK_BANK_CODE,
+    partnerBankCode: environment.INTERBANK_PARTNER_BANK_CODE,
+    maxAmountMinor: environment.INTERBANK_MAX_AMOUNT_MINOR,
+    clock,
+    telemetry: new OtelInterbankTelemetry(logger),
+    trace: {
+      continue: (traceparent, spanName, correlationId, work) =>
+        continueTrace(traceparent, spanName, { 'bank.correlation_id': correlationId }, work),
+    },
+  });
 
   const telemetry = new OtelProviderTelemetry(logger);
   const simulation = new SimulationUseCase({
@@ -149,6 +179,10 @@ async function bootstrap(): Promise<void> {
 
     return new InboundMessageRouter([
       new ProcessPaymentHandler(processPayment, publisher),
+      new InterbankReceiveHandler(interbank),
+      new InterbankEligibilityReplyHandler(interbank),
+      new InterbankCreditedHandler(interbank),
+      new InterbankCreditRejectedHandler(interbank),
       new ListPaymentsHandler(queryPayment, publisher),
       new PaymentStatusHandler(queryPayment, publisher),
       new PaymentStatsHandler(new GetPaymentStatsUseCase({ repository, publisher })),
@@ -243,7 +277,10 @@ async function bootstrap(): Promise<void> {
         await continueTrace(
           await repository.traceContextOf(payment.paymentId),
           'payment.retry',
-          { 'bank.correlation_id': correlationId, 'bank.payment.attempt': (payment.attempt ?? 0) + 1 },
+          {
+            'bank.correlation_id': correlationId,
+            'bank.payment.attempt': (payment.attempt ?? 0) + 1,
+          },
           () => processPayment.retry(payment, publisherFactory.forRetry(correlationId)),
         );
         attempted += 1;
@@ -284,6 +321,21 @@ async function bootstrap(): Promise<void> {
    * not yet attached can take no work.
    */
   let consuming = false;
+  let interbankTimer: ReturnType<typeof setInterval> | null = null;
+  let interbankSweeping = false;
+  const sweepInterbank = async (): Promise<void> => {
+    if (interbankSweeping) return;
+    interbankSweeping = true;
+    try {
+      await interbank.sweep();
+    } catch (error) {
+      logger.error('interbank sweep failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      interbankSweeping = false;
+    }
+  };
 
   const attach = async (): Promise<void> => {
     for (;;) {
@@ -312,6 +364,11 @@ async function bootstrap(): Promise<void> {
            */
           validateMessage,
         );
+        await broker.subscribe(
+          { queue: INTERBANK_QUEUE.name, bindings: INTERBANK_QUEUE.bindings },
+          onDelivery,
+          validateMessage,
+        );
         consuming = true;
 
         logger.info('consuming', { outcome: QUEUE.name });
@@ -327,6 +384,7 @@ async function bootstrap(): Promise<void> {
         logger.info('outbox relay started', {
           outcome: `every ${String(OUTBOX_RELAY_INTERVAL_MS)} ms`,
         });
+        interbankTimer = setInterval(() => void sweepInterbank(), 500);
 
         return;
       } catch (error) {
@@ -358,6 +416,7 @@ async function bootstrap(): Promise<void> {
   void attach();
 
   const shutdown = async (): Promise<void> => {
+    if (interbankTimer !== null) clearInterval(interbankTimer);
     scheduler.stop();
     outboxRelay.stop();
     await application.close();
