@@ -101,6 +101,17 @@ export const QUEUES: readonly QueueDescriptor[] = [
      */
     bindings: [{ exchange: EXCHANGES.commands, pattern: 'payment.#' }],
   },
+  {
+    name: 'payment.interbank',
+    owner: 'payment-service',
+    // These are persisted state-machine inputs, so any replica may consume them.
+    // The Gateway's private reply queue is only needed for in-memory waiters.
+    bindings: [
+      { exchange: EXCHANGES.replies, pattern: 'account.interbank.eligibility.replied.v1' },
+      { exchange: EXCHANGES.events, pattern: 'account.interbank.credited.v1' },
+      { exchange: EXCHANGES.events, pattern: 'account.interbank.credit.rejected.v1' },
+    ],
+  },
   /**
    * Audit listens on one queue per family, not on one queue for everything.
    *

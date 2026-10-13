@@ -108,9 +108,20 @@ import { auditQueryRequestedV1 } from './audit/audit.query.requested.v1';
 import { auditEventsListQueryV1 } from './audit/audit.events.list.query.v1';
 import { auditEventsListRepliedV1 } from './audit/audit.events.list.replied.v1';
 import { alertSloReceivedV1 } from './alert/alert.slo.received.v1';
+import {
+  paymentInterbankReceiveV1,
+  accountInterbankEligibilityQueryV1,
+  accountInterbankEligibilityRepliedV1,
+  accountInterbankCreditRequestedV1,
+  accountInterbankCreditedV1,
+  accountInterbankCreditRejectedV1,
+  paymentInterbankAcceptedV1,
+  paymentInterbankRejectedV1,
+} from './interbank/incoming.v1';
 
 export type { Category, MessageContract } from './contract';
 export { defineContract } from './contract';
+export * from './interbank/incoming.v1';
 
 export * from './customer/customer.activation.requested.v1';
 export * from './customer/customer.authenticate.replied.v1';
@@ -339,6 +350,14 @@ export const catalog: readonly MessageContract[] = [
   auditEventsListQueryV1,
   auditEventsListRepliedV1,
   alertSloReceivedV1,
+  paymentInterbankReceiveV1,
+  accountInterbankEligibilityQueryV1,
+  accountInterbankEligibilityRepliedV1,
+  accountInterbankCreditRequestedV1,
+  accountInterbankCreditedV1,
+  accountInterbankCreditRejectedV1,
+  paymentInterbankAcceptedV1,
+  paymentInterbankRejectedV1,
 ];
 
 /**
@@ -368,4 +387,3 @@ export function contractFor(messageType: string): MessageContract | undefined {
   }
   return catalogByName.get(messageType);
 }
-
