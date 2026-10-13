@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(108);
+    expect(catalog).toHaveLength(116);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the sixty-one messages recorded as an extension, and no others', () => {
+  it('adds exactly the eighty-one messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -122,6 +122,11 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'account.deposit.rejected.v1',
       'account.deposit.v1',
       'account.deposited.v1',
+      'account.interbank.credit.rejected.v1',
+      'account.interbank.credit.requested.v1',
+      'account.interbank.credited.v1',
+      'account.interbank.eligibility.query.v1',
+      'account.interbank.eligibility.replied.v1',
       'account.list.query.v1',
       'account.list.replied.v1',
       'account.open.rejected.v1',
@@ -268,6 +273,9 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        * but nobody outside could look one up.
        */
       'payment.attempt.failed.v1',
+      'payment.interbank.accepted.v1',
+      'payment.interbank.receive.v1',
+      'payment.interbank.rejected.v1',
       'payment.list.query.v1',
       'payment.list.replied.v1',
       /*
