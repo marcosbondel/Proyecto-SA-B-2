@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { Role } from '@bank/contracts';
 
-import { TEST_ALERT_WEBHOOK_TOKEN, bearerFor } from './broker-harness';
+import {
+  TEST_ALERT_WEBHOOK_TOKEN,
+  TEST_INTERBANK_PARTNER_TOKEN,
+  bearerFor,
+} from './broker-harness';
 import type { BrokerHarness } from './broker-harness';
 
 /**
@@ -166,6 +170,21 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
       .post(`/api/accounts/${ACCOUNT_ID}/status`)
       .set('Authorization', auth(h, 'ADMINISTRADOR'))
       .send({ status: 'INACTIVE', reason: 'Solicitud del titular' }),
+
+  'POST /api/interbank/deposits': (h) => {
+    const interbankTransferId = randomUUID();
+    return request(h.app.getHttpServer())
+      .post('/api/interbank/deposits')
+      .set('Authorization', `Bearer ${TEST_INTERBANK_PARTNER_TOKEN}`)
+      .send({
+        interbankTransferId,
+        idempotencyKey: interbankTransferId,
+        originBankCode: 'PARTNER_MOCK',
+        destinationBankCode: 'BANK_USAC',
+        accountId: ACCOUNT_ID,
+        amount: { amountMinor: 10_000, currency: 'GTQ' },
+      });
+  },
 
   'GET /api/notifications': (h) =>
     request(h.app.getHttpServer())
