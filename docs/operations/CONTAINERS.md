@@ -36,6 +36,12 @@ services do not: the Gateway is the system's only entry point (§4.1,
 constitution V), and a published 3001-3005 would be five ways around the one
 door the design has.
 
+T-46 añade una imagen **auxiliar** `apps/partner-bank-mock/Dockerfile`, fuera
+de las siete imágenes de entrega y del chart. El perfil opcional `interbank`
+de Compose la inicia en el puerto local 3021 para simular otro banco; expone
+`GET /health` y recibe transferencias y callbacks con el token compartido.
+Véase [INTERBANK.md](INTERBANK.md) para sus modos de fallo.
+
 ### Variables each image requires at run time
 
 Nothing is baked in. The only variables an image carries are `NODE_ENV`, which
@@ -49,9 +55,9 @@ serve Compose, kind and a demonstration alike.
 | `customer-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` `OBJECT_STORAGE_ENDPOINT` `OBJECT_STORAGE_ACCESS_KEY` `OBJECT_STORAGE_SECRET_KEY` `OBJECT_STORAGE_BUCKET` `OBJECT_STORAGE_REGION` | `SEED_DEMO_DATA` `SEED_PASSWORD` |
 | `account-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `DEACTIVATION_ENABLED` `DEACTIVATION_INTERVAL_MS` `INACTIVITY_MONTHS` `INACTIVITY_MIN_BALANCE_MINOR` `ANOMALY_MAX_OPERATIONS` `ANOMALY_WINDOW_MINUTES` `SEED_DEMO_DATA` |
 | `transaction-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | — |
-| `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` `PAYMENT_SIM_FAILURE_RATE` `PAYMENT_SIM_TIMEOUT_RATE` `PAYMENT_SIM_LATENCY_MS` |
+| `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` `PAYMENT_SIM_FAILURE_RATE` `PAYMENT_SIM_TIMEOUT_RATE` `PAYMENT_SIM_LATENCY_MS` `INTERBANK_PARTNER_TOKEN` `INTERBANK_BANK_CODE` `INTERBANK_PARTNER_BANK_CODE` `INTERBANK_MAX_AMOUNT_MINOR` `INTERBANK_CALLBACK_URL` (T-46; see [INTERBANK.md](INTERBANK.md)) |
 | `notification-audit-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `REVEAL_ACTIVATION_LINKS` `NOTIFICATION_CHANNEL` `RESEND_API_KEY`¹ `EMAIL_FROM`¹ `APP_BASE_URL`¹ `RESEND_API_URL` |
-| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) `ALERT_WEBHOOK_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/alerts/slo` refuses every caller) |
+| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) `ALERT_WEBHOOK_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/alerts/slo` refuses every caller) `INTERBANK_PARTNER_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/interbank/deposits` refuses every caller) |
 | `web` | — | `NUXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:3000`) |
 
 The Gateway has **no** `DATABASE_URL` and no way to acquire one: it holds no

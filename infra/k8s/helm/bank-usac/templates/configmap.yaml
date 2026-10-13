@@ -48,5 +48,9 @@ data:
   PAYMENT_SIM_FAILURE_RATE: {{ .Values.services.payment.simulation.failureRatePercent | quote }}
   PAYMENT_SIM_TIMEOUT_RATE: {{ .Values.services.payment.simulation.timeoutRatePercent | quote }}
   PAYMENT_SIM_LATENCY_MS: {{ .Values.services.payment.simulation.latencyMs | quote }}
+  INTERBANK_BANK_CODE: {{ .Values.interbank.bankCode | quote }}
+  INTERBANK_PARTNER_BANK_CODE: {{ .Values.interbank.partnerBankCode | quote }}
+  INTERBANK_MAX_AMOUNT_MINOR: {{ .Values.interbank.maxAmountMinor | quote }}
+  INTERBANK_CALLBACK_URL: {{ .Values.interbank.callbackUrl | quote }}
   SEED_DEMO_DATA: "true"
   SEED_PASSWORD: "BankUsac#2026"

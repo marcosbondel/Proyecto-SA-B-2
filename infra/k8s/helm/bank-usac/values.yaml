@@ -353,6 +353,14 @@ gateway:
   # templates/NOTES.txt), so its origin is localhost:<forwarded web port>.
   corsAllowedOrigins: "http://localhost:3010"
 
+# T-46: provisional incoming interbank contract. An empty partner token keeps
+# the route closed; these values do not start the optional partner mock.
+interbank:
+  bankCode: BANK_USAC
+  partnerBankCode: PARTNER_MOCK
+  maxAmountMinor: "100000000"
+  callbackUrl: "http://127.0.0.1:3021/callbacks/interbank"
+
 # ---------------------------------------------------------------------------
 # web — the Nuxt frontend. NUXT_PUBLIC_API_BASE_URL is resolved by the
 # *browser*, not by the pod, so it must be the address a person's machine
@@ -384,6 +392,9 @@ secrets:
   # everybody, which is the safe default. At least 32 characters when set — the
   # Gateway refuses to start on a shorter one. T-50 supplies it from the pipeline.
   alertWebhookToken: ""
+  # Optional until an interbank partner is configured. Both Gateway and
+  # Payment receive the same value from this Secret.
+  interbankPartnerToken: ""
   rabbitmq:
     user: bank_app # the app account provisioned by infra/docker/scripts/init-rabbitmq.sh
     password: ""
