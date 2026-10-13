@@ -13,6 +13,7 @@ import { ActivityMonitor } from './application/activity-monitor';
 import { CompensateDebitUseCase } from './application/compensate-debit.use-case';
 import { CreateAccountUseCase } from './application/create-account.use-case';
 import { CreditAccountUseCase } from './application/credit-account.use-case';
+import { InterbankAccountUseCase } from './application/interbank-account.use-case';
 import { DepositUseCase } from './application/deposit.use-case';
 import { GetAccountStatsUseCase } from './application/get-account-stats.use-case';
 import { ListBillersUseCase } from './application/list-billers.use-case';
@@ -38,6 +39,8 @@ import {
   CompensateDebitHandler,
   CreateAccountHandler,
   CreditAccountHandler,
+  InterbankEligibilityHandler,
+  InterbankCreditHandler,
   DepositHandler,
   GetAccountStatsHandler,
   ListBillersHandler,
@@ -141,11 +144,19 @@ async function bootstrap(): Promise<void> {
       new ListAccountsHandler(new ListAccountsUseCase({ repository, publisher })),
       new GetOperationsHandler(new GetOperationsUseCase({ repository, publisher })),
       new DebitAccountHandler(new DebitAccountUseCase({ repository, publisher, clock, activity })),
-      new CreditAccountHandler(new CreditAccountUseCase({ repository, publisher, clock, activity })),
+      new CreditAccountHandler(
+        new CreditAccountUseCase({ repository, publisher, clock, activity }),
+      ),
+      new InterbankEligibilityHandler(
+        new InterbankAccountUseCase({ repository, publisher, clock }),
+      ),
+      new InterbankCreditHandler(new InterbankAccountUseCase({ repository, publisher, clock })),
       new DepositHandler(new DepositUseCase({ repository, publisher, clock, activity })),
       new ListBillersHandler(new ListBillersUseCase({ repository, publisher })),
       new GetAccountStatsHandler(new GetAccountStatsUseCase({ repository, publisher })),
-      new CompensateDebitHandler(new CompensateDebitUseCase({ repository, publisher, clock, activity })),
+      new CompensateDebitHandler(
+        new CompensateDebitUseCase({ repository, publisher, clock, activity }),
+      ),
       new SetAccountStatusHandler(new SetAccountStatusUseCase({ repository, publisher, clock })),
     ]);
   };
