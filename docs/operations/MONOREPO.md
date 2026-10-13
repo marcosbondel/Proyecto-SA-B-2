@@ -33,6 +33,10 @@ Los cuatro paquetes compartidos (`apps/packages/contracts`, `messaging`,
 `observability`, `tooling`) no son desplegables: se consumen desde `dist/` y por eso un cambio
 en ellos reconstruye los siete.
 
+`apps/partner-bank-mock/` es una aplicación auxiliar de T-46. Prueba depósitos
+entrantes y callbacks en local, con su propio Dockerfile y perfil opcional de
+Compose; no forma parte de las siete imágenes bancarias ni del chart de Helm.
+
 ## Despliegue selectivo
 
 > **Estado.** En uso. `cd.yml` llama a `changes.yml` en cada merge a `develop`,

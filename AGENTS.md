@@ -11,6 +11,9 @@ frontend at the top level, the five domain services under `apps/services/`, and
 under `apps/packages/`. All seven applications install, build, lint and test
 from a clean checkout.
 
+`apps/partner-bank-mock/` is an optional local T-46 test application; it is
+not one of the seven bank deployments.
+
 **The API Gateway is implemented** (T-15, extended by T-17, T-19, T-20 and the
 prototype-parity work): twenty-four paths, JWT authentication, role
 authorization from decision D-06, request/reply with a five-second ceiling, a
