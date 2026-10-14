@@ -1,0 +1,331 @@
+{
+  "uid": "bank-logs",
+  "title": "Bank USAC · Logs",
+  "tags": [
+    "bank-usac",
+    "logs"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "description": "El dashboard de logs que pide §4.1: búsqueda por correlationId y traceId, y navegación de un log a su traza.",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "enable": true,
+        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "iconColor": "light-blue",
+        "name": "Despliegues",
+        "titleFormat": "Despliegue de {{deployment}}",
+        "textFormat": "namespace {{namespace}}",
+        "step": "2m"
+      },
+      {
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "iconColor": "purple",
+        "name": "Releases",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "release"
+          ],
+          "type": "tags"
+        }
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(environment)",
+        "includeAll": false,
+        "label": "Entorno",
+        "name": "environment",
+        "query": {
+          "query": "label_values(environment)",
+          "refId": "env"
+        },
+        "refresh": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(service_name)",
+        "includeAll": true,
+        "label": "Servicio",
+        "multi": true,
+        "name": "service",
+        "query": {
+          "query": "label_values(service_name)",
+          "refId": "service"
+        },
+        "refresh": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Nivel",
+        "multi": true,
+        "name": "level",
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "error",
+            "value": "error"
+          },
+          {
+            "selected": false,
+            "text": "warn",
+            "value": "warn"
+          },
+          {
+            "selected": false,
+            "text": "info",
+            "value": "info"
+          },
+          {
+            "selected": false,
+            "text": "debug",
+            "value": "debug"
+          }
+        ],
+        "query": "error,warn,info,debug",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "text": ".+",
+          "value": ".+"
+        },
+        "hide": 0,
+        "label": "correlationId",
+        "name": "correlationId",
+        "options": [],
+        "query": ".+",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "text": ".+",
+          "value": ".+"
+        },
+        "hide": 0,
+        "label": "traceId",
+        "name": "traceId",
+        "options": [],
+        "query": ".+",
+        "type": "textbox"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 56,
+      "type": "text",
+      "title": "Cómo buscar",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Rellena **uno** de los dos cuadros: `correlationId` para seguir un flujo de negocio (la Fase 1), `traceId` para seguir una traza técnica. Los dos se dejan vacíos para ver todo. Cada línea tiene el botón **Ver la traza**, que salta a Tempo, y **Ver el flujo completo**, que muestra el mismo `correlationId` en todos los servicios. Los campos están en JSON: `timestamp`, `level`, `serviceName`, `environment`, `version`, `correlationId`, `traceId`, `spanId`."
+      }
+    },
+    {
+      "id": 57,
+      "type": "timeseries",
+      "title": "Volumen de log por nivel",
+      "datasource": {
+        "type": "loki",
+        "uid": "bank-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "bank-loki"
+          },
+          "expr": "sum by (level) (count_over_time({service_name=~\"$service\", environment=\"$environment\"} | level=~\".+\" [1m]))",
+          "legendFormat": "{{level}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 58,
+      "type": "timeseries",
+      "title": "Volumen de log por servicio",
+      "datasource": {
+        "type": "loki",
+        "uid": "bank-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "bank-loki"
+          },
+          "expr": "sum by (service_name) (count_over_time({service_name=~\"$service\", environment=\"$environment\"}[1m]))",
+          "legendFormat": "{{service_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "type": "logs",
+      "title": "Logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "bank-loki"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "bank-loki"
+          },
+          "expr": "{service_name=~\"$service\", environment=\"$environment\"} | level=~\"$level\" | correlationId=~\"$correlationId\" | traceId=~\"$traceId\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "description": "Los filtros vacíos no filtran: `=~\"\"` en LogQL no excluye nada cuando el valor es una regex vacía."
+    }
+  ]
+}

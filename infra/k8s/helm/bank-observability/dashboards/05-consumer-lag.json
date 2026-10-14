@@ -1,0 +1,564 @@
+{
+  "uid": "bank-lag",
+  "title": "Bank USAC · Consumer lag del broker",
+  "tags": [
+    "bank-usac",
+    "broker"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "description": "Mensajes pendientes por cola: el SLI base de §4.1 que no es de la aplicación sino del broker.",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "enable": true,
+        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "iconColor": "light-blue",
+        "name": "Despliegues",
+        "titleFormat": "Despliegue de {{deployment}}",
+        "textFormat": "namespace {{namespace}}",
+        "step": "2m"
+      },
+      {
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "iconColor": "purple",
+        "name": "Releases",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "release"
+          ],
+          "type": "tags"
+        }
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(environment)",
+        "includeAll": false,
+        "label": "Entorno",
+        "name": "environment",
+        "query": {
+          "query": "label_values(environment)",
+          "refId": "env"
+        },
+        "refresh": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 38,
+      "type": "text",
+      "title": "De dónde sale",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Del job `rabbitmq-detailed`, no de `/metrics`. Medido: en `/metrics` la serie `rabbitmq_queue_messages_ready` es **un único número para todo el broker, sin etiqueta `queue`**; el desglose por cola sólo existe en `/metrics/detailed`, donde se llama `rabbitmq_detailed_queue_messages_ready`. Un panel construido sobre el primero habría sido una línea plana."
+      }
+    },
+    {
+      "id": 39,
+      "type": "stat",
+      "title": "Cola más atascada (mensajes pendientes)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "max(sli:broker_consumer_lag:messages{environment=\"$environment\"})",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "description": "El umbral de la alerta BrokerConsumerLagHigh es 500 durante 10 minutos."
+    },
+    {
+      "id": 40,
+      "type": "stat",
+      "title": "Total pendiente en el broker",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 500
+              },
+              {
+                "color": "red",
+                "value": 2000
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum(sli:broker_consumer_lag:messages{environment=\"$environment\"})",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "type": "stat",
+      "title": "Entregado sin confirmar (unacked)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 100
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum(sli:broker_unacked:messages{environment=\"$environment\"})",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "description": "Mucho unacked con poco ready es un consumidor lento; mucho ready con poco unacked es un consumidor ausente."
+    },
+    {
+      "id": 42,
+      "type": "stat",
+      "title": "Throughput total (mensajes/s)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum(sli:throughput_by_service:rate5m{environment=\"$environment\"})",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "type": "timeseries",
+      "title": "Mensajes pendientes por cola",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:broker_consumer_lag:messages{environment=\"$environment\"}",
+          "legendFormat": "{{queue}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "type": "timeseries",
+      "title": "Entregado sin confirmar por cola",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:broker_unacked:messages{environment=\"$environment\"}",
+          "legendFormat": "{{queue}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "type": "timeseries",
+      "title": "Consumo por cola (mensajes/s)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:throughput_by_queue:rate5m{environment=\"$environment\"}",
+          "legendFormat": "{{messaging_destination_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "type": "timeseries",
+      "title": "Tiempo de proceso por cola (p95)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:message_process:seconds_p95{environment=\"$environment\"}",
+          "legendFormat": "{{messaging_destination_name}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Si el throughput cae y esto sube, el consumidor se volvió lento. Si el throughput cae y esto no se mueve, el consumidor no está recibiendo."
+    }
+  ]
+}

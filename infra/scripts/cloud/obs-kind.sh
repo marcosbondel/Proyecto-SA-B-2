@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Valida el stack de observabilidad (T-49) en un kind desechable, gratis, y
-# comprueba la cadena que la rubrica califica: un log JSON del banco -> su
-# traza, por el mismo traceId.
+# comprueba las dos cadenas que la rubrica califica: un log JSON del banco -> su
+# traza, por el mismo traceId; y una metrica OTLP -> la serie de Prometheus con
+# la que esta escrita cada consulta del catalogo (T-58).
 #
 #   ./infra/scripts/cloud/obs-kind.sh            # crear, desplegar y verificar
 #   ./infra/scripts/cloud/obs-kind.sh --verify    # solo verificar lo ya desplegado
@@ -12,8 +13,15 @@
 # comportamiento de cluster, no de nube: que `transform/parse_bank_json` abra el
 # JSON, que Loki lo indexe con DOS etiquetas y no con veinte, que `traceId` sea
 # consultable sin ser etiqueta, que Tempo reciba la traza, que Prometheus raspe
-# al Collector y que Grafana cargue sus tres datasources. Nada de eso necesita
-# GCP, y en GCP cuesta ~0.50 USD/hora averiguarlo.
+# al Collector, que una metrica salga con el nombre que el catalogo promete y
+# que Grafana cargue sus tres datasources. Nada de eso necesita GCP, y en GCP
+# cuesta ~0.50 USD/hora averiguarlo.
+#
+# La comprobacion 8 existe por un defecto real: el exportador estuvo con
+# `add_metric_suffixes: false`, asi que las series se llamaban
+# `bank_transfer_finished` y toda consulta escrita en `docs/sre/` —todas con
+# `_total` y `_seconds`— no devolvia nada. Las siete comprobaciones anteriores
+# pasaban: ninguna preguntaba por el nombre de una serie.
 #
 # NO necesita el banco. Un pod de busybox que escribe el formato exacto de
 # `@bank/observability` en stdout y una traza OTLP enviada por curl bastan para
@@ -54,6 +62,114 @@ done
 
 k() { kubectl --context "$CTX" "$@"; }
 paso() { echo; echo "=== $* ==="; }
+
+# Manda al Collector la traza ya generada y DOS metricas con la forma
+# exacta del catalogo. Es una funcion y no un paso en linea porque
+# `--verify` tambien tiene que llamarla: el exportador de Prometheus del
+# Collector olvida una serie que no se vuelve a reportar (`metric_expiration`,
+# cinco minutos por defecto), asi que verificar sin volver a empujar daria
+# un falso rojo en la comprobacion 8 — y un falso rojo en la prueba que
+# vigila los nombres es peor que no tenerla.
+enviar_otlp() {
+  # Y dos metricas con la forma EXACTA del catalogo
+  # (docs/sre/telemetry-catalog.md): un contador monotonico con pseudo-unidad
+  # entre llaves y un histograma en segundos. Son las dos formas de las que
+  # depende toda consulta de T-50, y lo que se comprueba mas abajo es el nombre
+  # con el que salen por el otro lado.
+  #
+  # `k8s.pod.name` va a proposito en el recurso: si algun dia
+  # `resource_to_telemetry_conversion` se enciende, la comprobacion 9 lo ve.
+  # DOS instantaneas y no una, con el contador subiendo entre ellas.
+  #
+  # `rate()` necesita pendiente: un unico empujon deja el contador constante,
+  # `rate` vale 0 y todas las reglas de grabacion de T-50 salen NaN. Con un
+  # valor que crece, la regla produce un numero y la comprobacion 10 puede
+  # exigir que lo produzca — que es la diferencia entre «la regla esta cargada»
+  # y «la regla calcula».
+  #
+  # Las dos duraciones caben bajo los 5 s, asi que el SLI de SLO-2 debe salir
+  # exactamente 1.
+  for n in 1 2; do
+    python3 - "$n" > "/tmp/obs-kind-metrics-$n.json" <<'PYM'
+import json, sys, time
+paso = int(sys.argv[1])
+now = int(time.time() * 1e9) + (paso - 1) * 20_000_000_000
+inicio = int(time.time() * 1e9) - 300_000_000_000
+transferencias = 3 * paso
+recurso = {"attributes": [
+    {"key": "service.name", "value": {"stringValue": "transaction-service"}},
+    {"key": "deployment.environment", "value": {"stringValue": "prod"}},
+    {"key": "k8s.pod.name", "value": {"stringValue": "transaction-service-7d9f-xyz"}}]}
+etiquetas = [{"key": "result", "value": {"stringValue": "COMPLETED"}}]
+print(json.dumps({"resourceMetrics": [{
+    "resource": recurso,
+    "scopeMetrics": [{"scope": {"name": "transaction-service"}, "metrics": [
+        {"name": "bank.transfer.finished", "unit": "{transfer}",
+         "sum": {"aggregationTemporality": 2, "isMonotonic": True, "dataPoints": [
+             {"asInt": str(transferencias), "startTimeUnixNano": str(inicio),
+              "timeUnixNano": str(now), "attributes": etiquetas}]}},
+        {"name": "bank.transfer.duration", "unit": "s",
+         "histogram": {"aggregationTemporality": 2, "dataPoints": [
+             {"count": str(transferencias), "sum": 1.75 * transferencias,
+              "explicitBounds": [5.0],
+              "bucketCounts": [str(transferencias), "0"],
+              "startTimeUnixNano": str(inicio),
+              "timeUnixNano": str(now), "attributes": etiquetas}]}}]}]}]}))
+PYM
+  done
+
+  k create configmap otlp-payload -n "$NS" \
+    --from-file=trace.json=/tmp/obs-kind-trace.json \
+    --from-file=metrics-1.json=/tmp/obs-kind-metrics-1.json \
+    --from-file=metrics-2.json=/tmp/obs-kind-metrics-2.json \
+    --dry-run=client -o yaml | k apply -f - >/dev/null
+
+  k delete job otlp-sender -n "$NS" --ignore-not-found >/dev/null
+  # El argumento del curl va como escalar de bloque (|) y no como elemento en
+  # linea: lleva la cabecera Content-Type, con dos puntos, y YAML leeria el
+  # elemento de la lista como un mapa — «cannot unmarshal object into ... args
+  # of type string».
+  #
+  # Y este comentario vive AQUI, fuera del heredoc, porque dentro llevaba la
+  # cabecera entre acentos graves y un heredoc sin comillas los trata como
+  # sustitucion de comandos: bash intentaba ejecutar 'Content-Type:' y lo
+  # decia en medio de la salida del script.
+  k apply -f - >/dev/null <<YAML
+apiVersion: batch/v1
+kind: Job
+metadata: { name: otlp-sender, namespace: ${NS} }
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: payload
+          configMap: { name: otlp-payload }
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          volumeMounts: [{ name: payload, mountPath: /payload }]
+          command: ['sh', '-c']
+          args:
+            - |
+              curl -sS -w 'HTTP %{http_code}\n' -X POST \
+                http://otel-gateway:4318/v1/traces \
+                -H 'Content-Type: application/json' \
+                --data @/payload/trace.json
+              curl -sS -w 'HTTP %{http_code}\n' -X POST \
+                http://otel-gateway:4318/v1/metrics \
+                -H 'Content-Type: application/json' \
+                --data @/payload/metrics-1.json
+              sleep 20
+              curl -sS -w 'HTTP %{http_code}\n' -X POST \
+                http://otel-gateway:4318/v1/metrics \
+                -H 'Content-Type: application/json' \
+                --data @/payload/metrics-2.json
+YAML
+  k wait --for=condition=complete job/otlp-sender -n "$NS" --timeout 180s >/dev/null
+  k logs -n "$NS" job/otlp-sender | sed 's/^/    /'
+}
 
 if [[ "$accion" == "bajar" ]]; then
   paso "Borrando el cluster desechable ${CLUSTER}"
@@ -152,50 +268,11 @@ print(json.dumps({"resourceSpans": [{
         "attributes": [{"key": "bank.correlation_id",
                         "value": {"stringValue": "corr-obs-kind"}}]}]}]}]}))
 PY
-  k create configmap otlp-payload -n "$NS" \
-    --from-file=trace.json=/tmp/obs-kind-trace.json \
-    --dry-run=client -o yaml | k apply -f - >/dev/null
-
-  k delete job otlp-sender -n "$NS" --ignore-not-found >/dev/null
-  # El argumento del curl va como escalar de bloque (|) y no como elemento en
-  # linea: lleva la cabecera Content-Type, con dos puntos, y YAML leeria el
-  # elemento de la lista como un mapa — «cannot unmarshal object into ... args
-  # of type string».
-  #
-  # Y este comentario vive AQUI, fuera del heredoc, porque dentro llevaba la
-  # cabecera entre acentos graves y un heredoc sin comillas los trata como
-  # sustitucion de comandos: bash intentaba ejecutar 'Content-Type:' y lo
-  # decia en medio de la salida del script.
-  k apply -f - >/dev/null <<YAML
-apiVersion: batch/v1
-kind: Job
-metadata: { name: otlp-sender, namespace: ${NS} }
-spec:
-  backoffLimit: 1
-  template:
-    spec:
-      restartPolicy: Never
-      volumes:
-        - name: payload
-          configMap: { name: otlp-payload }
-      containers:
-        - name: curl
-          image: curlimages/curl:8.11.1
-          volumeMounts: [{ name: payload, mountPath: /payload }]
-          command: ['sh', '-c']
-          args:
-            - |
-              curl -sS -w 'HTTP %{http_code}\n' -X POST \
-                http://otel-gateway:4318/v1/traces \
-                -H 'Content-Type: application/json' \
-                --data @/payload/trace.json
-YAML
-  k wait --for=condition=complete job/otlp-sender -n "$NS" --timeout 120s >/dev/null
-  k logs -n "$NS" job/otlp-sender | sed 's/^/    /'
+  enviar_otlp
 
   echo "$TRACE_ID" > /tmp/obs-kind-trace-id.txt
-  echo "    Esperando 20 s a que Loki y Tempo ingieran…"
-  sleep 20
+  echo "    Esperando 45 s a que Loki y Tempo ingieran y Prometheus raspe las dos instantaneas…"
+  sleep 45
 fi
 
 # ---------------------------------------------------------------------------
@@ -206,6 +283,16 @@ TRACE_ID="$(cat /tmp/obs-kind-trace-id.txt 2>/dev/null || true)"
 if [[ -z "$TRACE_ID" ]]; then
   echo "ERROR: no se de que traceId verificar. Corre el script sin --verify." >&2
   exit 2
+fi
+
+if [[ "$accion" == "verificar" ]]; then
+  if [[ ! -f /tmp/obs-kind-metrics-1.json && ! -f /tmp/obs-kind-trace.json ]]; then
+    echo "ERROR: faltan los payloads en /tmp. Corre el script sin --verify." >&2
+    exit 2
+  fi
+  echo "    Reenviando la telemetria (las series expiran) y esperando los raspados…"
+  enviar_otlp
+  sleep 45
 fi
 
 k delete job verificar-obs -n "$NS" --ignore-not-found >/dev/null
@@ -247,8 +334,16 @@ spec:
               fi
 
               echo "3. El JSON del banco se parseo: filtrar por traceId encuentra la linea"
+              # El stream se llama `transaction-service` y no `fake-bank-service`
+              # A PROPOSITO: `transform/parse_bank_json` toma `service.name` del
+              # campo `serviceName` de la propia linea (values.yaml), no de la
+              # etiqueta del pod, porque en el chart `bank-usac` los siete
+              # componentes comparten `app.kubernetes.io/name` y colapsaban en
+              # una sola etiqueta. El Deployment de prueba se llama
+              # `fake-bank-service`; lo que el log dice ser es
+              # `transaction-service`, y Loki hace bien en creerle al log.
               if curl -s -G 'http://loki:3100/loki/api/v1/query_range' \\
-                   --data-urlencode "query={service_name=\"fake-bank-service\"} | traceId=\"\$T\"" \\
+                   --data-urlencode "query={service_name=\"transaction-service\"} | traceId=\"\$T\"" \\
                    --data-urlencode 'limit=1' | grep -q '"transfer state changed"'; then
                 echo "   OK"
               else
@@ -257,7 +352,7 @@ spec:
 
               echo "4. correlationId tambien es consultable"
               if curl -s -G 'http://loki:3100/loki/api/v1/query_range' \\
-                   --data-urlencode 'query={service_name="fake-bank-service"} | correlationId="corr-obs-kind"' \\
+                   --data-urlencode 'query={service_name="transaction-service"} | correlationId="corr-obs-kind"' \\
                    --data-urlencode 'limit=1' | grep -q '"totalEntriesReturned":[1-9]'; then
                 echo "   OK"
               else
@@ -265,8 +360,12 @@ spec:
               fi
 
               echo "5. La linea que NO es JSON se guardo igual"
+              # Se busca por namespace y no por servicio: una linea que no es
+              # JSON no tiene campo `serviceName`, asi que no puede nombrarse a
+              # si misma y su stream queda con lo que derivo el agente. Que se
+              # guarde es justo lo que se esta comprobando.
               if curl -s -G 'http://loki:3100/loki/api/v1/query_range' \\
-                   --data-urlencode 'query={service_name="fake-bank-service"} |= "NO es JSON"' \\
+                   --data-urlencode 'query={k8s_namespace_name="observability"} |= "NO es JSON"' \\
                    --data-urlencode 'limit=1' | grep -q 'guardarse sin parsear'; then
                 echo "   OK"
               else
@@ -289,9 +388,97 @@ spec:
                 echo "   FALLO: falta un datasource o el enlace log -> traza"; fallos=\$((fallos+1))
               fi
 
+              echo "8. Prometheus tiene las series con el nombre del catalogo"
+              # Reintenta: el job otel-gateway se raspa cada 15 s y la metrica
+              # acaba de llegar. Sin esperar, esto fallaria por carrera y no por
+              # configuracion, que es la peor clase de rojo.
+              serie_contador=""
+              serie_histograma=""
+              intento=0
+              while [ "\$intento" -lt 12 ]; do
+                serie_contador=\$(curl -s -G 'http://prometheus-server/api/v1/query' \\
+                  --data-urlencode 'query=bank_transfer_finished_total')
+                serie_histograma=\$(curl -s -G 'http://prometheus-server/api/v1/query' \\
+                  --data-urlencode 'query=bank_transfer_duration_seconds_bucket')
+                if echo "\$serie_contador" | grep -q '"value"' && \\
+                   echo "\$serie_histograma" | grep -q '"value"'; then
+                  break
+                fi
+                intento=\$((intento+1))
+                sleep 5
+              done
+
+              if echo "\$serie_contador" | grep -q '"value"'; then
+                echo "   OK  bank_transfer_finished_total"
+              else
+                echo "   FALLO: el contador no existe con _total. Revisa add_metric_suffixes"
+                fallos=\$((fallos+1))
+              fi
+              if echo "\$serie_histograma" | grep -q '"value"'; then
+                echo "   OK  bank_transfer_duration_seconds_bucket"
+              else
+                echo "   FALLO: el histograma no existe con _seconds. Revisa add_metric_suffixes"
+                fallos=\$((fallos+1))
+              fi
+
+              echo "9. Las dos etiquetas del catalogo estan, y ninguna mas"
+              if echo "\$serie_contador" | grep -q '"service_name":"transaction-service"' && \\
+                 echo "\$serie_contador" | grep -q '"environment":"prod"'; then
+                echo "   OK  service_name y environment"
+              else
+                echo "   FALLO: falta service_name o environment en la serie"
+                fallos=\$((fallos+1))
+              fi
+              if echo "\$serie_contador" | grep -q 'k8s_pod_name'; then
+                echo "   FALLO: un atributo de recurso de alta cardinalidad se volvio etiqueta"
+                fallos=\$((fallos+1))
+              else
+                echo "   OK  k8s_pod_name NO es etiqueta"
+              fi
+
+              echo "10. Las reglas de grabacion de T-50 cargan y sus selectores RESUELVEN"
+              reglas=\$(curl -s 'http://prometheus-server/api/v1/rules' | tr ',' '\\n' | grep -c '"name":"slo:\\|"name":"sli:')
+              echo "   \$reglas reglas de grabacion cargadas"
+              if [ "\$reglas" -ge 30 ]; then
+                echo "   OK  cargadas"
+              else
+                echo "   FALLO: faltan reglas de grabacion"; fallos=\$((fallos+1))
+              fi
+
+              # Lo que se comprueba es que el SELECTOR devuelve serie, no que el
+              # cociente valga un numero concreto: con dos muestras sinteticas
+              # `rate()` apenas tiene pendiente y el ratio sale NaN sin que nada
+              # este roto. Un ratio de verdad necesita carga sostenida, y eso es
+              # T-51 contra el entorno de T-54.
+              #
+              # Y el selector es exactamente lo que se rompio: con `le="5"`
+              # —el valor que el Collector muestra en su texto— esta consulta
+              # devolvia VACIO, porque Prometheus guarda `le="5.0"`. Un panel
+              # de SLO-2 en blanco para siempre, sin un solo error.
+              bucket=\$(curl -s -G 'http://prometheus-server/api/v1/query' \\
+                --data-urlencode 'query=sum(rate(bank_transfer_duration_seconds_bucket{le=~"5(\\\\.0+)?"}[5m]))' \\
+                | grep -o '"value":\\[[^]]*\\]' | head -1)
+              echo "   numerador de SLO-2 (le ~ 5) -> \${bucket:-VACIO}"
+              if [ -n "\$bucket" ]; then
+                echo "   OK  el selector del bucket resuelve"
+              else
+                echo "   FALLO: el selector del bucket no devuelve serie. Revisa la etiqueta le"
+                fallos=\$((fallos+1))
+              fi
+
+              grabada=\$(curl -s -G 'http://prometheus-server/api/v1/query' \\
+                --data-urlencode 'query=slo:transfer_under_5s:ratio_rate5m' \\
+                | grep -o '"value":\\[[^]]*\\]' | head -1)
+              echo "   slo:transfer_under_5s:ratio_rate5m -> \${grabada:-SIN SERIE}"
+              if [ -n "\$grabada" ]; then
+                echo "   OK  la regla produce serie (su valor exige carga real)"
+              else
+                echo "   FALLO: la regla no produce serie"; fallos=\$((fallos+1))
+              fi
+
               echo
               if [ "\$fallos" -eq 0 ]; then
-                echo "RESULTADO: 7 de 7. El stack mide lo que dice medir."
+                echo "RESULTADO: 10 de 10. El stack mide lo que dice medir."
               else
                 echo "RESULTADO: \$fallos comprobacion(es) fallaron."
                 exit 1
@@ -310,7 +497,7 @@ paso "Como mirarlo con los ojos"
 cat <<FIN
     kubectl --context ${CTX} port-forward -n ${NS} svc/grafana 3000:80
     # http://localhost:3000 — admin / ${GRAFANA_PASS}
-    # Explore > Loki > {service_name="fake-bank-service"} y abre una linea:
+    # Explore > Loki > {service_name="transaction-service"} y abre una linea:
     # el boton "Ver la traza" salta a Tempo con el mismo traceId.
 
     Cuando termines, y recuerda que esto NO cuesta nada mientras exista:

@@ -1,0 +1,571 @@
+{
+  "uid": "bank-sli",
+  "title": "Bank USAC · Métricas clave (SLI)",
+  "tags": [
+    "bank-usac",
+    "sli"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "description": "Los SLI base del enunciado: latencia en percentiles, tasa de error, throughput por servicio y por cola.",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "enable": true,
+        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "iconColor": "light-blue",
+        "name": "Despliegues",
+        "titleFormat": "Despliegue de {{deployment}}",
+        "textFormat": "namespace {{namespace}}",
+        "step": "2m"
+      },
+      {
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "iconColor": "purple",
+        "name": "Releases",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "release"
+          ],
+          "type": "tags"
+        }
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(environment)",
+        "includeAll": false,
+        "label": "Entorno",
+        "name": "environment",
+        "query": {
+          "query": "label_values(environment)",
+          "refId": "env"
+        },
+        "refresh": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 9,
+      "type": "text",
+      "title": "Percentiles, no promedios",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "§4.1 lo exige y el motivo es práctico: un promedio de 2 s con un p99 de 40 s se ve sano y no lo está. Todos los paneles de latencia de este dashboard son histogramas."
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Latencia de transferencias (p50 / p95 / p99)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:transfer_latency:seconds_p50{environment=\"$environment\"}",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:transfer_latency:seconds_p95{environment=\"$environment\"}",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:transfer_latency:seconds_p99{environment=\"$environment\"}",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "description": "La línea roja es el umbral de SLO-2."
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Latencia del Gateway por método (p95)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:gateway_latency:seconds_p95{environment=\"$environment\"}",
+          "legendFormat": "{{http_request_method}} p95",
+          "refId": "A"
+        }
+      ],
+      "description": "SLO-6: GET < 1 s. SLO-7: POST < 3 s."
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Throughput por cola (mensajes/s)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:throughput_by_queue:rate5m{environment=\"$environment\"}",
+          "legendFormat": "{{messaging_destination_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Tiempo de proceso por cola (p95)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 11
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:message_process:seconds_p95{environment=\"$environment\"}",
+          "legendFormat": "{{messaging_destination_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Proveedor externo: tasa de fallo por origen",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:payment_provider_failure:ratio_rate5m{environment=\"$environment\"}",
+          "legendFormat": "{{source}}",
+          "refId": "A"
+        }
+      ],
+      "description": "`source` distingue el fallo real del inyectado por un administrador. Sin esa separación, un escenario de prueba parecería una caída del proveedor."
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Proveedor externo: latencia (p95)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:payment_provider:seconds_p95{environment=\"$environment\"}",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Clientes: decisiones de KYC",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum by (result) (rate(bank_customer_kyc_decisions_total{environment=\"$environment\"}[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Verificados contra rechazados (§4.1, Customer Service)."
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Cuentas: operaciones por tipo y operación",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum by (account_type, operation) (rate(bank_account_operations_total{environment=\"$environment\"}[5m]))",
+          "legendFormat": "{{account_type}} · {{operation}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
