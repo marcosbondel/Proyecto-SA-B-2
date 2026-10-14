@@ -66,6 +66,21 @@ beforeAll(() => {
   );
 });
 
+interface OtlpMetric {
+  readonly name: string;
+  readonly unit?: string;
+  readonly histogram?: { readonly dataPoints: { readonly attributes: OtlpAttribute[] }[] };
+}
+
+/** Las métricas que llegaron al receptor, aplanadas. */
+function bankMetrics(run: Run): readonly OtlpMetric[] {
+  return run.received
+    .filter((item) => item.path === '/v1/metrics')
+    .flatMap((item) => item.body.resourceMetrics as { scopeMetrics: { metrics: OtlpMetric[] }[] }[])
+    .flatMap((resource) => resource.scopeMetrics)
+    .flatMap((scope) => scope.metrics);
+}
+
 /** A minimal OTLP/HTTP receiver: records every JSON body posted to it. */
 async function startReceiver(): Promise<{ server: Server; port: number; received: Received[] }> {
   const received: Received[] = [];
@@ -309,6 +324,58 @@ describe('a process with the SDK and an OTLP endpoint', () => {
     );
 
     expect(statuses).toEqual(expect.arrayContaining([200, 500]));
+  });
+
+  /**
+   * La unidad, vista en el cable.
+   *
+   * No es un detalle cosmético: el exportador del Collector compone el nombre
+   * de la serie de Prometheus a partir del campo `unit`, así que
+   * `bank.transfer.duration` con `unit: "s"` se convierte en
+   * `bank_transfer_duration_seconds`. Si la unidad se pierde por el camino, la
+   * serie se llama distinto y **todas** las consultas de
+   * `docs/sre/sli-slo-sla.md` y de los dashboards de T-50 dejan de devolver
+   * datos, sin un solo error. Pasó: el exportador estuvo configurado sin
+   * sufijos y nadie lo notó porque ninguna prueba miraba el nombre.
+   */
+  it('exports the bank histogram with the unit that will name its Prometheus series', () => {
+    const histograma = bankMetrics(run).find(
+      (metric) => metric.name === 'bank.transfer.duration',
+    );
+
+    expect(histograma).toBeDefined();
+    expect(histograma?.unit).toBe('s');
+    expect(histograma?.histogram?.dataPoints.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * La regla de cardinalidad del catálogo, comprobada donde no se puede
+   * discutir: en lo que sale del proceso.
+   *
+   * `metric-cardinality.spec.ts` lee el código y por eso puede equivocarse al
+   * leerlo. Esto mira el datapoint que viajó por OTLP: la etiqueta `result`
+   * está, y el `bank.transfer.id` que el mismo handler puso **en el span** no
+   * aparece en ninguna métrica.
+   */
+  it('keeps identifiers out of the metrics plane, on the wire', () => {
+    const puntos = bankMetrics(run)
+      .filter((metric) => metric.name.startsWith('bank.'))
+      .flatMap((metric) => metric.histogram?.dataPoints ?? []);
+    const claves = [...new Set(puntos.flatMap((point) => point.attributes.map((a) => a.key)))];
+
+    expect(claves).toEqual(['result']);
+
+    const spans = run.received
+      .filter((item) => item.path === '/v1/traces')
+      .flatMap((item) => item.body.resourceSpans as { scopeSpans: { spans: OtlpSpan[] }[] }[])
+      .flatMap((resource) => resource.scopeSpans)
+      .flatMap((scope) => scope.spans);
+    const conIdentificador = spans.filter((span) =>
+      span.attributes.some((a) => a.key === 'bank.transfer.id'),
+    );
+
+    // El identificador existe: está donde debe estar, que es la traza.
+    expect(conIdentificador.length).toBeGreaterThan(0);
   });
 });
 

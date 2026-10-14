@@ -338,7 +338,7 @@ pnpm obs:kind:down     # lo borra
 (`bank-obs-test`, separado del `bank-usac` del flujo local), despliega el chart,
 y **no necesita el banco**: un pod de busybox que escribe el formato exacto de
 `@bank/observability` en stdout y una traza OTLP enviada con `curl` bastan para
-probar la correlación. Después comprueba siete cosas y falla si alguna no se
+probar la correlación. Después comprueba nueve cosas y falla si alguna no se
 cumple:
 
 | # | Qué comprueba | Por qué importa |
@@ -350,8 +350,20 @@ cumple:
 | 5 | La línea que **no** es JSON se guardó igual | un log ilegible sigue siendo evidencia |
 | 6 | Prometheus raspa al Collector | sin ese objetivo ninguna métrica llega a un panel |
 | 7 | Grafana cargó los tres datasources y los `derivedFields` | el salto log → traza |
+| 8 | Prometheus tiene `bank_transfer_finished_total` y `bank_transfer_duration_seconds_bucket` | que la serie **se llame** como la nombra cada consulta de [`telemetry-catalog.md`](../sre/telemetry-catalog.md); raspar al Collector no basta |
+| 9 | Las etiquetas son `service_name` y `environment`, y `k8s_pod_name` **no** lo es | la cardinalidad de las métricas, medida en la serie y no supuesta en el YAML |
 
-Corrido el 2026-10-13 sobre kind: **7 de 7**.
+Corrido el 2026-10-14 sobre kind: **9 de 9**.
+
+Las comprobaciones 8 y 9 son de T-58 y existen por un defecto real: el
+exportador estaba con `add_metric_suffixes: false`, así que las series se
+llamaban `bank_transfer_finished` y **ninguna** de las consultas escritas en
+`docs/sre/` —todas con `_total` y `_seconds`— devolvía nada. Las siete
+comprobaciones anteriores pasaban: ninguna preguntaba por el nombre de una
+serie. La misma corrida encontró que las comprobaciones 3, 4 y 5 llevaban un día
+rotas, desde que `service.name` pasó a salir del propio log (`57e99fc`) y
+quedaron preguntando por el nombre del `Deployment`; el stream se llama
+`transaction-service`, que es lo que la línea dice ser.
 
 A la nube sólo hace falta subir lo que kind no puede mostrar: la IP estática con
 el `LoadBalancer`, el HPA bajo carga real y las capturas de evidencia.
@@ -420,11 +432,13 @@ Lo despliega el mismo pipeline, en un release y un namespace propios
 ejecuta el job **«Stack de observabilidad»** de `cd.yml`. Para iterar sin merge,
 *Actions → CD → Run workflow → `deploy_observability`*.
 
-Hace falta **un secreto más** que los del paso 3:
+Hace falta **un secreto más** que los del paso 3, y dos opcionales de T-50:
 
 | Tipo | Nombre | Valor |
 | --- | --- | --- |
 | Secret | `GRAFANA_ADMIN_PASSWORD` | la contraseña de `admin`. Mínimo 16 caracteres; el job falla diciéndolo si falta o es más corta, en vez de instalar un Grafana con la contraseña pública que trae el chart |
+| Secret de K8s | `grafana-alert-webhook` (clave `token`) | el `ALERT_WEBHOOK_TOKEN` del Gateway, para que las alertas lleguen a la bitácora de auditoría (T-45). **Opcional**: sin él Grafana arranca igual y la alerta se ve en su consola, pero el Gateway la rechaza con `401`. Debe ser el **mismo valor** que `ALERT_WEBHOOK_TOKEN` en `HELM_SECRETS` |
+| Variable + Secret | `GRAFANA_URL` y `GRAFANA_TOKEN` | para que `cd.yml` anote la *release* en Grafana. **Opcionales**: sin ellos el paso se omite con su motivo en el resumen, y los dashboards siguen marcando los despliegues por consulta |
 
 **No se despliega desde `develop` a propósito.** El stack es uno para los dos
 entornos —`dev` y `prod` mandan su telemetría al mismo Collector y se miran en el
@@ -438,6 +452,22 @@ Las aplicaciones no necesitan ninguna variable nueva: `cd.yml` pone
 `http://otel-gateway.observability.svc.cluster.local:4318`. La variable de
 repositorio del mismo nombre sigue existiendo y sólo hace falta para apuntar a
 otro Collector.
+
+**Y con el stack viajan las reglas, las alertas y los dashboards (T-50)**, en el
+mismo release y sin un paso aparte:
+
+| Qué | Dónde vive | Cuántos |
+| --- | --- | --- |
+| Reglas de grabación de los SLI | `values.yaml` → `prometheus.serverFiles.recording_rules.yml` | 30 |
+| Alertas, contact points y política | `values.yaml` → `grafana.alerting` | 7 alertas, 2 contact points |
+| Dashboards | `dashboards/*.json` → ConfigMaps con `grafana_dashboard: "1"` | 9 |
+| Runbooks | [`runbooks/`](runbooks/README.md), enlazados desde cada alerta | 5 |
+
+Nada de eso se crea a mano en la interfaz, y lo que se cree a mano se pierde en
+el siguiente `helm upgrade` — que es la mitad del criterio 2.6 de la rúbrica.
+Antes de subir un cambio: `pnpm obs:check:dashboards` (falla si un panel cita un
+SLI que nadie graba) y `pnpm obs:kind` (la única forma de ver que una consulta
+devuelve algo).
 
 **Grafana no tiene IP pública.** Queda una sola libre en la cuota y es el margen
 de la entrada del banco (ver la tabla de cuotas del paso 1):
