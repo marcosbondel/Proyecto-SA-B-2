@@ -56,6 +56,23 @@ resource "google_container_node_pool" "primary_nodes" {
     preemptible  = false
     machine_type = var.gke_machine_type
 
+    # El disco de los nodos, y por que no es el que GKE pone por defecto.
+    #
+    # GKE usa 100 GB `pd-balanced` por nodo si no se dice nada, y `pd-balanced`
+    # cuenta contra la cuota **SSD_TOTAL_GB**, que en esta region son 250 GB.
+    # Tres nodos piden 300 y el `apply` falla a mitad: dos nodos arrancan, el
+    # tercero muere con `GCE_QUOTA_EXCEEDED` y el node pool queda en estado
+    # ERROR — con el cluster ya creado y facturando. Lo encontro el primer apply
+    # real del 2026-10-14; ni `terraform validate` ni `plan` lo ven, porque la
+    # cuota no esta en el plan.
+    #
+    # 50 GB x 3 = 150 GB, y deja 100 GB de la misma cuota para los PVC del stack
+    # de observabilidad (32 GiB), que usan la StorageClass `standard-rwo` y por
+    # tanto tambien son `pd-balanced`. Un nodo de GKE no guarda datos: solo
+    # imagenes y capas, y 50 GB sobran para siete.
+    disk_size_gb = var.gke_node_disk_size_gb
+    disk_type    = var.gke_node_disk_type
+
     labels = {
       app = "bank-usac"
     }

@@ -100,6 +100,33 @@ if [[ ! -f "${TF_DIR}/terraform.tfvars" ]]; then
 fi
 echo "    terraform.tfvars presente"
 
+# Las credenciales que necesita TERRAFORM, que no son las de gcloud.
+#
+# `gcloud auth login` autentica la CLI; el provider de Google de Terraform usa
+# Application Default Credentials, que es otro archivo. Tenerlas separadas hace
+# que `gcloud compute instances list` funcione y `terraform apply` falle con
+# «could not find default credentials» — y lo hace a los 90 segundos, cuando ya
+# se habilitaron las APIs. Esta comprobacion existe por haberlo visto.
+#
+# Si no hay ADC, se usa un token de acceso de la sesion de gcloud, que el
+# provider acepta por `GOOGLE_OAUTH_ACCESS_TOKEN`. Dura una hora: suficiente
+# para un apply (6-10 min) y para una sesion corta, no para dejarlo puesto.
+if [[ -z "${GOOGLE_OAUTH_ACCESS_TOKEN:-}" ]] &&
+  [[ ! -f "${HOME}/.config/gcloud/application_default_credentials.json" ]] &&
+  [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  echo "    Sin Application Default Credentials; usando un token de la sesion de gcloud."
+  echo "    Para que esto deje de hacer falta, una vez:  gcloud auth application-default login"
+  if ! GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token 2>/dev/null)"; then
+    echo "ERROR: no hay ADC ni sesion de gcloud de la que sacar un token." >&2
+    echo "       Corre:  gcloud auth application-default login" >&2
+    exit 2
+  fi
+  export GOOGLE_OAUTH_ACCESS_TOKEN
+  echo "    Token obtenido (caduca en ~1 h)."
+else
+  echo "    Credenciales de Terraform: presentes"
+fi
+
 # Las APIs. Habilitar una ya habilitada no cuesta ni cambia nada, asi que se
 # hace siempre en vez de comprobarlo: desde un proyecto nuevo son obligatorias.
 run gcloud services enable \
