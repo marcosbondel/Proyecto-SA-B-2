@@ -60,6 +60,7 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | [operations/INTERBANK.md](operations/INTERBANK.md) | Contrato provisional T-46, mock local y reintentos de callbacks para depósitos interbancarios entrantes. |
 | [RELIABILITY.md](RELIABILITY.md) | Las preocupaciones de confiabilidad que el enunciado exige resolver: idempotencia, reintentos, consistencia eventual, trazabilidad. |
 | [sre/sli-slo-sla.md](sre/sli-slo-sla.md) | Qué se mide ([SLI](sre/sli-slo-sla.md#4-indicadores-de-nivel-de-servicio-sli)), qué meta se persigue ([SLO](sre/sli-slo-sla.md#5-objetivos-de-nivel-de-servicio-slo)) y qué se promete ([SLA](sre/sli-slo-sla.md#7-acuerdo-de-nivel-de-servicio-sla)). Encadenados: ninguna promesa sin un número que la verifique. |
+| [sre/telemetry-catalog.md](sre/telemetry-catalog.md) | El catálogo de telemetría: cada métrica con su tipo, unidad, etiquetas permitidas y justificación de cardinalidad, más los nombres de span y los campos de log. La fuente única de la que salen los dashboards y las alertas, y lo que el enunciado pide definir **antes** de implementar. |
 
 ## Producto, diseño y calidad
 

@@ -108,6 +108,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/diagrams/er/README.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/generated/db-schema.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/sre/sli-slo-sla.md` | project | Marcos Bonifasi | current | 2026-09-20 |
+| `docs/sre/telemetry-catalog.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/manual/recorrido-visual.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/qa/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
 | `docs/qa/pyramid.md` | generated | — | current | 2026-09-25 |
@@ -125,6 +126,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-44-payment-failure-simulation-evidence.md` | project | Enner Mendizabal | current | 2026-10-05 |
 | `docs/qa/backend/T-45-audit-traceability-evidence.md` | project | David Barrios | current | 2026-10-05 |
 | `docs/qa/backend/T-48-observability-package-evidence.md` | project | Marcos Bonifasi | current | 2026-10-11 |
+| `docs/qa/backend/T-58-telemetry-catalog-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/process/implementations.md` | project | David Barrios | current | 2026-09-12 |
 | `docs/images/kubernetes/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `context/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
