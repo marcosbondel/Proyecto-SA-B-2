@@ -91,6 +91,15 @@ for binario in gcloud terraform helm kubectl docker gh; do
 done
 echo "    Herramientas: gcloud terraform helm kubectl docker gh"
 
+# `buildx` hace falta para construir amd64 desde un Mac ARM. Docker Desktop lo
+# trae; una instalacion minima de docker-ce puede no tenerlo.
+if ! docker buildx version >/dev/null 2>&1; then
+  echo "ERROR: falta 'docker buildx'. Sin el no se pueden construir imagenes" >&2
+  echo "       linux/amd64 para los nodos de GKE desde esta maquina." >&2
+  exit 2
+fi
+echo "    docker buildx: presente ($(uname -m) -> linux/amd64)"
+
 if [[ ! -f "${TF_DIR}/terraform.tfvars" ]]; then
   echo "ERROR: falta ${TF_DIR}/terraform.tfvars." >&2
   echo "       Copialo de terraform.tfvars.example y pon project_id y las cinco" >&2
@@ -231,9 +240,21 @@ else
   for row in "${BANK_COMPONENTS[@]}"; do
     bank_component_fields "$row"
     destino="${REGISTRY}/${BANK_COMPONENT_NAME}:${TAG}"
-    run docker build --file "${REPO_ROOT}/${BANK_COMPONENT_DOCKERFILE}" \
-      --tag "$destino" --build-arg "IMAGE_VERSION=${TAG}" "${REPO_ROOT}"
-    run docker push "$destino"
+    # `--platform linux/amd64`, siempre, y no "la del que construye".
+    #
+    # Los nodos de GKE son Intel (`e2-standard-2`). Construir en un Mac con
+    # Apple Silicon produce imagenes arm64 que GKE acepta, sube y programa sin
+    # queja — y el contenedor muere con `exec format error`, que no menciona la
+    # arquitectura por ningun lado. `pnpm images:build` no lleva esta bandera
+    # porque es para kind, que corre en la MISMA maquina que construye.
+    #
+    # `buildx` con `--push` en vez de `build` + `push`: la imagen cruzada no se
+    # puede cargar en el demonio local (es de otra arquitectura), asi que
+    # buildx la empuja directa desde el constructor.
+    run docker buildx build --platform linux/amd64 \
+      --file "${REPO_ROOT}/${BANK_COMPONENT_DOCKERFILE}" \
+      --tag "$destino" --build-arg "IMAGE_VERSION=${TAG}" \
+      --push "${REPO_ROOT}"
   done
 
   # -------------------------------------------------------------------------
