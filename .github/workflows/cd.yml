@@ -11,9 +11,25 @@ name: CD
 #      actualizaran los deployments en Kubernetes" y "se ejecutara un rolling
 #      update".
 #
-# Ambos jobs despliegan de verdad contra GKE. Si faltan las credenciales, el job
-# FALLA diciendo cual falta — no imprime un exito que no ocurrio. Un CD que
-# reporta verde sin desplegar es peor que uno rojo: esconde el problema.
+# Ambos jobs despliegan de verdad contra GKE, y la regla es que este workflow
+# NUNCA imprima un despliegue que no ocurrio. Un CD que reporta verde sin
+# desplegar es peor que uno rojo: esconde el problema. De ahi dos casos que se
+# tratan distinto a proposito:
+#
+#   sin credenciales    -> el job FALLA diciendo cual falta. Es un error de
+#                          configuracion humano y merece una cruz roja.
+#   sin infraestructura -> los jobs de construccion y despliegue se OMITEN, con
+#                          el motivo y el remedio en el resumen de la corrida.
+#                          La infraestructura de este proyecto se enciende y se
+#                          apaga a proposito (cuesta ~0.50 USD/hora), asi que su
+#                          ausencia no es un defecto del commit. Omitir no es
+#                          reportar exito: un job omitido se distingue a simple
+#                          vista de uno que paso.
+#
+# Antes de esto, cada merge a `develop` fallaba en el primer `docker push` con
+# «Repository bank-images not found» — rojo en todos los merges desde el
+# 2026-10-06. Un check permanentemente rojo no informa: cuando el CD se rompa de
+# verdad, nadie lo va a notar.
 #
 # Secrets/variables que este workflow necesita (Settings > Secrets and variables):
 # Autenticacion — hace falta UNO de los dos caminos:
@@ -97,11 +113,12 @@ jobs:
   # corrida en vez de en la linea 400 de un log.
   # ===========================================================================
   preflight:
-    name: 'Verificacion de credenciales'
+    name: 'Verificacion de credenciales e infraestructura'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       configured: ${{ steps.check.outputs.configured }}
+      infra_ready: ${{ steps.infra.outputs.ready }}
     steps:
       - name: Comprobar secrets y variables
         id: check
@@ -158,6 +175,95 @@ jobs:
           echo "configured=true" >> "$GITHUB_OUTPUT"
           echo "Credenciales presentes. Continuando con el despliegue."
 
+      # ---------------------------------------------------------------------
+      # Y ahora la otra mitad de la pregunta: existe el destino?
+      #
+      # Tener credenciales no es tener donde desplegar. Desde que la
+      # infraestructura se dio de baja, CADA merge a `develop` fallaba en el
+      # primer `docker push` con «Repository bank-images not found» — rojo en
+      # todos los merges desde el 2026-10-06. Un check que siempre esta rojo no
+      # informa de nada: cuando el CD se rompa por un motivo real, nadie lo va a
+      # notar entre el ruido.
+      #
+      # La distincion que se mantiene, porque es la que importa:
+      #
+      #   sin credenciales      -> FALLA. Es un error de configuracion humano y
+      #                            merece una cruz roja.
+      #   sin infraestructura   -> se OMITE, con el motivo escrito en el resumen.
+      #                            El commit no tiene nada de malo; lo que falta
+      #                            es un entorno, y omitir no es reportar exito.
+      #
+      # Sigue sin existir ningun camino por el que esto imprima un despliegue
+      # que no ocurrio, que es la regla de docs/operations/CI.md.
+      # ---------------------------------------------------------------------
+      - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
+        if: vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
+        if: vars.WIF_PROVIDER == ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Comprobar que la infraestructura existe
+        id: infra
+        run: |
+          set -euo pipefail
+          REGION="$(echo '${{ vars.GKE_ZONE }}' | sed 's/-[a-z]$//')"
+          faltan=()
+
+          if ! gcloud artifacts repositories describe '${{ vars.ARTIFACT_REPO }}' \
+                 --location "$REGION" --project '${{ vars.GCP_PROJECT_ID }}' >/dev/null 2>&1; then
+            faltan+=("el repositorio de Artifact Registry \`${{ vars.ARTIFACT_REPO }}\` en $REGION")
+          fi
+
+          if ! gcloud container clusters describe '${{ vars.GKE_CLUSTER }}' \
+                 --zone '${{ vars.GKE_ZONE }}' --project '${{ vars.GCP_PROJECT_ID }}' >/dev/null 2>&1; then
+            faltan+=("el cluster de GKE \`${{ vars.GKE_CLUSTER }}\` en ${{ vars.GKE_ZONE }}")
+          fi
+
+          if [ ${#faltan[@]} -eq 0 ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Infraestructura presente: registry y cluster."
+            exit 0
+          fi
+
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Sin infraestructura: no hay donde desplegar"
+            echo ""
+            echo "Los jobs de construccion y despliegue se omiten. **No es un fallo"
+            echo "de este commit**: las credenciales estan bien y el codigo paso CI."
+            echo ""
+            echo "No existe:"
+            echo ""
+            printf -- '- %s\n' "${faltan[@]}"
+            echo ""
+            echo "La infraestructura de este proyecto se enciende y se apaga a proposito,"
+            echo "porque cuesta del orden de 0.50 USD/hora. Para levantarla:"
+            echo ""
+            echo '```bash'
+            echo "pnpm cloud:up      # bootstrap, terraform apply, imagenes y despliegue"
+            echo "pnpm cloud:cost    # que hay encendido ahora mismo"
+            echo '```'
+            echo ""
+            echo "El procedimiento completo esta en \`docs/operations/CLOUD.md\` (5.2)."
+            echo ""
+            echo "> Recuerda que §8.1 del enunciado exige el sistema desplegado y"
+            echo "> accesible en la nube **el dia de la calificacion**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::warning::Sin infraestructura en GCP. Construccion y despliegue omitidos; corre 'pnpm cloud:up'."
+
   # ===========================================================================
   # Que componentes cambio este merge. Workflow reutilizable (`changes.yml`):
   # la lista de rutas por componente es la definicion de la estrategia de
@@ -180,7 +286,9 @@ jobs:
   build-development:
     name: 'Construir ${{ matrix.component }}'
     needs: [preflight, changes]
-    if: github.ref == 'refs/heads/develop' && needs.changes.outputs.any == 'true'
+    if: >-
+      github.ref == 'refs/heads/develop' && needs.changes.outputs.any == 'true' &&
+      needs.preflight.outputs.infra_ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -258,7 +366,9 @@ jobs:
   deploy-development:
     name: 'Despliegue Continuo a Desarrollo (dev)'
     needs: [preflight, changes, build-development]
-    if: github.ref == 'refs/heads/develop' && needs.changes.outputs.any == 'true'
+    if: >-
+      github.ref == 'refs/heads/develop' && needs.changes.outputs.any == 'true' &&
+      needs.preflight.outputs.infra_ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: development
@@ -419,7 +529,9 @@ jobs:
   deploy-production:
     name: 'Despliegue Continuo a Produccion (Rolling Update)'
     needs: preflight
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: >-
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      needs.preflight.outputs.infra_ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
@@ -621,8 +733,9 @@ jobs:
     name: 'Stack de observabilidad (Collector, Prometheus, Tempo, Loki, Grafana)'
     needs: preflight
     if: >-
-      github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' ||
-      (github.event_name == 'workflow_dispatch' && inputs.deploy_observability)
+      needs.preflight.outputs.infra_ready == 'true' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' ||
+       (github.event_name == 'workflow_dispatch' && inputs.deploy_observability))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
