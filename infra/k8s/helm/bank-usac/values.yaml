@@ -340,6 +340,21 @@ services:
 gateway:
   component: gateway
   port: 3000
+  # The public entry point of the whole system, and therefore a value that
+  # belongs in a file rather than in a `kubectl patch` somebody remembers to
+  # run (TD-080). LoadBalancer is the right default because the deployment that
+  # needs it is the one that can go silently wrong: on GKE a ClusterIP Gateway
+  # deploys green and is reachable by nobody. The local kind install overrides
+  # this to ClusterIP in `infra/k8s/scripts/install.sh` — kind has no
+  # load-balancer controller, so the Service would sit at `<pending>` forever
+  # while the browser comes in through `port-forward.sh` anyway.
+  serviceType: LoadBalancer
+  # The address reserved by `google_compute_address.gateway` in Terraform.
+  # Empty means "give me an ephemeral one", which is what `dev` uses: only
+  # production's address is pinned, because it is the one written into the
+  # interbank integration agreement with the partner bank. `cd.yml` passes it
+  # from the GATEWAY_STATIC_IP repository variable.
+  loadBalancerIP: ""
   image:
     repository: bank-usac/gateway
     tag: dev # always --set at install time — see the note above `services:`

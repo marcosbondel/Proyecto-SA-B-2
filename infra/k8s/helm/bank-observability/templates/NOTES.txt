@@ -1,0 +1,35 @@
+{{ .Chart.Name }} {{ .Chart.Version }} desplegado en el namespace {{ .Release.Namespace }}.
+
+Grafana NO se expone por un LoadBalancer. Queda una sola IP pública libre en la
+cuota de la región y es el margen de la entrada del banco, así que se entra por
+port-forward:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/grafana 3000:80
+  # http://localhost:3000 — usuario `admin`, contraseña del Secret `grafana-admin`
+
+Los tres datasources ya están provisionados y enlazados entre sí:
+
+  Prometheus  http://prometheus-server
+  Loki        http://loki:3100
+  Tempo       http://tempo:3200
+
+Dónde exportan las aplicaciones. El chart `bank-usac` recibe esta dirección en
+`observability.otlpEndpoint`, y `cd.yml` la pone por defecto:
+
+  http://otel-gateway.{{ .Release.Namespace }}.svc.cluster.local:4318
+
+Las dos comprobaciones que dicen si el stack está midiendo de verdad — un stack
+verde puede estar ciego:
+
+  # 1. Prometheus está raspando al Collector. Sin este objetivo, ninguna métrica
+  #    de las aplicaciones llega a ningún panel.
+  kubectl port-forward -n {{ .Release.Namespace }} svc/prometheus-server 9090:80
+  curl -s 'http://localhost:9090/api/v1/targets?state=active' \
+    | grep -o '"job":"otel-gateway"'
+
+  # 2. Llegan logs del banco, parseados. `serviceName` sólo existe si el
+  #    procesador `transform/parse_bank_json` abrió el JSON del logger.
+  kubectl port-forward -n {{ .Release.Namespace }} svc/loki 3100:3100
+  curl -s 'http://localhost:3100/loki/api/v1/labels'
+
+Retención: 7 días en Prometheus, Tempo y Loki.

@@ -7,6 +7,10 @@ Este directorio contiene la definición completa en **Terraform** para aprovisio
 3. **Clúster de Kubernetes (GKE)** administrado para desplegar los microservicios backend, el API Gateway, el broker de mensajería (RabbitMQ) y el almacenamiento de objetos (MinIO).
 4. **Google Cloud Run** para el despliegue serverless de la aplicación frontend Web (Nuxt 3).
 5. **Configuración de Autoescalado Horizontal (HPA)** integrado en los templates de Helm al 80% de utilización de CPU.
+6. **Artifact Registry** como repositorio de las imágenes que publica el pipeline, con política de limpieza (TD-079).
+7. **IP pública reservada** para el `Service` de tipo `LoadBalancer` del API Gateway, de modo que la entrada al sistema sobreviva a que se borre el Service, se reinstale el release o se recree el namespace (TD-080).
+
+El estado de Terraform vive en un **bucket de GCS** con versionado, no en el disco de quien ejecutó el último `apply`. El bucket lo declara el submódulo `bootstrap/`, que es el único que corre con estado local porque no puede guardarlo en el bucket que él mismo crea.
 
 ---
 
@@ -15,12 +19,17 @@ Este directorio contiene la definición completa en **Terraform** para aprovisio
 ```
 infra/terraform/gcp/
 ├── versions.tf               # Requisitos de versión de Terraform y Google Provider
+├── backend.tf                # Backend remoto (GCS), en configuración parcial
+├── backend.hcl.example       # Plantilla del `backend.hcl` con el nombre del bucket
+├── bootstrap/                # El bucket del estado — se ejecuta UNA vez por proyecto
 ├── variables.tf              # Parámetros configurables (proyecto, región, tipos de máquina)
 ├── vpc.tf                    # VPC, subredes GKE/DB, Cloud Router, Cloud NAT y Firewall
 ├── compute_vms.tf            # Instancias Compute Engine para PostgreSQL (Customer, Account, etc.)
 ├── gke.tf                    # Clúster de Kubernetes y Node Pool administrado
+├── artifact_registry.tf      # Repositorio de imágenes y su política de limpieza
+├── gateway_address.tf        # IP pública reservada del API Gateway
 ├── cloud_run.tf              # Despliegue de frontend Web en Cloud Run
-├── outputs.tf                # Direcciones IP privadas, credenciales GKE y comando Helm
+├── outputs.tf                # Variables del pipeline, IPs privadas, credenciales GKE y comando Helm
 ├── terraform.tfvars.example  # Archivo de ejemplo con las variables requeridas
 └── README.md                 # Esta guía paso a paso
 ```
@@ -99,9 +108,20 @@ deploy_cloud_run    = true
 
 Ejecuta el ciclo estándar de Terraform desde la carpeta `infra/terraform/gcp`:
 
+Primero, una sola vez por proyecto, el bucket del estado:
+
 ```bash
-# 1. Inicializar proveedores y módulos
-terraform init
+cd bootstrap
+terraform init && terraform apply -var project_id="$GCP_PROJECT_ID"
+terraform output -raw backend_hcl > ../backend.hcl
+cd ..
+```
+
+Y después el ciclo estándar:
+
+```bash
+# 1. Inicializar proveedores, módulos y el backend remoto
+terraform init -backend-config=backend.hcl
 
 # 2. Validar sintaxis y configuración
 terraform validate
@@ -113,7 +133,9 @@ terraform plan
 terraform apply
 ```
 
-Al finalizar exitosamente (aproximadamente 6 a 10 minutos debido a la creación del clúster GKE y las VMs), Terraform imprimirá en pantalla las IPs privadas asignadas a las máquinas virtuales de PostgreSQL y el comando para enlazar `kubectl`.
+Al finalizar exitosamente (aproximadamente 6 a 10 minutos debido a la creación del clúster GKE y las VMs), Terraform imprimirá las IPs privadas de las máquinas virtuales de PostgreSQL, el comando para enlazar `kubectl` y —en `github_repository_variables`— las siete variables de repositorio que el pipeline exige, ya con sus valores. Ese output existe para que configurar GitHub sea copiar y pegar en vez de recomponer valores de memoria, que es cómo `ARTIFACT_REPO` y la IP del Gateway acabaron siendo infraestructura hecha a mano.
+
+El procedimiento completo de extremo a extremo —identidad del pipeline, variables, secretos, primer release y comprobaciones— está en [`docs/operations/CLOUD.md`](../../../docs/operations/CLOUD.md). Este README cubre sólo el módulo.
 
 ---
 

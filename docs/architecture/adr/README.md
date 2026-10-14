@@ -81,6 +81,7 @@ Every ADR carries the same sections, so the set can be audited as a whole:
 | [ADR-015](ADR-015-ci-cd-platform.md) | Run the pipeline on GitHub Actions, as four workflows | Accepted | 2026-09-12 |
 | [ADR-016](ADR-016-cloud-infrastructure.md) | Provision the cloud with Terraform — GKE for the workloads, Compute Engine for the databases, Cloud Run for the frontend | Accepted | 2026-09-20 |
 | [ADR-017](ADR-017-account-anomaly-reports-not-blocks.md) | An account anomaly is reported, not blocked — counted from the database, once per window | Accepted | 2026-10-04 |
+| [ADR-018](ADR-018-observability-stack.md) | Collector, Prometheus, Tempo, Loki and Grafana in a chart of their own, with the subcharts vendored into the repository | Accepted | 2026-10-13 |
 
 The consolidated view — decision, rejected alternatives, accepted trade-off and consequence in
 one table — is [`../decision-matrix.md`](../decision-matrix.md). It indexes these records; it

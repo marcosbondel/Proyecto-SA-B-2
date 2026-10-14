@@ -221,6 +221,13 @@ set -- "$@" \
   --set-string "databases.notificationAudit.name=${NOTIFICATION_AUDIT_POSTGRES_DB:-notification_audit}" \
   --set-string "databases.notificationAudit.user=${NOTIFICATION_AUDIT_POSTGRES_USER:-notification_audit_app}"
 
+# The Gateway's Service type. The chart defaults to LoadBalancer because that
+# is what GKE needs (TD-080), and kind has no load-balancer controller: the
+# Service would hang at `<pending>` for the whole session while the browser
+# comes in through port-forward.sh regardless. ClusterIP keeps the local
+# install, and the evidence captured from it, exactly as it was.
+set -- "$@" --set-string "gateway.serviceType=ClusterIP"
+
 # The seven image tags. Not optional — see the note above `services:` in values.yaml.
 set -- "$@" \
   --set-string "services.customer.image.tag=${tag}" \
