@@ -1,0 +1,56 @@
+apiVersion: v2
+name: bank-observability
+description: >-
+  El stack de observabilidad de Bank USAC (Fase 3, T-49): un OpenTelemetry
+  Collector que recibe OTLP, un agente que recoge los logs de los pods,
+  Prometheus para métricas, Tempo para trazas, Loki para logs y Grafana para
+  verlos. Se instala en su propio namespace y sirve a `dev` y a `prod` a la vez:
+  lo que los separa es el atributo `deployment.environment`, no dos stacks.
+type: application
+version: 0.1.0
+
+# Los motores vienen de sus charts oficiales, con la versión fijada y el digest
+# anotado en `Chart.lock`. Lo que este repositorio escribe es todo lo que
+# codifica una decisión nuestra: la configuración del Collector, los datasources
+# de Grafana, la retención y el dimensionado. Reimplementar Prometheus o Loki a
+# mano sería más código y peor.
+dependencies:
+  # El Collector al que los siete componentes exportan trazas y métricas.
+  # `mode: deployment` — uno para todo el clúster, no uno por nodo: las
+  # aplicaciones le hablan por un Service.
+  - name: opentelemetry-collector
+    alias: otlpGateway
+    version: 0.176.0
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: otlpGateway.enabled
+
+  # El MISMO chart, en `mode: daemonset`, leyendo los ficheros de log de los
+  # pods del nodo. Es el «agente de infraestructura» que el enunciado exige
+  # (§4.1, Notification & Audit Service): los servicios no envían sus logs a
+  # ningún microservicio ni por el broker, los escriben en stdout y este agente
+  # los recoge.
+  - name: opentelemetry-collector
+    alias: logAgent
+    version: 0.176.0
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: logAgent.enabled
+
+  - name: prometheus
+    version: 29.36.2
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: prometheus.enabled
+
+  - name: tempo
+    version: 1.24.4
+    repository: https://grafana.github.io/helm-charts
+    condition: tempo.enabled
+
+  - name: loki
+    version: 7.3.0
+    repository: https://grafana.github.io/helm-charts
+    condition: loki.enabled
+
+  - name: grafana
+    version: 10.5.15
+    repository: https://grafana.github.io/helm-charts
+    condition: grafana.enabled

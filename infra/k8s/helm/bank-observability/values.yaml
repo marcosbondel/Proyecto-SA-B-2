@@ -1,0 +1,673 @@
+# ===========================================================================
+# bank-observability — el stack de la Fase 3
+#
+# Un solo release sirve a `dev` y a `prod`. Lo que los distingue es el atributo
+# `deployment.environment` que cada pod ya trae (T-48, `observability.environment`
+# del chart de la aplicación), no dos copias del stack: con la cuota de esta
+# región no caben dos, y un Grafana por entorno obliga a mirar en dos sitios
+# para comparar un incidente.
+#
+# Dos cuotas de `us-central1` mandan sobre el dimensionado, medidas el
+# 2026-10-13 (ver docs/operations/CLOUD.md):
+#
+#   INSTANCES        = 8, y el sistema ya usa 8 (5 VMs + 3 nodos). NO hay un
+#                      cuarto nodo, así que todo lo de aquí tiene que caber en
+#                      los tres que existen. De ahí las requests explícitas.
+#   IN_USE_ADDRESSES = 4, y el sistema usa 3. La que queda es el margen de la
+#                      entrada del banco: **Grafana no se expone por un
+#                      LoadBalancer**, se alcanza por `kubectl port-forward`.
+#
+# Retención: 7 días en los tres almacenes, que es lo que el enunciado sugiere
+# (§4.2, Consideraciones de costo) y lo que cubre la ventana de una prueba de
+# carga y su postmortem sin pagar por historia que nadie va a leer.
+# ===========================================================================
+
+# Nombres de Service predecibles. Sin esto, el nombre lo compone Helm con el
+# del release y el del subchart (`bank-observability-otlpGateway-opentelemetry-collector`),
+# y la URL que las aplicaciones necesitan dejaría de ser escribible a mano.
+nameOverride: bank-observability
+
+# ---------------------------------------------------------------------------
+# 1. El Collector al que exportan los siete componentes
+#
+# Un Deployment, no un DaemonSet: las aplicaciones le hablan por un Service y
+# no les importa en qué nodo está. Recibe OTLP (gRPC y HTTP), manda las trazas
+# a Tempo y publica las métricas en un endpoint que Prometheus raspa.
+# ---------------------------------------------------------------------------
+otlpGateway:
+  enabled: true
+  fullnameOverride: otel-gateway
+
+  # `contrib` y no `core` porque `k8sattributes`, `filelog` y `transform` sólo
+  # existen en contrib. La versión la fija `Chart.lock` a través del chart.
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: deployment
+  replicaCount: 1
+
+  # El Collector se mide a sí mismo en 8888. Se raspa por anotación, que es lo
+  # que el job `kubernetes-pods` del chart de Prometheus ya busca: sin esto, un
+  # pipeline que descarta datos por presión de memoria no se vería en ninguna
+  # parte, y «las métricas no reflejan el sistema real» cuesta un 50 % (§8.3).
+  podAnnotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '8888'
+
+  # Añade namespace, pod, nodo y las etiquetas del Deployment a cada span y
+  # cada métrica, y crea el ClusterRole que eso necesita.
+  presets:
+    kubernetesAttributes:
+      enabled: true
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  ports:
+    otlp:
+      enabled: true
+    otlp-http:
+      enabled: true
+    # Donde Prometheus raspa lo que las aplicaciones empujaron por OTLP.
+    prometheus:
+      enabled: true
+      containerPort: 8889
+      servicePort: 8889
+      protocol: TCP
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+
+  # `alternateConfig` y no `config`.
+  #
+  # `config` se FUSIONA con la configuración por defecto del chart, que trae
+  # pipelines de trazas, métricas y logs con receptores de Jaeger, Zipkin y
+  # Prometheus y un exportador `debug`. Poner `logs: null` para quitar uno no
+  # funciona: Helm ignora los nulos del `values.yaml` de un chart padre. El
+  # render lo demostró — el pipeline de logs seguía ahí, recibiendo OTLP y
+  # tirándolo a `debug`.
+  #
+  # `alternateConfig` REEMPLAZA esa base (`templates/_config.tpl`, define
+  # `opentelemetry-collector.baseConfig`), así que lo que queda es exactamente
+  # lo que está escrito aquí. El precio es que hay que declarar también lo que
+  # el chart daba gratis: la extensión `health_check`, que es la que contestan
+  # las probes en el 13133, y la auto-telemetría del 8888.
+  alternateConfig:
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: ${env:MY_POD_IP}:4317
+          http:
+            endpoint: ${env:MY_POD_IP}:4318
+
+    processors:
+      # El preset de `kubernetesAttributes` ANTEPONE `k8s_attributes` a la lista
+      # de cada pipeline, así que el orden final empieza por él y no por
+      # `memory_limiter`. No es un descuido: es lo que el chart hace y no se
+      # puede cambiar sin renunciar al RBAC que el preset genera.
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+
+      # Las dos ÚNICAS etiquetas que los contadores y los histogramas del banco
+      # reciben de sus atributos de recurso.
+      #
+      # El enunciado prohíbe las etiquetas de alta cardinalidad (`accountId`,
+      # `customerId`) y el código ya no las emite; esto es la segunda barrera, y
+      # está escrita como una lista cerrada en vez de como una conversión
+      # automática: `resource_to_telemetry_conversion` habría subido TODOS los
+      # atributos de recurso, incluido `k8s.pod.name`, que cambia en cada
+      # despliegue y multiplica las series por el número de pods que han
+      # existido.
+      transform/metric_labels:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["service_name"], resource.attributes["service.name"])
+              - set(attributes["environment"], resource.attributes["deployment.environment"])
+
+    exporters:
+      otlp/tempo:
+        endpoint: tempo:4317
+        tls:
+          insecure: true
+
+      prometheus:
+        endpoint: ${env:MY_POD_IP}:8889
+        # Las métricas del banco ya vienen con su unidad en el nombre
+        # (`bank.interbank.deposit.duration` en segundos). Añadir el sufijo otra
+        # vez produciría `..._seconds_seconds`.
+        add_metric_suffixes: false
+        resource_to_telemetry_conversion:
+          enabled: false
+
+    service:
+      telemetry:
+        resource:
+          k8s.namespace.name: ${env:OTEL_K8S_NAMESPACE}
+          k8s.node.name: ${env:OTEL_K8S_NODE_NAME}
+          k8s.pod.name: ${env:OTEL_K8S_POD_NAME}
+          host.name: ${env:OTEL_K8S_NODE_NAME}
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: ${env:MY_POD_IP}
+                    port: 8888
+      extensions:
+        - health_check
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/tempo]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, transform/metric_labels, batch]
+          exporters: [prometheus]
+        # Y no hay pipeline de logs. Los logs no llegan por OTLP: los recoge el
+        # agente de abajo desde el disco del nodo. Un servicio que empujara sus
+        # logs por red sería más lento cada vez que el almacén lo fuera, y mudo
+        # cuando estuviera caído.
+
+# ---------------------------------------------------------------------------
+# 2. El agente que recoge los logs de los pods
+#
+# Un DaemonSet leyendo `/var/log/pods` del nodo. Es lo que el enunciado llama
+# «agente de recolección de infraestructura» (§4.1): los servicios escriben
+# JSON en stdout y no saben que esto existe.
+# ---------------------------------------------------------------------------
+logAgent:
+  enabled: true
+  # El chart añade el sufijo `-agent` en modo daemonset, así que esto produce
+  # el Service y el DaemonSet `otel-log-agent`.
+  fullnameOverride: otel-log
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: daemonset
+
+  # El Collector se mide a sí mismo en 8888. Se raspa por anotación, que es lo
+  # que el job `kubernetes-pods` del chart de Prometheus ya busca: sin esto, un
+  # pipeline que descarta datos por presión de memoria no se vería en ninguna
+  # parte, y «las métricas no reflejan el sistema real» cuesta un 50 % (§8.3).
+  podAnnotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '8888'
+
+  presets:
+    # Monta `/var/log/pods` y declara el receptor `filelog` con el formato de
+    # los runtimes de contenedor, que es la parte que no vale la pena escribir
+    # a mano.
+    logsCollection:
+      enabled: true
+      includeCollectorLogs: false
+    kubernetesAttributes:
+      enabled: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  ports:
+    otlp:
+      enabled: false
+    otlp-http:
+      enabled: false
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+
+  # Mismo motivo que en el Collector de arriba: `alternateConfig` reemplaza la
+  # base del chart en vez de fusionarse con ella. Aquí importaba más — el
+  # DaemonSet heredaba pipelines de trazas y métricas con receptores de Jaeger,
+  # Zipkin y OTLP escuchando en cada nodo del clúster, para exportarlos a
+  # `debug`. Tres pods abriendo puertos que nadie usaba.
+  alternateConfig:
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+
+    # Sin `receivers`: el único que hace falta es `filelog`, y lo declara el
+    # preset `logsCollection` junto con el montaje de `/var/log/pods`.
+    # Nombrarlo también aquí lo duplicaría en la lista del pipeline, y el
+    # Collector no arranca con un receptor repetido.
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+
+      # Aquí es donde el formato de `@bank/observability` deja de ser una
+      # cadena y se vuelve consultable.
+      #
+      # El receptor `filelog` entrega la línea cruda en `body`. Estas cuatro
+      # sentencias la abren: los campos del logger (`timestamp`, `level`,
+      # `serviceName`, `environment`, `version`, `message`, `correlationId`,
+      # `traceId`, `spanId`) pasan a ser atributos, y `traceId`/`spanId` pasan
+      # además a los campos propios del registro OTLP, que es lo que hace que
+      # Grafana pueda enlazar un log con su traza.
+      #
+      # `where IsMatch(...)` deja en paz lo que no es JSON: el arranque de
+      # PostgreSQL, las líneas de RabbitMQ y el volcado de un proceso que murió
+      # antes de poder formatear nada. Esas se guardan igual, sin parsear,
+      # porque un log que el recolector no entiende sigue siendo evidencia — es
+      # el mismo criterio que hace que el servicio de auditoría registre
+      # `INVALID` en vez de descartar un mensaje ilegible.
+      transform/parse_bank_json:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - merge_maps(attributes, ParseJSON(body), "upsert") where IsMatch(body, "^\\s*\\{")
+              - set(severity_text, attributes["level"]) where attributes["level"] != nil
+              - set(trace_id.string, attributes["traceId"]) where IsMatch(attributes["traceId"], "^[0-9a-f]{32}$")
+              - set(span_id.string, attributes["spanId"]) where IsMatch(attributes["spanId"], "^[0-9a-f]{16}$")
+
+    exporters:
+      # Loki 3.x ingiere OTLP nativamente. Se usa eso y no el exportador `loki`
+      # —obsoleto— para no depender de un componente que ya no se mantiene.
+      otlphttp/loki:
+        logs_endpoint: http://loki:3100/otlp/v1/logs
+        tls:
+          insecure: true
+
+    service:
+      telemetry:
+        resource:
+          k8s.namespace.name: ${env:OTEL_K8S_NAMESPACE}
+          k8s.node.name: ${env:OTEL_K8S_NODE_NAME}
+          k8s.pod.name: ${env:OTEL_K8S_POD_NAME}
+          host.name: ${env:OTEL_K8S_NODE_NAME}
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: ${env:MY_POD_IP}
+                    port: 8888
+      extensions:
+        - health_check
+      pipelines:
+        logs:
+          # Vacío a propósito: el preset le añade `filelog`.
+          receivers: []
+          processors: [memory_limiter, transform/parse_bank_json, batch]
+          exporters: [otlphttp/loki]
+
+# ---------------------------------------------------------------------------
+# 3. Prometheus
+# ---------------------------------------------------------------------------
+prometheus:
+  enabled: true
+
+  server:
+    # El chart compone el nombre con el del release
+    # (`obs-prometheus-server`), y el datasource de Grafana de más abajo tiene
+    # que nombrarlo. Se fija aquí para que la URL no dependa de cómo se llame
+    # el release.
+    fullnameOverride: prometheus-server
+    retention: 7d
+    persistentVolume:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    # Las reglas de grabación y de alerta de T-50 se añaden aquí como
+    # `serverFiles.'alerting_rules.yml'` y `'recording_rules.yml'`.
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+
+  # Grafana Alerting es quien alerta (T-50), con su propio runbook por alerta.
+  # Dos sistemas de alertas compitiendo es la forma más segura de que una alerta
+  # real se pierda entre dos consolas.
+  alertmanager:
+    enabled: false
+
+  # CPU y memoria por contenedor vienen de cAdvisor, que el chart ya raspa en
+  # el job `kubernetes-nodes-cadvisor`. node-exporter añadiría tres pods por
+  # métricas de host que ningún panel obligatorio pide.
+  prometheus-node-exporter:
+    enabled: false
+
+  prometheus-pushgateway:
+    enabled: false
+
+  # Pods, Deployments, HPA y sus réplicas — la evidencia de autoescalado que
+  # §4.1 pide ver en los dashboards.
+  kube-state-metrics:
+    enabled: true
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  extraScrapeConfigs: |
+    # Lo que las aplicaciones empujaron por OTLP, republicado por el Collector.
+    - job_name: otel-gateway
+      scrape_interval: 15s
+      static_configs:
+        - targets: ['otel-gateway:8889']
+
+    # El consumer lag del broker. RabbitMQ lo publica él mismo en 15692 con el
+    # plugin `rabbitmq_prometheus`, que el chart de la aplicación habilita; un
+    # exportador aparte habría sido un pod más y una versión más que mantener.
+    # Hay un broker por namespace, así que hay un target por entorno y la
+    # etiqueta `environment` es lo que los separa.
+    - job_name: rabbitmq
+      scrape_interval: 30s
+      metrics_path: /metrics
+      static_configs:
+        - targets: ['rabbitmq.dev.svc.cluster.local:15692']
+          labels:
+            environment: dev
+        - targets: ['rabbitmq.prod.svc.cluster.local:15692']
+          labels:
+            environment: prod
+
+# ---------------------------------------------------------------------------
+# 4. Tempo — trazas
+# ---------------------------------------------------------------------------
+tempo:
+  enabled: true
+  fullnameOverride: tempo
+
+  tempo:
+    retention: 168h # 7 días
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    # Sólo OTLP se declara, pero el chart NO deja quitar el resto, y conviene
+    # saberlo antes de auditar la salida:
+    #
+    #   - `templates/_ports.tpl` escribe los puertos de Zipkin (9411),
+    #     OpenCensus (55678) y los OTLP heredados (55680/55681) en el Service
+    #     con valores fijos, sin mirar esta configuración.
+    #   - El mismo helper desreferencia `receivers.jaeger.protocols.*` sin
+    #     comprobar si existe, así que poner `jaeger: null` rompería el render
+    #     — y además no serviría: Helm ignora los nulos del `values.yaml` de un
+    #     chart padre, sólo los respeta en `--set` y en un `-f`.
+    #
+    # El Service es ClusterIP en un clúster privado, así que son puertos que
+    # nadie de fuera alcanza. Se deja así y se registra como deuda en vez de
+    # pelearse con el chart.
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# ---------------------------------------------------------------------------
+# 5. Loki — logs
+#
+# `SingleBinary` con almacenamiento de fichero: un pod y un disco. El modo
+# distribuido son once Deployments y un bucket, y aquí no hay volumen de logs
+# que lo justifique ni cuota de nodos para pagarlo.
+# ---------------------------------------------------------------------------
+loki:
+  enabled: true
+  fullnameOverride: loki
+
+  deploymentMode: SingleBinary
+
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    schemaConfig:
+      configs:
+        - from: '2024-04-01'
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    limits_config:
+      retention_period: 168h # 7 días
+      # Hace consultables `traceId`, `spanId` y `correlationId` sin convertirlos
+      # en etiquetas. Es la distinción que el enunciado pide cuidar: una etiqueta
+      # por identificador crearía una serie por transferencia.
+      allow_structured_metadata: true
+      volume_enabled: true
+      # Qué atributos de recurso se vuelven ETIQUETA al ingerir por OTLP.
+      # Lista cerrada y corta: todo lo demás —incluidos `traceId`, `spanId` y
+      # `correlationId`— queda como metadato estructurado, que es consultable
+      # (`| traceId="..."`) sin crear una serie por transferencia. Es la
+      # distinción que el enunciado pide cuidar al prohibir las etiquetas de
+      # alta cardinalidad.
+      #
+      # Va dentro de `limits_config` y no al nivel de `loki`: una clave
+      # `otlpConfig` ahí fuera no existe en este chart y se ignora en silencio.
+      otlp_config:
+        resource_attributes:
+          ignore_defaults: true
+          attributes_config:
+            - action: index_label
+              attributes:
+                - service.name
+                - deployment.environment
+                - k8s.namespace.name
+    compactor:
+      working_directory: /var/loki/compactor
+      retention_enabled: true
+      delete_request_store: filesystem
+
+  singleBinary:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 150m
+        memory: 512Mi
+      limits:
+        cpu: 750m
+        memory: 1Gi
+    persistence:
+      enabled: true
+      size: 10Gi
+
+  # El modo de un solo binario no necesita ninguna de estas piezas.
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+  lokiCanary:
+    enabled: false
+  test:
+    enabled: false
+  gateway:
+    enabled: false
+
+# ---------------------------------------------------------------------------
+# 6. Grafana
+#
+# Sin LoadBalancer: queda una sola IP pública libre en la cuota y es el margen
+# de la entrada del banco. Se entra con
+#   kubectl port-forward -n <ns> svc/grafana 3000:80
+# ---------------------------------------------------------------------------
+grafana:
+  enabled: true
+  fullnameOverride: grafana
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  persistence:
+    enabled: true
+    size: 2Gi
+
+  # Un pod más en tres nodos sin margen, para una prueba que no comprueba nada
+  # que `kubectl rollout status` no diga ya.
+  testFramework:
+    enabled: false
+
+  # La contraseña NO está aquí. El Secret lo pasa el pipeline, igual que los
+  # del chart de la aplicación.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+
+  # Los tres datasources, provisionados como código. Es la mitad del criterio
+  # 2.6 de la rúbrica: nada creado a mano en la interfaz.
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          uid: bank-prometheus
+          access: proxy
+          url: http://prometheus-server
+          isDefault: true
+          jsonData:
+            timeInterval: 30s
+            # Enlaza una métrica con las trazas de ejemplo que la produjeron.
+            exemplarTraceIdDestinations:
+              - name: trace_id
+                datasourceUid: bank-tempo
+
+        - name: Loki
+          type: loki
+          uid: bank-loki
+          access: proxy
+          url: http://loki:3100
+          jsonData:
+            # «Navegación desde un log hacia su traza» (§4.1). El `traceId`
+            # llega como metadato estructurado, así que el matcher es `label` y
+            # no una expresión regular sobre el texto: una regex habría enlazado
+            # también el traceId que aparezca citado dentro de un mensaje.
+            derivedFields:
+              - name: TraceID
+                matcherType: label
+                matcherRegex: traceId
+                url: '${__value.raw}'
+                datasourceUid: bank-tempo
+                urlDisplayLabel: Ver la traza
+              # El flujo de negocio de la Fase 1, que no es el traceId: busca
+              # todos los logs del mismo correlationId, en todos los servicios.
+              - name: CorrelationID
+                matcherType: label
+                matcherRegex: correlationId
+                url: '/explore?left={"datasource":"bank-loki","queries":[{"expr":"{job=~\".+\"} | correlationId=\"${__value.raw}\""}]}'
+                urlDisplayLabel: Ver el flujo completo
+
+        - name: Tempo
+          type: tempo
+          uid: bank-tempo
+          access: proxy
+          # 3200, el `http_listen_port` de Tempo. No 3100, que es el de Loki:
+          # el render de este chart fue lo que lo descubrió.
+          url: http://tempo:3200
+          jsonData:
+            # Y la vuelta: de un span a sus logs.
+            tracesToLogsV2:
+              datasourceUid: bank-loki
+              spanStartTimeShift: -5m
+              spanEndTimeShift: 5m
+              filterByTraceID: true
+              customQuery: true
+              query: '{service_name="$${__span.tags["service.name"]}"} | traceId="$${__span.traceId}"'
+            tracesToMetrics:
+              datasourceUid: bank-prometheus
+            nodeGraph:
+              enabled: true
+
+  # Los dashboards de T-50 se recogen de cualquier ConfigMap etiquetado
+  # `grafana_dashboard: "1"`, así que se añaden como JSON en el repositorio sin
+  # tocar este archivo ni la interfaz.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: '1'
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: false
+
+  grafana.ini:
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+    users:
+      default_theme: dark
+    # Correlacionar sin pelear con la interfaz: las dos funciones que hacen
+    # utilizable el salto log → traza.
+    feature_toggles:
+      enable: traceToMetrics correlations
