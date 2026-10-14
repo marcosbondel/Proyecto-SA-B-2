@@ -27,13 +27,11 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
         'business logic, no database and no HTTP client towards any internal service.',
     )
     .setVersion(OPENAPI_VERSION)
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      'session',
-    )
+    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'session')
     // The monitoring stack's door (T-45): a shared secret, not a session. Declared
     // so the contract says what the route needs instead of calling it public.
     .addBearerAuth({ type: 'http', scheme: 'bearer' }, 'alertWebhook')
+    .addBearerAuth({ type: 'http', scheme: 'bearer' }, 'interbankPartner')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

@@ -1,6 +1,7 @@
 import { CompensateDebitUseCase } from '../src/application/compensate-debit.use-case';
 import { CreateAccountUseCase } from '../src/application/create-account.use-case';
 import { CreditAccountUseCase } from '../src/application/credit-account.use-case';
+import { InterbankAccountUseCase } from '../src/application/interbank-account.use-case';
 import { DeactivateInactiveAccountsUseCase } from '../src/application/deactivate-inactive-accounts.use-case';
 import { DebitAccountUseCase } from '../src/application/debit-account.use-case';
 import { GetBalanceUseCase } from '../src/application/get-balance.use-case';
@@ -25,8 +26,14 @@ const OTHER_CUSTOMER = '1e2d3c4b-5a69-4f78-9012-3456789abcde';
 const TRANSACTION = '7c9f1a30-2b48-4d56-9e01-2f3a4b5c6d70';
 
 const CLIENT = { customerId: CUSTOMER, role: 'CLIENTE' as const };
-const TELLER = { customerId: 'a0b1c2d3-e4f5-4061-8273-8495a6b7c8d9', role: 'CAJERO_RECEPTOR' as const };
-const ADMIN = { customerId: 'b1c2d3e4-f506-4172-8384-95a6b7c8d9e0', role: 'ADMINISTRADOR' as const };
+const TELLER = {
+  customerId: 'a0b1c2d3-e4f5-4061-8273-8495a6b7c8d9',
+  role: 'CAJERO_RECEPTOR' as const,
+};
+const ADMIN = {
+  customerId: 'b1c2d3e4-f506-4172-8384-95a6b7c8d9e0',
+  role: 'ADMINISTRADOR' as const,
+};
 
 function fixture() {
   const repository = new InMemoryAccountRepository();
@@ -68,6 +75,55 @@ function seed(
 
   return account;
 }
+
+describe('incoming interbank deposits', () => {
+  const query = { depositId: TRANSACTION, accountId: ACCOUNT };
+  const command = { ...query, amount: quetzales(12500) };
+
+  it('answers eligibility without changing the account', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository);
+    const useCase = new InterbankAccountUseCase(dependencies);
+
+    await useCase.eligibility(query);
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+    expect(publisher.replies).toMatchObject([
+      {
+        messageType: 'account.interbank.eligibility.replied.v1',
+        payload: { eligible: true, reason: null },
+      },
+    ]);
+  });
+
+  it('credits once and republishes the same verdict on redelivery', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository);
+    const useCase = new InterbankAccountUseCase(dependencies);
+
+    await useCase.credit(command);
+    await useCase.credit(command);
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(12500);
+    expect(publisher.typesPublished()).toEqual([
+      'account.interbank.credited.v1',
+      'account.interbank.credited.v1',
+    ]);
+  });
+
+  it('refuses an account deactivated after eligibility without moving money', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { status: 'INACTIVE' });
+
+    await new InterbankAccountUseCase(dependencies).credit(command);
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.interbank.credit.rejected.v1',
+      payload: { reason: 'ACCOUNT_INACTIVE' },
+    });
+  });
+});
 
 describe('opening an account', () => {
   const payload = { accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'MONETARIA' as const };
@@ -139,7 +195,11 @@ describe('opening an account', () => {
 
   /** T-27: AHORRO's minimum opening deposit — a condition of opening, checked once. */
   describe('the AHORRO minimum opening deposit', () => {
-    const ahorroPayload = { accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'AHORRO' as const };
+    const ahorroPayload = {
+      accountId: ACCOUNT,
+      customerId: CUSTOMER,
+      accountType: 'AHORRO' as const,
+    };
 
     it('refuses to open an AHORRO account below the Q100.00 minimum, and creates nothing', async () => {
       const { repository, publisher, dependencies } = fixture();
@@ -577,9 +637,9 @@ describe('compensating, which is criterion 5', () => {
 
     // Back to the exact balance before the transfer.
     expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(20_000);
-    expect(
-      repository.operations.find((operation) => operation.type === 'COMMISSION')?.status,
-    ).toBe('COMPENSATED');
+    expect(repository.operations.find((operation) => operation.type === 'COMMISSION')?.status).toBe(
+      'COMPENSATED',
+    );
   });
 });
 
@@ -640,7 +700,7 @@ describe('an administrator changing the status by hand', () => {
     });
   });
 
-  it('ignores a customer trying to change someone else\'s account', async () => {
+  it("ignores a customer trying to change someone else's account", async () => {
     const { repository, publisher, dependencies } = fixture();
     seed(repository, { customerId: 'different-customer-id' });
 

@@ -249,6 +249,63 @@ export const MIGRATIONS: readonly Migration[] = [
       `ALTER TABLE outbox_messages ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
     ],
   },
+  {
+    name: '007_interbank_deposits',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS interbank_deposits (
+         deposit_id UUID PRIMARY KEY,
+         origin_bank_code VARCHAR(32) NOT NULL,
+         external_transfer_id VARCHAR(128) NOT NULL,
+         idempotency_key VARCHAR(128) NOT NULL,
+         destination_account_id UUID NOT NULL,
+         amount_minor BIGINT NOT NULL CHECK (amount_minor > 0),
+         currency VARCHAR(3) NOT NULL,
+         correlation_id UUID NOT NULL,
+         origin_envelope JSONB NOT NULL,
+         stage VARCHAR(20) NOT NULL CHECK (stage IN ('ELIGIBILITY','CREDIT','ACCEPTED','REJECTED')),
+         rejection_reason VARCHAR(40),
+         next_action_at TIMESTAMPTZ,
+         result_envelope JSONB,
+         result_published_at TIMESTAMPTZ,
+         callback_attempts INTEGER NOT NULL DEFAULT 0,
+         callback_due_at TIMESTAMPTZ,
+         callback_delivered_at TIMESTAMPTZ,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+         decided_at TIMESTAMPTZ,
+         UNIQUE (origin_bank_code, external_transfer_id),
+         UNIQUE (origin_bank_code, idempotency_key),
+         CHECK ((stage IN ('ACCEPTED','REJECTED')) = (decided_at IS NOT NULL)),
+         CHECK ((stage = 'REJECTED') = (rejection_reason IS NOT NULL)),
+         CHECK ((stage IN ('ACCEPTED','REJECTED')) = (result_envelope IS NOT NULL))
+       )`,
+      `CREATE INDEX IF NOT EXISTS interbank_action_due_idx ON interbank_deposits (next_action_at) WHERE next_action_at IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS interbank_callback_due_idx ON interbank_deposits (callback_due_at) WHERE callback_due_at IS NOT NULL`,
+    ],
+  },
+  {
+    name: '008_interbank_conflicts',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS interbank_conflicts (
+         message_id UUID PRIMARY KEY,
+         origin_envelope JSONB NOT NULL,
+         result_envelope JSONB NOT NULL,
+         result_published_at TIMESTAMPTZ,
+         callback_attempts INTEGER NOT NULL DEFAULT 0,
+         callback_due_at TIMESTAMPTZ NOT NULL,
+         callback_delivered_at TIMESTAMPTZ,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+       )`,
+      `CREATE INDEX IF NOT EXISTS interbank_conflict_callback_due_idx
+         ON interbank_conflicts (callback_due_at) WHERE callback_delivered_at IS NULL`,
+    ],
+  },
+  {
+    name: '009_interbank_trace_context',
+    statements: [
+      `ALTER TABLE interbank_deposits ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
+      `ALTER TABLE interbank_conflicts ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
+    ],
+  },
 ];
 
 /**

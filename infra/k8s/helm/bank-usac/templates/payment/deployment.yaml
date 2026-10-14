@@ -89,6 +89,18 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: PAYMENT_SIM_LATENCY_MS
+            - name: INTERBANK_PARTNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: INTERBANK_PARTNER_TOKEN
+            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_MAX_AMOUNT_MINOR" "INTERBANK_CALLBACK_URL" }}
+            - name: {{ $key }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" $ }}-config
+                  key: {{ $key }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health

@@ -709,6 +709,83 @@ paths:
       tags:
         - alerts
       x-bank-publishes: alert.slo.received.v1
+  /api/interbank/deposits:
+    post:
+      description: Contrato provisional T-46. Requiere el token compartido del banco asociado; responde al
+        aceptar el comando. El resultado llega por callback.
+      operationId: InterbankController_receive
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - interbankTransferId
+                - idempotencyKey
+                - originBankCode
+                - destinationBankCode
+                - accountId
+                - amount
+              additionalProperties: false
+              properties:
+                interbankTransferId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                idempotencyKey:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                originBankCode:
+                  type: string
+                  pattern: ^[A-Z][A-Z0-9_]{1,31}$
+                destinationBankCode:
+                  type: string
+                  pattern: ^[A-Z][A-Z0-9_]{1,31}$
+                accountId:
+                  type: string
+                  format: uuid
+                amount:
+                  type: object
+                  required:
+                    - amountMinor
+                    - currency
+                  additionalProperties: false
+                  properties:
+                    amountMinor:
+                      type: integer
+                    currency:
+                      type: string
+                      pattern: ^[A-Z]{3}$
+      responses:
+        "202":
+          description: Comando publicado para validación y crédito.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - depositId
+                  - correlationId
+                properties:
+                  depositId:
+                    type: string
+                    format: uuid
+                  correlationId:
+                    type: string
+                    format: uuid
+        "400":
+          description: Solicitud malformada.
+        "401":
+          description: Token ausente, incorrecto o sin configurar.
+      security:
+        - interbankPartner: []
+      summary: Recibe un depósito del banco asociado
+      tags:
+        - interbank
+      x-bank-publishes: payment.interbank.receive.v1
   /api/notifications:
     get:
       description: "El alcance sale del token y la consulta no lleva customerId: no hay forma de apuntarla
@@ -789,6 +866,10 @@ components:
       bearerFormat: JWT
       type: http
     alertWebhook:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
+    interbankPartner:
       scheme: bearer
       bearerFormat: JWT
       type: http

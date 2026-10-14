@@ -1,5 +1,9 @@
 import {
   paymentListQueryV1,
+  paymentInterbankReceiveV1,
+  accountInterbankEligibilityRepliedV1,
+  accountInterbankCreditedV1,
+  accountInterbankCreditRejectedV1,
   paymentRequestedV1,
   paymentSimulationQueryV1,
   paymentSimulationUpdateV1,
@@ -11,9 +15,52 @@ import type { MessageEnvelope } from '@bank/contracts';
 import type { EventPublisher } from '../application/ports';
 import type { SimulationUseCase } from '../application/manage-simulation.use-case';
 import type { ProcessPaymentUseCase } from '../application/process-payment.use-case';
+import type { InterbankUseCase } from '../application/interbank.use-case';
 import type { GetPaymentStatsUseCase } from '../application/get-payment-stats.use-case';
 import type { QueryPaymentUseCase } from '../application/query-payment.use-case';
 import type { InboundMessageHandler } from './inbound-message.handler';
+
+export class InterbankReceiveHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankReceiveV1.name;
+  constructor(readonly useCase: InterbankUseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    paymentInterbankReceiveV1.schema.parse(envelope.payload);
+    await this.useCase.receive(envelope);
+  }
+}
+
+export class InterbankEligibilityReplyHandler implements InboundMessageHandler {
+  readonly messageType = accountInterbankEligibilityRepliedV1.name;
+  constructor(readonly useCase: InterbankUseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.eligibility(
+      envelope,
+      accountInterbankEligibilityRepliedV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+export class InterbankCreditedHandler implements InboundMessageHandler {
+  readonly messageType = accountInterbankCreditedV1.name;
+  constructor(readonly useCase: InterbankUseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.credited(
+      envelope,
+      accountInterbankCreditedV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+export class InterbankCreditRejectedHandler implements InboundMessageHandler {
+  readonly messageType = accountInterbankCreditRejectedV1.name;
+  constructor(readonly useCase: InterbankUseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.creditRejected(
+      envelope,
+      accountInterbankCreditRejectedV1.schema.parse(envelope.payload),
+    );
+  }
+}
 
 /**
  * The three messages this service claims, each parsed against its own contract
@@ -116,7 +163,6 @@ export class PaymentStatusHandler implements InboundMessageHandler {
     await this.#useCase.status(query.paymentId, this.#publisher);
   }
 }
-
 
 /**
  * `payment.simulation.update.v1` — an administrator changing how the simulated

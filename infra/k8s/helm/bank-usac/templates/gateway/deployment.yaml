@@ -71,6 +71,11 @@ spec:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: ALERT_WEBHOOK_TOKEN
                   optional: true
+            - name: INTERBANK_PARTNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: INTERBANK_PARTNER_TOKEN
             # Names this replica's private reply queue, which the broker
             # declares `exclusive` (apps/packages/messaging/src/broker.ts) so
             # that two replicas cannot share one — a shared queue would have

@@ -2,6 +2,7 @@ import {
   DomainRejection,
   compensate,
   credit,
+  creditInterbank,
   debit,
   openAccount,
   openingDepositRefusal,
@@ -102,7 +103,9 @@ describe('debiting', () => {
   });
 
   it('allows a debit that empties the account exactly — no floor once it is open (T-27)', () => {
-    expect(debit(account({ balanceMinor: 2_500 }), quetzales(2_500), NOW).account.balanceMinor).toBe(0);
+    expect(
+      debit(account({ balanceMinor: 2_500 }), quetzales(2_500), NOW).account.balanceMinor,
+    ).toBe(0);
   });
 
   it('refuses one centavo more than the balance, and says why', () => {
@@ -155,6 +158,14 @@ describe('crediting', () => {
 
   it('does not claim to have reactivated an account that was already active', () => {
     expect(credit(account({ balanceMinor: 0 }), quetzales(500), NOW).reactivated).toBe(false);
+  });
+});
+
+describe('an incoming interbank credit', () => {
+  it('refuses an inactive destination instead of reactivating it', () => {
+    expect(() =>
+      creditInterbank(account({ balanceMinor: 1_000, status: 'INACTIVE' }), quetzales(500), NOW),
+    ).toThrow(expect.objectContaining({ code: 'ACCOUNT_INACTIVE' }));
   });
 });
 
@@ -264,9 +275,9 @@ describe('the automatic deactivation, at its four boundaries', () => {
   });
 
   it('leaves an already inactive account alone, so the job is idempotent', () => {
-    expect(
-      shouldDeactivate({ ...candidate(0, SIX_MONTHS_AGO), status: 'INACTIVE' }, NOW),
-    ).toBe(false);
+    expect(shouldDeactivate({ ...candidate(0, SIX_MONTHS_AGO), status: 'INACTIVE' }, NOW)).toBe(
+      false,
+    );
   });
 
   it('falls back to the opening date for an account that never moved', () => {
@@ -339,7 +350,9 @@ describe('account type rules (T-27): the AHORRO commission', () => {
 
   it('never charges a commission on credit or compensation, only on debit', () => {
     expect(credit(ahorro({ balanceMinor: 0 }), quetzales(500), NOW).commission).toBeNull();
-    expect(compensate(ahorro({ balanceMinor: 0 }), quetzales(500), null, NOW).commission).toBeNull();
+    expect(
+      compensate(ahorro({ balanceMinor: 0 }), quetzales(500), null, NOW).commission,
+    ).toBeNull();
   });
 });
 

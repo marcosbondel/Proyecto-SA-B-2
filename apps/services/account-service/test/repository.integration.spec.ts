@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { ActivityMonitor } from '../src/application/activity-monitor';
 import { CompensateDebitUseCase } from '../src/application/compensate-debit.use-case';
 import { CreditAccountUseCase } from '../src/application/credit-account.use-case';
+import { InterbankAccountUseCase } from '../src/application/interbank-account.use-case';
 import { DebitAccountUseCase } from '../src/application/debit-account.use-case';
 import { DomainRejection, compensate, credit, debit, openAccount } from '../src/domain/account';
 import { quetzales } from '../src/domain/money';
@@ -55,7 +56,9 @@ describeIntegration('PostgresAccountRepository', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('TRUNCATE account_anomalies, account_operations, accounts, processed_messages, deactivation_runs');
+    await pool.query(
+      'TRUNCATE account_anomalies, account_operations, accounts, processed_messages, deactivation_runs',
+    );
   });
 
   async function seed(
@@ -92,6 +95,36 @@ describeIntegration('PostgresAccountRepository', () => {
 
     return stored.accountId;
   }
+
+  it('credits an active account once and refuses an inactive destination under the database lock', async () => {
+    const active = await seed(0);
+    const inactive = await seed(0);
+    await pool.query("UPDATE accounts SET status = 'INACTIVE' WHERE account_id = $1", [inactive]);
+    const publisher = new RecordingPublisher();
+    const useCase = new InterbankAccountUseCase({
+      repository,
+      publisher,
+      clock: new FixedClock(NOW),
+    });
+    const depositId = randomUUID();
+
+    await useCase.credit({ depositId, accountId: active, amount: quetzales(12500) });
+    await useCase.credit({ depositId, accountId: active, amount: quetzales(12500) });
+    await useCase.credit({
+      depositId: randomUUID(),
+      accountId: inactive,
+      amount: quetzales(12500),
+    });
+
+    expect((await repository.findById(active))?.balanceMinor).toBe(12500);
+    expect((await repository.findById(inactive))?.balanceMinor).toBe(0);
+    expect((await repository.findById(inactive))?.status).toBe('INACTIVE');
+    expect(publisher.typesPublished()).toEqual([
+      'account.interbank.credited.v1',
+      'account.interbank.credited.v1',
+      'account.interbank.credit.rejected.v1',
+    ]);
+  });
 
   describe('money survives the round trip', () => {
     it('stores and reads back the values that floating point ruins', async () => {
@@ -182,24 +215,26 @@ describeIntegration('PostgresAccountRepository', () => {
     it('never lets the balance go below zero, whatever arrives at once', async () => {
       const accountId = await seed(1_000);
 
-      const attempts = Array.from({ length: 8 }, async () =>
-        await repository
-          .applyMovement({
-            accountId,
-            type: 'DEBIT',
-            transactionId: randomUUID(),
-            idempotencyKey: randomUUID(),
-            messageType: 'account.debit.requested.v1',
-            decide: (account) => debit(account, quetzales(300), NOW),
-            now: NOW,
-          })
-          .catch((error: unknown) => {
-            if (!(error instanceof DomainRejection)) {
-              throw error;
-            }
+      const attempts = Array.from(
+        { length: 8 },
+        async () =>
+          await repository
+            .applyMovement({
+              accountId,
+              type: 'DEBIT',
+              transactionId: randomUUID(),
+              idempotencyKey: randomUUID(),
+              messageType: 'account.debit.requested.v1',
+              decide: (account) => debit(account, quetzales(300), NOW),
+              now: NOW,
+            })
+            .catch((error: unknown) => {
+              if (!(error instanceof DomainRejection)) {
+                throw error;
+              }
 
-            return null;
-          }),
+              return null;
+            }),
       );
 
       const applied = (await Promise.all(attempts)).filter((result) => result !== null);
@@ -675,7 +710,11 @@ describeIntegration('PostgresAccountRepository', () => {
 
     async function burst(accountId: string, count: number, from: Date = T0): Promise<void> {
       for (let i = 0; i < count; i += 1) {
-        await ledger(accountId, i % 2 === 0 ? 'DEBIT' : 'CREDIT', new Date(from.getTime() + i * SECOND));
+        await ledger(
+          accountId,
+          i % 2 === 0 ? 'DEBIT' : 'CREDIT',
+          new Date(from.getTime() + i * SECOND),
+        );
       }
     }
 
@@ -753,7 +792,10 @@ describeIntegration('PostgresAccountRepository', () => {
       const first = await claim(accountId, new Date(T0.getTime() + 10 * SECOND));
       expect(first).not.toBeNull();
       // It reached the broker, so nobody has anything left to announce.
-      await repository.markAnomalyPublished(first!.anomaly.anomalyId, new Date(T0.getTime() + 11 * SECOND));
+      await repository.markAnomalyPublished(
+        first!.anomaly.anomalyId,
+        new Date(T0.getTime() + 11 * SECOND),
+      );
 
       expect(await claim(accountId, new Date(T0.getTime() + 2 * MINUTE))).toBeNull();
       expect(await claim(accountId, new Date(T0.getTime() + 4 * MINUTE))).toBeNull();
@@ -849,7 +891,10 @@ describeIntegration('PostgresAccountRepository', () => {
 
       const firstMark = new Date(T0.getTime() + 11 * SECOND);
       await repository.markAnomalyPublished(claimed!.anomaly.anomalyId, firstMark);
-      await repository.markAnomalyPublished(claimed!.anomaly.anomalyId, new Date(firstMark.getTime() + MINUTE));
+      await repository.markAnomalyPublished(
+        claimed!.anomaly.anomalyId,
+        new Date(firstMark.getTime() + MINUTE),
+      );
 
       const [row] = await storedAnomalies(accountId);
       expect((row.published_at as Date).toISOString()).toBe(firstMark.toISOString());
@@ -1001,8 +1046,10 @@ describeIntegration('PostgresAccountRepository', () => {
       );
 
       expect(anomalyEvents(publisher)).toHaveLength(1);
-      expect((await pool.query('SELECT 1 FROM account_anomalies WHERE account_id = $1', [accountId])).rows)
-        .toHaveLength(1);
+      expect(
+        (await pool.query('SELECT 1 FROM account_anomalies WHERE account_id = $1', [accountId]))
+          .rows,
+      ).toHaveLength(1);
     });
 
     it('announces one anomaly when two replicas share the traffic', async () => {
@@ -1017,7 +1064,9 @@ describeIntegration('PostgresAccountRepository', () => {
         ),
       );
 
-      expect(anomalyEvents(replicaA.publisher).length + anomalyEvents(replicaB.publisher).length).toBe(1);
+      expect(
+        anomalyEvents(replicaA.publisher).length + anomalyEvents(replicaB.publisher).length,
+      ).toBe(1);
     });
 
     it('takes N and M from the rule it is given: the same ledger, two rules, two answers', async () => {
@@ -1032,7 +1081,10 @@ describeIntegration('PostgresAccountRepository', () => {
       }
 
       expect(anomalyEvents(strict.publisher)).toHaveLength(1);
-      expect(anomalyEvents(strict.publisher)[0]!.payload).toMatchObject({ threshold: 3, operationCount: 4 });
+      expect(anomalyEvents(strict.publisher)[0]!.payload).toMatchObject({
+        threshold: 3,
+        operationCount: 4,
+      });
       expect(anomalyEvents(lenient.publisher)).toHaveLength(0);
     });
 
@@ -1052,14 +1104,19 @@ describeIntegration('PostgresAccountRepository', () => {
       const accountId = await seed(1_000_000);
       const broken = new PostgresAccountRepository(pool);
       broken.claimAnomaly = () => Promise.reject(new Error('detector exploded'));
-      const { publisher, telemetry, debit } = stack({ maxOperations: 0 + 1, windowMinutes: 5 }, broken);
+      const { publisher, telemetry, debit } = stack(
+        { maxOperations: 0 + 1, windowMinutes: 5 },
+        broken,
+      );
 
       await expect(debit.execute(debitCommand(accountId), randomUUID())).resolves.toBeUndefined();
 
       // The debit committed and was announced; the failure is telemetry, not an error.
       expect(publisher.typesPublished()).toContain('account.debited.v1');
       expect((await repository.findById(accountId))?.balanceMinor).toBe(1_000_000 - 100);
-      expect(telemetry.failures).toMatchObject([{ accountId, stage: 'detection', reason: 'detector exploded' }]);
+      expect(telemetry.failures).toMatchObject([
+        { accountId, stage: 'detection', reason: 'detector exploded' },
+      ]);
     });
   });
 });

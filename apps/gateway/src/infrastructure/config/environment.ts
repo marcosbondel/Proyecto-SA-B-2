@@ -141,6 +141,12 @@ export class GatewayEnvironment {
   @IsString()
   @MinLength(32)
   public ALERT_WEBHOOK_TOKEN?: string;
+
+  /** Shared with the one configured partner bank; absent means ingress is closed. */
+  @IsOptional()
+  @IsString()
+  @MinLength(32)
+  public INTERBANK_PARTNER_TOKEN?: string;
 }
 
 /**
@@ -178,6 +184,8 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Gatewa
     CORS_ALLOWED_ORIGINS: source.CORS_ALLOWED_ORIGINS ?? 'http://localhost:3010',
     // An empty string is how an unset Secret reaches a container: absent, not a token.
     ALERT_WEBHOOK_TOKEN: source.ALERT_WEBHOOK_TOKEN === '' ? undefined : source.ALERT_WEBHOOK_TOKEN,
+    INTERBANK_PARTNER_TOKEN:
+      source.INTERBANK_PARTNER_TOKEN === '' ? undefined : source.INTERBANK_PARTNER_TOKEN,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

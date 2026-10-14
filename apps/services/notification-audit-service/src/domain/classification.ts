@@ -114,6 +114,8 @@ const CATALOGUE: Readonly<Record<string, EventSeverity>> = {
   'account.debited.v1': 'INFO',
   'account.debit.rejected.v1': 'WARNING',
   'account.credited.v1': 'INFO',
+  'account.interbank.credited.v1': 'INFO',
+  'account.interbank.credit.rejected.v1': 'WARNING',
   'account.credit.rejected.v1': 'WARNING',
   'account.debit.compensated.v1': 'ERROR',
   'account.commission.charged.v1': 'INFO',
@@ -127,6 +129,8 @@ const CATALOGUE: Readonly<Record<string, EventSeverity>> = {
   // payment.*
   'payment.attempt.failed.v1': 'WARNING',
   'payment.succeeded.v1': 'INFO',
+  'payment.interbank.accepted.v1': 'INFO',
+  'payment.interbank.rejected.v1': 'WARNING',
   'payment.failed.v1': 'ERROR',
 };
 
@@ -226,7 +230,10 @@ export function classifyAlerts(payload: unknown): EventSeverity {
  */
 export function alertSummaries(
   payload: unknown,
-): readonly { readonly status: 'firing' | 'resolved'; readonly severity: 'critical' | 'warning' | 'info' }[] {
+): readonly {
+  readonly status: 'firing' | 'resolved';
+  readonly severity: 'critical' | 'warning' | 'info';
+}[] {
   const alerts =
     typeof payload === 'object' && payload !== null
       ? (payload as { alerts?: unknown }).alerts

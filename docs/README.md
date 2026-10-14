@@ -57,6 +57,7 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | [operations/CONTAINERS.md](operations/CONTAINERS.md) | El inventario de las siete imágenes: Dockerfile, puerto, health checks y variables requeridas. |
 | [operations/CI.md](operations/CI.md) | Los cuatro workflows de GitHub Actions: qué los dispara, qué verifica cada etapa, cómo se publica una versión y qué no demuestra un run verde. |
 | [operations/EMAIL_RESEND.md](operations/EMAIL_RESEND.md) | Cómo enviar correo de activación real en lugar del canal simulado. |
+| [operations/INTERBANK.md](operations/INTERBANK.md) | Contrato provisional T-46, mock local y reintentos de callbacks para depósitos interbancarios entrantes. |
 | [RELIABILITY.md](RELIABILITY.md) | Las preocupaciones de confiabilidad que el enunciado exige resolver: idempotencia, reintentos, consistencia eventual, trazabilidad. |
 | [sre/sli-slo-sla.md](sre/sli-slo-sla.md) | Qué se mide ([SLI](sre/sli-slo-sla.md#4-indicadores-de-nivel-de-servicio-sli)), qué meta se persigue ([SLO](sre/sli-slo-sla.md#5-objetivos-de-nivel-de-servicio-slo)) y qué se promete ([SLA](sre/sli-slo-sla.md#7-acuerdo-de-nivel-de-servicio-sla)). Encadenados: ninguna promesa sin un número que la verifique. |
 

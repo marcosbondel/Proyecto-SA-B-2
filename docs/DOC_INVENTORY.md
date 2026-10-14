@@ -66,6 +66,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/operations/CLOUD.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/operations/DEPLOYMENT.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/operations/EMAIL_RESEND.md` | project | Marcos Bonifasi | current | 2026-08-30 |
+| `docs/operations/INTERBANK.md` | project | Marcos Bonifasi | current | 2026-10-12 |
 | `docs/architecture/deployment.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `infra/k8s/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `infra/terraform/gcp/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
