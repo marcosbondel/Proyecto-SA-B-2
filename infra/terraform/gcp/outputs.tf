@@ -30,9 +30,47 @@ output "database_private_ips" {
   }
 }
 
+output "artifact_repo" {
+  description = "Nombre del repositorio de Artifact Registry. Es el valor de la variable de repositorio ARTIFACT_REPO en GitHub."
+  value       = google_artifact_registry_repository.images.repository_id
+}
+
+output "image_registry" {
+  description = "Prefijo del registry al que empujan release.yml y cd.yml, sin el nombre del componente."
+  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.images.repository_id}"
+}
+
+output "gateway_public_ip" {
+  description = "IP pública reservada del API Gateway. Es el valor de gateway.loadBalancerIP del chart y la dirección que va en el acuerdo de integración con el banco pareja."
+  value       = google_compute_address.gateway.address
+}
+
+output "gateway_public_url" {
+  description = "URL pública del API Gateway. Es el valor de la variable de repositorio GATEWAY_PUBLIC_URL en GitHub."
+  value       = local.gateway_public_url
+}
+
+output "cloud_run_service_name" {
+  description = "Nombre del servicio de Cloud Run del frontend. Es el valor de la variable de repositorio CLOUD_RUN_SERVICE, sin la cual cd.yml no actualiza el portal público (TD-081)."
+  value       = length(google_cloud_run_v2_service.web) > 0 ? google_cloud_run_v2_service.web[0].name : null
+}
+
 output "cloud_run_web_url" {
   description = "URL pública de acceso a la interfaz web desplegada en Cloud Run."
   value       = length(google_cloud_run_v2_service.web) > 0 ? google_cloud_run_v2_service.web[0].uri : null
+}
+
+output "github_repository_variables" {
+  description = "Las variables de repositorio que cd.yml y release.yml exigen, con los valores que acaba de producir este apply. Se pegan en Settings > Secrets and variables > Actions > Variables."
+  value       = <<-EOT
+    GCP_PROJECT_ID     = ${var.project_id}
+    GKE_CLUSTER        = ${google_container_cluster.primary.name}
+    GKE_ZONE           = ${var.zone}
+    ARTIFACT_REPO      = ${google_artifact_registry_repository.images.repository_id}
+    GATEWAY_PUBLIC_URL = ${local.gateway_public_url}
+    GATEWAY_STATIC_IP  = ${google_compute_address.gateway.address}
+    CLOUD_RUN_SERVICE  = ${length(google_cloud_run_v2_service.web) > 0 ? google_cloud_run_v2_service.web[0].name : "(deploy_cloud_run = false)"}
+  EOT
 }
 
 output "helm_external_ips_example" {

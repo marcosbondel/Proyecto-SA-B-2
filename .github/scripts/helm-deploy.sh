@@ -42,6 +42,17 @@
 #                    aqui para que ese caso no exista.
 #
 # Variable opcional:
+#   GATEWAY_STATIC_IP  la IP reservada por Terraform
+#                    (`terraform output -raw gateway_public_ip`). El chart pone
+#                    el Service del Gateway en LoadBalancer por defecto; esto
+#                    fija ADEMAS la direccion, para que la entrada publica del
+#                    banco sobreviva a que se borre el Service o se reinstale
+#                    el release (TD-080). Solo produccion la define: el
+#                    acuerdo de integracion con el banco pareja lleva esa
+#                    direccion escrita, y una IP que cambia rompe el acuerdo.
+#                    Sin ella, el proveedor asigna una efimera.
+#
+# Variable opcional:
 #   IN_CLUSTER_BROKER  `true` levanta RabbitMQ DENTRO del namespace en vez de
 #                    apuntar a la VM. Es lo que separa de verdad a `dev` de
 #                    `prod`: con el broker compartido, los consumidores de
@@ -329,6 +340,7 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   --set-string "imagePullPolicy=IfNotPresent" \
   --set-string "web.apiBaseUrl=${GATEWAY_PUBLIC_URL}" \
   ${INFRA_PROPIA_ARGS[@]+"${INFRA_PROPIA_ARGS[@]}"} \
+  ${GATEWAY_STATIC_IP:+--set-string "gateway.loadBalancerIP=${GATEWAY_STATIC_IP}"} \
   --set-string "databaseSuffix=${DATABASE_SUFFIX:-}" \
   --set-string "observability.environment=${NAMESPACE}" \
   ${OTEL_EXPORTER_OTLP_ENDPOINT:+--set-string "observability.otlpEndpoint=${OTEL_EXPORTER_OTLP_ENDPOINT}"} \
