@@ -10,6 +10,7 @@ import {
   SESSION_SIGNER,
 } from './application/ports';
 import { AlertWebhookUseCase } from './application/routes/alert-webhook.use-case';
+import { InterbankReceiveUseCase } from './application/routes/interbank-receive.use-case';
 import { CommandsUseCase } from './application/routes/commands.use-case';
 import { ChangePasswordUseCase } from './application/routes/change-password.use-case';
 import { DepositUseCase } from './application/routes/deposit.use-case';
@@ -24,6 +25,7 @@ import { VerifyEmailUseCase } from './application/routes/verify-email.use-case';
 import { DashboardController } from './interfaces/dashboard.controller';
 import { NotificationsController } from './interfaces/notifications.controller';
 import { AlertsController } from './interfaces/alerts.controller';
+import { InterbankController } from './interfaces/interbank.controller';
 import { AuditController } from './interfaces/audit.controller';
 import { AccountsController } from './interfaces/accounts.controller';
 import { AuthController } from './interfaces/auth.controller';
@@ -38,6 +40,10 @@ import { ReplyQueueAdapter } from './infrastructure/messaging/reply-queue.adapte
 import { S3ObjectStorageAdapter } from './infrastructure/storage/s3-object-storage.adapter';
 import { GatewayExceptionFilter } from './interfaces/filters/gateway-exception.filter';
 import { ALERT_WEBHOOK_TOKEN, AlertTokenGuard } from './interfaces/guards/alert-token.guard';
+import {
+  INTERBANK_PARTNER_TOKEN,
+  InterbankTokenGuard,
+} from './interfaces/guards/interbank-token.guard';
 import { JwtGuard, SESSION_VERIFIER } from './interfaces/guards/jwt.guard';
 import { RolesGuard } from './interfaces/guards/roles.guard';
 import { BROKER_HEALTH, HealthController } from './interfaces/health.controller';
@@ -94,6 +100,7 @@ export class AppModule implements NestModule {
         PaymentsController,
         AuditController,
         AlertsController,
+        InterbankController,
         NotificationsController,
         DashboardController,
       ],
@@ -116,8 +123,11 @@ export class AppModule implements NestModule {
         // The webhook's secret, or `null` — and `null` means the webhook refuses everyone.
         { provide: ALERT_WEBHOOK_TOKEN, useValue: environment.ALERT_WEBHOOK_TOKEN ?? null },
         AlertTokenGuard,
+        { provide: INTERBANK_PARTNER_TOKEN, useValue: environment.INTERBANK_PARTNER_TOKEN ?? null },
+        InterbankTokenGuard,
 
         AlertWebhookUseCase,
+        InterbankReceiveUseCase,
         ChangePasswordUseCase,
         DepositUseCase,
         DashboardUseCase,

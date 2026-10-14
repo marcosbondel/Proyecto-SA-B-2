@@ -8,6 +8,8 @@ import {
   accountDebitCompensationRequestedV1,
   accountDebitRequestedV1,
   accountListQueryV1,
+  accountInterbankEligibilityQueryV1,
+  accountInterbankCreditRequestedV1,
   accountOperationsQueryV1,
   accountSetStatusV1,
 } from '@bank/contracts';
@@ -23,6 +25,7 @@ import type { DebitAccountUseCase } from '../application/debit-account.use-case'
 import type { GetBalanceUseCase } from '../application/get-balance.use-case';
 import type { GetOperationsUseCase } from '../application/get-operations.use-case';
 import type { ListAccountsUseCase } from '../application/list-accounts.use-case';
+import type { InterbankAccountUseCase } from '../application/interbank-account.use-case';
 import type { SetAccountStatusUseCase } from '../application/set-account-status.use-case';
 import type { InboundMessageHandler } from './inbound-message.handler';
 
@@ -53,6 +56,40 @@ abstract class ContractHandler<TPayload> implements InboundMessageHandler {
   protected abstract parse(payload: unknown): TPayload;
 
   protected abstract run(payload: TPayload, envelope: MessageEnvelope<unknown>): Promise<void>;
+}
+
+export class InterbankEligibilityHandler extends ContractHandler<
+  ReturnType<typeof accountInterbankEligibilityQueryV1.schema.parse>
+> {
+  public readonly messageType = accountInterbankEligibilityQueryV1.name;
+  constructor(readonly useCase: InterbankAccountUseCase) {
+    super();
+  }
+  protected parse(payload: unknown) {
+    return accountInterbankEligibilityQueryV1.schema.parse(payload);
+  }
+  protected async run(
+    payload: ReturnType<typeof accountInterbankEligibilityQueryV1.schema.parse>,
+  ): Promise<void> {
+    await this.useCase.eligibility(payload);
+  }
+}
+
+export class InterbankCreditHandler extends ContractHandler<
+  ReturnType<typeof accountInterbankCreditRequestedV1.schema.parse>
+> {
+  public readonly messageType = accountInterbankCreditRequestedV1.name;
+  constructor(readonly useCase: InterbankAccountUseCase) {
+    super();
+  }
+  protected parse(payload: unknown) {
+    return accountInterbankCreditRequestedV1.schema.parse(payload);
+  }
+  protected async run(
+    payload: ReturnType<typeof accountInterbankCreditRequestedV1.schema.parse>,
+  ): Promise<void> {
+    await this.useCase.credit(payload);
+  }
 }
 
 export class CreateAccountHandler extends ContractHandler<

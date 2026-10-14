@@ -1,0 +1,20 @@
+{
+  "name": "partner-bank-mock",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Optional local partner bank for provisional interbank contract T-46",
+  "type": "module",
+  "scripts": {
+    "build": "node --check server.mjs",
+    "dev": "node --env-file-if-exists=../../infra/docker/.env server.mjs",
+    "start": "node server.mjs",
+    "lint": "eslint .",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "node --check server.mjs"
+  },
+  "devDependencies": {
+    "@bank/contracts": "workspace:*",
+    "@bank/tooling": "workspace:*",
+    "eslint": "catalog:"
+  }
+}

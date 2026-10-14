@@ -30,6 +30,7 @@ function uuidFor(field: string): string {
 /** Patterns the primitives use, answered with a value that satisfies them. */
 const BY_PATTERN: readonly (readonly [RegExp, string])[] = [
   [/\^\[A-Z\]\{3\}\$/, 'GTQ'],
+  [/\[A-Z\]\[A-Z0-9_\]/, 'BANK'],
   [/\[0-9a-f\]\{64\}/, 'a'.repeat(64)],
   // A W3C trace id (T-45): the specification's own example.
   [/\[0-9a-f\]\{32\}/, '4bf92f3577b34da6a3ce929d0e0e4736'],
@@ -77,6 +78,7 @@ function fromNode(node: JsonSchema, field = 'id'): unknown {
       for (const [key, child] of Object.entries(node.properties ?? {})) {
         value[key] = fromNode(child, key);
       }
+      if (value.eligible === true && 'reason' in value) value.reason = null;
       return value;
     }
     case 'array': {

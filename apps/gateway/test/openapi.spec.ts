@@ -7,6 +7,7 @@ import { parse, stringify } from 'yaml';
 
 import { AccountsController } from '../src/interfaces/accounts.controller';
 import { AlertsController } from '../src/interfaces/alerts.controller';
+import { InterbankController } from '../src/interfaces/interbank.controller';
 import { AuditController } from '../src/interfaces/audit.controller';
 import { DashboardController } from '../src/interfaces/dashboard.controller';
 import { NotificationsController } from '../src/interfaces/notifications.controller';
@@ -38,6 +39,7 @@ const CONTROLLERS = [
   PaymentsController,
   AuditController,
   AlertsController,
+  InterbankController,
   NotificationsController,
   DashboardController,
 ];
@@ -87,7 +89,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the twenty-six paths the tickets fixed', () => {
+  it('declares the paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -111,6 +113,7 @@ describe('the versioned API contract', () => {
         // Added for the prototype's D-01 and D-02: five services' own counts,
         // composed. The Gateway holds five replies and computes nothing.
         '/api/dashboard',
+        '/api/interbank/deposits',
         '/api/auth/login',
         // Added for the prototype's P-07: the password recovery the assignment's
         // flow needs and that no route offered.
@@ -180,7 +183,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(29);
+      expect(functional).toHaveLength(30);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

@@ -242,6 +242,15 @@ export function credit(account: Account, amount: Money, now: Date): Movement {
   return moved(account, amount.amountMinor, amount, account.status === 'INACTIVE', now, true);
 }
 
+/** An external bank may deposit only into an account that is active now. */
+export function creditInterbank(account: Account, amount: Money, now: Date): Movement {
+  if (account.status !== 'ACTIVE') {
+    throw new DomainRejection('ACCOUNT_INACTIVE', 'La cuenta destino no está activa.');
+  }
+
+  return credit(account, amount, now);
+}
+
 /**
  * Returns a debit that should not have happened.
  *

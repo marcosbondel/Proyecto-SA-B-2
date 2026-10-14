@@ -23,6 +23,7 @@ export interface LogFields {
   readonly messageType?: string;
   readonly transactionId?: string;
   readonly paymentId?: string;
+  readonly depositId?: string;
   readonly status?: string;
   readonly outcome?: string;
   readonly reason?: string;
