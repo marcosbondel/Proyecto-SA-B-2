@@ -1,0 +1,549 @@
+{
+  "uid": "bank-interbancario",
+  "title": "Bank USAC · Banco pareja",
+  "tags": [
+    "bank-usac",
+    "interbancario"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "description": "La dependencia con el banco de otro grupo: su SLO propio, lo que recibimos y lo que entregamos.",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "enable": true,
+        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "iconColor": "light-blue",
+        "name": "Despliegues",
+        "titleFormat": "Despliegue de {{deployment}}",
+        "textFormat": "namespace {{namespace}}",
+        "step": "2m"
+      },
+      {
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "iconColor": "purple",
+        "name": "Releases",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "release"
+          ],
+          "type": "tags"
+        }
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(environment)",
+        "includeAll": false,
+        "label": "Entorno",
+        "name": "environment",
+        "query": {
+          "query": "label_values(environment)",
+          "refId": "env"
+        },
+        "refresh": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 60,
+      "type": "text",
+      "title": "La regla de evaluación",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Los fallos del banco pareja **no restan puntos** si el banco propio reacciona correctamente: compensación, reintentos y alertas. Así que lo que hay que leer aquí no es \"¿está bien el otro banco?\" sino \"¿reaccionamos como debíamos?\". El runbook es partner-bank.md."
+      }
+    },
+    {
+      "id": 61,
+      "type": "stat",
+      "title": "Depósitos aceptados (SLO-28 ≥ 95 %)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.9
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_accepted:ratio_rate5m{environment=\"$environment\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 62,
+      "type": "stat",
+      "title": "Confirmación p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_confirmation:seconds_p95{environment=\"$environment\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "type": "stat",
+      "title": "Error budget restante",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_accepted:budget_remaining7d{environment=\"$environment\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 64,
+      "type": "stat",
+      "title": "Depósitos en la última hora",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum(increase(bank_interbank_deposits_total{environment=\"$environment\"}[1h]))",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "type": "timeseries",
+      "title": "Depósitos recibidos por resultado",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum by (result) (rate(bank_interbank_deposits_total{environment=\"$environment\"}[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "description": "El motivo del rechazo no es etiqueta de la métrica: está en el log y en el span, porque el contrato ajeno puede ampliar el conjunto."
+    },
+    {
+      "id": 66,
+      "type": "timeseries",
+      "title": "Callbacks que enviamos, por resultado",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum by (result) (rate(bank_interbank_callbacks_total{environment=\"$environment\"}[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Esto es lo que NOSOTROS entregamos. Si falla, el problema es de nuestro lado o de la red, no de su decisión."
+    },
+    {
+      "id": 67,
+      "type": "timeseries",
+      "title": "Latencia de confirmación por resultado (p95)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_confirmation:seconds_p95{environment=\"$environment\"}",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 68,
+      "type": "logs",
+      "title": "Cambios de estado de cada depósito",
+      "datasource": {
+        "type": "loki",
+        "uid": "bank-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "bank-loki"
+          },
+          "expr": "{service_name=\"payment-service\", environment=\"$environment\"} |= \"interbank\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "description": "§4.1 pide un log por cambio de estado, sin datos sensibles."
+    }
+  ]
+}

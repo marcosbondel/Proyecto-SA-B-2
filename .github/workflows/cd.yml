@@ -698,6 +698,56 @@ jobs:
 
           [ "$CODIGO" = "200" ] || echo "::warning::El portal respondio ${CODIGO} tras la actualizacion."
 
+      # §4.1, Dashboards obligatorios: «Despliegues marcados como anotaciones».
+      #
+      # Hay DOS fuentes de anotacion, y no se pisan:
+      #
+      #   Despliegues (rollout) — los dibuja cada dashboard con una consulta
+      #     sobre `kube_deployment_metadata_generation`. No necesita token ni
+      #     paso de pipeline, asi que no puede faltar.
+      #   Releases (esta) — la version que se desplego, con su enlace a la
+      #     corrida. La consulta no puede saber eso: la etiqueta de la imagen no
+      #     esta en ninguna metrica de Kubernetes.
+      #
+      # Se OMITE sin fallar si no hay Grafana configurado, igual que el resto
+      # del workflow hace con la infraestructura ausente: una anotacion que
+      # falta no justifica tumbar un despliegue que ya ocurrio.
+      - name: 'Anotar la release en Grafana'
+        if: success()
+        env:
+          GRAFANA_URL: ${{ vars.GRAFANA_URL }}
+          GRAFANA_TOKEN: ${{ secrets.GRAFANA_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          if [ -z "${GRAFANA_URL:-}" ] || [ -z "${GRAFANA_TOKEN:-}" ]; then
+            {
+              echo "### Anotacion de release: omitida"
+              echo ""
+              echo "Falta \`GRAFANA_URL\` (variable) o \`GRAFANA_TOKEN\` (secreto)."
+              echo "Los dashboards siguen marcando los despliegues por consulta;"
+              echo "lo que falta es la etiqueta de version sobre la linea."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          AHORA="$(date +%s)000"
+          CODIGO="$(curl -s -o /tmp/anotacion.json -w '%{http_code}' \
+            -X POST "${GRAFANA_URL%/}/api/annotations" \
+            -H "Authorization: Bearer ${GRAFANA_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"time\": ${AHORA},
+              \"tags\": [\"release\", \"prod\", \"${VERSION}\"],
+              \"text\": \"Release <b>${VERSION}</b> en prod · <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>corrida</a>\"
+            }")"
+
+          if [ "$CODIGO" = "200" ]; then
+            echo "Anotacion de release creada en Grafana."
+          else
+            echo "::warning::Grafana respondio ${CODIGO} al anotar la release."
+            cat /tmp/anotacion.json || true
+          fi
+
       - name: Resumen del despliegue
         if: always()
         run: |

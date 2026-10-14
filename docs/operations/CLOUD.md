@@ -432,11 +432,13 @@ Lo despliega el mismo pipeline, en un release y un namespace propios
 ejecuta el job **«Stack de observabilidad»** de `cd.yml`. Para iterar sin merge,
 *Actions → CD → Run workflow → `deploy_observability`*.
 
-Hace falta **un secreto más** que los del paso 3:
+Hace falta **un secreto más** que los del paso 3, y dos opcionales de T-50:
 
 | Tipo | Nombre | Valor |
 | --- | --- | --- |
 | Secret | `GRAFANA_ADMIN_PASSWORD` | la contraseña de `admin`. Mínimo 16 caracteres; el job falla diciéndolo si falta o es más corta, en vez de instalar un Grafana con la contraseña pública que trae el chart |
+| Secret de K8s | `grafana-alert-webhook` (clave `token`) | el `ALERT_WEBHOOK_TOKEN` del Gateway, para que las alertas lleguen a la bitácora de auditoría (T-45). **Opcional**: sin él Grafana arranca igual y la alerta se ve en su consola, pero el Gateway la rechaza con `401`. Debe ser el **mismo valor** que `ALERT_WEBHOOK_TOKEN` en `HELM_SECRETS` |
+| Variable + Secret | `GRAFANA_URL` y `GRAFANA_TOKEN` | para que `cd.yml` anote la *release* en Grafana. **Opcionales**: sin ellos el paso se omite con su motivo en el resumen, y los dashboards siguen marcando los despliegues por consulta |
 
 **No se despliega desde `develop` a propósito.** El stack es uno para los dos
 entornos —`dev` y `prod` mandan su telemetría al mismo Collector y se miran en el
@@ -450,6 +452,22 @@ Las aplicaciones no necesitan ninguna variable nueva: `cd.yml` pone
 `http://otel-gateway.observability.svc.cluster.local:4318`. La variable de
 repositorio del mismo nombre sigue existiendo y sólo hace falta para apuntar a
 otro Collector.
+
+**Y con el stack viajan las reglas, las alertas y los dashboards (T-50)**, en el
+mismo release y sin un paso aparte:
+
+| Qué | Dónde vive | Cuántos |
+| --- | --- | --- |
+| Reglas de grabación de los SLI | `values.yaml` → `prometheus.serverFiles.recording_rules.yml` | 30 |
+| Alertas, contact points y política | `values.yaml` → `grafana.alerting` | 7 alertas, 2 contact points |
+| Dashboards | `dashboards/*.json` → ConfigMaps con `grafana_dashboard: "1"` | 9 |
+| Runbooks | [`runbooks/`](runbooks/README.md), enlazados desde cada alerta | 5 |
+
+Nada de eso se crea a mano en la interfaz, y lo que se cree a mano se pierde en
+el siguiente `helm upgrade` — que es la mitad del criterio 2.6 de la rúbrica.
+Antes de subir un cambio: `pnpm obs:check:dashboards` (falla si un panel cita un
+SLI que nadie graba) y `pnpm obs:kind` (la única forma de ver que una consulta
+devuelve algo).
 
 **Grafana no tiene IP pública.** Queda una sola libre en la cuota y es el margen
 de la entrada del banco (ver la tabla de cuotas del paso 1):
