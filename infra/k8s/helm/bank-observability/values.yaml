@@ -107,6 +107,14 @@ otlpGateway:
       health_check:
         endpoint: ${env:MY_POD_IP}:13133
 
+    # Escuchan en la IP del pod, no en 0.0.0.0, que es lo que hace el chart por
+    # defecto y lo que corresponde: el trafico entra por el Service.
+    #
+    # Consecuencia que sorprende y conviene saber: `kubectl port-forward` a este
+    # Collector NO funciona — el forward entra por `localhost` dentro del pod y
+    # ahi no hay nada escuchando, asi que da `connection refused`. Para probarlo
+    # a mano hay que mandar la peticion desde DENTRO del cluster, al nombre del
+    # Service, que es lo que hace `infra/scripts/cloud/obs-kind.sh`.
     receivers:
       otlp:
         protocols:
