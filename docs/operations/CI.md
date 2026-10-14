@@ -449,6 +449,32 @@ registry nobody was pulling from. A delivery phase that hands over artifacts the
 deployment cannot reach has not delivered anything. Both halves now read the
 same three variables, so they cannot drift apart again.
 
+### Credentials missing is red; infrastructure missing is skipped
+
+`cd.yml`'s `preflight` job answers two questions, and treats the answers
+differently on purpose:
+
+| What is missing | What happens | Why |
+| --- | --- | --- |
+| A credential, variable or secret | The job **fails**, naming it | A misconfiguration is a human error and deserves a red X |
+| The GKE cluster or the Artifact Registry repository | The build and deploy jobs are **skipped**, with the reason and the remedy written into the run summary | The infrastructure of this project is switched on and off deliberately — it costs about 0.50 USD/hour — so its absence is not a defect of the commit |
+
+Neither path ever prints a deployment that did not happen, which is the rule
+this workflow is built around. A skipped job is visually distinct from a passing
+one; it is not a green tick for work that was not done.
+
+This was added on 2026-10-14 because **every merge into `develop` had been red
+since 2026-10-06**, all of them failing at the first `docker push` with
+`Repository "bank-images" not found` — the registry had gone with the
+infrastructure. A check that is permanently red reports nothing: when CD breaks
+for a real reason, nobody will notice it among the noise. The fix restores the
+signal without weakening the guarantee.
+
+To bring the infrastructure back: `pnpm cloud:up`, then `pnpm cloud:cost` to see
+what is running. The procedure is in
+[CLOUD.md § 5.2](CLOUD.md). Note that §8.1 of the assignment requires the system
+deployed and reachable in the cloud **on grading day**.
+
 ### The observability stack deploys from `main` only
 
 `cd.yml` has a fifth job, **«Stack de observabilidad»**, that installs
