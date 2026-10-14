@@ -239,7 +239,7 @@ dos entornos en un único stack.
 | # | Objetivo | SLI (PromQL, ventana de 5 m para la tasa) | Umbral | Error budget (7 d) |
 |---|---|---|---|---|
 | **SLO-27** *(nuevo)* | **Disponibilidad del API Gateway**: respuestas distintas de 5xx | `sum(rate(http_server_request_duration_seconds_count{service_name="gateway",http_route!~"/health\|/ready",http_response_status_code!~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="gateway",http_route!~"/health\|/ready"}[5m]))` | **≥ 99.00 %** | 1.00 % de las peticiones |
-| **SLO-2** | Transferencias que terminan en menos de 5.0 s | `sum(rate(bank_transfer_duration_seconds_bucket{le="5"}[5m])) / sum(rate(bank_transfer_duration_seconds_count[5m]))` | **≥ 95.00 %** | 5.00 % de las transferencias |
+| **SLO-2** | Transferencias que terminan en menos de 5.0 s | `sum(rate(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[5m])) / sum(rate(bank_transfer_duration_seconds_count[5m]))` | **≥ 95.00 %** | 5.00 % de las transferencias |
 | **SLO-1** | Entregas que no acaban en la cola muerta | `1 - (sum(rate(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[5m])) / sum(rate(messaging_client_consumed_messages_total[5m])))` | **≥ 99.00 %** | 1.00 % de las entregas |
 | **SLO-6 / SLO-7** | Latencia del Gateway, p95 por método (`GET` < 1 s, `POST` < 3 s) | `histogram_quantile(0.95, sum by (le, http_request_method) (rate(http_server_request_duration_seconds_bucket{service_name="gateway"}[5m])))` | **≥ 95.00 %** | 5.00 % de las peticiones |
 | **SLO-28** *(nuevo, exigido aparte por §4.1)* | **La dependencia con el banco pareja**: depósitos confirmados, y p95 de la confirmación | `sum(rate(bank_interbank_deposits_total{result="accepted"}[5m])) / sum(rate(bank_interbank_deposits_total[5m]))` y `histogram_quantile(0.95, sum by (le) (rate(bank_interbank_deposit_duration_seconds_bucket[5m])))` | **≥ 95.00 %** y **p95 < 5 s** | 5.00 % de los depósitos |
@@ -248,6 +248,11 @@ dos entornos en un único stack.
 disponibilidad como `código < 500` desde la Fase 1, y ninguno de los treinta SLO
 estaba ligado a él: SLO-8 mide los timeouts, que es otra pregunta. §4.1 lo exige
 explícitamente como SLI base, así que aquí tiene umbral, presupuesto y alerta.
+
+**El selector del bucket es una regex, y es a propósito.** Medido contra el
+stack real: el Collector expone `le="5"` en su texto y **Prometheus guarda la
+serie con `le="5.0"`**. Con `le="5"` la consulta no devuelve nada —ni error, ni
+cero: vacío— y el panel de SLO-2 habría salido en blanco para siempre.
 
 **Los sondeos quedan fuera.** `/health` y `/ready` los pide el kubelet cada diez
 segundos: dejarlos dentro inflaría la disponibilidad con tráfico que no es de
@@ -282,14 +287,19 @@ Workbook* para una ventana de 7 días:
 
 | Alerta | Condición | Severidad | Por qué ese umbral |
 |---|---|---|---|
-| `GatewayAvailabilityFastBurn` | burn rate **> 14.4×** sostenido 1 h | ERROR, aviso inmediato | consume el 2 % del presupuesto en una hora: es una caída en curso, no una degradación |
-| `GatewayAvailabilitySlowBurn` | burn rate **> 6×** sostenido 6 h | WARNING | consume el 5 % en seis horas: no despierta a nadie, pero no se puede ignorar hasta el final de la ventana |
-| `TransferLatencyBreach` | SLI de SLO-2 **< 95 %** durante 30 m | WARNING | media hora descarta un pico de una sola transferencia lenta |
-| `DeadLetterGrowing` | SLI de SLO-1 **< 99 %** durante 15 m | ERROR | un mensaje en la cola muerta es trabajo detenido, y quince minutos ya distinguen un reintento de un atasco |
-| `PartnerBankDegraded` | SLI de SLO-28 **< 95 %** o p95 **> 5 s** durante 15 m | WARNING | la exige §4.1 como alerta propia de la dependencia externa |
+| `GatewayAvailabilityFastBurn` | burn rate **> 14.4×** sostenido 1 h | `critical` | consume el 2 % del presupuesto en una hora: es una caída en curso, no una degradación |
+| `GatewayAvailabilitySlowBurn` | burn rate **> 6×** sostenido 6 h | `warning` | consume el 5 % en seis horas: no despierta a nadie, pero no se puede ignorar hasta el final de la ventana |
+| `TransferLatencyBreach` | SLI de SLO-2 **< 95 %** durante 30 m | `warning` | media hora descarta un pico de una sola transferencia lenta |
+| `DeadLetterGrowing` | SLI de SLO-1 **< 99 %** durante 15 m | `critical` | un mensaje en la cola muerta es trabajo detenido, y quince minutos ya distinguen un reintento de un atasco |
+| `PartnerBankDegraded` | SLI de SLO-28 **< 95 %** durante 15 m | `warning` |
+| `PartnerBankConfirmationSlow` | p95 de la confirmación **> 5 s** durante 15 m | `warning` |
+| `BrokerConsumerLagHigh` | una cola con **> 500** mensajes pendientes durante 10 m | `warning` | la exige §4.1 como alerta propia de la dependencia externa |
 
-Las cinco van al canal visible y al webhook de Notification & Audit (T-45), y
-cada una lleva su *runbook* (T-50). El *burn rate* está en dos ventanas a
+Las siete van al webhook de Notification & Audit (T-45) —el canal visible que
+pide §4.1, que además deja la alerta en la misma bitácora que el resto de lo que
+pasó— y cada una lleva su *runbook*. La severidad vale `critical`, `warning` o
+`info` y no otra cosa: es lo que acepta el contrato `alert.slo.received.v1`, y
+cualquier otro valor el Gateway lo degrada a `warning` sin decir nada. El *burn rate* está en dos ventanas a
 propósito: una sola ventana corta alerta de cada pico, y una sola larga avisa
 cuando el presupuesto ya se gastó.
 
