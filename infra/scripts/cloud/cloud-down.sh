@@ -69,6 +69,22 @@ fi
 
 paso() { echo; echo "=== $* ==="; }
 
+# Las credenciales de TERRAFORM, que no son las de gcloud. Ver el comentario
+# equivalente en cloud-up.sh: sin esto, `terraform destroy` falla con «could not
+# find default credentials» y lo hace DESPUES de haber desinstalado los
+# releases, que es el peor momento para quedarse a medias.
+if [[ -z "${GOOGLE_OAUTH_ACCESS_TOKEN:-}" ]] &&
+  [[ ! -f "${HOME}/.config/gcloud/application_default_credentials.json" ]] &&
+  [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  if GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token 2>/dev/null)"; then
+    export GOOGLE_OAUTH_ACCESS_TOKEN
+  else
+    echo "ERROR: no hay credenciales para Terraform. Corre:" >&2
+    echo "       gcloud auth application-default login" >&2
+    exit 2
+  fi
+fi
+
 # Ejecuta, o imprime si es --dry-run.
 run() {
   if $dry_run; then
