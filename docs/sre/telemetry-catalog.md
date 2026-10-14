@@ -25,6 +25,15 @@ Las aplicaciones exportan por OTLP al Collector, y el Collector republica en
 Ambas cosas las decide `add_metric_suffixes` del exportador
 (`infra/k8s/helm/bank-observability/values.yaml`), que está en `true`.
 
+**Tres detalles que sólo se ven consultando, y que una consulta escrita a ciegas
+no sobrevive** (medidos contra el stack en kind, T-50):
+
+| Lo que se espera | Lo que Prometheus tiene de verdad |
+| --- | --- |
+| `le="5"` en el bucket del histograma | **`le="5.0"`**. El Collector expone `le="5"` en su texto y la serie almacenada lleva `5.0`. Un selector `le="5"` no devuelve nada — ni error, ni cero: vacío. Por eso la regla de SLO-2 usa `le=~"5(\\.0+)?"` |
+| el `job` del servicio | **`exported_job`**. El exportador del Collector pone `job=<service.name>`, y Prometheus, que ya tiene su propio `job="otel-gateway"`, renombra el ajeno. El nombre del servicio se filtra por `service_name`, nunca por `job` |
+| nada más | **`otel_scope_name`, `otel_scope_version`, `otel_scope_schema_url`**. Las añade el exportador por cada *scope* de instrumentación. No son de alta cardinalidad (una por servicio), pero aparecen en todo `sum by` que no las agrupe fuera |
+
 **Las etiquetas de recurso no se promueven.** `resource_to_telemetry_conversion`
 está desactivado a propósito: habría subido *todos* los atributos de recurso,
 incluido `k8s.pod.name`, que cambia en cada despliegue. En su lugar el Collector

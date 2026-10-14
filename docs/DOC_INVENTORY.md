@@ -109,6 +109,12 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/generated/db-schema.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/sre/sli-slo-sla.md` | project | Marcos Bonifasi | current | 2026-09-20 |
 | `docs/sre/telemetry-catalog.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/README.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/gateway-availability-burn.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/transfer-latency.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/dead-letter.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/consumer-lag.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/partner-bank.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/manual/recorrido-visual.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/qa/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
 | `docs/qa/pyramid.md` | generated | — | current | 2026-09-25 |

@@ -79,10 +79,23 @@ enviar_otlp() {
   #
   # `k8s.pod.name` va a proposito en el recurso: si algun dia
   # `resource_to_telemetry_conversion` se enciende, la comprobacion 9 lo ve.
-  python3 - > /tmp/obs-kind-metrics.json <<'PYM'
-import json, time
-now = int(time.time() * 1e9)
-inicio = now - 60_000_000_000
+  # DOS instantaneas y no una, con el contador subiendo entre ellas.
+  #
+  # `rate()` necesita pendiente: un unico empujon deja el contador constante,
+  # `rate` vale 0 y todas las reglas de grabacion de T-50 salen NaN. Con un
+  # valor que crece, la regla produce un numero y la comprobacion 10 puede
+  # exigir que lo produzca — que es la diferencia entre «la regla esta cargada»
+  # y «la regla calcula».
+  #
+  # Las dos duraciones caben bajo los 5 s, asi que el SLI de SLO-2 debe salir
+  # exactamente 1.
+  for n in 1 2; do
+    python3 - "$n" > "/tmp/obs-kind-metrics-$n.json" <<'PYM'
+import json, sys, time
+paso = int(sys.argv[1])
+now = int(time.time() * 1e9) + (paso - 1) * 20_000_000_000
+inicio = int(time.time() * 1e9) - 300_000_000_000
+transferencias = 3 * paso
 recurso = {"attributes": [
     {"key": "service.name", "value": {"stringValue": "transaction-service"}},
     {"key": "deployment.environment", "value": {"stringValue": "prod"}},
@@ -93,18 +106,22 @@ print(json.dumps({"resourceMetrics": [{
     "scopeMetrics": [{"scope": {"name": "transaction-service"}, "metrics": [
         {"name": "bank.transfer.finished", "unit": "{transfer}",
          "sum": {"aggregationTemporality": 2, "isMonotonic": True, "dataPoints": [
-             {"asInt": "3", "startTimeUnixNano": str(inicio),
+             {"asInt": str(transferencias), "startTimeUnixNano": str(inicio),
               "timeUnixNano": str(now), "attributes": etiquetas}]}},
         {"name": "bank.transfer.duration", "unit": "s",
          "histogram": {"aggregationTemporality": 2, "dataPoints": [
-             {"count": "2", "sum": 3.5, "explicitBounds": [5.0],
-              "bucketCounts": ["2", "0"], "startTimeUnixNano": str(inicio),
+             {"count": str(transferencias), "sum": 1.75 * transferencias,
+              "explicitBounds": [5.0],
+              "bucketCounts": [str(transferencias), "0"],
+              "startTimeUnixNano": str(inicio),
               "timeUnixNano": str(now), "attributes": etiquetas}]}}]}]}]}))
 PYM
+  done
 
   k create configmap otlp-payload -n "$NS" \
     --from-file=trace.json=/tmp/obs-kind-trace.json \
-    --from-file=metrics.json=/tmp/obs-kind-metrics.json \
+    --from-file=metrics-1.json=/tmp/obs-kind-metrics-1.json \
+    --from-file=metrics-2.json=/tmp/obs-kind-metrics-2.json \
     --dry-run=client -o yaml | k apply -f - >/dev/null
 
   k delete job otlp-sender -n "$NS" --ignore-not-found >/dev/null
@@ -143,9 +160,14 @@ spec:
               curl -sS -w 'HTTP %{http_code}\n' -X POST \
                 http://otel-gateway:4318/v1/metrics \
                 -H 'Content-Type: application/json' \
-                --data @/payload/metrics.json
+                --data @/payload/metrics-1.json
+              sleep 20
+              curl -sS -w 'HTTP %{http_code}\n' -X POST \
+                http://otel-gateway:4318/v1/metrics \
+                -H 'Content-Type: application/json' \
+                --data @/payload/metrics-2.json
 YAML
-  k wait --for=condition=complete job/otlp-sender -n "$NS" --timeout 120s >/dev/null
+  k wait --for=condition=complete job/otlp-sender -n "$NS" --timeout 180s >/dev/null
   k logs -n "$NS" job/otlp-sender | sed 's/^/    /'
 }
 
@@ -249,8 +271,8 @@ PY
   enviar_otlp
 
   echo "$TRACE_ID" > /tmp/obs-kind-trace-id.txt
-  echo "    Esperando 20 s a que Loki y Tempo ingieran…"
-  sleep 20
+  echo "    Esperando 45 s a que Loki y Tempo ingieran y Prometheus raspe las dos instantaneas…"
+  sleep 45
 fi
 
 # ---------------------------------------------------------------------------
@@ -264,13 +286,13 @@ if [[ -z "$TRACE_ID" ]]; then
 fi
 
 if [[ "$accion" == "verificar" ]]; then
-  if [[ ! -f /tmp/obs-kind-metrics.json && ! -f /tmp/obs-kind-trace.json ]]; then
+  if [[ ! -f /tmp/obs-kind-metrics-1.json && ! -f /tmp/obs-kind-trace.json ]]; then
     echo "ERROR: faltan los payloads en /tmp. Corre el script sin --verify." >&2
     exit 2
   fi
-  echo "    Reenviando la telemetria (las series expiran) y esperando el raspado…"
+  echo "    Reenviando la telemetria (las series expiran) y esperando los raspados…"
   enviar_otlp
-  sleep 25
+  sleep 45
 fi
 
 k delete job verificar-obs -n "$NS" --ignore-not-found >/dev/null
@@ -414,9 +436,49 @@ spec:
                 echo "   OK  k8s_pod_name NO es etiqueta"
               fi
 
+              echo "10. Las reglas de grabacion de T-50 cargan y sus selectores RESUELVEN"
+              reglas=\$(curl -s 'http://prometheus-server/api/v1/rules' | tr ',' '\\n' | grep -c '"name":"slo:\\|"name":"sli:')
+              echo "   \$reglas reglas de grabacion cargadas"
+              if [ "\$reglas" -ge 30 ]; then
+                echo "   OK  cargadas"
+              else
+                echo "   FALLO: faltan reglas de grabacion"; fallos=\$((fallos+1))
+              fi
+
+              # Lo que se comprueba es que el SELECTOR devuelve serie, no que el
+              # cociente valga un numero concreto: con dos muestras sinteticas
+              # `rate()` apenas tiene pendiente y el ratio sale NaN sin que nada
+              # este roto. Un ratio de verdad necesita carga sostenida, y eso es
+              # T-51 contra el entorno de T-54.
+              #
+              # Y el selector es exactamente lo que se rompio: con `le="5"`
+              # —el valor que el Collector muestra en su texto— esta consulta
+              # devolvia VACIO, porque Prometheus guarda `le="5.0"`. Un panel
+              # de SLO-2 en blanco para siempre, sin un solo error.
+              bucket=\$(curl -s -G 'http://prometheus-server/api/v1/query' \\
+                --data-urlencode 'query=sum(rate(bank_transfer_duration_seconds_bucket{le=~"5(\\\\.0+)?"}[5m]))' \\
+                | grep -o '"value":\\[[^]]*\\]' | head -1)
+              echo "   numerador de SLO-2 (le ~ 5) -> \${bucket:-VACIO}"
+              if [ -n "\$bucket" ]; then
+                echo "   OK  el selector del bucket resuelve"
+              else
+                echo "   FALLO: el selector del bucket no devuelve serie. Revisa la etiqueta le"
+                fallos=\$((fallos+1))
+              fi
+
+              grabada=\$(curl -s -G 'http://prometheus-server/api/v1/query' \\
+                --data-urlencode 'query=slo:transfer_under_5s:ratio_rate5m' \\
+                | grep -o '"value":\\[[^]]*\\]' | head -1)
+              echo "   slo:transfer_under_5s:ratio_rate5m -> \${grabada:-SIN SERIE}"
+              if [ -n "\$grabada" ]; then
+                echo "   OK  la regla produce serie (su valor exige carga real)"
+              else
+                echo "   FALLO: la regla no produce serie"; fallos=\$((fallos+1))
+              fi
+
               echo
               if [ "\$fallos" -eq 0 ]; then
-                echo "RESULTADO: 9 de 9. El stack mide lo que dice medir."
+                echo "RESULTADO: 10 de 10. El stack mide lo que dice medir."
               else
                 echo "RESULTADO: \$fallos comprobacion(es) fallaron."
                 exit 1

@@ -392,8 +392,10 @@ prometheus:
       limits:
         cpu: 1000m
         memory: 2Gi
-    # Las reglas de grabación y de alerta de T-50 se añaden aquí como
-    # `serverFiles.'alerting_rules.yml'` y `'recording_rules.yml'`.
+    # Las reglas de grabación de los SLI viven en `prometheus.serverFiles`, que
+    # es hermano de este bloque y no hijo (T-50, más abajo). Las de ALERTA no
+    # están en Prometheus: alertan en Grafana, porque Alertmanager está
+    # desactivado y una alerta que nadie entrega no es una alerta.
     global:
       scrape_interval: 30s
       evaluation_interval: 30s
@@ -425,6 +427,196 @@ prometheus:
         cpu: 100m
         memory: 128Mi
 
+  # ---------------------------------------------------------------------------
+  # Las reglas de grabación de los SLI (T-50).
+  #
+  # Una regla grabada y no una consulta repetida en cada panel: el SLI se define
+  # UNA vez, y el panel, la alerta y el error budget leen la misma serie. Si el
+  # numerador de la disponibilidad cambia, cambia en un sitio.
+  #
+  # Los nombres siguen la convención de Prometheus `nivel:metrica:operaciones`.
+  # Los nombres de las series de origen son los de
+  # `docs/sre/telemetry-catalog.md`, y los objetivos, los de
+  # `docs/sre/sli-slo-sla.md` §5.3.
+  #
+  # `environment` está en todos los `by (...)`: un stack sirve a `dev` y a
+  # `prod`, y un SLO que los sume no es el SLO de ninguno de los dos.
+  # ---------------------------------------------------------------------------
+  serverFiles:
+    recording_rules.yml:
+      groups:
+        # ---- SLO-27: disponibilidad del Gateway (objetivo 99 %) -------------
+        - name: slo-gateway-availability
+          interval: 30s
+          rules:
+            # Los sondeos del kubelet quedan fuera: `/health` y `/ready` se
+            # piden cada diez segundos y esconderían una caída real detrás de
+            # miles de respuestas exitosas que no son de ningún cliente.
+            - record: sli:gateway_requests:rate5m
+              expr: |
+                sum by (environment) (
+                  rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[5m])
+                )
+            - record: sli:gateway_requests_ok:rate5m
+              expr: |
+                sum by (environment) (
+                  rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[5m])
+                )
+            - record: slo:gateway_availability:ratio_rate5m
+              expr: sli:gateway_requests_ok:rate5m / sli:gateway_requests:rate5m
+            # Error budget restante sobre la ventana de 7 días, la misma que la
+            # retención del stack: con 0 % queda gastado y con 1 (100 %) intacto.
+            - record: slo:gateway_availability:budget_remaining7d
+              expr: |
+                1 - ((1 - avg_over_time(slo:gateway_availability:ratio_rate5m[7d])) / 0.01)
+            # Tasa de consumo: cuántas veces más rápido se gasta el presupuesto
+            # de lo que la ventana admite. Dos ventanas, porque una sola corta
+            # alerta de cada pico y una sola larga avisa cuando ya se gastó.
+            - record: slo:gateway_availability:burn_rate1h
+              expr: (1 - avg_over_time(slo:gateway_availability:ratio_rate5m[1h])) / 0.01
+            - record: slo:gateway_availability:burn_rate6h
+              expr: (1 - avg_over_time(slo:gateway_availability:ratio_rate5m[6h])) / 0.01
+
+        # ---- SLO-6 / SLO-7: latencia del Gateway ----------------------------
+        - name: sli-gateway-latency
+          interval: 30s
+          rules:
+            - record: sli:gateway_latency:seconds_p50
+              expr: |
+                histogram_quantile(0.50, sum by (le, environment, http_request_method) (
+                  rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready"}[5m])
+                ))
+            - record: sli:gateway_latency:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment, http_request_method) (
+                  rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready"}[5m])
+                ))
+            - record: sli:gateway_latency:seconds_p99
+              expr: |
+                histogram_quantile(0.99, sum by (le, environment, http_request_method) (
+                  rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready"}[5m])
+                ))
+
+        # ---- SLO-2: transferencias en menos de 5 s (objetivo 95 %) ----------
+        - name: slo-transfer-latency
+          interval: 30s
+          rules:
+            # El límite de 5 s existe exacto porque T-43 puso un bucket justo
+            # ahí para esto. Sin él esta pregunta no se puede responder: habría
+            # que interpolar entre dos buckets y el resultado no sería el
+            # porcentaje real.
+            #
+            # El selector es una REGEX y no `le="5"`, y eso no es paranoia:
+            # medido contra este mismo stack, el Collector expone `le="5"` en su
+            # texto y **Prometheus guarda la serie con `le="5.0"`**. Con
+            # `le="5"` la consulta no devuelve nada — ni un error, ni un cero:
+            # vacío — y el panel de SLO-2 habría salido en blanco para siempre
+            # sin que nada lo dijera.
+            - record: slo:transfer_under_5s:ratio_rate5m
+              expr: |
+                sum by (environment) (rate(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[5m]))
+                /
+                sum by (environment) (rate(bank_transfer_duration_seconds_count[5m]))
+            - record: slo:transfer_under_5s:budget_remaining7d
+              expr: |
+                1 - ((1 - avg_over_time(slo:transfer_under_5s:ratio_rate5m[7d])) / 0.05)
+            - record: slo:transfer_under_5s:burn_rate1h
+              expr: (1 - avg_over_time(slo:transfer_under_5s:ratio_rate5m[1h])) / 0.05
+            - record: slo:transfer_under_5s:burn_rate6h
+              expr: (1 - avg_over_time(slo:transfer_under_5s:ratio_rate5m[6h])) / 0.05
+            - record: sli:transfer_latency:seconds_p50
+              expr: |
+                histogram_quantile(0.50, sum by (le, environment) (rate(bank_transfer_duration_seconds_bucket[5m])))
+            - record: sli:transfer_latency:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (rate(bank_transfer_duration_seconds_bucket[5m])))
+            - record: sli:transfer_latency:seconds_p99
+              expr: |
+                histogram_quantile(0.99, sum by (le, environment) (rate(bank_transfer_duration_seconds_bucket[5m])))
+            # Tasa de error del flujo de negocio, desglosada por resultado: una
+            # transferencia COMPENSATED no es un fallo del sistema — es el
+            # sistema devolviendo el dinero, que es lo que debe hacer.
+            - record: sli:transfer_outcome:ratio_rate5m
+              expr: |
+                sum by (environment, result) (rate(bank_transfer_finished_total[5m]))
+                /
+                ignoring(result) group_left
+                sum by (environment) (rate(bank_transfer_finished_total[5m]))
+
+        # ---- SLO-1: entregas que no acaban en la cola muerta (99 %) ---------
+        - name: slo-messaging
+          interval: 30s
+          rules:
+            - record: slo:messages_not_dead_lettered:ratio_rate5m
+              expr: |
+                1 - (
+                  sum by (environment) (rate(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[5m]))
+                  /
+                  sum by (environment) (rate(messaging_client_consumed_messages_total[5m]))
+                )
+            - record: slo:messages_not_dead_lettered:budget_remaining7d
+              expr: |
+                1 - ((1 - avg_over_time(slo:messages_not_dead_lettered:ratio_rate5m[7d])) / 0.01)
+            - record: slo:messages_not_dead_lettered:burn_rate1h
+              expr: (1 - avg_over_time(slo:messages_not_dead_lettered:ratio_rate5m[1h])) / 0.01
+            # Throughput, el SLI base de §4.1: por servicio y por cola.
+            - record: sli:throughput_by_service:rate5m
+              expr: |
+                sum by (environment, service_name) (rate(messaging_client_consumed_messages_total[5m]))
+            - record: sli:throughput_by_queue:rate5m
+              expr: |
+                sum by (environment, messaging_destination_name) (rate(messaging_client_consumed_messages_total[5m]))
+            - record: sli:message_process:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment, messaging_destination_name) (
+                  rate(messaging_process_duration_seconds_bucket[5m])
+                ))
+            # Consumer lag por cola. La serie lleva el prefijo
+            # `rabbitmq_detailed_` porque sólo el endpoint detallado la desglosa
+            # por cola; ver el comentario del job `rabbitmq-detailed`.
+            - record: sli:broker_consumer_lag:messages
+              expr: |
+                sum by (environment, queue) (rabbitmq_detailed_queue_messages_ready)
+            - record: sli:broker_unacked:messages
+              expr: |
+                sum by (environment, queue) (rabbitmq_detailed_queue_messages_unacked)
+
+        # ---- SLO-28: la dependencia con el banco pareja (95 %) --------------
+        - name: slo-interbank
+          interval: 30s
+          rules:
+            - record: slo:interbank_accepted:ratio_rate5m
+              expr: |
+                sum by (environment) (rate(bank_interbank_deposits_total{result="accepted"}[5m]))
+                /
+                sum by (environment) (rate(bank_interbank_deposits_total[5m]))
+            - record: slo:interbank_accepted:budget_remaining7d
+              expr: |
+                1 - ((1 - avg_over_time(slo:interbank_accepted:ratio_rate5m[7d])) / 0.05)
+            - record: slo:interbank_confirmation:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (
+                  rate(bank_interbank_deposit_duration_seconds_bucket[5m])
+                ))
+
+        # ---- El proveedor externo simulado (T-44) ---------------------------
+        - name: sli-payment-provider
+          interval: 30s
+          rules:
+            # Tasa de fallos externos. `source` distingue el fallo real del
+            # inyectado por un administrador para una prueba: sumarlos haría
+            # que un escenario de fallo pareciera una caída del proveedor.
+            - record: sli:payment_provider_failure:ratio_rate5m
+              expr: |
+                sum by (environment, source) (rate(bank_payment_provider_calls_total{result!="success"}[5m]))
+                /
+                sum by (environment, source) (rate(bank_payment_provider_calls_total[5m]))
+            - record: sli:payment_provider:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (
+                  rate(bank_payment_provider_duration_seconds_bucket[5m])
+                ))
+
   extraScrapeConfigs: |
     # Lo que las aplicaciones empujaron por OTLP, republicado por el Collector.
     - job_name: otel-gateway
@@ -440,6 +632,36 @@ prometheus:
     - job_name: rabbitmq
       scrape_interval: 30s
       metrics_path: /metrics
+      static_configs:
+        - targets: ['rabbitmq.dev.svc.cluster.local:15692']
+          labels:
+            environment: dev
+        - targets: ['rabbitmq.prod.svc.cluster.local:15692']
+          labels:
+            environment: prod
+
+    # El consumer lag POR COLA, que es el que pide §4.1 ("mensajes pendientes
+    # por consumidor"), no está en `/metrics`. Medido contra
+    # `rabbitmq:3.13-management`, la misma imagen del chart de la aplicación:
+    #
+    #   /metrics          -> rabbitmq_queue_messages_ready 3
+    #                        un unico numero, SIN etiqueta `queue`
+    #   /metrics/detailed -> rabbitmq_detailed_queue_messages_ready{queue="audit.customer"} 3
+    #
+    # Dos diferencias, y las dos importan: la etiqueta `queue` sólo existe en el
+    # endpoint detallado, y ahí la serie se llama con el prefijo
+    # `rabbitmq_detailed_`. Un panel de consumer lag construido sobre `/metrics`
+    # habría sido una línea plana sin desglose — un dashboard decorativo, que es
+    # justo lo que §8.3 penaliza con un 25 %.
+    #
+    # Se pide una sola familia (`queue_coarse_metrics`): el endpoint detallado
+    # cuesta en proporción a lo que se le pide, y las demás familias no
+    # alimentan ningún panel obligatorio.
+    - job_name: rabbitmq-detailed
+      scrape_interval: 30s
+      metrics_path: /metrics/detailed
+      params:
+        family: [queue_coarse_metrics]
       static_configs:
         - targets: ['rabbitmq.dev.svc.cluster.local:15692']
           labels:
@@ -682,6 +904,340 @@ grafana:
               datasourceUid: bank-prometheus
             nodeGraph:
               enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Las alertas (T-50), provisionadas como código.
+  #
+  # Alertan en GRAFANA y no en Prometheus porque Alertmanager está desactivado:
+  # una regla de Prometheus sin Alertmanager se dispara y no se la cuenta a
+  # nadie. Grafana consulta el datasource, evalúa y entrega — y es además quien
+  # muestra el SLO, así que la alerta y el panel leen la misma serie grabada.
+  #
+  # Seis reglas, dos de ellas por TASA DE CONSUMO del error budget, que es lo
+  # que §4.1 exige ("incluida al menos una por tasa de consumo del error budget
+  # (burn rate)"). Cada una lleva `runbook_url`: el runbook es parte de la
+  # alerta, no documentación aparte.
+  #
+  # `severity` vale `critical`, `warning` o `info` y no otra cosa: es lo que
+  # acepta el contrato `alert.slo.received.v1` de T-45, y cualquier otro valor
+  # el Gateway lo degrada a `warning` sin decir nada.
+  #
+  # `noDataState: OK` en las reglas de ratio es una decisión, no un descuido:
+  # sin tráfico el cociente es NaN, y "nadie está usando el banco" no es
+  # "el banco está caído". Lo que sí avisa de eso es el panel de throughput.
+  # ---------------------------------------------------------------------------
+  alerting:
+    contactpoints.yaml:
+      apiVersion: 1
+      contactPoints:
+        - orgId: 1
+          name: bank-audit-prod
+          receivers:
+            - uid: bank-audit-webhook-prod
+              type: webhook
+              settings:
+                # El webhook de T-45: el Gateway publica la alerta en el broker
+                # y Notification & Audit la registra y la notifica. Es el
+                # "canal visible" que pide §4.1, y además deja la alerta en la
+                # misma bitácora que el resto de lo que pasó.
+                url: http://bank-usac-gateway.prod.svc.cluster.local:3000/api/alerts/slo
+                httpMethod: POST
+                authorization_scheme: Bearer
+                # Del Secret `grafana-alert-webhook`, que pone el pipeline. Si
+                # falta, la variable queda vacía y el Gateway responde 401: la
+                # alerta se ve en Grafana y no se registra. Preferible a un pod
+                # de Grafana que no arranca por un secreto ausente.
+                authorization_credentials: $ALERT_WEBHOOK_TOKEN
+        - orgId: 1
+          name: bank-audit-dev
+          receivers:
+            - uid: bank-audit-webhook-dev
+              type: webhook
+              settings:
+                url: http://bank-usac-gateway.dev.svc.cluster.local:3000/api/alerts/slo
+                httpMethod: POST
+                authorization_scheme: Bearer
+                authorization_credentials: $ALERT_WEBHOOK_TOKEN
+
+    policies.yaml:
+      apiVersion: 1
+      policies:
+        - orgId: 1
+          receiver: bank-audit-prod
+          # Agrupa por alerta y entorno: dos entornos degradados son dos
+          # incidentes, no uno.
+          group_by: [alertname, environment]
+          group_wait: 30s
+          group_interval: 1m
+          # Cuatro horas. Grafana reenvía una alerta que sigue activa en cada
+          # intervalo, y cada reenvío llega al webhook: con un intervalo corto
+          # una sola alerta enterraría a las demás en la consola de operadores
+          # (TD-083).
+          repeat_interval: 4h
+          routes:
+            - receiver: bank-audit-dev
+              object_matchers:
+                - ['environment', '=', 'dev']
+
+    rules.yaml:
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: slo-burn-rate
+          folder: Bank USAC
+          interval: 1m
+          rules:
+            - uid: bank-gw-fast-burn
+              title: GatewayAvailabilityFastBurn
+              condition: C
+              for: 5m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-27
+              annotations:
+                summary: La disponibilidad del Gateway está consumiendo el error budget 14 veces más rápido de lo admisible.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/gateway-availability-burn.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:gateway_availability:burn_rate1h
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [14.4]
+
+            - uid: bank-gw-slow-burn
+              title: GatewayAvailabilitySlowBurn
+              condition: C
+              for: 30m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-27
+              annotations:
+                summary: La disponibilidad del Gateway gasta el error budget 6 veces más rápido de lo admisible; a este ritmo se agota antes de cerrar la ventana.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/gateway-availability-burn.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:gateway_availability:burn_rate6h
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [6]
+
+        - orgId: 1
+          name: slo-breach
+          folder: Bank USAC
+          interval: 1m
+          rules:
+            - uid: bank-transfer-latency
+              title: TransferLatencyBreach
+              condition: C
+              for: 30m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-2
+              annotations:
+                summary: Menos del 95 % de las transferencias terminan en 5 segundos.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/transfer-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:transfer_under_5s:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            - uid: bank-dead-letter
+              title: DeadLetterGrowing
+              condition: C
+              for: 15m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-1
+              annotations:
+                summary: 'Más del 1 % de las entregas acaba en la cola muerta: hay trabajo detenido que nadie está procesando.'
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/dead-letter.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:messages_not_dead_lettered:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.99]
+
+            - uid: bank-broker-lag
+              title: BrokerConsumerLagHigh
+              condition: C
+              for: 10m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-14
+              annotations:
+                summary: 'Una cola acumula más de 500 mensajes pendientes: su consumidor no sigue el ritmo.'
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/consumer-lag.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: max by (environment, queue) (sli:broker_consumer_lag:messages)
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [500]
+
+        - orgId: 1
+          name: slo-partner-bank
+          folder: Bank USAC
+          interval: 1m
+          rules:
+            - uid: bank-partner-degraded
+              title: PartnerBankDegraded
+              condition: C
+              for: 15m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-28
+              annotations:
+                summary: Menos del 95 % de los depósitos interbancarios se confirman. La compensación debe estar devolviendo el dinero.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:interbank_accepted:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            - uid: bank-partner-slow
+              title: PartnerBankConfirmationSlow
+              condition: C
+              for: 15m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-28
+              annotations:
+                summary: El banco pareja tarda más de 5 segundos (p95) en confirmar un depósito; el tiempo de espera de la Saga está cerca.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:interbank_confirmation:seconds_p95
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [5]
+
+  # El token del webhook de alertas, del Secret que pone el pipeline.
+  # `optional: true` a propósito: sin el Secret, Grafana arranca igual y la
+  # alerta se ve en su consola aunque no llegue a la bitácora. Un pod de
+  # Grafana que no arranca por un secreto ausente deja ciego al equipo entero.
+  envValueFrom:
+    ALERT_WEBHOOK_TOKEN:
+      secretKeyRef:
+        name: grafana-alert-webhook
+        key: token
+        optional: true
 
   # Los dashboards de T-50 se recogen de cualquier ConfigMap etiquetado
   # `grafana_dashboard: "1"`, así que se añaden como JSON en el repositorio sin
