@@ -324,7 +324,96 @@ bash .github/scripts/helm-deploy.sh
 
 ---
 
-## 5 bis. El stack de observabilidad
+## 5.1 Validar el stack sin gastar un centavo
+
+Antes de encender la nube para depurar, hay un camino gratis que cubre casi
+todo lo que puede romperse:
+
+```bash
+pnpm obs:kind          # crea un kind desechable, despliega el stack y lo verifica
+pnpm obs:kind:down     # lo borra
+```
+
+`infra/scripts/cloud/obs-kind.sh` levanta un clúster kind propio
+(`bank-obs-test`, separado del `bank-usac` del flujo local), despliega el chart,
+y **no necesita el banco**: un pod de busybox que escribe el formato exacto de
+`@bank/observability` en stdout y una traza OTLP enviada con `curl` bastan para
+probar la correlación. Después comprueba siete cosas y falla si alguna no se
+cumple:
+
+| # | Qué comprueba | Por qué importa |
+| --- | --- | --- |
+| 1 | Tempo tiene la traza | sin esto no hay trazas distribuidas (§8.3, 50 %) |
+| 2 | Loki indexa **sólo** `k8s_namespace_name` y `service_name` | es la afirmación de cardinalidad de ADR-018, medida y no supuesta |
+| 3 | Filtrar por `traceId` encuentra la línea | prueba que `transform/parse_bank_json` abrió el JSON |
+| 4 | `correlationId` es consultable | el flujo de negocio de la Fase 1 |
+| 5 | La línea que **no** es JSON se guardó igual | un log ilegible sigue siendo evidencia |
+| 6 | Prometheus raspa al Collector | sin ese objetivo ninguna métrica llega a un panel |
+| 7 | Grafana cargó los tres datasources y los `derivedFields` | el salto log → traza |
+
+Corrido el 2026-10-13 sobre kind: **7 de 7**.
+
+A la nube sólo hace falta subir lo que kind no puede mostrar: la IP estática con
+el `LoadBalancer`, el HPA bajo carga real y las capturas de evidencia.
+
+**Un detalle que cuesta media hora si no se sabe:** `kubectl port-forward` al
+Collector **no funciona**. Sus receptores escuchan en la IP del pod, no en
+`localhost`, y un port-forward entra por `localhost` — da `connection refused`.
+Para enviarle algo a mano hay que hacerlo desde dentro del clúster, al nombre
+del Service.
+
+---
+
+## 5.2 Encender y apagar la nube para una sesión corta
+
+Tres scripts, y el que importa es el tercero:
+
+```bash
+pnpm cloud:up      # bootstrap + apply + variables + imágenes + despliegue
+pnpm cloud:cost    # qué queda facturando, en cualquier momento
+pnpm cloud:down -- --purge-state --purge-images    # apagar
+```
+
+Los tres aceptan `--dry-run` (`cloud:up` y `cloud:down`), que imprime el plan
+sin tocar nada.
+
+**Cuesta del orden de 0,50 USD/hora** mientras exista: tres nodos
+`e2-standard-2`, cinco VMs `e2-medium`, Cloud NAT, dos reglas de reenvío y unos
+200 GB de disco. Una sesión de una hora, ~0,60 USD.
+
+**El orden del apagado es el script, no `terraform destroy`.** Tres clases de
+recurso se quedan atrás aunque el destroy diga «Destroy complete», y ninguna
+está en el estado de Terraform:
+
+1. **Los discos de `loki` y `tempo`.** Son `volumeClaimTemplates` de un
+   StatefulSet y **Helm no los borra nunca**, ni con `helm uninstall`. Si además
+   se destruye el clúster antes de borrarlos, quedan huérfanos: 20 GiB
+   facturando sin que nada en el proyecto los nombre.
+2. **Las reglas de reenvío** de los `Service` de tipo `LoadBalancer`. Las crea
+   GKE desde el Service, no Terraform, así que destruir el clúster sin
+   desinstalar el release antes las deja vivas.
+3. **Una IP estática reservada sin usar cuesta más que en uso.**
+
+Por eso `cloud-down.sh` desinstala los releases con el clúster vivo, borra esos
+PVC a mano, espera a que las reglas de reenvío desaparezcan de verdad, y sólo
+entonces destruye. El estado se borra **al final**: mientras exista
+infraestructura existe el estado que sabe destruirla, así que si el script falla
+a mitad se puede reintentar.
+
+`cost-check.sh` es el que convierte «creo que lo apagué» en un hecho: enumera
+por API —no por el estado de Terraform— todo lo facturable y sale con error si
+queda algo. **Y distingue dueño:** este proyecto de GCP está compartido con
+otros cursos (la primera corrida encontró un repositorio `p5-images` que no es
+de aquí), así que todo lo de Bank USAC se reconoce por nombre y lo demás se
+lista aparte y nunca se toca.
+
+Con `--purge-state --purge-images` el residual es **cero absoluto**, a cambio de
+que el siguiente encendido rehaga el bucket de estado y republique las siete
+imágenes. Sin esas banderas quedan centavos al mes y el arranque es más rápido.
+
+---
+
+## 5.3 El stack de observabilidad, desde el pipeline
 
 Lo despliega el mismo pipeline, en un release y un namespace propios
 (`bank-observability` en `observability`). No hay comandos: un merge a `main`

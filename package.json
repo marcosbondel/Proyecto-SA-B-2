@@ -46,7 +46,12 @@
     "obs:check": "./infra/k8s/scripts/check-chart-deps.sh infra/k8s/helm/bank-observability",
     "obs:lint": "helm lint infra/k8s/helm/bank-observability",
     "obs:template": "helm template bank-observability infra/k8s/helm/bank-observability --namespace observability",
-    "obs:forward": "kubectl port-forward -n observability svc/grafana 3000:80"
+    "obs:forward": "kubectl port-forward -n observability svc/grafana 3000:80",
+    "obs:kind": "./infra/scripts/cloud/obs-kind.sh",
+    "obs:kind:down": "./infra/scripts/cloud/obs-kind.sh --down",
+    "cloud:up": "./infra/scripts/cloud/cloud-up.sh",
+    "cloud:down": "./infra/scripts/cloud/cloud-down.sh",
+    "cloud:cost": "./infra/scripts/cloud/cost-check.sh"
   },
   "devDependencies": {
     "@bank/tooling": "workspace:*",

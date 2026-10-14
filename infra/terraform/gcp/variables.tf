@@ -39,6 +39,18 @@ variable "gke_node_count" {
   default     = 3
 }
 
+variable "gke_node_disk_size_gb" {
+  type        = number
+  description = "Disco por nodo de GKE, en GB. El defecto de GKE es 100 y no cabe: tres nodos superan la cuota SSD_TOTAL_GB de 250 GB de la region. Ver el comentario en gke.tf."
+  default     = 50
+}
+
+variable "gke_node_disk_type" {
+  type        = string
+  description = "Tipo de disco de los nodos. `pd-balanced` cuenta contra SSD_TOTAL_GB; `pd-standard` contra DISKS_TOTAL_GB, que tiene mucho mas margen pero es mas lento al bajar imagenes."
+  default     = "pd-balanced"
+}
+
 variable "vm_machine_type" {
   type        = string
   description = "Tipo de máquina Compute Engine para las instancias de base de datos PostgreSQL."
@@ -67,8 +79,16 @@ variable "deploy_cloud_run" {
 
 variable "web_image" {
   type        = string
-  description = "URI del contenedor de la aplicación frontend Web (ej. us-central1-docker.pkg.dev/MI-PROYECTO/bank-repo/web:latest)."
-  default     = "us-central1-docker.pkg.dev/cloudrun/container/hello:latest"
+  description = "URI del contenedor del frontend. El defecto es sólo un marcador: `cd.yml` apunta el servicio a la versión publicada en cada merge a `main` (TD-081), y `cloud_run.tf` ignora los cambios de este campo para no revertirlo."
+  # `us-docker.pkg.dev`, no `us-central1-docker.pkg.dev`.
+  #
+  # El valor anterior era regional y el primer apply real (2026-10-14) fallo con
+  # «Permission 'artifactregistry.repositories.downloadArtifacts' denied on
+  # .../projects/cloudrun/locations/us-central1/repositories/container»: ese
+  # espejo regional del contenedor de ejemplo de Google no es legible para esta
+  # cuenta. El multirregional `us-docker.pkg.dev/cloudrun/container/hello` si lo
+  # es, y es el que la documentacion de Cloud Run nombra.
+  default = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
 variable "gateway_public_url" {

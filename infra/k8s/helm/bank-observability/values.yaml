@@ -107,6 +107,14 @@ otlpGateway:
       health_check:
         endpoint: ${env:MY_POD_IP}:13133
 
+    # Escuchan en la IP del pod, no en 0.0.0.0, que es lo que hace el chart por
+    # defecto y lo que corresponde: el trafico entra por el Service.
+    #
+    # Consecuencia que sorprende y conviene saber: `kubectl port-forward` a este
+    # Collector NO funciona — el forward entra por `localhost` dentro del pod y
+    # ahi no hay nada escuchando, asi que da `connection refused`. Para probarlo
+    # a mano hay que mandar la peticion desde DENTRO del cluster, al nombre del
+    # Service, que es lo que hace `infra/scripts/cloud/obs-kind.sh`.
     receivers:
       otlp:
         protocols:
@@ -298,6 +306,22 @@ logAgent:
             statements:
               - merge_maps(attributes, ParseJSON(body), "upsert") where IsMatch(body, "^\\s*\\{")
               - set(severity_text, attributes["level"]) where attributes["level"] != nil
+              # El servicio se nombra a si mismo, y es la unica fuente correcta.
+              #
+              # Sin esta linea, `service.name` lo deriva `k8s_attributes` de la
+              # etiqueta `app.kubernetes.io/name` del pod, que en el chart
+              # `bank-usac` vale **bank-usac para los siete componentes**. Los
+              # siete colapsaban en una sola etiqueta de Loki y
+              # `{service_name="gateway"}` no devolvia nada.
+              #
+              # Peor que eso: las METRICAS si traian el nombre correcto
+              # (`gateway`, `customer-service`, …), porque ese viene del SDK de
+              # la aplicacion y no del pod. Las dos senales se contradecian, y
+              # un panel que cruzara metrica y log por servicio habria salido
+              # vacio sin decir por que. Encontrado en el primer despliegue en
+              # GKE (2026-10-14); en kind no se vio, porque el productor de
+              # prueba no lleva esa etiqueta.
+              - set(resource.attributes["service.name"], attributes["serviceName"]) where attributes["serviceName"] != nil
               - set(trace_id.string, attributes["traceId"]) where IsMatch(attributes["traceId"], "^[0-9a-f]{32}$")
               - set(span_id.string, attributes["spanId"]) where IsMatch(attributes["spanId"], "^[0-9a-f]{16}$")
 
