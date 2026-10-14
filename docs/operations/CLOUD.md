@@ -338,7 +338,7 @@ pnpm obs:kind:down     # lo borra
 (`bank-obs-test`, separado del `bank-usac` del flujo local), despliega el chart,
 y **no necesita el banco**: un pod de busybox que escribe el formato exacto de
 `@bank/observability` en stdout y una traza OTLP enviada con `curl` bastan para
-probar la correlación. Después comprueba siete cosas y falla si alguna no se
+probar la correlación. Después comprueba nueve cosas y falla si alguna no se
 cumple:
 
 | # | Qué comprueba | Por qué importa |
@@ -350,8 +350,20 @@ cumple:
 | 5 | La línea que **no** es JSON se guardó igual | un log ilegible sigue siendo evidencia |
 | 6 | Prometheus raspa al Collector | sin ese objetivo ninguna métrica llega a un panel |
 | 7 | Grafana cargó los tres datasources y los `derivedFields` | el salto log → traza |
+| 8 | Prometheus tiene `bank_transfer_finished_total` y `bank_transfer_duration_seconds_bucket` | que la serie **se llame** como la nombra cada consulta de [`telemetry-catalog.md`](../sre/telemetry-catalog.md); raspar al Collector no basta |
+| 9 | Las etiquetas son `service_name` y `environment`, y `k8s_pod_name` **no** lo es | la cardinalidad de las métricas, medida en la serie y no supuesta en el YAML |
 
-Corrido el 2026-10-13 sobre kind: **7 de 7**.
+Corrido el 2026-10-14 sobre kind: **9 de 9**.
+
+Las comprobaciones 8 y 9 son de T-58 y existen por un defecto real: el
+exportador estaba con `add_metric_suffixes: false`, así que las series se
+llamaban `bank_transfer_finished` y **ninguna** de las consultas escritas en
+`docs/sre/` —todas con `_total` y `_seconds`— devolvía nada. Las siete
+comprobaciones anteriores pasaban: ninguna preguntaba por el nombre de una
+serie. La misma corrida encontró que las comprobaciones 3, 4 y 5 llevaban un día
+rotas, desde que `service.name` pasó a salir del propio log (`57e99fc`) y
+quedaron preguntando por el nombre del `Deployment`; el stream se llama
+`transaction-service`, que es lo que la línea dice ser.
 
 A la nube sólo hace falta subir lo que kind no puede mostrar: la IP estática con
 el `LoadBalancer`, el HPA bajo carga real y las capturas de evidencia.

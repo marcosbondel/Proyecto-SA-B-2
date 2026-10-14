@@ -163,10 +163,23 @@ otlpGateway:
 
       prometheus:
         endpoint: ${env:MY_POD_IP}:8889
-        # Las métricas del banco ya vienen con su unidad en el nombre
-        # (`bank.interbank.deposit.duration` en segundos). Añadir el sufijo otra
-        # vez produciría `..._seconds_seconds`.
-        add_metric_suffixes: false
+        # `true`, que es la convención de Prometheus: `_total` para un contador
+        # monotónico y la unidad al final del nombre.
+        #
+        # Estuvo en `false` con el argumento de que el nombre ya trae la unidad
+        # («`bank.interbank.deposit.duration` en segundos») y que el sufijo
+        # produciría `..._seconds_seconds`. No es así: el sufijo sale del campo
+        # `unit` del instrumento (`s`), no del nombre, y el resultado es
+        # `bank_interbank_deposit_duration_seconds`. La duplicación sólo
+        # ocurriría si el nombre terminara en la unidad, y ninguno termina.
+        #
+        # El coste de dejarlo en `false` era mayor que un nombre feo: las
+        # consultas de los anexos de `docs/sre/sli-slo-sla.md` (T-43 a T-48)
+        # están escritas contra `bank_*_total` y `*_seconds_bucket`, y contra un
+        # Collector sin sufijos **no devuelven nada**. T-50 habría construido
+        # los paneles sobre series vacías. Los nombres de este exportador son
+        # los que fija `docs/sre/telemetry-catalog.md`.
+        add_metric_suffixes: true
         resource_to_telemetry_conversion:
           enabled: false
 
