@@ -17,10 +17,22 @@ const telemetry = startTelemetry({ serviceName: 'fixture-service' });
 
 // Required only now, after the SDK — exactly the ordering `main.ts` relies on.
 const http = require('node:http');
-const { trace } = require('@opentelemetry/api');
+const { metrics, trace } = require('@opentelemetry/api');
 
 const logger = new JsonLogger({ service: 'fixture-service' });
 const tracer = trace.getTracer('fixture');
+
+// Un instrumento del banco, con la forma EXACTA del catálogo
+// (`docs/sre/telemetry-catalog.md`): nombre con prefijo `bank.`, unidad
+// explícita y una etiqueta de conjunto cerrado. El test lo observa **en el
+// cable**, que es donde se decide cómo se llamará la serie en Prometheus: el
+// sufijo `_seconds` sale de `unit`, no del nombre.
+const meter = metrics.getMeter('fixture');
+const duracion = meter.createHistogram('bank.transfer.duration', {
+  unit: 's',
+  description: 'Time from transfer.requested to a final state.',
+  advice: { explicitBucketBoundaries: [0.1, 1, 5, 30] },
+});
 
 const server = http.createServer((request, response) => {
   if (request.url === '/health') {
@@ -36,6 +48,9 @@ const server = http.createServer((request, response) => {
   if (request.url === '/work') {
     tracer.startActiveSpan('fixture.child', (span) => {
       logger.info('work done', { correlationId: 'corr-fixture' });
+      // El identificador va al span y al log, nunca a la métrica.
+      span.setAttribute('bank.transfer.id', '7f2b1c42-0000-4000-8000-000000000001');
+      duracion.record(1.75, { result: 'COMPLETED' });
       span.end();
     });
     response.writeHead(200).end('done');
