@@ -113,3 +113,7 @@ terraform.rc
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+# La configuración parcial del backend remoto: el nombre del bucket de estado
+# depende del proyecto de GCP, así que no se commitea. La plantilla sí
+# (backend.hcl.example). `.terraform.lock.hcl` no se ve afectado.
+backend.hcl

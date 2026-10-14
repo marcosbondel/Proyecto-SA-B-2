@@ -32,16 +32,28 @@ name: CD
 #   var    ARTIFACT_REPO     repositorio de Artifact Registry (ej. bank-images)
 #   var    GATEWAY_PUBLIC_URL  la direccion del Gateway tal como la alcanza el
 #                            navegador (terraform: gateway_public_url)
+#   var    GATEWAY_STATIC_IP opcional, solo produccion — la IP reservada
+#                            (terraform: gateway_public_ip). Fija la direccion
+#                            del Service LoadBalancer para que la entrada
+#                            publica sobreviva a un reinstalado (TD-080)
+#   var    CLOUD_RUN_SERVICE opcional — nombre del servicio de Cloud Run del
+#                            frontend (terraform: cloud_run_service_name). Sin
+#                            ella, el portal publico no se actualiza (TD-081)
 #   var    WEB_PUBLIC_URL    opcional — origen del frontend, para el CORS del
 #                            Gateway
-#   var    OTEL_EXPORTER_OTLP_ENDPOINT  opcional — el Collector de T-49
-#                            (OTLP/HTTP). Sin ella no se exporta telemetria
-#                            (T-48)
+#   var    OTEL_EXPORTER_OTLP_ENDPOINT  opcional — solo para apuntar a un
+#                            Collector que no sea el del cluster. Por defecto se
+#                            usa el que instala el job `deploy-observability`:
+#                            http://otel-gateway.observability.svc.cluster.local:4318
 #   secret HELM_SECRETS      valores `--set` de secrets.* que pide el chart,
 #                            uno por linea (ver infra/k8s/scripts/install.sh)
 #   secret INFRA_ADDRESSES   direcciones de la infraestructura fuera del
 #                            cluster (las VMs de PostgreSQL, RabbitMQ, MinIO),
 #                            una por linea; las da `terraform output`
+#   secret GRAFANA_ADMIN_PASSWORD  la contrasena de `admin` en Grafana (T-49).
+#                            Sin ella el job de observabilidad falla diciendolo,
+#                            en vez de instalar un Grafana con la contrasena
+#                            que el chart trae por defecto
 
 on:
   push:
@@ -53,6 +65,10 @@ on:
     inputs:
       retire_dev:
         description: 'Retirar el entorno de desarrollo (libera su CPU reservada)'
+        type: boolean
+        default: false
+      deploy_observability:
+        description: 'Desplegar el stack de observabilidad (Collector, Prometheus, Tempo, Loki, Grafana)'
         type: boolean
         default: false
 
@@ -301,9 +317,14 @@ jobs:
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
           GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
-          # El Collector de T-49. Opcional: sin la variable, los pods registran
-          # trazas y metricas y no las exportan (T-48).
-          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          # El Collector de T-49, en su nombre DNS dentro del cluster. La
+          # variable de repositorio solo hace falta para apuntar a otro sitio:
+          # el valor por defecto es el que instala el job
+          # `deploy-observability`, para que nadie tenga que acordarse de
+          # ponerlo. Vacio, los pods registran trazas y metricas y no las
+          # exportan (T-48) — que es codigo instrumentado que no se ve, y §8.3
+          # lo cobra al 50 %.
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-gateway.observability.svc.cluster.local:4318' }}
           WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
 
       - name: Resumen del despliegue
@@ -469,9 +490,20 @@ jobs:
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
           GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
-          # El Collector de T-49. Opcional: sin la variable, los pods registran
-          # trazas y metricas y no las exportan (T-48).
-          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          # La IP reservada en Terraform (`terraform output -raw
+          # gateway_public_ip`). Solo produccion la fija: es la direccion que
+          # lleva escrita el acuerdo de integracion con el banco pareja, y
+          # tiene que sobrevivir a que se borre el Service o se reinstale el
+          # release (TD-080). `dev` usa una efimera a proposito.
+          GATEWAY_STATIC_IP: ${{ vars.GATEWAY_STATIC_IP }}
+          # El Collector de T-49, en su nombre DNS dentro del cluster. La
+          # variable de repositorio solo hace falta para apuntar a otro sitio:
+          # el valor por defecto es el que instala el job
+          # `deploy-observability`, para que nadie tenga que acordarse de
+          # ponerlo. Vacio, los pods registran trazas y metricas y no las
+          # exportan (T-48) — que es codigo instrumentado que no se ve, y §8.3
+          # lo cobra al 50 %.
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-gateway.observability.svc.cluster.local:4318' }}
           WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
           # Mide la disponibilidad mientras el rolling update ocurre. El chart
           # declara `maxUnavailable: 0`; esto es lo que lo demuestra.
@@ -562,4 +594,153 @@ jobs:
             echo ""
             echo "Rolling update completado en el namespace \`prod\`, con las imagenes"
             echo "publicadas por \`release.yml\`. Ninguna imagen fue construida aqui."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ===========================================================================
+  # El stack de observabilidad (T-49).
+  #
+  # Se despliega SOLO desde `main`, y no desde `develop`, aunque el resto del
+  # CD si distinga los dos entornos. El motivo es que este release es UNO para
+  # los dos: `dev` y `prod` mandan su telemetria al mismo Collector y se miran
+  # en el mismo Grafana, separados por el atributo `deployment.environment`
+  # (T-48). Si `develop` pudiera actualizarlo, un commit de desarrollo
+  # cambiaria el monitoreo de produccion — la misma clase de problema que
+  # TD-070, pero esta si se puede evitar sin coste.
+  #
+  # Para iterar sobre el stack sin merge: Actions > CD > Run workflow >
+  # deploy_observability.
+  #
+  # Los .tgz de los subcharts estan versionados en `charts/` y `Chart.lock`
+  # fija su digest, asi que el despliegue NO depende de que los repositorios de
+  # Grafana, Prometheus y OpenTelemetry respondan. El dia de la calificacion eso
+  # importa. Por eso aqui no se ejecuta ningun `helm dependency build`: ese
+  # comando refresca el indice por red y devolveria la dependencia que se quiso
+  # quitar.
+  # ===========================================================================
+  deploy-observability:
+    name: 'Stack de observabilidad (Collector, Prometheus, Tempo, Loki, Grafana)'
+    needs: preflight
+    if: >-
+      github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' ||
+      (github.event_name == 'workflow_dispatch' && inputs.deploy_observability)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CHART: infra/k8s/helm/bank-observability
+      RELEASE: bank-observability
+      NAMESPACE: observability
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: 'Autenticar contra Google Cloud (Workload Identity Federation)'
+        if: vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: 'Autenticar contra Google Cloud (llave de cuenta de servicio)'
+        if: vars.WIF_PROVIDER == ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Obtener credenciales del cluster
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GKE_ZONE }}
+
+      - name: Comprobar la contrasena de Grafana
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GRAFANA_ADMIN_PASSWORD}" ]; then
+            echo "::error::Falta el secret GRAFANA_ADMIN_PASSWORD. Sin el, Grafana quedaria con la contrasena por defecto del chart, que es publica."
+            exit 1
+          fi
+          if [ "${#GRAFANA_ADMIN_PASSWORD}" -lt 16 ]; then
+            echo "::error::GRAFANA_ADMIN_PASSWORD tiene ${#GRAFANA_ADMIN_PASSWORD} caracteres. Minimo 16: es la consola que ve todo el sistema."
+            exit 1
+          fi
+
+      - name: Crear el namespace y el Secret de Grafana
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+          # Idempotente a proposito: `create secret` fallaria en el segundo
+          # despliegue, y `apply` sobre la salida de un `--dry-run` actualiza la
+          # contrasena si cambio.
+          kubectl create secret generic grafana-admin \
+            --namespace "$NAMESPACE" \
+            --from-literal=admin-user=admin \
+            --from-literal=admin-password="$GRAFANA_ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Desplegar el stack
+        run: |
+          set -euo pipefail
+          # Los subcharts van versionados en `charts/`, asi que no hay
+          # `helm dependency build`: el despliegue no toca la red mas que para
+          # bajar las imagenes. Lo que se comprueba es que lo versionado sea lo
+          # declarado.
+          ./infra/k8s/scripts/check-chart-deps.sh "$CHART"
+
+          helm upgrade "$RELEASE" "$CHART" \
+            --install \
+            --namespace "$NAMESPACE" \
+            --wait \
+            --timeout 20m
+
+      - name: Comprobar que el stack responde
+        run: |
+          set -euo pipefail
+          kubectl get pods,pvc -n "$NAMESPACE"
+
+          # Lo que de verdad hay que comprobar no es que los pods arranquen,
+          # sino que Prometheus este raspando al Collector: ese objetivo es el
+          # unico camino por el que las metricas de las aplicaciones llegan a
+          # un dashboard. Un stack verde con ese objetivo caido no mide nada.
+          for deployment in otel-gateway prometheus-server grafana; do
+            kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout 5m
+          done
+          kubectl rollout status daemonset/otel-log-agent -n "$NAMESPACE" --timeout 5m
+          kubectl rollout status statefulset/loki -n "$NAMESPACE" --timeout 5m
+          kubectl rollout status statefulset/tempo -n "$NAMESPACE" --timeout 5m
+
+          objetivos="$(kubectl run otel-check --rm -i --restart=Never -n "$NAMESPACE" \
+            --image=curlimages/curl:8.11.1 --quiet -- \
+            curl -s --max-time 20 'http://prometheus-server/api/v1/targets?state=active' || true)"
+
+          if echo "$objetivos" | grep -q '"job":"otel-gateway"'; then
+            echo "Prometheus esta raspando el Collector."
+          else
+            echo "::warning::Prometheus todavia no lista el objetivo otel-gateway. Puede tardar un intervalo de raspado (30 s)."
+          fi
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Stack de observabilidad"
+            echo ""
+            echo "Release \`$RELEASE\` en el namespace \`$NAMESPACE\`."
+            echo ""
+            echo "Grafana no se expone por un LoadBalancer: queda una sola IP publica"
+            echo "libre en la cuota de la region y es el margen de la entrada del banco."
+            echo "Se entra con:"
+            echo ""
+            echo '```'
+            echo "kubectl port-forward -n $NAMESPACE svc/grafana 3000:80"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

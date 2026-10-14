@@ -129,6 +129,19 @@ into `develop` — exactly the two points the assignment names for this phase.
 | No tracked `.env` files | `git ls-files` guard | No secret-bearing file was committed | A credential or config file was added by mistake; remove it and use `.env.example` instead |
 | Lint | `pnpm lint` | Style **and** the architectural isolation rules in `apps/packages/tooling/eslint.base.mjs` (no cross-service import, no framework import in `domain`, no `infrastructure` import in `application`) | A style violation or an architecture boundary was crossed |
 | Typecheck | `pnpm typecheck` | `tsc --noEmit` across every workspace | A type error `lint` did not already catch |
+| Charts de Helm | `helm lint` + `helm template` + `check-chart-deps.sh` | Both charts render: `bank-usac` in the shape production deploys (including `gateway.loadBalancerIP`, which TD-080 left uncovered for three weeks), and `bank-observability` with the four greps that distinguish a stack that measures from one that is merely green | A chart change broke the render, or `Chart.yaml`, `Chart.lock` and `charts/` drifted apart |
+
+**Why the Helm step renders and does not only lint.** `helm lint` passes on a
+chart whose `values.yaml` names a key no subchart knows — that is exactly how
+`loki.otlpConfig` sat there doing nothing until the render was read. And the
+render alone is not enough either: it succeeds happily against a stale
+`charts/*.tgz`, which is why `check-chart-deps.sh` compares `Chart.yaml`,
+`Chart.lock` and the vendored archives **without touching the network**. The
+charts were not validated anywhere before 2026-10-13; `pnpm lint` reads
+TypeScript and `pnpm format:check` is out of the pipeline for the reason below.
+A chart CI never renders breaks at deploy time, and `bank-observability` *is*
+the deployment of the stack — which §8.3 prices at 25 % if it has to be done by
+hand.
 
 This is the phase the assignment describes only as "verificación básica del
 sistema (ejecución o sanity check)": with no running system to smoke-test at
@@ -152,7 +165,7 @@ upgrade needs.
 ## Why `pnpm format:check` is not a step
 
 It fails today against files this ticket has no reason to touch: the Helm
-templates under `infra/k8s/helm/bank-usac/templates/` use Go template syntax
+templates under `infra/k8s/helm/` use Go template syntax
 (`{{- $component := ... }}`) that is not valid YAML, so Prettier's YAML parser
 rejects them, plus a handful of pre-existing warnings elsewhere in the
 workspace. Wiring a failing check into a required pipeline would make every
@@ -435,6 +448,44 @@ It published to `ghcr.io` once, and the production deploy failed against
 registry nobody was pulling from. A delivery phase that hands over artifacts the
 deployment cannot reach has not delivered anything. Both halves now read the
 same three variables, so they cannot drift apart again.
+
+### The observability stack deploys from `main` only
+
+`cd.yml` has a fifth job, **«Stack de observabilidad»**, that installs
+`infra/k8s/helm/bank-observability` as its own release in the `observability`
+namespace: the two OpenTelemetry Collectors, Prometheus, Tempo, Loki and
+Grafana (T-49, [ADR-018](../architecture/adr/ADR-018-observability-stack.md)).
+
+Unlike every other deploy job, it does **not** run on a push to `develop`. The
+stack is *one* for both environments — `dev` and `prod` send their telemetry to
+the same Collector and are read in the same Grafana, told apart by the
+`deployment.environment` attribute from T-48 — so a development commit able to
+update it would change production's monitoring. That is the same class of
+problem as TD-070, except this one costs nothing to avoid. To iterate on the
+stack without a merge: *Actions → CD → Run workflow → `deploy_observability`*.
+
+It needs one secret the other jobs do not: `GRAFANA_ADMIN_PASSWORD`, at least 16
+characters. The job fails naming it rather than installing a Grafana with the
+chart's public default password.
+
+The job runs no `helm dependency build`. The subcharts are vendored in
+`charts/` (372 KB) precisely so the deploy does not depend on the Grafana,
+Prometheus and OpenTelemetry repositories answering, and `dependency build`
+refreshes the repository index over the network — it would put back the
+dependency that vendoring removed.
+
+Two things it wires that are easy to miss:
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT` now **defaults** to
+  `http://otel-gateway.observability.svc.cluster.local:4318` in both app deploy
+  jobs. It used to be a repository variable somebody had to remember to set,
+  and the cost of forgetting was that every instrumented line in the codebase
+  exported nothing — which §8.3 prices at 50 %. The variable still exists, and
+  is now only for pointing at a different Collector.
+- The in-cluster RabbitMQ enables the `rabbitmq_prometheus` plugin and publishes
+  on `:15692`, which is where the broker's consumer lag — a mandatory SLI —
+  comes from. There is one broker per namespace, so Prometheus scrapes two
+  targets and the `environment` label is what separates them.
 
 ### Environment separation, and what is *not* separated
 

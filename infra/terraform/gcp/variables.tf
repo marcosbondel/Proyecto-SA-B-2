@@ -21,6 +21,12 @@ variable "network_name" {
   default     = "bank-usac-vpc"
 }
 
+variable "artifact_repo" {
+  type        = string
+  description = "Nombre del repositorio de Artifact Registry al que el pipeline publica las imágenes. Es el valor de la variable de repositorio ARTIFACT_REPO en GitHub."
+  default     = "bank-images"
+}
+
 variable "gke_machine_type" {
   type        = string
   description = "Tipo de máquina para los nodos del clúster de Google Kubernetes Engine (GKE)."
@@ -67,6 +73,12 @@ variable "web_image" {
 
 variable "gateway_public_url" {
   type        = string
-  description = "URL pública de acceso al API Gateway para inyectar en NUXT_PUBLIC_API_BASE_URL del frontend Web."
-  default     = "http://34.123.45.67:3000"
+  description = "URL pública del API Gateway que el NAVEGADOR resuelve, inyectada en NUXT_PUBLIC_API_BASE_URL del frontend. Vacía —lo recomendado— la deriva de la IP reservada en gateway_address.tf, para que no haya una dirección escrita a mano que se quede obsoleta."
+  default     = ""
+}
+
+variable "gateway_port" {
+  type        = number
+  description = "Puerto en el que el Service del Gateway publica. Debe coincidir con gateway.port del chart de Helm."
+  default     = 3000
 }
