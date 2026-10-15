@@ -6,6 +6,10 @@
 #   ./infra/k8s/scripts/install.sh --tag 2703cb03c161
 #   ./infra/k8s/scripts/install.sh --dry-run        # render, do not apply
 #   ./infra/k8s/scripts/install.sh --print          # print the helm command only
+#   ./infra/k8s/scripts/install.sh --values infra/k8s/kind/local.values.yaml
+#                                                   # telemetria al Collector del
+#                                                   # propio cluster y el banco
+#                                                   # pareja simulado encendido
 #
 # `helm upgrade --install` for this chart needs sixteen values nobody can be
 # expected to type: nine `--set secrets.*` that templates/secret.yaml marks
@@ -44,8 +48,17 @@ dry_run=false
 print_only=false
 skip_discover=false
 allow_remote=false
+# Archivos de valores extra, en orden. Lo que llega por aqui gana sobre el
+# `values.yaml` del chart y sobre el generado de las IPs externas, que es
+# exactamente lo que hace falta para el camino local: la telemetria apuntando
+# al Collector del propio cluster y el banco pareja simulado encendido, sin
+# tocar los valores con los que se despliega la nube.
+extra_values=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --values|-f)
+      [[ -f "${2:?--values needs a file}" ]] || { echo "ERROR: no existe el archivo de valores '$2'." >&2; exit 2; }
+      extra_values+=("$2"); shift 2 ;;
     --tag) tag="${2:?--tag needs a value}"; shift 2 ;;
     --context) KUBE_CONTEXT="${2:?--context needs a value}"; shift 2 ;;
     --allow-remote-context) allow_remote=true; shift ;;
@@ -58,7 +71,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! kubectl config get-contexts -o name 2>/dev/null | grep -qx "$KUBE_CONTEXT"; then
+# Se captura la lista ANTES de buscar en ella, y no se encadena
+# `kubectl … | grep -q`. El motivo es una carrera real, no estilo: `grep -q`
+# termina en cuanto encuentra la linea y cierra el pipe, `kubectl` muere con
+# SIGPIPE (141) y `pipefail` convierte eso en un fallo de la tuberia entera. El
+# sintoma era «el contexto no existe» seguido de una lista en la que SI aparece,
+# y empeoraba a medida que se acumulaban contextos en el kubeconfig.
+contexts="$(kubectl config get-contexts -o name 2>/dev/null || true)"
+if ! printf '%s\n' "$contexts" | grep -qx "$KUBE_CONTEXT"; then
   echo "ERROR: kube context '${KUBE_CONTEXT}' does not exist." >&2
   echo "  Create the cluster first:  pnpm k8s:cluster" >&2
   echo "  Available contexts:" >&2
@@ -133,9 +153,19 @@ if [[ "$KUBE_CONTEXT" == kind-* ]]; then
         echo "Images for ${tag} are built but not on the node — loading…"
         for component in \
           customer-service account-service transaction-service payment-service \
-          notification-audit-service gateway web; do
+          notification-audit-service gateway web \
+          partner-bank-mock; do
+          # `partner-bank-mock` es el doble de prueba de T-57. Se carga si
+          # existe y se ignora si no: el chart lo deja apagado, así que un
+          # clúster sin esa imagen es el caso normal, no un error.
           kind load docker-image --name "$kind_cluster" "bank-usac/${component}:${tag}" >/dev/null 2>&1
         done
+        # Volver a preguntarle al nodo. `node_images` se capturo ANTES de
+        # cargar, asi que la comprobacion de mas abajo la haria contra una foto
+        # vieja y concluiria que no hay imagenes utilizables — justo despues de
+        # haberlas puesto. El sintoma era que la PRIMERA instalacion tras una
+        # construccion siempre fallaba y la segunda funcionaba sin explicacion.
+        node_images="$(docker exec "$node" crictl images 2>/dev/null || true)"
       fi
     fi
 
@@ -192,6 +222,11 @@ set -- \
 
 [[ -f "$GENERATED" ]] && set -- "$@" -f "$GENERATED"
 
+# Despues del generado a proposito: el ultimo `-f` gana en Helm.
+for valores in ${extra_values[@]+"${extra_values[@]}"}; do
+  set -- "$@" -f "$valores"
+done
+
 # The nine required secrets, mapped from the Compose credentials.
 set -- "$@" \
   --set-string "secrets.jwtSecret=${JWT_SECRET:-dev-only-secret-not-for-any-deployed-environment}" \
@@ -229,6 +264,12 @@ set -- "$@" \
 set -- "$@" --set-string "gateway.serviceType=ClusterIP"
 
 # The seven image tags. Not optional — see the note above `services:` in values.yaml.
+#
+# Y el del doble de prueba de T-57, con el MISMO tag. No es simetria: el chart
+# lo deja en `:dev` y el nodo solo tiene cargado el tag del commit, asi que sin
+# esa linea el pod del mock se queda en ErrImagePull en cuanto alguien lo
+# enciende — que es lo que paso la primera vez que se levanto el camino local.
+# Con el mock apagado el valor no se usa y no molesta.
 set -- "$@" \
   --set-string "services.customer.image.tag=${tag}" \
   --set-string "services.account.image.tag=${tag}" \
@@ -236,7 +277,8 @@ set -- "$@" \
   --set-string "services.payment.image.tag=${tag}" \
   --set-string "services.notificationAudit.image.tag=${tag}" \
   --set-string "gateway.image.tag=${tag}" \
-  --set-string "web.image.tag=${tag}"
+  --set-string "web.image.tag=${tag}" \
+  --set-string "partnerMock.image.tag=${tag}"
 
 [[ "$dry_run" == "true" ]] && set -- "$@" --dry-run
 

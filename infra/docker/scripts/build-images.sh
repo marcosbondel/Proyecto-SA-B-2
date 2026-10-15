@@ -103,6 +103,37 @@ for row in "${BANK_COMPONENTS[@]}"; do
   built+=("${image}:${tag}" "${image}:dev")
 done
 
+# Los dobles de prueba, con el mismo tag y las mismas etiquetas. Se omiten si se
+# pidieron componentes concretos y ninguno es este.
+for row in "${BANK_TEST_DOUBLES[@]}"; do
+  bank_component_fields "$row"
+  name="$BANK_COMPONENT_NAME"
+
+  if [[ ${#selected[@]} -gt 0 ]]; then
+    match=false
+    for wanted in "${selected[@]}"; do
+      [[ "$wanted" == "$name" ]] && match=true
+    done
+    [[ "$match" == "true" ]] || continue
+  fi
+
+  image="${BANK_IMAGE_PREFIX}/${name}"
+
+  echo "──────────────────────────────────────────────────────────────"
+  echo "Building ${image}:${tag}  (${BANK_COMPONENT_DOCKERFILE})  [doble de prueba]"
+  echo
+
+  docker build \
+    --file "$BANK_COMPONENT_DOCKERFILE" \
+    --tag "${image}:${tag}" \
+    --tag "${image}:dev" \
+    --build-arg "IMAGE_VERSION=${tag}" \
+    --build-arg "GIT_COMMIT=${commit}" \
+    "$REPO_ROOT"
+
+  built+=("${image}:${tag}" "${image}:dev")
+done
+
 if [[ ${#built[@]} -eq 0 ]]; then
   echo "ERROR: nothing matched. Known components:" >&2
   for row in "${BANK_COMPONENTS[@]}"; do

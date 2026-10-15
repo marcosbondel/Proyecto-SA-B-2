@@ -190,6 +190,77 @@ tanto termina `COMPENSATED` con el saldo intacto, y la simulación se restaura y
 comprueba con una transferencia que **COMPLETA**. Usa al administrador sembrado, así que
 también necesita `SEED_DEMO_DATA=true`.
 
+## Todo el sistema en local, incluida la observabilidad y el banco pareja
+
+Lo de arriba despliega el banco. Desde T-50 y T-57 hay un camino que despliega
+**además** el stack de observabilidad en el mismo clúster y una contraparte
+falsa del banco pareja, que es lo que permite avanzar sin nube y sin el otro
+grupo:
+
+```bash
+pnpm local:up                 # infra + clúster + imágenes + stack + banco
+pnpm local:up -- --skip-build  # sin reconstruir imágenes
+```
+
+Lo que añade sobre el camino corto:
+
+| Qué | Dónde | Para qué |
+| --- | --- | --- |
+| Collector, Prometheus, Tempo, Loki, Grafana | namespace `observability` | ver una transferencia real como **una** traza, las 30 reglas de T-50 calculando sobre datos de verdad y los nueve dashboards con datos |
+| `partner-bank-mock` | namespace `bank-usac`, etiquetado `role: test-double` | enviar y recibir depósitos interbancarios, e **inyectar fallos** sin tocar el sistema de nadie |
+| `ALERT_WEBHOOK_TOKEN` compartido | Secret del banco y Secret de Grafana | que una alerta llegue al webhook del Gateway y quede en `/auditoria/notificaciones` — el último salto que no se puede probar sin un Gateway |
+
+Las sobrescrituras están en dos archivos, y **no tocan los valores con los que
+se despliega la nube**: `infra/k8s/kind/local.values.yaml` (telemetría al
+Collector del propio clúster, entorno `local`, mock encendido) y
+`observability.values.yaml` (sin volúmenes salvo Loki, dos horas de retención).
+Los dos instaladores se niegan a trabajar contra un contexto que no sea
+`kind-*`.
+
+### Los tres escenarios de fallo, en local
+
+```bash
+# el banco pareja rechaza
+pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml --set partnerMock.callbackMode=REJECT
+# no contesta
+pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml --set partnerMock.callbackMode=TIMEOUT
+# tarda ocho segundos
+pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml \
+  --set partnerMock.callbackMode=SLOW --set partnerMock.callbackDelayMs=8000
+
+# el proveedor de pagos falla siempre (T-44, en caliente, sin desplegar)
+curl -X PUT localhost:3000/api/payments/simulation -H "Authorization: Bearer <JWT admin>" \
+  -H 'Content-Type: application/json' -d '{"failureRate":1}'
+
+# matar un pod durante la carga
+kubectl delete pod -n bank-usac -l app.kubernetes.io/component=payment-service
+```
+
+### Dos cosas que muerden
+
+**Tocar un Secret no rueda los pods** (TD-089). Un pod lee un Secret una vez, al
+arrancar, y el chart hashea el ConfigMap pero no el Secret. Si añades o rotas
+una credencial, `kubectl rollout restart deployment -n bank-usac` después, o el
+servicio seguirá usando la anterior — y el síntoma es un rechazo correcto de un
+valor equivocado, que es lo más difícil de diagnosticar. El Deployment del mock
+sí lleva `checksum/secret`, por esto mismo.
+
+**El puerto 3000 lo quieren dos.** `pnpm k8s:forward` pone el Gateway en 3000 y
+`pnpm obs:forward` pone Grafana en 3000. Levanta uno a la vez, o cambia el
+puerto de uno de los dos.
+
+### Lo que este camino NO prueba
+
+El **HPA** (kind no trae `metrics-server`), el **error budget de siete días**
+(la retención local es de dos horas) y la **IP pública** del Gateway. Eso
+necesita la nube, y está en [CLOUD.md](CLOUD.md).
+
+Para apagarlo:
+
+```bash
+pnpm k8s:down && pnpm k8s:obs:down && pnpm dev:infra:down && pnpm k8s:cluster:down
+```
+
 ## Escalado
 
 `replicaCount` y `resources` se pueden fijar globalmente o por componente:

@@ -369,12 +369,65 @@ gateway:
   corsAllowedOrigins: "http://localhost:3010"
 
 # T-46: provisional incoming interbank contract. An empty partner token keeps
-# the route closed; these values do not start the optional partner mock.
+# the route closed.
+#
+# `callbackUrl` is where Payment answers the partner bank with the result. The
+# default is the Compose address, which only resolves on a laptop; in a cluster
+# it has to be a Service name. There is **no conditional default** that points
+# it at the mock when the mock is enabled, on purpose: a URL that changes
+# meaning depending on another flag is how a release ends up calling the wrong
+# bank. The local overrides file sets it explicitly
+# (`infra/k8s/kind/local.values.yaml`), and so does the integration agreement
+# for the real partner.
 interbank:
   bankCode: BANK_USAC
   partnerBankCode: PARTNER_MOCK
   maxAmountMinor: "100000000"
   callbackUrl: "http://127.0.0.1:3021/callbacks/interbank"
+
+# ---------------------------------------------------------------------------
+# partner-bank-mock — the simulated partner bank (T-57).
+#
+# **`enabled: false`, and that is the whole point.** §4.1 asks for a mock "para
+# desarrollar sin depender del otro grupo y para inyectar fallos", and §4.1's
+# grading rules allow being evaluated against it as a last resort — so it has to
+# be *deployable*, not merely runnable on a laptop. What it must never be is
+# deployed by accident into production: a bank that ships its own counterparty
+# is a bank that can pass a test it did not really pass.
+#
+# Turning it on is a values change (`--set partnerMock.enabled=true`), which is
+# also how the day-of-grading switch between the real partner, a substitute bank
+# and the mock works — no rebuild, no code change. The runbook is
+# docs/operations/runbooks/partner-bank.md.
+#
+# The three `callback*` knobs are the fault injection T-51's mandatory scenario
+# needs: a rejection, a timeout and a slow answer. Changing them changes the
+# Deployment's own env, so the pod restarts by itself — no ConfigMap checksum
+# needed, because nothing else reads them.
+partnerMock:
+  enabled: false
+  component: partner-bank-mock
+  replicaCount: 1
+  image:
+    repository: bank-usac/partner-bank-mock
+    tag: dev # always --set at install time, like the other components
+    pullPolicy: IfNotPresent
+  port: 3021
+  # Which Gateway the mock sends deposits to. In-cluster Service name.
+  gatewayUrl: ''
+  # ACCEPT · REJECT · TIMEOUT · SLOW
+  callbackMode: ACCEPT
+  callbackDelayMs: "1000"
+  # How many of the first callbacks fail before succeeding, to exercise the
+  # retry whose due time is a column rather than a timer.
+  callbackFailCount: "0"
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
 
 # ---------------------------------------------------------------------------
 # web — the Nuxt frontend. NUXT_PUBLIC_API_BASE_URL is resolved by the
