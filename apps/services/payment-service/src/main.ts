@@ -14,6 +14,7 @@ import { Pool } from 'pg';
 
 import { SimulationUseCase } from './application/manage-simulation.use-case';
 import { InterbankUseCase } from './application/interbank.use-case';
+import { SendInterbankDepositUseCase } from './application/send-interbank-deposit.use-case';
 import { ProcessPaymentUseCase } from './application/process-payment.use-case';
 import { GetPaymentStatsUseCase } from './application/get-payment-stats.use-case';
 import { QueryPaymentUseCase } from './application/query-payment.use-case';
@@ -26,18 +27,24 @@ import {
 } from './infrastructure/config/environment';
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { BrokerInterbankMessenger } from './infrastructure/messaging/broker-interbank.messenger';
-import { HttpPartnerCallback } from './infrastructure/http/partner-callback';
+import { HttpPartnerBankClient, HttpPartnerCallback } from './infrastructure/http/partner-callback';
 import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresPaymentRepository } from './infrastructure/persistence/postgres-payment.repository';
 import { PostgresInterbankRepository } from './infrastructure/persistence/postgres-interbank.repository';
+import { PostgresInterbankSendRepository } from './infrastructure/persistence/postgres-interbank-send.repository';
 import { OutboxRelay } from './infrastructure/scheduler/outbox.scheduler';
 import { OtelProviderTelemetry } from './infrastructure/telemetry/otel-provider.telemetry';
-import { OtelInterbankTelemetry } from './infrastructure/telemetry/otel-interbank.telemetry';
+import {
+  OtelInterbankSendTelemetry,
+  OtelInterbankTelemetry,
+} from './infrastructure/telemetry/otel-interbank.telemetry';
 import { RetryScheduler } from './infrastructure/scheduler/retry.scheduler';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   ListPaymentsHandler,
+  InterbankCallbackHandler,
+  InterbankCompensatedHandler,
   InterbankReceiveHandler,
   InterbankEligibilityReplyHandler,
   InterbankCreditedHandler,
@@ -121,6 +128,7 @@ async function bootstrap(): Promise<void> {
   });
   const repository = new PostgresPaymentRepository(pool);
   const interbankRepository = new PostgresInterbankRepository(pool);
+  const interbankSendRepository = new PostgresInterbankSendRepository(pool);
 
   const broker = new MessageBroker({
     url: environment.RABBITMQ_URL,
@@ -148,6 +156,44 @@ async function bootstrap(): Promise<void> {
         continueTrace(traceparent, spanName, { 'bank.correlation_id': correlationId }, work),
     },
   });
+
+  /**
+   * El envío de depósitos al banco pareja (T-47).
+   *
+   * **`null` cuando no hay a dónde enviar.** Un despliegue sin
+   * `INTERBANK_SEND_URL` —el caso normal mientras el auxiliar no asigne la
+   * pareja— paga como siempre: el bloque `interbank` de un pago se ignora y el
+   * pago va al proveedor simulado. Es deliberado: un banco sin banco pareja
+   * sigue siendo un banco, y arrancar con una URL vacía habría dejado todo
+   * depósito fallando contra `http://`.
+   */
+  const interbankSend =
+    environment.INTERBANK_SEND_URL.length === 0
+      ? null
+      : new SendInterbankDepositUseCase({
+          repository: interbankSendRepository,
+          partner: new HttpPartnerBankClient(
+            environment.INTERBANK_SEND_URL,
+            environment.INTERBANK_PARTNER_TOKEN,
+            environment.INTERBANK_BANK_CODE,
+          ),
+          messenger: new BrokerInterbankMessenger(broker),
+          telemetry: new OtelInterbankSendTelemetry(logger),
+          clock: clock.now,
+          confirmationTimeoutMs: environment.INTERBANK_CONFIRMATION_TIMEOUT_MS,
+          /*
+           * La misma escalera que la de los pagos, y por el mismo motivo: si el
+           * banco pareja no acusa recibo, esperar un segundo, luego cinco y
+           * luego treinta es lo que distingue un blip de una caída. El
+           * vencimiento de la confirmación es el que corta.
+           */
+          resendDelaysMs: environment.PAYMENT_RETRY_DELAYS_MS,
+          log: logger,
+        });
+
+  if (interbankSend === null) {
+    logger.info('envio interbancario desactivado: falta INTERBANK_SEND_URL', {});
+  }
 
   const telemetry = new OtelProviderTelemetry(logger);
   const simulation = new SimulationUseCase({
@@ -178,11 +224,17 @@ async function bootstrap(): Promise<void> {
     const publisher = publisherFactory.forCause(envelope);
 
     return new InboundMessageRouter([
-      new ProcessPaymentHandler(processPayment, publisher),
+      new ProcessPaymentHandler(processPayment, publisher, interbankSend),
       new InterbankReceiveHandler(interbank),
       new InterbankEligibilityReplyHandler(interbank),
       new InterbankCreditedHandler(interbank),
       new InterbankCreditRejectedHandler(interbank),
+      ...(interbankSend === null
+        ? []
+        : [
+            new InterbankCallbackHandler(interbankSend),
+            new InterbankCompensatedHandler(interbankSend),
+          ]),
       new ListPaymentsHandler(queryPayment, publisher),
       new PaymentStatusHandler(queryPayment, publisher),
       new PaymentStatsHandler(new GetPaymentStatsUseCase({ repository, publisher })),
@@ -243,6 +295,36 @@ async function bootstrap(): Promise<void> {
    * that will ever come back for them.
    */
   const sweepOnce = async (): Promise<number> => {
+    /**
+     * Lo primero del barrido, antes de la escalera de pagos (T-47).
+     *
+     * Antes y no después porque los dos comparten el mismo intervalo y el mismo
+     * lote: veinte pagos en cola no pueden dejar sin atender un depósito que ya
+     * venció, porque el vencimiento es lo único que devuelve el dinero de un
+     * cliente cuyo banco pareja dejó de contestar. Y va en el mismo barrido en
+     * vez de en un `setInterval` propio porque un segundo temporizador es un
+     * segundo sitio donde olvidarse de `unref`.
+     *
+     * Su error se traga aquí mismo: un depósito que falla al reintentarse no
+     * puede dejar sin intento a los pagos que vienen detrás.
+     */
+    if (interbankSend !== null) {
+      try {
+        const interbankSwept = await interbankSend.sweep(SWEEP_BATCH);
+
+        if (interbankSwept.expired > 0 || interbankSwept.resent > 0) {
+          logger.info('barrido interbancario', {
+            expired: interbankSwept.expired,
+            resent: interbankSwept.resent,
+          });
+        }
+      } catch (error) {
+        logger.error('el barrido interbancario fallo', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     const due = await repository.due(clock.now(), SWEEP_BATCH);
     let attempted = 0;
 

@@ -124,8 +124,26 @@ describe('this service speaks to the system only through the broker', () => {
     const adapter = SOURCES.find(
       (file) => file.path === 'src/infrastructure/http/partner-callback.ts',
     );
+
     expect(adapter?.text).toMatch(/fetch\(this\.endpoint/);
     expect(adapter?.text).toMatch(/redirect: 'error'/);
+
+    /**
+     * Y **todas** las llamadas de ese archivo apuntan a un destino de la
+     * configuración, no sólo la primera.
+     *
+     * T-46 dejó una sola salida y bastaba con comprobar que existía. T-47 añadió
+     * la segunda —el envío del depósito, además del callback de respuesta— y
+     * con dos la pregunta deja de ser «¿hay una salida fija?» y pasa a ser
+     * «¿son fijas todas?». Un `fetch(payload.callbackUrl)` sería un banco al
+     * que cualquiera le dice a dónde mandar el dinero, y la prueba anterior lo
+     * habría dejado pasar mientras la primera llamada siguiera siendo correcta.
+     */
+    const llamadas = adapter?.text.match(/(?<![.#\w])fetch\(/g) ?? [];
+    const configuradas = adapter?.text.match(/(?<![.#\w])fetch\(this\.[A-Za-z]+/g) ?? [];
+
+    expect(llamadas).toHaveLength(2);
+    expect(configuradas).toHaveLength(llamadas.length);
   });
 
   it('exposes HTTP for health and readiness only', () => {

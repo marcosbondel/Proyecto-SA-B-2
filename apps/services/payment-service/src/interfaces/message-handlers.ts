@@ -1,6 +1,9 @@
 import {
   paymentListQueryV1,
+  accountDebitCompensatedV1,
+  paymentInterbankCallbackReceivedV1,
   paymentInterbankReceiveV1,
+  type PaymentInterbankCallbackReceivedV1,
   accountInterbankEligibilityRepliedV1,
   accountInterbankCreditedV1,
   accountInterbankCreditRejectedV1,
@@ -18,6 +21,7 @@ import type { ProcessPaymentUseCase } from '../application/process-payment.use-c
 import type { InterbankUseCase } from '../application/interbank.use-case';
 import type { GetPaymentStatsUseCase } from '../application/get-payment-stats.use-case';
 import type { QueryPaymentUseCase } from '../application/query-payment.use-case';
+import type { SendInterbankDepositUseCase } from '../application/send-interbank-deposit.use-case';
 import type { InboundMessageHandler } from './inbound-message.handler';
 
 export class InterbankReceiveHandler implements InboundMessageHandler {
@@ -80,14 +84,44 @@ export class ProcessPaymentHandler implements InboundMessageHandler {
 
   readonly #useCase: ProcessPaymentUseCase;
   readonly #publisher: EventPublisher;
+  readonly #interbank: SendInterbankDepositUseCase | null;
 
-  constructor(useCase: ProcessPaymentUseCase, publisher: EventPublisher) {
+  constructor(
+    useCase: ProcessPaymentUseCase,
+    publisher: EventPublisher,
+    interbank: SendInterbankDepositUseCase | null = null,
+  ) {
     this.#useCase = useCase;
     this.#publisher = publisher;
+    this.#interbank = interbank;
   }
 
   public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
     const command = paymentRequestedV1.schema.parse(envelope.payload);
+
+    /**
+     * La bifurcación del pago (T-47): si el comando trae el bloque
+     * `interbank`, a quien hay que pedirle el dinero es al banco pareja y no al
+     * proveedor simulado.
+     *
+     * Aquí y no en el caso de uso de pagos, porque aquí es donde el mensaje se
+     * entiende: `process-payment.use-case.ts` decide con una escalera de
+     * reintentos y un proveedor que contesta al momento, y un depósito
+     * interbancario no tiene ni lo uno ni lo otro — tiene un acuse, una espera
+     * y un vencimiento. Meter las dos cosas en el mismo caso de uso habría
+     * sido una condición dentro de la función que decide si se compensa un
+     * débito, que es el último sitio del sistema donde conviene una rama.
+     *
+     * Un despliegue sin el interbancario configurado (`#interbank` nulo) paga
+     * como siempre: el bloque se ignora y el pago va al proveedor simulado. Es
+     * deliberado — un banco sin banco pareja sigue siendo un banco.
+     */
+    if (command.interbank !== undefined && this.#interbank !== null) {
+      await this.#interbank.requested(
+        envelope as MessageEnvelope<typeof command>,
+      );
+      return;
+    }
 
     await this.#useCase.open(
       {
@@ -211,5 +245,61 @@ export class SimulationQueryHandler implements InboundMessageHandler {
     paymentSimulationQueryV1.schema.parse(envelope.payload);
 
     await this.#useCase.query(this.#publisher);
+  }
+}
+
+/**
+ * `payment.interbank.callback.received.v1` — la decisión del banco pareja sobre
+ * un depósito que este banco envió (T-47).
+ *
+ * Entra por el Gateway, que es el único que habla con fuera, y llega aquí como
+ * comando porque dice «registra esta decisión» y el único que puede es este
+ * servicio.
+ */
+export class InterbankCallbackHandler implements InboundMessageHandler {
+  public readonly messageType = paymentInterbankCallbackReceivedV1.name;
+
+  readonly #useCase: SendInterbankDepositUseCase;
+
+  constructor(useCase: SendInterbankDepositUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    // Se valida el cuerpo y se pasa la envolvente entera: el caso de uso
+    // necesita la correlación y la identidad, no sólo el payload.
+    paymentInterbankCallbackReceivedV1.schema.parse(envelope.payload);
+
+    await this.#useCase.callback(
+      envelope as MessageEnvelope<PaymentInterbankCallbackReceivedV1>,
+    );
+  }
+}
+
+/**
+ * `account.debit.compensated.v1` — el dinero volvió a la cuenta origen (T-47).
+ *
+ * Este servicio escucha un evento de la Saga que no le concierne en general, y
+ * por un motivo concreto: es el único que puede escribir `REVERSED`, que es la
+ * constancia de que la devolución **ocurrió** y no sólo se ordenó. Sin esto,
+ * «rechazado» y «rechazado y devuelto» serían el mismo estado — la diferencia
+ * que §8.3 penaliza con un 50 %.
+ *
+ * Los eventos de transferencias que no son interbancarias se descartan sin
+ * ruido: el caso de uso busca por `transactionId` y no encuentra fila.
+ */
+export class InterbankCompensatedHandler implements InboundMessageHandler {
+  public readonly messageType = accountDebitCompensatedV1.name;
+
+  readonly #useCase: SendInterbankDepositUseCase;
+
+  constructor(useCase: SendInterbankDepositUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const event = accountDebitCompensatedV1.schema.parse(envelope.payload);
+
+    await this.#useCase.compensated(event.transactionId);
   }
 }
