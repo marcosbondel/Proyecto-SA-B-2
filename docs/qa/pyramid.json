@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T13:04:33.620Z",
+  "generatedAt": "2026-10-15T13:18:02.945Z",
   "targets": {
     "unit": 70,
     "integration": 20,
@@ -23,16 +23,16 @@
       },
       "files": [
         {
+          "path": "apps/gateway/test/identity-document.spec.ts",
+          "layer": "unit",
+          "cases": 7,
+          "skipped": 0
+        },
+        {
           "path": "apps/gateway/test/envelope-and-replies.integration.spec.ts",
           "layer": "integration",
           "cases": 36,
           "skipped": 36
-        },
-        {
-          "path": "apps/gateway/test/publish-routing.integration.spec.ts",
-          "layer": "integration",
-          "cases": 43,
-          "skipped": 43
         },
         {
           "path": "apps/gateway/test/alert-webhook.integration.spec.ts",
@@ -41,15 +41,33 @@
           "skipped": 11
         },
         {
-          "path": "apps/gateway/test/identity-document.spec.ts",
+          "path": "apps/gateway/test/photo-upload.spec.ts",
           "layer": "unit",
-          "cases": 7,
+          "cases": 8,
           "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/publish-routing.integration.spec.ts",
+          "layer": "integration",
+          "cases": 43,
+          "skipped": 43
         },
         {
           "path": "apps/gateway/test/interbank.spec.ts",
           "layer": "unit",
           "cases": 4,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/password-reset.spec.ts",
+          "layer": "unit",
+          "cases": 17,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/verify-email.spec.ts",
+          "layer": "unit",
+          "cases": 20,
           "skipped": 0
         },
         {
@@ -65,30 +83,6 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/verify-email.spec.ts",
-          "layer": "unit",
-          "cases": 20,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/photo-upload.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/password-reset.spec.ts",
-          "layer": "unit",
-          "cases": 17,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/alert-webhook.spec.ts",
-          "layer": "unit",
-          "cases": 35,
-          "skipped": 0
-        },
-        {
           "path": "apps/gateway/test/commands-publish.spec.ts",
           "layer": "unit",
           "cases": 18,
@@ -101,15 +95,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/commands-validation.spec.ts",
+          "path": "apps/gateway/test/alert-webhook.spec.ts",
           "layer": "unit",
-          "cases": 20,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/payment-simulation-routes.spec.ts",
-          "layer": "unit",
-          "cases": 29,
+          "cases": 35,
           "skipped": 0
         },
         {
@@ -119,15 +107,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/queries-reply.spec.ts",
+          "path": "apps/gateway/test/payment-simulation-routes.spec.ts",
           "layer": "unit",
-          "cases": 43,
+          "cases": 29,
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/failure-code-table.spec.ts",
+          "path": "apps/gateway/test/commands-validation.spec.ts",
           "layer": "unit",
           "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/queries-reply.spec.ts",
+          "layer": "unit",
+          "cases": 43,
           "skipped": 0
         },
         {
@@ -137,9 +131,21 @@
           "skipped": 0
         },
         {
+          "path": "apps/gateway/test/failure-code-table.spec.ts",
+          "layer": "unit",
+          "cases": 20,
+          "skipped": 0
+        },
+        {
           "path": "apps/gateway/test/no-database-no-http.spec.ts",
           "layer": "unit",
           "cases": 22,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/register-role-authorization.spec.ts",
+          "layer": "unit",
+          "cases": 6,
           "skipped": 0
         },
         {
@@ -149,9 +155,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/auth-login-secrets.spec.ts",
+          "path": "apps/gateway/test/trace-header.spec.ts",
           "layer": "unit",
-          "cases": 7,
+          "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/payment-scenario.spec.ts",
+          "layer": "unit",
+          "cases": 8,
           "skipped": 0
         },
         {
@@ -167,9 +179,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/register-role-authorization.spec.ts",
+          "path": "apps/gateway/test/roles-guard.spec.ts",
           "layer": "unit",
-          "cases": 6,
+          "cases": 8,
           "skipped": 0
         },
         {
@@ -179,31 +191,7 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/reply-timeout.spec.ts",
-          "layer": "unit",
-          "cases": 7,
-          "skipped": 0
-        },
-        {
           "path": "apps/gateway/test/health.controller.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/trace-header.spec.ts",
-          "layer": "unit",
-          "cases": 6,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/roles-guard.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/change-password.spec.ts",
           "layer": "unit",
           "cases": 8,
           "skipped": 0
@@ -215,9 +203,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/payment-scenario.spec.ts",
+          "path": "apps/gateway/test/change-password.spec.ts",
           "layer": "unit",
           "cases": 8,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/reply-timeout.spec.ts",
+          "layer": "unit",
+          "cases": 7,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/auth-login-secrets.spec.ts",
+          "layer": "unit",
+          "cases": 7,
           "skipped": 0
         },
         {
@@ -235,7 +235,7 @@
       "dir": "apps/web",
       "runner": "web",
       "tier": "app",
-      "unit": 309,
+      "unit": 317,
       "integration": 94,
       "e2e": 0,
       "skipped": {
@@ -247,7 +247,7 @@
         {
           "path": "apps/web/test/**/*.test.mjs",
           "layer": "unit",
-          "cases": 309
+          "cases": 317
         },
         {
           "path": "apps/web/test/integration/audit-screen.integration.spec.ts",
@@ -274,8 +274,8 @@
           "skipped": 0
         }
       ],
-      "own": 403,
-      "integrationShare": 23.325062034739457
+      "own": 411,
+      "integrationShare": 22.871046228710462
     },
     {
       "name": "customer-service",
@@ -396,15 +396,15 @@
           "skipped": 15
         },
         {
-          "path": "apps/services/account-service/test/health.controller.spec.ts",
-          "layer": "unit",
-          "cases": 5,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/account-service/test/otel-activity.telemetry.spec.ts",
           "layer": "unit",
           "cases": 7,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/account-service/test/health.controller.spec.ts",
+          "layer": "unit",
+          "cases": 5,
           "skipped": 0
         },
         {
@@ -444,15 +444,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/account-service/test/domain.spec.ts",
-          "layer": "unit",
-          "cases": 45,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/account-service/test/isolation.spec.ts",
           "layer": "unit",
           "cases": 8,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/account-service/test/domain.spec.ts",
+          "layer": "unit",
+          "cases": 45,
           "skipped": 0
         },
         {
@@ -505,21 +505,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/environment.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/transaction-service/test/routing-coverage.spec.ts",
           "layer": "unit",
           "cases": 15,
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/saga-transition-matrix.spec.ts",
+          "path": "apps/services/transaction-service/test/environment.spec.ts",
           "layer": "unit",
-          "cases": 16,
+          "cases": 3,
           "skipped": 0
         },
         {
@@ -529,15 +523,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/query-handlers.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/transaction-service/test/listing-and-scope.spec.ts",
           "layer": "unit",
           "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/saga-transition-matrix.spec.ts",
+          "layer": "unit",
+          "cases": 16,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/query-handlers.spec.ts",
+          "layer": "unit",
+          "cases": 3,
           "skipped": 0
         },
         {
@@ -608,16 +608,16 @@
           "skipped": 11
         },
         {
-          "path": "apps/services/payment-service/test/health.controller.spec.ts",
-          "layer": "unit",
-          "cases": 6,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/payment-service/test/simulation.integration.spec.ts",
           "layer": "integration",
           "cases": 7,
           "skipped": 7
+        },
+        {
+          "path": "apps/services/payment-service/test/health.controller.spec.ts",
+          "layer": "unit",
+          "cases": 6,
+          "skipped": 0
         },
         {
           "path": "apps/services/payment-service/test/provider-telemetry.spec.ts",
@@ -638,21 +638,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/payment-service/test/send-interbank-deposit.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/payment-service/test/simulation-use-case.spec.ts",
           "layer": "unit",
           "cases": 25,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/payment-service/test/use-cases.spec.ts",
-          "layer": "unit",
-          "cases": 13,
           "skipped": 0
         },
         {
@@ -668,15 +656,27 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/payment-service/test/interbank-send.spec.ts",
+          "path": "apps/services/payment-service/test/use-cases.spec.ts",
           "layer": "unit",
-          "cases": 12,
+          "cases": 13,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/send-interbank-deposit.spec.ts",
+          "layer": "unit",
+          "cases": 11,
           "skipped": 0
         },
         {
           "path": "apps/services/payment-service/test/inbound-message.handler.spec.ts",
           "layer": "unit",
           "cases": 3,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/interbank-send.spec.ts",
+          "layer": "unit",
+          "cases": 12,
           "skipped": 0
         },
         {
@@ -692,15 +692,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/payment-service/test/interbank-policy.spec.ts",
-          "layer": "unit",
-          "cases": 14,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/payment-service/test/provider.spec.ts",
           "layer": "unit",
           "cases": 7,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/interbank-policy.spec.ts",
+          "layer": "unit",
+          "cases": 14,
           "skipped": 0
         }
       ],
@@ -741,27 +741,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/notification-audit-service/test/domain.spec.ts",
-          "layer": "unit",
-          "cases": 47,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/notification-audit-service/test/health.controller.spec.ts",
           "layer": "unit",
           "cases": 6,
           "skipped": 0
         },
         {
-          "path": "apps/services/notification-audit-service/test/environment.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/notification-audit-service/test/otel-audit.telemetry.spec.ts",
           "layer": "unit",
           "cases": 18,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/notification-audit-service/test/environment.spec.ts",
+          "layer": "unit",
+          "cases": 8,
           "skipped": 0
         },
         {
@@ -774,6 +768,12 @@
           "path": "apps/services/notification-audit-service/test/audit-filters-and-alerts.spec.ts",
           "layer": "unit",
           "cases": 16,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/notification-audit-service/test/domain.spec.ts",
+          "layer": "unit",
+          "cases": 47,
           "skipped": 0
         },
         {
@@ -843,10 +843,10 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/messaging/test/broker.integration.spec.ts",
-          "layer": "integration",
-          "cases": 9,
-          "skipped": 9
+          "path": "apps/packages/messaging/test/publish-timeout.spec.ts",
+          "layer": "unit",
+          "cases": 4,
+          "skipped": 0
         },
         {
           "path": "apps/packages/messaging/test/topology.integration.spec.ts",
@@ -855,10 +855,10 @@
           "skipped": 3
         },
         {
-          "path": "apps/packages/messaging/test/publish-timeout.spec.ts",
-          "layer": "unit",
-          "cases": 4,
-          "skipped": 0
+          "path": "apps/packages/messaging/test/broker.integration.spec.ts",
+          "layer": "integration",
+          "cases": 9,
+          "skipped": 9
         },
         {
           "path": "apps/packages/messaging/test/request-reply.spec.ts",
@@ -903,14 +903,8 @@
       },
       "files": [
         {
-          "path": "apps/packages/observability/test/metric-cardinality.spec.ts",
-          "layer": "unit",
-          "cases": 4,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/observability/test/context-and-nest.spec.ts",
-          "layer": "unit",
+          "path": "apps/packages/observability/test/telemetry.integration.spec.ts",
+          "layer": "integration",
           "cases": 15,
           "skipped": 0
         },
@@ -921,9 +915,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/observability/test/telemetry.integration.spec.ts",
-          "layer": "integration",
+          "path": "apps/packages/observability/test/context-and-nest.spec.ts",
+          "layer": "unit",
           "cases": 15,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/observability/test/metric-cardinality.spec.ts",
+          "layer": "unit",
+          "cases": 4,
           "skipped": 0
         }
       ],
@@ -952,15 +952,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/routing/topology.spec.ts",
-          "layer": "unit",
-          "cases": 21,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/contracts/test/events/no-secrets.spec.ts",
           "layer": "unit",
           "cases": 354,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/routing/topology.spec.ts",
+          "layer": "unit",
+          "cases": 21,
           "skipped": 0
         },
         {
@@ -970,51 +970,21 @@
           "skipped": 0
         },
         {
+          "path": "apps/packages/contracts/test/events/alert-slo-received.spec.ts",
+          "layer": "unit",
+          "cases": 23,
+          "skipped": 0
+        },
+        {
           "path": "apps/packages/contracts/test/events/catalog-completeness.spec.ts",
           "layer": "unit",
           "cases": 9,
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/events/saga-chain.spec.ts",
-          "layer": "unit",
-          "cases": 23,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/contracts/test/events/account-anomaly-detected.spec.ts",
           "layer": "unit",
           "cases": 25,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/validation/validate-message.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/customer-trim.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/payment-simulation.spec.ts",
-          "layer": "unit",
-          "cases": 22,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/interbank-receipt.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/alert-slo-received.spec.ts",
-          "layer": "unit",
-          "cases": 23,
           "skipped": 0
         },
         {
@@ -1027,6 +997,36 @@
           "path": "apps/packages/contracts/test/routing/gateway-reply-queue.spec.ts",
           "layer": "unit",
           "cases": 10,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/saga-chain.spec.ts",
+          "layer": "unit",
+          "cases": 23,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/payment-simulation.spec.ts",
+          "layer": "unit",
+          "cases": 22,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/validation/validate-message.spec.ts",
+          "layer": "unit",
+          "cases": 11,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/interbank-receipt.spec.ts",
+          "layer": "unit",
+          "cases": 3,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/customer-trim.spec.ts",
+          "layer": "unit",
+          "cases": 3,
           "skipped": 0
         },
         {
@@ -1048,12 +1048,6 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/envelope/version-coherence.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/contracts/test/envelope.spec.ts",
           "layer": "unit",
           "cases": 11,
@@ -1064,6 +1058,12 @@
           "layer": "unit",
           "cases": 4,
           "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/envelope/version-coherence.spec.ts",
+          "layer": "unit",
+          "cases": 3,
+          "skipped": 0
         }
       ],
       "own": 939,
@@ -1071,13 +1071,13 @@
     }
   ],
   "system": {
-    "unit": 1667,
+    "unit": 1675,
     "integration": 477,
     "e2e": 152,
-    "total": 2296,
-    "unitShare": 72.60452961672473,
-    "integrationShare": 20.77526132404181,
-    "e2eShare": 6.620209059233449
+    "total": 2304,
+    "unitShare": 72.69965277777779,
+    "integrationShare": 20.703125,
+    "e2eShare": 6.597222222222222
   },
   "e2e": {
     "cases": 152,
@@ -1148,7 +1148,7 @@
     "generatedAt": "2026-10-07T03:57:39.240Z"
   },
   "deviations": [
-    "sistema unit: 72.6 % (objetivo 70 %)",
+    "sistema unit: 72.7 % (objetivo 70 %)",
     "sistema e2e: 6.6 % (objetivo 10 %)"
   ]
 }

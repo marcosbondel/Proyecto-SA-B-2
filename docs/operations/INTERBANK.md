@@ -1,4 +1,4 @@
-# Depósitos interbancarios entrantes (T-46)
+# Depósitos interbancarios (T-46 entrantes, T-47 salientes)
 
 **Estado del contrato: provisional.** No se recibió el PDF de Fase 3 ni el
 OpenAPI oficial del curso. La ruta y el callback de esta página permiten probar
@@ -137,3 +137,62 @@ Payment y Account, y consulte `interbank_deposits` en la base **de Payment**.
 `callback_due_at` y `callback_delivered_at` explican si el emisor ya recibió
 la decisión. `interbank_conflicts` conserva los rechazos por claves repetidas
 con datos diferentes. No consulte directamente la base de Account desde Payment.
+
+---
+
+## Depósitos salientes (T-47)
+
+La dirección contraria: este banco manda dinero a una cuenta del banco pareja.
+
+**Es la Saga de siempre.** El depósito sale de la cuenta del cliente y entra en
+la **cuenta de liquidación interbancaria** de este banco —una cuenta propia que
+representa lo que se le debe al otro—, así que para el sistema es una
+transferencia interna con un paso de pago distinto. Eso significa que la
+máquina de estados de la Saga, la compensación, el historial, el estado de fase
+y la notificación **no cambiaron nada**. Lo único nuevo es que la respuesta no
+llega al momento.
+
+| Paso | Quién | Qué |
+| --- | --- | --- |
+| 1 | Gateway | `POST /api/interbank/transfers` mina el `interbankTransferId` y publica `transfer.requested.v1` con el bloque `interbank` y `targetAccount` = la cuenta de liquidación |
+| 2 | Transaction | la Saga de siempre: KYC del cliente, débito bajo bloqueo de fila, y la orden de pago con el bloque copiado tal cual |
+| 3 | Payment | guarda el depósito `PENDING`, lo manda al Gateway del banco pareja por HTTP y espera `202` → `SENT` |
+| 4 | banco pareja | contesta por `POST /api/interbank/callbacks` con `ACCEPTED` o `REJECTED` |
+| 5 | Payment | `ACCEPTED` → `payment.succeeded.v1`; `REJECTED` o vencimiento → `payment.failed.v1` |
+| 6 | Transaction | completa, o **compensa**: el dinero vuelve a la cuenta origen |
+| 7 | Payment | escribe `REVERSED` cuando oye la compensación — la constancia de que el dinero volvió, no de que se ordenó |
+
+Los seis estados del depósito son `PENDING`, `SENT`, `ACCEPTED`, `REJECTED`,
+`TIMEOUT` y `REVERSED`, decididos por una función pura
+(`payment-service/src/domain/interbank-send.ts`) y vueltos a escribir como
+cuatro `CHECK` en `interbank_sends`: la función decide y la base se niega a
+guardar un estado que la función no habría producido.
+
+**`TIMEOUT` y `REJECTED` no son sinónimos.** Los dos compensan, pero un rechazo
+es una opinión del otro banco y un vencimiento es su ausencia; confundirlos hace
+imposible saber si el banco pareja está caído o es estricto. La distinción vive
+en el estado, en el evento `payment.interbank.sent.v1` y en la métrica
+`bank.interbank.sent` por resultado.
+
+### Configuración
+
+| Variable | Quién la lee | Qué es |
+| --- | --- | --- |
+| `INTERBANK_SEND_URL` | Payment | el Gateway del banco pareja. **Vacío desactiva el envío**: el bloque `interbank` se ignora y el pago va al proveedor simulado |
+| `INTERBANK_CONFIRMATION_TIMEOUT_MS` | Payment | cuánto se espera la confirmación antes de rendirse. 30 s por defecto |
+| `INTERBANK_PARTNER_TOKEN` | Gateway, Payment, mock | el mismo secreto compartido de T-46, en las dos direcciones |
+
+### Probarlo en local
+
+El mock del banco pareja corre dentro del clúster (T-57), así que el flujo
+completo se ejercita sin la nube y sin el otro grupo:
+
+```bash
+pnpm local:up          # banco + observabilidad + mock, en kind
+# y para los escenarios de fallo, sin apagar nada de nadie:
+pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml --set partnerMock.callbackMode=REJECT
+pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml --set partnerMock.callbackMode=TIMEOUT
+```
+
+La pantalla es `/transferencias/interbancaria`, y el seguimiento es el de
+cualquier transferencia: `/transferencias/{transactionId}`.

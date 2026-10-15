@@ -1,6 +1,6 @@
 # Pirámide de pruebas
 
-Generado por `pnpm test:pyramid` el 2026-10-15T13:04:33.619Z.
+Generado por `pnpm test:pyramid` el 2026-10-15T13:18:02.944Z.
 
 Integración es la prueba que cruza un proceso real (PostgreSQL, RabbitMQ o
 MinIO). Todo lo que corre en proceso con dobles es unitaria. E2E atraviesa los
@@ -11,7 +11,7 @@ siete componentes desplegados.
 | Paquete | Unitarias | Integración | % integ | Objetivo | Estado |
 | --- | ---: | ---: | ---: | ---: | --- |
 | `gateway` | 410 | 114 | 21.8 % | 22.2 % | ok |
-| `web` | 309 | 94 | 23.3 % | 22.2 % | ok |
+| `web` | 317 | 94 | 22.9 % | 22.2 % | ok |
 | `customer-service` | 160 | 43 | 21.2 % | 22.2 % | ok |
 | `account-service` | 192 | 57 | 22.9 % | 22.2 % | ok |
 | `transaction-service` | 203 | 55 | 21.3 % | 22.2 % | ok |
@@ -25,10 +25,10 @@ siete componentes desplegados.
 
 | Capa | Casos | Real | Objetivo |
 | --- | ---: | ---: | ---: |
-| Unitarias | 1667 | 72.6 % | 70 % |
-| Integración | 477 | 20.8 % | 20 % |
+| Unitarias | 1675 | 72.7 % | 70 % |
+| Integración | 477 | 20.7 % | 20 % |
 | E2E | 152 | 6.6 % | 10 % |
-| **Total** | **2296** | | |
+| **Total** | **2304** | | |
 
 ## Lo que no se ejecutó
 
@@ -38,8 +38,8 @@ Cuentan para la proporción porque las pruebas existen; no cuentan como
 evidencia de que el comportamiento funciona.
 
 - `apps/gateway/test/envelope-and-replies.integration.spec.ts` — 36 casos
-- `apps/gateway/test/publish-routing.integration.spec.ts` — 43 casos
 - `apps/gateway/test/alert-webhook.integration.spec.ts` — 11 casos
+- `apps/gateway/test/publish-routing.integration.spec.ts` — 43 casos
 - `apps/gateway/test/reply-correlation.integration.spec.ts` — 24 casos
 - `apps/services/customer-service/test/repository-queries.integration.spec.ts` — 16 casos
 - `apps/services/customer-service/test/repository.integration.spec.ts` — 17 casos
@@ -54,6 +54,6 @@ evidencia de que el comportamiento funciona.
 - `apps/services/payment-service/test/simulation.integration.spec.ts` — 7 casos
 - `apps/services/notification-audit-service/test/repository.integration.spec.ts` — 39 casos
 - `apps/services/notification-audit-service/test/trace-and-dedupe.integration.spec.ts` — 17 casos
-- `apps/packages/messaging/test/broker.integration.spec.ts` — 9 casos
 - `apps/packages/messaging/test/topology.integration.spec.ts` — 3 casos
+- `apps/packages/messaging/test/broker.integration.spec.ts` — 9 casos
 - `apps/packages/messaging/test/trace-propagation.integration.spec.ts` — 4 casos
