@@ -82,6 +82,7 @@ Every ADR carries the same sections, so the set can be audited as a whole:
 | [ADR-016](ADR-016-cloud-infrastructure.md) | Provision the cloud with Terraform — GKE for the workloads, Compute Engine for the databases, Cloud Run for the frontend | Accepted | 2026-09-20 |
 | [ADR-017](ADR-017-account-anomaly-reports-not-blocks.md) | An account anomaly is reported, not blocked — counted from the database, once per window | Accepted | 2026-10-04 |
 | [ADR-018](ADR-018-observability-stack.md) | Collector, Prometheus, Tempo, Loki and Grafana in a chart of their own, with the subcharts vendored into the repository | Accepted | 2026-10-13 |
+| [ADR-019](ADR-019-payment-http-egress.md) | No service calls another over HTTP; the two HTTP egresses that exist go to third parties, from one named file each | Accepted | 2026-10-15 |
 
 The consolidated view — decision, rejected alternatives, accepted trade-off and consequence in
 one table — is [`../decision-matrix.md`](../decision-matrix.md). It indexes these records; it
