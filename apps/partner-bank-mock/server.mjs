@@ -26,6 +26,40 @@ export function createPartnerBankMock(options) {
   }
   let failuresLeft = callbackFailCount;
   const transfers = new Map();
+  /** Los depósitos que este banco ENVIÓ al mock, por clave de idempotencia. */
+  const deposits = new Map();
+
+  /**
+   * Devolverle a nuestro Gateway la decisión sobre un depósito que le enviamos.
+   *
+   * No reintenta. Es deliberado: si el callback no llega, lo correcto es que
+   * nuestro plazo de confirmación venza y compense — y un mock que reintenta
+   * hasta lograrlo esconde exactamente el fallo que hay que poder inyectar.
+   */
+  async function answerBack(interbankTransferId, decision, traceparent) {
+    try {
+      await fetch(new URL('/api/interbank/callbacks', gatewayUrl), {
+        method: 'POST',
+        redirect: 'error',
+        signal: AbortSignal.timeout(5_000),
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+          ...(typeof traceparent === 'string' &&
+          /^00-[\da-f]{32}-[\da-f]{16}-[\da-f]{2}$/i.test(traceparent)
+            ? { traceparent }
+            : {}),
+        },
+        body: JSON.stringify({
+          interbankTransferId,
+          ...decision,
+          receivedAt: new Date().toISOString(),
+        }),
+      });
+    } catch {
+      /* Un callback que no sale es un depósito que vence. Así está diseñado. */
+    }
+  }
 
   function authorized(request) {
     if (token.length === 0) return false;
@@ -52,7 +86,18 @@ export function createPartnerBankMock(options) {
 
   return createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
-    if (path === '/health') return answer(response, 200, { status: 'ok' });
+    /*
+     * `/health` dice además **qué fallo está armado**, sin token.
+     *
+     * No es un secreto y sí es la pregunta que se hace cualquiera que vea un
+     * depósito rechazado: ¿está el mock en REJECT o es el otro banco? Durante
+     * la primera corrida de T-51 esa pregunta costó una medición entera: el
+     * modo se cambió con `kubectl set env`, `rollout status` dijo que había
+     * terminado mientras el pod viejo seguía en los Endpoints, y la mitad de la
+     * carga se midió contra el modo anterior.
+     */
+    if (path === '/health')
+      return answer(response, 200, { status: 'ok', callbackMode, callbackDelayMs });
     if (!authorized(request)) return answer(response, 401, { error: 'unauthorized' });
 
     try {
@@ -107,6 +152,79 @@ export function createPartnerBankMock(options) {
         if (callbackMode === 'SLOW') await new Promise((done) => setTimeout(done, callbackDelayMs));
         transfers.set(body.interbankTransferId, body);
         return answer(response, 200, { received: true });
+      }
+
+      /*
+       * Un depósito que ESTE banco ENVÍA al pareja (T-47).
+       *
+       * Es la dirección contraria a `/transfers`, y la distinción es la razón
+       * de que sean dos rutas y no una: en `/transfers` el mock hace de banco
+       * que *origina* un depósito hacia nosotros, y en `/deposits` hace de
+       * banco que *recibe* uno nuestro. Hasta T-51 sólo existía la primera, así
+       * que un envío nuestro no tenía a quién preguntarle y vencía siempre.
+       *
+       * `202` y nunca `200`: un `200` significaría que el otro banco ya decidió,
+       * y entonces su callback —de donde sale la decisión— no llegaría nunca.
+       * Es la misma regla que `HttpPartnerBankClient` exige del lado nuestro.
+       *
+       * La decisión sale de `callbackMode`, que es el único interruptor de
+       * inyección de fallos de todo el mock:
+       *
+       *   ACCEPT   → ACCEPTED tras `callbackDelayMs`
+       *   REJECT   → REJECTED tras `callbackDelayMs`
+       *   SLOW     → ACCEPTED tras `max(callbackDelayMs, timeoutFloorMs)`
+       *   TIMEOUT  → sin callback, nunca; que venza el plazo de los 30 s
+       */
+      if (request.method === 'POST' && path === '/deposits') {
+        const body = await bodyOf(request);
+        if (
+          typeof body.interbankTransferId !== 'string' ||
+          typeof body.accountId !== 'string' ||
+          typeof body.amount?.amountMinor !== 'number'
+        ) {
+          return answer(response, 400, { error: 'invalid deposit' });
+        }
+        const key = body.idempotencyKey ?? body.interbankTransferId;
+        /*
+         * Intake idempotente: el mismo `idempotencyKey` no se decide dos veces
+         * ni programa un segundo callback. Un banco real contesta así, y si
+         * contestara dos veces estaríamos midiendo nuestra deduplicación en vez
+         * de la compensación, que es lo que este escenario viene a medir.
+         */
+        if (deposits.has(key)) {
+          return answer(response, 202, { ...deposits.get(key), duplicate: true });
+        }
+        const decision =
+          callbackMode === 'REJECT'
+            ? { status: 'REJECTED', reason: 'ACCOUNT_NOT_FOUND' }
+            : { status: 'ACCEPTED' };
+        const record = { interbankTransferId: body.interbankTransferId, ...decision };
+        deposits.set(key, record);
+
+        if (callbackMode !== 'TIMEOUT') {
+          const delay =
+            callbackMode === 'SLOW' ? Math.max(callbackDelayMs, timeoutFloorMs) : callbackDelayMs;
+          /*
+           * Sin `await`: el acuse de recibo sale ya, y la decisión viaja
+           * después por su propio camino. Esperar aquí convertiría el callback
+           * en una respuesta sincrónica, que es precisamente lo que este flujo
+           * no es.
+           */
+          setTimeout(() => {
+            void answerBack(body.interbankTransferId, decision, request.headers.traceparent);
+          }, delay).unref();
+        }
+        return answer(response, 202, record);
+      }
+
+      if (request.method === 'GET' && path.startsWith('/deposits/')) {
+        const id = decodeURIComponent(path.slice('/deposits/'.length));
+        const deposit = deposits.get(id);
+        return answer(
+          response,
+          deposit === undefined ? 404 : 200,
+          deposit ?? { error: 'unknown deposit' },
+        );
       }
 
       if (request.method === 'GET' && path.startsWith('/transfers/')) {
