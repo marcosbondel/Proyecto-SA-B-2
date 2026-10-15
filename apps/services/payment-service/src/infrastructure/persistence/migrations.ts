@@ -306,6 +306,67 @@ export const MIGRATIONS: readonly Migration[] = [
       `ALTER TABLE interbank_conflicts ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
     ],
   },
+  /*
+   * Los depósitos que este banco ENVÍA (T-47). Tabla aparte de
+   * `interbank_deposits`, que es la de los que recibe: comparten el nombre del
+   * dominio y nada más — distinto emisor, distinto ciclo de vida, distinta
+   * clave natural y distintas invariantes. Una sola tabla con una columna
+   * `direction` habría necesitado un `CHECK` por cada combinación de dirección
+   * y estado, que es la forma de no tener ninguno.
+   *
+   * Los cuatro `CHECK` son la máquina de `domain/interbank-send.ts` escrita
+   * otra vez en SQL, a propósito: la función pura decide, y la base se niega a
+   * guardar un estado que la función no habría producido. Si las dos se
+   * contradicen, la base gana y el defecto se ve al escribir, no tres días
+   * después leyendo un saldo.
+   */
+  {
+    name: '010_interbank_sends',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS interbank_sends (
+         interbank_transfer_id VARCHAR(128) PRIMARY KEY,
+         payment_id UUID NOT NULL UNIQUE,
+         transaction_id UUID NOT NULL,
+         idempotency_key VARCHAR(128) NOT NULL UNIQUE,
+         destination_bank_code VARCHAR(32) NOT NULL,
+         destination_account VARCHAR(64) NOT NULL,
+         amount_minor BIGINT NOT NULL CHECK (amount_minor > 0),
+         currency VARCHAR(3) NOT NULL,
+         correlation_id UUID NOT NULL,
+         -- La envolvente del comando que lo pidió, igual que en la tabla de los
+         -- entrantes. No es redundancia: el barrido del vencimiento publica sin
+         -- que nadie le haya mandado nada, y sin esto tendría que inventar una
+         -- correlación — que es exactamente lo que la constitución VIII prohíbe.
+         origin_envelope JSONB NOT NULL,
+         state VARCHAR(12) NOT NULL CHECK (state IN ('PENDING','SENT','ACCEPTED','REJECTED','TIMEOUT','REVERSED')),
+         reason VARCHAR(64),
+         attempts INTEGER NOT NULL DEFAULT 0,
+         next_attempt_at TIMESTAMPTZ,
+         confirmation_due_at TIMESTAMPTZ NOT NULL,
+         trace_context VARCHAR(80),
+         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+         sent_at TIMESTAMPTZ,
+         decided_at TIMESTAMPTZ,
+         reversed_at TIMESTAMPTZ,
+         -- Un depósito resuelto tiene fecha de decisión, y uno en vuelo no.
+         CHECK ((state IN ('ACCEPTED','REJECTED','TIMEOUT','REVERSED')) = (decided_at IS NOT NULL)),
+         -- Sólo lo que salió mal lleva motivo. Un ACCEPTED con motivo es una contradicción.
+         CHECK ((state IN ('REJECTED','TIMEOUT','REVERSED')) = (reason IS NOT NULL)),
+         -- REVERSED es la constancia de que el dinero volvió: sin fecha no es constancia.
+         CHECK ((state = 'REVERSED') = (reversed_at IS NOT NULL)),
+         -- Y SÓLO un depósito pendiente está programado para reintentarse. El
+         -- vencimiento es una COLUMNA y no un timer (§4.1): un pod reprogramado
+         -- a mitad de un depósito no olvida que lo tenía.
+         CHECK ((state = 'PENDING') = (next_attempt_at IS NOT NULL))
+       )`,
+      `CREATE INDEX IF NOT EXISTS interbank_send_attempt_due_idx
+         ON interbank_sends (next_attempt_at) WHERE state = 'PENDING'`,
+      `CREATE INDEX IF NOT EXISTS interbank_send_confirmation_due_idx
+         ON interbank_sends (confirmation_due_at) WHERE state IN ('PENDING','SENT')`,
+      `CREATE INDEX IF NOT EXISTS interbank_send_transaction_idx
+         ON interbank_sends (transaction_id)`,
+    ],
+  },
 ];
 
 /**
