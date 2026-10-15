@@ -127,7 +127,7 @@ que el sistema no tiene datos.
 | --- | --- |
 | `pnpm lint` | 14 de 14 |
 | `pnpm obs:lint` | 1 chart, 0 fallos |
-| `pnpm obs:template` | renderiza las 30 reglas, las 7 alertas y los 9 ConfigMaps |
+| `pnpm obs:template` | renderiza las 30 reglas, las 7 alertas y los 9 ConfigMaps (números de este ticket; T-51 los dejó en **34 reglas y 9 alertas**, al añadir la dirección saliente del banco pareja) |
 | `pnpm obs:check:dashboards` | pasa, y falla ante un nombre inventado |
 | `promtool check rules` | 30 reglas |
 | `pnpm obs:kind` | 10 de 10 |
@@ -135,7 +135,12 @@ que el sistema no tiene datos.
 
 ## 6. Lo que queda abierto
 
-- **Ninguna alerta se ha disparado todavía.** El criterio 2.5 pide alertas «que
+- ~~**Ninguna alerta se ha disparado todavía.**~~ **Cerrado en T-51**, y con una
+  corrección que este ticket no podía ver: la mitad **saliente** del banco
+  pareja no tenía ni regla ni alerta, así que el escenario obligatorio —el
+  pareja rechazando lo que le enviamos— habría disparado cero. Ver
+  [la evidencia de T-51](T-51-load-and-failures-evidence.md).
+  El criterio 2.5 pide alertas «que
   se disparan durante las pruebas», y eso es T-51: hace falta carga y un
   escenario de fallo. Los umbrales están puestos para que `DeadLetterGrowing` y
   `TransferLatencyBreach` se disparen con el escenario de Payment de T-44.
