@@ -2,6 +2,12 @@ import { metrics, trace } from '@opentelemetry/api';
 import type { Counter, Histogram, Tracer } from '@opentelemetry/api';
 
 import type { InterbankTelemetry } from '../../application/interbank.ports';
+import type { InterbankSendTelemetry } from '../../application/interbank-send.ports';
+// Qué estados son un veredicto lo decide el dominio, aquí sólo se mide. La
+// prueba de aislamiento de este servicio es la que insiste, y tiene razón: en
+// cuanto un adaptador compara estas cadenas, el vocabulario se ha mudado a un
+// sitio donde ya no se puede discutir sin levantar el servicio.
+import { isSendDecided } from '../../domain/interbank-send';
 
 export const DEPOSITS_COUNTER = 'bank.interbank.deposits';
 export const DURATION_HISTOGRAM = 'bank.interbank.deposit.duration';
@@ -78,5 +84,99 @@ export class OtelInterbankTelemetry implements InterbankTelemetry {
     const fields = { correlationId: attempt.correlationId, outcome: attempt.result };
     if (attempt.result === 'delivered') this.log.info('interbank callback delivered', fields);
     else this.log.warn('interbank callback failed; retry scheduled', fields);
+  }
+}
+
+/**
+ * Los nombres que `docs/sre/telemetry-catalog.md` §2.10 **reservó** para el
+ * depósito saliente (T-47).
+ *
+ * Reservados y no inventados: el catálogo los fijó cuando T-58 inventarió las
+ * señales, precisamente para que este ticket no eligiera otros y dejara los
+ * paneles de T-50 mirando series que no existen. Si alguno cambiara aquí,
+ * `metric-cardinality.spec.ts` y el catálogo lo dirían.
+ */
+export const SENT_COUNTER = 'bank.interbank.sent';
+export const CONFIRMATION_HISTOGRAM = 'bank.interbank.confirmation.duration';
+
+/**
+ * Lo que mide el depósito que este banco ENVÍA.
+ *
+ * Separada de `OtelInterbankTelemetry`, que mide el entrante, porque §4.1 pide
+ * la tasa de éxito «enviados y recibidos» como dos cosas: un solo contador con
+ * una etiqueta `direction` las habría sumado en todo panel que olvidara
+ * desglosarla, y el panel que importa el día de la calificación es justo el que
+ * las separa.
+ *
+ * Las etiquetas son un conjunto cerrado —`result`— y nada más. El
+ * `interbankTransferId` y el `transactionId` van al span y al log: una serie por
+ * depósito es la cardinalidad que §4.1 prohíbe y que el catálogo justifica
+ * fila por fila.
+ */
+export class OtelInterbankSendTelemetry implements InterbankSendTelemetry {
+  readonly #sent: Counter;
+  readonly #confirmation: Histogram;
+  readonly #tracer: Tracer;
+
+  constructor(
+    readonly log: {
+      info(message: string, fields: LogFields): void;
+    },
+  ) {
+    const meter = metrics.getMeter('payment-service');
+
+    this.#sent = meter.createCounter(SENT_COUNTER, {
+      unit: '{deposit}',
+      description: 'Deposits sent to the partner bank, by final result.',
+    });
+    this.#confirmation = meter.createHistogram(CONFIRMATION_HISTOGRAM, {
+      unit: 's',
+      description: 'Time from requesting a deposit to the partner bank deciding it.',
+      /*
+       * Denso alrededor de los cinco segundos, que es el umbral de la alerta
+       * `PartnerBankConfirmationSlow` (T-50), y largo hasta pasado el
+       * vencimiento de treinta: un histograma sólo puede responder «cuántas
+       * bajo cinco segundos» si hay un límite exactamente ahí.
+       */
+      advice: { explicitBucketBoundaries: [0.25, 0.5, 1, 2, 3, 5, 10, 20, 30, 60] },
+    });
+    this.#tracer = trace.getTracer('payment-service');
+  }
+
+  stateChanged(change: Parameters<InterbankSendTelemetry['stateChanged']>[0]): void {
+    const attributes = {
+      'bank.correlation_id': change.correlationId,
+      'bank.interbank.stage': change.state,
+      'bank.transfer.id': change.transactionId,
+      ...(change.reason === null ? {} : { 'bank.interbank.reason': change.reason }),
+    };
+    const span = this.#tracer.startSpan('payment.interbank send');
+    span.setAttributes(attributes);
+    span.addEvent(STATE_EVENT, attributes);
+    span.end();
+
+    this.log.info('interbank send state changed', {
+      correlationId: change.correlationId,
+      depositId: change.interbankTransferId,
+      status: change.state,
+      ...(change.reason === null ? {} : { reason: change.reason }),
+      ...(change.durationMs === null ? {} : { durationMs: change.durationMs }),
+    });
+
+    /*
+     * Sólo los tres veredictos cuentan para la tasa de éxito. `PENDING` y
+     * `SENT` son el depósito en vuelo, y `REVERSED` es la constancia de la
+     * devolución de uno que ya se contó como rechazado o vencido — contarlo
+     * otra vez duplicaría el denominador.
+     */
+    if (isSendDecided(change.state)) {
+      const result = change.state.toLowerCase();
+
+      this.#sent.add(1, { result });
+
+      if (change.durationMs !== null) {
+        this.#confirmation.record(change.durationMs / 1000, { result });
+      }
+    }
   }
 }

@@ -218,6 +218,14 @@ export class AdvanceSagaUseCase {
           ...(transaction.paymentScenario === null
             ? {}
             : { scenario: transaction.paymentScenario }),
+          /*
+           * El destino interbancario, copiado tal cual (T-47). Es lo que le
+           * dice a Payment que a este pago no lo decide el proveedor simulado
+           * sino el banco pareja — y que su respuesta llegará por callback, no
+           * al momento. Este servicio no lo interpreta: ni lo valida ni decide
+           * nada con él, igual que con el escenario.
+           */
+          ...(transaction.interbank === null ? {} : { interbank: transaction.interbank }),
         };
         const message = { messageType: paymentRequestedV1.name, payload };
 

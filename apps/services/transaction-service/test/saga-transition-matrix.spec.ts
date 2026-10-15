@@ -62,6 +62,8 @@ function seed(
     targetAccount: TARGET,
     amount: quetzales(10_000),
     status: 'PENDING',
+    // Una transferencia interna: el dinero no sale de este banco (T-47).
+    interbank: null,
     correlationId: CORRELATION,
     idempotencyKey: 'seed-key',
     customerId: CUSTOMER,

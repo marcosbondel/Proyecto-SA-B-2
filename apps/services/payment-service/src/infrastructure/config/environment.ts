@@ -120,6 +120,33 @@ export class PaymentServiceEnvironment {
 
   @IsString()
   public INTERBANK_PARTNER_TOKEN!: string;
+
+  /**
+   * A dónde manda este banco los depósitos que ENVÍA (T-47).
+   *
+   * El Gateway del banco pareja, no el propio. Vacío significa «este
+   * despliegue no envía depósitos»: el bloque `interbank` de un pago se ignora
+   * y el pago va al proveedor simulado, que es lo correcto para un entorno sin
+   * pareja asignada. No se valida como URL con `@IsUrl` a propósito — en el
+   * clúster el destino es un nombre de Service (`http://partner-mock:3021`),
+   * que no pasa ese validador y es exactamente lo que hay que poner.
+   */
+  @IsString()
+  public INTERBANK_SEND_URL!: string;
+
+  /**
+   * Cuánto se espera la confirmación del banco pareja antes de rendirse y
+   * compensar.
+   *
+   * Treinta segundos por defecto, el mismo techo que el último escalón de la
+   * escalera de pagos: más que eso es dejar el saldo del cliente retenido por
+   * un banco que no contesta, y menos es rendirse antes de que una red lenta
+   * acabe de responder.
+   */
+  @IsInt()
+  @Min(1_000)
+  @Max(600_000)
+  public INTERBANK_CONFIRMATION_TIMEOUT_MS!: number;
 }
 
 /**
@@ -180,6 +207,9 @@ export function loadEnvironment(
     INTERBANK_MAX_AMOUNT_MINOR: toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? 100_000_000,
     INTERBANK_CALLBACK_URL:
       source.INTERBANK_CALLBACK_URL ?? 'http://localhost:3021/callbacks/interbank',
+    INTERBANK_SEND_URL: source.INTERBANK_SEND_URL ?? '',
+    INTERBANK_CONFIRMATION_TIMEOUT_MS:
+      toInteger(source.INTERBANK_CONFIRMATION_TIMEOUT_MS) ?? 30_000,
     INTERBANK_PARTNER_TOKEN: source.INTERBANK_PARTNER_TOKEN ?? '',
   });
 

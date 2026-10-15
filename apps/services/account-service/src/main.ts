@@ -28,6 +28,7 @@ import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environ
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { migrate } from './infrastructure/persistence/migrations';
 import { seedBillerAccounts } from './infrastructure/persistence/seed-billers';
+import { seedSettlementAccount } from './infrastructure/persistence/seed-settlement';
 import { seedDemoAccounts } from './infrastructure/persistence/seed-demo-data';
 import { PostgresAccountRepository } from './infrastructure/persistence/postgres-account.repository';
 import { PostgresSweepLease } from './infrastructure/persistence/postgres-sweep-lease';
@@ -269,7 +270,10 @@ async function bootstrap(): Promise<void> {
          * empty dropdown in the one environment where it matters.
          */
         const billers = await seedBillerAccounts(pool);
+        // La cuenta donde entra lo que sale hacia el banco pareja (T-47).
+        const settlement = await seedSettlementAccount(pool);
         logger.info('biller accounts ready', { outcome: billers.join(', ') });
+        logger.info('interbank settlement account ready', { outcome: settlement });
 
         /** The demo client's accounts, gated and idempotent — see `seedDemoAccounts`. */
         if (environment.SEED_DEMO_DATA) {
