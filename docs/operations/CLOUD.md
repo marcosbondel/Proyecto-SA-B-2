@@ -473,8 +473,8 @@ devuelve algo).
 de la entrada del banco (ver la tabla de cuotas del paso 1):
 
 ```bash
-pnpm obs:forward      # kubectl port-forward -n observability svc/grafana 3000:80
-# http://localhost:3000 — usuario `admin`
+pnpm obs:forward      # kubectl port-forward -n observability svc/grafana 3002:80
+# http://localhost:3002 — usuario `admin`
 ```
 
 Y las dos comprobaciones que distinguen un stack que mide de uno que sólo está

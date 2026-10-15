@@ -162,7 +162,7 @@ cat <<FIN
 
 Listo. Dos cosas para mirarlo:
 
-  pnpm obs:forward      # Grafana en http://localhost:3000 — admin / ${GRAFANA_PASS}
+  pnpm obs:forward      # Grafana en http://localhost:3002 — admin / ${GRAFANA_PASS}
   pnpm k8s:forward      # el banco: Gateway en 3000 y web en 3010
 
 Y para que el banco le hable a este Collector, instala el chart del banco con

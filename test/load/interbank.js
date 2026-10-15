@@ -45,6 +45,20 @@ import {
 const aceptacion = new Trend('interbank_accept_ms', true);
 const saga = new Trend('interbank_saga_ms', true);
 
+/**
+ * La tasa y la duración, por entorno.
+ *
+ * Cuatro por segundo durante un minuto responde «¿aguanta la compensación en
+ * volumen?». Lo que **no** responde es «¿suena la alerta?»: `PartnerBankSendDegraded`
+ * exige el SLI por debajo del 95 % durante cinco minutos, y una ráfaga de
+ * sesenta segundos sólo lo sostiene mientras la ventana de `rate(…[5m])` la
+ * recuerda. Para esa pregunta hace falta una corrida larga:
+ *
+ *   TASA=2 DURACION=7m k6 run test/load/interbank.js
+ */
+const TASA = Number(__ENV.TASA || 4);
+const DURACION = __ENV.DURACION || '60s';
+
 const PARTNER_BANK_CODE = __ENV.PARTNER_BANK_CODE || 'PARTNER_MOCK';
 /** La cuenta de allá. El mock no la valida; el banco pareja real sí lo hará. */
 const PARTNER_ACCOUNT = __ENV.PARTNER_ACCOUNT || 'cuenta-de-carga-1';
@@ -61,9 +75,9 @@ export const options = {
        * que se pide, no el que salga de la latencia.
        */
       executor: 'constant-arrival-rate',
-      rate: 4,
+      rate: TASA,
       timeUnit: '1s',
-      duration: '60s',
+      duration: DURACION,
       preAllocatedVUs: 10,
       maxVUs: 30,
     },
