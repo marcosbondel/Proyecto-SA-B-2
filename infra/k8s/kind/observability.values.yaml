@@ -1,0 +1,82 @@
+# Sobrescrituras del stack de observabilidad para kind.
+#
+# El chart está dimensionado para GKE: tres nodos, discos persistentes y siete
+# días de retención. En kind todo eso cabe mal y no hace falta — lo que se
+# valida en local es comportamiento, no capacidad.
+#
+# Se usa con `pnpm k8s:obs` (que se niega a correr contra un contexto que no sea
+# kind). La nube sigue leyendo el `values.yaml` del chart, intacto.
+
+# Sin volúmenes: un clúster desechable no necesita que su telemetría sobreviva,
+# y los PVC de Loki y Tempo son justo los que `helm uninstall` no borra nunca.
+loki:
+  loki:
+    commonConfig:
+      replication_factor: 1
+  singleBinary:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        cpu: 50m
+        memory: 192Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+tempo:
+  persistence:
+    enabled: false
+  tempo:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 192Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+prometheus:
+  server:
+    persistentVolume:
+      enabled: false
+    # Una hora basta para ver una regla calcular y una alerta dispararse. El
+    # error budget de 7 días no se puede medir en una laptop, y fingir que sí
+    # sería peor que decirlo.
+    retention: 2h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 384Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+grafana:
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+otlpGateway:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+logAgent:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi

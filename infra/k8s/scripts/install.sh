@@ -6,6 +6,10 @@
 #   ./infra/k8s/scripts/install.sh --tag 2703cb03c161
 #   ./infra/k8s/scripts/install.sh --dry-run        # render, do not apply
 #   ./infra/k8s/scripts/install.sh --print          # print the helm command only
+#   ./infra/k8s/scripts/install.sh --values infra/k8s/kind/local.values.yaml
+#                                                   # telemetria al Collector del
+#                                                   # propio cluster y el banco
+#                                                   # pareja simulado encendido
 #
 # `helm upgrade --install` for this chart needs sixteen values nobody can be
 # expected to type: nine `--set secrets.*` that templates/secret.yaml marks
@@ -44,8 +48,17 @@ dry_run=false
 print_only=false
 skip_discover=false
 allow_remote=false
+# Archivos de valores extra, en orden. Lo que llega por aqui gana sobre el
+# `values.yaml` del chart y sobre el generado de las IPs externas, que es
+# exactamente lo que hace falta para el camino local: la telemetria apuntando
+# al Collector del propio cluster y el banco pareja simulado encendido, sin
+# tocar los valores con los que se despliega la nube.
+extra_values=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --values|-f)
+      [[ -f "${2:?--values needs a file}" ]] || { echo "ERROR: no existe el archivo de valores '$2'." >&2; exit 2; }
+      extra_values+=("$2"); shift 2 ;;
     --tag) tag="${2:?--tag needs a value}"; shift 2 ;;
     --context) KUBE_CONTEXT="${2:?--context needs a value}"; shift 2 ;;
     --allow-remote-context) allow_remote=true; shift ;;
@@ -133,7 +146,11 @@ if [[ "$KUBE_CONTEXT" == kind-* ]]; then
         echo "Images for ${tag} are built but not on the node — loading…"
         for component in \
           customer-service account-service transaction-service payment-service \
-          notification-audit-service gateway web; do
+          notification-audit-service gateway web \
+          partner-bank-mock; do
+          # `partner-bank-mock` es el doble de prueba de T-57. Se carga si
+          # existe y se ignora si no: el chart lo deja apagado, así que un
+          # clúster sin esa imagen es el caso normal, no un error.
           kind load docker-image --name "$kind_cluster" "bank-usac/${component}:${tag}" >/dev/null 2>&1
         done
       fi
@@ -191,6 +208,11 @@ set -- \
   --namespace "$NAMESPACE" --create-namespace
 
 [[ -f "$GENERATED" ]] && set -- "$@" -f "$GENERATED"
+
+# Despues del generado a proposito: el ultimo `-f` gana en Helm.
+for valores in ${extra_values[@]+"${extra_values[@]}"}; do
+  set -- "$@" -f "$valores"
+done
 
 # The nine required secrets, mapped from the Compose credentials.
 set -- "$@" \
