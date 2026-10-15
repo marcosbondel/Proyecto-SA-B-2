@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(116);
+    expect(catalog).toHaveLength(118);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the eighty-one messages recorded as an extension, and no others', () => {
+  it('adds exactly the eighty-three messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -274,8 +274,18 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        */
       'payment.attempt.failed.v1',
       'payment.interbank.accepted.v1',
+      /*
+       * Los dos que T-47 añade para el depósito SALIENTE, frente a los tres de
+       * T-46 que son del entrante. La decisión del banco pareja llega por
+       * callback —un comando, porque dice «registra esto», y el único que
+       * puede es Payment— y cada cambio de estado se publica para la auditoría,
+       * que es lo que §4.1 pide cuando exige «logs de cada cambio de estado del
+       * depósito» en las dos direcciones.
+       */
+      'payment.interbank.callback.received.v1',
       'payment.interbank.receive.v1',
       'payment.interbank.rejected.v1',
+      'payment.interbank.sent.v1',
       'payment.list.query.v1',
       'payment.list.replied.v1',
       /*
