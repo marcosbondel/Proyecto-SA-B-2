@@ -174,3 +174,19 @@ export function applyInterbankSend(
 export function isSendSettled(state: InterbankSendState): boolean {
   return state === 'ACCEPTED' || state === 'REVERSED';
 }
+
+/**
+ * `true` cuando ya hay un veredicto sobre el depósito — lo haya dado el otro
+ * banco o lo haya dado el reloj.
+ *
+ * Vive aquí y no en el caso de uso por la razón que la prueba de aislamiento de
+ * este servicio defiende: qué significa cada estado es vocabulario del dominio,
+ * y en cuanto una capa de arriba empieza a comparar esas cadenas, la decisión
+ * se ha mudado a un sitio donde ya no se puede discutir sin una base de datos.
+ * Es también lo que marca el final del cronómetro: el tiempo que mide la
+ * métrica es desde que se pidió hasta que alguien decidió, no hasta que el
+ * dinero volvió.
+ */
+export function isSendDecided(state: InterbankSendState): boolean {
+  return state === 'ACCEPTED' || state === 'REJECTED' || state === 'TIMEOUT';
+}
