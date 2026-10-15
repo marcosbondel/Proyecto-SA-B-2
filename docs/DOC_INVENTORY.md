@@ -78,6 +78,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/adr/ADR-016-cloud-infrastructure.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/ADR-017-account-anomaly-reports-not-blocks.md` | project | David Barrios | current | 2026-10-04 |
 | `docs/architecture/adr/ADR-018-observability-stack.md` | project | Enner Mendizabal | current | 2026-10-13 |
+| `docs/architecture/adr/ADR-019-payment-http-egress.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/architecture/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/decision-matrix.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
@@ -139,6 +140,8 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-48-observability-package-evidence.md` | project | Marcos Bonifasi | current | 2026-10-11 |
 | `docs/qa/backend/T-58-telemetry-catalog-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/qa/backend/T-51-load-and-failures-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/qa/backend/T-46-interbank-receipt-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/qa/backend/T-49-observability-stack-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/qa/backend/T-50-dashboards-alerts-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/qa/backend/T-57-local-stack-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/qa/backend/T-47-interbank-send-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
