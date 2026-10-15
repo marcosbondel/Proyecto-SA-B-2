@@ -14,8 +14,17 @@ loki:
     commonConfig:
       replication_factor: 1
   singleBinary:
+    # Loki SI necesita volumen, a diferencia de Tempo y Prometheus, que con
+    # `persistence: false` caen a un `emptyDir`. Su chart no hace eso: no monta
+    # nada, y como la raiz del contenedor es de solo lectura, el proceso muere
+    # con `mkdir /var/loki: read-only file system` en bucle. Medido levantando
+    # el stack, no leyendo el chart.
+    #
+    # 2 GiB y no 10: aqui la retencion es de horas. `install-observability.sh
+    # --down` borra el PVC, que es lo que `helm uninstall` no hace nunca.
     persistence:
-      enabled: false
+      enabled: true
+      size: 2Gi
     resources:
       requests:
         cpu: 50m

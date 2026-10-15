@@ -46,3 +46,22 @@ interbank:
   # Explícito, no derivado de `partnerMock.enabled`: el destino de un callback
   # es una decisión que se escribe, no una que se adivina.
   callbackUrl: http://bank-usac-partner-bank-mock:3021/callbacks/interbank
+
+# --------------------------------------------------------------------------
+# Dos secretos de juguete, y la palabra «juguete» es literal.
+#
+# No son secretos: son constantes que solo existen mientras viva un clúster
+# kind, escritas aquí para que el camino local se pueda ejercitar de verdad.
+# Con el token interbancario vacío —el valor por defecto del chart— la entrada
+# del Gateway queda cerrada y el mock recibe 401, que es correcto en producción
+# y hace imposible probar el flujo en local.
+#
+# En la nube estos dos valores llegan por `HELM_SECRETS` desde los secretos del
+# repositorio, y este archivo no participa.
+#
+# `install-observability.sh` lee el de alertas de aquí cuando no está en
+# `infra/docker/.env`, para que las dos mitades —quien emite la alerta y quien
+# la acepta— no puedan desincronizarse en local.
+secrets:
+  interbankPartnerToken: 'kind-interbancario-de-juguete-no-es-un-secreto'
+  alertWebhookToken: 'kind-alertas-de-juguete-no-es-un-secreto'
