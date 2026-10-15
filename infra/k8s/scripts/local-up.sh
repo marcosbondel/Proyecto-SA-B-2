@@ -108,8 +108,7 @@ cat <<FIN
 Dos port-forwards, en dos terminales:
 
   pnpm k8s:forward      # Gateway en :3000 y web en :3010
-  pnpm obs:forward      # Grafana en :3000  (ojo: choca con el Gateway; cambia
-                        #                    el puerto o levanta uno a la vez)
+  pnpm obs:forward      # Grafana en :3002
 
 Para ver que la telemetria llega de verdad:
 
@@ -118,18 +117,18 @@ Para ver que la telemetria llega de verdad:
   3. «Bank USAC · Flujo de trazas» — la Saga completa, en una sola traza
   4. «Bank USAC · Logs» — pega el correlationId y salta a su traza
 
-Los escenarios de fallo de T-51, sin apagar nada de nadie:
+Los escenarios de fallo de T-51, sin apagar nada de nadie. Cada uno mueve la
+perilla, corre la carga, mira si el dinero cuadra y deja el clúster como estaba:
 
-  # el banco pareja rechaza
-  pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml \\
-    --set partnerMock.callbackMode=REJECT
-  # el banco pareja no contesta
-  …--set partnerMock.callbackMode=TIMEOUT
-  # el banco pareja tarda 8 s
-  …--set partnerMock.callbackMode=SLOW --set partnerMock.callbackDelayMs=8000
-  # el proveedor de pagos falla siempre (T-44, en caliente y sin desplegar)
-  curl -X PUT localhost:3000/api/payments/simulation -H "Authorization: Bearer <JWT admin>" \\
-    -H 'Content-Type: application/json' -d '{"failureRate":1}'
+  pnpm load:scenario base            # el camino feliz, para comparar
+  pnpm load:scenario rechazo         # el banco pareja dice no a todo
+  pnpm load:scenario sin-respuesta   # el banco pareja no contesta
+  pnpm load:scenario lento           # el banco pareja tarda 12 s
+  pnpm load:scenario proveedor       # el proveedor de pagos falla (T-44)
+  pnpm load:scenario pod             # se elimina un pod a mitad de carga
+
+Los resultados quedan en tmp/load/<escenario>/ y los postmortems en
+docs/sre/postmortems/.
 
 Para apagarlo todo:
 

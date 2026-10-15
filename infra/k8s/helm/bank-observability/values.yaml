@@ -462,8 +462,28 @@ prometheus:
                 sum by (environment) (
                   rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[5m])
                 )
+            # ---- Por qué el `or 0 *` de aquí abajo (T-51) ----------------
+            #
+            # En PromQL una división cuyo **numerador no tiene series** no da
+            # cero: da vacío. Y una alerta con `noDataState: OK` sobre un SLI
+            # vacío se queda en OK. Junto, eso significa que **el peor caso
+            # posible no dispara nada**: si el 100 % de los depósitos se
+            # rechaza, `{result="accepted"}` no existe, el cociente desaparece
+            # y el sistema informa que todo está bien.
+            #
+            # No es hipotético. La carga de T-51 rechazó 241 depósitos de 241 y
+            # `slo:interbank_sent_accepted:ratio_rate5m` devolvió vacío con los
+            # contadores en `rejected=241`. Es el mismo error que T-58 encontró
+            # con el `le="5"` de SLO-2, en otra forma: el fallo total se parece
+            # a la ausencia de tráfico.
+            #
+            # `A or 0 * B` fabrica la serie en cero con las etiquetas de B
+            # cuando A no existe, y no cambia nada cuando A existe.
             - record: slo:gateway_availability:ratio_rate5m
-              expr: sli:gateway_requests_ok:rate5m / sli:gateway_requests:rate5m
+              expr: |
+                (sli:gateway_requests_ok:rate5m or 0 * sli:gateway_requests:rate5m)
+                /
+                sli:gateway_requests:rate5m
             # Error budget restante sobre la ventana de 7 días, la misma que la
             # retención del stack: con 0 % queda gastado y con 1 (100 %) intacto.
             - record: slo:gateway_availability:budget_remaining7d
@@ -513,8 +533,15 @@ prometheus:
             # vacío — y el panel de SLO-2 habría salido en blanco para siempre
             # sin que nada lo dijera.
             - record: slo:transfer_under_5s:ratio_rate5m
+              # El `or 0 *`: ver la nota del grupo slo-gateway. Sin él, un
+              # sistema en el que **ninguna** transferencia baja de 5 s informa
+              # vacío en vez de 0 %.
               expr: |
-                sum by (environment) (rate(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[5m]))
+                (
+                  sum by (environment) (rate(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(bank_transfer_duration_seconds_count[5m]))
+                )
                 /
                 sum by (environment) (rate(bank_transfer_duration_seconds_count[5m]))
             - record: slo:transfer_under_5s:budget_remaining7d
@@ -548,9 +575,16 @@ prometheus:
           interval: 30s
           rules:
             - record: slo:messages_not_dead_lettered:ratio_rate5m
+              # Aquí el numerador desaparece en el caso **bueno** —cero cartas
+              # muertas— y el panel sale en blanco justo cuando todo va bien.
+              # El mismo `or 0 *` sirve en las dos direcciones.
               expr: |
                 1 - (
-                  sum by (environment) (rate(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[5m]))
+                  (
+                    sum by (environment) (rate(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[5m]))
+                    or
+                    0 * sum by (environment) (rate(messaging_client_consumed_messages_total[5m]))
+                  )
                   /
                   sum by (environment) (rate(messaging_client_consumed_messages_total[5m]))
                 )
@@ -587,7 +621,11 @@ prometheus:
           rules:
             - record: slo:interbank_accepted:ratio_rate5m
               expr: |
-                sum by (environment) (rate(bank_interbank_deposits_total{result="accepted"}[5m]))
+                (
+                  sum by (environment) (rate(bank_interbank_deposits_total{result="accepted"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(bank_interbank_deposits_total[5m]))
+                )
                 /
                 sum by (environment) (rate(bank_interbank_deposits_total[5m]))
             - record: slo:interbank_accepted:budget_remaining7d
@@ -598,6 +636,40 @@ prometheus:
                 histogram_quantile(0.95, sum by (le, environment) (
                   rate(bank_interbank_deposit_duration_seconds_bucket[5m])
                 ))
+            # Y la otra dirección, la que este banco ENVÍA (T-47).
+            #
+            # Dos reglas y no una con etiqueta `direction`, porque §4.1 pide la
+            # tasa «enviados y recibidos» como dos números: un solo indicador
+            # los habría promediado, y el día que el banco pareja rechaza todo
+            # lo nuestro mientras acepta todo lo suyo el promedio sale bien.
+            #
+            # La carga de T-51 encontró que faltaban: el escenario obligatorio
+            # —el pareja rechazando depósitos— no disparaba **ninguna** alerta,
+            # porque las dos que existían miraban sólo el entrante.
+            - record: slo:interbank_sent_accepted:ratio_rate5m
+              expr: |
+                (
+                  sum by (environment) (rate(bank_interbank_sent_total{result="accepted"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(bank_interbank_sent_total[5m]))
+                )
+                /
+                sum by (environment) (rate(bank_interbank_sent_total[5m]))
+            - record: slo:interbank_sent_accepted:budget_remaining7d
+              expr: |
+                1 - ((1 - avg_over_time(slo:interbank_sent_accepted:ratio_rate5m[7d])) / 0.05)
+            - record: slo:interbank_sent_confirmation:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (
+                  rate(bank_interbank_confirmation_duration_seconds_bucket[5m])
+                ))
+            # Los vencimientos por sí solos, que es lo que §4.1 nombra aparte
+            # («número de timeouts»). Sale de la etiqueta y no de un contador
+            # propio: un contador aparte se desincroniza del total en cuanto
+            # alguien añade un estado.
+            - record: sli:interbank_sent_timeouts:rate5m
+              expr: |
+                sum by (environment) (rate(bank_interbank_sent_total{result="timeout"}[5m]))
 
         # ---- El proveedor externo simulado (T-44) ---------------------------
         - name: sli-payment-provider
@@ -607,8 +679,14 @@ prometheus:
             # inyectado por un administrador para una prueba: sumarlos haría
             # que un escenario de fallo pareciera una caída del proveedor.
             - record: sli:payment_provider_failure:ratio_rate5m
+              # Cero fallos es el caso bueno y dejaba el panel vacío; el `or 0 *`
+              # lo convierte en un cero que se puede graficar.
               expr: |
-                sum by (environment, source) (rate(bank_payment_provider_calls_total{result!="success"}[5m]))
+                (
+                  sum by (environment, source) (rate(bank_payment_provider_calls_total{result!="success"}[5m]))
+                  or
+                  0 * sum by (environment, source) (rate(bank_payment_provider_calls_total[5m]))
+                )
                 /
                 sum by (environment, source) (rate(bank_payment_provider_calls_total[5m]))
             - record: sli:payment_provider:seconds_p95
@@ -958,6 +1036,29 @@ grafana:
                 httpMethod: POST
                 authorization_scheme: Bearer
                 authorization_credentials: $ALERT_WEBHOOK_TOKEN
+        # Y el camino local, que faltaba (T-51).
+        #
+        # La política enruta `environment=dev` al receptor de dev y **todo lo
+        # demás a prod**, cuyo destino es el namespace `prod`. En el clúster
+        # local el banco vive en `bank-usac` y ese namespace no existe, así que
+        # la alerta se disparaba y el webhook moría en el DNS:
+        #
+        #   lookup bank-usac-gateway.prod.svc.cluster.local: no such host
+        #
+        # Resultado: la alerta se veía en la consola de Grafana y **no llegaba
+        # a la bitácora**, que es justo el «canal visible» que pide §4.1. Lo
+        # encontró la carga de T-51, con `PartnerBankSendDegraded` disparada y
+        # cero registros en Notification & Audit.
+        - orgId: 1
+          name: bank-audit-local
+          receivers:
+            - uid: bank-audit-webhook-local
+              type: webhook
+              settings:
+                url: http://bank-usac-gateway.bank-usac.svc.cluster.local:3000/api/alerts/slo
+                httpMethod: POST
+                authorization_scheme: Bearer
+                authorization_credentials: $ALERT_WEBHOOK_TOKEN
 
     policies.yaml:
       apiVersion: 1
@@ -978,6 +1079,9 @@ grafana:
             - receiver: bank-audit-dev
               object_matchers:
                 - ['environment', '=', 'dev']
+            - receiver: bank-audit-local
+              object_matchers:
+                - ['environment', '=', 'local']
 
     rules.yaml:
       apiVersion: 1
@@ -1216,6 +1320,84 @@ grafana:
                     editorMode: code
                     instant: true
                     expr: slo:interbank_confirmation:seconds_p95
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [5]
+
+            # Las dos de la dirección saliente (T-51).
+            #
+            # Existen porque el escenario obligatorio de carga —el banco pareja
+            # rechazando lo que le enviamos— no disparaba nada: las dos de
+            # arriba miran `bank_interbank_deposits_total`, que es el depósito
+            # que ÉL nos manda. Un sistema que no avisa cuando el otro banco
+            # deja de aceptar su dinero está mirando la mitad del enlace.
+            #
+            # `for: 5m` y no 15: el vencimiento de la confirmación es de 30 s, y
+            # quince minutos de rechazos son treinta compensaciones por minuto
+            # antes del primer aviso. El entrante puede esperar quince porque
+            # ahí el dinero del cliente no está retenido.
+            - uid: bank-partner-send-degraded
+              title: PartnerBankSendDegraded
+              condition: C
+              for: 5m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-28
+              annotations:
+                summary: Menos del 95 % de los depósitos que este banco ENVÍA se confirman; el pareja rechaza o no contesta y la Saga está compensando.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:interbank_sent_accepted:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            - uid: bank-partner-send-slow
+              title: PartnerBankSendConfirmationSlow
+              condition: C
+              for: 5m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-28
+              annotations:
+                summary: El banco pareja tarda más de 5 segundos (p95) en decidir un depósito enviado; con 30 s vence y se compensa.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:interbank_sent_confirmation:seconds_p95
                 - refId: C
                   relativeTimeRange: { from: 600, to: 0 }
                   datasourceUid: __expr__

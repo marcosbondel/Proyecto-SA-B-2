@@ -245,9 +245,10 @@ servicio seguirá usando la anterior — y el síntoma es un rechazo correcto de
 valor equivocado, que es lo más difícil de diagnosticar. El Deployment del mock
 sí lleva `checksum/secret`, por esto mismo.
 
-**El puerto 3000 lo quieren dos.** `pnpm k8s:forward` pone el Gateway en 3000 y
-`pnpm obs:forward` pone Grafana en 3000. Levanta uno a la vez, o cambia el
-puerto de uno de los dos.
+**El puerto 3000 ya no lo quieren dos.** `pnpm k8s:forward` pone el Gateway en
+3000 y la web en 3010; `pnpm obs:forward` pone Grafana en **3002**. Chocaban
+hasta T-51, donde hizo falta tener la carga y el dashboard delante a la vez —
+que es cuando una colisión documentada deja de ser aceptable.
 
 ### Lo que este camino NO prueba
 

@@ -52,5 +52,7 @@ data:
   INTERBANK_PARTNER_BANK_CODE: {{ .Values.interbank.partnerBankCode | quote }}
   INTERBANK_MAX_AMOUNT_MINOR: {{ .Values.interbank.maxAmountMinor | quote }}
   INTERBANK_CALLBACK_URL: {{ .Values.interbank.callbackUrl | quote }}
+  INTERBANK_SEND_URL: {{ .Values.interbank.sendUrl | quote }}
+  INTERBANK_CONFIRMATION_TIMEOUT_MS: {{ .Values.interbank.confirmationTimeoutMs | quote }}
   SEED_DEMO_DATA: "true"
   SEED_PASSWORD: "BankUsac#2026"

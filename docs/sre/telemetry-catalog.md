@@ -212,20 +212,38 @@ Los nombres exactos de las series de RabbitMQ (`rabbitmq_queue_messages_ready`,
 *recording rule* del consumer lag: son del plugin, no nuestros. T-50 no debe dar
 ninguno por supuesto.
 
-### 2.10 Nombres reservados para T-47 (envío interbancario)
+### 2.10 El envío interbancario (T-47, medido desde T-51)
 
-No existen todavía. Se reservan aquí para que el envío no invente otros ni
-reutilice los del entrante — las dos direcciones se miden por separado, como
-pide §4.1 (*"tasa de éxito de depósitos interbancarios (enviados y recibidos)"*):
+Se reservaron aquí antes de existir, para que el envío no inventara otros ni
+reutilizara los del entrante — las dos direcciones se miden por separado, como
+pide §4.1 (*"tasa de éxito de depósitos interbancarios (enviados y recibidos)"*).
+**Ya existen**: los emite `payment-service` y los grafica T-50.
 
-| Métrica | Tipo | Unidad | Etiquetas previstas |
-| --- | --- | --- | --- |
-| `bank.interbank.sent` | Counter | `{deposit}` | `result` (`accepted` · `rejected` · `timeout` · `reversed`) |
-| `bank.interbank.confirmation.duration` | Histogram | `s` | `result` |
+| Métrica | Tipo | Unidad | Etiquetas | Serie en Prometheus |
+| --- | --- | --- | --- | --- |
+| `bank.interbank.sent` | Counter | `{deposit}` | `result` (`accepted` · `rejected` · `timeout`) | `bank_interbank_sent_total` |
+| `bank.interbank.confirmation.duration` | Histogram | `s` | `result` | `bank_interbank_confirmation_duration_seconds` |
+
+**Tres valores de `result` y no cuatro.** La reserva preveía un `reversed`, y no
+se emite: `REVERSED` es la constancia de haber devuelto un depósito que ya se
+contó como `rejected` o `timeout`, así que contarlo otra vez duplicaría el
+denominador de la tasa de éxito. Los estados en vuelo —`PENDING` y `SENT`— no
+cuentan por lo mismo.
 
 El **número de timeouts** que pide el enunciado es
 `bank_interbank_sent_total{result="timeout"}`, no un contador aparte: un
 contador separado se desincroniza del total en cuanto alguien añade un estado.
+
+Los límites del histograma son `[0.25, 0.5, 1, 2, 3, 5, 10, 20, 30, 60]`: densos
+alrededor de los 5 s, que es el umbral de `PartnerBankSendConfirmationSlow`, y
+largos hasta pasado el vencimiento de 30 s. Un histograma sólo puede responder
+«cuántas por debajo de cinco segundos» si hay una frontera exactamente ahí.
+
+Las cuatro reglas que las consumen —la tasa, el presupuesto, el p95 y los
+vencimientos— y las dos alertas `PartnerBankSend*` se añadieron en **T-51**, no
+en T-47: la carga encontró que el escenario obligatorio del enunciado, el banco
+pareja rechazando lo que le enviamos, no disparaba ninguna alerta porque las dos
+que existían miraban sólo el entrante.
 
 ---
 

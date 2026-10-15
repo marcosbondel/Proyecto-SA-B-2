@@ -138,3 +138,159 @@ test('fails the first callback and then accepts a retry', async () => {
   });
   assert.equal((await status.json()).status, 'ACCEPTED');
 });
+
+/**
+ * Los cuatro modos del depósito que este banco ENVÍA (T-51).
+ *
+ * Es la dirección que el mock no sabía contestar hasta este ticket, y la que el
+ * escenario obligatorio de carga necesita poder romper: el enunciado pide
+ * «el banco pareja no responde, responde lento o rechaza depósitos», y pide que
+ * se simule — nunca tocando el sistema del otro grupo.
+ */
+function captureCallbacks() {
+  const received = [];
+  const server = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    received.push({
+      path: request.url,
+      authorization: request.headers.authorization,
+      body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+    });
+    response.writeHead(202, { 'content-type': 'application/json' });
+    response.end('{}');
+  });
+  return { received, server };
+}
+
+function deposit(id) {
+  return {
+    interbankTransferId: id,
+    idempotencyKey: id,
+    originBankCode: 'BANK_USAC',
+    destinationBankCode: 'PARTNER_MOCK',
+    accountId: 'cuenta-de-alla-1',
+    amount: { amountMinor: 12500, currency: 'GTQ' },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function until(predicate, budgetMs = 2_000) {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise((done) => setTimeout(done, 10));
+  }
+  return predicate();
+}
+
+test('acknowledges a sent deposit with 202 and accepts it by callback', async () => {
+  const { received, server } = captureCallbacks();
+  const gatewayUrl = await listen(server);
+  const url = await listen(
+    createPartnerBankMock({ token: TOKEN, gatewayUrl, callbackMode: 'ACCEPT', callbackDelayMs: 0 }),
+  );
+
+  const response = await call(url, '/deposits', deposit('send-1'));
+
+  // 202 y no 200: la decisión llega después, por callback.
+  assert.equal(response.status, 202);
+  assert.equal(await until(() => received.length === 1), true);
+  assert.equal(received[0].path, '/api/interbank/callbacks');
+  assert.equal(received[0].authorization, `Bearer ${TOKEN}`);
+  assert.equal(received[0].body.interbankTransferId, 'send-1');
+  assert.equal(received[0].body.status, 'ACCEPTED');
+  assert.equal(typeof received[0].body.receivedAt, 'string');
+});
+
+test('rejects a sent deposit with a reason when configured to', async () => {
+  const { received, server } = captureCallbacks();
+  const gatewayUrl = await listen(server);
+  const url = await listen(
+    createPartnerBankMock({ token: TOKEN, gatewayUrl, callbackMode: 'REJECT', callbackDelayMs: 0 }),
+  );
+
+  assert.equal((await call(url, '/deposits', deposit('send-2'))).status, 202);
+  assert.equal(await until(() => received.length === 1), true);
+  assert.equal(received[0].body.status, 'REJECTED');
+  // Un REJECTED sin motivo no lo acepta el contrato del callback.
+  assert.equal(received[0].body.reason, 'ACCOUNT_NOT_FOUND');
+});
+
+test('never answers a sent deposit when configured to time out', async () => {
+  const { received, server } = captureCallbacks();
+  const gatewayUrl = await listen(server);
+  const url = await listen(
+    createPartnerBankMock({
+      token: TOKEN,
+      gatewayUrl,
+      callbackMode: 'TIMEOUT',
+      callbackDelayMs: 0,
+    }),
+  );
+
+  assert.equal((await call(url, '/deposits', deposit('send-3'))).status, 202);
+  await new Promise((done) => setTimeout(done, 150));
+  // El acuse salió y la decisión no: es el plazo de confirmación el que corta.
+  assert.equal(received.length, 0);
+});
+
+test('answers a sent deposit late when configured to be slow', async () => {
+  const { received, server } = captureCallbacks();
+  const gatewayUrl = await listen(server);
+  const url = await listen(
+    createPartnerBankMock({
+      token: TOKEN,
+      gatewayUrl,
+      callbackMode: 'SLOW',
+      callbackDelayMs: 120,
+      timeoutFloorMs: 120,
+    }),
+  );
+
+  assert.equal((await call(url, '/deposits', deposit('send-4'))).status, 202);
+  assert.equal(received.length, 0);
+  assert.equal(await until(() => received.length === 1), true);
+  assert.equal(received[0].body.status, 'ACCEPTED');
+});
+
+test('decides a resent deposit once, by its idempotency key', async () => {
+  const { received, server } = captureCallbacks();
+  const gatewayUrl = await listen(server);
+  const url = await listen(
+    createPartnerBankMock({ token: TOKEN, gatewayUrl, callbackMode: 'ACCEPT', callbackDelayMs: 0 }),
+  );
+
+  const first = await call(url, '/deposits', deposit('send-5'));
+  const again = await call(url, '/deposits', deposit('send-5'));
+
+  assert.equal(first.status, 202);
+  assert.equal(again.status, 202);
+  assert.equal((await again.json()).duplicate, true);
+  assert.equal(await until(() => received.length === 1), true);
+  await new Promise((done) => setTimeout(done, 100));
+  // Un reenvío no es una segunda decisión, ni un segundo callback.
+  assert.equal(received.length, 1);
+});
+
+test('refuses a malformed deposit and requires the shared token', async () => {
+  const url = await listen(createPartnerBankMock({ token: TOKEN }));
+  assert.equal((await call(url, '/deposits', { interbankTransferId: 'x' })).status, 400);
+  assert.equal((await fetch(`${url}/deposits`, { method: 'POST' })).status, 401);
+});
+
+test('says which failure is armed, and says it without a token', async () => {
+  const url = await listen(
+    createPartnerBankMock({ token: TOKEN, callbackMode: 'REJECT', callbackDelayMs: 700 }),
+  );
+
+  const response = await fetch(`${url}/health`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.status, 'ok');
+  // Es lo que vuelve a un escenario de carga reproducible: se puede esperar a
+  // que el modo sea el pedido en vez de confiar en `kubectl rollout status`.
+  assert.equal(body.callbackMode, 'REJECT');
+  assert.equal(body.callbackDelayMs, 700);
+});

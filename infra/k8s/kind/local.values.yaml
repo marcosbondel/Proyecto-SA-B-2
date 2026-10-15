@@ -46,6 +46,12 @@ interbank:
   # Explícito, no derivado de `partnerMock.enabled`: el destino de un callback
   # es una decisión que se escribe, no una que se adivina.
   callbackUrl: http://bank-usac-partner-bank-mock:3021/callbacks/interbank
+  # Y a dónde manda este banco los depósitos que origina: la entrada del mock,
+  # que es el `POST /deposits` de `apps/partner-bank-mock`. Sin esto el envío
+  # interbancario se queda apagado y una transferencia interbancaria termina
+  # como una transferencia interna a la cuenta de liquidación — que es
+  # exactamente lo que pasó en la primera corrida de carga de T-51.
+  sendUrl: http://bank-usac-partner-bank-mock:3021/deposits
 
 # --------------------------------------------------------------------------
 # Dos secretos de juguete, y la palabra «juguete» es literal.
