@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { money, uuidV4 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
+import { interbankDestination } from '../interbank/outgoing.v1';
 import { paymentScenario } from '../transaction/transfer.requested.v1';
 
 /**
@@ -39,6 +40,24 @@ export const paymentRequestedV1 = defineContract({
      * Saga outcome in the hands of the service that merely records it.
      */
     scenario: paymentScenario.optional(),
+
+    /**
+     * A quién hay que pedirle el pago, cuando no es el proveedor simulado
+     * (T-47, §4.1 — Integración interbancaria).
+     *
+     * Opcional y aditivo, con la misma forma que `scenario`: un mensaje que lo
+     * omite se paga como siempre. Cuando viene, Payment Service no llama al
+     * proveedor simulado sino al **Gateway del banco pareja**, por HTTP, y
+     * entonces pasa la única cosa que el resto de este servicio no sabía hacer:
+     * la respuesta **no llega al momento**. El otro banco contesta `202
+     * Accepted` y su decisión vuelve después, por callback.
+     *
+     * Transaction Service lo copia de `transfer.requested.v1` y no decide nada
+     * con él, exactamente como hace con el escenario: a quién se le pide el
+     * dinero es asunto de Payment, y decidirlo en el orquestador pondría una
+     * salida de la Saga en manos del servicio que sólo la registra.
+     */
+    interbank: interbankDestination.optional(),
   }),
 });
 
