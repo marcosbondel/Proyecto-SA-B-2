@@ -29,6 +29,31 @@ export interface BrokerOptions {
   readonly reconnectDelayMs?: number;
 
   /**
+   * Segundos entre latidos hacia el broker.
+   *
+   * **No es una perilla de rendimiento, es la diferencia entre un pico de CPU y
+   * una caída.** `amqp-connection-manager` trae 5 s por defecto, y RabbitMQ
+   * cierra la conexión cuando se pierden dos latidos seguidos. Un servicio Node
+   * es de un solo hilo y aquí corre con un límite de 250 mCPU: diez segundos de
+   * bucle de eventos ocupado —que bajo carga es normal— no son una caída, pero
+   * con 5 s de latido el broker los lee como tal, cierra la conexión, `amqplib`
+   * emite un error de socket y el proceso termina en 1. Kubernetes lo reinicia,
+   * y como todos los servicios comparten este adaptador, se reinician todos a
+   * la vez.
+   *
+   * Eso es exactamente lo que pasó en la carga interbancaria de T-51: siete
+   * pods reiniciados en seis segundos, `missed heartbeats from client,
+   * timeout: 5s` en el log de RabbitMQ, y ni un solo evento `Unhealthy` que lo
+   * explicara. El postmortem es
+   * docs/sre/postmortems/2026-10-15-latido-amqp.md.
+   *
+   * Treinta segundos es el valor por defecto ahora: tolera un bucle bloqueado
+   * un minuto antes de dar la conexión por muerta, y sigue por debajo de los
+   * 60 s que propone el servidor, que es quien pone el techo.
+   */
+  readonly heartbeatSeconds?: number;
+
+  /**
    * How long a publish may wait for the broker to take responsibility for a
    * message before it is rejected.
    *
@@ -119,6 +144,11 @@ const ERROR_DRAIN_QUEUE = 'bank.errors.drain';
 const DEFAULT_RECONNECT_DELAY_MS = 5_000;
 
 /**
+ * Treinta segundos, no los cinco de la librería. Ver `heartbeatSeconds`.
+ */
+const DEFAULT_HEARTBEAT_SECONDS = 30;
+
+/**
  * Long enough that a momentary reconnection is survived, short enough that a
  * caller is not left hanging. A publish that has not been confirmed in five
  * seconds is not going to be confirmed usefully.
@@ -151,6 +181,7 @@ export class MessageBroker {
       reconnectTimeInSeconds: Math.ceil(
         (options.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS) / 1000,
       ),
+      heartbeatIntervalInSeconds: options.heartbeatSeconds ?? DEFAULT_HEARTBEAT_SECONDS,
     });
   }
 
