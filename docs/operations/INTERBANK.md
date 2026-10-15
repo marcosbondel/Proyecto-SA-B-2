@@ -178,7 +178,7 @@ en el estado, en el evento `payment.interbank.sent.v1` y en la métrica
 
 | Variable | Quién la lee | Qué es |
 | --- | --- | --- |
-| `INTERBANK_SEND_URL` | Payment | el Gateway del banco pareja. **Vacío desactiva el envío**: el bloque `interbank` se ignora y el pago va al proveedor simulado |
+| `INTERBANK_SEND_URL` | Payment | la **entrada de depósitos** del banco pareja — con el mock propio, `http://bank-usac-partner-bank-mock:3021/deposits`. **Vacío desactiva el envío**: el bloque `interbank` se ignora y el pago va al proveedor simulado |
 | `INTERBANK_CONFIRMATION_TIMEOUT_MS` | Payment | cuánto se espera la confirmación antes de rendirse. 30 s por defecto |
 | `INTERBANK_PARTNER_TOKEN` | Gateway, Payment, mock | el mismo secreto compartido de T-46, en las dos direcciones |
 
@@ -190,9 +190,26 @@ completo se ejercita sin la nube y sin el otro grupo:
 ```bash
 pnpm local:up          # banco + observabilidad + mock, en kind
 # y para los escenarios de fallo, sin apagar nada de nadie:
-pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml --set partnerMock.callbackMode=REJECT
-pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml --set partnerMock.callbackMode=TIMEOUT
+pnpm load:scenario rechazo         # el pareja dice no a todo
+pnpm load:scenario sin-respuesta   # el pareja no contesta
+pnpm load:scenario lento           # el pareja tarda 12 s
 ```
+
+Las tres mueven `partnerMock.callbackMode`, corren la carga, comprueban que los
+saldos cuadran y devuelven el modo a `ACCEPT` — incluso si se interrumpen.
+
+**Dos cosas que la primera corrida real descubrió** (T-51) y que vale la pena
+saber antes de desplegar esto en otro sitio:
+
+1. **El chart no tenía `interbank.sendUrl`.** La ruta contestaba `202`, la Saga
+   terminaba `COMPLETED` y el dinero se quedaba en la cuenta de liquidación sin
+   que nadie lo hubiera mandado a ninguna parte. El único rastro era una línea
+   al arrancar: `envio interbancario desactivado: falta INTERBANK_SEND_URL`.
+2. **El mock no sabía contestar un depósito nuestro.** Su `POST /transfers` es
+   el mock haciendo de banco que nos *origina* un depósito; el `POST /deposits`
+   —que llegó con T-51— es el mock haciendo de banco que *recibe* uno nuestro y
+   lo decide según `callbackMode`. Son dos direcciones y dos rutas: apuntar
+   `sendUrl` a la primera hace que el banco se mande depósitos a sí mismo.
 
 La pantalla es `/transferencias/interbancaria`, y el seguimiento es el de
 cualquier transferencia: `/transferencias/{transactionId}`.

@@ -117,3 +117,9 @@ terraform.rc
 # depende del proyecto de GCP, así que no se commitea. La plantilla sí
 # (backend.hcl.example). `.terraform.lock.hcl` no se ve afectado.
 backend.hcl
+
+# Lo que las corridas de carga de T-51 dejan por el camino: el resumen de k6, su
+# salida y los recuentos de antes y después. Los **números** van al postmortem y
+# a la evidencia, que es donde alguien los va a leer; el archivo crudo es de una
+# corrida concreta en una máquina concreta y no se versiona.
+tmp/load/

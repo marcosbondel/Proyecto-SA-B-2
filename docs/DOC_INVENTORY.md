@@ -110,6 +110,11 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/sre/sli-slo-sla.md` | project | Marcos Bonifasi | current | 2026-09-20 |
 | `docs/sre/telemetry-catalog.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/operations/runbooks/README.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/sre/postmortems/README.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/sre/postmortems/2026-10-15-latido-amqp.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/sre/postmortems/2026-10-15-banco-pareja.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/sre/postmortems/2026-10-15-pod-eliminado.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/sre/postmortems/2026-10-15-proveedor-de-pagos.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/operations/runbooks/gateway-availability-burn.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/operations/runbooks/transfer-latency.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/operations/runbooks/dead-letter.md` | project | Marcos Bonifasi | current | 2026-10-14 |
@@ -133,6 +138,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-45-audit-traceability-evidence.md` | project | David Barrios | current | 2026-10-05 |
 | `docs/qa/backend/T-48-observability-package-evidence.md` | project | Marcos Bonifasi | current | 2026-10-11 |
 | `docs/qa/backend/T-58-telemetry-catalog-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/qa/backend/T-51-load-and-failures-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/qa/backend/T-50-dashboards-alerts-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/qa/backend/T-57-local-stack-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/qa/backend/T-47-interbank-send-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
