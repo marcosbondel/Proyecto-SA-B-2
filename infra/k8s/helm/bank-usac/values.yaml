@@ -384,6 +384,21 @@ interbank:
   partnerBankCode: PARTNER_MOCK
   maxAmountMinor: "100000000"
   callbackUrl: "http://127.0.0.1:3021/callbacks/interbank"
+  # Where this bank SENDS the deposits it originates — the partner's intake, not
+  # its own. Empty means "this deployment does not send deposits", which is the
+  # right default while no partner is assigned: the `interbank` block of a
+  # payment is ignored and the money never leaves. Turning it on is one value,
+  # and the local overrides file points it at the mock's Service.
+  #
+  # T-51 found this the hard way: with `sendUrl` absent from the chart, 240
+  # interbank transfers completed as ordinary transfers into the settlement
+  # account and payment-service logged `envio interbancario desactivado`. The
+  # route answered 202 the whole time. A deployment can be wrong in a way no
+  # request is.
+  sendUrl: ""
+  # How long a deposit waits for the partner's callback before compensating.
+  # The same ceiling as the payment ladder's last rung, for the same reason.
+  confirmationTimeoutMs: "30000"
 
 # ---------------------------------------------------------------------------
 # partner-bank-mock — the simulated partner bank (T-57).

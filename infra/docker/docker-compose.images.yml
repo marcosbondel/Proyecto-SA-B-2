@@ -241,6 +241,11 @@ services:
       INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-PARTNER_MOCK}
       INTERBANK_MAX_AMOUNT_MINOR: ${INTERBANK_MAX_AMOUNT_MINOR:-100000000}
       INTERBANK_CALLBACK_URL: ${INTERBANK_CALLBACK_URL:-http://partner-bank-mock:3021/callbacks/interbank}
+      # A dónde manda este banco los depósitos que ENVÍA. Vacío apaga el envío
+      # interbancario — y apagarlo sin querer es cómo una transferencia
+      # interbancaria termina siendo una transferencia interna a la cuenta de
+      # liquidación, con 202 y todo (T-51).
+      INTERBANK_SEND_URL: ${INTERBANK_SEND_URL:-http://partner-bank-mock:3021/deposits}
     depends_on:
       postgres-payment:
         condition: service_healthy
