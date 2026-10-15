@@ -1,6 +1,6 @@
 # Pirámide de pruebas
 
-Generado por `pnpm test:pyramid` el 2026-10-11T23:58:59.063Z.
+Generado por `pnpm test:pyramid` el 2026-10-15T13:18:02.944Z.
 
 Integración es la prueba que cruza un proceso real (PostgreSQL, RabbitMQ o
 MinIO). Todo lo que corre en proceso con dobles es unitaria. E2E atraviesa los
@@ -10,32 +10,50 @@ siete componentes desplegados.
 
 | Paquete | Unitarias | Integración | % integ | Objetivo | Estado |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `gateway` | 406 | 111 | 21.5 % | 22.2 % | ok |
-| `web` | 309 | 94 | 23.3 % | 22.2 % | ok |
+| `gateway` | 410 | 114 | 21.8 % | 22.2 % | ok |
+| `web` | 317 | 94 | 22.9 % | 22.2 % | ok |
 | `customer-service` | 160 | 43 | 21.2 % | 22.2 % | ok |
-| `account-service` | 188 | 56 | 23.0 % | 22.2 % | ok |
+| `account-service` | 192 | 57 | 22.9 % | 22.2 % | ok |
 | `transaction-service` | 203 | 55 | 21.3 % | 22.2 % | ok |
-| `payment-service` | 151 | 45 | 23.0 % | 22.2 % | ok |
+| `payment-service` | 192 | 58 | 23.2 % | 22.2 % | ok |
 | `notification-audit-service` | 201 | 56 | 21.8 % | 22.2 % | ok |
 | `@bank/messaging` | 57 | 16 | 21.9 % | 22.2 % | ok |
-| `@bank/observability` | 48 | 13 | 21.3 % | 22.2 % | ok |
-| `@bank/contracts` | 875 | 0 | 0.0 % | — | excepción |
+| `@bank/observability` | 52 | 15 | 22.4 % | 22.2 % | ok |
+| `@bank/contracts` | 939 | 0 | 0.0 % | — | excepción |
 
 ## Sistema (las siete apps desplegables)
 
 | Capa | Casos | Real | Objetivo |
 | --- | ---: | ---: | ---: |
-| Unitarias | 1618 | 72.6 % | 70 % |
-| Integración | 460 | 20.6 % | 20 % |
-| E2E | 152 | 6.8 % | 10 % |
-| **Total** | **2230** | | |
+| Unitarias | 1675 | 72.7 % | 70 % |
+| Integración | 477 | 20.7 % | 20 % |
+| E2E | 152 | 6.6 % | 10 % |
+| **Total** | **2304** | | |
 
-**Esta corrida no ejecutó el E2E.** La fila de arriba sale de
-`docs/qa/pyramid-e2e.json`, que escribe `test/e2e/run-all.mjs` contra un stack
-levantado a mano, así que es de otra corrida y se informa sin afirmarse.
-Lo que sí se comprobó es la relación entre las dos capas que sí se
-midieron: la integración pesa 22.1 %
-de lo propio de las siete apps, contra el objetivo de 22.2 %.
+## Lo que no se ejecutó
 
-Para medir las tres capas: levanta el stack, corre `node test/e2e/run-all.mjs`
-y vuelve a ejecutar `pnpm test:pyramid` sin `--without-e2e`.
+399 casos están declarados pero se saltaron en esta corrida — suites
+cerradas tras `describe.skip` por falta de `DATABASE_URL` o `RABBITMQ_URL`.
+Cuentan para la proporción porque las pruebas existen; no cuentan como
+evidencia de que el comportamiento funciona.
+
+- `apps/gateway/test/envelope-and-replies.integration.spec.ts` — 36 casos
+- `apps/gateway/test/alert-webhook.integration.spec.ts` — 11 casos
+- `apps/gateway/test/publish-routing.integration.spec.ts` — 43 casos
+- `apps/gateway/test/reply-correlation.integration.spec.ts` — 24 casos
+- `apps/services/customer-service/test/repository-queries.integration.spec.ts` — 16 casos
+- `apps/services/customer-service/test/repository.integration.spec.ts` — 17 casos
+- `apps/services/customer-service/test/constraints.integration.spec.ts` — 10 casos
+- `apps/services/account-service/test/repository.integration.spec.ts` — 42 casos
+- `apps/services/account-service/test/repository-extended.integration.spec.ts` — 15 casos
+- `apps/services/transaction-service/test/repository.integration.spec.ts` — 55 casos
+- `apps/services/payment-service/test/simulation-handlers.integration.spec.ts` — 14 casos
+- `apps/services/payment-service/test/interbank-repository.integration.spec.ts` — 2 casos
+- `apps/services/payment-service/test/repository.integration.spec.ts` — 24 casos
+- `apps/services/payment-service/test/interbank-send-repository.integration.spec.ts` — 11 casos
+- `apps/services/payment-service/test/simulation.integration.spec.ts` — 7 casos
+- `apps/services/notification-audit-service/test/repository.integration.spec.ts` — 39 casos
+- `apps/services/notification-audit-service/test/trace-and-dedupe.integration.spec.ts` — 17 casos
+- `apps/packages/messaging/test/topology.integration.spec.ts` — 3 casos
+- `apps/packages/messaging/test/broker.integration.spec.ts` — 9 casos
+- `apps/packages/messaging/test/trace-propagation.integration.spec.ts` — 4 casos

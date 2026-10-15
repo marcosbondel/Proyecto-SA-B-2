@@ -21,6 +21,7 @@ import type {
 import { GatewayError } from '../../src/application/errors/gateway-error';
 import type { ReplyKind } from '../../src/application/errors/gateway-error';
 import { AlertWebhookUseCase } from '../../src/application/routes/alert-webhook.use-case';
+import { InterbankCallbackUseCase } from '../../src/application/routes/interbank-callback.use-case';
 import { InterbankReceiveUseCase } from '../../src/application/routes/interbank-receive.use-case';
 import { CommandsUseCase } from '../../src/application/routes/commands.use-case';
 import { ChangePasswordUseCase } from '../../src/application/routes/change-password.use-case';
@@ -218,6 +219,7 @@ export async function buildHarness(
        */
       AlertWebhookUseCase,
       InterbankReceiveUseCase,
+      InterbankCallbackUseCase,
       ChangePasswordUseCase,
       DepositUseCase,
       DashboardUseCase,

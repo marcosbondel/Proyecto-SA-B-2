@@ -70,6 +70,22 @@ export type PaymentScenario = 'APPROVE' | 'REJECT' | 'TRANSIENT_FAILURE' | 'TIME
  * (constitution II, §8.2 criterion 2.3) — what they contain is Account
  * Service's business and arrives here only as the outcome of a command.
  */
+/**
+ * El destino de un depósito en otro banco, estructuralmente el
+ * `interbankDestination` de los contratos (T-47).
+ *
+ * Declarado aquí y no importado por la misma regla que el resto de este
+ * archivo: el dominio no importa `@bank/contracts`, para que lo que decide una
+ * transferencia pueda discutirse sin broker y sin esquemas. Es el mismo trato
+ * que recibe `PaymentStatus`.
+ */
+export interface InterbankDestination {
+  readonly bankCode: string;
+  readonly account: string;
+  readonly interbankTransferId: string;
+  readonly idempotencyKey: string;
+}
+
 export interface Transaction {
   readonly transactionId: string;
   readonly sourceAccount: string;
@@ -102,6 +118,22 @@ export interface Transaction {
   readonly reference: string | null;
   readonly failureReason: FailureReason | null;
   readonly paymentScenario: PaymentScenario | null;
+  /**
+   * A dónde va de verdad el dinero, cuando el destino está en otro banco
+   * (T-47).
+   *
+   * `null` para una transferencia interna. Este servicio **no lo interpreta**:
+   * lo guarda y lo copia en la orden de pago, donde Payment Service —el único
+   * que habla con el banco pareja— sí lo entiende. Es el mismo trato que
+   * `reference` recibe del pago de servicios, y por el mismo motivo: un
+   * orquestador que opina sobre un contrato ajeno rechaza un destino válido el
+   * día que el otro banco cambia el suyo.
+   *
+   * Que esté aquí no cambia la máquina de estados ni una línea: para la Saga,
+   * un depósito interbancario es un débito, un pago y un crédito a la cuenta de
+   * liquidación, exactamente como cualquier transferencia.
+   */
+  readonly interbank: InterbankDestination | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   /** Set once, when the transaction reaches a terminal state. */
@@ -276,6 +308,13 @@ export function openTransaction(input: {
   readonly customerId: string | null;
   readonly reference: string | null;
   readonly paymentScenario: PaymentScenario | null;
+  /**
+   * Opcional en la ENTRADA, obligatorio en la transacción: una transferencia
+   * interna no lo nombra y vale `null`, y así los ciento y pico casos que ya
+   * existían siguen diciendo lo que decían. Omitirlo es declarar que el dinero
+   * no sale de este banco.
+   */
+  readonly interbank?: InterbankDestination | null;
   readonly now: Date;
 }): Transaction {
   return {
@@ -290,6 +329,7 @@ export function openTransaction(input: {
     reference: input.reference,
     failureReason: null,
     paymentScenario: input.paymentScenario,
+    interbank: input.interbank ?? null,
     createdAt: input.now,
     updatedAt: input.now,
     completedAt: null,

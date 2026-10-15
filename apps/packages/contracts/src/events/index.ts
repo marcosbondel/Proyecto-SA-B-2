@@ -118,10 +118,15 @@ import {
   paymentInterbankAcceptedV1,
   paymentInterbankRejectedV1,
 } from './interbank/incoming.v1';
+import {
+  paymentInterbankCallbackReceivedV1,
+  paymentInterbankSentV1,
+} from './interbank/outgoing.v1';
 
 export type { Category, MessageContract } from './contract';
 export { defineContract } from './contract';
 export * from './interbank/incoming.v1';
+export * from './interbank/outgoing.v1';
 
 export * from './customer/customer.activation.requested.v1';
 export * from './customer/customer.authenticate.replied.v1';
@@ -358,6 +363,8 @@ export const catalog: readonly MessageContract[] = [
   accountInterbankCreditRejectedV1,
   paymentInterbankAcceptedV1,
   paymentInterbankRejectedV1,
+  paymentInterbankCallbackReceivedV1,
+  paymentInterbankSentV1,
 ];
 
 /**

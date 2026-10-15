@@ -113,7 +113,14 @@ describe('the versioned API contract', () => {
         // Added for the prototype's D-01 and D-02: five services' own counts,
         // composed. The Gateway holds five replies and computes nothing.
         '/api/dashboard',
+        /*
+         * Las dos de T-47: el cliente manda un depósito al banco pareja, y el
+         * banco pareja contesta sobre uno que le mandamos. La de entrada
+         * (`deposits`) es de T-46 y es la dirección contraria.
+         */
+        '/api/interbank/callbacks',
         '/api/interbank/deposits',
+        '/api/interbank/transfers',
         '/api/auth/login',
         // Added for the prototype's P-07: the password recovery the assignment's
         // flow needs and that no route offered.
@@ -183,7 +190,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(30);
+      expect(functional).toHaveLength(32);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {

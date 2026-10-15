@@ -132,6 +132,24 @@ const CATALOGUE: Readonly<Record<string, EventSeverity>> = {
   'payment.interbank.accepted.v1': 'INFO',
   'payment.interbank.rejected.v1': 'WARNING',
   'payment.failed.v1': 'ERROR',
+  /**
+   * El cambio de estado de un depósito que este banco ENVÍA (T-47).
+   *
+   * `INFO` para el mensaje entero, y no `WARNING`, aunque entre sus estados
+   * haya dos que son malas noticias. El motivo: esta tabla clasifica por tipo
+   * de mensaje, y este tipo lleva los **seis** estados del depósito —desde que
+   * se pide hasta que se devuelve el dinero—, así que la mayoría de sus
+   * apariciones son el curso normal de un envío. Marcarlo `WARNING` haría que
+   * un depósito perfectamente exitoso levantara tres avisos por el camino, y un
+   * canal que avisa de todo no avisa de nada.
+   *
+   * Lo que de verdad hay que notificar cuando un depósito no sale sí se
+   * notifica: el `payment.failed.v1` que cierra la Saga está arriba como
+   * `ERROR`, y el estado concreto del depósito queda en la bitácora, en la
+   * métrica `bank.interbank.sent` por resultado, y en la alerta
+   * `PartnerBankDegraded` de T-50 — que es el sitio donde esto se mira.
+   */
+  'payment.interbank.sent.v1': 'INFO',
 };
 
 /**
