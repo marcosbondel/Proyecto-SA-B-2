@@ -200,6 +200,34 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
   'GET /api/transfers': (h) =>
     request(h.app.getHttpServer()).get('/api/transfers').set('Authorization', auth(h, 'CLIENTE')),
 
+  /*
+   * Las dos de T-47. La de envío va con sesión de CLIENTE, como cualquier
+   * transferencia; la del callback va con el token del banco pareja, como la de
+   * entrada de T-46. Ninguna nombra la cuenta de liquidación ni el
+   * `interbankTransferId`: los mina el Gateway, y que estos cuerpos no los
+   * lleven es parte de lo que la suite comprueba.
+   */
+  'POST /api/interbank/transfers': (h) =>
+    request(h.app.getHttpServer())
+      .post('/api/interbank/transfers')
+      .set('Authorization', auth(h, 'CLIENTE'))
+      .send({
+        sourceAccount: SOURCE_ACCOUNT,
+        destinationBankCode: 'PARTNER_MOCK',
+        destinationAccount: 'cuenta-de-alla-1',
+        amount: { amountMinor: 125_000, currency: 'GTQ' },
+      }),
+
+  'POST /api/interbank/callbacks': (h) =>
+    request(h.app.getHttpServer())
+      .post('/api/interbank/callbacks')
+      .set('Authorization', `Bearer ${TEST_INTERBANK_PARTNER_TOKEN}`)
+      .send({
+        interbankTransferId: randomUUID(),
+        status: 'ACCEPTED',
+        receivedAt: '2026-10-15T12:00:00.000Z',
+      }),
+
   'POST /api/transfers': (h) =>
     request(h.app.getHttpServer())
       .post('/api/transfers')
