@@ -308,7 +308,13 @@ export function openTransaction(input: {
   readonly customerId: string | null;
   readonly reference: string | null;
   readonly paymentScenario: PaymentScenario | null;
-  readonly interbank: InterbankDestination | null;
+  /**
+   * Opcional en la ENTRADA, obligatorio en la transacción: una transferencia
+   * interna no lo nombra y vale `null`, y así los ciento y pico casos que ya
+   * existían siguen diciendo lo que decían. Omitirlo es declarar que el dinero
+   * no sale de este banco.
+   */
+  readonly interbank?: InterbankDestination | null;
   readonly now: Date;
 }): Transaction {
   return {
@@ -323,7 +329,7 @@ export function openTransaction(input: {
     reference: input.reference,
     failureReason: null,
     paymentScenario: input.paymentScenario,
-    interbank: input.interbank,
+    interbank: input.interbank ?? null,
     createdAt: input.now,
     updatedAt: input.now,
     completedAt: null,

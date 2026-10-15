@@ -161,16 +161,24 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
   }): Promise<boolean> {
     const decided = ['ACCEPTED', 'REJECTED', 'TIMEOUT', 'REVERSED'].includes(input.to);
     const moved = await this.pool.query(
+      /*
+       * Los `::text` no son decoración. Sin ellos, `$3` se usa a la vez para
+       * asignar una columna `VARCHAR(12)` y para comparar contra literales, y
+       * PostgreSQL se niega: «inconsistent types deduced for parameter $3». El
+       * doble en los tests y `helm template` lo dejaban pasar; lo encontró la
+       * suite de integración contra una base de verdad, que es exactamente para
+       * lo que está.
+       */
       `UPDATE interbank_sends
-          SET state = $3,
+          SET state = $3::text,
               reason = $4,
               attempts = attempts + 1,
               next_attempt_at = $5,
-              sent_at = CASE WHEN $3 = 'SENT' AND sent_at IS NULL THEN $6 ELSE sent_at END,
+              sent_at = CASE WHEN $3::text = 'SENT' AND sent_at IS NULL THEN $6 ELSE sent_at END,
               decided_at = CASE WHEN $7 THEN COALESCE(decided_at, $6) ELSE decided_at END,
-              reversed_at = CASE WHEN $3 = 'REVERSED' THEN $6 ELSE reversed_at END
+              reversed_at = CASE WHEN $3::text = 'REVERSED' THEN $6 ELSE reversed_at END
         WHERE interbank_transfer_id = $1
-          AND state = $2`,
+          AND state = $2::text`,
       [
         input.interbankTransferId,
         input.from,

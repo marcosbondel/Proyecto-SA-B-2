@@ -187,7 +187,7 @@ async function bootstrap(): Promise<void> {
            * luego treinta es lo que distingue un blip de una caída. El
            * vencimiento de la confirmación es el que corta.
            */
-          resendDelaysMs: environment.PAYMENT_RETRY_DELAYS_MS,
+          resendDelaysMs: delays,
           log: logger,
         });
 
@@ -313,9 +313,11 @@ async function bootstrap(): Promise<void> {
         const interbankSwept = await interbankSend.sweep(SWEEP_BATCH);
 
         if (interbankSwept.expired > 0 || interbankSwept.resent > 0) {
+          // `outcome` y no dos campos nuevos: el tipo del logger es la lista de
+          // lo que este servicio puede decir, y ampliarla por una línea de
+          // barrido no vale la pena.
           logger.info('barrido interbancario', {
-            expired: interbankSwept.expired,
-            resent: interbankSwept.resent,
+            outcome: `${interbankSwept.expired} vencidos, ${interbankSwept.resent} reenviados`,
           });
         }
       } catch (error) {

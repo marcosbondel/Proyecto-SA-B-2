@@ -19,6 +19,7 @@ import {
   accountOperationsRepliedV1,
   accountSetStatusV1,
   alertSloReceivedV1,
+  paymentInterbankCallbackReceivedV1,
   paymentInterbankReceiveV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
@@ -214,6 +215,19 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   },
   'POST /api/interbank/deposits': {
     publishes: paymentInterbankReceiveV1.name,
+  },
+  /*
+   * Las dos de T-47. El envío publica `transfer.requested.v1` —el MISMO mensaje
+   * que una transferencia interna, porque es una transferencia interna con el
+   * destino en la cuenta de liquidación— y de ahí que no haya un comando propio
+   * para enviar depósitos. El callback publica la decisión del banco pareja
+   * para que Payment la registre.
+   */
+  'POST /api/interbank/transfers': {
+    publishes: transferRequestedV1.name,
+  },
+  'POST /api/interbank/callbacks': {
+    publishes: paymentInterbankCallbackReceivedV1.name,
   },
   'GET /api/audit/recent': {
     publishes: auditEventsListQueryV1.name,

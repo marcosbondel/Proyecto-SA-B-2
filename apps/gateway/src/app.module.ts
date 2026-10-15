@@ -10,6 +10,7 @@ import {
   SESSION_SIGNER,
 } from './application/ports';
 import { AlertWebhookUseCase } from './application/routes/alert-webhook.use-case';
+import { InterbankCallbackUseCase } from './application/routes/interbank-callback.use-case';
 import { InterbankReceiveUseCase } from './application/routes/interbank-receive.use-case';
 import { CommandsUseCase } from './application/routes/commands.use-case';
 import { ChangePasswordUseCase } from './application/routes/change-password.use-case';
@@ -128,6 +129,7 @@ export class AppModule implements NestModule {
 
         AlertWebhookUseCase,
         InterbankReceiveUseCase,
+        InterbankCallbackUseCase,
         ChangePasswordUseCase,
         DepositUseCase,
         DashboardUseCase,
