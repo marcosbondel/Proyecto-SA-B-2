@@ -30,6 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 CHART="${REPO_ROOT}/infra/k8s/helm/bank-observability"
 VALORES="${REPO_ROOT}/infra/k8s/kind/observability.values.yaml"
+LOCAL_VALUES="${REPO_ROOT}/infra/k8s/kind/local.values.yaml"
 ENV_FILE="${REPO_ROOT}/infra/docker/.env"
 RELEASE="bank-observability"
 NAMESPACE="observability"
@@ -55,7 +56,14 @@ done
 
 k() { kubectl --context "$KUBE_CONTEXT" "$@"; }
 
-if ! kubectl config get-contexts -o name 2>/dev/null | grep -qx "$KUBE_CONTEXT"; then
+# Se captura la lista ANTES de buscar en ella, y no se encadena
+# `kubectl … | grep -q`. El motivo es una carrera real, no estilo: `grep -q`
+# termina en cuanto encuentra la linea y cierra el pipe, `kubectl` muere con
+# SIGPIPE (141) y `pipefail` convierte eso en un fallo de la tuberia entera. El
+# sintoma era «el contexto no existe» seguido de una lista en la que SI aparece,
+# y empeoraba a medida que se acumulaban contextos en el kubeconfig.
+contexts="$(kubectl config get-contexts -o name 2>/dev/null || true)"
+if ! printf '%s\n' "$contexts" | grep -qx "$KUBE_CONTEXT"; then
   echo "ERROR: el contexto '${KUBE_CONTEXT}' no existe." >&2
   echo "  Crea el cluster primero:  pnpm k8s:cluster" >&2
   exit 2
@@ -95,25 +103,46 @@ if [[ "$accion" == "imprimir" ]]; then
 fi
 
 echo "Namespace y secretos de ${NAMESPACE}…"
-k create namespace "$NAMESPACE" --dry-run=client -o yaml | k apply -f - >/dev/null
-k create secret generic grafana-admin --namespace "$NAMESPACE" \
+
+# `generar | k apply` en una sola tuberia es fragil con `pipefail`: si `apply`
+# termina antes de que el primer `kubectl` acabe de escribir, el primero muere
+# con SIGPIPE y `set -e` aborta el script — en silencio y despues de haber hecho
+# la mitad. Paso de verdad al levantar esto por primera vez. Se genera primero,
+# se aplica despues.
+aplicar() { printf '%s\n' "$1" | k apply -f - >/dev/null; }
+
+aplicar "$(k create namespace "$NAMESPACE" --dry-run=client -o yaml)"
+aplicar "$(k create secret generic grafana-admin --namespace "$NAMESPACE" \
   --from-literal=admin-user=admin \
   --from-literal=admin-password="$GRAFANA_PASS" \
-  --dry-run=client -o yaml | k apply -f - >/dev/null
+  --dry-run=client -o yaml)"
 
 # El token del webhook de alertas: el MISMO que el banco, o la alerta llega al
 # Gateway y este responde 401. Sale de infra/docker/.env, el mismo archivo de
 # credenciales que usan Compose y el chart del banco, asi que las dos mitades no
 # pueden desincronizarse.
+#
+# El `|| true` no es decoracion: sin el, `grep` sin coincidencia devuelve 1, el
+# `pipefail` lo propaga y `set -e` ABORTA el script en silencio, justo despues
+# de haber creado el namespace. Paso en la primera corrida real: el script salio
+# con exito aparente y no instalo nada. Un token ausente es el caso normal —no
+# un error—, y tiene que seguir el camino del aviso de abajo.
 token=""
 if [[ -f "$ENV_FILE" ]]; then
-  token="$(grep -E '^ALERT_WEBHOOK_TOKEN=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+  token="$(grep -E '^ALERT_WEBHOOK_TOKEN=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"'" || true)"
+fi
+
+# Si no esta en .env, el de juguete del archivo de valores locales — el MISMO
+# que recibe el chart del banco. Quien emite la alerta y quien la acepta tienen
+# que estar de acuerdo, y en local la fuente de verdad es ese archivo.
+if [[ -z "$token" && -f "$LOCAL_VALUES" ]]; then
+  token="$(grep -E '^[[:space:]]*alertWebhookToken:' "$LOCAL_VALUES" 2>/dev/null | tail -1 | cut -d: -f2- | tr -d " \"'" || true)"
 fi
 
 if [[ -n "$token" ]]; then
-  k create secret generic grafana-alert-webhook --namespace "$NAMESPACE" \
+  aplicar "$(k create secret generic grafana-alert-webhook --namespace "$NAMESPACE" \
     --from-literal=token="$token" \
-    --dry-run=client -o yaml | k apply -f - >/dev/null
+    --dry-run=client -o yaml)"
   echo "  grafana-alert-webhook creado desde infra/docker/.env"
 else
   k delete secret grafana-alert-webhook --namespace "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
