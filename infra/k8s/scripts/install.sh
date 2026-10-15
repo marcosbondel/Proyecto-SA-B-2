@@ -71,7 +71,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! kubectl config get-contexts -o name 2>/dev/null | grep -qx "$KUBE_CONTEXT"; then
+# Se captura la lista ANTES de buscar en ella, y no se encadena
+# `kubectl … | grep -q`. El motivo es una carrera real, no estilo: `grep -q`
+# termina en cuanto encuentra la linea y cierra el pipe, `kubectl` muere con
+# SIGPIPE (141) y `pipefail` convierte eso en un fallo de la tuberia entera. El
+# sintoma era «el contexto no existe» seguido de una lista en la que SI aparece,
+# y empeoraba a medida que se acumulaban contextos en el kubeconfig.
+contexts="$(kubectl config get-contexts -o name 2>/dev/null || true)"
+if ! printf '%s\n' "$contexts" | grep -qx "$KUBE_CONTEXT"; then
   echo "ERROR: kube context '${KUBE_CONTEXT}' does not exist." >&2
   echo "  Create the cluster first:  pnpm k8s:cluster" >&2
   echo "  Available contexts:" >&2
@@ -153,6 +160,12 @@ if [[ "$KUBE_CONTEXT" == kind-* ]]; then
           # clúster sin esa imagen es el caso normal, no un error.
           kind load docker-image --name "$kind_cluster" "bank-usac/${component}:${tag}" >/dev/null 2>&1
         done
+        # Volver a preguntarle al nodo. `node_images` se capturo ANTES de
+        # cargar, asi que la comprobacion de mas abajo la haria contra una foto
+        # vieja y concluiria que no hay imagenes utilizables — justo despues de
+        # haberlas puesto. El sintoma era que la PRIMERA instalacion tras una
+        # construccion siempre fallaba y la segunda funcionaba sin explicacion.
+        node_images="$(docker exec "$node" crictl images 2>/dev/null || true)"
       fi
     fi
 
@@ -251,6 +264,12 @@ set -- "$@" \
 set -- "$@" --set-string "gateway.serviceType=ClusterIP"
 
 # The seven image tags. Not optional — see the note above `services:` in values.yaml.
+#
+# Y el del doble de prueba de T-57, con el MISMO tag. No es simetria: el chart
+# lo deja en `:dev` y el nodo solo tiene cargado el tag del commit, asi que sin
+# esa linea el pod del mock se queda en ErrImagePull en cuanto alguien lo
+# enciende — que es lo que paso la primera vez que se levanto el camino local.
+# Con el mock apagado el valor no se usa y no molesta.
 set -- "$@" \
   --set-string "services.customer.image.tag=${tag}" \
   --set-string "services.account.image.tag=${tag}" \
@@ -258,7 +277,8 @@ set -- "$@" \
   --set-string "services.payment.image.tag=${tag}" \
   --set-string "services.notificationAudit.image.tag=${tag}" \
   --set-string "gateway.image.tag=${tag}" \
-  --set-string "web.image.tag=${tag}"
+  --set-string "web.image.tag=${tag}" \
+  --set-string "partnerMock.image.tag=${tag}"
 
 [[ "$dry_run" == "true" ]] && set -- "$@" --dry-run
 

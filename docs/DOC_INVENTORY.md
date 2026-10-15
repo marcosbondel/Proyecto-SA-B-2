@@ -134,6 +134,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-48-observability-package-evidence.md` | project | Marcos Bonifasi | current | 2026-10-11 |
 | `docs/qa/backend/T-58-telemetry-catalog-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/qa/backend/T-50-dashboards-alerts-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/qa/backend/T-57-local-stack-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/process/implementations.md` | project | David Barrios | current | 2026-09-12 |
 | `docs/images/kubernetes/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `context/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |

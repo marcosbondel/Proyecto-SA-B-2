@@ -41,6 +41,14 @@ spec:
       {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # El checksum del Secret, no del ConfigMap: lo unico del mock que vive
+        # fuera de este Deployment es el token compartido, y **un pod no vuelve a
+        # leer un Secret**. Sin esto, dar de alta el token dejaba al mock
+        # corriendo con el valor vacio que leyo al arrancar, y la respuesta era
+        # `401 unauthorized` sin que nada explicara por que. Visto al levantar
+        # el camino local por primera vez.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
         bank-usac.io/role: test-double
