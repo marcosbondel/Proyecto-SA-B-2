@@ -312,6 +312,23 @@ export const MIGRATIONS: readonly Migration[] = [
     name: '011_outbox_trace_context',
     statements: [`ALTER TABLE outbox_messages ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`],
   },
+  {
+    /*
+     * El destino real de un depósito interbancario (T-47).
+     *
+     * JSONB y no cuatro columnas, por la misma razón que `reference` es una
+     * cadena opaca: **este servicio no lo interpreta**. Lo recibe de
+     * `transfer.requested.v1`, lo guarda y lo copia tal cual en
+     * `payment.requested.v1`, donde Payment —el único que habla con el banco
+     * pareja— sí lo entiende. Validar aquí su forma sería un orquestador
+     * opinando sobre un contrato ajeno, y rechazaría un destino válido el día
+     * que el otro banco cambie el suyo.
+     *
+     * `NULL` para una transferencia interna, que son casi todas.
+     */
+    name: '012_transactions_interbank',
+    statements: [`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS interbank JSONB`],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */
@@ -323,24 +340,7 @@ export async function migrate(pool: Pool): Promise<readonly string[]> {
      )`,
   );
 
-  const applied: string[] = [  /*
-   * El destino real de un depósito interbancario (T-47).
-   *
-   * JSONB y no cuatro columnas, por la misma razón que `reference` es una
-   * cadena opaca: **este servicio no lo interpreta**. Lo recibe de
-   * `transfer.requested.v1`, lo guarda y lo copia tal cual en
-   * `payment.requested.v1`, donde Payment —el único que habla con el banco
-   * pareja— sí lo entiende. Validar aquí su forma sería un orquestador
-   * opinando sobre un contrato ajeno, y rechazaría un destino válido el día que
-   * el otro banco cambie el suyo.
-   *
-   * `NULL` para una transferencia interna, que son casi todas.
-   */
-  {
-    name: '010_transactions_interbank',
-    statements: [`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS interbank JSONB`],
-  },
-];
+  const applied: string[] = [];
 
   for (const migration of MIGRATIONS) {
     const client = await pool.connect();

@@ -786,6 +786,105 @@ paths:
       tags:
         - interbank
       x-bank-publishes: payment.interbank.receive.v1
+  /api/interbank/transfers:
+    post:
+      description: "Inicia la Saga de siempre: debita la cuenta origen, pide el pago al banco pareja y
+        compensa si lo rechaza o no contesta. El 202 significa que la transferencia se aceptó, no
+        que el otro banco la acreditó — eso llega por callback y se consulta en el estado de la
+        transferencia. El identificador interbancario y la clave de idempotencia los genera el
+        Gateway."
+      operationId: InterbankController_send
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterbankTransferDto"
+      responses:
+        "202":
+          description: Transferencia aceptada; el resultado del banco pareja llega después.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - transactionId
+                  - interbankTransferId
+                  - correlationId
+                properties:
+                  transactionId:
+                    type: string
+                    format: uuid
+                  interbankTransferId:
+                    type: string
+                  correlationId:
+                    type: string
+                    format: uuid
+        "400":
+          description: Solicitud malformada.
+      security:
+        - session: []
+      summary: Envía un depósito al banco pareja
+      tags:
+        - interbank
+      x-bank-publishes: transfer.requested.v1
+  /api/interbank/callbacks:
+    post:
+      description: Autenticado con el token compartido. Un ACCEPTED confirma el débito; un REJECTED, o el
+        vencimiento del plazo, compensan y devuelven el dinero. Un callback repetido no cuenta la
+        decisión dos veces.
+      operationId: InterbankController_callback
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - interbankTransferId
+                - status
+                - receivedAt
+              additionalProperties: false
+              properties:
+                interbankTransferId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                status:
+                  type: string
+                  enum:
+                    - ACCEPTED
+                    - REJECTED
+                reason:
+                  type: string
+                  enum:
+                    - ACCOUNT_NOT_FOUND
+                    - ACCOUNT_INACTIVE
+                    - AMOUNT_EXCEEDS_LIMIT
+                    - UNSUPPORTED_CURRENCY
+                    - WRONG_DESTINATION_BANK
+                    - BANK_NOT_AUTHORIZED
+                    - INVALID_REQUEST
+                    - IDEMPOTENCY_CONFLICT
+                  description: Obligatorio en un REJECTED y prohibido en un ACCEPTED.
+                receivedAt:
+                  type: string
+                  format: date-time
+      responses:
+        "202":
+          description: Decisión publicada para su registro.
+        "400":
+          description: Callback malformado.
+        "401":
+          description: Token ausente, incorrecto o sin configurar.
+      security:
+        - interbankPartner: []
+      summary: Recibe la decisión del banco pareja sobre un depósito enviado
+      tags:
+        - interbank
+      x-bank-publishes: payment.interbank.callback.received.v1
   /api/notifications:
     get:
       description: "El alcance sale del token y la consulta no lleva customerId: no hay forma de apuntarla
@@ -913,6 +1012,31 @@ components:
     UpdatePaymentSimulationDto:
       type: object
       properties: {}
+    MoneyDto:
+      type: object
+      properties: {}
+    InterbankTransferDto:
+      type: object
+      properties:
+        sourceAccount:
+          type: string
+          format: uuid
+          description: La cuenta de este banco de la que sale el dinero.
+        destinationBankCode:
+          type: string
+          pattern: ^[A-Z][A-Z0-9_]{1,31}$
+          description: El código del banco pareja, acordado en el acuerdo de integración.
+        destinationAccount:
+          type: string
+          maxLength: 64
+          description: La cuenta en el banco pareja, tal como ese banco la nombra.
+        amount:
+          $ref: "#/components/schemas/MoneyDto"
+      required:
+        - sourceAccount
+        - destinationBankCode
+        - destinationAccount
+        - amount
     MarkNotificationsReadDto:
       type: object
       properties: {}
