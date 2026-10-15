@@ -199,6 +199,7 @@ reviewer can go from a prototype code to a file without guessing.
 | `T-03a`–`T-03d` | Tracking, in its four states | `/transferencias/[id]` |
 | `T-04`, `T-04b` | The history | `/transferencias` |
 | `T-05`, `T-05b` | The Saga monitor | `/transferencias/monitor` |
+| — | **Depósito a otro banco** (T-47) | `/transferencias/interbancaria` |
 | `G-01`, `G-01b` | Nuevo pago | `/pagos/nuevo` |
 | `G-02a`–`G-02d` | One payment's state | `/pagos/[id]` |
 | `G-03`, `G-03b` | The payment history | `/pagos` |
