@@ -1,13 +1,10 @@
 {
   "uid": "bank-interbancario",
   "title": "Bank USAC · Banco pareja",
-  "tags": [
-    "bank-usac",
-    "interbancario"
-  ],
+  "tags": ["bank-usac", "interbancario"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "refresh": "30s",
   "time": {
@@ -53,9 +50,7 @@
         "target": {
           "limit": 100,
           "matchAny": false,
-          "tags": [
-            "release"
-          ],
+          "tags": ["release"],
           "type": "tags"
         }
       }
@@ -142,9 +137,7 @@
         "colorMode": "value",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -204,9 +197,7 @@
         "colorMode": "value",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -265,9 +256,7 @@
         "colorMode": "value",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -319,9 +308,7 @@
         "colorMode": "value",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -368,10 +355,7 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
+          "calcs": ["lastNotNull", "max"]
         },
         "tooltip": {
           "mode": "multi",
@@ -420,10 +404,7 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
+          "calcs": ["lastNotNull", "max"]
         },
         "tooltip": {
           "mode": "multi",
@@ -488,10 +469,7 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
+          "calcs": ["lastNotNull", "max"]
         },
         "tooltip": {
           "mode": "multi",
@@ -544,6 +522,359 @@
         }
       ],
       "description": "§4.1 pide un log por cambio de estado, sin datos sensibles."
+    },
+    {
+      "id": 69,
+      "type": "text",
+      "title": "La otra mitad del enlace: lo que ESTE banco envía",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Arriba, los depósitos que el banco pareja **nos manda** (T-46). Aquí, los que **le mandamos** (T-47). Son dos indicadores y no uno con una etiqueta `direction` porque §4.1 pide la tasa «enviados y recibidos» por separado: promediadas, el día que el pareja rechaza todo lo nuestro mientras acepta todo lo suyo el número sale bien.\n\nEsta mitad se añadió en **T-51**. La carga la encontró por ausencia: doscientos depósitos rechazados, ninguna alerta y un panel en blanco.\n\nUn `rejected` o un `timeout` **no son dinero perdido** — son una compensación que debe haber corrido. Lo que hay que mirar cuando esta fila se pone roja es que los saldos cuadren, no que el número suba."
+      }
+    },
+    {
+      "id": 70,
+      "type": "stat",
+      "title": "Depósitos enviados y confirmados (SLO-28 ≥ 95 %)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.9
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_sent_accepted:ratio_rate5m{environment=\"$environment\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "description": "Dispara PartnerBankSendDegraded por debajo del 95 % durante 5 minutos."
+    },
+    {
+      "id": 71,
+      "type": "stat",
+      "title": "Confirmación del envío, p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_sent_confirmation:seconds_p95{environment=\"$environment\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "description": "A los 30 s vence y la Saga compensa: cinco es el aviso, treinta es el corte."
+    },
+    {
+      "id": 72,
+      "type": "stat",
+      "title": "Error budget del envío",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_sent_accepted:budget_remaining7d{environment=\"$environment\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "description": "Fracción del 5 % que queda por gastar en la ventana de 7 días."
+    },
+    {
+      "id": 73,
+      "type": "stat",
+      "title": "Vencimientos en la última hora",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 29
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum(increase(bank_interbank_sent_total{environment=\"$environment\", result=\"timeout\"}[1h]))",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "description": "El «número de timeouts» que pide §4.1, de la etiqueta y no de un contador aparte."
+    },
+    {
+      "id": 74,
+      "type": "timeseries",
+      "title": "Depósitos enviados por resultado",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sum by (result) (rate(bank_interbank_sent_total{environment=\"$environment\"}[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "description": "accepted · rejected · timeout. No hay `reversed`: la devolución es constancia de un depósito ya contado, y contarla otra vez duplicaría el denominador."
+    },
+    {
+      "id": 75,
+      "type": "timeseries",
+      "title": "Latencia de confirmación del envío (p95)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_sent_confirmation:seconds_p95{environment=\"$environment\"}",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "description": "Con el mock en SLOW esta serie sube sin que la tasa de aceptación baje: es el caso que distingue «tarda» de «rechaza»."
     }
   ]
 }

@@ -259,11 +259,19 @@ segundos: dejarlos dentro inflaría la disponibilidad con tráfico que no es de
 ningún cliente, y una caída real quedaría escondida detrás de miles de sondeos
 exitosos.
 
-**SLO-28 mide hoy sólo la dirección entrante.** `bank.interbank.deposits` es del
-depósito recibido (T-46); cuando T-47 publique `bank.interbank.sent` y
-`bank.interbank.confirmation.duration`, el objetivo se duplica por dirección,
-que es lo que pide §4.1 ("enviados y recibidos"). El número de *timeouts* sale
-de `result="timeout"` en esa métrica, no de un contador aparte.
+**SLO-28 se mide ya en las dos direcciones** (T-47 publicó las métricas del
+envío; T-51 añadió las reglas y las alertas). `bank_interbank_deposits_total` es
+el depósito que el pareja nos manda, `bank_interbank_sent_total` el que le
+mandamos, y el objetivo —≥ 95 % confirmados y p95 < 5 s— se aplica a cada
+dirección por separado, que es lo que pide §4.1 ("enviados y recibidos"). El
+número de *timeouts* sale de `result="timeout"` en esa métrica, no de un
+contador aparte.
+
+Un solo indicador con una etiqueta `direction` habría promediado las dos, y el
+día que el pareja rechaza todo lo nuestro mientras acepta todo lo suyo el
+promedio sale bien. Hasta T-51 la mitad saliente no tenía alerta: el escenario
+obligatorio de carga la encontró por ausencia, rechazando doscientos depósitos
+sin que nada avisara.
 
 #### Presupuesto de error y tasa de consumo
 
@@ -291,11 +299,13 @@ Workbook* para una ventana de 7 días:
 | `GatewayAvailabilitySlowBurn` | burn rate **> 6×** sostenido 6 h | `warning` | consume el 5 % en seis horas: no despierta a nadie, pero no se puede ignorar hasta el final de la ventana |
 | `TransferLatencyBreach` | SLI de SLO-2 **< 95 %** durante 30 m | `warning` | media hora descarta un pico de una sola transferencia lenta |
 | `DeadLetterGrowing` | SLI de SLO-1 **< 99 %** durante 15 m | `critical` | un mensaje en la cola muerta es trabajo detenido, y quince minutos ya distinguen un reintento de un atasco |
-| `PartnerBankDegraded` | SLI de SLO-28 **< 95 %** durante 15 m | `warning` |
-| `PartnerBankConfirmationSlow` | p95 de la confirmación **> 5 s** durante 15 m | `warning` |
+| `PartnerBankDegraded` | SLI de SLO-28 **entrante** < 95 % durante 15 m | `warning` | el dinero del cliente no está retenido en esta dirección |
+| `PartnerBankConfirmationSlow` | p95 de la confirmación entrante **> 5 s** durante 15 m | `warning` | |
+| `PartnerBankSendDegraded` *(T-51)* | SLI de SLO-28 **saliente** < 95 % durante **5 m** | `warning` | aquí sí está retenido: el vencimiento son 30 s, y quince minutos de rechazos son treinta compensaciones por minuto antes del primer aviso |
+| `PartnerBankSendConfirmationSlow` *(T-51)* | p95 de la confirmación saliente **> 5 s** durante 5 m | `warning` | |
 | `BrokerConsumerLagHigh` | una cola con **> 500** mensajes pendientes durante 10 m | `warning` | la exige §4.1 como alerta propia de la dependencia externa |
 
-Las siete van al webhook de Notification & Audit (T-45) —el canal visible que
+Las nueve van al webhook de Notification & Audit (T-45) —el canal visible que
 pide §4.1, que además deja la alerta en la misma bitácora que el resto de lo que
 pasó— y cada una lleva su *runbook*. La severidad vale `critical`, `warning` o
 `info` y no otra cosa: es lo que acepta el contrato `alert.slo.received.v1`, y
