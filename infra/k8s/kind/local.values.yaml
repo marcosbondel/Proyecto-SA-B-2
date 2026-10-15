@@ -1,0 +1,48 @@
+# Sobrescrituras del chart del banco para el clúster local (kind).
+#
+# POR QUE UN ARCHIVO Y NO UN CAMBIO EN values.yaml. Lo que hay aquí es verdad
+# en kind y mentira en la nube: un Collector que vive en el mismo clúster, un
+# entorno llamado `local` y un banco pareja que es un doble de prueba. Si
+# cualquiera de esas tres cosas estuviera en el `values.yaml` del chart, el
+# siguiente despliegue a `prod` la llevaría consigo — y el peor caso no es que
+# falle, es que funcione: producción hablando con un mock.
+#
+# Se usa así:
+#
+#   pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml
+#
+# o directamente `pnpm local:up`, que hace todo el camino.
+#
+# Lo que NO hay que hacer: pasar este archivo a un `helm upgrade` contra GKE.
+# `install.sh` ya se niega a trabajar contra un contexto que no sea kind sin
+# `--allow-remote-context`, y esa negativa es parte del diseño.
+
+# --------------------------------------------------------------------------
+# Telemetría: el Collector está en el mismo clúster, en su propio namespace.
+# --------------------------------------------------------------------------
+observability:
+  # `local`, nunca `dev` ni `prod`. Es la etiqueta que separa entornos en todo
+  # dashboard y en toda alerta: si esto dijera `prod`, los datos de una prueba
+  # en una laptop se mezclarían con los de producción en el mismo Grafana.
+  environment: local
+  otlpEndpoint: http://otel-gateway.observability.svc.cluster.local:4318
+  # Más resolución que en la nube: en una demo local interesa ver la métrica
+  # moverse, y el coste de exportar cada 5 s en kind es irrelevante.
+  metricExportIntervalMs: 5000
+  logLevel: debug
+
+# --------------------------------------------------------------------------
+# El banco pareja, simulado dentro del clúster (T-57).
+# --------------------------------------------------------------------------
+partnerMock:
+  enabled: true
+  # ACCEPT por defecto. Para los escenarios de fallo de T-51:
+  #   helm upgrade … --set partnerMock.callbackMode=REJECT
+  #   helm upgrade … --set partnerMock.callbackMode=TIMEOUT
+  #   helm upgrade … --set partnerMock.callbackMode=SLOW --set partnerMock.callbackDelayMs=8000
+  callbackMode: ACCEPT
+
+interbank:
+  # Explícito, no derivado de `partnerMock.enabled`: el destino de un callback
+  # es una decisión que se escribe, no una que se adivina.
+  callbackUrl: http://bank-usac-partner-bank-mock:3021/callbacks/interbank

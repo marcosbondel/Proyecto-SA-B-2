@@ -20,6 +20,24 @@ BANK_COMPONENTS=(
   "web|apps/web/Dockerfile|3010"
 )
 
+# El banco pareja simulado (T-57). Va en una lista APARTE y no en la de arriba
+# a propósito:
+#
+#   - No es un componente del banco. `BANK_COMPONENTS` es lo que se despliega y
+#     lo que `smoke-images.sh` audita como tal; meter aquí una herramienta de
+#     prueba haría que «los siete componentes» dejara de ser verdad en todos los
+#     sitios donde está escrito.
+#   - Sus sondas no responden preguntas distintas. El smoke exige que `/health`
+#     y `/ready` digan cosas distintas, y el mock no tiene de qué no estar
+#     listo: no tiene base de datos ni broker. Pedirle dos sondas sería pedirle
+#     que mintiera.
+#
+# Se construye con los demás porque sin imagen no se puede cargar en kind ni
+# desplegar como plan B, pero el chart lo deja apagado (`partnerMock.enabled`).
+BANK_TEST_DOUBLES=(
+  "partner-bank-mock|apps/partner-bank-mock/Dockerfile|3021"
+)
+
 # The registry prefix. Local by decision, not by omission: the assignment's
 # cluster is a local kind (§6, paso 11), so an image reaches it with
 # `kind load docker-image` and never needs a registry, credentials or a push.
