@@ -113,6 +113,12 @@ export class RequestTransferUseCase {
       idempotencyKey: envelope.idempotencyKey,
       customerId: payload.customerId ?? envelope.identity?.customerId ?? null,
       reference: payload.reference ?? null,
+      /*
+       * Se copia tal cual, sin mirarlo (T-47). Este servicio no sabe si el
+       * banco pareja acepta esa cuenta ni le corresponde saberlo: su trabajo es
+       * debitar, pedir el pago y compensar si no sale.
+       */
+      interbank: payload.interbank ?? null,
       paymentScenario: payload.paymentScenario ?? null,
       now,
     });

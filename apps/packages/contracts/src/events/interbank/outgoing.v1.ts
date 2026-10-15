@@ -60,6 +60,31 @@ export const interbankSendState = z.enum([
 ]);
 export type InterbankSendState = z.infer<typeof interbankSendState>;
 
+/**
+ * La cuenta de liquidación interbancaria de este banco: un identificador fijo y
+ * conocido (T-47).
+ *
+ * **Por qué existe.** Un depósito al banco pareja sale de la cuenta del cliente
+ * y tiene que entrar en algún sitio, porque la partida es doble y porque la
+ * Saga acredita después de pagar. Ese sitio es una cuenta propia que
+ * representa lo que este banco le debe al otro — lo que la banca llama una
+ * cuenta de liquidación. Sin ella haría falta una transferencia con destino
+ * nulo, que es la forma que este catálogo ya rechazó para los depósitos en
+ * ventanilla.
+ *
+ * **Por qué una constante y no una consulta.** Es el mismo trato que reciben
+ * las tres cuentas de recaudación de los billers: identificador fijo, sembrado
+ * de forma idempotente al arrancar Account Service, y conocido por quien lo
+ * necesita. La diferencia con los billers es que allí hay un catálogo que una
+ * pantalla lista —y por eso hay una consulta— y aquí hay **una** cuenta del
+ * sistema que ninguna pantalla elige.
+ *
+ * No la ve nadie: pertenece a un cliente sintético, así que no aparece en el
+ * listado de cuentas de ninguna persona, y no lleva `billerCode`, así que
+ * tampoco sale en el desplegable de pago de servicios.
+ */
+export const INTERBANK_SETTLEMENT_ACCOUNT_ID = 'c0000000-0000-4000-8000-00000000000a';
+
 /** Cómo se nombra una cuenta del banco pareja: una cadena que él entiende. */
 export const partnerAccountRef = z.string().min(1).max(64);
 

@@ -65,10 +65,10 @@ export class PostgresTransactionRepository implements TransactionRepository {
       const inserted = await client.query<TransactionRow>(
         `INSERT INTO transactions
            (transaction_id, source_account, target_account, amount, status,
-            correlation_id, idempotency_key, customer_id, reference, failure_reason,
+            correlation_id, idempotency_key, customer_id, reference, interbank, failure_reason,
             payment_scenario, created_at, updated_at, completed_at,
             requested_at, trace_context)
-         VALUES ($1, $2, $3, $4::NUMERIC, $5, $6, $7, $8, $9, NULL, $10, $11, $11, NULL, $12, $13)
+         VALUES ($1, $2, $3, $4::NUMERIC, $5, $6, $7, $8, $9, $10::jsonb, NULL, $11, $12, $12, NULL, $13, $14)
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
@@ -81,6 +81,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
           transaction.idempotencyKey,
           transaction.customerId,
           transaction.reference,
+          transaction.interbank === null ? null : JSON.stringify(transaction.interbank),
           transaction.paymentScenario,
           transaction.createdAt,
           input.requestedAt ?? transaction.createdAt,
@@ -797,7 +798,7 @@ const TERMINAL: ReadonlySet<TransactionStatus> = new Set<TransactionStatus>([
 ]);
 
 const COLUMNS = `transaction_id, source_account, target_account, amount::TEXT AS amount,
-                 status, correlation_id, idempotency_key, customer_id, reference, failure_reason,
+                 status, correlation_id, idempotency_key, customer_id, reference, interbank, failure_reason,
                  payment_scenario, created_at, updated_at, completed_at,
                  requested_at, trace_context`;
 
@@ -812,6 +813,12 @@ interface TransactionRow {
   idempotency_key: string;
   customer_id: string | null;
   reference: string | null;
+  interbank: {
+    bankCode: string;
+    account: string;
+    interbankTransferId: string;
+    idempotencyKey: string;
+  } | null;
   failure_reason: string | null;
   payment_scenario: string | null;
   created_at: Date;
@@ -873,6 +880,7 @@ function transactionFrom(row: TransactionRow): Transaction {
     idempotencyKey: row.idempotency_key,
     customerId: row.customer_id,
     reference: row.reference,
+    interbank: row.interbank,
     failureReason: row.failure_reason as FailureReason | null,
     paymentScenario: row.payment_scenario as PaymentScenario | null,
     createdAt: row.created_at,
