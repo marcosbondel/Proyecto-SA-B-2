@@ -4,6 +4,7 @@ import type { MessageBroker } from '@bank/messaging';
 
 import type { InterbankMessenger } from '../../application/interbank.ports';
 import type { InterbankSendMessenger } from '../../application/interbank-send.ports';
+import type { OutboxMessage } from '../../application/ports';
 
 /** Commands to Account are isolated from the Saga payment publisher. */
 export class BrokerInterbankMessenger implements InterbankMessenger, InterbankSendMessenger {
@@ -24,6 +25,29 @@ export class BrokerInterbankMessenger implements InterbankMessenger, InterbankSe
     payload: unknown,
   ): MessageEnvelope<unknown> {
     return this.#build(cause, messageType, payload, 'event');
+  }
+
+  /**
+   * La forma durable de un evento, para el outbox del camino interbancario
+   * (TD-093). Valida el contrato y no publica nada.
+   *
+   * Reusa `#build`, así que un evento que este servicio no produce no puede
+   * llegar al outbox: la comprobación que impedía publicarlo ahora impide
+   * **guardarlo**, que es donde tiene que estar — una fila en el outbox con un
+   * mensaje inválido sería un relay que falla en bucle sin forma de avanzar.
+   */
+  envelopeFor(
+    cause: MessageEnvelope<unknown>,
+    messageType: string,
+    payload: unknown,
+  ): OutboxMessage {
+    const envelope = this.#build(cause, messageType, payload, 'event');
+
+    return {
+      exchange: EXCHANGES.events,
+      routingKey: routingKeyFor(messageType),
+      envelope,
+    };
   }
 
   async publishStored(envelope: MessageEnvelope<unknown>): Promise<void> {

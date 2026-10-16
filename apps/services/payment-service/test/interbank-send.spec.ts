@@ -2,6 +2,7 @@ import {
   applyInterbankSend,
   IllegalInterbankSendTransition,
   isSendSettled,
+  settlementOf,
 } from '../src/domain/interbank-send';
 import type { InterbankSendEvent, InterbankSendState } from '../src/domain/interbank-send';
 
@@ -166,5 +167,53 @@ describe('el reintento de la entrega', () => {
     expect(otra.state).toBe('SENT');
     expect(otra.settle).toBeNull();
     expect(otra.resend).toBe(false);
+  });
+});
+
+/**
+ * El veredicto que la Saga tiene que oír, reconstruido desde el estado.
+ *
+ * Existe para la reconciliación de TD-093, que es el único sitio donde hay que
+ * deducir el final desde la fila en vez de desde la transición que lo produjo:
+ * el evento original se perdió al publicarlo y no hay nada guardado de donde
+ * sacarlo.
+ *
+ * Los tres nulos son la parte que importa. `PENDING` y `SENT` todavía esperan,
+ * y `REVERSED` ya se contó — su veredicto fue el `REJECTED` o el `TIMEOUT` del
+ * que viene. Un `REVERSED` que devolviera `FAILED` haría que la reconciliación
+ * le pidiera a la Saga un segundo final sobre una transferencia ya compensada.
+ */
+describe('settlementOf', () => {
+  it('traduce los tres veredictos al final que la Saga entiende', () => {
+    expect(settlementOf('ACCEPTED')).toBe('SUCCEEDED');
+    expect(settlementOf('REJECTED')).toBe('FAILED');
+    expect(settlementOf('TIMEOUT')).toBe('FAILED');
+  });
+
+  it('no da veredicto de lo que todavía espera', () => {
+    expect(settlementOf('PENDING')).toBeNull();
+    expect(settlementOf('SENT')).toBeNull();
+  });
+
+  it('no da veredicto de un depósito ya compensado', () => {
+    expect(settlementOf('REVERSED')).toBeNull();
+  });
+
+  it('coincide con lo que la transición habría dicho', () => {
+    /*
+     * La aserción que mantiene las dos en el mismo sitio. Si la tabla de
+     * `applyInterbankSend` y `settlementOf` se separaran, un veredicto
+     * reconciliado le contaría a la Saga una historia distinta de la que
+     * ocurrió — y nada más lo detectaría.
+     */
+    expect(settlementOf(applyInterbankSend('SENT', { kind: 'CONFIRMED' }).state)).toBe(
+      applyInterbankSend('SENT', { kind: 'CONFIRMED' }).settle,
+    );
+    expect(
+      settlementOf(applyInterbankSend('SENT', { kind: 'REFUSED', reason: 'X' }).state),
+    ).toBe(applyInterbankSend('SENT', { kind: 'REFUSED', reason: 'X' }).settle);
+    expect(settlementOf(applyInterbankSend('SENT', { kind: 'EXPIRED' }).state)).toBe(
+      applyInterbankSend('SENT', { kind: 'EXPIRED' }).settle,
+    );
   });
 });

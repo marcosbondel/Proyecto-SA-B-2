@@ -36,6 +36,7 @@ suite('interbank send persistence', () => {
 
   beforeEach(async () => {
     await pool.query('TRUNCATE interbank_sends');
+    await pool.query('TRUNCATE outbox_messages');
   });
 
   afterAll(async () => {
@@ -53,7 +54,11 @@ suite('interbank send persistence', () => {
     );
   }
 
-  function nuevo(overrides: Partial<Omit<InterbankSend, 'state' | 'reason' | 'attempts'>> = {}) {
+  function nuevo(
+    overrides: Partial<
+      Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt'>
+    > = {},
+  ) {
     return {
       interbankTransferId: randomUUID(),
       paymentId: randomUUID(),
@@ -68,6 +73,18 @@ suite('interbank send persistence', () => {
       traceContext: null,
       origin: origin(),
       ...overrides,
+    };
+  }
+
+  /** Un mensaje listo para el outbox, como lo construye el caso de uso. */
+  function mensaje(tipo: string) {
+    return {
+      exchange: 'bank.events',
+      routingKey: tipo,
+      envelope: createEnvelope(
+        { transactionId: randomUUID() },
+        { messageType: tipo, producer: 'payment-service', identity: null },
+      ),
     };
   }
 
@@ -293,5 +310,192 @@ suite('interbank send persistence', () => {
 
     expect(leido?.amount.amountMinor).toBe(999_999_999);
     expect(typeof leido?.amount.amountMinor).toBe('number');
+  });
+
+  /**
+   * El veredicto viaja con su transición (TD-093).
+   *
+   * Esto es lo que ningún doble puede probar: que `outbox_messages` **acepte**
+   * una fila sin `payment_id`. Un depósito interbancario no crea fila en
+   * `payments`, así que la clave ajena de la migración 003 la habría rechazado
+   * — y el error habría aparecido en producción, dentro de la transacción que
+   * decide un veredicto, con el veredicto perdido otra vez y por un motivo
+   * nuevo. La migración 014 quita ese `NOT NULL` precisamente aquí.
+   */
+  describe('el outbox del veredicto', () => {
+    it('escribe el evento sin payment_id, que es lo que la FK habría rechazado', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+
+      const movido = await repository.advance({
+        interbankTransferId: abierto.send.interbankTransferId,
+        from: 'PENDING',
+        to: 'TIMEOUT',
+        reason: 'CONFIRMATION_TIMEOUT',
+        nextAttemptAt: null,
+        now,
+        outbound: [mensaje('payment.failed.v1')],
+      });
+
+      expect(movido).toBe(true);
+
+      const encolado = await pool.query(
+        'SELECT payment_id, routing_key, dispatch_status FROM outbox_messages',
+      );
+      expect(encolado.rowCount).toBe(1);
+      expect(encolado.rows[0].payment_id).toBeNull();
+      expect(encolado.rows[0].dispatch_status).toBe('PENDING');
+
+      const fila = await repository.find(abierto.send.interbankTransferId);
+      expect(fila?.state).toBe('TIMEOUT');
+      expect(fila?.verdictEnqueuedAt).not.toBeNull();
+    });
+
+    it('el que pierde el guardia de estado no deja nada encolado', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+
+      /*
+       * El `from` equivocado: es la carrera que el guardia atrapa. Lo que se
+       * comprueba es el `ROLLBACK` — sin él, el veredicto del que perdió
+       * quedaría en el outbox y la Saga oiría dos finales.
+       */
+      const movido = await repository.advance({
+        interbankTransferId: abierto.send.interbankTransferId,
+        from: 'ACCEPTED',
+        to: 'REVERSED',
+        reason: null,
+        nextAttemptAt: null,
+        now,
+        outbound: [mensaje('payment.failed.v1')],
+      });
+
+      expect(movido).toBe(false);
+      const encolado = await pool.query('SELECT 1 FROM outbox_messages');
+      expect(encolado.rowCount).toBe(0);
+    });
+
+    it('una transición sin veredicto no pone la marca', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+
+      await repository.advance({
+        interbankTransferId: abierto.send.interbankTransferId,
+        from: 'PENDING',
+        to: 'SENT',
+        reason: null,
+        nextAttemptAt: null,
+        now,
+        outbound: [mensaje('payment.interbank.sent.v1')],
+      });
+
+      /*
+       * `SENT` no es un veredicto, así que la marca sigue nula aunque este
+       * cambio sí llevara un evento consigo. Si se pusiera aquí, la red de
+       * seguridad quedaría apagada para esta fila sin que nadie lo notara.
+       */
+      const fila = await repository.find(abierto.send.interbankTransferId);
+      expect(fila?.state).toBe('SENT');
+      expect(fila?.verdictEnqueuedAt).toBeNull();
+    });
+  });
+
+  /**
+   * La reconciliación, contra el índice parcial de verdad (TD-093, pieza b).
+   *
+   * Las filas que busca se construyen a mano con `UPDATE`, porque son las que
+   * dejó una versión del código que ya no existe: decididas, con `decided_at`
+   * escrito y sin veredicto encolado. Es la forma de la fila del Q1.00.
+   */
+  describe('reconciliar un veredicto perdido', () => {
+    /**
+     * Deja la fila como la dejaba el defecto: decidida y sin marca.
+     *
+     * Los cuatro `CHECK` de la tabla obligan a construirla con cuidado, y eso
+     * es una buena noticia: `next_attempt_at` tiene que ser nulo en cuanto se
+     * sale de `PENDING`, y `reversed_at` existe **si y sólo si** el estado es
+     * `REVERSED`. La máquina de estados está escrita en SQL además de en
+     * TypeScript, así que ni un test puede fabricar una fila incoherente — lo
+     * descubrí intentándolo.
+     */
+    async function comoAntesDeTD093(id: string, estado: string, hace: number): Promise<void> {
+      const decidido = new Date(now.getTime() - hace);
+
+      await pool.query(
+        `UPDATE interbank_sends
+            SET state = $2::text,
+                decided_at = $3::timestamptz,
+                verdict_enqueued_at = NULL,
+                reason = 'CONFIRMATION_TIMEOUT',
+                next_attempt_at = NULL,
+                -- Los dos casts, por lo mismo que lleva advance: un parametro
+                -- que asigna a una columna y aparece en un CASE a la vez deja a
+                -- PostgreSQL sin tipo que deducir. Hizo falta en los dos, y el
+                -- comentario del repositorio ya avisaba del primero.
+                reversed_at = CASE WHEN $2::text = 'REVERSED' THEN $3::timestamptz ELSE NULL END
+          WHERE interbank_transfer_id = $1`,
+        [id, estado, decidido],
+      );
+    }
+
+    it('encuentra el decidido sin veredicto, pasado el margen', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+      await comoAntesDeTD093(abierto.send.interbankTransferId, 'TIMEOUT', 300_000);
+
+      const perdidos = await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10);
+
+      expect(perdidos.map((p) => p.interbankTransferId)).toEqual([
+        abierto.send.interbankTransferId,
+      ]);
+    });
+
+    it('no toca el que ya tiene su veredicto encolado', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+      await comoAntesDeTD093(abierto.send.interbankTransferId, 'TIMEOUT', 300_000);
+      await pool.query(
+        'UPDATE interbank_sends SET verdict_enqueued_at = $2 WHERE interbank_transfer_id = $1',
+        [abierto.send.interbankTransferId, now],
+      );
+
+      expect(await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10)).toEqual(
+        [],
+      );
+    });
+
+    it('no toca el que todavía espera, ni el ya compensado', async () => {
+      const esperando = await repository.open({ send: nuevo(), now });
+      const compensado = await repository.open({ send: nuevo(), now });
+      await comoAntesDeTD093(compensado.send.interbankTransferId, 'REVERSED', 300_000);
+
+      const perdidos = await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10);
+
+      expect(perdidos).toEqual([]);
+      expect((await repository.find(esperando.send.interbankTransferId))?.state).toBe('PENDING');
+    });
+
+    it('encola el veredicto una sola vez, aunque dos barridos coincidan', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+      await comoAntesDeTD093(abierto.send.interbankTransferId, 'TIMEOUT', 300_000);
+
+      const dos = await Promise.all([
+        repository.enqueueVerdict({
+          interbankTransferId: abierto.send.interbankTransferId,
+          outbound: [mensaje('payment.failed.v1')],
+          now,
+        }),
+        repository.enqueueVerdict({
+          interbankTransferId: abierto.send.interbankTransferId,
+          outbound: [mensaje('payment.failed.v1')],
+          now,
+        }),
+      ]);
+
+      /*
+       * Uno gana y el otro no. Es la misma garantía que el `from` de `advance`,
+       * aplicada a la marca: dos réplicas barriendo a la vez no pueden publicar
+       * el mismo veredicto dos veces con dos `messageId` distintos — que es lo
+       * único que la deduplicación de Transaction no podría atrapar.
+       */
+      expect(dos.filter(Boolean)).toHaveLength(1);
+      const encolado = await pool.query('SELECT 1 FROM outbox_messages');
+      expect(encolado.rowCount).toBe(1);
+    });
   });
 });
