@@ -15,6 +15,7 @@ import { Pool } from 'pg';
 import { SimulationUseCase } from './application/manage-simulation.use-case';
 import { InterbankUseCase } from './application/interbank.use-case';
 import { SendInterbankDepositUseCase } from './application/send-interbank-deposit.use-case';
+import { InterbankV1UseCase } from './application/interbank-v1.use-case';
 import { ProcessPaymentUseCase } from './application/process-payment.use-case';
 import { GetPaymentStatsUseCase } from './application/get-payment-stats.use-case';
 import { QueryPaymentUseCase } from './application/query-payment.use-case';
@@ -32,6 +33,7 @@ import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresPaymentRepository } from './infrastructure/persistence/postgres-payment.repository';
 import { PostgresInterbankRepository } from './infrastructure/persistence/postgres-interbank.repository';
 import { PostgresInterbankSendRepository } from './infrastructure/persistence/postgres-interbank-send.repository';
+import { PostgresInterbankV1Repository } from './infrastructure/persistence/postgres-interbank-v1.repository';
 import { OutboxRelay } from './infrastructure/scheduler/outbox.scheduler';
 import { OtelProviderTelemetry } from './infrastructure/telemetry/otel-provider.telemetry';
 import {
@@ -46,6 +48,12 @@ import {
   InterbankCallbackHandler,
   InterbankCompensatedHandler,
   InterbankReceiveHandler,
+  InterbankV1CancelHandler,
+  InterbankV1ReconciliationHandler,
+  InterbankV1ReversalQueryHandler,
+  InterbankV1ReversalRequestHandler,
+  InterbankV1StatusHandler,
+  InterbankV1TransferHandler,
   InterbankEligibilityReplyHandler,
   InterbankCreditedHandler,
   InterbankCreditRejectedHandler,
@@ -129,6 +137,7 @@ async function bootstrap(): Promise<void> {
   const repository = new PostgresPaymentRepository(pool);
   const interbankRepository = new PostgresInterbankRepository(pool);
   const interbankSendRepository = new PostgresInterbankSendRepository(pool);
+  const interbankV1Repository = new PostgresInterbankV1Repository(pool);
 
   const broker = new MessageBroker({
     url: environment.RABBITMQ_URL,
@@ -213,6 +222,24 @@ async function bootstrap(): Promise<void> {
     telemetry,
   });
   const queryPayment = new QueryPaymentUseCase({ repository });
+  /**
+   * El del barrido, aparte de los del router.
+   *
+   * El barrido no contesta a nadie: cierra filas y publica el callback por la
+   * maquinaria que ya existe. Así que no necesita un publicador atado a un
+   * mensaje entrante, y darle uno falso sería atribuirle a alguna correlación
+   * un trabajo que nadie pidió.
+   */
+  const interbankV1Sweeper = new InterbankV1UseCase({
+    repository: interbankV1Repository,
+    reply: async () => {
+      /* El barrido no responde: no hay nadie esperando. */
+    },
+    bankCode: environment.INTERBANK_BANK_CODE,
+    maxAmountMinor: environment.INTERBANK_MAX_AMOUNT_MINOR,
+    clock: clock.now,
+    log: logger,
+  });
 
   /**
    * A router per delivery, because the publisher is bound to the message being
@@ -222,6 +249,22 @@ async function bootstrap(): Promise<void> {
    */
   const routerFor = (envelope: MessageEnvelope<unknown>): InboundMessageRouter => {
     const publisher = publisherFactory.forCause(envelope);
+    /*
+     * Un caso de uso del contrato **por entrega**, por lo mismo que el router:
+     * contesta por el publicador atado al mensaje que se está atendiendo, y uno
+     * compartido atribuiría la respuesta de una consulta a la correlación de
+     * otra la primera vez que dos bancos preguntaran a la vez.
+     */
+    const interbankV1 = new InterbankV1UseCase({
+      repository: interbankV1Repository,
+      reply: async (messageType, payload) => {
+        await publisher.reply({ messageType, payload });
+      },
+      bankCode: environment.INTERBANK_BANK_CODE,
+      maxAmountMinor: environment.INTERBANK_MAX_AMOUNT_MINOR,
+      clock: clock.now,
+      log: logger,
+    });
 
     return new InboundMessageRouter([
       new ProcessPaymentHandler(processPayment, publisher, interbankSend),
@@ -229,6 +272,12 @@ async function bootstrap(): Promise<void> {
       new InterbankEligibilityReplyHandler(interbank),
       new InterbankCreditedHandler(interbank),
       new InterbankCreditRejectedHandler(interbank),
+      new InterbankV1TransferHandler(interbankV1),
+      new InterbankV1StatusHandler(interbankV1),
+      new InterbankV1CancelHandler(interbankV1),
+      new InterbankV1ReversalRequestHandler(interbankV1),
+      new InterbankV1ReversalQueryHandler(interbankV1),
+      new InterbankV1ReconciliationHandler(interbankV1),
       ...(interbankSend === null
         ? []
         : [
@@ -308,6 +357,34 @@ async function bootstrap(): Promise<void> {
      * Su error se traga aquí mismo: un depósito que falla al reintentarse no
      * puede dejar sin intento a los pagos que vienen detrás.
      */
+    /**
+     * El vencimiento de los depósitos **recibidos** (T-56).
+     *
+     * Primero de todo, y es lo más importante de este barrido. El contrato
+     * oficial prohíbe acreditar después de `expiresAt` «aunque el mensaje
+     * llegue tarde (reintento, DLQ)» y añade que si se acredita «la
+     * responsabilidad y la devolución son suyas». Un depósito que se quedó a
+     * medias —una respuesta de Account que tardó, un pod que se reinició—
+     * acabaría acreditándose cuando el otro banco ya liberó su reserva, y el
+     * mismo dinero existiría dos veces.
+     *
+     * Es el único barrido de este servicio que previene una pérdida en vez de
+     * recuperarse de una.
+     */
+    try {
+      const vencidos = await interbankV1Sweeper.sweepExpired(SWEEP_BATCH);
+
+      if (vencidos > 0) {
+        logger.warn('barrido del contrato interbancario', {
+          outcome: `${vencidos} depositos vencidos, rechazados con EXPIRED`,
+        });
+      }
+    } catch (error) {
+      logger.error('el barrido del contrato interbancario fallo', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     if (interbankSend !== null) {
       try {
         const interbankSwept = await interbankSend.sweep(SWEEP_BATCH);

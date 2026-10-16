@@ -12,6 +12,12 @@ import {
   paymentSimulationUpdateV1,
   paymentStatsQueryV1,
   paymentStatusQueryV1,
+  paymentInterbankV1CancelQueryV1,
+  paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankV1ReversalQueryV1,
+  paymentInterbankV1ReversalRequestedV1,
+  paymentInterbankV1StatusQueryV1,
+  paymentInterbankV1TransferQueryV1,
 } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 
@@ -19,6 +25,7 @@ import type { EventPublisher } from '../application/ports';
 import type { SimulationUseCase } from '../application/manage-simulation.use-case';
 import type { ProcessPaymentUseCase } from '../application/process-payment.use-case';
 import type { InterbankUseCase } from '../application/interbank.use-case';
+import type { InterbankV1UseCase } from '../application/interbank-v1.use-case';
 import type { GetPaymentStatsUseCase } from '../application/get-payment-stats.use-case';
 import type { QueryPaymentUseCase } from '../application/query-payment.use-case';
 import type { SendInterbankDepositUseCase } from '../application/send-interbank-deposit.use-case';
@@ -117,9 +124,7 @@ export class ProcessPaymentHandler implements InboundMessageHandler {
      * deliberado — un banco sin banco pareja sigue siendo un banco.
      */
     if (command.interbank !== undefined && this.#interbank !== null) {
-      await this.#interbank.requested(
-        envelope as MessageEnvelope<typeof command>,
-      );
+      await this.#interbank.requested(envelope as MessageEnvelope<typeof command>);
       return;
     }
 
@@ -270,9 +275,7 @@ export class InterbankCallbackHandler implements InboundMessageHandler {
     // necesita la correlación y la identidad, no sólo el payload.
     paymentInterbankCallbackReceivedV1.schema.parse(envelope.payload);
 
-    await this.#useCase.callback(
-      envelope as MessageEnvelope<PaymentInterbankCallbackReceivedV1>,
-    );
+    await this.#useCase.callback(envelope as MessageEnvelope<PaymentInterbankCallbackReceivedV1>);
   }
 }
 
@@ -301,5 +304,68 @@ export class InterbankCompensatedHandler implements InboundMessageHandler {
     const event = accountDebitCompensatedV1.schema.parse(envelope.payload);
 
     await this.#useCase.compensated(event.transactionId);
+  }
+}
+
+/**
+ * Los seis manejadores de las operaciones del contrato oficial (T-56).
+ *
+ * Uno por mensaje, como el resto de este archivo, y todos igual de delgados:
+ * validan contra el contrato y delegan. Lo que distingue a estos de los de
+ * arriba es que **cuatro contestan**: el Gateway no puede traducir `202`, `200`
+ * y `409` sin saber qué había, así que son `request/reply` y la respuesta la
+ * publica el caso de uso.
+ */
+export class InterbankV1TransferHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1TransferQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.transfer(paymentInterbankV1TransferQueryV1.schema.parse(envelope.payload));
+  }
+}
+
+export class InterbankV1StatusHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1StatusQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.status(paymentInterbankV1StatusQueryV1.schema.parse(envelope.payload));
+  }
+}
+
+export class InterbankV1CancelHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1CancelQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.cancel(paymentInterbankV1CancelQueryV1.schema.parse(envelope.payload));
+  }
+}
+
+export class InterbankV1ReversalRequestHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1ReversalRequestedV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.requestReversal(
+      paymentInterbankV1ReversalRequestedV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+export class InterbankV1ReversalQueryHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1ReversalQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.reversalStatus(
+      paymentInterbankV1ReversalQueryV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+export class InterbankV1ReconciliationHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1ReconciliationQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.reconciliation(
+      paymentInterbankV1ReconciliationQueryV1.schema.parse(envelope.payload),
+    );
   }
 }
