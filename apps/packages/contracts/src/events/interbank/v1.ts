@@ -130,13 +130,24 @@ export const v1CallbackAck = z.object({
   received: z.boolean(),
 });
 
-/** `POST /transfers/{id}/cancel`. */
-export const v1CancelRequest = z
-  .object({
-    originBankCode: v1BankCode,
-    reason: z.enum(['TIMEOUT', 'CLIENT_REQUEST']),
-  })
-  .strict();
+/**
+ * `POST /transfers/{id}/cancel`.
+ *
+ * **Sin `.strict()`, y es deliberado.** El contrato oficial declara
+ * `additionalProperties: false` en exactamente dos esquemas —`TransferRequest`
+ * y `TransferResult`— y **no** en éste. Así que un cuerpo de cancelación con un
+ * campo de más es válido por contrato, y rechazarlo seria modificar el contrato
+ * por nuestra cuenta: «los grupos no deben modificarlo» corta en los dos
+ * sentidos, y ser más estricto que él rompe la interoperabilidad igual que ser
+ * más laxo — sólo que el fallo lo sufre el otro banco.
+ *
+ * Lo encontró la validación de ejemplos del repositorio del contrato: un
+ * ejemplo marcado como inválido que el esquema oficial aceptaba.
+ */
+export const v1CancelRequest = z.object({
+  originBankCode: v1BankCode,
+  reason: z.enum(['TIMEOUT', 'CLIENT_REQUEST']),
+});
 export type V1CancelRequest = z.infer<typeof v1CancelRequest>;
 
 /**
@@ -164,15 +175,14 @@ export type V1CancelResponse = z.infer<typeof v1CancelResponse>;
  * el contrato dice cómo: debitando la cuenta y **mandando un depósito nuevo**
  * por el flujo normal, no con una operación mágica.
  */
-export const v1ReversalRequest = z
-  .object({
-    reversalId: uuidV4,
-    originalTransferId: uuidV4,
-    originBankCode: v1BankCode,
-    amount: v1Amount,
-    currency: v1Currency,
-  })
-  .strict();
+/* Sin `.strict()` por lo mismo que `v1CancelRequest`: el contrato no lo exige. */
+export const v1ReversalRequest = z.object({
+  reversalId: uuidV4,
+  originalTransferId: uuidV4,
+  originBankCode: v1BankCode,
+  amount: v1Amount,
+  currency: v1Currency,
+});
 export type V1ReversalRequest = z.infer<typeof v1ReversalRequest>;
 
 export const v1ReversalStatus = z.object({

@@ -425,9 +425,11 @@ En este orden, porque cada uno habilita al siguiente:
 9. **`GET /health`** bajo el prefijo, sin autenticación, con `{status, bankCode}`.
 
 Lo acordado con la pareja —URL, claves, formato de cuenta, horario— vive en
-[`../../operations/INTERBANK-AGREEMENT.md`](../../operations/INTERBANK-AGREEMENT.md)
-y no aquí: esto es el estado del código contra el contrato, y eso es el acuerdo
-entre dos equipos.
+[`bank-interbank-contract`](https://github.com/marcosbondel/bank-interbank-contract),
+el repositorio que los dos grupos comparten y donde cada cambio necesita la
+aprobación de ambos. Aquí está el estado **de nuestro código** contra el
+contrato, que es otra cosa: un acuerdo entre dos equipos no puede vivir donde
+sólo uno puede cambiarlo.
 
 ## 9. Validación del contrato oficial
 
