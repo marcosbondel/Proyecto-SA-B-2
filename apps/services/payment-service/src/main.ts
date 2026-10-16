@@ -5,7 +5,13 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import { EXCHANGES, QUEUES, validateMessage } from '@bank/contracts';
+import {
+  EXCHANGES,
+  QUEUES,
+  V1_RELEASE_MARGIN_MS,
+  V1_TRANSFER_TTL_MS,
+  validateMessage,
+} from '@bank/contracts';
 import type { MessageEnvelope, QueueDescriptor } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
 import { continueTrace, nestLoggerFor } from '@bank/observability';
@@ -189,7 +195,16 @@ async function bootstrap(): Promise<void> {
           messenger: new BrokerInterbankMessenger(broker),
           telemetry: new OtelInterbankSendTelemetry(logger),
           clock: clock.now,
-          confirmationTimeoutMs: environment.INTERBANK_CONFIRMATION_TIMEOUT_MS,
+          /*
+           * Los dos plazos salen del CONTRATO y no del entorno (TD-095). Ver la
+           * nota de `INTERBANK_CONFIRMATION_TIMEOUT_MS`, que ya no se lee: con
+           * 30 s dábamos por muerto a los tres minutos un depósito al que el
+           * otro banco tiene 24 horas para contestar, y devolvíamos dinero que
+           * podían haber acreditado.
+           */
+          transferTtlMs: V1_TRANSFER_TTL_MS,
+          releaseMarginMs: V1_RELEASE_MARGIN_MS,
+          resolveRetryMs: environment.INTERBANK_RESOLVE_RETRY_MS,
           /*
            * La misma escalera que la de los pagos, y por el mismo motivo: si el
            * banco pareja no acusa recibo, esperar un segundo, luego cinco y

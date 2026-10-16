@@ -401,9 +401,25 @@ interbank:
   # route answered 202 the whole time. A deployment can be wrong in a way no
   # request is.
   sendUrl: ""
-  # How long a deposit waits for the partner's callback before compensating.
-  # The same ceiling as the payment ladder's last rung, for the same reason.
+  # OBSOLETA desde TD-095, y se sigue publicando a proposito.
+  #
+  # Decia "cuanto espera un deposito el callback del banco pareja antes de
+  # compensar", y eso ya no lo decide una variable nuestra: lo decide el
+  # CONTRATO. Son 180 s de TTL mas un margen de 300 s antes de poder liberar la
+  # reserva a ciegas, y payment-service los toma de `V1_TRANSFER_TTL_MS` y
+  # `V1_RELEASE_MARGIN_MS`. Con 30 s aqui daba por muerto a los tres minutos un
+  # deposito al que el otro banco tiene 24 horas para contestar — y devolvia al
+  # cliente dinero que podian haber acreditado.
+  #
+  # Se mantiene porque el servicio todavia la valida al arrancar. Quitarla del
+  # chart es seguro y no hace falta coordinarlo.
   confirmationTimeoutMs: "30000"
+  # Cada cuanto se reintenta un paso del protocolo de TIMEOUT que no obtuvo
+  # respuesta: consultar `GET /transfers/{id}` o pedir la cancelacion. Esta si
+  # es nuestra — el acuerdo dice cuando se puede liberar la reserva, no con que
+  # frecuencia preguntamos. Cinco segundos dan unos sesenta intentos dentro del
+  # margen de 300 s.
+  resolveRetryMs: "5000"
 
 # ---------------------------------------------------------------------------
 # partner-bank-mock — the simulated partner bank (T-57).

@@ -94,7 +94,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: INTERBANK_PARTNER_TOKEN
-            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_MAX_AMOUNT_MINOR" "INTERBANK_CALLBACK_URL" "INTERBANK_SEND_URL" "INTERBANK_CONFIRMATION_TIMEOUT_MS" }}
+            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_MAX_AMOUNT_MINOR" "INTERBANK_CALLBACK_URL" "INTERBANK_SEND_URL" "INTERBANK_CONFIRMATION_TIMEOUT_MS" "INTERBANK_RESOLVE_RETRY_MS" }}
             - name: {{ $key }}
               valueFrom:
                 configMapKeyRef:

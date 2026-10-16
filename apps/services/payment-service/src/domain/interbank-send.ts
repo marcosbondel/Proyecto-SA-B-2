@@ -52,7 +52,27 @@ export type InterbankSendEvent =
   /** Venció el plazo de confirmación sin que llegara ninguna. */
   | { readonly kind: 'EXPIRED' }
   /** La compensación del débito ya ocurrió: el dinero volvió a la cuenta origen. */
-  | { readonly kind: 'COMPENSATED' };
+  | { readonly kind: 'COMPENSATED' }
+  /**
+   * El protocolo de TIMEOUT resolvió a favor del depósito: hay constancia de
+   * que el otro banco **acreditó** (TD-095).
+   *
+   * Llega de `resolveTimeout`, que lo deduce de la consulta o de la
+   * cancelación. Es el caso que justifica el protocolo entero: antes de TD-095
+   * esta transferencia se habría compensado, con el dinero devuelto aquí y
+   * entregado allá.
+   */
+  | { readonly kind: 'RESOLVED_ACCEPTED' }
+  /**
+   * El protocolo resolvió en contra: hay constancia de que no se acreditó, o se
+   * agotó el margen sin ninguna respuesta (TD-095).
+   *
+   * El `reason` distingue las cinco razones por las que se puede llegar aquí, y
+   * dos de ellas —`RELEASED_NO_ANSWER` y `RELEASED_UNKNOWN_AT_PARTNER`—
+   * significan que **liberamos sin saber**. Esa distinción es la que hace
+   * posible alertar sólo de lo que hay que mirar.
+   */
+  | { readonly kind: 'RESOLVED_REJECTED'; readonly reason: string };
 
 /**
  * Qué hay que decirle a la Saga, si algo.
@@ -149,15 +169,45 @@ export function applyInterbankSend(
 
     case 'EXPIRED':
       /**
-       * Legal desde los dos estados no resueltos, y por el mismo motivo: el
-       * plazo es del DEPÓSITO, no del envío. Si venció sin haber conseguido
-       * entregarlo, rendirse y devolver el dinero es la respuesta correcta —
-       * seguir reintentando contra un banco que no contesta es dejar el saldo
-       * del cliente retenido indefinidamente.
+       * Vence el plazo y **el dinero sigue reservado** (TD-095).
+       *
+       * Éste es el cambio de fondo del ticket, y hay que leerlo contra lo que
+       * decía antes: «rendirse y devolver el dinero es la respuesta correcta».
+       * No lo es. El contrato oficial le da al banco pareja **24 horas** para
+       * reintentar su callback, así que a los 180 s no sabemos nada todavía:
+       * devolver el dinero ahí es arriesgarse a que ellos acrediten y nosotros
+       * hayamos reembolsado, lo mismo dos veces.
+       *
+       * Así que `TIMEOUT` deja de ser un veredicto —`settle` es `null`— y pasa a
+       * ser una pregunta abierta que resuelve el protocolo de
+       * `domain/interbank-timeout.ts`: consultar, cancelar, y sólo liberar con
+       * una respuesta o pasado `expiresAt + 300 s`.
+       *
+       * El precio es real y está elegido a conciencia: el saldo del cliente
+       * queda retenido hasta ocho minutos en el peor caso. Retener ocho minutos
+       * es un cliente incómodo; liberar a ciegas es un descuadre entre dos
+       * bancos que sólo aparece en la conciliación diaria.
+       *
+       * Sigue siendo legal desde los dos estados no resueltos, y por lo que
+       * decía la nota original: el plazo es del DEPÓSITO, no del envío. Un
+       * `PENDING` vencido tampoco se libera — un envío que falló pudo llegar
+       * igual y perderse la respuesta, y sólo un `404` del otro banco prueba que
+       * no lo vieron.
        */
       return from === 'PENDING' || from === 'SENT'
-        ? to('TIMEOUT', 'CONFIRMATION_TIMEOUT', 'FAILED')
+        ? to('TIMEOUT', 'CONFIRMATION_TIMEOUT')
         : illegal();
+
+    case 'RESOLVED_ACCEPTED':
+      /**
+       * Sólo desde `TIMEOUT`: es la salida del protocolo, y no una segunda
+       * puerta para confirmar un depósito que nunca venció. Para eso está
+       * `CONFIRMED`, que exige `SENT`.
+       */
+      return from === 'TIMEOUT' ? to('ACCEPTED', null, 'SUCCEEDED') : illegal();
+
+    case 'RESOLVED_REJECTED':
+      return from === 'TIMEOUT' ? to('REJECTED', event.reason, 'FAILED') : illegal();
 
     case 'COMPENSATED':
       /**
@@ -165,6 +215,15 @@ export function applyInterbankSend(
        * devolverlo: un `account.debit.compensated.v1` sobre un depósito que
        * nadie mandó compensar pertenece a otra Saga, o adelantó a su propia
        * causa.
+       */
+      /*
+       * `TIMEOUT` sigue aquí **por el despliegue**, no por el diseño. Desde
+       * TD-095 un `TIMEOUT` no pide compensación, así que esta rama no debería
+       * ocurrir nunca; pero una fila que la versión anterior ya cerró en
+       * `TIMEOUT` con `payment.failed.v1` puede ver llegar su
+       * `account.debit.compensated.v1` después de la actualización. Declararla
+       * ilegal convertiría un rollout normal en un montón de transiciones
+       * descartadas y en una constancia de devolución que no se escribe.
        */
       return from === 'REJECTED' || from === 'TIMEOUT' ? to('REVERSED') : illegal();
   }
@@ -188,7 +247,15 @@ export function isSendSettled(state: InterbankSendState): boolean {
  * dinero volvió.
  */
 export function isSendDecided(state: InterbankSendState): boolean {
-  return state === 'ACCEPTED' || state === 'REJECTED' || state === 'TIMEOUT';
+  /*
+   * `TIMEOUT` salió de esta lista con TD-095. Antes era un veredicto —se
+   * compensaba al vencer— y ahora es una pregunta abierta: el depósito sigue
+   * sin resolverse y el dinero sigue reservado. Dejarlo aquí haría que la
+   * métrica diera por cerrada en 180 s una transferencia que todavía está
+   * consultando al otro banco, y el p95 de los paneles de T-50 mediría el
+   * plazo en vez de la realidad.
+   */
+  return state === 'ACCEPTED' || state === 'REJECTED';
 }
 
 /**
@@ -212,13 +279,19 @@ export function settlementOf(state: InterbankSendState): 'SUCCEEDED' | 'FAILED' 
     case 'ACCEPTED':
       return 'SUCCEEDED';
     case 'REJECTED':
-    case 'TIMEOUT':
       return 'FAILED';
     /*
      * `PENDING` y `SENT` todavía esperan; `REVERSED` ya se contó —su veredicto
      * fue el `REJECTED` o el `TIMEOUT` del que viene— y volver a emitirlo sería
      * pedirle a la Saga un segundo final.
      */
+    /*
+     * `TIMEOUT` entró aquí con TD-095: ya no es un veredicto, es un depósito
+     * esperando que el protocolo lo resuelva. Devolver `FAILED` haría que la
+     * reconciliación de TD-093 le contara a la Saga un final que el depósito
+     * todavía no tiene — y ése es justo el final que devuelve el dinero.
+     */
+    case 'TIMEOUT':
     case 'PENDING':
     case 'SENT':
     case 'REVERSED':

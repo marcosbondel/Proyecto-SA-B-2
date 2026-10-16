@@ -5,8 +5,9 @@ import type {
   InterbankSendRepository,
 } from '../src/application/interbank-send.ports';
 import type { OutboxMessage } from '../src/application/ports';
+import type { PartnerCancel, PartnerProbe } from '../src/domain/interbank-timeout';
 import { SendInterbankDepositUseCase } from '../src/application/send-interbank-deposit.use-case';
-import type { InterbankSendState } from '../src/domain/interbank-send';
+import { settlementOf, type InterbankSendState } from '../src/domain/interbank-send';
 
 /**
  * El envío de un depósito al banco pareja, con dobles.
@@ -57,7 +58,7 @@ class RepositorioEnMemoria implements InterbankSendRepository {
   public perderCarrera = false;
 
   public async open(input: {
-    send: Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt'>;
+    send: Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt' | 'probe' | 'cancel' | 'resolveNotBefore'>;
     now: Date;
   }): Promise<{ kind: 'CREATED' | 'DUPLICATE'; send: InterbankSend }> {
     const existente = this.filas.get(input.send.interbankTransferId);
@@ -72,6 +73,9 @@ class RepositorioEnMemoria implements InterbankSendRepository {
       reason: null,
       attempts: 0,
       verdictEnqueuedAt: null,
+      probe: null,
+      cancel: null,
+      resolveNotBefore: null,
     };
     this.filas.set(fila.interbankTransferId, fila);
 
@@ -111,8 +115,11 @@ class RepositorioEnMemoria implements InterbankSendRepository {
       return false;
     }
 
+    // El mismo predicado que el repositorio de verdad: un `TIMEOUT` no lleva
+    // veredicto desde TD-095, aunque sí lleve su evento de auditoría.
     const decidido = ['ACCEPTED', 'REJECTED', 'TIMEOUT', 'REVERSED'].includes(input.to);
-    const traeVeredicto = (input.outbound?.length ?? 0) > 0;
+    const traeVeredicto =
+      settlementOf(input.to) !== null && (input.outbound?.length ?? 0) > 0;
 
     this.filas.set(input.interbankTransferId, {
       ...fila,
@@ -129,20 +136,62 @@ class RepositorioEnMemoria implements InterbankSendRepository {
   }
 
   public async claimSendable(): Promise<readonly InterbankSend[]> {
+    // `nextAttemptAt` no está en la entidad —sólo entra por `advance`— así que
+    // aquí el estado es todo lo que se puede filtrar.
     return [...this.filas.values()].filter((f) => f.state === 'PENDING');
   }
 
-  public async claimExpired(): Promise<readonly InterbankSend[]> {
-    return [...this.filas.values()].filter((f) => f.state === 'PENDING' || f.state === 'SENT');
+  /**
+   * Respeta el plazo, como el de verdad.
+   *
+   * No lo hacía: devolvía todo lo no resuelto sin mirar `confirmationDueAt`, así
+   * que **ningún test podía distinguir un plazo de 30 s de uno de 180** — que es
+   * precisamente el defecto de TD-095. Un doble más laxo que la base de datos no
+   * es un atajo, es un punto ciego.
+   */
+  public async claimExpired(now: Date): Promise<readonly InterbankSend[]> {
+    return [...this.filas.values()].filter(
+      (f) => (f.state === 'PENDING' || f.state === 'SENT') && f.confirmationDueAt <= now,
+    );
   }
 
   public async claimUnreconciled(olderThan: Date): Promise<readonly InterbankSend[]> {
     return [...this.filas.values()].filter(
       (f) =>
-        ['ACCEPTED', 'REJECTED', 'TIMEOUT'].includes(f.state) &&
+        // Sin `TIMEOUT`: desde TD-095 no es un veredicto.
+        ['ACCEPTED', 'REJECTED'].includes(f.state) &&
         f.verdictEnqueuedAt === null &&
         f.createdAt <= olderThan,
     );
+  }
+
+  public async claimAwaitingResolution(now: Date): Promise<readonly InterbankSend[]> {
+    return [...this.filas.values()].filter(
+      (f) =>
+        f.state === 'TIMEOUT' &&
+        (f.resolveNotBefore === null || f.resolveNotBefore <= now),
+    );
+  }
+
+  public async recordResolutionStep(input: {
+    interbankTransferId: string;
+    probe?: PartnerProbe;
+    cancel?: PartnerCancel;
+    resolveNotBefore: Date;
+    now: Date;
+  }): Promise<void> {
+    const fila = this.filas.get(input.interbankTransferId);
+
+    if (fila === undefined) {
+      return;
+    }
+
+    this.filas.set(input.interbankTransferId, {
+      ...fila,
+      probe: input.probe ?? fila.probe,
+      cancel: input.cancel ?? fila.cancel,
+      resolveNotBefore: input.resolveNotBefore,
+    });
   }
 
   public async enqueueVerdict(input: {
@@ -177,6 +226,14 @@ interface Montado {
   responder: (acknowledged: boolean) => void;
   /** Mueve el reloj, para pasar del margen de la reconciliación. */
   avanzar: (ms: number) => void;
+  /** Los pasos del protocolo que se pidieron al banco pareja, en orden. */
+  readonly pasos: readonly string[];
+  /** Qué contesta `GET /transfers/{id}`. */
+  contesta: (probe: PartnerProbe) => void;
+  /** Qué contesta `POST /transfers/{id}/cancel`. */
+  cancelaCon: (cancel: PartnerCancel) => void;
+  /** Lo que se registró en `log.error`, que es lo que dispara la alerta. */
+  readonly alertas: readonly Record<string, unknown>[];
 }
 
 function montar(): Montado {
@@ -186,6 +243,10 @@ function montar(): Montado {
   const entregas: string[] = [];
   let acuse = true;
   let ahora = new Date('2026-01-01T00:00:00.000Z');
+  let respuestaConsulta: PartnerProbe = { kind: 'UNREACHABLE' };
+  let respuestaCancelacion: PartnerCancel = { kind: 'UNREACHABLE' };
+  const pasos: string[] = [];
+  const alertas: Record<string, unknown>[] = [];
 
   const caso = new SendInterbankDepositUseCase({
     repository: repositorio,
@@ -193,6 +254,14 @@ function montar(): Montado {
       send: async (send): Promise<{ acknowledged: boolean; detail: string | null }> => {
         entregas.push(send.interbankTransferId);
         return { acknowledged: acuse, detail: acuse ? null : 'ECONNREFUSED' };
+      },
+      probe: async (): Promise<PartnerProbe> => {
+        pasos.push('probe');
+        return respuestaConsulta;
+      },
+      cancel: async (): Promise<PartnerCancel> => {
+        pasos.push('cancel');
+        return respuestaCancelacion;
       },
     },
     messenger: {
@@ -216,9 +285,17 @@ function montar(): Montado {
       },
     },
     clock: (): Date => ahora,
-    confirmationTimeoutMs: 30_000,
+    transferTtlMs: 180_000,
+    releaseMarginMs: 300_000,
+    resolveRetryMs: 5_000,
     resendDelaysMs: [1_000, 5_000, 30_000],
-    log: { info: (): void => {}, warn: (): void => {} },
+    log: {
+      info: (): void => {},
+      warn: (): void => {},
+      error: (_m, fields): void => {
+        alertas.push(fields);
+      },
+    },
   });
 
   return {
@@ -249,7 +326,29 @@ function montar(): Montado {
     avanzar: (ms): void => {
       ahora = new Date(ahora.getTime() + ms);
     },
+    pasos,
+    contesta: (probe): void => {
+      respuestaConsulta = probe;
+    },
+    cancelaCon: (cancel): void => {
+      respuestaCancelacion = cancel;
+    },
+    alertas,
   };
+}
+
+/** El callback del banco pareja, aceptando o rechazando. */
+function callback(tipo: 'CONFIRMED' | 'REFUSED', reason?: string): never {
+  return {
+    ...comando(),
+    messageType: 'payment.interbank.callback.received.v1',
+    payload: {
+      interbankTransferId: TRANSFER,
+      status: tipo === 'CONFIRMED' ? 'ACCEPTED' : 'REJECTED',
+      ...(reason === undefined ? {} : { reason }),
+      receivedAt: '2026-01-01T00:00:10.000Z',
+    },
+  } as never;
 }
 
 describe('pedir el depósito', () => {
@@ -374,22 +473,31 @@ describe('la decisión del banco pareja', () => {
 });
 
 describe('el vencimiento', () => {
-  it('rinde el depósito y manda compensar, distinguiéndolo de un rechazo', async () => {
+  it('vence sin cerrar la Saga: el dinero sigue reservado', async () => {
+    /*
+     * Invertido respecto a como nació (TD-095). Afirmaba que el vencimiento
+     * publicaba `payment.failed.v1` y mandaba compensar; ahora afirma que **no**
+     * publica ningún final. El depósito pasa a `TIMEOUT` y se queda ahí hasta
+     * que el protocolo lo resuelva — consultando al otro banco, que tiene 24
+     * horas para contestar.
+     */
     const m = montar();
     await m.caso.requested(comando());
 
+    // El plazo del contrato, 180 s, ahora que el doble lo respeta.
+    m.avanzar(180_001);
     const barrido = await m.caso.sweep();
 
     expect(barrido.expired).toBe(1);
     expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('TIMEOUT');
-
-    const fallo = m.publicado.find((p) => p.messageType === 'payment.failed.v1');
-    expect(fallo?.payload['failureReason']).toBe('PAYMENT_RETRIES_EXHAUSTED');
+    expect(m.publicado.find((p) => p.messageType === 'payment.failed.v1')).toBeUndefined();
+    expect(m.publicado.find((p) => p.messageType === 'payment.succeeded.v1')).toBeUndefined();
   });
 
   it('la compensación deja constancia en REVERSED, y no antes', async () => {
     const m = montar();
     await m.caso.requested(comando());
+    m.avanzar(180_001);
     await m.caso.sweep();
 
     expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('TIMEOUT');
@@ -462,10 +570,26 @@ describe('el veredicto no se publica fuera de su transacción', () => {
     const m = montar();
 
     await m.caso.requested(comando());
+    await m.caso.callback(callback('REFUSED', 'ACCOUNT_NOT_FOUND'));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('REJECTED');
+    expect(m.repositorio.filas.get(TRANSFER)?.verdictEnqueuedAt).not.toBeNull();
+  });
+
+  it('un vencimiento no pone la marca: todavía no hay veredicto', async () => {
+    const m = montar();
+
+    await m.caso.requested(comando());
+    m.avanzar(180_001);
     await m.caso.sweep();
 
+    /*
+     * `TIMEOUT` no es un veredicto desde TD-095, así que no lleva ninguno
+     * consigo y la marca sigue nula. Si se pusiera aquí, la reconciliación de
+     * TD-093 daría por entregado un final que nunca se escribió.
+     */
     expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('TIMEOUT');
-    expect(m.repositorio.filas.get(TRANSFER)?.verdictEnqueuedAt).not.toBeNull();
+    expect(m.repositorio.filas.get(TRANSFER)?.verdictEnqueuedAt).toBeNull();
   });
 
   it('el que pierde la carrera no deja nada en el outbox', async () => {
@@ -503,10 +627,10 @@ describe('el veredicto no se publica fuera de su transacción', () => {
  * afirma aquí.
  */
 describe('la reconciliación de un veredicto perdido', () => {
-  it('vuelve a encolar el veredicto de un TIMEOUT que nunca se publicó', async () => {
+  it('vuelve a encolar el veredicto de un rechazo que nunca se publicó', async () => {
     const m = montar();
     await m.caso.requested(comando());
-    await m.caso.sweep();
+    await m.caso.callback(callback('REFUSED', 'ACCOUNT_NOT_FOUND'));
 
     // Se simula el defecto: la fila quedó decidida y su veredicto se perdió.
     const fila = m.repositorio.filas.get(TRANSFER)!;
@@ -531,7 +655,7 @@ describe('la reconciliación de un veredicto perdido', () => {
   it('es de una sola vez: la segunda pasada no recupera nada', async () => {
     const m = montar();
     await m.caso.requested(comando());
-    await m.caso.sweep();
+    await m.caso.callback(callback('REFUSED', 'ACCOUNT_NOT_FOUND'));
     const fila = m.repositorio.filas.get(TRANSFER)!;
     m.repositorio.filas.set(TRANSFER, { ...fila, verdictEnqueuedAt: null });
     m.avanzar(121_000);
@@ -543,7 +667,7 @@ describe('la reconciliación de un veredicto perdido', () => {
   it('no encuentra nada cuando el camino normal funcionó', async () => {
     const m = montar();
     await m.caso.requested(comando());
-    await m.caso.sweep();
+    await m.caso.callback(callback('REFUSED', 'ACCOUNT_NOT_FOUND'));
 
     /*
      * La afirmación que convierte esto en una prueba de la pieza (a): tras un
@@ -566,7 +690,7 @@ describe('la reconciliación de un veredicto perdido', () => {
   it('no reclama un depósito ya compensado, ni sin la marca', async () => {
     const m = montar();
     await m.caso.requested(comando());
-    await m.caso.sweep();
+    await m.caso.callback(callback('REFUSED', 'ACCOUNT_NOT_FOUND'));
     await m.caso.compensated(TRANSACTION);
 
     const fila = m.repositorio.filas.get(TRANSFER)!;
@@ -594,7 +718,7 @@ describe('el margen de la reconciliación', () => {
   it('no toca un veredicto recién decidido, aunque le falte la marca', async () => {
     const m = montar();
     await m.caso.requested(comando());
-    await m.caso.sweep();
+    await m.caso.callback(callback('REFUSED', 'ACCOUNT_NOT_FOUND'));
     const fila = m.repositorio.filas.get(TRANSFER)!;
     m.repositorio.filas.set(TRANSFER, { ...fila, verdictEnqueuedAt: null });
 
@@ -612,5 +736,227 @@ describe('el margen de la reconciliación', () => {
 
     m.avanzar(2_000);
     expect(await m.caso.reconcile()).toBe(1);
+  });
+});
+
+/**
+ * El protocolo de TIMEOUT, de punta a punta (TD-095).
+ *
+ * `interbank-timeout.spec.ts` prueba la decisión; esto prueba que el caso de uso
+ * **la ejecuta en orden** y que el dinero no se mueve antes de tiempo. Las dos
+ * cosas que ninguna otra prueba puede dar por supuestas:
+ *
+ * 1. Un depósito vencido no cierra la Saga: consulta, cancela, y sólo entonces
+ *    decide.
+ * 2. Con el banco pareja callado, **no se libera nada** hasta el margen — y
+ *    cuando se libera, se registra como no verificado.
+ */
+describe('el protocolo de TIMEOUT, paso a paso', () => {
+  /**
+   * Lleva un depósito hasta `TIMEOUT` **y da su primer paso del protocolo**.
+   *
+   * Las dos cosas en el mismo barrido a propósito, porque es lo que hace el
+   * código: `sweep` vence y resuelve en la misma pasada, para que un depósito
+   * que acaba de vencer entre en su protocolo sin esperar al barrido siguiente.
+   * Por eso las respuestas del banco pareja se configuran ANTES — si se
+   * configuran después, el primer paso ya se dio con el silencio por defecto, y
+   * la cadencia de cinco segundos tapa el resto.
+   */
+  async function hastaElVencimiento(
+    configurar: (m: Montado) => void = (): void => {},
+  ): Promise<Montado> {
+    const m = montar();
+    configurar(m);
+    await m.caso.requested(comando());
+    m.avanzar(180_001);
+    await m.caso.sweep();
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('TIMEOUT');
+
+    return m;
+  }
+
+  it('el plazo es el del contrato, no el de la variable de entorno', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+
+    // A los 30 s —el viejo plazo— no ha vencido nada.
+    m.avanzar(30_001);
+    expect((await m.caso.sweep()).expired).toBe(0);
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('SENT');
+
+    // A los 180 s del contrato, sí.
+    m.avanzar(150_000);
+    expect((await m.caso.sweep()).expired).toBe(1);
+  });
+
+  it('lo primero que hace al vencer es preguntar', async () => {
+    const m = await hastaElVencimiento();
+
+    await m.caso.sweep();
+
+    expect(m.pasos).toEqual(['probe']);
+    // Y nada de dinero: ni final para la Saga ni marca de veredicto.
+    expect(m.publicado.filter((p) => p.messageType.startsWith('payment.succeeded'))).toEqual([]);
+    expect(m.publicado.filter((p) => p.messageType.startsWith('payment.failed'))).toEqual([]);
+  });
+
+  it('un ACCEPTED en la consulta cierra la Saga BIEN, no compensando', async () => {
+    /*
+     * El caso que justifica el ticket. Antes de TD-095 este depósito se habría
+     * compensado al vencer: dinero devuelto aquí y entregado allá.
+     */
+    const m = await hastaElVencimiento((x) =>
+      x.contesta({ kind: 'ANSWERED', status: 'ACCEPTED' }),
+    );
+
+    const resultado = await m.caso.sweep();
+
+    expect(resultado.resolved).toBe(1);
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('ACCEPTED');
+    expect(m.publicado.find((p) => p.messageType === 'payment.succeeded.v1')).toBeDefined();
+  });
+
+  it('un PROCESSING manda cancelar, y un ALREADY_ACCEPTED cierra bien', async () => {
+    const m = await hastaElVencimiento((x) => {
+      x.contesta({ kind: 'ANSWERED', status: 'PROCESSING' });
+      x.cancelaCon({ kind: 'ANSWERED', result: 'ALREADY_ACCEPTED' });
+    });
+
+    /*
+     * Tres barridos seguidos y SIN avanzar el reloj: la cadencia sólo frena los
+     * pasos que no obtuvieron respuesta. Con una respuesta en mano, el protocolo
+     * avanza enseguida — si no, el camino feliz costaría diez segundos de más
+     * con el dinero retenido.
+     */
+    await m.caso.sweep(); // cancela
+    await m.caso.sweep(); // decide
+
+    expect(m.pasos).toEqual(['probe', 'cancel']);
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('ACCEPTED');
+    expect(m.publicado.find((p) => p.messageType === 'payment.succeeded.v1')).toBeDefined();
+  });
+
+  it('un 404 no libera: cancela primero', async () => {
+    const m = await hastaElVencimiento((x) => {
+      x.contesta({ kind: 'UNKNOWN' });
+      x.cancelaCon({ kind: 'ANSWERED', result: 'CANCELLED' });
+    });
+
+    await m.caso.sweep();
+    await m.caso.sweep();
+
+    expect(m.pasos).toEqual(['probe', 'cancel']);
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('REJECTED');
+    expect(m.repositorio.filas.get(TRANSFER)?.reason).toBe('CANCELLED_AT_PARTNER');
+  });
+
+  it('con el banco pareja callado, no libera nada antes del margen', async () => {
+    // Las dos llamadas fallan: no sabemos nada. Es el defecto por defecto.
+    const m = await hastaElVencimiento();
+
+    /*
+     * Cinco minutos de barridos cada cinco segundos. En todo ese tiempo el
+     * depósito sigue en `TIMEOUT` y la Saga no oye nada: **el dinero del
+     * cliente sigue reservado**. Es el precio elegido del ticket, y es lo que
+     * esta prueba fija para que nadie lo "optimice" después.
+     */
+    for (let i = 0; i < 59; i += 1) {
+      await m.caso.sweep();
+      m.avanzar(5_001);
+    }
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('TIMEOUT');
+    expect(m.publicado.find((p) => p.messageType === 'payment.failed.v1')).toBeUndefined();
+  });
+
+  it('pasado el margen libera, lo registra como no verificado y alerta', async () => {
+    const m = await hastaElVencimiento();
+
+    // 300 s desde el vencimiento: el margen del contrato.
+    m.avanzar(300_001);
+    const resultado = await m.caso.sweep();
+
+    expect(resultado.resolved).toBe(1);
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('REJECTED');
+    expect(m.repositorio.filas.get(TRANSFER)?.reason).toBe('RELEASED_NO_ANSWER');
+
+    const fallo = m.publicado.find((p) => p.messageType === 'payment.failed.v1');
+    expect(fallo).toBeDefined();
+
+    /*
+     * Y la alerta. El contrato la exige en esta rama y sólo en esta: es la única
+     * en la que devolvemos dinero sin saber qué hizo el otro banco. Se emite por
+     * `log.error` porque es lo que dispara la alerta de T-50 — una liberación a
+     * ciegas que nadie mira es exactamente el descuadre que el protocolo evita.
+     */
+    expect(m.alertas).toHaveLength(1);
+    expect(m.alertas[0]?.outcome).toBe('RELEASED_NO_ANSWER');
+  });
+
+  it('no vuelve a preguntar dentro de la cadencia', async () => {
+    const m = await hastaElVencimiento();
+
+    await m.caso.sweep();
+    await m.caso.sweep();
+
+    /*
+     * Tres barridos seguidos y una sola consulta: la columna
+     * `resolve_not_before` es la que impide el bucle apretado contra un banco
+     * que ya va mal. Sin ella, un barrido cada medio segundo serían dos mil
+     * peticiones en el margen.
+     */
+    expect(m.pasos).toEqual(['probe']);
+  });
+});
+
+describe('un ACCEPTED que llega cuando ya se devolvió el dinero', () => {
+  it('no se descarta en silencio: sale como incidente', async () => {
+    /*
+     * El paso 5 del contrato (TD-095). El otro banco acreditó y su callback
+     * llegó después de que liberáramos la reserva: el dinero está entregado allá
+     * y devuelto aquí, así que **este banco lo ha perdido** y hace falta un
+     * reverso.
+     *
+     * Antes caía en el `warn` de las transiciones ilegales, junto a los
+     * callbacks duplicados que son comportamiento normal — y ahí no lo veía
+     * nadie. Lo que esta prueba fija es que se distinga.
+     */
+    const m = await (async (): Promise<Montado> => {
+      const x = montar();
+      await x.caso.requested(comando());
+      x.avanzar(180_001);
+      await x.caso.sweep();
+      x.avanzar(300_001);
+      await x.caso.sweep();
+
+      return x;
+    })();
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('REJECTED');
+    const alertasAntes = m.alertas.length;
+
+    await m.caso.callback(callback('CONFIRMED'));
+
+    expect(m.alertas).toHaveLength(alertasAntes + 1);
+    expect(m.alertas[alertasAntes]?.outcome).toBe('LATE_ACCEPT_AFTER_RELEASE');
+    // Y no se aplica: el depósito sigue liberado, porque el dinero ya volvió.
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('REJECTED');
+  });
+
+  it('un callback duplicado normal sigue siendo un warn, no un incidente', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+    await m.caso.callback(callback('CONFIRMED'));
+    const alertasAntes = m.alertas.length;
+
+    await m.caso.callback(callback('CONFIRMED'));
+
+    /*
+     * La otra mitad de la distinción. Un `ACCEPTED` repetido sobre un depósito
+     * ya aceptado es consecuencia normal de los reintentos del otro banco, y
+     * alertar de eso enterraría el incidente de arriba entre ruido.
+     */
+    expect(m.alertas).toHaveLength(alertasAntes);
   });
 });

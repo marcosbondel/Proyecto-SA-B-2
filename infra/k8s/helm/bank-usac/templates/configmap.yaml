@@ -53,6 +53,13 @@ data:
   INTERBANK_MAX_AMOUNT_MINOR: {{ .Values.interbank.maxAmountMinor | quote }}
   INTERBANK_CALLBACK_URL: {{ .Values.interbank.callbackUrl | quote }}
   INTERBANK_SEND_URL: {{ .Values.interbank.sendUrl | quote }}
+  # OBSOLETA desde TD-095: el plazo de un deposito lo fija el contrato
+  # (V1_TRANSFER_TTL_MS, 180 s) y no esta variable. Se sigue publicando porque
+  # payment-service la valida al arrancar; quitarla es seguro.
   INTERBANK_CONFIRMATION_TIMEOUT_MS: {{ .Values.interbank.confirmationTimeoutMs | quote }}
+  # Cada cuanto se reintenta un paso del protocolo de TIMEOUT que no obtuvo
+  # respuesta. Esta si es nuestra: el acuerdo dice cuando se puede liberar la
+  # reserva, no con que frecuencia preguntamos.
+  INTERBANK_RESOLVE_RETRY_MS: {{ .Values.interbank.resolveRetryMs | quote }}
   SEED_DEMO_DATA: "true"
   SEED_PASSWORD: "BankUsac#2026"

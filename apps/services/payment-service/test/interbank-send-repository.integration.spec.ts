@@ -326,11 +326,17 @@ suite('interbank send persistence', () => {
     it('escribe el evento sin payment_id, que es lo que la FK habría rechazado', async () => {
       const abierto = await repository.open({ send: nuevo(), now });
 
+      /*
+       * `REJECTED` y no `TIMEOUT`: desde TD-095 un vencimiento NO es un
+       * veredicto —el dinero sigue reservado mientras el protocolo pregunta— así
+       * que no lleva final para la Saga ni pone la marca. El veredicto que se
+       * encola aquí es un rechazo de verdad.
+       */
       const movido = await repository.advance({
         interbankTransferId: abierto.send.interbankTransferId,
         from: 'PENDING',
-        to: 'TIMEOUT',
-        reason: 'CONFIRMATION_TIMEOUT',
+        to: 'REJECTED',
+        reason: 'ACCOUNT_NOT_FOUND',
         nextAttemptAt: null,
         now,
         outbound: [mensaje('payment.failed.v1')],
@@ -346,8 +352,41 @@ suite('interbank send persistence', () => {
       expect(encolado.rows[0].dispatch_status).toBe('PENDING');
 
       const fila = await repository.find(abierto.send.interbankTransferId);
-      expect(fila?.state).toBe('TIMEOUT');
+      expect(fila?.state).toBe('REJECTED');
       expect(fila?.verdictEnqueuedAt).not.toBeNull();
+    });
+
+    it('un vencimiento encola su auditoría pero no pone la marca', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+
+      await repository.advance({
+        interbankTransferId: abierto.send.interbankTransferId,
+        from: 'PENDING',
+        to: 'TIMEOUT',
+        reason: 'CONFIRMATION_TIMEOUT',
+        nextAttemptAt: null,
+        now,
+        outbound: [mensaje('payment.interbank.sent.v1')],
+      });
+
+      /*
+       * El punto exacto donde TD-093 y TD-095 se tocan, contra la base de datos.
+       *
+       * El evento de auditoría sí se encola —el cambio de estado se audita— y la
+       * marca del veredicto NO se pone, porque no hay veredicto: el depósito
+       * está esperando a que el protocolo lo resuelva. La primera versión de
+       * esto usaba `outbound.length > 0` como atajo y marcaba la fila, apagando
+       * en silencio la red de seguridad de TD-093 para ese depósito.
+       */
+      const fila = await repository.find(abierto.send.interbankTransferId);
+      expect(fila?.state).toBe('TIMEOUT');
+      expect(fila?.verdictEnqueuedAt).toBeNull();
+      expect((await pool.query('SELECT 1 FROM outbox_messages')).rowCount).toBe(1);
+
+      // Y no se reconcilia: no hay nada que reemitir.
+      expect(await repository.claimUnreconciled(new Date(now.getTime() + 600_000), 10)).toEqual(
+        [],
+      );
     });
 
     it('el que pierde el guardia de estado no deja nada encolado', async () => {
@@ -417,13 +456,14 @@ suite('interbank send persistence', () => {
      */
     async function comoAntesDeTD093(id: string, estado: string, hace: number): Promise<void> {
       const decidido = new Date(now.getTime() - hace);
+      const motivo = estado === 'ACCEPTED' ? null : 'ACCOUNT_NOT_FOUND';
 
       await pool.query(
         `UPDATE interbank_sends
             SET state = $2::text,
                 decided_at = $3::timestamptz,
                 verdict_enqueued_at = NULL,
-                reason = 'CONFIRMATION_TIMEOUT',
+                reason = $4,
                 next_attempt_at = NULL,
                 -- Los dos casts, por lo mismo que lleva advance: un parametro
                 -- que asigna a una columna y aparece en un CASE a la vez deja a
@@ -431,13 +471,13 @@ suite('interbank send persistence', () => {
                 -- comentario del repositorio ya avisaba del primero.
                 reversed_at = CASE WHEN $2::text = 'REVERSED' THEN $3::timestamptz ELSE NULL END
           WHERE interbank_transfer_id = $1`,
-        [id, estado, decidido],
+        [id, estado, decidido, motivo],
       );
     }
 
     it('encuentra el decidido sin veredicto, pasado el margen', async () => {
       const abierto = await repository.open({ send: nuevo(), now });
-      await comoAntesDeTD093(abierto.send.interbankTransferId, 'TIMEOUT', 300_000);
+      await comoAntesDeTD093(abierto.send.interbankTransferId, 'REJECTED', 300_000);
 
       const perdidos = await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10);
 
@@ -448,7 +488,7 @@ suite('interbank send persistence', () => {
 
     it('no toca el que ya tiene su veredicto encolado', async () => {
       const abierto = await repository.open({ send: nuevo(), now });
-      await comoAntesDeTD093(abierto.send.interbankTransferId, 'TIMEOUT', 300_000);
+      await comoAntesDeTD093(abierto.send.interbankTransferId, 'REJECTED', 300_000);
       await pool.query(
         'UPDATE interbank_sends SET verdict_enqueued_at = $2 WHERE interbank_transfer_id = $1',
         [abierto.send.interbankTransferId, now],
@@ -472,7 +512,7 @@ suite('interbank send persistence', () => {
 
     it('encola el veredicto una sola vez, aunque dos barridos coincidan', async () => {
       const abierto = await repository.open({ send: nuevo(), now });
-      await comoAntesDeTD093(abierto.send.interbankTransferId, 'TIMEOUT', 300_000);
+      await comoAntesDeTD093(abierto.send.interbankTransferId, 'REJECTED', 300_000);
 
       const dos = await Promise.all([
         repository.enqueueVerdict({
