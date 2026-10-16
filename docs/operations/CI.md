@@ -302,6 +302,51 @@ composed it separately they disagreed on its length and the deploy referenced an
 image that was never pushed — and `helm-deploy.sh` refuses `latest` outright so
 the rule holds even when the script is run by hand.
 
+### Promoting to production: the order matters
+
+**`main` is 111 commits behind `develop` and the newest tag is `v1.2.2`** — from
+before Phase III. That combination is a trap, and it is worth stating plainly:
+
+> Merging `develop` into `main` without creating a tag deploys **the previous
+> version**. `cd.yml` resolves `git tag -l 'v*' --sort=-v:refname | head -n 1`,
+> which is the highest tag *in the repository*, not the tag of the commit being
+> deployed. The rollout reaches `Ready`, the summary is green, and production
+> runs Phase II.
+
+Measured on 2026-10-16: `main` was 113 commits ahead of `v1.2.2`, so the first
+Phase III deploy would have stood up Phase II.
+
+`cd.yml` now **refuses** that. The check is the reverse of the one you write
+first: not "is the tag an ancestor of this commit?" — `v1.2.2` was, which is why
+a plain `--is-ancestor` does not catch it — but **"is this commit contained in
+the tag?"**. If it is not, the images carrying that tag do not contain this
+code, and the job fails naming how many commits ahead `HEAD` is.
+
+So the promotion is four steps, in this order:
+
+```bash
+# 1. Merge. Rehearsed on 2026-10-16 against origin/main: no conflicts.
+git checkout main && git pull && git merge --no-ff develop && git push
+
+# 2. Tag the commit that is now main's tip. This is what gets built.
+git tag -a v1.3.0 -m "Fase III: interbancario, observabilidad y nube" && git push origin v1.3.0
+
+# 3. WAIT for release.yml to publish the seven images. Production does not
+#    build: it deploys what this run pushed to Artifact Registry. Deploying
+#    before it finishes is an ImagePullBackOff, not an error message.
+gh run watch "$(gh run list --workflow=release.yml --limit 1 --json databaseId -q '.[0].databaseId')" --exit-status
+
+# 4. Only then, the production deploy. The push to main in step 1 already
+#    triggered cd.yml — and it will have FAILED at the version check, because
+#    the tag did not exist yet. Re-run it:
+gh workflow run cd.yml --ref main
+```
+
+Step 3 is the one that looks skippable and is not. Steps 1 and 2 can be done in
+one push (`git push origin main v1.3.0`), which avoids the failed run in step 4
+— but then nothing proves the tag landed before the deploy started, so the
+sequence above keeps them apart.
+
 ### What `cd.yml` needs before it can deploy
 
 `cd.yml` starts with a `preflight` job that **fails** when the configuration

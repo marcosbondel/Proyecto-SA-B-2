@@ -554,8 +554,28 @@ jobs:
             exit 1
           fi
 
+          # Y que el tag CONTENGA lo que se esta desplegando.
+          #
+          # Sin esto, el paso anterior es una trampa silenciosa: elige el tag
+          # mas alto del repositorio, no el de este commit. Un merge a `main`
+          # sin tagear despliega la version anterior, el rollout llega a Ready,
+          # el resumen sale verde — y produccion corre codigo viejo. Medido el
+          # 2026-10-16: `main` estaba 113 commits por delante de `v1.2.2`, asi
+          # que el primer despliegue de la Fase 3 habria puesto en pie la Fase 2.
+          #
+          # La comprobacion es al reves de lo que uno escribe primero. No es
+          # "¿el tag es ancestro del commit?" —`v1.2.2` lo era, y por eso un
+          # `--is-ancestor` normal no lo atrapa— sino "¿el commit esta CONTENIDO
+          # en el tag?". Si no lo esta, las imagenes de ese tag no llevan este
+          # codigo dentro.
+          if ! git merge-base --is-ancestor HEAD "$VERSION"; then
+            DETRAS="$(git rev-list --count "$VERSION"..HEAD)"
+            echo "::error::El tag mas reciente ($VERSION) NO contiene el commit que se intenta desplegar: HEAD va $DETRAS commit(s) por delante. Las imagenes de $VERSION no llevan este codigo. Crea y empuja un tag nuevo (git tag -a vX.Y.Z -m '...' && git push origin vX.Y.Z), espera a que release.yml publique las siete imagenes, y vuelve a lanzar este despliegue."
+            exit 1
+          fi
+
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Desplegando la version publicada $VERSION"
+          echo "Desplegando la version publicada $VERSION, que contiene $GITHUB_SHA"
 
       # Dos caminos de autenticacion, y el primero es el preferido.
       #
