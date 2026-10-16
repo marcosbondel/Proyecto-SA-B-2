@@ -367,6 +367,41 @@ export const MIGRATIONS: readonly Migration[] = [
          ON interbank_sends (transaction_id)`,
     ],
   },
+  /**
+   * Lo que el enunciado pedía del depósito **recibido** y no estaba (T-56).
+   *
+   * Dos cambios, y los dos son de interoperabilidad y no de almacenamiento:
+   *
+   * 1. **`partner_timestamp`**, el sello de tiempo que §4.1 pide entre los
+   *    datos mínimos del mensaje. Separado de `created_at`, que es cuándo lo
+   *    recibimos nosotros: con uno solo no se puede distinguir un reloj
+   *    desfasado de un depósito que tardó en llegar, y los dos se arreglan
+   *    distinto. Nulable porque las filas anteriores a esta migración no lo
+   *    tienen y no se puede inventar — un `DEFAULT now()` habría escrito la
+   *    hora de la migración como si fuera la del otro banco.
+   *
+   * 2. **`destination_account_id` pasa de `UUID` a `VARCHAR(64)`.** Hasta aquí,
+   *    un banco pareja que mandara un número de cuenta recibía un `400` del
+   *    Gateway y su depósito no dejaba ni una fila: se quedaba esperando hasta
+   *    que venciera *su* plazo, sin saber por qué. Con una cadena entra, se
+   *    registra, se rechaza con `ACCOUNT_NOT_FOUND` y **se le contesta por
+   *    callback**. Un rechazo explicado es interoperable; un `400` es un
+   *    silencio.
+   *
+   *    El `USING` es explícito porque PostgreSQL no convierte `uuid` a
+   *    `varchar` sin que se lo pidan, y el tipo **se ensancha**: ninguna fila
+   *    existente deja de caber.
+   */
+  {
+    name: '011_interbank_deposits_partner_fields',
+    statements: [
+      `ALTER TABLE interbank_deposits
+         ADD COLUMN IF NOT EXISTS partner_timestamp TIMESTAMPTZ`,
+      `ALTER TABLE interbank_deposits
+         ALTER COLUMN destination_account_id TYPE VARCHAR(64)
+         USING destination_account_id::text`,
+    ],
+  },
 ];
 
 /**
