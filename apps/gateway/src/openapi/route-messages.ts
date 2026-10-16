@@ -1,4 +1,18 @@
 import {
+  paymentInterbankV1CancelQueryV1,
+  paymentInterbankV1CancelRepliedV1,
+  paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankV1ReconciliationRepliedV1,
+  paymentInterbankV1ResultReceivedV1,
+  paymentInterbankV1ReversalQueryV1,
+  paymentInterbankV1ReversalRepliedV1,
+  paymentInterbankV1ReversalRequestedV1,
+  paymentInterbankV1StatusQueryV1,
+  paymentInterbankV1StatusRepliedV1,
+  paymentInterbankV1TransferQueryV1,
+  paymentInterbankV1TransferRepliedV1,
+} from '@bank/contracts';
+import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
   accountBillersQueryV1,
@@ -236,5 +250,44 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'GET /api/audit/notifications': {
     publishes: notificationListQueryV1.name,
     awaits: [notificationListRepliedV1.name],
+  },
+  /*
+   * Las seis del **contrato interbancario oficial** que publican algo (T-56).
+   * `GET /interbank/v1/health` no está porque no publica: se contesta en el
+   * borde, y es lo único de este controlador que el Gateway decide solo.
+   *
+   * Estar aquí es lo que las mete en `publish-routing.integration.spec.ts`, que
+   * publica contra un broker **real** y comprueba el exchange y la routing key
+   * de cada una. No es un detalle de cobertura: las siete rutas se desplegaron
+   * devolviendo `500` porque sus doce contratos no estaban en el catálogo, y el
+   * arnés del Gateway dobla el publicador — a un doble el catálogo le da igual.
+   * Esta suite es la que lo habría visto.
+   */
+  'POST /interbank/v1/transfers': {
+    publishes: paymentInterbankV1TransferQueryV1.name,
+    awaits: [paymentInterbankV1TransferRepliedV1.name],
+  },
+  'GET /interbank/v1/transfers/{interbankTransferId}': {
+    publishes: paymentInterbankV1StatusQueryV1.name,
+    awaits: [paymentInterbankV1StatusRepliedV1.name],
+  },
+  'POST /interbank/v1/transfers/{interbankTransferId}/cancel': {
+    publishes: paymentInterbankV1CancelQueryV1.name,
+    awaits: [paymentInterbankV1CancelRepliedV1.name],
+  },
+  'POST /interbank/v1/transfers/{interbankTransferId}/result': {
+    publishes: paymentInterbankV1ResultReceivedV1.name,
+  },
+  'POST /interbank/v1/reversals': {
+    publishes: paymentInterbankV1ReversalRequestedV1.name,
+    awaits: [paymentInterbankV1ReversalRepliedV1.name],
+  },
+  'GET /interbank/v1/reversals/{reversalId}': {
+    publishes: paymentInterbankV1ReversalQueryV1.name,
+    awaits: [paymentInterbankV1ReversalRepliedV1.name],
+  },
+  'GET /interbank/v1/reconciliation': {
+    publishes: paymentInterbankV1ReconciliationQueryV1.name,
+    awaits: [paymentInterbankV1ReconciliationRepliedV1.name],
   },
 };
