@@ -5,7 +5,9 @@ import {
   v1AmountFromMinor,
   v1AmountToMinor,
   v1ExpiresAt,
+  v1CancelRequest,
   v1ReasonCode,
+  v1ReversalRequest,
   v1TransferRequest,
   v1TransferResult,
 } from '../../src/events/interbank/v1';
@@ -198,5 +200,56 @@ describe('los tiempos, que el contrato fija y no se negocian', () => {
   it('el máximo por operación son Q10 000,00', () => {
     expect(V1_MAX_AMOUNT_MINOR).toBe(1_000_000);
     expect(v1AmountFromMinor(V1_MAX_AMOUNT_MINOR)).toBe('10000.00');
+  });
+});
+
+describe('qué esquemas son estrictos, y cuáles no por decisión del contrato', () => {
+  it('rechaza un campo de más en el depósito y en el resultado', () => {
+    // Los dos únicos con `additionalProperties: false` en el contrato oficial.
+    expect(v1TransferRequest.safeParse({ ...PETICION, extra: 1 }).success).toBe(false);
+    expect(
+      v1TransferResult.safeParse({
+        interbankTransferId: PETICION.interbankTransferId,
+        destinationBankCode: 'BANK02',
+        status: 'ACCEPTED',
+        processedAt: '2026-10-20T15:00:04.000Z',
+        extra: 1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('acepta un campo de más al cancelar y al pedir un reverso', () => {
+    /*
+     * El contrato **no** declara `additionalProperties: false` en estos dos, así
+     * que rechazarlos sería modificarlo por nuestra cuenta — y ser más estricto
+     * que el contrato rompe la interoperabilidad igual que ser más laxo, sólo
+     * que el fallo lo sufre el otro banco. Lo encontró la validación de
+     * ejemplos del repositorio del contrato.
+     */
+    expect(
+      v1CancelRequest.safeParse({
+        originBankCode: 'BANK99',
+        reason: 'TIMEOUT',
+        note: 'reintento manual del operador',
+      }).success,
+    ).toBe(true);
+
+    expect(
+      v1ReversalRequest.safeParse({
+        reversalId: '62536908-839e-419a-89b4-21cea06edbcc',
+        originalTransferId: PETICION.interbankTransferId,
+        originBankCode: 'BANK99',
+        amount: '150.00',
+        currency: 'GTQ',
+        openedBy: 'mesa de operaciones',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('pero sigue exigiendo los campos y los formatos', () => {
+    expect(v1CancelRequest.safeParse({ originBankCode: 'BANK99' }).success).toBe(false);
+    expect(
+      v1CancelRequest.safeParse({ originBankCode: 'BANK99', reason: 'PORQUE_SI' }).success,
+    ).toBe(false);
   });
 });

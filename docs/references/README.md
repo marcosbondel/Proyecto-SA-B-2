@@ -19,11 +19,15 @@ sistema: es aquello contra lo que se contrasta lo que construimos.
 
 **No se modifica.** El enunciado es explícito: *"Los grupos no deben modificarlo;
 solo acuerdan entre sí URLs, credenciales y horarios de prueba"*. El archivo está
-aquí **byte por byte** como llegó, y lo que acordamos con la pareja vive aparte,
-en
-[`../operations/INTERBANK-AGREEMENT.md`](../operations/INTERBANK-AGREEMENT.md).
-Si alguna vez hay que tocar este archivo, no se toca: se anota la divergencia en
-el acuerdo y se escala al auxiliar.
+aquí **byte por byte** como llegó, y lo que acordamos con la pareja vive en el
+repositorio que los dos grupos comparten,
+[`bank-interbank-contract`](https://github.com/marcosbondel/bank-interbank-contract)
+— que tiene **este mismo archivo con el mismo hash** y verifica su integridad en
+cada CI. Si alguna vez hay que tocarlo, no se toca: se anota la divergencia en el
+acuerdo y se escala al auxiliar.
+
+Esta copia existe para que el monorepo se pueda leer y probar sin salir de él;
+la canónica, la que los dos grupos aprueban, es la de allá.
 
 El análisis campo por campo de este contrato contra lo que el repositorio
 implementaba antes de recibirlo está en
