@@ -515,6 +515,100 @@ export const MIGRATIONS: readonly Migration[] = [
          ON interbank_reversals (created_at) WHERE status = 'PROCESSING'`,
     ],
   },
+  {
+    /*
+     * El veredicto de un depósito interbancario pasa por el outbox (TD-093).
+     *
+     * El defecto que esto cierra costó dinero de verdad. `send-interbank-deposit`
+     * escribía el estado terminal con `advance(...)` y **después** publicaba el
+     * veredicto contra el broker: dos escrituras sin una transacción común. El
+     * 2026-10-15, durante la carga de T-51, el proceso de Payment murió entre
+     * las dos — la transferencia `40dc1076-…` (Q1.00) quedó con su depósito en
+     * `TIMEOUT`, `decided_at` escrito y el evento nunca publicado. La Saga no
+     * supo que debía compensar y **Q1.00 salió de la cuenta del cliente y no
+     * volvió**. Una fila entre 1.259: es la clase de fallo que el volumen
+     * esconde.
+     *
+     * Peor que perderse: quedaba **irrecuperable**. `claimSendable` busca
+     * `state = 'PENDING'` y `claimExpired` busca `state IN ('PENDING','SENT')`,
+     * así que una fila ya decidida está fuera del alcance de los dos barridos
+     * para siempre.
+     *
+     * La solución no se inventa aquí: este mismo servicio ya la tiene en
+     * `outbox_messages` (migración 003, TD-047) para el camino del pago normal.
+     * Esto es extenderla al camino interbancario, que es consistencia y no una
+     * segunda idea.
+     */
+    name: '014_interbank_verdict_outbox',
+    statements: [
+      /*
+       * `payment_id` deja de ser obligatorio.
+       *
+       * No es un relajamiento por comodidad: un depósito interbancario **no
+       * crea fila en `payments`**. `ProcessPaymentHandler` ve el bloque
+       * `interbank` en `payment.requested.v1` y deriva el comando entero a
+       * `SendInterbankDepositUseCase`, que escribe en `interbank_sends` y en
+       * ninguna otra tabla. Así que el `paymentId` del envelope existe como
+       * identificador y **no** como fila a la que apuntar: la clave ajena lo
+       * rechazaría.
+       *
+       * La columna sigue con su `REFERENCES` para los eventos del pago normal,
+       * donde la fila sí está y el `ON DELETE CASCADE` es lo que limpia el
+       * outbox de un pago borrado. Lo que se admite es el nulo, y el relay no
+       * lee esa columna: publica `exchange`, `routing_key` y `envelope`, y los
+       * identificadores viajan dentro del envelope de todas formas.
+       */
+      `ALTER TABLE outbox_messages ALTER COLUMN payment_id DROP NOT NULL`,
+
+      /*
+       * Cuándo se encoló el veredicto de este depósito, que es distinto de
+       * cuándo se decidió.
+       *
+       * Existe para el barrido de reconciliación —la pieza (b) de TD-093— y lo
+       * que lo hace **acotado** es justo esta columna: el barrido busca filas
+       * decididas cuyo veredicto nunca llegó al outbox, y encolarlo la marca.
+       * Una vez, no en bucle.
+       *
+       * Y se auto-desactiva. A partir de esta migración `advance` escribe el
+       * veredicto y la marca en la misma transacción, así que ninguna fila
+       * nueva puede cumplir la condición. Las únicas que la cumplen son las
+       * decididas por una versión anterior del código — entre ellas la del
+       * Q1.00, que es como se recupera sin tocarla a mano. El runbook del banco
+       * pareja prohíbe acreditar a mano, y con razón: una corrección manual no
+       * deja rastro de por qué el dinero apareció.
+       */
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS verdict_enqueued_at TIMESTAMPTZ`,
+
+      /*
+       * Las filas que el barrido de reconciliación busca, y nada más.
+       *
+       * Parcial a propósito: en régimen normal este índice está **vacío**, que
+       * es la forma de que un barrido cada pocos segundos no cueste nada. Si
+       * alguna vez tiene filas, es que hubo una caída entre decidir y encolar
+       * — y entonces lo que importa es que el barrido las encuentre rápido.
+       */
+      /*
+       * Los **tres** veredictos, no los dos que TD-093 nombró.
+       *
+       * La fila de su remedio decía `state IN ('REJECTED','TIMEOUT') AND
+       * reversed_at IS NULL`, porque el caso medido fue un `TIMEOUT`. Pero
+       * perder un `ACCEPTED` es peor, no mejor: el dinero ya salió hacia el
+       * otro banco y la Saga se queda en `PAYMENT_PENDING` **para siempre** —
+       * sin compensar, porque compensar sería incorrecto, y sin completar,
+       * porque nadie se lo dijo. Es un descuadre que sólo aparece en la
+       * conciliación diaria.
+       *
+       * `reversed_at IS NULL` sobra, además: era el indicio de que la Saga
+       * nunca actuó, y `verdict_enqueued_at IS NULL` lo dice exacto. `REVERSED`
+       * queda fuera porque sólo se llega ahí por el evento de la compensación,
+       * que **implica** que el veredicto se entregó.
+       */
+      `CREATE INDEX IF NOT EXISTS interbank_sends_unreconciled_idx
+         ON interbank_sends (decided_at)
+         WHERE state IN ('ACCEPTED','REJECTED','TIMEOUT')
+           AND verdict_enqueued_at IS NULL`,
+    ],
+  },
 ];
 
 /**

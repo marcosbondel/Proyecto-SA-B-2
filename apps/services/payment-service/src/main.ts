@@ -402,6 +402,35 @@ async function bootstrap(): Promise<void> {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+
+      /*
+       * La reconciliación de los veredictos perdidos (TD-093).
+       *
+       * En el mismo barrido y no en un temporizador propio, por la misma razón
+       * que el resto: un segundo temporizador es un segundo sitio donde mirar
+       * cuando algo no corre. Y **después** del barrido normal, porque lo que
+       * busca son filas que el barrido normal no puede ver — ya decididas, fuera
+       * del alcance de `claimSendable` y `claimExpired`.
+       *
+       * En régimen normal no encuentra nada nunca: desde la migración 014 el
+       * veredicto se escribe en la misma transacción que el estado. Si encuentra
+       * algo, se registra en `warn` desde el caso de uso, porque significa que
+       * hubo una caída entre decidir y encolar — y conviene verlo aunque el
+       * sistema se haya recuperado solo.
+       */
+      try {
+        const reconciliados = await interbankSend.reconcile(SWEEP_BATCH);
+
+        if (reconciliados > 0) {
+          logger.warn('veredictos interbancarios reconciliados', {
+            outcome: `${reconciliados} recuperados del outbox`,
+          });
+        }
+      } catch (error) {
+        logger.error('la reconciliacion interbancaria fallo', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     const due = await repository.due(clock.now(), SWEEP_BATCH);

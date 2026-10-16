@@ -190,3 +190,38 @@ export function isSendSettled(state: InterbankSendState): boolean {
 export function isSendDecided(state: InterbankSendState): boolean {
   return state === 'ACCEPTED' || state === 'REJECTED' || state === 'TIMEOUT';
 }
+
+/**
+ * Qué tiene que oír la Saga sobre un depósito ya decidido, o `null` si todavía
+ * no hay nada que decirle.
+ *
+ * Existe para la reconciliación de TD-093, que es el único sitio donde hay que
+ * reconstruir un veredicto **desde el estado de la fila** en vez de desde la
+ * transición que lo produjo: el evento original se perdió al publicarlo y no
+ * hay nada guardado de donde sacarlo.
+ *
+ * Y vive aquí, no en el caso de uso, por lo mismo que `isSendDecided`: la
+ * correspondencia entre un estado del depósito y un final del pago es
+ * vocabulario del dominio. Que esté en un solo sitio es lo que garantiza que un
+ * veredicto reconciliado diga **exactamente** lo mismo que habría dicho el
+ * original — si la tabla de `applyInterbankSend` y esta función se separaran, la
+ * recuperación le contaría a la Saga una historia distinta de la que ocurrió.
+ */
+export function settlementOf(state: InterbankSendState): 'SUCCEEDED' | 'FAILED' | null {
+  switch (state) {
+    case 'ACCEPTED':
+      return 'SUCCEEDED';
+    case 'REJECTED':
+    case 'TIMEOUT':
+      return 'FAILED';
+    /*
+     * `PENDING` y `SENT` todavía esperan; `REVERSED` ya se contó —su veredicto
+     * fue el `REJECTED` o el `TIMEOUT` del que viene— y volver a emitirlo sería
+     * pedirle a la Saga un segundo final.
+     */
+    case 'PENDING':
+    case 'SENT':
+    case 'REVERSED':
+      return null;
+  }
+}
