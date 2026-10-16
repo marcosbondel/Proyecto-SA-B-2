@@ -138,15 +138,35 @@ export class PaymentServiceEnvironment {
    * Cuánto se espera la confirmación del banco pareja antes de rendirse y
    * compensar.
    *
-   * Treinta segundos por defecto, el mismo techo que el último escalón de la
-   * escalera de pagos: más que eso es dejar el saldo del cliente retenido por
-   * un banco que no contesta, y menos es rendirse antes de que una red lenta
-   * acabe de responder.
+   * **OBSOLETA desde TD-095, y se sigue aceptando a propósito.** El plazo de un
+   * depósito interbancario lo fija el CONTRATO —`V1_TRANSFER_TTL_MS`, 180 s, más
+   * un margen de `V1_RELEASE_MARGIN_MS` antes de poder liberar a ciegas— y no
+   * una variable de entorno: un plazo de interoperabilidad que cada banco
+   * configura a su gusto no es un plazo, y con 30 s aquí dábamos por muerto lo
+   * que para el otro lado seguía vivo durante 24 horas.
+   *
+   * Ya no se lee. Se mantiene declarada para que un despliegue que todavía la
+   * ponga en su ConfigMap no falle la validación de arranque; quitarla del chart
+   * es seguro y no hace falta coordinarlo.
    */
   @IsInt()
   @Min(1_000)
   @Max(600_000)
   public INTERBANK_CONFIRMATION_TIMEOUT_MS!: number;
+
+  /**
+   * Cada cuánto se reintenta un paso del protocolo de TIMEOUT que no obtuvo
+   * respuesta (TD-095).
+   *
+   * Ésta sí es nuestra y no del contrato: el acuerdo dice cuándo se puede
+   * liberar, no con qué frecuencia preguntamos. Cinco segundos por defecto —
+   * suficiente para no apretar a un banco que ya va mal, y suficientemente
+   * frecuente para que los 300 s del margen den para unos sesenta intentos.
+   */
+  @IsInt()
+  @Min(500)
+  @Max(60_000)
+  public INTERBANK_RESOLVE_RETRY_MS!: number;
 }
 
 /**
@@ -210,6 +230,7 @@ export function loadEnvironment(
     INTERBANK_SEND_URL: source.INTERBANK_SEND_URL ?? '',
     INTERBANK_CONFIRMATION_TIMEOUT_MS:
       toInteger(source.INTERBANK_CONFIRMATION_TIMEOUT_MS) ?? 30_000,
+    INTERBANK_RESOLVE_RETRY_MS: toInteger(source.INTERBANK_RESOLVE_RETRY_MS) ?? 5_000,
     INTERBANK_PARTNER_TOKEN: source.INTERBANK_PARTNER_TOKEN ?? '',
   });
 

@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-10-16T02:25:08.398Z",
+  "generatedAt": "2026-10-16T15:29:50.694Z",
   "targets": {
     "unit": 70,
     "integration": 20,
     "e2e": 10
   },
   "ownIntegrationTarget": 22.22222222222222,
-  "e2eMeasured": true,
+  "e2eMeasured": false,
   "packages": [
     {
       "name": "gateway",
@@ -23,6 +23,12 @@
       },
       "files": [
         {
+          "path": "apps/gateway/test/envelope-and-replies.integration.spec.ts",
+          "layer": "integration",
+          "cases": 36,
+          "skipped": 36
+        },
+        {
           "path": "apps/gateway/test/alert-webhook.integration.spec.ts",
           "layer": "integration",
           "cases": 11,
@@ -35,10 +41,10 @@
           "skipped": 50
         },
         {
-          "path": "apps/gateway/test/envelope-and-replies.integration.spec.ts",
-          "layer": "integration",
-          "cases": 36,
-          "skipped": 36
+          "path": "apps/gateway/test/payments-routes.spec.ts",
+          "layer": "unit",
+          "cases": 11,
+          "skipped": 0
         },
         {
           "path": "apps/gateway/test/payment-scenario.spec.ts",
@@ -47,9 +53,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/payments-routes.spec.ts",
+          "path": "apps/gateway/test/photo-upload.spec.ts",
           "layer": "unit",
-          "cases": 11,
+          "cases": 8,
           "skipped": 0
         },
         {
@@ -65,21 +71,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/correlation.spec.ts",
+          "path": "apps/gateway/test/payment-simulation-routes.spec.ts",
           "layer": "unit",
-          "cases": 9,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/photo-upload.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/broker-down.spec.ts",
-          "layer": "unit",
-          "cases": 12,
+          "cases": 29,
           "skipped": 0
         },
         {
@@ -89,9 +83,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/commands-publish.spec.ts",
+          "path": "apps/gateway/test/correlation.spec.ts",
           "layer": "unit",
-          "cases": 18,
+          "cases": 9,
           "skipped": 0
         },
         {
@@ -101,21 +95,27 @@
           "skipped": 0
         },
         {
+          "path": "apps/gateway/test/broker-down.spec.ts",
+          "layer": "unit",
+          "cases": 12,
+          "skipped": 0
+        },
+        {
           "path": "apps/gateway/test/commands-validation.spec.ts",
           "layer": "unit",
           "cases": 20,
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/payment-simulation-routes.spec.ts",
-          "layer": "unit",
-          "cases": 29,
-          "skipped": 0
-        },
-        {
           "path": "apps/gateway/test/alert-webhook.spec.ts",
           "layer": "unit",
           "cases": 35,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/commands-publish.spec.ts",
+          "layer": "unit",
+          "cases": 18,
           "skipped": 0
         },
         {
@@ -131,18 +131,6 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/request-envelope.spec.ts",
-          "layer": "unit",
-          "cases": 5,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/no-database-no-http.spec.ts",
-          "layer": "unit",
-          "cases": 22,
-          "skipped": 0
-        },
-        {
           "path": "apps/gateway/test/environment.spec.ts",
           "layer": "unit",
           "cases": 22,
@@ -155,27 +143,27 @@
           "skipped": 24
         },
         {
+          "path": "apps/gateway/test/no-database-no-http.spec.ts",
+          "layer": "unit",
+          "cases": 22,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/request-envelope.spec.ts",
+          "layer": "unit",
+          "cases": 5,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/health.controller.spec.ts",
+          "layer": "unit",
+          "cases": 8,
+          "skipped": 0
+        },
+        {
           "path": "apps/gateway/test/interbank.spec.ts",
           "layer": "unit",
           "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/identity-document.spec.ts",
-          "layer": "unit",
-          "cases": 7,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/change-password.spec.ts",
-          "layer": "unit",
-          "cases": 8,
-          "skipped": 0
-        },
-        {
-          "path": "apps/gateway/test/register-role-authorization.spec.ts",
-          "layer": "unit",
-          "cases": 6,
           "skipped": 0
         },
         {
@@ -191,19 +179,31 @@
           "skipped": 0
         },
         {
+          "path": "apps/gateway/test/identity-envelope.spec.ts",
+          "layer": "unit",
+          "cases": 6,
+          "skipped": 0
+        },
+        {
           "path": "apps/gateway/test/trace-header.spec.ts",
           "layer": "unit",
           "cases": 6,
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/roles-guard.spec.ts",
+          "path": "apps/gateway/test/identity-document.spec.ts",
           "layer": "unit",
-          "cases": 8,
+          "cases": 7,
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/health.controller.spec.ts",
+          "path": "apps/gateway/test/register-role-authorization.spec.ts",
+          "layer": "unit",
+          "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/gateway/test/change-password.spec.ts",
           "layer": "unit",
           "cases": 8,
           "skipped": 0
@@ -221,9 +221,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/gateway/test/identity-envelope.spec.ts",
+          "path": "apps/gateway/test/roles-guard.spec.ts",
           "layer": "unit",
-          "cases": 6,
+          "cases": 8,
           "skipped": 0
         },
         {
@@ -420,21 +420,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/account-service/test/inbound-message.handler.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/account-service/test/deposit.spec.ts",
           "layer": "unit",
           "cases": 11,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/account-service/test/activity-monitor.spec.ts",
-          "layer": "unit",
-          "cases": 18,
           "skipped": 0
         },
         {
@@ -444,9 +432,21 @@
           "skipped": 42
         },
         {
+          "path": "apps/services/account-service/test/inbound-message.handler.spec.ts",
+          "layer": "unit",
+          "cases": 3,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/account-service/test/deactivation-scheduler.spec.ts",
           "layer": "unit",
           "cases": 17,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/account-service/test/activity-monitor.spec.ts",
+          "layer": "unit",
+          "cases": 18,
           "skipped": 0
         },
         {
@@ -493,15 +493,15 @@
           "skipped": 55
         },
         {
-          "path": "apps/services/transaction-service/test/transfer-telemetry.spec.ts",
-          "layer": "unit",
-          "cases": 30,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/transaction-service/test/health.controller.spec.ts",
           "layer": "unit",
           "cases": 6,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/transfer-telemetry.spec.ts",
+          "layer": "unit",
+          "cases": 30,
           "skipped": 0
         },
         {
@@ -511,27 +511,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/routing-coverage.spec.ts",
-          "layer": "unit",
-          "cases": 15,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/transaction-service/test/environment.spec.ts",
           "layer": "unit",
           "cases": 3,
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/use-cases.spec.ts",
+          "path": "apps/services/transaction-service/test/routing-coverage.spec.ts",
           "layer": "unit",
-          "cases": 36,
+          "cases": 15,
           "skipped": 0
         },
         {
-          "path": "apps/services/transaction-service/test/saga-transition-matrix.spec.ts",
+          "path": "apps/services/transaction-service/test/use-cases.spec.ts",
           "layer": "unit",
-          "cases": 16,
+          "cases": 36,
           "skipped": 0
         },
         {
@@ -544,6 +538,12 @@
           "path": "apps/services/transaction-service/test/listing-and-scope.spec.ts",
           "layer": "unit",
           "cases": 20,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/transaction-service/test/saga-transition-matrix.spec.ts",
+          "layer": "unit",
+          "cases": 16,
           "skipped": 0
         },
         {
@@ -580,12 +580,12 @@
       "runner": "jest",
       "tier": "app",
       "database": "payment",
-      "unit": 247,
-      "integration": 75,
+      "unit": 291,
+      "integration": 83,
       "e2e": 0,
       "skipped": {
         "unit": 0,
-        "integration": 75,
+        "integration": 83,
         "e2e": 0
       },
       "files": [
@@ -602,10 +602,10 @@
           "skipped": 24
         },
         {
-          "path": "apps/services/payment-service/test/interbank-v1-use-case.spec.ts",
-          "layer": "unit",
-          "cases": 28,
-          "skipped": 0
+          "path": "apps/services/payment-service/test/interbank-send-repository.integration.spec.ts",
+          "layer": "integration",
+          "cases": 19,
+          "skipped": 19
         },
         {
           "path": "apps/services/payment-service/test/interbank-v1-repository.integration.spec.ts",
@@ -614,28 +614,22 @@
           "skipped": 15
         },
         {
-          "path": "apps/services/payment-service/test/health.controller.spec.ts",
-          "layer": "unit",
-          "cases": 6,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/payment-service/test/simulation.integration.spec.ts",
           "layer": "integration",
           "cases": 7,
           "skipped": 7
         },
         {
+          "path": "apps/services/payment-service/test/health.controller.spec.ts",
+          "layer": "unit",
+          "cases": 6,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/payment-service/test/interbank-repository.integration.spec.ts",
           "layer": "integration",
           "cases": 4,
           "skipped": 4
-        },
-        {
-          "path": "apps/services/payment-service/test/interbank-send-repository.integration.spec.ts",
-          "layer": "integration",
-          "cases": 11,
-          "skipped": 11
         },
         {
           "path": "apps/services/payment-service/test/provider-telemetry.spec.ts",
@@ -650,9 +644,27 @@
           "skipped": 0
         },
         {
+          "path": "apps/services/payment-service/test/use-cases.spec.ts",
+          "layer": "unit",
+          "cases": 13,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/send-interbank-deposit.spec.ts",
+          "layer": "unit",
+          "cases": 31,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/payment-service/test/simulation-use-case.spec.ts",
           "layer": "unit",
           "cases": 25,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/interbank-telemetry.spec.ts",
+          "layer": "unit",
+          "cases": 4,
           "skipped": 0
         },
         {
@@ -662,9 +674,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/payment-service/test/use-cases.spec.ts",
+          "path": "apps/services/payment-service/test/interbank-v1-use-case.spec.ts",
           "layer": "unit",
-          "cases": 13,
+          "cases": 28,
           "skipped": 0
         },
         {
@@ -680,21 +692,15 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/payment-service/test/interbank-telemetry.spec.ts",
-          "layer": "unit",
-          "cases": 4,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/payment-service/test/send-interbank-deposit.spec.ts",
-          "layer": "unit",
-          "cases": 11,
-          "skipped": 0
-        },
-        {
           "path": "apps/services/payment-service/test/isolation.spec.ts",
           "layer": "unit",
           "cases": 11,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/payment-service/test/domain.spec.ts",
+          "layer": "unit",
+          "cases": 17,
           "skipped": 0
         },
         {
@@ -706,13 +712,7 @@
         {
           "path": "apps/services/payment-service/test/interbank-send.spec.ts",
           "layer": "unit",
-          "cases": 12,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/payment-service/test/domain.spec.ts",
-          "layer": "unit",
-          "cases": 17,
+          "cases": 18,
           "skipped": 0
         },
         {
@@ -722,14 +722,20 @@
           "skipped": 0
         },
         {
+          "path": "apps/services/payment-service/test/interbank-timeout.spec.ts",
+          "layer": "unit",
+          "cases": 18,
+          "skipped": 0
+        },
+        {
           "path": "apps/services/payment-service/test/interbank-policy.spec.ts",
           "layer": "unit",
           "cases": 14,
           "skipped": 0
         }
       ],
-      "own": 322,
-      "integrationShare": 23.29192546583851
+      "own": 374,
+      "integrationShare": 22.192513368983956
     },
     {
       "name": "notification-audit-service",
@@ -777,9 +783,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/notification-audit-service/test/inbound-message.handler.spec.ts",
+          "path": "apps/services/notification-audit-service/test/audit-filters-and-alerts.spec.ts",
           "layer": "unit",
-          "cases": 6,
+          "cases": 16,
           "skipped": 0
         },
         {
@@ -789,21 +795,21 @@
           "skipped": 0
         },
         {
-          "path": "apps/services/notification-audit-service/test/audit-filters-and-alerts.spec.ts",
+          "path": "apps/services/notification-audit-service/test/inbound-message.handler.spec.ts",
           "layer": "unit",
-          "cases": 16,
-          "skipped": 0
-        },
-        {
-          "path": "apps/services/notification-audit-service/test/use-cases.spec.ts",
-          "layer": "unit",
-          "cases": 31,
+          "cases": 6,
           "skipped": 0
         },
         {
           "path": "apps/services/notification-audit-service/test/domain.spec.ts",
           "layer": "unit",
           "cases": 47,
+          "skipped": 0
+        },
+        {
+          "path": "apps/services/notification-audit-service/test/use-cases.spec.ts",
+          "layer": "unit",
+          "cases": 31,
           "skipped": 0
         },
         {
@@ -849,21 +855,15 @@
       },
       "files": [
         {
-          "path": "apps/packages/messaging/test/retry-policy.spec.ts",
-          "layer": "unit",
-          "cases": 13,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/messaging/test/heartbeat.integration.spec.ts",
           "layer": "integration",
           "cases": 2,
           "skipped": 2
         },
         {
-          "path": "apps/packages/messaging/test/exclusive-subscription.spec.ts",
+          "path": "apps/packages/messaging/test/retry-policy.spec.ts",
           "layer": "unit",
-          "cases": 4,
+          "cases": 13,
           "skipped": 0
         },
         {
@@ -873,21 +873,27 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/messaging/test/topology.integration.spec.ts",
-          "layer": "integration",
-          "cases": 3,
-          "skipped": 3
-        },
-        {
           "path": "apps/packages/messaging/test/heartbeat.spec.ts",
           "layer": "unit",
           "cases": 3,
           "skipped": 0
         },
         {
-          "path": "apps/packages/messaging/test/publish-timeout.spec.ts",
+          "path": "apps/packages/messaging/test/exclusive-subscription.spec.ts",
           "layer": "unit",
           "cases": 4,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/messaging/test/topology.integration.spec.ts",
+          "layer": "integration",
+          "cases": 3,
+          "skipped": 3
+        },
+        {
+          "path": "apps/packages/messaging/test/request-reply.spec.ts",
+          "layer": "unit",
+          "cases": 10,
           "skipped": 0
         },
         {
@@ -897,9 +903,9 @@
           "skipped": 9
         },
         {
-          "path": "apps/packages/messaging/test/request-reply.spec.ts",
+          "path": "apps/packages/messaging/test/publish-timeout.spec.ts",
           "layer": "unit",
-          "cases": 10,
+          "cases": 4,
           "skipped": 0
         },
         {
@@ -972,7 +978,7 @@
       "runner": "jest",
       "tier": "library",
       "exception": "Paquete de esquemas con cero E/S: no abre un socket, no toca un disco y no tiene proceso al que cruzar. Integración y E2E no son difíciles aquí, son imposibles, así que no se le exige proporción.",
-      "unit": 1036,
+      "unit": 1039,
       "integration": 0,
       "e2e": 0,
       "skipped": {
@@ -982,9 +988,9 @@
       },
       "files": [
         {
-          "path": "apps/packages/contracts/test/events/transaction-status-reply.spec.ts",
+          "path": "apps/packages/contracts/test/events/interbank-v1.spec.ts",
           "layer": "unit",
-          "cases": 10,
+          "cases": 20,
           "skipped": 0
         },
         {
@@ -994,21 +1000,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/events/interbank-v1.spec.ts",
+          "path": "apps/packages/contracts/test/events/transaction-status-reply.spec.ts",
           "layer": "unit",
-          "cases": 17,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/envelope/version-coherence.spec.ts",
-          "layer": "unit",
-          "cases": 3,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/envelope/causation.spec.ts",
-          "layer": "unit",
-          "cases": 4,
+          "cases": 10,
           "skipped": 0
         },
         {
@@ -1018,27 +1012,33 @@
           "skipped": 0
         },
         {
+          "path": "apps/packages/contracts/test/envelope/version-coherence.spec.ts",
+          "layer": "unit",
+          "cases": 3,
+          "skipped": 0
+        },
+        {
           "path": "apps/packages/contracts/test/schemas/primitives.spec.ts",
           "layer": "unit",
           "cases": 24,
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/events/interbank-receipt.spec.ts",
+          "path": "apps/packages/contracts/test/envelope/causation.spec.ts",
           "layer": "unit",
-          "cases": 11,
+          "cases": 4,
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/routing/gateway-reply-queue.spec.ts",
+          "path": "apps/packages/contracts/test/events/catalog-completeness.spec.ts",
           "layer": "unit",
-          "cases": 10,
+          "cases": 9,
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/events/customer-trim.spec.ts",
+          "path": "apps/packages/contracts/test/events/saga-chain.spec.ts",
           "layer": "unit",
-          "cases": 3,
+          "cases": 23,
           "skipped": 0
         },
         {
@@ -1048,13 +1048,25 @@
           "skipped": 0
         },
         {
+          "path": "apps/packages/contracts/test/routing/gateway-reply-queue.spec.ts",
+          "layer": "unit",
+          "cases": 10,
+          "skipped": 0
+        },
+        {
+          "path": "apps/packages/contracts/test/events/payload-size.spec.ts",
+          "layer": "unit",
+          "cases": 133,
+          "skipped": 0
+        },
+        {
           "path": "apps/packages/contracts/test/routing/topology.spec.ts",
           "layer": "unit",
           "cases": 21,
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/validation/validate-message.spec.ts",
+          "path": "apps/packages/contracts/test/events/interbank-receipt.spec.ts",
           "layer": "unit",
           "cases": 11,
           "skipped": 0
@@ -1066,9 +1078,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/events/saga-chain.spec.ts",
+          "path": "apps/packages/contracts/test/validation/validate-message.spec.ts",
           "layer": "unit",
-          "cases": 23,
+          "cases": 11,
           "skipped": 0
         },
         {
@@ -1078,21 +1090,9 @@
           "skipped": 0
         },
         {
-          "path": "apps/packages/contracts/test/events/payload-size.spec.ts",
-          "layer": "unit",
-          "cases": 133,
-          "skipped": 0
-        },
-        {
           "path": "apps/packages/contracts/test/events/alert-slo-received.spec.ts",
           "layer": "unit",
           "cases": 23,
-          "skipped": 0
-        },
-        {
-          "path": "apps/packages/contracts/test/events/catalog-completeness.spec.ts",
-          "layer": "unit",
-          "cases": 9,
           "skipped": 0
         },
         {
@@ -1102,24 +1102,30 @@
           "skipped": 0
         },
         {
+          "path": "apps/packages/contracts/test/events/customer-trim.spec.ts",
+          "layer": "unit",
+          "cases": 3,
+          "skipped": 0
+        },
+        {
           "path": "apps/packages/contracts/test/validation/valid-and-invalid.spec.ts",
           "layer": "unit",
           "cases": 260,
           "skipped": 0
         }
       ],
-      "own": 1036,
+      "own": 1039,
       "integrationShare": 0
     }
   ],
   "system": {
-    "unit": 1759,
-    "integration": 501,
+    "unit": 1803,
+    "integration": 509,
     "e2e": 152,
-    "total": 2412,
-    "unitShare": 72.92703150912106,
-    "integrationShare": 20.771144278606965,
-    "e2eShare": 6.301824212271974
+    "total": 2464,
+    "unitShare": 73.1737012987013,
+    "integrationShare": 20.657467532467532,
+    "e2eShare": 6.1688311688311686
   },
   "e2e": {
     "cases": 152,
@@ -1190,7 +1196,28 @@
     "generatedAt": "2026-10-07T03:57:39.240Z"
   },
   "deviations": [
-    "sistema unit: 72.9 % (objetivo 70 %)",
-    "sistema e2e: 6.3 % (objetivo 10 %)"
+    "falta PYRAMID_DATABASE_URL_TEMPLATE: los paquetes con base propia van a saltarse sus suites de integración enteras. Ejemplo: PYRAMID_DATABASE_URL_TEMPLATE=postgresql://user:pass@localhost:5432/{db}",
+    "apps/gateway/test/envelope-and-replies.integration.spec.ts: 36 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/gateway/test/alert-webhook.integration.spec.ts: 11 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/gateway/test/publish-routing.integration.spec.ts: 50 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/gateway/test/reply-correlation.integration.spec.ts: 24 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/customer-service/test/repository-queries.integration.spec.ts: 16 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/customer-service/test/repository.integration.spec.ts: 17 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/customer-service/test/constraints.integration.spec.ts: 10 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/account-service/test/repository-extended.integration.spec.ts: 15 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/account-service/test/repository.integration.spec.ts: 42 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/transaction-service/test/repository.integration.spec.ts: 55 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/payment-service/test/simulation-handlers.integration.spec.ts: 14 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/payment-service/test/repository.integration.spec.ts: 24 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/payment-service/test/interbank-send-repository.integration.spec.ts: 19 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/payment-service/test/interbank-v1-repository.integration.spec.ts: 15 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/payment-service/test/simulation.integration.spec.ts: 7 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/payment-service/test/interbank-repository.integration.spec.ts: 4 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/notification-audit-service/test/repository.integration.spec.ts: 39 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/services/notification-audit-service/test/trace-and-dedupe.integration.spec.ts: 17 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/packages/messaging/test/heartbeat.integration.spec.ts: 2 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/packages/messaging/test/topology.integration.spec.ts: 3 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/packages/messaging/test/broker.integration.spec.ts: 9 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó.",
+    "apps/packages/messaging/test/trace-propagation.integration.spec.ts: 4 casos de integración no se ejecutaron — falta DATABASE_URL o RABBITMQ_URL. La pirámide no se midió, se estimó."
   ]
 }

@@ -28,6 +28,7 @@ spec:
         # simulation (T-44) roll the pods on `helm upgrade` instead of waiting
         # for a restart somebody has to remember.
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
     spec:
@@ -94,7 +95,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: INTERBANK_PARTNER_TOKEN
-            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_MAX_AMOUNT_MINOR" "INTERBANK_CALLBACK_URL" "INTERBANK_SEND_URL" "INTERBANK_CONFIRMATION_TIMEOUT_MS" }}
+            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_MAX_AMOUNT_MINOR" "INTERBANK_CALLBACK_URL" "INTERBANK_SEND_URL" "INTERBANK_CONFIRMATION_TIMEOUT_MS" "INTERBANK_RESOLVE_RETRY_MS" }}
             - name: {{ $key }}
               valueFrom:
                 configMapKeyRef:

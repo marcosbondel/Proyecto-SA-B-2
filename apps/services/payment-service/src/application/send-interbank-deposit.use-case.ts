@@ -11,9 +11,29 @@ import {
   applyInterbankSend,
   IllegalInterbankSendTransition,
   isSendDecided,
+  settlementOf,
   type InterbankSendEvent,
   type InterbankSendTransition,
 } from '../domain/interbank-send';
+import {
+  resolveTimeout,
+  timeoutSchedule,
+  type PartnerCancel,
+  type PartnerProbe,
+} from '../domain/interbank-timeout';
+import type { OutboxMessage } from './ports';
+
+/**
+ * Cuánto espera la reconciliación antes de dar un veredicto por perdido.
+ *
+ * No es un plazo de negocio, es un margen contra sí misma: una fila recién
+ * decidida puede tener su veredicto escrito en una transacción que todavía no
+ * ha comitado, y reconciliarla publicaría dos veces lo mismo con dos
+ * `messageId` distintos. Dos minutos es órdenes de magnitud más que cualquier
+ * transacción de este servicio, y ni de lejos tanto como para que un veredicto
+ * perdido tarde en recuperarse.
+ */
+const RECONCILE_GRACE_MS = 120_000;
 import type {
   InterbankSend,
   InterbankSendMessenger,
@@ -49,11 +69,14 @@ export class SendInterbankDepositUseCase {
   readonly #messenger: InterbankSendMessenger;
   readonly #telemetry: InterbankSendTelemetry;
   readonly #clock: () => Date;
-  readonly #confirmationTimeoutMs: number;
+  readonly #transferTtlMs: number;
+  readonly #releaseMarginMs: number;
+  readonly #resolveRetryMs: number;
   readonly #resendDelaysMs: readonly number[];
   readonly #log: {
     info(message: string, fields: Record<string, unknown>): void;
     warn(message: string, fields: Record<string, unknown>): void;
+    error(message: string, fields: Record<string, unknown>): void;
   };
 
   constructor(dependencies: {
@@ -62,11 +85,17 @@ export class SendInterbankDepositUseCase {
     readonly messenger: InterbankSendMessenger;
     readonly telemetry: InterbankSendTelemetry;
     readonly clock?: () => Date;
-    readonly confirmationTimeoutMs: number;
+    /** `V1_TRANSFER_TTL_MS` del contrato: 180 s. */
+    readonly transferTtlMs: number;
+    /** `V1_RELEASE_MARGIN_MS` del contrato: 300 s más. */
+    readonly releaseMarginMs: number;
+    /** Cada cuánto se reintenta un paso del protocolo que no obtuvo respuesta. */
+    readonly resolveRetryMs: number;
     readonly resendDelaysMs: readonly number[];
     readonly log: {
       info(message: string, fields: Record<string, unknown>): void;
       warn(message: string, fields: Record<string, unknown>): void;
+      error(message: string, fields: Record<string, unknown>): void;
     };
   }) {
     this.#repository = dependencies.repository;
@@ -74,7 +103,9 @@ export class SendInterbankDepositUseCase {
     this.#messenger = dependencies.messenger;
     this.#telemetry = dependencies.telemetry;
     this.#clock = dependencies.clock ?? ((): Date => new Date());
-    this.#confirmationTimeoutMs = dependencies.confirmationTimeoutMs;
+    this.#transferTtlMs = dependencies.transferTtlMs;
+    this.#releaseMarginMs = dependencies.releaseMarginMs;
+    this.#resolveRetryMs = dependencies.resolveRetryMs;
     this.#resendDelaysMs = dependencies.resendDelaysMs;
     this.#log = dependencies.log;
   }
@@ -96,6 +127,7 @@ export class SendInterbankDepositUseCase {
     }
 
     const now = this.#clock();
+    const horario = timeoutSchedule(now, this.#transferTtlMs, this.#releaseMarginMs);
     const opened = await this.#repository.open({
       send: {
         interbankTransferId: interbank.interbankTransferId,
@@ -106,7 +138,17 @@ export class SendInterbankDepositUseCase {
         destinationAccount: interbank.account,
         amount: envelope.payload.amount,
         correlationId: envelope.correlationId,
-        confirmationDueAt: new Date(now.getTime() + this.#confirmationTimeoutMs),
+        /*
+         * Los dos plazos del CONTRATO, no de una variable de entorno (TD-095).
+         *
+         * `INTERBANK_CONFIRMATION_TIMEOUT_MS` valía 30 s y el contrato manda
+         * 180, más un margen de 300 antes de poder liberar a ciegas. Un plazo de
+         * interoperabilidad que cada banco configura a su gusto no es un plazo:
+         * el otro lado cumple el suyo y nosotros damos por muerto lo que para
+         * ellos sigue vivo.
+         */
+        confirmationDueAt: horario.expiresAt,
+        releaseNotBefore: horario.releaseNotBefore,
         createdAt: now,
         traceContext: null,
         origin: envelope,
@@ -115,7 +157,22 @@ export class SendInterbankDepositUseCase {
     });
 
     if (opened.kind === 'CREATED') {
-      await this.#announce(opened.send, opened.send.state, null, null);
+      /*
+       * Éste sí se publica directamente, y la asimetría con `#apply` es
+       * deliberada (TD-093).
+       *
+       * El estado que anuncia es `PENDING`, y una fila `PENDING` **sigue dentro
+       * del alcance de los dos barridos**: si este evento se pierde porque el
+       * proceso muere, nada queda irrecuperable — el depósito se reintenta, se
+       * decide, y el veredicto sale por el outbox. Lo que se perdería es una
+       * línea de auditoría del alta, que es re-derivable de la propia fila.
+       *
+       * El veredicto no tiene esa red: una fila decidida no la recoge ningún
+       * barrido, y ahí sí hay dinero en juego. Pagar el coste de una
+       * transacción en el alta para proteger algo que ya está protegido sería
+       * ceremonia.
+       */
+      await this.#announceOpened(opened.send, now);
     }
 
     await this.#deliver(opened.send);
@@ -164,7 +221,13 @@ export class SendInterbankDepositUseCase {
    * que ya pasó su plazo no debe recibir otro intento de entrega — sería
    * mandarle dinero a un banco del que acabamos de dejar de esperar.
    */
-  public async sweep(limit = 20): Promise<{ readonly expired: number; readonly resent: number }> {
+  public async sweep(
+    limit = 20,
+  ): Promise<{
+    readonly expired: number;
+    readonly resent: number;
+    readonly resolved: number;
+  }> {
     const now = this.#clock();
     let expired = 0;
     let resent = 0;
@@ -179,7 +242,139 @@ export class SendInterbankDepositUseCase {
       resent += 1;
     }
 
-    return { expired, resent };
+    /*
+     * Y el protocolo de TIMEOUT (TD-095): los vencidos a los que hay que
+     * preguntar, cancelar o liberar. Va al final porque las filas que mira son
+     * las que los dos barridos anteriores ya dejaron en `TIMEOUT`, así que un
+     * depósito que acaba de vencer entra en su protocolo en el mismo barrido en
+     * vez de esperar al siguiente.
+     */
+    const resolved = await this.#resolveTimedOut(limit);
+
+    return { expired, resent, resolved };
+  }
+
+  /**
+   * Un paso del protocolo de TIMEOUT por cada depósito vencido (TD-095).
+   *
+   * Un paso y no todos: cada barrido pregunta, o cancela, o resuelve, y el
+   * siguiente sigue donde se quedó. Hacerlo en bucle dentro de una sola pasada
+   * convertiría un banco pareja lento en un barrido que no termina y bloquea a
+   * los demás depósitos.
+   *
+   * **Mientras un depósito está aquí, el dinero del cliente sigue reservado.**
+   * Eso es el ticket entero: hasta ocho minutos de saldo retenido en el peor
+   * caso, a cambio de no devolver dinero que el otro banco ya entregó.
+   */
+  async #resolveTimedOut(limit: number): Promise<number> {
+    let resolved = 0;
+
+    for (const send of await this.#repository.claimAwaitingResolution(this.#clock(), limit)) {
+      const action = resolveTimeout({
+        now: this.#clock(),
+        expiresAt: send.confirmationDueAt,
+        releaseNotBefore: send.releaseNotBefore,
+        probe: send.probe,
+        cancel: send.cancel,
+      });
+
+      switch (action.kind) {
+        case 'PROBE': {
+          const probe = await this.#partner.probe(send);
+          await this.#recordStep(send, { probe });
+          break;
+        }
+
+        case 'CANCEL': {
+          const cancel = await this.#partner.cancel(send);
+          await this.#recordStep(send, { cancel });
+          break;
+        }
+
+        case 'CONFIRM':
+          /*
+           * El caso que justifica todo esto: hay constancia de que el otro
+           * banco acreditó. Con el comportamiento anterior esta transferencia se
+           * habría compensado — dinero devuelto aquí y entregado allá.
+           */
+          this.#log.info('deposito interbancario confirmado tras el vencimiento', {
+            correlationId: send.correlationId,
+            interbankTransferId: send.interbankTransferId,
+          });
+          await this.#apply(send, { kind: 'RESOLVED_ACCEPTED' });
+          resolved += 1;
+          break;
+
+        case 'RELEASE':
+          await this.#apply(send, { kind: 'RESOLVED_REJECTED', reason: action.reason });
+          resolved += 1;
+          break;
+
+        case 'RELEASE_UNVERIFIED':
+          /*
+           * La única rama que devuelve dinero sin una respuesta del otro banco,
+           * y **el contrato exige alertar**. Se registra en `error` y no en
+           * `warn` a propósito: es lo que hace que la alerta de T-50 dispare, y
+           * una liberación a ciegas que nadie mira es exactamente el descuadre
+           * que este protocolo existe para evitar.
+           */
+          this.#log.error('reserva interbancaria liberada SIN confirmacion del banco pareja', {
+            correlationId: send.correlationId,
+            interbankTransferId: send.interbankTransferId,
+            transactionId: send.transactionId,
+            outcome: action.reason,
+          });
+          await this.#apply(send, { kind: 'RESOLVED_REJECTED', reason: action.reason });
+          resolved += 1;
+          break;
+
+        case 'WAIT':
+          /*
+           * Nada que hacer todavía. Se reprograma al margen y no al siguiente
+           * barrido: volver cada medio segundo a mirar un reloj que no ha
+           * llegado es trabajo para nada, y la columna ya dice cuándo mirar.
+           */
+          await this.#repository.recordResolutionStep({
+            interbankTransferId: send.interbankTransferId,
+            resolveNotBefore: action.until,
+            now: this.#clock(),
+          });
+          break;
+      }
+    }
+
+    return resolved;
+  }
+
+  /** Guarda un paso del protocolo y programa el siguiente. */
+  async #recordStep(
+    send: InterbankSend,
+    step: { readonly probe?: PartnerProbe; readonly cancel?: PartnerCancel },
+  ): Promise<void> {
+    const now = this.#clock();
+
+    /*
+     * La cadencia se aplica **sólo a lo que no contestó**.
+     *
+     * El protocolo avanza por estado y no por tiempo: preguntar lleva a
+     * cancelar, y cancelar lleva a decidir. Así que si el otro banco nos
+     * contestó algo —aunque sea un `404`— esperar cinco segundos antes de usar
+     * esa respuesta es latencia pura, y en el camino feliz del protocolo son
+     * diez segundos de más con el dinero del cliente retenido.
+     *
+     * Lo que la cadencia evita es el bucle apretado contra un banco que no
+     * está: sin ella, un `UNREACHABLE` haría que el barrido volviera a
+     * intentarlo dentro del mismo segundo, dos mil veces dentro del margen.
+     */
+    const sinRespuesta =
+      step.probe?.kind === 'UNREACHABLE' || step.cancel?.kind === 'UNREACHABLE';
+
+    await this.#repository.recordResolutionStep({
+      interbankTransferId: send.interbankTransferId,
+      ...step,
+      resolveNotBefore: sinRespuesta ? new Date(now.getTime() + this.#resolveRetryMs) : now,
+      now,
+    });
   }
 
   /**
@@ -219,6 +414,37 @@ export class SendInterbankDepositUseCase {
     } catch (error) {
       if (error instanceof IllegalInterbankSendTransition) {
         /*
+         * Un `ACCEPTED` sobre un depósito que YA se liberó. Es el paso 5 del
+         * contrato y un incidente de nivel ERROR (TD-095).
+         *
+         * Pasa cuando el banco pareja acredita y su callback llega después de
+         * que nosotros hayamos devuelto el dinero al cliente — lo que el margen
+         * de 300 s hace improbable y no imposible, porque el contrato le da 24
+         * horas para reintentar. El resultado es que el dinero está entregado
+         * allá y devuelto aquí: **este banco lo ha perdido**, y la única salida
+         * es pedirle al otro un reverso.
+         *
+         * Lo que esto añade es que **se vea**. Antes caía en el `warn` de abajo
+         * junto a los callbacks duplicados, que son comportamiento normal, y se
+         * perdía entre ellos. Ahora sale por `error` con su propio `outcome`, que
+         * es lo que dispara la alerta y lo que le dice a un operador qué hacer.
+         * El `POST /reversals` automático es lo que queda de este paso y está
+         * nombrado en TD-095: hasta entonces, la reparación es humana y
+         * deliberada, que para un reverso entre bancos tampoco es lo peor.
+         */
+        const yaLiberado = send.state === 'REJECTED' || send.state === 'REVERSED';
+
+        if (yaLiberado && (event.kind === 'CONFIRMED' || event.kind === 'RESOLVED_ACCEPTED')) {
+          this.#log.error('el banco pareja acredito un deposito que ya se habia liberado', {
+            correlationId: send.correlationId,
+            interbankTransferId: send.interbankTransferId,
+            transactionId: send.transactionId,
+            outcome: 'LATE_ACCEPT_AFTER_RELEASE',
+          });
+          return;
+        }
+
+        /*
          * Invariante T-6, otra vez: se registra y no se aplica, y NO se
          * reencola. Un callback que llega dos veces, o que llega justo después
          * del vencimiento, es consecuencia normal de un sistema distribuido con
@@ -242,6 +468,19 @@ export class SendInterbankDepositUseCase {
         ? new Date(now.getTime() + this.#resendDelay(send.attempts))
         : null;
 
+    /*
+     * Los eventos se construyen **antes** de tocar la base y viajan con el
+     * `UPDATE` (TD-093). Construirlos aquí tiene una segunda virtud: validar el
+     * contrato falla antes de que nada se haya escrito, en vez de dejar una
+     * fila en el outbox que el relay no puede publicar nunca.
+     */
+    const outbound = [
+      this.#stateChangeMessage(send, transition.state, transition.reason, now),
+      ...(transition.settle === null
+        ? []
+        : [this.#settlementMessage(send, transition.settle, transition.reason, now)]),
+    ];
+
     const moved = await this.#repository.advance({
       interbankTransferId: send.interbankTransferId,
       from: transition.from,
@@ -249,6 +488,7 @@ export class SendInterbankDepositUseCase {
       reason: transition.reason,
       nextAttemptAt,
       now,
+      outbound,
     });
 
     if (!moved) {
@@ -256,7 +496,9 @@ export class SendInterbankDepositUseCase {
        * Otro llegó primero — el callback y el barrido pueden coincidir. El que
        * pierde no publica nada: dos transiciones legales aplicadas a la vez
        * dejarían el depósito donde ninguna de las dos pidió, y la Saga vería
-       * dos finales.
+       * dos finales. Y ahora tampoco **escribe** nada: el repositorio hace el
+       * `ROLLBACK` cuando el `UPDATE` no mueve ninguna fila, así que el outbox
+       * no recibe el veredicto del que perdió.
        */
       this.#log.info('otra transicion interbancaria llego primero', {
         correlationId: send.correlationId,
@@ -267,23 +509,80 @@ export class SendInterbankDepositUseCase {
       return;
     }
 
-    await this.#announce(send, transition.state, transition.reason, now);
-
-    if (transition.settle !== null) {
-      await this.#settle(send, transition.settle, transition.reason, now);
-    }
+    this.#measure(send, transition.state, transition.reason, now);
   }
 
-  /** El cambio de estado, para la auditoría y para la métrica. */
-  async #announce(
+  /**
+   * La reconciliación: los veredictos que se perdieron antes de TD-093.
+   *
+   * No arregla el defecto —eso lo hace el outbox de `#apply`— sino que recupera
+   * lo que el defecto ya se llevó. En régimen normal **no encuentra nada
+   * nunca**, y eso es exactamente la señal de que la pieza (a) está puesta: una
+   * fila sólo cae aquí si está decidida y su veredicto no llegó al outbox, y
+   * desde la migración 014 las dos cosas se escriben juntas.
+   *
+   * El veredicto se reconstruye del estado de la fila, no de un evento
+   * guardado, porque no hay ninguno que guardar: por eso lleva un `messageId`
+   * nuevo. Es seguro porque la máquina de estados de `transaction-service`
+   * rechaza toda transición fuera del diagrama — un veredicto que llega sobre
+   * una transferencia ya compensada se descarta en vez de compensar dos veces.
+   *
+   * Se registra en `warn` y no en `info`: si esto encuentra algo, hubo una
+   * caída entre decidir y encolar, y alguien debería verlo aunque el sistema se
+   * haya recuperado solo.
+   */
+  public async reconcile(limit = 20): Promise<number> {
+    const olderThan = new Date(this.#clock().getTime() - RECONCILE_GRACE_MS);
+    let recovered = 0;
+
+    for (const send of await this.#repository.claimUnreconciled(olderThan, limit)) {
+      const settlement = settlementOf(send.state);
+
+      if (settlement === null) {
+        continue;
+      }
+
+      const now = this.#clock();
+      const enqueued = await this.#repository.enqueueVerdict({
+        interbankTransferId: send.interbankTransferId,
+        outbound: [
+          this.#stateChangeMessage(send, send.state, send.reason, now),
+          this.#settlementMessage(send, settlement, send.reason, now),
+        ],
+        now,
+      });
+
+      if (!enqueued) {
+        continue;
+      }
+
+      recovered += 1;
+      this.#log.warn('veredicto interbancario reconciliado: se habia perdido al publicarlo', {
+        correlationId: send.correlationId,
+        interbankTransferId: send.interbankTransferId,
+        transactionId: send.transactionId,
+        state: send.state,
+        reason: send.reason,
+        decidedAgoMs: now.getTime() - send.createdAt.getTime(),
+      });
+    }
+
+    return recovered;
+  }
+
+  /**
+   * El cambio de estado, para la auditoría. Construido, no publicado.
+   *
+   * Lo publica el `OutboxRelay` después de que la transición haya comitado
+   * (TD-093).
+   */
+  #stateChangeMessage(
     send: InterbankSend,
     state: InterbankSend['state'],
     reason: string | null,
-    at: Date | null,
-  ): Promise<void> {
-    const now = at ?? this.#clock();
-
-    await this.#messenger.event(send.origin, paymentInterbankSentV1.name, {
+    now: Date,
+  ): OutboxMessage {
+    return this.#messenger.envelopeFor(send.origin, paymentInterbankSentV1.name, {
       paymentId: send.paymentId,
       transactionId: send.transactionId,
       interbankTransferId: send.interbankTransferId,
@@ -291,7 +590,23 @@ export class SendInterbankDepositUseCase {
       reason,
       occurredAt: now.toISOString(),
     });
+  }
 
+  /**
+   * La métrica, **después** de que la transición haya comitado.
+   *
+   * Separada del evento por una razón que no es estética: una métrica se emite
+   * en memoria y no se puede meter en una transacción de base de datos. Si se
+   * midiera antes del `COMMIT`, un `ROLLBACK` dejaría medido un cambio de
+   * estado que no ocurrió — y los paneles de T-50 mentirían en el único momento
+   * en que hace falta que digan la verdad.
+   */
+  #measure(
+    send: InterbankSend,
+    state: InterbankSend['state'],
+    reason: string | null,
+    now: Date,
+  ): void {
     this.#telemetry.stateChanged({
       correlationId: send.correlationId,
       interbankTransferId: send.interbankTransferId,
@@ -302,6 +617,20 @@ export class SendInterbankDepositUseCase {
       // dominio: qué estados son un veredicto no lo decide esta capa.
       durationMs: isSendDecided(state) ? now.getTime() - send.createdAt.getTime() : null,
     });
+  }
+
+  /** El alta del depósito, que sí se publica directamente — ver `requested`. */
+  async #announceOpened(send: InterbankSend, now: Date): Promise<void> {
+    await this.#messenger.event(send.origin, paymentInterbankSentV1.name, {
+      paymentId: send.paymentId,
+      transactionId: send.transactionId,
+      interbankTransferId: send.interbankTransferId,
+      state: send.state,
+      reason: send.reason,
+      occurredAt: now.toISOString(),
+    });
+
+    this.#measure(send, send.state, send.reason, now);
   }
 
   /**
@@ -317,26 +646,25 @@ export class SendInterbankDepositUseCase {
    * `payment.interbank.sent.v1` y en la métrica, que son los tres sitios donde
    * alguien pregunta si el banco pareja está caído o es estricto.
    */
-  async #settle(
+  #settlementMessage(
     send: InterbankSend,
     settlement: 'SUCCEEDED' | 'FAILED',
     reason: string | null,
     now: Date,
-  ): Promise<void> {
+  ): OutboxMessage {
     const attempt = Math.max(1, send.attempts);
 
     if (settlement === 'SUCCEEDED') {
-      await this.#messenger.event(send.origin, paymentSucceededV1.name, {
+      return this.#messenger.envelopeFor(send.origin, paymentSucceededV1.name, {
         paymentId: send.paymentId,
         transactionId: send.transactionId,
         status: 'SUCCEEDED',
         attempt,
         succeededAt: now.toISOString(),
       });
-      return;
     }
 
-    await this.#messenger.event(send.origin, paymentFailedV1.name, {
+    return this.#messenger.envelopeFor(send.origin, paymentFailedV1.name, {
       paymentId: send.paymentId,
       transactionId: send.transactionId,
       status: 'FAILED',

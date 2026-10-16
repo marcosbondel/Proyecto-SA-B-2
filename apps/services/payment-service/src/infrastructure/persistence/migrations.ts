@@ -515,6 +515,201 @@ export const MIGRATIONS: readonly Migration[] = [
          ON interbank_reversals (created_at) WHERE status = 'PROCESSING'`,
     ],
   },
+  {
+    /*
+     * El veredicto de un depósito interbancario pasa por el outbox (TD-093).
+     *
+     * El defecto que esto cierra costó dinero de verdad. `send-interbank-deposit`
+     * escribía el estado terminal con `advance(...)` y **después** publicaba el
+     * veredicto contra el broker: dos escrituras sin una transacción común. El
+     * 2026-10-15, durante la carga de T-51, el proceso de Payment murió entre
+     * las dos — la transferencia `40dc1076-…` (Q1.00) quedó con su depósito en
+     * `TIMEOUT`, `decided_at` escrito y el evento nunca publicado. La Saga no
+     * supo que debía compensar y **Q1.00 salió de la cuenta del cliente y no
+     * volvió**. Una fila entre 1.259: es la clase de fallo que el volumen
+     * esconde.
+     *
+     * Peor que perderse: quedaba **irrecuperable**. `claimSendable` busca
+     * `state = 'PENDING'` y `claimExpired` busca `state IN ('PENDING','SENT')`,
+     * así que una fila ya decidida está fuera del alcance de los dos barridos
+     * para siempre.
+     *
+     * La solución no se inventa aquí: este mismo servicio ya la tiene en
+     * `outbox_messages` (migración 003, TD-047) para el camino del pago normal.
+     * Esto es extenderla al camino interbancario, que es consistencia y no una
+     * segunda idea.
+     */
+    name: '014_interbank_verdict_outbox',
+    statements: [
+      /*
+       * `payment_id` deja de ser obligatorio.
+       *
+       * No es un relajamiento por comodidad: un depósito interbancario **no
+       * crea fila en `payments`**. `ProcessPaymentHandler` ve el bloque
+       * `interbank` en `payment.requested.v1` y deriva el comando entero a
+       * `SendInterbankDepositUseCase`, que escribe en `interbank_sends` y en
+       * ninguna otra tabla. Así que el `paymentId` del envelope existe como
+       * identificador y **no** como fila a la que apuntar: la clave ajena lo
+       * rechazaría.
+       *
+       * La columna sigue con su `REFERENCES` para los eventos del pago normal,
+       * donde la fila sí está y el `ON DELETE CASCADE` es lo que limpia el
+       * outbox de un pago borrado. Lo que se admite es el nulo, y el relay no
+       * lee esa columna: publica `exchange`, `routing_key` y `envelope`, y los
+       * identificadores viajan dentro del envelope de todas formas.
+       */
+      `ALTER TABLE outbox_messages ALTER COLUMN payment_id DROP NOT NULL`,
+
+      /*
+       * Cuándo se encoló el veredicto de este depósito, que es distinto de
+       * cuándo se decidió.
+       *
+       * Existe para el barrido de reconciliación —la pieza (b) de TD-093— y lo
+       * que lo hace **acotado** es justo esta columna: el barrido busca filas
+       * decididas cuyo veredicto nunca llegó al outbox, y encolarlo la marca.
+       * Una vez, no en bucle.
+       *
+       * Y se auto-desactiva. A partir de esta migración `advance` escribe el
+       * veredicto y la marca en la misma transacción, así que ninguna fila
+       * nueva puede cumplir la condición. Las únicas que la cumplen son las
+       * decididas por una versión anterior del código — entre ellas la del
+       * Q1.00, que es como se recupera sin tocarla a mano. El runbook del banco
+       * pareja prohíbe acreditar a mano, y con razón: una corrección manual no
+       * deja rastro de por qué el dinero apareció.
+       */
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS verdict_enqueued_at TIMESTAMPTZ`,
+
+      /*
+       * Las filas que el barrido de reconciliación busca, y nada más.
+       *
+       * Parcial a propósito: en régimen normal este índice está **vacío**, que
+       * es la forma de que un barrido cada pocos segundos no cueste nada. Si
+       * alguna vez tiene filas, es que hubo una caída entre decidir y encolar
+       * — y entonces lo que importa es que el barrido las encuentre rápido.
+       */
+      /*
+       * Los **tres** veredictos, no los dos que TD-093 nombró.
+       *
+       * La fila de su remedio decía `state IN ('REJECTED','TIMEOUT') AND
+       * reversed_at IS NULL`, porque el caso medido fue un `TIMEOUT`. Pero
+       * perder un `ACCEPTED` es peor, no mejor: el dinero ya salió hacia el
+       * otro banco y la Saga se queda en `PAYMENT_PENDING` **para siempre** —
+       * sin compensar, porque compensar sería incorrecto, y sin completar,
+       * porque nadie se lo dijo. Es un descuadre que sólo aparece en la
+       * conciliación diaria.
+       *
+       * `reversed_at IS NULL` sobra, además: era el indicio de que la Saga
+       * nunca actuó, y `verdict_enqueued_at IS NULL` lo dice exacto. `REVERSED`
+       * queda fuera porque sólo se llega ahí por el evento de la compensación,
+       * que **implica** que el veredicto se entregó.
+       */
+      `CREATE INDEX IF NOT EXISTS interbank_sends_unreconciled_idx
+         ON interbank_sends (decided_at)
+         WHERE state IN ('ACCEPTED','REJECTED','TIMEOUT')
+           AND verdict_enqueued_at IS NULL`,
+    ],
+  },
+  {
+    /*
+     * El protocolo de TIMEOUT del emisor (TD-095).
+     *
+     * Lo que estas columnas cambian no es una estructura, es una regla sobre el
+     * dinero: **un depósito que vence ya no se compensa**. El contrato oficial le
+     * da al banco pareja 24 horas para reintentar su callback, así que a los
+     * 180 s no sabemos nada — y devolver el dinero ahí es arriesgarse a que
+     * ellos acrediten y nosotros hayamos reembolsado. Es el «monto perdido sin
+     * compensación» que §8.3 penaliza con un 50 %, en su variante invisible: los
+     * dos bancos creen haber hecho lo correcto y el descuadre sólo aparece en la
+     * conciliación diaria.
+     *
+     * Los plazos son **columnas y no temporizadores**, por lo mismo que el resto
+     * de este servicio: un pod que se reprograma no puede olvidarse de un
+     * depósito a medio resolver. Y además los hace auditables — queda escrito
+     * desde cuándo se podía liberar, no sólo que se liberó.
+     */
+    name: '015_interbank_timeout_protocol',
+    statements: [
+      /*
+       * `expires_at + 300 s`. Nulo en las filas que ya existen: su protocolo es
+       * el viejo y no se reescribe hacia atrás — una fila a medio camino entre
+       * dos versiones del código es peor que una fila con el comportamiento
+       * anterior. `claimAwaitingResolution` las ignora por eso mismo.
+       */
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS release_not_before TIMESTAMPTZ`,
+
+      /*
+       * Lo que el otro banco contestó, y cuándo.
+       *
+       * Se guarda incluso cuando la respuesta es «no contesta», porque la
+       * diferencia entre «no se ha consultado» y «se consultó y no había nadie»
+       * es la que decide si el protocolo pregunta o cancela. Un `NULL` que
+       * significara las dos cosas haría al protocolo preguntar para siempre.
+       */
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS probe_kind VARCHAR(12)`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS probe_status VARCHAR(12)`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS probed_at TIMESTAMPTZ`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS cancel_kind VARCHAR(12)`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS cancel_result VARCHAR(20)`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS cancel_requested_at TIMESTAMPTZ`,
+
+      /*
+       * El calendario del protocolo, separado de `next_attempt_at`.
+       *
+       * Son dos escaleras distintas sobre la misma fila —la de la entrega y la
+       * de la resolución— y compartir una columna haría que un reintento de
+       * envío reprogramara una consulta, o al revés. Un `CHECK` no las puede
+       * separar; la única forma es que sean dos columnas.
+       */
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS resolve_not_before TIMESTAMPTZ`,
+
+      /*
+       * Los dos vocabularios, cerrados. Un `probe_kind` que no sea uno de los
+       * tres es una traducción de HTTP que alguien añadió sin pasar por el
+       * dominio, y es mejor que falle al escribir que al decidir.
+       */
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_probe_known`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_probe_known
+         CHECK (probe_kind IS NULL OR probe_kind IN ('ANSWERED','UNKNOWN','UNREACHABLE'))`,
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_cancel_known`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_cancel_known
+         CHECK (cancel_kind IS NULL OR cancel_kind IN ('ANSWERED','UNREACHABLE'))`,
+      /*
+       * Y la coherencia que de verdad protege: un `ANSWERED` sin su valor sería
+       * una respuesta vacía que el dominio leería como «contestaron» sin saber
+       * qué, y de ahí sale una decisión sobre dinero.
+       */
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_probe_coherent`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_probe_coherent
+         CHECK ((probe_kind = 'ANSWERED') IS NOT TRUE OR probe_status IS NOT NULL)`,
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_cancel_coherent`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_cancel_coherent
+         CHECK ((cancel_kind = 'ANSWERED') IS NOT TRUE OR cancel_result IS NOT NULL)`,
+
+      /*
+       * El barrido de la resolución. Parcial: sólo las filas en `TIMEOUT` con el
+       * calendario nuevo, que son las únicas que el protocolo gobierna.
+       */
+      `CREATE INDEX IF NOT EXISTS interbank_sends_resolving_idx
+         ON interbank_sends (resolve_not_before)
+         WHERE state = 'TIMEOUT' AND release_not_before IS NOT NULL`,
+
+      /*
+       * Y el índice de TD-093 pierde el `TIMEOUT`.
+       *
+       * Desde aquí un `TIMEOUT` **no es un veredicto**: no lleva ningún final
+       * para la Saga, así que no hay nada que reconciliar y
+       * `claimUnreconciled` lo devolvería en cada barrido para descartarlo acto
+       * seguido. Las dos deudas se tocan justo en este punto, y la que manda es
+       * ésta: TD-093 garantiza que un veredicto no se pierda, y TD-095 decide
+       * que el vencimiento no lo es.
+       */
+      `DROP INDEX IF EXISTS interbank_sends_unreconciled_idx`,
+      `CREATE INDEX IF NOT EXISTS interbank_sends_unreconciled_idx
+         ON interbank_sends (decided_at)
+         WHERE state IN ('ACCEPTED','REJECTED')
+           AND verdict_enqueued_at IS NULL`,
+    ],
+  },
 ];
 
 /**
