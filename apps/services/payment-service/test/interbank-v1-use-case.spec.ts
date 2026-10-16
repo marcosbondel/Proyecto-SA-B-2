@@ -102,7 +102,8 @@ class RepositorioDoble implements InterbankV1Repository {
     this.constanciasDeDesconocido.push(input.interbankTransferId);
   }
 
-  async claimExpired(): Promise<readonly V1DepositRow[]> {
+  /* La firma completa del puerto: una prueba la sustituye para ver el límite. */
+  async claimExpired(_now: Date, _limit: number): Promise<readonly V1DepositRow[]> {
     return [...this.filas.values()].filter((f) => f.status === 'PROCESSING');
   }
 
