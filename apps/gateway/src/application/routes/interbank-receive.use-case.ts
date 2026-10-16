@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 
-import { paymentInterbankReceiveV1 } from '@bank/contracts';
+import {
+  interbankDepositRequest,
+  interbankMinorUnits,
+  paymentInterbankReceiveV1,
+} from '@bank/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 
 import { GatewayError } from '../errors/gateway-error';
@@ -8,16 +12,8 @@ import { MESSAGE_PUBLISHER } from '../ports';
 import type { MessagePublisherPort } from '../ports';
 import { envelopeForRequest } from '../request-envelope';
 
-const inputSchema = paymentInterbankReceiveV1.schema
-  .pick({
-    interbankTransferId: true,
-    idempotencyKey: true,
-    originBankCode: true,
-    destinationBankCode: true,
-    accountId: true,
-    amount: true,
-  })
-  .strict();
+/** El cuerpo que manda el banco pareja vive en `@bank/contracts` (T-56). */
+const inputSchema = interbankDepositRequest;
 
 /** An authenticated partner request becomes one broker command and a 202 receipt. */
 @Injectable()
@@ -35,9 +31,27 @@ export class InterbankReceiveUseCase {
         input.error.issues[0]?.path.join('.'),
       );
     }
+    const { timestamp, amount, ...resto } = input.data;
+    const amountMinor =
+      'amountMinor' in amount ? amount.amountMinor : interbankMinorUnits(amount.value);
+
+    if (amountMinor === null) {
+      throw GatewayError.validation(
+        'El monto no es un decimal de dos cifras ni un entero de centavos.',
+        'amount',
+      );
+    }
+
     const payload = paymentInterbankReceiveV1.schema.parse({
-      ...input.data,
-      depositId: depositIdFor(input.data.originBankCode, input.data.interbankTransferId),
+      ...resto,
+      amount: { amountMinor, currency: amount.currency },
+      depositId: depositIdFor(resto.originBankCode, resto.interbankTransferId),
+      /*
+       * Los dos sellos de tiempo, y separados a propósito: con uno solo no se
+       * puede distinguir un reloj desfasado de un depósito que tardó en llegar,
+       * y los dos se arreglan distinto.
+       */
+      partnerTimestamp: timestamp,
       requestedAt: new Date().toISOString(),
     });
     await this.publisher.publish(

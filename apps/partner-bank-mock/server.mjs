@@ -125,6 +125,12 @@ export function createPartnerBankMock(options) {
             destinationBankCode,
             accountId: body.accountId,
             amount: body.amount,
+            /*
+             * Obligatorio desde T-56: §4.1 lo pide entre los datos mínimos del
+             * mensaje. Lo pone el mock si quien lo dispara no lo trae, porque
+             * aquí el mock **es** el banco de origen y el sello es suyo.
+             */
+            timestamp: body.timestamp ?? new Date().toISOString(),
           }),
         });
         const result = await upstream.json();
