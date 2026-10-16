@@ -30,6 +30,15 @@ function uuidFor(field: string): string {
 /** Patterns the primitives use, answered with a value that satisfies them. */
 const BY_PATTERN: readonly (readonly [RegExp, string])[] = [
   [/\^\[A-Z\]\{3\}\$/, 'GTQ'],
+  // Los patrones del contrato interbancario oficial (T-56). Van antes que los
+  // genéricos de abajo porque son más específicos y varios casan con los dos.
+  [/\^BANK\[0-9\]\{2\}\$/, 'BANK07'],
+  // El monto como texto: `^[0-9]{1,5}\.[0-9]{2}$`.
+  [/\[0-9\]\{1,5\}\\\.\[0-9\]\{2\}/, '150.00'],
+  // El número de cuenta: `^[A-Za-z0-9-]{1,34}$`.
+  [/\[A-Za-z0-9-\]\{1,34\}/, '02-000000052'],
+  // La fecha de la conciliación: `^\d{4}-\d{2}-\d{2}$`.
+  [/\\d\{4\}-\\d\{2\}-\\d\{2\}/, '2026-10-20'],
   [/\[A-Z\]\[A-Z0-9_\]/, 'BANK'],
   [/\[0-9a-f\]\{64\}/, 'a'.repeat(64)],
   // A W3C trace id (T-45): the specification's own example.
@@ -79,6 +88,20 @@ function fromNode(node: JsonSchema, field = 'id'): unknown {
         value[key] = fromNode(child, key);
       }
       if (value.eligible === true && 'reason' in value) value.reason = null;
+      /*
+       * La misma clase de arreglo que el de arriba, para la refinación del
+       * contrato oficial (T-56): sólo un duplicado lleva estado, y todo
+       * duplicado lo lleva. El generador elige la primera opción del enum
+       * —`ACCEPTED_FOR_PROCESSING`— y rellena lo nulable, que es la combinación
+       * que la refinación prohíbe.
+       */
+      if (
+        typeof value.admission === 'string' &&
+        value.admission !== 'DUPLICATE' &&
+        'status' in value
+      ) {
+        value.status = null;
+      }
       return value;
     }
     case 'array': {

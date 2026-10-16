@@ -34,8 +34,8 @@ describe('the provisional incoming interbank conversation', () => {
       depositId: DEPOSIT_ID,
       interbankTransferId: 'BANCO-A-123',
       idempotencyKey: 'origin-123',
-      originBankCode: 'BANCO_A',
-      destinationBankCode: 'BANK_USAC',
+      originBankCode: 'BANK07',
+      destinationBankCode: 'BANK02',
       accountId: ACCOUNT_ID,
       amount: { amountMinor: 101, currency: 'GTQ' },
       // Los dos sellos de tiempo, desde T-56: el del otro banco y el nuestro.
@@ -78,8 +78,8 @@ describe('interbankDepositRequest', () => {
   const base = {
     interbankTransferId: 'partner-1',
     idempotencyKey: 'partner-1',
-    originBankCode: 'PARTNER_MOCK',
-    destinationBankCode: 'BANK_USAC',
+    originBankCode: 'BANK99',
+    destinationBankCode: 'BANK02',
     accountId: 'b0000000-0000-4000-8000-000000000003',
     timestamp: '2026-10-15T12:00:00.000Z',
   };

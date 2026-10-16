@@ -1,13 +1,13 @@
 import { validateIncoming } from '../src/domain/interbank';
 
 const policy = {
-  bankCode: 'BANK_USAC',
-  partnerBankCode: 'PARTNER_MOCK',
+  bankCode: 'BANK02',
+  partnerBankCode: 'BANK99',
   maxAmountMinor: 100_000_000,
 };
 const request = {
-  originBankCode: 'PARTNER_MOCK',
-  destinationBankCode: 'BANK_USAC',
+  originBankCode: 'BANK99',
+  destinationBankCode: 'BANK02',
   amount: { amountMinor: 12500, currency: 'GTQ' },
 };
 

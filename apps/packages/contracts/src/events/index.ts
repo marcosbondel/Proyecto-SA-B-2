@@ -122,11 +122,27 @@ import {
   paymentInterbankCallbackReceivedV1,
   paymentInterbankSentV1,
 } from './interbank/outgoing.v1';
+import {
+  paymentInterbankV1CancelQueryV1,
+  paymentInterbankV1CancelRepliedV1,
+  paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankV1ReconciliationRepliedV1,
+  paymentInterbankV1ResultReceivedV1,
+  paymentInterbankV1ReversalQueryV1,
+  paymentInterbankV1ReversalRepliedV1,
+  paymentInterbankV1ReversalRequestedV1,
+  paymentInterbankV1StatusQueryV1,
+  paymentInterbankV1StatusRepliedV1,
+  paymentInterbankV1TransferQueryV1,
+  paymentInterbankV1TransferRepliedV1,
+} from './interbank/v1-messages';
 
 export type { Category, MessageContract } from './contract';
 export { defineContract } from './contract';
 export * from './interbank/incoming.v1';
 export * from './interbank/outgoing.v1';
+export * from './interbank/v1';
+export * from './interbank/v1-messages';
 
 export * from './customer/customer.activation.requested.v1';
 export * from './customer/customer.authenticate.replied.v1';
@@ -365,6 +381,26 @@ export const catalog: readonly MessageContract[] = [
   paymentInterbankRejectedV1,
   paymentInterbankCallbackReceivedV1,
   paymentInterbankSentV1,
+  /*
+   * Los seis del contrato oficial (T-56). Sin esta lista el Gateway responde
+   * `500`: `catalogByName.get(...)` no encuentra el contrato y
+   * `BrokerPublisherAdapter` lo trata como lo que es, un desacuerdo entre el
+   * catálogo y las rutas. El comentario de ese archivo lo llama «inalcanzable
+   * desde una ruta, que siempre nombra un contrato que importó» — y lo era,
+   * hasta que un contrato importado no estuvo en el catálogo.
+   */
+  paymentInterbankV1TransferQueryV1,
+  paymentInterbankV1TransferRepliedV1,
+  paymentInterbankV1StatusQueryV1,
+  paymentInterbankV1StatusRepliedV1,
+  paymentInterbankV1CancelQueryV1,
+  paymentInterbankV1CancelRepliedV1,
+  paymentInterbankV1ResultReceivedV1,
+  paymentInterbankV1ReversalRequestedV1,
+  paymentInterbankV1ReversalQueryV1,
+  paymentInterbankV1ReversalRepliedV1,
+  paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankV1ReconciliationRepliedV1,
 ];
 
 /**

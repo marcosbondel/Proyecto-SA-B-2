@@ -402,6 +402,119 @@ export const MIGRATIONS: readonly Migration[] = [
          USING destination_account_id::text`,
     ],
   },
+  /**
+   * Lo que el **contrato oficial** exige del depósito recibido y la tabla no
+   * tenía (T-56).
+   *
+   * Cuatro columnas y un estado. Las columnas son datos del contrato que antes
+   * no existían o viajaban en otro formato; el estado es `CANCELLED`, que el
+   * contrato trae y no es un rechazo con otro nombre — es el emisor diciendo
+   * «ya no lo quiero» después de que su plazo venciera.
+   *
+   * `partner_expires_at` es la que cambia el comportamiento: el contrato prohíbe
+   * acreditar después de ella «aunque el mensaje llegue tarde (reintento,
+   * DLQ)», y dice que si se acredita «la responsabilidad y la devolución son
+   * suyas». Guardarla es lo que permite que el barrido rechace por vencimiento
+   * un depósito que se quedó a medias, en vez de acreditarlo cuando el otro
+   * banco ya lo dio por perdido y liberó su reserva — que es la forma exacta de
+   * que el mismo dinero exista dos veces.
+   *
+   * El `CHECK` del estado se reescribe en vez de ampliarse porque PostgreSQL no
+   * sabe ampliar un `CHECK`: se tira y se vuelve a crear, y las dos cosas en la
+   * misma transacción para que no exista un instante sin restricción.
+   */
+  {
+    name: '012_interbank_deposits_contract_fields',
+    statements: [
+      `ALTER TABLE interbank_deposits
+         ADD COLUMN IF NOT EXISTS origin_account VARCHAR(34)`,
+      `ALTER TABLE interbank_deposits
+         ADD COLUMN IF NOT EXISTS partner_created_at TIMESTAMPTZ`,
+      `ALTER TABLE interbank_deposits
+         ADD COLUMN IF NOT EXISTS partner_expires_at TIMESTAMPTZ`,
+      `ALTER TABLE interbank_deposits
+         ADD COLUMN IF NOT EXISTS description VARCHAR(140)`,
+      `ALTER TABLE interbank_deposits
+         DROP CONSTRAINT IF EXISTS interbank_deposits_stage_check`,
+      `ALTER TABLE interbank_deposits
+         ADD CONSTRAINT interbank_deposits_stage_check
+         CHECK (stage IN ('ELIGIBILITY','CREDIT','ACCEPTED','REJECTED','CANCELLED'))`,
+      /*
+       * Los tres `CHECK` que relacionan el estado con las otras columnas también
+       * mencionan los estados finales, así que crecen con `CANCELLED`. Si no,
+       * cancelar un depósito fallaría por una restricción que nadie recordaría
+       * haber escrito.
+       */
+      `ALTER TABLE interbank_deposits DROP CONSTRAINT IF EXISTS interbank_deposits_check`,
+      `ALTER TABLE interbank_deposits
+         ADD CONSTRAINT interbank_deposits_decided_at_check
+         CHECK ((stage IN ('ACCEPTED','REJECTED','CANCELLED')) = (decided_at IS NOT NULL))`,
+      `ALTER TABLE interbank_deposits DROP CONSTRAINT IF EXISTS interbank_deposits_check1`,
+      `ALTER TABLE interbank_deposits
+         ADD CONSTRAINT interbank_deposits_reason_check
+         CHECK ((stage IN ('REJECTED','CANCELLED')) = (rejection_reason IS NOT NULL))`,
+      `ALTER TABLE interbank_deposits DROP CONSTRAINT IF EXISTS interbank_deposits_check2`,
+      `ALTER TABLE interbank_deposits
+         ADD CONSTRAINT interbank_deposits_result_check
+         CHECK ((stage IN ('ACCEPTED','REJECTED','CANCELLED')) = (result_envelope IS NOT NULL))`,
+      /*
+       * El barrido del vencimiento necesita encontrar los que ya pasaron de
+       * plazo sin recorrer la tabla. Parcial, porque los decididos no vencen.
+       */
+      `CREATE INDEX IF NOT EXISTS interbank_deposit_expiry_idx
+         ON interbank_deposits (partner_expires_at)
+         WHERE stage IN ('ELIGIBILITY','CREDIT')`,
+      /* La conciliación consulta por banco de origen y día. */
+      `CREATE INDEX IF NOT EXISTS interbank_deposit_reconciliation_idx
+         ON interbank_deposits (origin_bank_code, created_at)`,
+    ],
+  },
+  /**
+   * Los reversos (T-56, `POST /reversals`).
+   *
+   * El caso excepcional del contrato, y el que más fácil se omite por parecer
+   * raro: el banco emisor ya liberó su reserva y **después** le llegó un
+   * `ACCEPTED`. Nosotros tenemos el dinero acreditado y él no lo descontó, así
+   * que hay que deshacerlo — y el contrato dice cómo, que es la parte
+   * interesante: **no** con una operación mágica, sino debitando la cuenta y
+   * **mandando un depósito nuevo** por el flujo normal de `POST /transfers`.
+   *
+   * Por eso esta tabla guarda `refund_transfer_id`: el reverso no acaba cuando
+   * se debita, acaba cuando el depósito de devolución está enviado. `COMPLETED`
+   * sin ese identificador sería decir que devolvimos el dinero sin poder
+   * señalar por dónde salió.
+   *
+   * `original_transfer_id` es `UNIQUE` además de `reversal_id`: dos reversos del
+   * mismo depósito son dos devoluciones del mismo dinero, y eso hay que
+   * impedirlo en la base y no en un `if`.
+   */
+  {
+    name: '013_interbank_reversals',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS interbank_reversals (
+         reversal_id          UUID PRIMARY KEY,
+         original_transfer_id UUID        NOT NULL UNIQUE,
+         requester_bank_code  VARCHAR(8)  NOT NULL,
+         amount_minor         BIGINT      NOT NULL CHECK (amount_minor > 0),
+         status               VARCHAR(12) NOT NULL
+                              CHECK (status IN ('PROCESSING','COMPLETED','FAILED')),
+         -- El depósito de devolución que se mandó. Obligatorio en COMPLETED y
+         -- prohibido en los otros dos: un reverso completado sin él no se
+         -- puede auditar.
+         refund_transfer_id   UUID,
+         reason_message       VARCHAR(200),
+         origin_envelope      JSONB       NOT NULL,
+         trace_context        TEXT,
+         created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+         completed_at         TIMESTAMPTZ,
+         CHECK ((status = 'COMPLETED') = (refund_transfer_id IS NOT NULL)),
+         CHECK ((status = 'COMPLETED') = (completed_at IS NOT NULL)),
+         CHECK ((status = 'FAILED') = (reason_message IS NOT NULL))
+       )`,
+      `CREATE INDEX IF NOT EXISTS interbank_reversal_pending_idx
+         ON interbank_reversals (created_at) WHERE status = 'PROCESSING'`,
+    ],
+  },
 ];
 
 /**

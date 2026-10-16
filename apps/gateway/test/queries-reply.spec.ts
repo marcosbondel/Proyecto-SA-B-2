@@ -103,6 +103,9 @@ describe('the five queries that wait for an answer', () => {
   describe('a list of accounts', () => {
     const row = {
       accountId: ACCOUNT,
+      // El número que viaja a otro banco (T-56): un UUID no cabe en el
+      // `AccountNumber` del contrato interbancario.
+      accountNumber: '02-000000001',
       customerId: ACTOR,
       accountType: 'MONETARIA' as const,
       balance: { amountMinor: 125_000, currency: 'GTQ' },
@@ -313,8 +316,20 @@ describe('the five queries that wait for an answer', () => {
         createdAt: '2026-08-19T14:32:08.100Z',
         updatedAt: '2026-08-19T14:32:09.100Z',
         transitions: [
-          { from: null, to: 'PENDING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.100Z' },
-          { from: 'PENDING', to: 'DEBITING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.200Z' },
+          {
+            from: null,
+            to: 'PENDING',
+            event: 'transfer.requested.v1',
+            reason: null,
+            occurredAt: '2026-08-19T14:32:08.100Z',
+          },
+          {
+            from: 'PENDING',
+            to: 'DEBITING',
+            event: 'transfer.requested.v1',
+            reason: null,
+            occurredAt: '2026-08-19T14:32:08.200Z',
+          },
         ],
       });
 

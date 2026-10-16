@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(118);
+    expect(catalog).toHaveLength(130);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,7 +77,7 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the eighty-three messages recorded as an extension, and no others', () => {
+  it('adds exactly the ninety-five messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
@@ -286,6 +286,30 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'payment.interbank.receive.v1',
       'payment.interbank.rejected.v1',
       'payment.interbank.sent.v1',
+      /*
+       * Los doce del **contrato interbancario oficial** (T-56), seis preguntas y
+       * seis respuestas. Son más que los dos del flujo provisional porque el
+       * contrato tiene siete operaciones y cuatro de ellas necesitan una
+       * respuesta: el Gateway no puede traducir `202`, `200` y `409` sin saber
+       * qué había, ni devolver un estado que no ha preguntado.
+       *
+       * Llevan `v1` en el nombre del mensaje —`payment.interbank.v1.…`— y no es
+       * la versión del mensaje sino **la del contrato ajeno**. Si el curso
+       * publica una v2, estos doce siguen existiendo y aparecen doce más: dos
+       * bancos no migran de contrato el mismo día.
+       */
+      'payment.interbank.v1.cancel.query.v1',
+      'payment.interbank.v1.cancel.replied.v1',
+      'payment.interbank.v1.reconciliation.query.v1',
+      'payment.interbank.v1.reconciliation.replied.v1',
+      'payment.interbank.v1.result.received.v1',
+      'payment.interbank.v1.reversal.query.v1',
+      'payment.interbank.v1.reversal.replied.v1',
+      'payment.interbank.v1.reversal.requested.v1',
+      'payment.interbank.v1.status.query.v1',
+      'payment.interbank.v1.status.replied.v1',
+      'payment.interbank.v1.transfer.query.v1',
+      'payment.interbank.v1.transfer.replied.v1',
       'payment.list.query.v1',
       'payment.list.replied.v1',
       /*

@@ -1,6 +1,12 @@
 import type { MessageEnvelope, PaymentInterbankReceiveV1 } from '@bank/contracts';
+import type { InterbankReceiptLanding, InterbankReceiptState } from '../domain/interbank-receipt';
 
-export type InterbankStage = 'ELIGIBILITY' | 'CREDIT' | 'ACCEPTED' | 'REJECTED';
+/**
+ * Los cinco estados del depósito recibido. `CANCELLED` llegó con el contrato
+ * oficial (T-56) y lo define `domain/interbank-receipt.ts`, que es quien decide
+ * las transiciones; esto es sólo el alias que usan los puertos.
+ */
+export type InterbankStage = InterbankReceiptState;
 
 export interface InterbankDeposit {
   readonly depositId: string;
@@ -30,7 +36,7 @@ export interface InterbankRepository {
   advance(input: {
     readonly depositId: string;
     readonly from: 'ELIGIBILITY' | 'CREDIT';
-    readonly to: 'CREDIT' | 'ACCEPTED' | 'REJECTED';
+    readonly to: InterbankReceiptLanding;
     readonly reason: string | null;
     readonly result: MessageEnvelope<unknown> | null;
     readonly now: Date;

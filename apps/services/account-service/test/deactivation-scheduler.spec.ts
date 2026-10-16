@@ -1,7 +1,11 @@
 import { DeactivationScheduler } from '../src/infrastructure/scheduler/deactivation.scheduler';
 import { DeactivateInactiveAccountsUseCase } from '../src/application/deactivate-inactive-accounts.use-case';
-import { openAccount } from '../src/domain/account';
-import { FixedClock, InMemoryAccountRepository, RecordingPublisher } from './support/in-memory';
+import {
+  FixedClock,
+  InMemoryAccountRepository,
+  RecordingPublisher,
+  cuentaPersistida,
+} from './support/in-memory';
 
 /**
  * The scheduler, with a clock a test owns and time it can move.
@@ -25,7 +29,12 @@ function fixture() {
   const clock = new FixedClock(OPENED);
 
   repository.accounts.set(ACCOUNT, {
-    ...openAccount({ accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'AHORRO', now: OPENED }),
+    ...cuentaPersistida({
+      accountId: ACCOUNT,
+      customerId: CUSTOMER,
+      accountType: 'AHORRO',
+      now: OPENED,
+    }),
     balanceMinor: 2_500,
   });
 
@@ -112,11 +121,16 @@ describe('the deactivation job, driven by a clock a test owns', () => {
       const clock = new FixedClock(OPENED);
 
       repository.accounts.set(ACCOUNT, {
-        ...openAccount({ accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'AHORRO', now: OPENED }),
+        ...cuentaPersistida({
+          accountId: ACCOUNT,
+          customerId: CUSTOMER,
+          accountType: 'AHORRO',
+          now: OPENED,
+        }),
         balanceMinor: 1_000,
       });
       repository.accounts.set(OTHER_ACCOUNT, {
-        ...openAccount({
+        ...cuentaPersistida({
           accountId: OTHER_ACCOUNT,
           customerId: CUSTOMER,
           accountType: 'MONETARIA',

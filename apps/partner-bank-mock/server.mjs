@@ -7,8 +7,8 @@ export function createPartnerBankMock(options) {
   const {
     gatewayUrl = 'http://localhost:3000',
     token = '',
-    bankCode = 'PARTNER_MOCK',
-    destinationBankCode = 'BANK_USAC',
+    bankCode = 'BANK99',
+    destinationBankCode = 'BANK02',
     callbackMode = 'ACCEPT',
     callbackDelayMs = 1000,
     callbackFailCount = 0,
