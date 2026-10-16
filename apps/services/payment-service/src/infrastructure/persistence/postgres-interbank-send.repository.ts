@@ -128,7 +128,10 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
    * hace es `ON CONFLICT DO UPDATE`: eso reabriría un depósito ya decidido.
    */
   async open(input: {
-    send: Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt'>;
+    send: Omit<
+      InterbankSend,
+      'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt' | 'probe' | 'cancel' | 'resolveNotBefore'
+    >;
     now: Date;
   }): Promise<{ kind: 'CREATED' | 'DUPLICATE'; send: InterbankSend }> {
     const s = input.send;
