@@ -38,8 +38,16 @@ function hechos(overrides: Partial<TimeoutFacts> = {}): TimeoutFacts {
   };
 }
 
-const contesta = (status: PartnerProbe extends { status: infer S } ? S : never): PartnerProbe =>
-  ({ kind: 'ANSWERED', status }) as PartnerProbe;
+/*
+ * Los cuatro estados del contrato, escritos. La primera versión de esto usaba
+ * `PartnerProbe extends { status: infer S } ? S : never`, que parece más listo y
+ * resuelve a **`never`**: `PartnerProbe` es una unión, `extends` distribuye, y
+ * los miembros `UNKNOWN` y `UNREACHABLE` no tienen `status`. Jest lo dejaba
+ * pasar y lo encontró `tsc`.
+ */
+const contesta = (
+  status: 'PROCESSING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED',
+): PartnerProbe => ({ kind: 'ANSWERED', status });
 const cancela = (result: 'CANCELLED' | 'ALREADY_ACCEPTED' | 'ALREADY_REJECTED'): PartnerCancel => ({
   kind: 'ANSWERED',
   result,

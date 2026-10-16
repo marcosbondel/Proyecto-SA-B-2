@@ -56,7 +56,10 @@ suite('interbank send persistence', () => {
 
   function nuevo(
     overrides: Partial<
-      Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt'>
+      Omit<
+        InterbankSend,
+        'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt' | 'probe' | 'cancel' | 'resolveNotBefore'
+      >
     > = {},
   ) {
     return {
@@ -68,7 +71,9 @@ suite('interbank send persistence', () => {
       destinationAccount: 'cuenta-de-alla-1',
       amount: { amountMinor: 12_500, currency: 'GTQ' },
       correlationId: randomUUID(),
-      confirmationDueAt: new Date(now.getTime() + 30_000),
+      // Los plazos del contrato, no los 30 s de antes de TD-095.
+      confirmationDueAt: new Date(now.getTime() + 180_000),
+      releaseNotBefore: new Date(now.getTime() + 180_000 + 300_000),
       createdAt: now,
       traceContext: null,
       origin: origin(),
@@ -95,14 +100,24 @@ suite('interbank send persistence', () => {
     expect(abierto.send.state).toBe('PENDING');
     expect(abierto.send.attempts).toBe(0);
 
-    const fila = await pool.query<{ next_attempt_at: Date; confirmation_due_at: Date }>(
-      'SELECT next_attempt_at, confirmation_due_at FROM interbank_sends WHERE interbank_transfer_id = $1',
+    const fila = await pool.query<{
+      next_attempt_at: Date;
+      confirmation_due_at: Date;
+      release_not_before: Date;
+    }>(
+      `SELECT next_attempt_at, confirmation_due_at, release_not_before
+         FROM interbank_sends WHERE interbank_transfer_id = $1`,
       [abierto.send.interbankTransferId],
     );
 
     // El plazo es una COLUMNA, que es todo el punto: un pod nuevo lo encuentra.
     expect(fila.rows[0]?.next_attempt_at).toEqual(now);
-    expect(fila.rows[0]?.confirmation_due_at).toEqual(new Date(now.getTime() + 30_000));
+    // 180 s del contrato, no los 30 s que ponía una variable de entorno
+    // (TD-095). Un plazo de interoperabilidad que cada banco configura a su
+    // gusto no es un plazo.
+    expect(fila.rows[0]?.confirmation_due_at).toEqual(new Date(now.getTime() + 180_000));
+    // Y el margen antes de poder liberar a ciegas: 300 s más, también columna.
+    expect(fila.rows[0]?.release_not_before).toEqual(new Date(now.getTime() + 480_000));
   });
 
   it('el mismo comando dos veces es un depósito, no dos', async () => {
@@ -282,7 +297,7 @@ suite('interbank send persistence', () => {
       now,
     });
 
-    const expirados = await repository.claimExpired(new Date(now.getTime() + 31_000), 10);
+    const expirados = await repository.claimExpired(new Date(now.getTime() + 180_001), 10);
     const ids = expirados.map((s) => s.interbankTransferId);
 
     expect(ids).toContain(pendiente.send.interbankTransferId);
