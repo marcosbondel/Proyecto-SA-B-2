@@ -142,6 +142,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-51-load-and-failures-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/qa/backend/T-46-interbank-receipt-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/qa/backend/T-49-observability-stack-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/qa/backend/T-56-interbank-reconciliation-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/qa/backend/T-50-dashboards-alerts-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/qa/backend/T-57-local-stack-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/qa/backend/T-47-interbank-send-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
