@@ -1,0 +1,363 @@
+{{/*
+  Quién puede hablar con los almacenes de telemetría (T-54, cierra TD-088).
+
+  Hasta aquí, CUALQUIER pod de cualquier namespace podía escribir en Tempo, leer
+  Loki, consultar Prometheus o empujar a los dos Collectors. Lo expuesto no son
+  datos de clientes —`@bank/observability` redacta los campos sensibles y
+  enmascara los JWT y los correos antes de exportar— es la telemetría misma. Y
+  el filo está ahí:
+
+      un pod que puede escribir en Tempo puede falsificar una traza,
+      y evidencia falsificada es peor que ninguna.
+
+  En un proyecto que se califica con la evidencia de observabilidad, eso no es
+  teórico.
+
+  ESTO NO HACE NADA SIN UN APLICADOR. Kubernetes ACEPTA una NetworkPolicy sin
+  tener quién la aplique, y la ignora: el API server la guarda, `kubectl get` la
+  muestra, y el tráfico pasa igual. En GKE hace falta
+  `datapath_provider = "ADVANCED_DATAPATH"` (`infra/terraform/gcp/gke.tf`), que
+  sólo se puede fijar AL CREAR el clúster. En kind con kindnet tampoco se
+  aplican. Por eso `networkPolicies.enabled` es `false` por defecto: una
+  política que no se puede verificar y que sí se aplica es una caída, no una
+  protección. El procedimiento para encenderlas y comprobarlas está en
+  `docs/operations/CLOUD.md`.
+
+  LAS DOS REGLAS QUE MÁS SE OLVIDAN, y que este archivo aprendió leyendo el
+  render en vez de suponiendo:
+
+  1. El DNS. Un `Egress` que no permite el puerto 53 hacia `kube-dns` rompe
+     todo lo demás, y el síntoma no se parece a una política: se parece a que
+     Tempo «no existe». Va en su propia política, para los siete componentes.
+
+  2. Una política filtra el PUERTO DEL POD, no el del Service. Grafana consulta
+     `http://prometheus-server` (puerto 80) y eso llega al contenedor en 9090:
+     abrir el 80 no habría abierto nada. Lo mismo con Grafana, cuyo Service
+     expone 80 y cuyo pod escucha en 3000.
+
+  Los selectores de abajo salieron de `helm template` y no del nombre del
+  subchart: los dos Collectors se etiquetan con su ALIAS
+  (`app.kubernetes.io/name: otlpGateway` / `logAgent`), no con
+  `opentelemetry-collector`.
+*/}}
+{{- if .Values.networkPolicies.enabled }}
+{{- $etiquetas := dict "app.kubernetes.io/managed-by" .Release.Service "app.kubernetes.io/part-of" "bank-usac" }}
+---
+# Nadie entra ni sale, salvo lo que las políticas de abajo abran.
+#
+# Va primero a propósito: en Kubernetes las políticas sólo SUMAN permisos, así
+# que sin este `default-deny` las demás son documentación.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+
+---
+# El DNS, para todo el namespace. Ver la nota 1 de la cabecera.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+
+---
+# El Collector de OTLP: LA ÚNICA PUERTA POR LA QUE ENTRA TELEMETRÍA.
+#
+# Entra de los namespaces del banco, y de Prometheus, que lo raspa por dos
+# puertos distintos: el 8888 son las métricas del Collector sobre sí mismo
+# (`kubernetes-pods`, por su anotación) y el 8889 son las del banco que él
+# reexporta (el job estático `otel-gateway`). Abrir sólo uno deja la mitad de
+# los paneles en blanco.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otlp-gateway
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otlpGateway
+  policyTypes: [Ingress, Egress]
+  ingress:
+    {{- with .Values.networkPolicies.bankNamespaces }}
+    - from:
+        {{- range . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 4318 }
+    {{- end }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - { protocol: TCP, port: 8888 }
+        - { protocol: TCP, port: 8889 }
+  egress:
+    # Lo único que exporta hacia fuera del pod: las trazas a Tempo. Las métricas
+    # las sirve él y las raspa Prometheus, así que no hay salida para ellas.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tempo
+      ports:
+        - { protocol: TCP, port: 4317 }
+
+---
+# El agente de logs: un DaemonSet que lee el disco del nodo y empuja a Loki.
+#
+# Su única entrada es el raspado de Prometheus. Nadie le pide nada: un proceso
+# que sólo escribe no tiene por qué ser alcanzable, y ésta es la política que
+# mejor muestra para qué sirven.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: log-agent
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: logAgent
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - { protocol: TCP, port: 8888 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: loki
+      ports:
+        - { protocol: TCP, port: 3100 }
+
+---
+# Tempo: SÓLO EL COLLECTOR ESCRIBE, SÓLO GRAFANA LEE.
+#
+# Es la política que cierra el agujero que TD-088 nombraba. Sin ella, cualquier
+# pod del clúster puede mandar un span con el `traceId` que quiera. Su
+# almacenamiento es el volumen del pod, así que no tiene salida ninguna: sólo el
+# DNS que le da la política común.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tempo
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tempo
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otlpGateway
+      ports:
+        - { protocol: TCP, port: 4317 }
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - { protocol: TCP, port: 3200 }
+
+---
+# Loki: sólo el agente escribe, sólo Grafana lee.
+#
+# Las dos reglas hacia sí mismo son el `memberlist` del modo `single-binary`:
+# aunque haya una sola réplica, el anillo se forma hablando con su propio
+# Service, y eso SÍ es tráfico de pod a pod que la política evalúa.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: loki
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: logAgent
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - { protocol: TCP, port: 3100 }
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: loki
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: loki
+
+---
+# Prometheus: sólo Grafana lo consulta, y SALE A DONDE SEA. Esto último es una
+# decisión, no un descuido.
+#
+# El chart conserva sus ocho jobs por descubrimiento, y dos de ellos son
+# load-bearing para el dashboard de recursos: `container_cpu_usage_seconds_total`
+# y `container_memory_working_set_bytes` vienen de cadvisor, que se raspa con
+# `role: node` — es decir contra la IP DEL NODO en el 10250, que no es un pod y
+# no la alcanza ningún `podSelector`. El `kubernetes-api-servers` necesita el
+# endpoint del maestro, que en este clúster es público y por tanto no es un CIDR
+# que la plantilla pueda conocer.
+#
+# Acotarle la salida con `ipBlock` significaría codificar dos CIDR del entorno
+# en el chart y que un valor equivocado apague PANELES SIN DAR NINGÚN ERROR —
+# un target `DOWN` en Prometheus y un hueco en Grafana. Y el beneficio sería
+# escaso: lo que TD-088 protege es que nadie ESCRIBA telemetría falsa, y eso lo
+# consiguen las entradas de Tempo, Loki y el Collector. Que Prometheus pueda
+# salir no permite forjar nada.
+#
+# Queda registrado como el límite de este cambio en TD-088.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        # El puerto del POD. El Service expone el 80. Ver la nota 2.
+        - { protocol: TCP, port: 9090 }
+  egress:
+    - {}
+
+---
+# Grafana: entra quien haga `port-forward` y sale a los tres datasources, al
+# webhook de alertas y al API server.
+#
+# `port-forward` es un túnel del API server, no tráfico de pod, así que ninguna
+# política lo ve; la entrada abierta en el 3000 es para cuando esto se exponga
+# por un Service de verdad.
+#
+# Las dos salidas que no son obvias:
+#   - El webhook del banco es LA ÚNICA SALIDA de este namespace hacia los
+#     servicios, y es la que hace que una alerta llegue a la bitácora de
+#     auditoría en vez de quedarse en la consola de Grafana (T-51).
+#   - El API server lo necesita el SIDECAR, no Grafana: los nueve dashboards de
+#     T-50 llegan como ConfigMaps que el sidecar DESCUBRE observando la API. Sin
+#     esta regla el stack arranca entero y no hay ni un dashboard, que es
+#     exactamente el artefacto que se califica.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grafana
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 3000 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - { protocol: TCP, port: 9090 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tempo
+      ports:
+        - { protocol: TCP, port: 3200 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: loki
+      ports:
+        - { protocol: TCP, port: 3100 }
+    {{- with .Values.networkPolicies.bankNamespaces }}
+    - to:
+        {{- range . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: 3000 }
+    {{- end }}
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicies.apiServerCidr | quote }}
+      ports:
+        - { protocol: TCP, port: 443 }
+
+---
+# kube-state-metrics: sólo Prometheus lo raspa, y él habla con el API server.
+# De ahí salen los nueve `kube_*` que usan los dashboards de despliegue y HPA.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kube-state-metrics
+  namespace: {{ .Release.Namespace }}
+  labels: {{- toYaml $etiquetas | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kube-state-metrics
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicies.apiServerCidr | quote }}
+      ports:
+        - { protocol: TCP, port: 443 }
+{{- end }}
