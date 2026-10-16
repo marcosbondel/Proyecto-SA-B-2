@@ -70,10 +70,16 @@ test('forwards a transfer that satisfies the provisional contract', async () => 
   assert.equal(forwarded.path, '/api/interbank/deposits');
   assert.equal(forwarded.authorization, `Bearer ${TOKEN}`);
   assert.equal(forwarded.traceparent, traceparent);
+  // Lo que el mock reenvía más lo que el Gateway añade: el `timestamp` del
+  // banco de origen pasa a ser `partnerTimestamp` al cruzar el borde (T-56).
+  const { timestamp, ...reenviado } = forwarded.body;
+
+  assert.equal(typeof timestamp, 'string');
   assert.equal(
     paymentInterbankReceiveV1.schema.safeParse({
-      ...forwarded.body,
+      ...reenviado,
       depositId: randomUUID(),
+      partnerTimestamp: timestamp,
       requestedAt: new Date().toISOString(),
     }).success,
     true,
