@@ -29,6 +29,39 @@ resource "google_container_cluster" "primary" {
     }
   }
 
+  # ---------------------------------------------------------------------------
+  # Dataplane V2 (T-54, cierra la decisión que TD-088 dejó abierta)
+  #
+  # **Esto es lo único de este archivo que no se puede cambiar después.** El
+  # `datapath_provider` se fija al crear el clúster y no se puede alternar en uno
+  # que ya existe: pasar a Dataplane V2 más tarde significa recrear el clúster
+  # con todo lo que lleve dentro. Por eso se decide aquí y no cuando haga falta.
+  #
+  # Para qué sirve: para que una `NetworkPolicy` **haga algo**. Sin un plugin que
+  # las aplique, Kubernetes acepta el objeto y lo ignora — el API server lo
+  # guarda, `kubectl get` lo muestra, y el tráfico pasa igual. Es el peor modo de
+  # fallo que puede tener una regla de seguridad: parece configurada.
+  #
+  # Qué protege concretamente (TD-088): hasta ahora cualquier pod del clúster
+  # podía escribir en Tempo, leer Loki, consultar Prometheus o empujar a los dos
+  # Collectors. Los datos ya van redactados antes de escribirse, así que lo
+  # expuesto no son datos de clientes — es la telemetría misma, y el filo está
+  # ahí: **un pod que puede escribir en Tempo puede falsificar una traza**, y
+  # evidencia falsificada es peor que ninguna. Las políticas que lo cierran están
+  # en `infra/k8s/helm/bank-observability/templates/network-policies.yaml`.
+  #
+  # Por qué V2 y no el addon de Calico, que también las aplica: Calico se puede
+  # encender en un clúster existente pero recrea los nodos, es el camino
+  # anterior, no convive con V2, y añade un DaemonSet que compite por las 6 vCPU
+  # de los tres nodos que la cuota permite. V2 va en el dataplane (eBPF) y de
+  # paso trae el **registro de políticas**, que es lo que convierte una política
+  # en auditable en vez de en una suposición.
+  #
+  # El coste es pequeño y no nulo: el agente consume algo de memoria por nodo y
+  # V2 impone versiones mínimas de imagen de nodo, que el canal `REGULAR` ya
+  # cumple.
+  datapath_provider = "ADVANCED_DATAPATH"
+
   release_channel {
     channel = "REGULAR"
   }
