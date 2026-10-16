@@ -42,6 +42,18 @@ export type RejectionCode =
  */
 export interface Account {
   readonly accountId: string;
+  /**
+   * El número con el que **otro banco** identifica esta cuenta (T-56).
+   *
+   * `02-NNNNNNNNN`, y existe porque el contrato interbancario define
+   * `AccountNumber` como `^[A-Za-z0-9-]{1,34}$`: un UUID con guiones son 36
+   * caracteres y **no cabe**. No es un alias de conveniencia, es el único
+   * identificador de esta cuenta que puede cruzar la frontera.
+   *
+   * Lo asigna la base al abrir la cuenta, de una secuencia, así que el dominio
+   * lo recibe y no lo inventa.
+   */
+  readonly accountNumber: string;
   /** An opaque reference to a customer this service never reads (§8.2, 2.3). */
   readonly customerId: string;
   readonly accountType: AccountType;
@@ -53,6 +65,17 @@ export interface Account {
   /** Optimistic lock. Every accepted movement advances it by one. */
   readonly version: number;
 }
+
+/**
+ * Una cuenta **antes de existir**: lo mismo, sin número de cuenta.
+ *
+ * El número lo asigna la secuencia de la base al insertar, así que entre
+ * «decidir abrir una cuenta» y «la cuenta existe» hay un momento en el que el
+ * número no se sabe — y decirlo en el tipo evita la alternativa, que sería
+ * inventarlo en el dominio o dejar el campo nulable para siempre por culpa de
+ * un instante.
+ */
+export type NewAccount = Omit<Account, 'accountNumber'>;
 
 /**
  * A refusal the domain is entitled to make, carrying a code from the closed
@@ -110,7 +133,7 @@ export function openAccount(input: {
   readonly accountType: AccountType;
   readonly now: Date;
   readonly initialDepositMinor?: number;
-}): Account {
+}): NewAccount {
   return {
     accountId: input.accountId,
     customerId: input.customerId,

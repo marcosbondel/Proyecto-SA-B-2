@@ -8,8 +8,8 @@ import type { Harness } from './support/harness';
 const BODY = {
   interbankTransferId: 'partner-1001',
   idempotencyKey: 'partner-1001',
-  originBankCode: 'PARTNER_MOCK',
-  destinationBankCode: 'BANK_USAC',
+  originBankCode: 'BANK99',
+  destinationBankCode: 'BANK02',
   accountId: '7c9f1a30-2b48-4d56-9e01-2f3a4b5c6d70',
   amount: { amountMinor: 12500, currency: 'GTQ' },
   // Obligatorio desde T-56: §4.1 lo pide entre los datos mínimos, y hasta

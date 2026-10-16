@@ -232,6 +232,102 @@ export const MIGRATIONS: readonly Migration[] = [
          ON account_anomalies (account_id, detected_at DESC)`,
     ],
   },
+  /**
+   * El número de cuenta que el contrato interbancario exige (T-56).
+   *
+   * **Un UUID no cabe.** El contrato oficial define `AccountNumber` como
+   * `^[A-Za-z0-9-]{1,34}$`, y un UUID v4 con guiones son **36** caracteres. No
+   * es una preferencia de estilo: es un límite del contrato, y hasta que
+   * existiera este número **ninguna operación interbancaria podía completarse**.
+   *
+   * El formato es `02-NNNNNNNNN`: `02` es nuestro banco (`BANK02`) y los nueve
+   * dígitos salen de una secuencia. Doce caracteres, y se publica en el acuerdo
+   * de integración — un número de cuenta no es un secreto, es lo que un cliente
+   * le dicta por teléfono a quien le va a depositar.
+   *
+   * Tres decisiones que vale la pena justificar:
+   *
+   * 1. **Una columna y no una derivación del UUID.** Un hash del UUID cabría y
+   *    no necesitaría esta migración, pero no se puede recorrer al revés: dado
+   *    un número habría que escanear la tabla entera para encontrar su cuenta.
+   *    Un banco busca por número de cuenta todo el tiempo.
+   * 2. **Una secuencia y no el UUID truncado.** Truncar invita a la colisión y
+   *    la colisión aquí es acreditarle a otro. La secuencia la garantiza
+   *    PostgreSQL, y el `UNIQUE` la vigila.
+   * 3. **`NOT NULL` desde el principio**, rellenando las filas que ya existen en
+   *    la misma transacción. Una columna nulable habría dejado cuentas sin
+   *    número a las que la pareja no puede depositar, y el fallo aparecería el
+   *    día de la integración y no hoy.
+   */
+  {
+    name: '009_account_numbers',
+    statements: [
+      `CREATE SEQUENCE IF NOT EXISTS account_number_seq AS BIGINT MINVALUE 1 START 1`,
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS account_number VARCHAR(34)`,
+      /*
+       * El orden del relleno es determinista (`created_at`, y `account_id` para
+       * desempatar) para que dos entornos sembrados igual reciban los mismos
+       * números. Si no, las cuentas de prueba del acuerdo de integración
+       * cambiarían de número en cada despliegue nuevo.
+       */
+      `UPDATE accounts AS a
+          SET account_number = '02-' || lpad(numerada.posicion::text, 9, '0')
+         FROM (
+           SELECT account_id,
+                  row_number() OVER (ORDER BY created_at, account_id) AS posicion
+             FROM accounts
+            WHERE account_number IS NULL
+         ) AS numerada
+        WHERE a.account_id = numerada.account_id`,
+      `SELECT setval(
+         'account_number_seq',
+         GREATEST((SELECT count(*) FROM accounts), 1),
+         true
+       )`,
+      `ALTER TABLE accounts ALTER COLUMN account_number SET NOT NULL`,
+      `ALTER TABLE accounts
+         ADD CONSTRAINT accounts_account_number_key UNIQUE (account_number)`,
+      /*
+       * El formato, en SQL además de en el código: es el campo que viaja a otro
+       * banco, y un número que no cumpla el patrón del contrato es un depósito
+       * que la pareja rechaza sin poder explicarnos por qué.
+       */
+      `ALTER TABLE accounts
+         ADD CONSTRAINT accounts_account_number_format
+         CHECK (account_number ~ '^[A-Za-z0-9-]{1,34}$')`,
+    ],
+  },
+  /**
+   * Que el número lo ponga la **base** y no cada `INSERT` (T-56).
+   *
+   * La migración anterior dejó la columna `NOT NULL` y puso la expresión de la
+   * secuencia en el `INSERT` del repositorio. Parecía suficiente y no lo era:
+   * hay **cuatro** caminos que insertan cuentas —el repositorio, los billers,
+   * la cuenta de liquidación y los datos de demostración— y los tres últimos
+   * son SQL propio que no sabía del campo nuevo. El despliegue local lo dijo
+   * en la primera línea de su log:
+   *
+   *     null value in column "account_number" of relation "accounts"
+   *     violates not-null constraint
+   *
+   * El pod se quedó `Running` y **no `Ready`**, que es exactamente lo que las
+   * dos sondas separadas existen para hacer. Ninguna prueba unitaria lo habría
+   * visto: los dobles no tienen restricciones.
+   *
+   * Con un `DEFAULT`, **ningún camino puede olvidarlo** — ni los cuatro de hoy
+   * ni el quinto que alguien añada mañana. Es una migración aparte y no un
+   * arreglo de la 009 porque las migraciones son de sólo añadir: la 009 ya
+   * corrió en los entornos locales, y editarla los habría dejado distintos de
+   * un clon nuevo.
+   */
+  {
+    name: '010_account_number_default',
+    statements: [
+      `ALTER TABLE accounts
+         ALTER COLUMN account_number
+         SET DEFAULT '02-' || lpad(nextval('account_number_seq')::text, 9, '0')`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

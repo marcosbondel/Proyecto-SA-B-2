@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Account } from '../../src/domain/account';
+import { openAccount } from '../../src/domain/account';
+import type { Account, NewAccount } from '../../src/domain/account';
 import {
   ANOMALY_CLAIM_TTL_MS,
   COUNTED_OPERATION_TYPES,
@@ -46,8 +47,11 @@ export class InMemoryAccountRepository implements AccountRepository {
   public readonly operations: AccountOperation[] = [];
   public readonly processed = new Map<string, ProcessedMessage>();
 
+  /** Imita la secuencia de la base, que es quien asigna el número (T-56). */
+  #siguienteNumero = 1;
+
   public async openAccount(input: {
-    readonly account: Account;
+    readonly account: NewAccount;
     readonly idempotency: ProcessedMessage;
   }): Promise<{ readonly account: Account; readonly created: boolean }> {
     await this.recordProcessed(input.idempotency);
@@ -58,9 +62,14 @@ export class InMemoryAccountRepository implements AccountRepository {
       return { account: existing, created: false };
     }
 
-    this.accounts.set(input.account.accountId, input.account);
+    const conNumero: Account = {
+      ...input.account,
+      accountNumber: `02-${String(this.#siguienteNumero++).padStart(9, '0')}`,
+    };
 
-    return { account: input.account, created: true };
+    this.accounts.set(input.account.accountId, conNumero);
+
+    return { account: conNumero, created: true };
   }
 
   public async findById(accountId: string): Promise<Account | null> {
@@ -414,4 +423,20 @@ export class RecordingActivityTelemetry implements ActivityTelemetry {
   public failed(event: Parameters<ActivityTelemetry['failed']>[0]): void {
     this.failures.push(event);
   }
+}
+
+/**
+ * Una cuenta **ya persistida**, para las pruebas que no pasan por el
+ * repositorio.
+ *
+ * `openAccount` del dominio devuelve una `NewAccount` —sin número— porque el
+ * número lo asigna la secuencia al insertar (T-56). Las pruebas que sólo
+ * necesitan «una cuenta que existe» usan esto en vez de repetir el número en
+ * veinte sitios.
+ */
+export function cuentaPersistida(
+  input: Parameters<typeof openAccount>[0],
+  accountNumber = '02-000000001',
+): Account {
+  return { ...openAccount(input), accountNumber };
 }

@@ -8,6 +8,7 @@ import {
   openingDepositRefusal,
   openingRefusal,
 } from '../src/domain/account';
+import type { Account } from '../src/domain/account';
 import {
   DEFAULT_CRITERIA,
   inactivityThreshold,
@@ -17,13 +18,19 @@ import { minorUnitsFromNumeric, numericFromMinorUnits, quetzales } from '../src/
 
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
-const account = (overrides: Partial<ReturnType<typeof openAccount>> = {}) => ({
+/**
+ * `openAccount` devuelve una cuenta **sin número**, porque el número lo asigna
+ * la secuencia de la base al insertar (T-56). Las pruebas que necesitan una
+ * cuenta *persistida* se lo añaden aquí.
+ */
+const account = (overrides: Partial<Account> = {}): Account => ({
   ...openAccount({
     accountId: '3a7d9e14-6b25-4f83-9c01-8e5a2d7b4f60',
     customerId: '9f1c8b2a-4d63-4e57-8a90-1b2c3d4e5f60',
     accountType: 'MONETARIA' as const,
     now: NOW,
   }),
+  accountNumber: '02-000000001',
   ...overrides,
 });
 
@@ -313,13 +320,14 @@ describe('the automatic deactivation, at its four boundaries', () => {
  * floor on either type once open.
  */
 describe('account type rules (T-27): the AHORRO commission', () => {
-  const ahorro = (overrides: Partial<ReturnType<typeof openAccount>> = {}) => ({
+  const ahorro = (overrides: Partial<Account> = {}): Account => ({
     ...openAccount({
       accountId: '3a7d9e14-6b25-4f83-9c01-8e5a2d7b4f60',
       customerId: '9f1c8b2a-4d63-4e57-8a90-1b2c3d4e5f60',
       accountType: 'AHORRO' as const,
       now: NOW,
     }),
+    accountNumber: '02-000000002',
     ...overrides,
   });
 
