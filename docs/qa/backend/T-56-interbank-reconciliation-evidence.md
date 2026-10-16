@@ -313,7 +313,59 @@ callback— y es exactamente el 50 % que §8.3 penaliza. Y el paso 6 es la razó
 que existan los reversos, que es la operación que más fácil se omite por parecer
 un caso raro.
 
-### 8.5 La lista de trabajo que sale de esto
+### 8.5 Lo implementado
+
+| # | Operación | Estado |
+| --- | --- | --- |
+| 1 | `POST /transfers` | **hecho** — con el `202`, el `200` del duplicado, el `409` del conflicto y el `422` del vencido |
+| 2 | `GET /transfers/{id}` | **hecho** — con el `404` que para el emisor significa «nunca lo recibí» |
+| 3 | `POST /transfers/{id}/cancel` | **hecho** — con las tres respuestas y la constancia del depósito que nunca llegó |
+| 4 | `POST /transfers/{id}/result` | **hecho** — el callback que exponemos como emisor |
+| 5 | `POST /reversals` · `GET /reversals/{id}` | **hecho** — con `original_transfer_id UNIQUE` |
+| 6 | `GET /reconciliation?date=` | **hecho** — por banco y día UTC, paginado |
+| 7 | `GET /health` | **hecho** — sin autenticación, como el contrato pide |
+
+Y lo transversal:
+
+- **`BANK02`**, y el patrón `^BANK[0-9]{2}$` aplicado en los contratos: los dos
+  códigos que el repositorio usaba —`BANK_USAC` y `PARTNER_MOCK`— no cumplían, y
+  ningún banco pareja los habría aceptado.
+- **El número de cuenta `02-NNNNNNNNN`**, porque un UUID no cabe en 34
+  caracteres.
+- **`X-Api-Key`, que identifica al banco que llama**, y de eso dependen dos
+  reglas del contrato que un token compartido no puede cumplir.
+- **El monto como texto**, convertido con aritmética entera en los dos sentidos.
+- **`createdAt` y `expiresAt`**, y el **barrido del vencimiento** — el único de
+  este servicio que previene una pérdida en vez de recuperarse de una.
+- **Los siete motivos de rechazo**, con los tres nuestros que en realidad eran
+  códigos HTTP traducidos a `PROCESSING_ERROR`.
+- **El cuerpo de error del contrato** en las siete rutas, decidido por la ruta
+  porque es una propiedad del canal: el mismo error sale en una forma hacia el
+  frontend y en otra hacia el otro banco.
+
+### 8.6 Lo que queda del protocolo de TIMEOUT
+
+El **lado emisor** del protocolo —reserva, consulta, cancelación, margen de
+300 s y alerta— es el paso 6 de la lista y es el único que no está. Lo que hay
+hoy es lo de T-47: un plazo de 30 s configurable y una compensación directa.
+Falta:
+
+1. **`expiresAt` de 180 s** en lugar de los 30 s configurables, y que el
+   vencimiento **no libere** la reserva todavía.
+2. **La consulta** `GET /transfers/{id}` contra la pareja al vencer.
+3. **La cancelación** cuando la consulta da `404` o `PROCESSING`.
+4. **El margen de 300 s** antes de liberar si no contesta ninguna de las dos, y
+   la **alerta** que el contrato exige en ese caso.
+5. **El incidente y el reverso** cuando llega un `ACCEPTED` sobre una
+   transferencia ya liberada.
+
+El paso 4 es el que no se puede improvisar: **liberar antes del margen es
+acreditar dos veces** —el receptor puede haber acreditado y estar reintentando
+su callback— y es el 50 % que §8.3 penaliza. Queda registrado como
+[TD-095](../../TECH_DEBT.md) con el detalle, porque es la diferencia entre
+cumplir el contrato y cumplir su camino feliz.
+
+### 8.7 La lista de trabajo original
 
 En este orden, porque cada uno habilita al siguiente:
 

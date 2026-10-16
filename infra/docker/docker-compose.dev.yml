@@ -193,6 +193,10 @@ services:
       # default on purpose: with none the webhook refuses everybody.
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:-}
       INTERBANK_PARTNER_TOKEN: ${INTERBANK_PARTNER_TOKEN:-}
+      # La API key del contrato oficial (T-56), distinta del token de T-46.
+      INTERBANK_API_KEY_INBOUND: ${INTERBANK_API_KEY_INBOUND:-}
+      INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK02}
+      INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-BANK99}
       # Fixed rather than random, so the reply queue survives a restart instead
       # of leaving an orphan behind on every reload.
       GATEWAY_INSTANCE_ID: gateway-dev

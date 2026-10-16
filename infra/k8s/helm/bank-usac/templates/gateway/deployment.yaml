@@ -71,6 +71,22 @@ spec:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: ALERT_WEBHOOK_TOKEN
                   optional: true
+            # Los dos códigos de banco que el contrato oficial exige (T-56). Del
+            # ConfigMap: son configuración y no secretos — están publicados en
+            # el acuerdo de integración.
+            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" }}
+            - name: {{ $key }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" $ }}-config
+                  key: {{ $key }}
+            {{- end }}
+            - name: INTERBANK_API_KEY_INBOUND
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: INTERBANK_API_KEY_INBOUND
+                  optional: true
             - name: INTERBANK_PARTNER_TOKEN
               valueFrom:
                 secretKeyRef:

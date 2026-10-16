@@ -480,6 +480,13 @@ secrets:
   # everybody, which is the safe default. At least 32 characters when set — the
   # Gateway refuses to start on a shorter one. T-50 supplies it from the pipeline.
   alertWebhookToken: ""
+  # Las dos API keys del contrato interbancario oficial (T-56), una por
+  # dirección. **No se ponen aquí**: llegan por `--set` desde un canal privado,
+  # y vacías significan que la entrada del contrato está cerrada — el guardián
+  # responde 401 a todo el mundo, que es preferible a arrancar con una clave que
+  # cualquiera adivina.
+  interbankApiKeyInbound: ""
+  interbankApiKeyOutbound: ""
   # Optional until an interbank partner is configured. Both Gateway and
   # Payment receive the same value from this Secret.
   interbankPartnerToken: ""

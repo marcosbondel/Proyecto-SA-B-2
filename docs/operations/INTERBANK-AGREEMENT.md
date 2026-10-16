@@ -9,7 +9,7 @@
 - **Contrato base**: [`../references/interbank-contract-v1.openapi.yaml`](../references/interbank-contract-v1.openapi.yaml), v1.0.0, sin modificar.
 - **Nuestro banco**: `BANK02` — Bank USAC, grupo 2.
 - **Última actualización**: 2026-10-16.
-- **Estado**: nuestro lado definido; **esperando los datos de la pareja** (ver §2).
+- **Estado**: las siete operaciones implementadas y nuestro lado definido; **esperando los datos de la pareja** (ver §2) y con una divergencia conocida (§8).
 
 ## 1. Lo que el contrato deja a cada pareja
 
@@ -172,7 +172,32 @@ Un acuerdo que oculta esto no es un acuerdo, es una promesa.
 | Qué | Por qué | Estado |
 | --- | --- | --- |
 | **HTTPS** | nuestra entrada es un `LoadBalancer` de capa 4 sin terminación TLS; el certificado pide un dominio que el proyecto no tiene | abierto, ver §3 |
-| El resto | — | ver [`../qa/backend/T-56-interbank-reconciliation-evidence.md`](../qa/backend/T-56-interbank-reconciliation-evidence.md), que lleva el estado operación por operación |
+| **El protocolo de TIMEOUT, del lado emisor** | las siete operaciones están implementadas y el lado **receptor** está completo. Lo que falta es lo que hacemos **nosotros** cuando vuestro callback no llega: hoy esperamos 30 s y compensamos, en vez de los 180 s del contrato seguidos de consulta, cancelación y el margen de 300 s | abierto, [TD-095](../TECH_DEBT.md) |
+
+**Qué significa el segundo para vosotros, dicho sin rodeos.** Si recibís un
+depósito nuestro y vuestro callback tarda más de 30 segundos, es posible que
+nosotros ya hayamos devuelto el dinero al cliente mientras vosotros se lo
+acreditasteis al vuestro. **Hasta que TD-095 esté cerrado, conviene que
+vuestro callback salga pronto**, y si no sale, que uséis
+`GET /interbank/v1/transfers/{id}` y `POST /interbank/v1/transfers/{id}/cancel`
+—que sí están— para saber en qué quedó. La conciliación diaria
+(`GET /interbank/v1/reconciliation?date=`) es la red de seguridad: si los dos
+días no cuadran, el descuadre está ahí.
+
+### Las siete operaciones, al día de hoy
+
+| Operación | Estado |
+| --- | --- |
+| `POST /transfers` | ✅ con `202`, `200` del duplicado, `409` del conflicto y `422` del vencido |
+| `GET /transfers/{id}` | ✅ |
+| `POST /transfers/{id}/cancel` | ✅ con las tres respuestas |
+| `POST /transfers/{id}/result` | ✅ |
+| `POST /reversals` · `GET /reversals/{id}` | ✅ |
+| `GET /reconciliation?date=` | ✅ |
+| `GET /health` | ✅ sin autenticación |
+
+El estado detallado, campo por campo, está en
+[`../qa/backend/T-56-interbank-reconciliation-evidence.md`](../qa/backend/T-56-interbank-reconciliation-evidence.md).
 
 ## 9. Plan B para el día de la calificación
 
