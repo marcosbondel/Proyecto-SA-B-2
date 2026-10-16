@@ -503,6 +503,102 @@ juntos — `pnpm obs:check` y CI fallan si se separan.
 
 ---
 
+## 5.4 Las políticas de red del namespace (T-54)
+
+El stack llega con **nueve `NetworkPolicy`** —un `default-deny`, el DNS y una
+por componente— y **apagadas**: `networkPolicies.enabled` es `false`. Encenderlas
+es un `--set`, pero el orden importa, y la razón del orden es la trampa de esta
+API.
+
+**Kubernetes acepta una `NetworkPolicy` aunque no haya quién la aplique, y
+entonces la ignora.** El objeto se guarda, `kubectl get networkpolicy` lo lista,
+y el tráfico pasa igual. Eso significa dos cosas incómodas a la vez:
+
+- En **kind** (kindnet) no se aplican, así que `pnpm obs:kind` no puede
+  verificarlas. Lo que funciona en local no dice nada de lo que pasará arriba.
+- En **GKE** sí se aplican, pero sólo con Dataplane V2
+  (`datapath_provider = "ADVANCED_DATAPATH"`, que T-54 fija en `gke.tf` y **sólo
+  se puede poner al crear el clúster**). Y ahí un selector equivocado no es un
+  aviso: es el componente incomunicado.
+
+De modo que la secuencia es instalar → comprobar → encender → **volver a
+comprobar**:
+
+```bash
+# 1. El clúster tiene aplicador. Sin esto, todo lo demás es decorativo.
+gcloud container clusters describe bank-usac --region "$REGION"   --format='value(networkConfig.datapathProvider)'      # => ADVANCED_DATAPATH
+
+# 2. El stack, verde y ANTES de las políticas. Ésta es la línea base: si algo
+#    ya estaba roto, no se le puede echar la culpa a la política.
+kubectl get pods -n observability          # los 7, 1/1 Ready
+pnpm obs:forward                           # y que Grafana muestre los 9 dashboards
+
+# 3. Encenderlas. Sobre el release que el pipeline ya instaló, sin reinstalar.
+helm upgrade bank-observability infra/k8s/helm/bank-observability   --namespace observability --reuse-values   --set networkPolicies.enabled=true   --set networkPolicies.apiServerCidr="$(gcloud container clusters describe bank-usac       --region "$REGION" --format='value(endpoint)')/32"
+
+# 4. Y volver a comprobar — en este orden, porque cada fallo apunta a una regla
+#    distinta.
+kubectl get networkpolicy -n observability                  # 9
+kubectl get pods -n observability                           # siguen 1/1
+
+# ¿Resuelve el DNS? Si esto falla, falta la política `allow-dns` y todo lo de
+# abajo fallará también por la razón equivocada.
+kubectl exec -n observability deploy/grafana -- \
+  getent hosts prometheus-server
+
+# ¿Prometheus ve a sus objetivos? `otel-gateway` es el que lleva las métricas
+# del banco a los paneles.
+kubectl port-forward -n observability svc/prometheus-server 9090:80 &
+curl -s 'http://localhost:9090/api/v1/targets?state=active' \
+  | grep -c '"health":"up"'
+
+# ¿Siguen los 9 dashboards? Es la prueba de que el sidecar de Grafana todavía
+# alcanza el API server: si `apiServerCidr` quedó mal, Grafana arranca entero y
+# VACÍO, sin un solo error en su log.
+pnpm obs:forward
+```
+
+Y la comprobación que justifica todo el ejercicio — que un pod cualquiera **ya
+no puede escribir una traza**:
+
+```bash
+# Desde un namespace del banco, hacia el 4317 de Tempo (no del Collector).
+# Antes de las políticas esto conecta. Después debe agotar el tiempo.
+kubectl run fisgon -n dev --rm -it --restart=Never --image=busybox:1.37 --   timeout 5 nc -z tempo.observability.svc.cluster.local 4317   && echo "SIGUE ABIERTO" || echo "cerrado, como debe"
+```
+
+**Si algo se rompe, el camino de vuelta es una línea** y no hace falta
+reinstalar nada:
+
+```bash
+helm upgrade bank-observability infra/k8s/helm/bank-observability   --namespace observability --reuse-values --set networkPolicies.enabled=false
+```
+
+Dos límites que conviene saber antes de leer el archivo y preguntarse por qué:
+
+- **La salida de Prometheus está abierta a propósito** (`egress: - {}`). Sus
+  jobs de descubrimiento raspan cadvisor en la **IP del nodo** (`role: node`,
+  puerto 10250) y el endpoint del maestro, y ninguno de los dos es un pod que un
+  `podSelector` pueda nombrar. Acotarlo con `ipBlock` sería meter dos CIDR del
+  entorno en el chart para apagar los paneles de CPU y memoria el día que uno de
+  los dos cambie. Lo que protege estas políticas es que nadie **escriba**
+  telemetría falsa, y eso lo hacen las entradas de Tempo, Loki y el Collector;
+  que Prometheus pueda salir no forja nada.
+- **`apiServerCidr` es `0.0.0.0/0` en el 443 por defecto**, porque el endpoint
+  de este clúster es público y su IP no la puede conocer la plantilla. El
+  `--set` del paso 3 lo acota al `/32` real, y conviene usarlo. No es el defecto
+  porque un valor equivocado aquí deja a Grafana sin dashboards **sin dar ningún
+  error**, y fallar abierto es preferible a fallar mudo.
+
+Antes de subir un cambio a las políticas, `pnpm obs:check:policies` comprueba
+que cada selector coincida con las etiquetas que los subcharts **rinden de
+verdad** —los dos Collectors se etiquetan con su *alias* (`otlpGateway`,
+`logAgent`) y no con el nombre del chart— y que ningún componente se quede sin
+política, que con un `default-deny` delante es la forma de aislar un pod sin
+escribir un error. Corre en CI junto a `pnpm obs:check`.
+
+---
+
 ## 6. El frontend en Cloud Run
 
 Ya no es un paso: lo hace el pipeline. `terraform apply` crea el servicio

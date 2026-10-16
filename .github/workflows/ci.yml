@@ -397,6 +397,15 @@ jobs:
           # versionado concuerde con lo declarado — `helm lint` y
           # `helm template` renderizan felizmente con el .tgz viejo.
           ./infra/k8s/scripts/check-chart-deps.sh infra/k8s/helm/bank-observability
+
+          # Las NetworkPolicy de T-54 contra los pods que los subcharts
+          # realmente despliegan. Un `podSelector` que no coincide con nada no
+          # es un error de Helm: con el `default-deny` del archivo es el
+          # componente incomunicado, y las etiquetas las eligen los subcharts,
+          # no nosotros. Se renderizan con `enabled=true` porque en un
+          # despliegue normal están apagadas.
+          ./infra/k8s/scripts/check-network-policies.sh infra/k8s/helm/bank-observability
+
           helm lint infra/k8s/helm/bank-observability
           helm template bank-observability infra/k8s/helm/bank-observability \
             --namespace observability > /tmp/obs.yaml
