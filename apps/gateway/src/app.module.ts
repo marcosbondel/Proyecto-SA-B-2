@@ -27,6 +27,13 @@ import { DashboardController } from './interfaces/dashboard.controller';
 import { NotificationsController } from './interfaces/notifications.controller';
 import { AlertsController } from './interfaces/alerts.controller';
 import { InterbankController } from './interfaces/interbank.controller';
+import { InterbankV1Controller } from './interfaces/interbank-v1.controller';
+import { INTERBANK_BANK_CODE } from './interfaces/interbank-v1.tokens';
+import {
+  INTERBANK_API_KEYS,
+  InterbankApiKeyGuard,
+} from './interfaces/guards/interbank-api-key.guard';
+import { InterbankV1UseCase } from './application/routes/interbank-v1.use-case';
 import { AuditController } from './interfaces/audit.controller';
 import { AccountsController } from './interfaces/accounts.controller';
 import { AuthController } from './interfaces/auth.controller';
@@ -102,6 +109,7 @@ export class AppModule implements NestModule {
         AuditController,
         AlertsController,
         InterbankController,
+        InterbankV1Controller,
         NotificationsController,
         DashboardController,
       ],
@@ -126,6 +134,25 @@ export class AppModule implements NestModule {
         AlertTokenGuard,
         { provide: INTERBANK_PARTNER_TOKEN, useValue: environment.INTERBANK_PARTNER_TOKEN ?? null },
         InterbankTokenGuard,
+        /*
+         * El mapa de API keys del contrato oficial: **una por banco pareja**.
+         * Hoy es una, la de `INTERBANK_PARTNER_BANK_CODE`; la forma admite más
+         * sin cambiar el guardián, porque la clave es lo que identifica a quien
+         * llama y con dos parejas una clave compartida no distingue.
+         */
+        {
+          provide: INTERBANK_API_KEYS,
+          useValue:
+            environment.INTERBANK_API_KEY_INBOUND === undefined ||
+            environment.INTERBANK_API_KEY_INBOUND.length === 0
+              ? {}
+              : {
+                  [environment.INTERBANK_PARTNER_BANK_CODE]: environment.INTERBANK_API_KEY_INBOUND,
+                },
+        },
+        InterbankApiKeyGuard,
+        { provide: INTERBANK_BANK_CODE, useValue: environment.INTERBANK_BANK_CODE },
+        InterbankV1UseCase,
 
         AlertWebhookUseCase,
         InterbankReceiveUseCase,
