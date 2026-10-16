@@ -419,3 +419,203 @@ describe('la conciliación', () => {
     });
   });
 });
+
+describe('la consulta de estado', () => {
+  it('dice que no hay nada cuando el depósito no es de ese banco', async () => {
+    const repository = new RepositorioDoble();
+    repository.filas.set(ID, fila({ originBankCode: 'BANK99' }));
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.status({ interbankTransferId: ID, callerBankCode: 'BANK07' });
+
+    expect(respuestas[0]?.payload).toMatchObject({
+      found: false,
+      status: null,
+      reasonCode: null,
+      updatedAt: null,
+    });
+  });
+
+  it('devuelve el motivo cuando hay uno, y nulo cuando no', async () => {
+    const repository = new RepositorioDoble();
+    repository.filas.set(ID, fila({ status: 'REJECTED', reasonCode: 'EXPIRED' }));
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.status({ interbankTransferId: ID, callerBankCode: 'BANK99' });
+
+    expect(respuestas[0]?.payload).toMatchObject({
+      found: true,
+      status: 'REJECTED',
+      reasonCode: 'EXPIRED',
+    });
+  });
+
+  it('devuelve PROCESSING sin motivo mientras se decide', async () => {
+    const repository = new RepositorioDoble();
+    repository.filas.set(ID, fila());
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.status({ interbankTransferId: ID, callerBankCode: 'BANK99' });
+
+    expect(respuestas[0]?.payload).toMatchObject({ status: 'PROCESSING', reasonCode: null });
+  });
+});
+
+describe('la conciliación, en detalle', () => {
+  it('devuelve la página y el tamaño que se pidieron, no los que encontró', async () => {
+    // El contrato pide que la respuesta repita la paginación de la petición:
+    // un cliente que pide la página 3 y recibe «página 1» no sabe si se quedó
+    // sin páginas o si el servidor la ignoró.
+    const repository = new RepositorioDoble();
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.reconciliation({
+      callerBankCode: 'BANK99',
+      date: '2026-10-20',
+      page: 3,
+      pageSize: 25,
+    });
+
+    expect(respuestas[0]?.payload).toMatchObject({
+      date: '2026-10-20',
+      page: 3,
+      pageSize: 25,
+      totalItems: 0,
+      items: [],
+    });
+  });
+
+  it('no mezcla los depósitos de otro banco', async () => {
+    const repository = new RepositorioDoble();
+    repository.filas.set(ID, fila({ originBankCode: 'BANK99' }));
+    repository.filas.set('otro', fila({ originBankCode: 'BANK07' }));
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.reconciliation({
+      callerBankCode: 'BANK99',
+      date: '2026-10-20',
+      page: 1,
+      pageSize: 100,
+    });
+
+    expect(respuestas[0]?.payload).toMatchObject({ totalItems: 1 });
+  });
+
+  it('formatea el mínimo y el máximo sin perder un centavo', async () => {
+    const repository = new RepositorioDoble();
+    repository.filas.set('a', fila({ amountMinor: 1 }));
+    repository.filas.set('b', fila({ amountMinor: 1_000_000 }));
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.reconciliation({
+      callerBankCode: 'BANK99',
+      date: '2026-10-20',
+      page: 1,
+      pageSize: 100,
+    });
+
+    const payload = respuestas[0]?.payload as { items: { amount: string }[] };
+
+    expect(payload.items.map((i) => i.amount)).toEqual(['0.01', '10000.00']);
+  });
+});
+
+describe('el reverso, en detalle', () => {
+  it('rechaza un monto que no es el texto del contrato', async () => {
+    // Llega validado por el esquema, así que esto sólo pasaría con un mensaje
+    // construido a mano — y la respuesta correcta es «no hay nada», no un
+    // reverso con un monto inventado.
+    const repository = new RepositorioDoble();
+    repository.filas.set('00000000-0000-4000-8000-000000000001', fila());
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.requestReversal({
+      reversalId: ID,
+      originalTransferId: '00000000-0000-4000-8000-000000000001',
+      callerBankCode: 'BANK99',
+      amount: '150',
+      requestedAt: AHORA.toISOString(),
+    });
+
+    expect(respuestas[0]?.payload).toMatchObject({ found: false });
+  });
+
+  it('no deja consultar el reverso de otro banco', async () => {
+    const repository = new RepositorioDoble();
+    repository.reversos.set(ID, {
+      reversalId: ID,
+      originalTransferId: '00000000-0000-4000-8000-000000000001',
+      requesterBankCode: 'BANK99',
+      amountMinor: 15_000,
+      status: 'COMPLETED',
+      refundTransferId: '00000000-0000-4000-8000-000000000009',
+      reasonMessage: null,
+    });
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.reversalStatus({ reversalId: ID, callerBankCode: 'BANK07' });
+
+    expect(respuestas[0]?.payload).toMatchObject({ found: false });
+  });
+
+  it('devuelve el depósito de devolución cuando está completado', async () => {
+    const repository = new RepositorioDoble();
+    repository.reversos.set(ID, {
+      reversalId: ID,
+      originalTransferId: '00000000-0000-4000-8000-000000000001',
+      requesterBankCode: 'BANK99',
+      amountMinor: 15_000,
+      status: 'COMPLETED',
+      refundTransferId: '00000000-0000-4000-8000-000000000009',
+      reasonMessage: null,
+    });
+    const { useCase, respuestas } = construir(repository);
+
+    await useCase.reversalStatus({ reversalId: ID, callerBankCode: 'BANK99' });
+
+    // `COMPLETED` sin el identificador sería decir que devolvimos el dinero sin
+    // poder señalar por dónde salió.
+    expect(respuestas[0]?.payload).toMatchObject({
+      found: true,
+      status: 'COMPLETED',
+      refundTransferId: '00000000-0000-4000-8000-000000000009',
+    });
+  });
+});
+
+describe('el barrido, en detalle', () => {
+  it('no cuenta los que ya estaban decididos', async () => {
+    const repository = new RepositorioDoble();
+    repository.filas.set('a', fila({ status: 'ACCEPTED' }));
+    repository.filas.set('b', fila({ status: 'CANCELLED' }));
+    const { useCase } = construir(repository);
+
+    expect(await useCase.sweepExpired()).toBe(0);
+    expect(repository.vencidos).toEqual([]);
+  });
+
+  it('respeta el límite del lote', async () => {
+    const repository = new RepositorioDoble();
+    const { useCase } = construir(repository);
+    const pedidos: number[] = [];
+    repository.claimExpired = async (_now, limit): Promise<readonly V1DepositRow[]> => {
+      pedidos.push(limit);
+      return [];
+    };
+
+    await useCase.sweepExpired(5);
+
+    expect(pedidos).toEqual([5]);
+  });
+
+  it('no cuenta un vencimiento que perdió la carrera', async () => {
+    // `expire` devuelve `false` cuando alguien decidió el depósito entre la
+    // lectura y la escritura: el guardia del `WHERE` hizo su trabajo.
+    const repository = new RepositorioDoble();
+    repository.filas.set(ID, fila());
+    repository.expire = async (): Promise<boolean> => false;
+    const { useCase } = construir(repository);
+
+    expect(await useCase.sweepExpired()).toBe(0);
+  });
+});

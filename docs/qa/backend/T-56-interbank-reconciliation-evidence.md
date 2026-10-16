@@ -343,7 +343,48 @@ Y lo transversal:
   porque es una propiedad del canal: el mismo error sale en una forma hacia el
   frontend y en otra hacia el otro banco.
 
-### 8.6 Lo que queda del protocolo de TIMEOUT
+### 8.6 Las siete, contra el clúster
+
+No contra dobles. Las imágenes de esta rama en el clúster local, con
+`X-Api-Key` y el banco `BANK99` identificado por ella:
+
+```
+GET  /health                              {"status":"UP","bankCode":"BANK02"}                     200
+GET  /reconciliation            (sin key) {"code":"UNAUTHORIZED",…}                               401
+POST /transfers                 (nuevo)   {"interbankTransferId":"90cac2e1…","status":"PROCESSING",
+                                           "receivedAt":"2026-10-16T02:19:49.320Z"}               202
+POST /transfers                 (igual)   {…,"status":"PROCESSING","updatedAt":"…49.353Z"}        200
+POST /transfers                 (999.00)  {"code":"IDEMPOTENCY_CONFLICT",…}                       409
+GET  /transfers/{id}                      {…,"status":"PROCESSING","updatedAt":"…49.353Z"}        200
+GET  /transfers/{otro}                    {"code":"NOT_FOUND",…}                                  404
+POST /transfers/{id}/cancel               {…,"result":"CANCELLED"}                                200
+POST /transfers/{id}/cancel     (otra vez){…,"result":"CANCELLED"}                                200
+POST /transfers                 (vencido) {"code":"EXPIRED","message":"El depósito venció antes
+                                           de llegar; no se procesa."}                            422
+GET  /reconciliation?date=                {"date":"2026-10-16","page":1,"pageSize":3,"totalItems":1,
+                                           "items":[{…,"amount":"150.00","status":"CANCELLED"}]}   200
+POST /reversals                 (sin orig){"code":"NOT_FOUND",…}                                  404
+POST /reversals                 (válido)  {"reversalId":"62536908…","status":"PROCESSING"}         202
+GET  /reversals/{id}                      {"reversalId":"62536908…","status":"PROCESSING"}         200
+POST /reversals                 (2º igual){"status":"FAILED","reasonMessage":"Ese depósito ya tiene
+                                           un reverso (62536908…)."}                              202
+```
+
+Cinco cosas en esa tabla que no son el camino feliz:
+
+1. **El cuerpo de error es el del contrato** —`code`, `message`, `timestamp`— y
+   no el nuestro. Sin `type`, sin `correlationId`, sin `field`.
+2. **`422` y no `400`** para el vencido: la solicitud era sintácticamente
+   perfecta y llegó tarde.
+3. **El duplicado trae `updatedAt` y el nuevo trae `receivedAt`.** Son dos
+   cuerpos distintos del contrato, y la diferencia le dice al emisor si fue
+   admitido ahora o si ya lo teníamos.
+4. **La conciliación formatea el monto como texto** y refleja el `CANCELLED`
+   que la cancelación dejó.
+5. **El segundo reverso del mismo depósito falla**, con el identificador del
+   primero en el mensaje. Lo impide `original_transfer_id UNIQUE`, no un `if`.
+
+### 8.7 Lo que queda del protocolo de TIMEOUT
 
 El **lado emisor** del protocolo —reserva, consulta, cancelación, margen de
 300 s y alerta— es el paso 6 de la lista y es el único que no está. Lo que hay
@@ -365,7 +406,7 @@ su callback— y es el 50 % que §8.3 penaliza. Queda registrado como
 [TD-095](../../TECH_DEBT.md) con el detalle, porque es la diferencia entre
 cumplir el contrato y cumplir su camino feliz.
 
-### 8.7 La lista de trabajo original
+### 8.8 La lista de trabajo original
 
 En este orden, porque cada uno habilita al siguiente:
 
@@ -388,7 +429,37 @@ Lo acordado con la pareja —URL, claves, formato de cuenta, horario— vive en
 y no aquí: esto es el estado del código contra el contrato, y eso es el acuerdo
 entre dos equipos.
 
-## 9. Lo que queda abierto
+## 9. Validación del contrato oficial
+
+| Comando | Resultado |
+| --- | --- |
+| `pnpm lint` | 14 de 14 |
+| `pnpm typecheck` | 14 de 14 |
+| `pnpm --filter @bank/contracts test` | **1 036** — incluidos los 17 que comprueban los esquemas contra los ejemplos del propio archivo del curso |
+| `pnpm --filter gateway test` | **439** |
+| `RABBITMQ_URL=… pnpm --filter gateway test -- publish-routing` | **50 de 50** contra el broker real (eran 43) |
+| `pnpm --filter payment-service test` | **247** |
+| `DATABASE_URL=… pnpm --filter payment-service test` | **322, 0 omitidos** |
+| `pnpm test:pyramid` | sin desviaciones por paquete; quedan las dos de sistema que ya estaban en `HEAD` |
+| las siete rutas contra el clúster | §8.6 |
+
+**Los siete casos nuevos de `publish-routing.integration.spec.ts` son los que
+importan**, y no por el número: esa suite publica contra un **broker real** y
+comprueba el exchange y la routing key de cada ruta. Las siete operaciones se
+desplegaron devolviendo `500` porque sus doce contratos no estaban en el
+catálogo, y las 25 pruebas del controlador pasaban porque **el arnés dobla el
+publicador** — a un doble el catálogo le da igual. Añadirlas aquí es cerrar el
+hueco por el que entró el defecto, no subir una cifra.
+
+El guardián de la pirámide también pidió 28 casos unitarios en `payment-service`
+para reequilibrar los 15 de integración. Se añadieron **12**, los que cubren
+camino real que estaba sin probar: la consulta de un depósito ajeno, la
+paginación que el contrato pide repetir, el formateo del mínimo y el máximo, el
+reverso de otro banco, y las tres carreras del barrido. No se añadieron 28:
+inflar una suite para satisfacer una proporción es exactamente lo que vacía de
+sentido a la proporción.
+
+## 10. Lo que queda abierto
 
 - **El alcance 2 entero**: comparar contra el OpenAPI oficial y la prueba de
   contrato contra ese archivo. Depende de T-55 (#152).
