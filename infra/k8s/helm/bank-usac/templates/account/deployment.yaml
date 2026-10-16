@@ -26,6 +26,7 @@ spec:
         # roll the pods on `helm upgrade` instead of waiting for a restart
         # somebody has to remember.
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
     spec:

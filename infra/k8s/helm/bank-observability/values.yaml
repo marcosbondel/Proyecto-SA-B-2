@@ -695,6 +695,54 @@ prometheus:
                   rate(bank_payment_provider_duration_seconds_bucket[5m])
                 ))
 
+        # ---- Reinicios de contenedor (TD-091) ------------------------------
+        #
+        # La señal que faltaba, y la carga de T-51 lo demostró del peor modo:
+        # los siete servicios se reiniciaron **dentro de seis segundos** y la
+        # única pista fue un `kubectl get pods` hecho a mano. Las alertas de
+        # latencia y de error rate sí dispararon, pero describiendo el síntoma,
+        # así que el diagnóstico empezó por las sondas — el camino equivocado.
+        # La causa era el latido de AMQP a 5 s.
+        #
+        # Un reinicio simultáneo de todo es **la señal más barata y más
+        # específica** que existe para una dependencia compartida que se cayó, y
+        # es exactamente la que no había.
+        - name: reliability-restarts
+          interval: 30s
+          rules:
+            # Reinicios por pod en diez minutos.
+            #
+            # `increase` y no `rate`: lo que importa es «cuántas veces», no
+            # «cuántas por segundo», y un contador que se reinicia con el pod
+            # hace que `rate` devuelva basura en el primer scrape de un pod
+            # nuevo. `max by` sobre los contenedores del pod porque un pod con
+            # un sidecar tiene dos series y lo que se vigila es el pod.
+            - record: sli:pod_restarts:increase10m
+              expr: |
+                max by (namespace, pod) (
+                  increase(kube_pod_container_status_restarts_total[10m])
+                )
+
+            # Cuántos pods del banco se reiniciaron en la ventana.
+            #
+            # El numerador de la alerta que importa. `> 0` convierte «veces» en
+            # «cuántos pods», que es la pregunta: dos reinicios de un pod enfermo
+            # no son lo mismo que un reinicio de cada uno.
+            - record: sli:pods_restarting:count10m
+              expr: |
+                count by (namespace) (sli:pod_restarts:increase10m > 0)
+
+            # Cuántos pods hay, para poder decir «más de la mitad».
+            #
+            # Sin esto la alerta tendría que llevar el número siete escrito
+            # dentro, y dejaría de servir en cuanto el chart creciera o un HPA
+            # subiera una réplica. `kube_deployment_spec_replicas` y no un conteo
+            # de pods porque durante un reinicio masivo el conteo de pods es
+            # justo lo que está cambiando.
+            - record: sli:deployments_expected:count
+              expr: |
+                count by (namespace) (kube_deployment_spec_replicas)
+
   extraScrapeConfigs: |
     # Lo que las aplicaciones empujaron por OTLP, republicado por el Collector.
     - job_name: otel-gateway
@@ -1409,6 +1457,164 @@ grafana:
                       - evaluator:
                           type: gt
                           params: [5]
+
+            # ---- Reinicios (TD-091) -------------------------------------
+            #
+            # Dos alertas y no una, porque son dos cosas distintas: un pod que
+            # se reinicia es un pod enfermo, y TODOS los pods reiniciándose a la
+            # vez es una dependencia caída. Mezclarlas en un umbral haría que la
+            # segunda —la que importa— se pareciera a la primera.
+            - uid: bank-pod-restarting
+              title: PodRestarting
+              condition: C
+              # Sin `for`: el reinicio ya ocurrió. Un `for` aquí pediría que el
+              # pod siguiera reiniciándose durante cinco minutos más para
+              # avisar, que es esperar a que empeore lo que ya pasó.
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+              annotations:
+                summary: Un pod se reinició más de dos veces en diez minutos. Mirar sus sondas y el OOMKill antes que el código.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/restarts.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: max(sli:pod_restarts:increase10m)
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [2]
+
+            # **La que importa.**
+            #
+            # Durante la carga de T-51 los siete servicios se reiniciaron dentro
+            # de seis segundos por el latido de AMQP a 5 s, y la única señal fue
+            # un `kubectl get pods` a mano. Las de latencia y error rate
+            # dispararon describiendo el síntoma, así que el diagnóstico empezó
+            # por las sondas — el camino equivocado.
+            #
+            # El umbral es una **fracción** y no un número de pods: con un siete
+            # escrito dentro, la alerta dejaría de servir en cuanto el chart
+            # creciera o un HPA subiera una réplica. La mitad es el punto donde
+            # «varios pods enfermos» deja de ser una explicación plausible.
+            #
+            # `severity: critical` y sin `runbook` propio: el camino es el
+            # postmortem del latido, que ya tiene la cronología y el log que hay
+            # que buscar.
+            - uid: bank-mass-restart
+              title: MassRestartDependencyLost
+              condition: C
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+              annotations:
+                summary: >-
+                  Más de la mitad de los componentes se reiniciaron en diez
+                  minutos. No es un pod enfermo: es una dependencia compartida
+                  caída — el broker, una base, el DNS.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/sre/postmortems/2026-10-15-latido-amqp.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    # `or 0 *` por lo mismo que las cinco de arriba: sin
+                    # reinicios, el numerador no tiene series y el cociente
+                    # desaparece en vez de valer cero. Aquí da igual el sentido
+                    # —un cociente vacío no supera un umbral— pero una serie que
+                    # existe siempre es una que se puede graficar, y un panel en
+                    # blanco no distingue «cero reinicios» de «la regla se
+                    # rompió».
+                    expr: |
+                      max(
+                        (sli:pods_restarting:count10m or 0 * sli:deployments_expected:count)
+                        /
+                        sli:deployments_expected:count
+                      )
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [0.5]
+
+            # ---- Reserva liberada sin confirmación (TD-095) --------------
+            #
+            # El contrato oficial **exige alertar** en esta rama, y es la única
+            # de su protocolo que devuelve dinero sin saber qué hizo el otro
+            # banco: pasados `expiresAt + 300 s` sin respuesta a la consulta ni a
+            # la cancelación, se libera la reserva y se avisa.
+            #
+            # Por qué es `critical` aunque el sistema haya hecho lo correcto: lo
+            # que sigue es una **conciliación manual**. Si el otro banco acreditó
+            # y su callback llega después, este banco ha pagado dos veces y hace
+            # falta pedir un reverso. Una liberación a ciegas que nadie mira es
+            # exactamente el descuadre que todo el protocolo existe para evitar.
+            #
+            # Se cuenta por el log y no por una métrica porque el evento es raro
+            # y lo que hace falta es el `interbankTransferId` concreto para poder
+            # conciliarlo — un contador diría «pasó tres veces» y no cuáles.
+            - uid: bank-interbank-blind-release
+              title: InterbankReserveReleasedUnverified
+              condition: C
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-28
+              annotations:
+                summary: >-
+                  Se liberó una reserva interbancaria SIN confirmación del banco
+                  pareja, pasado el margen del contrato. Conciliar a mano: si
+                  acreditaron, hace falta un reverso.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 900, to: 0 }
+                  datasourceUid: bank-loki
+                  model:
+                    refId: A
+                    editorMode: code
+                    queryType: instant
+                    expr: |
+                      sum(count_over_time(
+                        {service_name="payment-service"}
+                          |~ "RELEASED_NO_ANSWER|RELEASED_UNKNOWN_AT_PARTNER"
+                        [15m]
+                      ))
+                - refId: C
+                  relativeTimeRange: { from: 900, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [0]
 
   # El token del webhook de alertas, del Secret que pone el pipeline.
   # `optional: true` a propósito: sin el Secret, Grafana arranca igual y la

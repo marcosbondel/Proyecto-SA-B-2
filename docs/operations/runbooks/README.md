@@ -11,7 +11,8 @@ significa, cómo diagnosticarla y cómo mitigarla"*. Cada alerta de
 | [transfer-latency.md](transfer-latency.md) | `TransferLatencyBreach` | SLO-2 |
 | [dead-letter.md](dead-letter.md) | `DeadLetterGrowing` | SLO-1 |
 | [consumer-lag.md](consumer-lag.md) | `BrokerConsumerLagHigh` | SLO-14 |
-| [partner-bank.md](partner-bank.md) | `PartnerBankDegraded`, `PartnerBankConfirmationSlow` | SLO-28 |
+| [partner-bank.md](partner-bank.md) | `PartnerBankDegraded`, `PartnerBankConfirmationSlow`, `PartnerBankSendDegraded`, `PartnerBankSendConfirmationSlow`, `InterbankReserveReleasedUnverified` | SLO-28 |
+| [restarts.md](restarts.md) | `PodRestarting`, `MassRestartDependencyLost` | — |
 
 ## Cómo se usa uno
 

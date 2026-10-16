@@ -140,9 +140,30 @@ describe('this service speaks to the system only through the broker', () => {
      * habría dejado pasar mientras la primera llamada siguiera siendo correcta.
      */
     const llamadas = adapter?.text.match(/(?<![.#\w])fetch\(/g) ?? [];
-    const configuradas = adapter?.text.match(/(?<![.#\w])fetch\(this\.[A-Za-z]+/g) ?? [];
+    /*
+     * Dos formas de empezar una URL, y las dos tienen que arrancar en `this.`:
+     *
+     *   fetch(this.endpoint, …)                    — el destino entero
+     *   fetch(`${this.apiBaseUrl}/transfers/…`, …) — la base más un camino fijo
+     *
+     * La segunda la añadió TD-095, porque el protocolo de TIMEOUT necesita
+     * `GET /transfers/{id}` y `POST /transfers/{id}/cancel`. Lo que la prueba
+     * sigue impidiendo es lo único que importa: que la URL empiece en algo que
+     * no sea configuración. Un `fetch(`${payload.baseUrl}/…`)` no coincide, que
+     * es el punto — sería un banco al que cualquiera le dice a dónde mandar el
+     * dinero.
+     */
+    const configuradas =
+      adapter?.text.match(/(?<![.#\w])fetch\(\s*(?:this\.[A-Za-z]+|`\$\{this\.[A-Za-z]+)/g) ??
+      [];
 
-    expect(llamadas).toHaveLength(2);
+    /*
+     * Cuatro: el callback de respuesta y el envío del depósito (T-46, T-47), más
+     * la consulta y la cancelación del protocolo de TIMEOUT (TD-095). El número
+     * se mueve a mano cuando la salida crece a propósito, que es justo lo que lo
+     * convierte en una decisión y no en un descuido.
+     */
+    expect(llamadas).toHaveLength(4);
     expect(configuradas).toHaveLength(llamadas.length);
   });
 

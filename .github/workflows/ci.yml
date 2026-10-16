@@ -389,6 +389,14 @@ jobs:
             --set gateway.loadBalancerIP=203.0.113.10 \
             | grep -q 'loadBalancerIP: "203.0.113.10"'
 
+          # Que rotar una credencial ruede los pods (TD-089). Un pod no vuelve a
+          # leer un Secret: sin el hash en el `podTemplate`, una rotacion deja
+          # los procesos con el valor anterior y el despliegue sale verde. El
+          # script comprueba las dos mitades — que la anotacion este, y que el
+          # hash SE MUEVA de verdad al cambiar la credencial, porque una
+          # anotacion que apunta a la plantilla equivocada pasa cualquier grep.
+          ./infra/k8s/scripts/check-secret-rollout.sh infra/k8s/helm/bank-usac
+
           echo "== bank-observability =="
           # Los subcharts estan versionados en `charts/`, asi que NO se ejecuta
           # ningun `helm dependency build`: ese comando refresca el indice de
