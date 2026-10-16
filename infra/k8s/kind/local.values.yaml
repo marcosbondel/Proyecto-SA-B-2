@@ -71,3 +71,8 @@ interbank:
 secrets:
   interbankPartnerToken: 'kind-interbancario-de-juguete-no-es-un-secreto'
   alertWebhookToken: 'kind-alertas-de-juguete-no-es-un-secreto'
+  # La API key del contrato interbancario para el camino local. De juguete y
+  # evidente, como el resto de los secretos de kind: lo que importa es que la
+  # forma del flujo sea la real, no el valor.
+  interbankApiKeyInbound: 'kind-api-key-interbancaria-de-juguete'
+  interbankApiKeyOutbound: 'kind-api-key-interbancaria-de-juguete'

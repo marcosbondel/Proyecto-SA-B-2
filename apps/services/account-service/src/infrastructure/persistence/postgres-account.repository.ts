@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
-import type { Account } from '../../domain/account';
+import type { Account, NewAccount } from '../../domain/account';
 import {
   ANOMALY_CLAIM_TTL_MS,
   COUNTED_OPERATION_TYPES,
@@ -53,13 +53,21 @@ export class PostgresAccountRepository implements AccountRepository {
   }
 
   public async openAccount(input: {
-    readonly account: Account;
+    /** Sin número: lo asigna `account_number_seq` en el `INSERT` (T-56). */
+    readonly account: NewAccount;
     readonly idempotency: ProcessedMessage;
   }): Promise<{ readonly account: Account; readonly created: boolean }> {
     return await this.#inTransaction(async (client) => {
       const inserted = await client.query<AccountRow>(
+        /*
+         * `account_number` no se nombra: lo pone el `DEFAULT` de la columna
+         * (migración 010). Es deliberado — hay cuatro caminos que insertan
+         * cuentas y tres son SQL propio; con la expresión aquí, los otros tres
+         * se olvidaban, y el despliegue se quedó sin arrancar por eso.
+         */
         `INSERT INTO accounts
-           (account_id, customer_id, account_type, balance, status, last_activity_at, version, created_at, updated_at)
+           (account_id, customer_id, account_type, balance, status,
+            last_activity_at, version, created_at, updated_at)
          VALUES ($1, $2, $3, $4::NUMERIC, 'ACTIVE', $5, 0, $5, $5)
          ON CONFLICT (account_id) DO NOTHING
          RETURNING ${ACCOUNT_COLUMNS}`,
@@ -722,6 +730,7 @@ async function recordProcessedWith(
  */
 const ACCOUNT_COLUMNS = `
   account_id,
+  account_number,
   customer_id,
   account_type,
   balance::TEXT AS balance,
@@ -797,6 +806,7 @@ function anomalyFrom(
 function accountFrom(row: AccountRow): Account {
   return {
     accountId: row.account_id,
+    accountNumber: row.account_number,
     customerId: row.customer_id,
     accountType: row.account_type,
     balanceMinor: minorUnitsFromNumeric(row.balance),

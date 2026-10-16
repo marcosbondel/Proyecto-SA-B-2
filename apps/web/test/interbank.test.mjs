@@ -43,7 +43,7 @@ test('explica la forma del codigo de banco en vez de solo rechazarlo', () => {
 });
 
 test('acepta el codigo que acordaron los dos bancos y rechaza el que no', () => {
-  for (const bueno of ['BANCO_PAREJA', 'B2', 'PARTNER_MOCK', 'A_1_B']) {
+  for (const bueno of ['BANCO_PAREJA', 'B2', 'BANK99', 'A_1_B']) {
     assert.deepEqual(interbankProblems(borrador({ destinationBankCode: bueno })), {});
   }
 

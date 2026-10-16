@@ -37,7 +37,7 @@ function comando(): MessageEnvelope<PaymentRequestedV1> {
       transactionId: TRANSACTION,
       amount: { amountMinor: 12_500, currency: 'GTQ' },
       interbank: {
-        bankCode: 'PARTNER_MOCK',
+        bankCode: 'BANK99',
         account: 'cuenta-de-alla-1',
         interbankTransferId: TRANSFER,
         idempotencyKey: 'clave-interbancaria',

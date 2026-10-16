@@ -51,8 +51,18 @@
  * el otro banco se haya enterado.
  */
 
-/** Los cuatro estados de un depósito recibido. */
-export type InterbankReceiptState = 'ELIGIBILITY' | 'CREDIT' | 'ACCEPTED' | 'REJECTED';
+/**
+ * Los **cinco** estados de un depósito recibido.
+ *
+ * Eran cuatro hasta que llegó el contrato oficial, que añade uno que no
+ * teníamos: `CANCELLED`. No es un rechazo con otro nombre — es el banco emisor
+ * diciendo «ya no lo quiero» después de que su plazo venciera, y la diferencia
+ * importa en los dos sentidos: al emisor le dice que puede liberar su reserva
+ * sin miedo, y a nosotros nos obliga a **recordar el identificador** para
+ * rechazar el mensaje original si llega tarde.
+ */
+export type InterbankReceiptState =
+  'ELIGIBILITY' | 'CREDIT' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
 
 /**
  * Dónde puede **caer** una transición, que no es lo mismo que dónde puede estar
@@ -82,7 +92,11 @@ export type InterbankReceiptRejection =
   | 'WRONG_DESTINATION_BANK'
   | 'BANK_NOT_AUTHORIZED'
   | 'INVALID_REQUEST'
-  | 'IDEMPOTENCY_CONFLICT';
+  | 'IDEMPOTENCY_CONFLICT'
+  /** Del contrato oficial: venció antes de poder decidirlo. */
+  | 'EXPIRED'
+  /** Del contrato oficial: el emisor lo canceló. */
+  | 'CANCELLED';
 
 /** Lo que puede pasarle a un depósito recibido mientras se decide. */
 export type InterbankReceiptEvent =
@@ -91,7 +105,26 @@ export type InterbankReceiptEvent =
   /** Account confirmó que el saldo se movió. */
   | { readonly kind: 'CREDITED' }
   /** Account no pudo aplicar el crédito, con su motivo. */
-  | { readonly kind: 'CREDIT_REFUSED'; readonly rejection: InterbankReceiptRejection };
+  | { readonly kind: 'CREDIT_REFUSED'; readonly rejection: InterbankReceiptRejection }
+  /**
+   * El banco emisor pidió cancelarlo (`POST /transfers/{id}/cancel`).
+   *
+   * Lo pide cuando su plazo venció y quiere saber si puede liberar la reserva.
+   * Sólo es legal mientras **no se haya acreditado**: si ya se acreditó, la
+   * respuesta correcta no es cancelar sino decirle `ALREADY_ACCEPTED`, y eso lo
+   * decide el llamador mirando el estado — no una transición.
+   */
+  | { readonly kind: 'CANCEL_REQUESTED' }
+  /**
+   * Venció `expiresAt` con el depósito todavía sin decidir.
+   *
+   * El contrato es tajante: «el receptor **no puede acreditar** después de
+   * `expiresAt`, aunque el mensaje le llegue tarde (reintento, DLQ)», y si lo
+   * hace «la responsabilidad y la devolución son suyas». Así que el
+   * vencimiento es un rechazo nuestro, con su motivo propio, y no un estado de
+   * espera más largo.
+   */
+  | { readonly kind: 'EXPIRED' };
 
 /** Dónde queda un depósito, y si eso cierra su decisión. */
 export interface InterbankReceiptTransition {
@@ -169,6 +202,21 @@ export function applyInterbankReceipt(
 
     case 'CREDIT_REFUSED':
       return from === 'CREDIT' ? to('REJECTED', event.rejection) : illegal();
+
+    case 'CANCEL_REQUESTED':
+      /*
+       * Legal desde los dos estados sin decidir, y por el mismo motivo: en los
+       * dos el dinero **todavía no se movió**. Desde `CREDIT` es el caso
+       * delicado —el crédito está ordenado y su confirmación puede estar en
+       * vuelo— y cancelar ahí es correcto precisamente porque el corte de
+       * arriba impide que un `CREDITED` posterior lo reabra: llegará, se
+       * rechazará como transición ilegal y se registrará. El contrato lo pide
+       * así: el receptor «guarda el id y rechaza cualquier llegada posterior».
+       */
+      return from === 'ELIGIBILITY' || from === 'CREDIT' ? to('CANCELLED', 'CANCELLED') : illegal();
+
+    case 'EXPIRED':
+      return from === 'ELIGIBILITY' || from === 'CREDIT' ? to('REJECTED', 'EXPIRED') : illegal();
   }
 }
 
@@ -181,7 +229,77 @@ export function applyInterbankReceipt(
  * mudado a un sitio donde ya no se puede discutir sin una base de datos.
  */
 export function isReceiptDecided(state: InterbankReceiptState): boolean {
-  return state === 'ACCEPTED' || state === 'REJECTED';
+  return state === 'ACCEPTED' || state === 'REJECTED' || state === 'CANCELLED';
+}
+
+/**
+ * Los cinco estados nuestros, traducidos a los cuatro del contrato.
+ *
+ * `ELIGIBILITY` y `CREDIT` son los dos pasos de **nuestra** decisión y para el
+ * otro banco son lo mismo: `PROCESSING`. Que tengamos dos y él vea uno no es una
+ * pérdida de información — es que el reparto interno del trabajo no es asunto
+ * suyo, y publicarlo nos ataría a no poder cambiarlo.
+ */
+export function v1StateOf(
+  state: InterbankReceiptState,
+): 'PROCESSING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' {
+  switch (state) {
+    case 'ELIGIBILITY':
+    case 'CREDIT':
+      return 'PROCESSING';
+    case 'ACCEPTED':
+      return 'ACCEPTED';
+    case 'REJECTED':
+      return 'REJECTED';
+    case 'CANCELLED':
+      return 'CANCELLED';
+  }
+}
+
+/**
+ * Nuestros motivos de rechazo, traducidos a los **siete** del contrato.
+ *
+ * Tres de los nuestros no existen allí, y la traducción dice por qué:
+ *
+ * - `BANK_NOT_AUTHORIZED` no es un motivo de rechazo en el contrato, es un
+ *   `401`. Si llegara aquí sería un error nuestro, así que cae en
+ *   `PROCESSING_ERROR` — no en algo que insinúe que el otro banco hizo algo mal.
+ * - `IDEMPOTENCY_CONFLICT` es un `409` sincrónico. Lo mismo.
+ * - `WRONG_DESTINATION_BANK` simplemente no está: alguien nos mandó un depósito
+ *   que no era para nosotros, y para el contrato eso es un error de proceso.
+ *
+ * Y dos se renombran sin cambiar de significado: `AMOUNT_EXCEEDS_LIMIT` →
+ * `AMOUNT_LIMIT_EXCEEDED`, `UNSUPPORTED_CURRENCY` → `CURRENCY_NOT_SUPPORTED`.
+ */
+export function v1ReasonOf(
+  rejection: InterbankReceiptRejection,
+):
+  | 'ACCOUNT_NOT_FOUND'
+  | 'ACCOUNT_INACTIVE'
+  | 'AMOUNT_LIMIT_EXCEEDED'
+  | 'CURRENCY_NOT_SUPPORTED'
+  | 'EXPIRED'
+  | 'CANCELLED'
+  | 'PROCESSING_ERROR' {
+  switch (rejection) {
+    case 'ACCOUNT_NOT_FOUND':
+      return 'ACCOUNT_NOT_FOUND';
+    case 'ACCOUNT_INACTIVE':
+      return 'ACCOUNT_INACTIVE';
+    case 'AMOUNT_EXCEEDS_LIMIT':
+      return 'AMOUNT_LIMIT_EXCEEDED';
+    case 'UNSUPPORTED_CURRENCY':
+      return 'CURRENCY_NOT_SUPPORTED';
+    case 'EXPIRED':
+      return 'EXPIRED';
+    case 'CANCELLED':
+      return 'CANCELLED';
+    case 'WRONG_DESTINATION_BANK':
+    case 'BANK_NOT_AUTHORIZED':
+    case 'IDEMPOTENCY_CONFLICT':
+    case 'INVALID_REQUEST':
+      return 'PROCESSING_ERROR';
+  }
 }
 
 /**

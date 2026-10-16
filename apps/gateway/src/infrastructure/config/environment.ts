@@ -12,6 +12,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   Max,
   Min,
   MinLength,
@@ -147,6 +148,35 @@ export class GatewayEnvironment {
   @IsString()
   @MinLength(32)
   public INTERBANK_PARTNER_TOKEN?: string;
+
+  /**
+   * La API key que **exigimos** a quien nos llama por `/interbank/v1` (T-56).
+   *
+   * Es la del contrato oficial (`X-Api-Key`) y es distinta del
+   * `INTERBANK_PARTNER_TOKEN` de T-46, que era un `Bearer` compartido para las
+   * rutas de `/api/`. Conviven porque las rutas viejas siguen sirviendo al
+   * frontend; lo que no conviven es su significado: ésta **identifica** al banco
+   * que llama, y de eso dependen dos reglas del contrato que un token
+   * compartido no puede cumplir.
+   *
+   * Ausente significa que la entrada del contrato está cerrada, y el guardián
+   * responde `401` a todo el mundo. Es preferible a arrancar con una clave vacía
+   * que cualquiera adivina.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(32)
+  public INTERBANK_API_KEY_INBOUND?: string;
+
+  /** Nuestro código de banco. `GET /interbank/v1/health` lo publica. */
+  @IsString()
+  @Matches(/^BANK[0-9]{2}$/, { message: 'INTERBANK_BANK_CODE debe cumplir ^BANK[0-9]{2}$' })
+  public INTERBANK_BANK_CODE!: string;
+
+  /** El código del banco pareja, al que corresponde la API key de entrada. */
+  @IsString()
+  @Matches(/^BANK[0-9]{2}$/, { message: 'INTERBANK_PARTNER_BANK_CODE debe cumplir ^BANK[0-9]{2}$' })
+  public INTERBANK_PARTNER_BANK_CODE!: string;
 }
 
 /**
@@ -186,6 +216,10 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Gatewa
     ALERT_WEBHOOK_TOKEN: source.ALERT_WEBHOOK_TOKEN === '' ? undefined : source.ALERT_WEBHOOK_TOKEN,
     INTERBANK_PARTNER_TOKEN:
       source.INTERBANK_PARTNER_TOKEN === '' ? undefined : source.INTERBANK_PARTNER_TOKEN,
+    INTERBANK_API_KEY_INBOUND:
+      source.INTERBANK_API_KEY_INBOUND === '' ? undefined : source.INTERBANK_API_KEY_INBOUND,
+    INTERBANK_BANK_CODE: source.INTERBANK_BANK_CODE ?? 'BANK02',
+    INTERBANK_PARTNER_BANK_CODE: source.INTERBANK_PARTNER_BANK_CODE ?? 'BANK99',
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

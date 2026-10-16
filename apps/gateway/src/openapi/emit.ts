@@ -32,6 +32,8 @@ async function emit(): Promise<void> {
     OBJECT_STORAGE_BUCKET: 'customer-identity-documents',
     OBJECT_STORAGE_REGION: 'us-east-1',
     CORS_ALLOWED_ORIGINS: 'http://localhost:3010',
+    INTERBANK_BANK_CODE: 'BANK02',
+    INTERBANK_PARTNER_BANK_CODE: 'BANK99',
   };
 
   const app = await NestFactory.create(AppModule.forRoot(environment), { logger: false });
@@ -57,7 +59,6 @@ async function emit(): Promise<void> {
 
   await app.close();
 
-   
   console.log(`wrote ${target}`);
   process.exit(0);
 }

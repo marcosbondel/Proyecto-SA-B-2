@@ -1,8 +1,20 @@
 # Depósitos interbancarios (T-46 entrantes, T-47 salientes)
 
-**Estado del contrato: provisional, pero ya reconciliado con el enunciado.**
-El OpenAPI oficial del curso **no se ha publicado** —pedirlo es T-55 (#152)— así
-que los nombres de campo siguen siendo una propuesta nuestra y no un acuerdo.
+> **El contrato oficial llegó el 2026-10-16** y está versionado sin modificar en
+> [`../references/interbank-contract-v1.openapi.yaml`](../references/interbank-contract-v1.openapi.yaml).
+> Lo acordado con la pareja —URL, claves, formato de cuenta, horario— vive en
+> [`INTERBANK-AGREEMENT.md`](INTERBANK-AGREEMENT.md), que es **la fuente de la
+> verdad de nuestro lado**.
+>
+> Esta página describe el contrato **provisional** que el repositorio implementa
+> hoy, que no es el oficial: son siete operaciones contra las dos que hay, con
+> otros nombres y otros formatos. El análisis operación por operación y la lista
+> de trabajo están en
+> [la evidencia de T-56](../qa/backend/T-56-interbank-reconciliation-evidence.md#8-el-contrato-oficial-llegó-el-análisis-operación-por-operación).
+> **Manda el contrato oficial**; lo de abajo es lo que hay mientras se migra.
+
+**Estado del contrato: provisional, reconciliado con el §4.1 del enunciado y
+pendiente de migrar al OpenAPI oficial.**
 Lo que sí dejó de ser una suposición es el **§4.1 del PDF**, que está en
 `docs/references/780_Proyecto_3_2S2026.pdf` desde el principio: T-56 comparó el
 cuerpo implementado contra sus «datos mínimos del mensaje» y cerró las tres

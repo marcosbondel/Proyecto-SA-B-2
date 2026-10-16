@@ -5,7 +5,10 @@ import type { Role } from '@bank/contracts';
 
 import {
   TEST_ALERT_WEBHOOK_TOKEN,
+  TEST_INTERBANK_API_KEY,
   TEST_INTERBANK_PARTNER_TOKEN,
+  TEST_OWN_BANK_CODE,
+  TEST_PARTNER_BANK_CODE,
   bearerFor,
 } from './broker-harness';
 import type { BrokerHarness } from './broker-harness';
@@ -163,7 +166,10 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
     request(h.app.getHttpServer())
       .post(`/api/accounts/${ACCOUNT_ID}/deposit`)
       .set('Authorization', auth(h, 'CAJERO_RECEPTOR'))
-      .send({ amount: { amountMinor: 10_000, currency: 'GTQ' }, description: 'Depósito en ventanilla' }),
+      .send({
+        amount: { amountMinor: 10_000, currency: 'GTQ' },
+        description: 'Depósito en ventanilla',
+      }),
 
   'POST /api/accounts/{accountId}/status': (h) =>
     request(h.app.getHttpServer())
@@ -179,8 +185,8 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
       .send({
         interbankTransferId,
         idempotencyKey: interbankTransferId,
-        originBankCode: 'PARTNER_MOCK',
-        destinationBankCode: 'BANK_USAC',
+        originBankCode: 'BANK99',
+        destinationBankCode: 'BANK02',
         accountId: ACCOUNT_ID,
         amount: { amountMinor: 10_000, currency: 'GTQ' },
         // Obligatorio desde T-56: §4.1 lo pide entre los datos mínimos del
@@ -189,6 +195,80 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
         timestamp: '2026-10-15T12:00:00.000Z',
       });
   },
+
+  /*
+   * Las siete del contrato oficial (T-56). La API key y el banco que identifica
+   * salen del arnés; el cuerpo es el del contrato, con los dos sellos de tiempo
+   * calculados al vuelo porque `expiresAt` tiene que estar en el futuro —un
+   * literal fijo haría que esta suite empezara a fallar el día que caduque.
+   */
+  'POST /interbank/v1/transfers': (h) => {
+    const interbankTransferId = randomUUID();
+    const ahora = new Date();
+
+    return request(h.app.getHttpServer())
+      .post('/interbank/v1/transfers')
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY)
+      .set('Idempotency-Key', interbankTransferId)
+      .send({
+        interbankTransferId,
+        originBankCode: TEST_PARTNER_BANK_CODE,
+        destinationBankCode: TEST_OWN_BANK_CODE,
+        originAccount: '99-000000123',
+        destinationAccount: '02-000000052',
+        amount: '150.00',
+        currency: 'GTQ',
+        createdAt: ahora.toISOString(),
+        expiresAt: new Date(ahora.getTime() + 180_000).toISOString(),
+      });
+  },
+
+  'GET /interbank/v1/transfers/{interbankTransferId}': (h) =>
+    request(h.app.getHttpServer())
+      .get(`/interbank/v1/transfers/${randomUUID()}`)
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY),
+
+  'POST /interbank/v1/transfers/{interbankTransferId}/cancel': (h) =>
+    request(h.app.getHttpServer())
+      .post(`/interbank/v1/transfers/${randomUUID()}/cancel`)
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY)
+      .send({ originBankCode: TEST_PARTNER_BANK_CODE, reason: 'TIMEOUT' }),
+
+  'POST /interbank/v1/transfers/{interbankTransferId}/result': (h) => {
+    const interbankTransferId = randomUUID();
+
+    return request(h.app.getHttpServer())
+      .post(`/interbank/v1/transfers/${interbankTransferId}/result`)
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY)
+      .send({
+        interbankTransferId,
+        destinationBankCode: TEST_PARTNER_BANK_CODE,
+        status: 'ACCEPTED',
+        processedAt: new Date().toISOString(),
+      });
+  },
+
+  'POST /interbank/v1/reversals': (h) =>
+    request(h.app.getHttpServer())
+      .post('/interbank/v1/reversals')
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY)
+      .send({
+        reversalId: randomUUID(),
+        originalTransferId: randomUUID(),
+        originBankCode: TEST_PARTNER_BANK_CODE,
+        amount: '150.00',
+        currency: 'GTQ',
+      }),
+
+  'GET /interbank/v1/reversals/{reversalId}': (h) =>
+    request(h.app.getHttpServer())
+      .get(`/interbank/v1/reversals/${randomUUID()}`)
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY),
+
+  'GET /interbank/v1/reconciliation': (h) =>
+    request(h.app.getHttpServer())
+      .get('/interbank/v1/reconciliation?date=2026-10-20')
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY),
 
   'GET /api/notifications': (h) =>
     request(h.app.getHttpServer())
@@ -217,7 +297,7 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
       .set('Authorization', auth(h, 'CLIENTE'))
       .send({
         sourceAccount: SOURCE_ACCOUNT,
-        destinationBankCode: 'PARTNER_MOCK',
+        destinationBankCode: 'BANK99',
         destinationAccount: 'cuenta-de-alla-1',
         amount: { amountMinor: 125_000, currency: 'GTQ' },
       }),
