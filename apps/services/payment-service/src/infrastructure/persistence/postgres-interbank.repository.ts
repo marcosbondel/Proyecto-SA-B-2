@@ -49,8 +49,9 @@ export class PostgresInterbankRepository implements InterbankRepository {
       `INSERT INTO interbank_deposits
        (deposit_id, origin_bank_code, external_transfer_id, idempotency_key,
         destination_account_id, amount_minor, currency, correlation_id, origin_envelope,
-        stage, rejection_reason, next_action_at, result_envelope, callback_due_at, decided_at, trace_context)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13::jsonb,$14,$15,$16)
+        stage, rejection_reason, next_action_at, result_envelope, callback_due_at, decided_at,
+        trace_context, partner_timestamp)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13::jsonb,$14,$15,$16,$17)
        ON CONFLICT DO NOTHING RETURNING deposit_id`,
       [
         p.depositId,
@@ -69,6 +70,8 @@ export class PostgresInterbankRepository implements InterbankRepository {
         input.stage === 'REJECTED' ? input.now : null,
         input.stage === 'REJECTED' ? input.now : null,
         currentTraceparent(),
+        // El sello del otro banco, no el nuestro (T-56).
+        p.partnerTimestamp,
       ],
     );
     if (inserted.rowCount === 1) return { kind: 'CREATED', depositId: p.depositId };

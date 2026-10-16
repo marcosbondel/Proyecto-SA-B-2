@@ -26,7 +26,11 @@ export class InterbankController {
   @ApiOperation({
     summary: 'Recibe un depósito del banco asociado',
     description:
-      'Contrato provisional T-46. Requiere el token compartido del banco asociado; responde al aceptar el comando. El resultado llega por callback.',
+      'Contrato provisional (T-46, reconciliado con §4.1 en T-56). Requiere el token compartido ' +
+      'del banco asociado; responde al aceptar el comando y el resultado llega por callback. ' +
+      'El monto se acepta en centavos (`amountMinor`) o en decimal (`value`), y la cuenta ' +
+      'destino es una cadena: una que este banco no reconozca se rechaza con ' +
+      '`ACCOUNT_NOT_FOUND` **por callback**, no con un 400.',
   })
   @ApiBearerAuth('interbankPartner')
   @ApiBody({
@@ -39,6 +43,7 @@ export class InterbankController {
         'destinationBankCode',
         'accountId',
         'amount',
+        'timestamp',
       ],
       additionalProperties: false,
       properties: {
@@ -46,15 +51,48 @@ export class InterbankController {
         idempotencyKey: { type: 'string', minLength: 1, maxLength: 128 },
         originBankCode: { type: 'string', pattern: '^[A-Z][A-Z0-9_]{1,31}$' },
         destinationBankCode: { type: 'string', pattern: '^[A-Z][A-Z0-9_]{1,31}$' },
-        accountId: { type: 'string', format: 'uuid' },
+        accountId: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 64,
+          description:
+            'La cuenta destino. Este banco identifica las suyas por UUID v4, que es lo que ' +
+            'fija el acuerdo de integración; cualquier otra forma se acepta y se rechaza con ' +
+            'ACCOUNT_NOT_FOUND por callback.',
+        },
         amount: {
-          type: 'object',
-          required: ['amountMinor', 'currency'],
-          additionalProperties: false,
-          properties: {
-            amountMinor: { type: 'integer' },
-            currency: { type: 'string', pattern: '^[A-Z]{3}$' },
-          },
+          oneOf: [
+            {
+              type: 'object',
+              required: ['amountMinor', 'currency'],
+              additionalProperties: false,
+              properties: {
+                amountMinor: { type: 'integer', description: 'Centavos. El formato de este banco.' },
+                currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+              },
+            },
+            {
+              type: 'object',
+              required: ['value', 'currency'],
+              additionalProperties: false,
+              properties: {
+                value: {
+                  oneOf: [{ type: 'string' }, { type: 'number' }],
+                  description:
+                    'Decimal de dos cifras como máximo, p. ej. "125.00". Se convierte a ' +
+                    'centavos con aritmética entera: ningún float toca el dinero.',
+                },
+                currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+              },
+            },
+          ],
+        },
+        timestamp: {
+          type: 'string',
+          format: 'date-time',
+          description:
+            'Cuándo lo originó el banco de origen (§4.1, datos mínimos). Se conserva aparte ' +
+            'del momento en que lo recibimos.',
         },
       },
     },

@@ -183,6 +183,10 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
         destinationBankCode: 'BANK_USAC',
         accountId: ACCOUNT_ID,
         amount: { amountMinor: 10_000, currency: 'GTQ' },
+        // Obligatorio desde T-56: §4.1 lo pide entre los datos mínimos del
+        // mensaje. Esta suite sólo corre contra el broker real, así que es CI
+        // quien la ve — y por eso el fixture se olvida fácil.
+        timestamp: '2026-10-15T12:00:00.000Z',
       });
   },
 

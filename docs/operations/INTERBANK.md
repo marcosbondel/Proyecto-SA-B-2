@@ -1,9 +1,16 @@
 # Depósitos interbancarios (T-46 entrantes, T-47 salientes)
 
-**Estado del contrato: provisional.** No se recibió el PDF de Fase 3 ni el
-OpenAPI oficial del curso. La ruta y el callback de esta página permiten probar
-el flujo localmente; cuando llegue el contrato oficial habrá que comparar
-nombres, campos, autenticación y códigos antes de considerarlo compatible.
+**Estado del contrato: provisional, pero ya reconciliado con el enunciado.**
+El OpenAPI oficial del curso **no se ha publicado** —pedirlo es T-55 (#152)— así
+que los nombres de campo siguen siendo una propuesta nuestra y no un acuerdo.
+Lo que sí dejó de ser una suposición es el **§4.1 del PDF**, que está en
+`docs/references/780_Proyecto_3_2S2026.pdf` desde el principio: T-56 comparó el
+cuerpo implementado contra sus «datos mínimos del mensaje» y cerró las tres
+divergencias que rompían la interoperabilidad (ver *Lo que T-56 reconcilió*).
+
+Cuando llegue el contrato oficial, **manda el contrato**: habrá que comparar
+nombres, tipos, autenticación y códigos campo por campo, y la divergencia se
+anota aquí. Ese paso es el alcance 2 de T-56 y sigue abierto.
 Este trabajo no requiere desplegar en GCP.
 
 ## Plan implementado
@@ -53,9 +60,24 @@ define su cuerpo y su respuesta. Ejemplo:
   "originBankCode": "PARTNER_MOCK",
   "destinationBankCode": "BANK_USAC",
   "accountId": "fb6c2385-94a1-4f73-8188-cd2810ce4823",
-  "amount": { "amountMinor": 12500, "currency": "GTQ" }
+  "amount": { "amountMinor": 12500, "currency": "GTQ" },
+  "timestamp": "2026-10-15T12:00:00.000Z"
 }
 ```
+
+El monto también se acepta en decimal, que es lo que manda un banco que piensa
+en quetzales en vez de en centavos:
+
+```json
+{ "amount": { "value": "125.00", "currency": "GTQ" } }
+```
+
+Las dos formas son equivalentes y la conversión ocurre **en el borde**, con
+aritmética entera: `Math.round(1.15 * 100)` da 114 en coma flotante, así que el
+Gateway parte la cadena por el punto y cuenta con enteros. Un decimal de más de
+dos cifras —`1.456`— se rechaza con `400` en vez de redondearse: redondear
+dinero que no se pidió redondear es inventarlo. **Ningún `float` toca el
+dinero**, que es la regla de Account desde T-17.
 
 `202` confirma que el comando llegó al broker, no que el saldo cambió. Devuelve
 `depositId` y `correlationId`. El primero se deriva de banco origen e
@@ -74,9 +96,100 @@ el callback guardado.
 
 Las causas de rechazo son `ACCOUNT_NOT_FOUND`, `ACCOUNT_INACTIVE`,
 `AMOUNT_EXCEEDS_LIMIT`, `UNSUPPORTED_CURRENCY`, `WRONG_DESTINATION_BANK`,
-`BANK_NOT_AUTHORIZED`, `INVALID_REQUEST` e `IDEMPOTENCY_CONFLICT`. Una cuenta
-inactiva nunca se reactiva por este flujo. El crédito ordinario de una
-transferencia interna conserva su regla de reactivación.
+`BANK_NOT_AUTHORIZED`, `INVALID_REQUEST` e `IDEMPOTENCY_CONFLICT` — el conjunto
+**cerrado** que pide §4.1, verificado contra el enunciado en T-56 y declarado en
+un solo sitio, `payment-service/src/domain/interbank-receipt.ts`. Cerrado y no
+una cadena libre porque el banco pareja tiene que poder **programar** contra
+estos valores; un motivo inventado en un `if` es un cambio de contrato que nadie
+acordó. Si el contrato oficial trae otro conjunto, manda el contrato.
+
+Una cuenta inactiva nunca se reactiva por este flujo. El crédito ordinario de
+una transferencia interna conserva su regla de reactivación.
+
+El **monto máximo por operación** es `INTERBANK_MAX_AMOUNT_MINOR`, del ConfigMap
+y no una constante (§4.1 lo pide configurable): llega por `environment` hasta la
+función pura que lo compara, así que cambiarlo es un valor y un reinicio, no un
+despliegue de código.
+
+## Los estados del depósito **recibido**
+
+§4.1 enumera seis estados —`PENDING`, `SENT`, `ACCEPTED`, `REJECTED`, `TIMEOUT`,
+`REVERSED`— y son los del depósito que este banco **envía** (T-47,
+`domain/interbank-send.ts`). Aplicarlos al recibido sería copiar un vocabulario
+que no describe el flujo: no hay `SENT` porque no mandamos nada, no hay
+`TIMEOUT` porque no esperamos la decisión de nadie —**la decisión es nuestra**—
+y no hay `REVERSED` porque un depósito recibido que se rechaza no mueve dinero
+que haya que devolver: se rechaza **antes** de acreditar.
+
+Lo que sí tiene, y el enviado no, son los **dos pasos de la decisión**. Son
+cuatro estados y cada uno responde a una pregunta distinta:
+
+| Estado | Qué significa |
+| --- | --- |
+| `ELIGIBILITY` | llegó, y se le preguntó a Account si la cuenta lo admite |
+| `CREDIT` | la cuenta lo admite y se ordenó el crédito. **El dinero todavía no está** |
+| `ACCEPTED` | acreditado. Final, y el único que mueve el saldo |
+| `REJECTED` | no se acreditó, con un motivo del conjunto cerrado. Final |
+
+```
+ELIGIBILITY ──inelegible──────────────► REJECTED
+     │                                      ▲
+     └──elegible──► CREDIT ──rehusado───────┘
+                      │
+                      └──acreditado──► ACCEPTED
+```
+
+Las transiciones las decide **una función pura**,
+`applyInterbankReceipt` en `domain/interbank-receipt.ts`, como pide §4.1 para
+las dos direcciones. Hasta T-56 vivían como diez ternarios repartidos por el
+caso de uso: cada uno correcto por separado, y juntos nada que se pudiera leer.
+
+Dos propiedades que la función defiende y que el caso de uso no podía:
+
+- **Un depósito ya decidido no se mueve.** Un segundo paso sobre `ACCEPTED`
+  sería un segundo crédito, que es el depósito duplicado que §8.3 penaliza con
+  un 50 %.
+- **Un mensaje fuera de orden se registra y se descarta**, no se absorbe. La
+  confirmación de un crédito que nadie ordenó, o una elegibilidad para un
+  depósito ya decidido, lanzan; el llamador lo convierte en un log
+  (`interbank receipt transition refused`, con su `correlationId`) y no toca el
+  estado. Las mismas cuatro transiciones están escritas otra vez como `CHECK` en
+  SQL: si la función y la base se contradicen, **gana la base**.
+
+El **callback al banco pareja no es un estado**: es una entrega que se
+reintenta, y vive en sus propias columnas (`callback_attempts`,
+`callback_due_at`, `callback_delivered_at`). Un depósito `ACCEPTED` cuyo callback
+todavía no salió está acreditado igual — el dinero no depende de que el otro
+banco se haya enterado.
+
+## Lo que T-56 reconcilió
+
+Tres divergencias entre el cuerpo implementado en T-46 y los «datos mínimos del
+mensaje» de §4.1. Las tres rompían la interoperabilidad, y ninguna necesitaba
+esperar el contrato oficial:
+
+| Qué pedía §4.1 | Qué había | Qué hay ahora |
+| --- | --- | --- |
+| **`timestamp` ISO 8601** entre los datos mínimos | **no estaba en el cuerpo**, y el borde era `.strict()`: un banco que lo mandaba —como pide el enunciado— recibía un `400` **por mandarlo bien** | obligatorio, validado y persistido en `partner_timestamp`, **separado** de `created_at` |
+| cuenta destino | `accountId` tipado como UUID: un banco que mandara un número de cuenta recibía un `400` **sin fila y sin callback**, y se quedaba esperando hasta que venciera *su* plazo sin saber por qué | una cadena de hasta 64 caracteres. Entra, se registra, se rechaza con `ACCOUNT_NOT_FOUND` y **se le contesta por callback** |
+| monto | sólo `amountMinor` entero: `"amount": 125.00` no interoperaba | los dos formatos, convertidos en el borde con aritmética entera |
+
+**Dos sellos de tiempo y no uno**, que es la parte que no es obvia:
+`partner_timestamp` es cuándo dice **él** que lo originó y `created_at` cuándo lo
+recibimos **nosotros**. Con uno solo no se puede distinguir un reloj desfasado
+de un depósito que tardó en llegar, y los dos se arreglan distinto.
+
+**La decisión sobre la cuenta destino.** Las cuentas de este banco se
+identifican por **UUID v4** y no existe un número de cuenta — no está en el
+esquema de `accounts` y añadirlo sería una migración, un generador, una
+restricción de unicidad y una pantalla. Así que la decisión es: el acuerdo de
+integración (T-55) **lista los UUID de las cuentas de prueba**, y cualquier otra
+forma que llegue se trata como una cuenta que no existe. Lo que cambió no es
+qué aceptamos, es **cómo lo rechazamos**: con un motivo que el otro banco puede
+leer en vez de un `400` que tiene que adivinar. Que un UUID sea lo que
+reconocemos lo decide `couldBeOurAccount` en el dominio, no el esquema del
+mensaje: es una regla de **este** banco, así que si el contrato oficial fija otro
+formato cambia la regla y no el contrato.
 
 ## Ejecutar sólo en local
 
