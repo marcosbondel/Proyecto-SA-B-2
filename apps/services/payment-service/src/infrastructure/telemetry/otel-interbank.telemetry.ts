@@ -21,6 +21,9 @@ type LogFields = {
   readonly reason?: string;
   readonly durationMs?: number;
   readonly outcome?: string;
+  /** De dónde venía y con qué, para una transición que el diagrama no tiene (T-56). */
+  readonly from?: string;
+  readonly event?: string;
 };
 
 /** Closed metric labels; entity identifiers live only in correlated logs. */
@@ -84,6 +87,22 @@ export class OtelInterbankTelemetry implements InterbankTelemetry {
     const fields = { correlationId: attempt.correlationId, outcome: attempt.result };
     if (attempt.result === 'delivered') this.log.info('interbank callback delivered', fields);
     else this.log.warn('interbank callback failed; retry scheduled', fields);
+  }
+
+  /**
+   * Al log y **no a una métrica** (T-56).
+   *
+   * Una transición ilegal es rara y específica: lo que hace falta cuando ocurre
+   * es saber cuál fue, no cuántas van. Un contador con `from` y `event` como
+   * etiquetas serían dieciséis series para un suceso que idealmente no pasa
+   * nunca, y el catálogo de telemetría justifica cada serie que existe.
+   */
+  illegalTransition(attempt: Parameters<InterbankTelemetry['illegalTransition']>[0]): void {
+    this.log.warn('interbank receipt transition refused', {
+      correlationId: attempt.correlationId,
+      from: attempt.from,
+      event: attempt.event,
+    });
   }
 }
 

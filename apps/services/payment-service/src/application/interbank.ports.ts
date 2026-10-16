@@ -79,4 +79,16 @@ export interface InterbankTelemetry {
     readonly correlationId: string;
     readonly result: 'delivered' | 'failed';
   }): void;
+  /**
+   * Una transición que el diagrama no tiene (T-56).
+   *
+   * Se registra en vez de escribirse. No lleva etiquetas de métrica con el
+   * identificador del depósito: es un suceso raro y específico, así que su
+   * sitio es el log, no una serie por depósito.
+   */
+  illegalTransition(attempt: {
+    readonly correlationId: string;
+    readonly from: InterbankStage;
+    readonly event: string;
+  }): void;
 }
