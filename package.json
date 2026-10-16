@@ -52,6 +52,7 @@
     "obs:check": "./infra/k8s/scripts/check-chart-deps.sh infra/k8s/helm/bank-observability",
     "obs:check:dashboards": "./infra/k8s/scripts/check-dashboards.sh",
     "obs:check:policies": "./infra/k8s/scripts/check-network-policies.sh infra/k8s/helm/bank-observability",
+    "k8s:check:secrets": "./infra/k8s/scripts/check-secret-rollout.sh infra/k8s/helm/bank-usac",
     "obs:lint": "helm lint infra/k8s/helm/bank-observability",
     "obs:template": "helm template bank-observability infra/k8s/helm/bank-observability --namespace observability",
     "obs:forward": "kubectl port-forward -n observability svc/grafana 3002:80",
