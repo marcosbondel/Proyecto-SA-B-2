@@ -222,7 +222,121 @@ migración `011`: **un tipo de columna que se ensancha se prueba escribiendo el
 valor que antes no cabía**, y un `ALTER … USING` se prueba corriéndolo. Un doble
 habría aceptado cualquier cadena desde el principio.
 
-## 8. Lo que queda abierto
+## 8. El contrato oficial llegó: el análisis operación por operación
+
+**2026-10-16.** El auxiliar entregó el contrato base, versionado sin modificar
+en
+[`docs/references/interbank-contract-v1.openapi.yaml`](../../references/interbank-contract-v1.openapi.yaml)
+(SHA-256 `4888b951aa48f95d8d30…`). Esto desbloquea el **alcance 2** del ticket, y
+el resultado de la comparación es más grande de lo que el ticket preveía: el
+contrato tiene **siete operaciones** y el repositorio implementaba **dos**, con
+nombres y formatos distintos en las dos.
+
+Lo que el contrato confirma de lo que ya se había decidido sin él: el monto va
+como **texto** y no como número (por la misma razón que §3 de este documento),
+la idempotencia es obligatoria y por identificador del emisor, el `traceparent`
+viaja en todas las operaciones, y el rechazo se informa **por callback** y no por
+el código HTTP. Las tres divergencias que T-56 cerró a ciegas iban en la
+dirección correcta.
+
+### 8.1 Las siete operaciones
+
+| # | Operación del contrato | Rol | Teníamos | Veredicto |
+| --- | --- | --- | --- | --- |
+| 1 | `POST /transfers` | receptor | `POST /api/interbank/deposits` | **ruta, autenticación y cuerpo distintos** |
+| 2 | `GET /transfers/{id}` | receptor | — | **falta** |
+| 3 | `POST /transfers/{id}/cancel` | receptor | — | **falta** |
+| 4 | `POST /transfers/{id}/result` | **emisor** | `POST /api/interbank/callbacks` | **ruta y cuerpo distintos**; la URL se *deriva*, no se configura |
+| 5 | `POST /reversals` · `GET /reversals/{id}` | receptor | — | **falta** |
+| 6 | `GET /reconciliation?date=` | receptor | — | **falta** |
+| 7 | `GET /health` | ambos | `/health` propio | existe, con **otra forma** y fuera del prefijo |
+
+### 8.2 Campo por campo, lo que el contrato exige del depósito
+
+| Campo del contrato | Teníamos | Qué hay que cambiar |
+| --- | --- | --- |
+| prefijo `/interbank/v1` | `/api/interbank` | ruta nueva; la vieja es nuestra y sigue sirviendo al frontend |
+| `X-Api-Key`, **identifica al banco que llama** | `Authorization: Bearer` compartido | autenticación nueva, y un mapa clave → banco |
+| `Idempotency-Key` **igual a** `interbankTransferId` | `idempotencyKey` en el cuerpo | mover al header y validar la igualdad (`400` si no) |
+| `BankCode` `^BANK[0-9]{2}$` | `BANK_USAC`, `PARTNER_MOCK` | **ninguno de los dos cumple**: pasamos a `BANK02` |
+| `originAccount` **obligatorio** | no se recibía ni se enviaba | campo nuevo en las dos direcciones |
+| `AccountNumber` `^[A-Za-z0-9-]{1,34}$` | UUID v4 | **un UUID son 36 caracteres: no cabe.** Hace falta un número de cuenta propio |
+| `Amount` texto `^[0-9]{1,5}\.[0-9]{2}$`, 0.01–10000.00 | entero de centavos | formatear al salir, parsear al entrar; el máximo baja a `1000000` centavos |
+| `createdAt` y `expiresAt` (= +180 s) | `timestamp` (añadido en T-56) | dos campos, y el vencimiento **se respeta** |
+| `ReasonCode` de siete valores | ocho valores, cuatro con otro nombre | ver §8.3 |
+| `202` con `{interbankTransferId, status: PROCESSING, receivedAt}` | `{depositId, correlationId}` | cuerpo nuevo |
+| `200` al repetir la **misma** solicitud, con el estado actual | `202` otra vez | respuesta distinta para el duplicado |
+| `409` al repetir el id con contenido distinto | se registraba el conflicto y se avisaba por callback | **`409` sincrónico**, que es más simple y es lo que pide |
+| `422` si llega después de `expiresAt` | no existía el concepto | rechazo sincrónico por vencimiento |
+
+### 8.3 Los motivos de rechazo: siete, no ocho
+
+| El contrato | Nosotros | Qué pasa |
+| --- | --- | --- |
+| `ACCOUNT_NOT_FOUND` | igual | ✓ |
+| `ACCOUNT_INACTIVE` | igual | ✓ |
+| `AMOUNT_LIMIT_EXCEEDED` | `AMOUNT_EXCEEDS_LIMIT` | **se renombra** |
+| `CURRENCY_NOT_SUPPORTED` | `UNSUPPORTED_CURRENCY` | **se renombra** |
+| `EXPIRED` | — | **nuevo** |
+| `CANCELLED` | — | **nuevo** |
+| `PROCESSING_ERROR` | `INVALID_REQUEST` | **se renombra** |
+| — | `WRONG_DESTINATION_BANK` | no existe en el contrato: pasa a `PROCESSING_ERROR` |
+| — | `BANK_NOT_AUTHORIZED` | no existe: es un `401`, no un motivo de rechazo |
+| — | `IDEMPOTENCY_CONFLICT` | no existe: es un `409` sincrónico |
+
+Tres de los nuestros **no son motivos de rechazo en el contrato, son códigos
+HTTP**, y eso es más que un renombrado: un banco no autorizado no recibe un
+callback explicándole que no lo está — recibe un `401` y se queda sin saber nada
+de la transferencia, que es lo correcto.
+
+### 8.4 Lo que el contrato pide y no teníamos ni parecido: el protocolo de TIMEOUT
+
+Nuestro envío esperaba la confirmación **30 segundos** y después compensaba. El
+contrato define algo bastante más cuidadoso, y la diferencia importa porque es
+donde se pierde dinero:
+
+1. El emisor **reserva** el monto; no lo debita definitivamente.
+2. `expiresAt` son **180 s**. Al vencer, la transferencia pasa a `TIMEOUT` y **el
+   monto sigue reservado** — nuestra versión ya habría devuelto el dinero aquí.
+3. El emisor **consulta** `GET /transfers/{id}`: `ACCEPTED` confirma el débito,
+   `REJECTED` o `CANCELLED` liberan, `404` o `PROCESSING` pasan al paso 4.
+4. El emisor **cancela** con `POST /transfers/{id}/cancel`: `CANCELLED` libera,
+   `ALREADY_ACCEPTED` confirma, `ALREADY_REJECTED` libera.
+5. Si el receptor no contesta ni a la consulta ni a la cancelación, sólo se puede
+   liberar después de `expiresAt` **+ 300 s**, y **hay que alertar**.
+6. Un `ACCEPTED` que llega sobre una transferencia ya liberada es un **incidente
+   de nivel ERROR** y se pide la devolución con `POST /reversals`.
+
+El paso 5 es el que no se puede improvisar: **liberar antes del margen es
+acreditar dos veces** —el receptor puede haber acreditado y estar reintentando su
+callback— y es exactamente el 50 % que §8.3 penaliza. Y el paso 6 es la razón de
+que existan los reversos, que es la operación que más fácil se omite por parecer
+un caso raro.
+
+### 8.5 La lista de trabajo que sale de esto
+
+En este orden, porque cada uno habilita al siguiente:
+
+1. **`BANK02` y el número de cuenta** — sin un `AccountNumber` válido no hay
+   ninguna operación que pueda completarse.
+2. **El prefijo `/interbank/v1`, `X-Api-Key` y el mapa clave → banco.**
+3. **`POST /transfers`** con el cuerpo del contrato, `createdAt`/`expiresAt`, el
+   `200` del duplicado, el `409` del conflicto y el `422` del vencido.
+4. **`POST /transfers/{id}/result`** como lo define el contrato, con la URL
+   derivada de la base de la pareja.
+5. **`GET /transfers/{id}`** y **`POST /transfers/{id}/cancel`**.
+6. **El protocolo de TIMEOUT del emisor**: reserva, 180 s, consulta, cancelación,
+   margen de 300 s y alerta.
+7. **`POST /reversals` y `GET /reversals/{id}`**.
+8. **`GET /reconciliation`**.
+9. **`GET /health`** bajo el prefijo, sin autenticación, con `{status, bankCode}`.
+
+Lo acordado con la pareja —URL, claves, formato de cuenta, horario— vive en
+[`../../operations/INTERBANK-AGREEMENT.md`](../../operations/INTERBANK-AGREEMENT.md)
+y no aquí: esto es el estado del código contra el contrato, y eso es el acuerdo
+entre dos equipos.
+
+## 9. Lo que queda abierto
 
 - **El alcance 2 entero**: comparar contra el OpenAPI oficial y la prueba de
   contrato contra ese archivo. Depende de T-55 (#152).

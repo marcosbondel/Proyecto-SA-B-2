@@ -67,6 +67,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/operations/DEPLOYMENT.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/operations/EMAIL_RESEND.md` | project | Marcos Bonifasi | current | 2026-08-30 |
 | `docs/operations/INTERBANK.md` | project | Marcos Bonifasi | current | 2026-10-12 |
+| `docs/operations/INTERBANK-AGREEMENT.md` | project | Marcos Bonifasi | current | 2026-10-16 |
 | `docs/architecture/deployment.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `infra/k8s/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `infra/terraform/gcp/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
@@ -94,6 +95,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/adr/ADR-010-authentication.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/adr/ADR-011-diagramming-toolchain.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/references/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
+| `docs/references/interbank-contract-v1.openapi.yaml` | reference | el curso (auxiliar) | current | 2026-10-16 |
 | `apps/web/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/dda.md` | project | Enner Mendizabal | current | 2026-09-26 |
