@@ -1446,3 +1446,58 @@ grafana:
     # utilizable el salto log → traza.
     feature_toggles:
       enable: traceToMetrics correlations
+
+# =============================================================================
+# Las políticas de red del namespace (T-54, límite de TD-088)
+# =============================================================================
+#
+# El detalle de qué abre cada una está en
+# `templates/network-policies.yaml`; aquí sólo los tres valores que dependen del
+# entorno y la razón de cada defecto.
+networkPolicies:
+  # APAGADO A PROPÓSITO, y el defecto importa más que la política.
+  #
+  # Kubernetes acepta una NetworkPolicy aunque no haya quién la aplique, y
+  # entonces la ignora en silencio. En kind (kindnet) y en un GKE sin
+  # `ADVANCED_DATAPATH` eso significa que encenderlas no protege nada —pero
+  # tampoco avisa—, así que lo que uno verifica en local no dice nada de lo que
+  # pasará en el clúster. Y al revés: el día que el datapath SÍ las aplique, un
+  # error en un selector no es un aviso, es el stack caído.
+  #
+  # Por eso el camino es: instalar con esto en `false`, comprobar que el stack
+  # está verde, encenderlo con un `--set`, y volver a comprobarlo. Los comandos
+  # están en `docs/operations/CLOUD.md`.
+  enabled: false
+
+  # Los namespaces del banco: de ahí entra la telemetría al Collector, y ahí
+  # sale el webhook de alertas de Grafana hacia el Gateway.
+  #
+  # `bank-usac` es el del despliegue local en kind; `dev` y `prod` los del
+  # clúster. Los tres están porque el chart sirve a los tres y la lista no
+  # cuesta nada; un namespace que no existe en un selector simplemente no
+  # coincide con nada.
+  #
+  # Dependen de la etiqueta `kubernetes.io/metadata.name`, que el propio
+  # Kubernetes pone en todo Namespace desde 1.21 — no hay que etiquetarlos a
+  # mano.
+  bankNamespaces:
+    - dev
+    - prod
+    - bank-usac
+
+  # El endpoint del API server, para el sidecar de Grafana y para
+  # kube-state-metrics. Sólo el 443.
+  #
+  # Abierto a propósito. Una NetworkPolicy no puede seleccionar un Service, así
+  # que el maestro sólo se nombra por `ipBlock`; en este clúster el endpoint es
+  # PÚBLICO (no hay `private_cluster_config` en `gke.tf`), de modo que su IP no
+  # es un CIDR que el chart pueda conocer y cambia si el clúster se recrea.
+  #
+  # Un valor equivocado aquí no da error: el sidecar no descubre los ConfigMaps
+  # y Grafana arranca entero SIN NI UN DASHBOARD, que es justamente el
+  # artefacto que se califica. Acotarlo es una línea —
+  # `--set networkPolicies.apiServerCidr=<IP>/32`, con la IP que da
+  # `gcloud container clusters describe … --format='value(endpoint)'` — y
+  # conviene hacerlo; no es el defecto porque fallar abierto aquí deja el
+  # sistema funcionando y fallar cerrado lo deja mudo.
+  apiServerCidr: 0.0.0.0/0
