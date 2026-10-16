@@ -1,7 +1,9 @@
+import { v1CancelResponse, v1TransferStatus } from '@bank/contracts';
 import { currentTraceparent } from '@bank/observability';
 
 import type { InterbankDeposit, PartnerCallback } from '../../application/interbank.ports';
 import type { InterbankSend, PartnerBankClient } from '../../application/interbank-send.ports';
+import type { PartnerCancel, PartnerProbe } from '../../domain/interbank-timeout';
 
 /**
  * La ÚNICA salida HTTP de este servicio, y del banco entero.
@@ -67,6 +69,18 @@ export class HttpPartnerBankClient implements PartnerBankClient {
     readonly token: string,
     readonly originBankCode: string,
     readonly timeoutMs = 5_000,
+    /**
+     * La base de la API del banco pareja, para los dos pasos del protocolo de
+     * TIMEOUT (TD-095): `GET /transfers/{id}` y `POST /transfers/{id}/cancel`.
+     *
+     * Cuando no se configura, se **deriva** de `endpoint` quitándole el último
+     * segmento. Funciona porque el contrato pone los tres caminos al mismo
+     * nivel (`/transfers`, `/transfers/{id}`, `/transfers/{id}/cancel`), y es lo
+     * que permite que un despliegue existente gane el protocolo sin una
+     * variable nueva. Se puede fijar explícitamente cuando el banco pareja
+     * ponga su API en otra parte, que es cosa del acuerdo y no del código.
+     */
+    readonly apiBaseUrl: string = endpoint.replace(/\/[^/]*$/, ''),
   ) {}
 
   async send(
@@ -131,6 +145,107 @@ export class HttpPartnerBankClient implements PartnerBankClient {
         acknowledged: false,
         detail: error instanceof Error ? error.name : 'SEND_FAILED',
       };
+    }
+  }
+
+  /**
+   * `GET /transfers/{id}` — el paso 2 del protocolo de TIMEOUT (TD-095).
+   *
+   * Lo que devuelve son los **hechos**, no una decisión: quién decide qué hacer
+   * con ellos es `resolveTimeout`, que es puro. Aquí sólo se traduce HTTP a
+   * vocabulario del dominio, y las tres traducciones son las que importan:
+   *
+   * - `200` con un cuerpo válido → lo que el otro banco dice.
+   * - `404` → `UNKNOWN`. **No es un rechazo**: dice que no conocen el depósito,
+   *   y el protocolo manda cancelar igual para dejar constancia.
+   * - cualquier otra cosa, incluido un cuerpo que no cumple el contrato →
+   *   `UNREACHABLE`. Un cuerpo ilegible es exactamente tan informativo como el
+   *   silencio, y tratarlo como respuesta sería decidir sobre dinero a partir de
+   *   algo que no se entiende.
+   */
+  async probe(send: InterbankSend): Promise<PartnerProbe> {
+    if (this.token.length === 0) {
+      return { kind: 'UNREACHABLE' };
+    }
+
+    const traceparent = currentTraceparent();
+
+    try {
+      const response = await fetch(
+        `${this.apiBaseUrl}/transfers/${encodeURIComponent(send.interbankTransferId)}`,
+        {
+          method: 'GET',
+          redirect: 'error',
+          signal: AbortSignal.timeout(this.timeoutMs),
+          headers: {
+            accept: 'application/json',
+            authorization: `Bearer ${this.token}`,
+            ...(traceparent === null ? {} : { traceparent }),
+          },
+        },
+      );
+
+      if (response.status === 404) {
+        return { kind: 'UNKNOWN' };
+      }
+
+      if (response.status !== 200) {
+        return { kind: 'UNREACHABLE' };
+      }
+
+      const parsed = v1TransferStatus.safeParse(await response.json());
+
+      return parsed.success ? { kind: 'ANSWERED', status: parsed.data.status } : { kind: 'UNREACHABLE' };
+    } catch {
+      return { kind: 'UNREACHABLE' };
+    }
+  }
+
+  /**
+   * `POST /transfers/{id}/cancel` — el paso 3 (TD-095).
+   *
+   * Un `404` aquí se trata como **`UNREACHABLE`** y no como una cancelación
+   * conseguida, aunque sea tentador: el contrato define exactamente tres
+   * respuestas a una cancelación, y un `404` no es ninguna. Deducir de él que
+   * «no lo conocen, luego no lo acreditarán» sería decidir liberar dinero a
+   * partir de una inferencia sobre el enrutado del otro banco. Con
+   * `UNREACHABLE`, quien decide es el margen — y la liberación sale marcada
+   * como no verificada y con su alerta, que es lo honesto.
+   */
+  async cancel(send: InterbankSend): Promise<PartnerCancel> {
+    if (this.token.length === 0) {
+      return { kind: 'UNREACHABLE' };
+    }
+
+    const traceparent = currentTraceparent();
+
+    try {
+      const response = await fetch(
+        `${this.apiBaseUrl}/transfers/${encodeURIComponent(send.interbankTransferId)}/cancel`,
+        {
+          method: 'POST',
+          redirect: 'error',
+          signal: AbortSignal.timeout(this.timeoutMs),
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json',
+            authorization: `Bearer ${this.token}`,
+            'idempotency-key': send.idempotencyKey,
+            ...(traceparent === null ? {} : { traceparent }),
+          },
+          body: JSON.stringify({ reason: 'ORIGIN_TIMEOUT' }),
+        },
+      );
+
+      if (response.status !== 200) {
+        return { kind: 'UNREACHABLE' };
+      }
+
+      const parsed = v1CancelResponse.safeParse(await response.json());
+
+      return parsed.success ? { kind: 'ANSWERED', result: parsed.data.result } : { kind: 'UNREACHABLE' };
+    } catch {
+      return { kind: 'UNREACHABLE' };
     }
   }
 }

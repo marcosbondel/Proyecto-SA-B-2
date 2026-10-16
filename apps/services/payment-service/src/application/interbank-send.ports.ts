@@ -1,6 +1,7 @@
 import type { MessageEnvelope } from '@bank/contracts';
 
 import type { InterbankSendState } from '../domain/interbank-send';
+import type { PartnerCancel, PartnerProbe } from '../domain/interbank-timeout';
 import type { OutboxMessage } from './ports';
 
 /** Un depósito que este banco envía al banco pareja, como lo guarda este servicio. */
@@ -33,6 +34,30 @@ export interface InterbankSend {
    * reconciliación.
    */
   readonly verdictEnqueuedAt: Date | null;
+  /**
+   * `expiresAt + 300 s` del contrato: **antes de esto no se libera nada a
+   * ciegas** (TD-095).
+   *
+   * Es una columna y no un cálculo por la misma razón que el resto de los plazos
+   * de este servicio: un pod que se reprograma no puede olvidarse de un depósito
+   * a medio resolver, y un plazo que vive en memoria se olvida en cuanto el
+   * proceso muere. Es también lo que hace auditable la decisión: queda escrito
+   * desde cuándo se podía liberar, no sólo que se liberó.
+   */
+  readonly releaseNotBefore: Date;
+  /** La última respuesta de `GET /transfers/{id}`, o `null` si no se ha preguntado. */
+  readonly probe: PartnerProbe | null;
+  /** La última respuesta de la cancelación, o `null` si no se ha pedido. */
+  readonly cancel: PartnerCancel | null;
+  /**
+   * Cuándo toca el siguiente paso del protocolo.
+   *
+   * Los reintentos de la consulta y de la cancelación llevan su propio
+   * calendario, separado del `next_attempt_at` de la entrega: son dos escaleras
+   * distintas sobre la misma fila, y mezclarlas haría que un reintento de envío
+   * reprogramara una consulta o al revés.
+   */
+  readonly resolveNotBefore: Date | null;
   /** El contexto W3C de la petición que lo originó, para continuar su traza. */
   readonly traceContext: string | null;
   /**
@@ -55,7 +80,7 @@ export interface InterbankSendRepository {
    * depósito pedido dos veces es un depósito.
    */
   open(input: {
-    readonly send: Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt'>;
+    readonly send: Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt' | 'probe' | 'cancel' | 'resolveNotBefore'>;
     readonly now: Date;
   }): Promise<{ readonly kind: 'CREATED' | 'DUPLICATE'; readonly send: InterbankSend }>;
 
@@ -106,6 +131,31 @@ export interface InterbankSendRepository {
   claimExpired(now: Date, limit: number): Promise<readonly InterbankSend[]>;
 
   /**
+   * Los vencidos que esperan un paso del protocolo (TD-095).
+   *
+   * Es el barrido que sustituye a la compensación automática: las filas en
+   * `TIMEOUT` ya no son un final, son trabajo pendiente — consultar, cancelar, o
+   * esperar al margen. Mientras estén aquí, **el dinero del cliente sigue
+   * reservado**, y eso es deliberado.
+   */
+  claimAwaitingResolution(now: Date, limit: number): Promise<readonly InterbankSend[]>;
+
+  /**
+   * Guarda lo que el banco pareja contestó, y cuándo volver a intentarlo.
+   *
+   * Se escribe aunque la respuesta sea «no contesta»: es la diferencia entre un
+   * depósito que no se ha consultado y uno que se consultó y no hubo nadie, y de
+   * esa diferencia depende si el protocolo pregunta o cancela.
+   */
+  recordResolutionStep(input: {
+    readonly interbankTransferId: string;
+    readonly probe?: PartnerProbe;
+    readonly cancel?: PartnerCancel;
+    readonly resolveNotBefore: Date;
+    readonly now: Date;
+  }): Promise<void>;
+
+  /**
    * Los depósitos **ya decididos cuyo veredicto nunca llegó al outbox**, que es
    * la pieza (b) de TD-093: la reconciliación.
    *
@@ -148,6 +198,17 @@ export interface PartnerBankClient {
   send(
     send: InterbankSend,
   ): Promise<{ readonly acknowledged: boolean; readonly detail: string | null }>;
+
+  /**
+   * `GET /transfers/{id}` — preguntar qué pasó (TD-095, paso 2).
+   *
+   * Devuelve hechos, no decisiones: lo que se hace con la respuesta lo decide
+   * `resolveTimeout`, que es puro y no sabe que existe HTTP.
+   */
+  probe(send: InterbankSend): Promise<PartnerProbe>;
+
+  /** `POST /transfers/{id}/cancel` — pedir que no se acredite (TD-095, paso 3). */
+  cancel(send: InterbankSend): Promise<PartnerCancel>;
 }
 
 /** Lo que este caso de uso publica, con la causa que lo originó. */

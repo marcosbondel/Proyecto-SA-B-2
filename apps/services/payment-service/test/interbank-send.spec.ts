@@ -72,19 +72,62 @@ describe('las dos formas de no cobrar, que no son la misma', () => {
     expect(rechazado.settle).toBe('FAILED');
   });
 
-  it('un vencimiento manda compensar igual, pero NO se llama rechazo', () => {
+  it('un vencimiento NO manda compensar: el dinero sigue reservado', () => {
+    /*
+     * Esta aserción está invertida respecto a como nació, y la inversión es el
+     * ticket (TD-095). Decía `settle` = `FAILED`: vencer compensaba. El contrato
+     * oficial le da al banco pareja **24 horas** para reintentar su callback, así
+     * que a los 180 s no sabemos nada — y compensar ahí es devolver el dinero al
+     * cliente mientras el otro banco se lo entrega a su destinatario.
+     *
+     * `TIMEOUT` pasa a ser una pregunta abierta que resuelve
+     * `domain/interbank-timeout.ts`.
+     */
     const vencido = applyInterbankSend('SENT', { kind: 'EXPIRED' });
 
     expect(vencido.state).toBe('TIMEOUT');
     expect(vencido.reason).toBe('CONFIRMATION_TIMEOUT');
-    expect(vencido.settle).toBe('FAILED');
+    expect(vencido.settle).toBeNull();
   });
 
-  it('vence también sin haber conseguido entregarlo, en vez de retener el saldo para siempre', () => {
+  it('vence también sin haber conseguido entregarlo, y tampoco libera', () => {
+    /*
+     * El caso tentador: si nunca conseguimos entregarlo, ¿para qué esperar? Y
+     * la respuesta es que un envío que falló **pudo llegar igual** y perderse la
+     * respuesta. Sólo un `404` del otro banco prueba que no lo vieron, y eso se
+     * pregunta, no se supone.
+     */
     const vencido = applyInterbankSend('PENDING', { kind: 'EXPIRED' });
 
     expect(vencido.state).toBe('TIMEOUT');
-    expect(vencido.settle).toBe('FAILED');
+    expect(vencido.settle).toBeNull();
+  });
+
+  it('el protocolo saca el depósito de TIMEOUT, a un lado o al otro', () => {
+    const aceptado = applyInterbankSend('TIMEOUT', { kind: 'RESOLVED_ACCEPTED' });
+    expect(aceptado.state).toBe('ACCEPTED');
+    expect(aceptado.settle).toBe('SUCCEEDED');
+
+    const liberado = applyInterbankSend('TIMEOUT', {
+      kind: 'RESOLVED_REJECTED',
+      reason: 'RELEASED_NO_ANSWER',
+    });
+    expect(liberado.state).toBe('REJECTED');
+    expect(liberado.settle).toBe('FAILED');
+    expect(liberado.reason).toBe('RELEASED_NO_ANSWER');
+  });
+
+  it('la resolución no es una segunda puerta para confirmar un depósito en vuelo', () => {
+    /*
+     * `RESOLVED_ACCEPTED` sólo vale desde `TIMEOUT`. Si valiera desde `SENT`,
+     * una consulta de rutina podría cerrar como pagado un depósito cuyo callback
+     * todavía no llegó, saltándose el único camino que lo confirma de verdad.
+     */
+    for (const desde of ['PENDING', 'SENT'] as const) {
+      expect(() => applyInterbankSend(desde, { kind: 'RESOLVED_ACCEPTED' })).toThrow(
+        IllegalInterbankSendTransition,
+      );
+    }
   });
 
   it('los dos acaban en REVERSED cuando el dinero vuelve, y sólo entonces', () => {
@@ -184,15 +227,21 @@ describe('el reintento de la entrega', () => {
  * le pidiera a la Saga un segundo final sobre una transferencia ya compensada.
  */
 describe('settlementOf', () => {
-  it('traduce los tres veredictos al final que la Saga entiende', () => {
+  it('traduce los dos veredictos al final que la Saga entiende', () => {
     expect(settlementOf('ACCEPTED')).toBe('SUCCEEDED');
     expect(settlementOf('REJECTED')).toBe('FAILED');
-    expect(settlementOf('TIMEOUT')).toBe('FAILED');
   });
 
-  it('no da veredicto de lo que todavía espera', () => {
+  it('no da veredicto de lo que todavía espera, y TIMEOUT espera', () => {
     expect(settlementOf('PENDING')).toBeNull();
     expect(settlementOf('SENT')).toBeNull();
+    /*
+     * `TIMEOUT` entró aquí con TD-095. Si devolviera `FAILED`, la reconciliación
+     * de TD-093 le contaría a la Saga el final que devuelve el dinero sobre un
+     * depósito que todavía está consultando al otro banco — el defecto de
+     * TD-095 reintroducido por la puerta de atrás de TD-093.
+     */
+    expect(settlementOf('TIMEOUT')).toBeNull();
   });
 
   it('no da veredicto de un depósito ya compensado', () => {
@@ -215,5 +264,8 @@ describe('settlementOf', () => {
     expect(settlementOf(applyInterbankSend('SENT', { kind: 'EXPIRED' }).state)).toBe(
       applyInterbankSend('SENT', { kind: 'EXPIRED' }).settle,
     );
+    expect(
+      settlementOf(applyInterbankSend('TIMEOUT', { kind: 'RESOLVED_ACCEPTED' }).state),
+    ).toBe(applyInterbankSend('TIMEOUT', { kind: 'RESOLVED_ACCEPTED' }).settle);
   });
 });

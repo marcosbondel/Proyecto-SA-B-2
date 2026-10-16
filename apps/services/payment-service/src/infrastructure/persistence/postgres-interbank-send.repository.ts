@@ -7,7 +7,8 @@ import type {
   InterbankSendRepository,
 } from '../../application/interbank-send.ports';
 import type { OutboxMessage } from '../../application/ports';
-import type { InterbankSendState } from '../../domain/interbank-send';
+import { settlementOf, type InterbankSendState } from '../../domain/interbank-send';
+import type { PartnerCancel, PartnerProbe } from '../../domain/interbank-timeout';
 
 interface Row {
   readonly interbank_transfer_id: string;
@@ -27,12 +28,20 @@ interface Row {
   readonly trace_context: string | null;
   readonly created_at: Date;
   readonly verdict_enqueued_at: Date | null;
+  readonly release_not_before: Date | null;
+  readonly probe_kind: 'ANSWERED' | 'UNKNOWN' | 'UNREACHABLE' | null;
+  readonly probe_status: 'PROCESSING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | null;
+  readonly cancel_kind: 'ANSWERED' | 'UNREACHABLE' | null;
+  readonly cancel_result: 'CANCELLED' | 'ALREADY_ACCEPTED' | 'ALREADY_REJECTED' | null;
+  readonly resolve_not_before: Date | null;
 }
 
 const COLUMNS = `interbank_transfer_id, payment_id, transaction_id, idempotency_key,
                  destination_bank_code, destination_account, amount_minor, currency,
                  correlation_id, origin_envelope, state, reason, attempts,
-                 confirmation_due_at, trace_context, created_at, verdict_enqueued_at`;
+                 confirmation_due_at, trace_context, created_at, verdict_enqueued_at,
+                 release_not_before, probe_kind, probe_status, cancel_kind, cancel_result,
+                 resolve_not_before`;
 
 /**
  * `amount_minor` es `BIGINT`, y el driver lo entrega como **cadena** para no
@@ -57,8 +66,55 @@ function toSend(row: Row): InterbankSend {
     createdAt: row.created_at,
     traceContext: row.trace_context,
     verdictEnqueuedAt: row.verdict_enqueued_at,
+    /*
+     * `release_not_before` es nulo en las filas que abrió una versión anterior
+     * del código. Se rellena con el propio vencimiento para que el tipo no
+     * mienta, y `claimAwaitingResolution` las excluye por su columna: una fila a
+     * medio camino entre dos protocolos es peor que una con el anterior.
+     */
+    releaseNotBefore: row.release_not_before ?? row.confirmation_due_at,
+    probe: toProbe(row),
+    cancel: toCancel(row),
+    resolveNotBefore: row.resolve_not_before,
     origin: row.origin_envelope,
   };
+}
+
+/**
+ * Las dos columnas de la consulta, de vuelta al vocabulario del dominio.
+ *
+ * Un `ANSWERED` sin su estado sería una respuesta vacía de la que el protocolo
+ * deduciría algo, así que se degrada a `UNREACHABLE` — el `CHECK`
+ * `interbank_sends_probe_coherent` lo impide en la base, y esto lo impide
+ * también si alguien lo desactiva. Dos defensas sobre una decisión que mueve
+ * dinero no son una de más.
+ */
+function toProbe(row: Row): PartnerProbe | null {
+  if (row.probe_kind === null) {
+    return null;
+  }
+
+  if (row.probe_kind === 'ANSWERED') {
+    return row.probe_status === null
+      ? { kind: 'UNREACHABLE' }
+      : { kind: 'ANSWERED', status: row.probe_status };
+  }
+
+  return { kind: row.probe_kind };
+}
+
+function toCancel(row: Row): PartnerCancel | null {
+  if (row.cancel_kind === null) {
+    return null;
+  }
+
+  if (row.cancel_kind === 'ANSWERED') {
+    return row.cancel_result === null
+      ? { kind: 'UNREACHABLE' }
+      : { kind: 'ANSWERED', result: row.cancel_result };
+  }
+
+  return { kind: 'UNREACHABLE' };
 }
 
 /** Los depósitos que este banco envía al banco pareja, y su calendario. */
@@ -81,8 +137,9 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
          (interbank_transfer_id, payment_id, transaction_id, idempotency_key,
           destination_bank_code, destination_account, amount_minor, currency,
           correlation_id, origin_envelope, state, reason, attempts,
-          next_attempt_at, confirmation_due_at, trace_context, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'PENDING',NULL,0,$11,$12,$13,$11)
+          next_attempt_at, confirmation_due_at, trace_context, created_at,
+          release_not_before)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'PENDING',NULL,0,$11,$12,$13,$11,$14)
        ON CONFLICT DO NOTHING
        RETURNING ${COLUMNS}`,
       [
@@ -99,6 +156,7 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
         input.now,
         s.confirmationDueAt,
         s.traceContext,
+        s.releaseNotBefore,
       ],
     );
 
@@ -178,7 +236,24 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
     now: Date;
     outbound?: readonly OutboxMessage[];
   }): Promise<boolean> {
+    /*
+     * Dos predicados distintos, y confundirlos fue un defecto de verdad.
+     *
+     * `decided` es «el reloj o el otro banco dijeron algo», e incluye `TIMEOUT`
+     * porque el `CHECK` de la tabla exige `decided_at` en los cuatro estados.
+     *
+     * `carriesVerdict` es «este cambio lleva un final para la Saga», y **no** es
+     * lo mismo desde TD-095: un `TIMEOUT` ya no libera dinero, así que no lleva
+     * veredicto aunque sí lleve su evento de auditoría. La primera versión de
+     * esto usaba `outbound.length > 0` como atajo y marcaba el `TIMEOUT` como si
+     * su veredicto se hubiera encolado — apagando en silencio la red de
+     * seguridad de TD-093 para esa fila. Lo encontró un test.
+     *
+     * `settlementOf` es la fuente única: si el dominio dice que ese estado no
+     * tiene final, aquí no hay nada que marcar.
+     */
     const decided = ['ACCEPTED', 'REJECTED', 'TIMEOUT', 'REVERSED'].includes(input.to);
+    const carriesVerdict = settlementOf(input.to) !== null && (input.outbound?.length ?? 0) > 0;
     const client = await this.pool.connect();
 
     try {
@@ -221,7 +296,7 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
           input.nextAttemptAt,
           input.now,
           decided,
-          (input.outbound?.length ?? 0) > 0,
+          carriesVerdict,
         ],
       );
 
@@ -258,7 +333,7 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
   async claimUnreconciled(olderThan: Date, limit: number): Promise<readonly InterbankSend[]> {
     const pendientes = await this.pool.query<Row>(
       `SELECT ${COLUMNS} FROM interbank_sends
-        WHERE state IN ('ACCEPTED','REJECTED','TIMEOUT')
+        WHERE state IN ('ACCEPTED','REJECTED')
           AND verdict_enqueued_at IS NULL
           AND decided_at <= $1
         ORDER BY decided_at
@@ -368,5 +443,73 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
     );
 
     return due.rows.map(toSend);
+  }
+
+  /**
+   * Los vencidos que esperan un paso del protocolo (TD-095).
+   *
+   * `release_not_before IS NOT NULL` excluye las filas que abrió una versión
+   * anterior: su depósito se cerró con el comportamiento viejo y meterlas en el
+   * protocolo nuevo a mitad de camino sería resolver dos veces lo mismo.
+   *
+   * `resolve_not_before` nulo entra: es una fila que acaba de vencer y a la que
+   * todavía no se ha preguntado nada.
+   */
+  async claimAwaitingResolution(now: Date, limit: number): Promise<readonly InterbankSend[]> {
+    const pendientes = await this.pool.query<Row>(
+      `SELECT ${COLUMNS} FROM interbank_sends
+        WHERE state = 'TIMEOUT'
+          AND release_not_before IS NOT NULL
+          AND (resolve_not_before IS NULL OR resolve_not_before <= $1)
+        ORDER BY resolve_not_before NULLS FIRST
+        FOR UPDATE SKIP LOCKED
+        LIMIT $2`,
+      [now, limit],
+    );
+
+    return pendientes.rows.map(toSend);
+  }
+
+  /**
+   * Guarda lo que contestó el otro banco, o que no contestó.
+   *
+   * Dos cosas que parecen detalles y no lo son. La primera: se escribe también
+   * el «no contesta», porque la diferencia entre «no se ha preguntado» y «se
+   * preguntó y no había nadie» es la que decide si el protocolo pregunta o
+   * cancela — un nulo que significara las dos cosas haría preguntar para
+   * siempre. La segunda: `COALESCE` en los dos `*_at`, para que quede **cuándo
+   * se preguntó por primera vez** y no cuándo se reintentó por última, que es el
+   * dato que una conciliación necesita.
+   */
+  async recordResolutionStep(input: {
+    interbankTransferId: string;
+    probe?: PartnerProbe;
+    cancel?: PartnerCancel;
+    resolveNotBefore: Date;
+    now: Date;
+  }): Promise<void> {
+    await this.pool.query(
+      `UPDATE interbank_sends
+          SET probe_kind   = COALESCE($2::text, probe_kind),
+              probe_status = CASE WHEN $2::text IS NULL THEN probe_status ELSE $3 END,
+              probed_at    = CASE WHEN $2::text IS NULL THEN probed_at ELSE COALESCE(probed_at, $6) END,
+              cancel_kind  = COALESCE($4::text, cancel_kind),
+              cancel_result = CASE WHEN $4::text IS NULL THEN cancel_result ELSE $5 END,
+              cancel_requested_at = CASE
+                WHEN $4::text IS NULL THEN cancel_requested_at
+                ELSE COALESCE(cancel_requested_at, $6)
+              END,
+              resolve_not_before = $7
+        WHERE interbank_transfer_id = $1`,
+      [
+        input.interbankTransferId,
+        input.probe?.kind ?? null,
+        input.probe?.kind === 'ANSWERED' ? input.probe.status : null,
+        input.cancel?.kind ?? null,
+        input.cancel?.kind === 'ANSWERED' ? input.cancel.result : null,
+        input.now,
+        input.resolveNotBefore,
+      ],
+    );
   }
 }
