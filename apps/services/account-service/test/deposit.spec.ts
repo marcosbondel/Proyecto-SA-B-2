@@ -1,10 +1,10 @@
 import { DepositUseCase } from '../src/application/deposit.use-case';
-import { openAccount } from '../src/domain/account';
 import {
   FixedClock,
   InMemoryAccountRepository,
   RecordingActivity,
   RecordingPublisher,
+  cuentaPersistida,
 } from './support/in-memory';
 
 /**
@@ -49,7 +49,7 @@ function fixture(status: 'ACTIVE' | 'INACTIVE' = 'ACTIVE', balanceMinor = 0) {
   const activity = new RecordingActivity();
 
   repository.accounts.set(ACCOUNT, {
-    ...openAccount({
+    ...cuentaPersistida({
       accountId: ACCOUNT,
       customerId: CUSTOMER,
       accountType: 'MONETARIA' as const,
@@ -138,9 +138,7 @@ describe('taking a deposit at a window', () => {
       'key-1',
     );
 
-    expect((publisher.events[0]!.payload as { reason: string }).reason).toBe(
-      'ACCOUNT_NOT_FOUND',
-    );
+    expect((publisher.events[0]!.payload as { reason: string }).reason).toBe('ACCOUNT_NOT_FOUND');
   });
 
   /**
@@ -174,7 +172,8 @@ describe('taking a deposit at a window', () => {
     expect(repository.accounts.get(ACCOUNT)!.balanceMinor).toBe(50_000);
 
     const [first, second] = publisher.events.map(
-      (message) => message.payload as { operationId: string; balanceAfter: { amountMinor: number } },
+      (message) =>
+        message.payload as { operationId: string; balanceAfter: { amountMinor: number } },
     );
 
     // The second answer names the same movement, not a new one.
@@ -203,7 +202,11 @@ describe('reporting the deposit to the activity monitor (T-42)', () => {
     await deposit.execute(PAYLOAD, TELLER, 'key-1');
 
     expect(activity.movements).toMatchObject([
-      { type: 'CREDIT', transactionId: null, account: { accountId: ACCOUNT, customerId: CUSTOMER } },
+      {
+        type: 'CREDIT',
+        transactionId: null,
+        account: { accountId: ACCOUNT, customerId: CUSTOMER },
+      },
     ]);
   });
 

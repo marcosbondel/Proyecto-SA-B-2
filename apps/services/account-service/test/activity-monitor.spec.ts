@@ -7,13 +7,13 @@ import { DebitAccountUseCase } from '../src/application/debit-account.use-case';
 import type { AccountOperation, ObservedMovement } from '../src/application/ports';
 import { ANOMALY_CLAIM_TTL_MS } from '../src/domain/activity-policy';
 import type { ActivityRule } from '../src/domain/activity-policy';
-import { openAccount } from '../src/domain/account';
 import { quetzales } from '../src/domain/money';
 import {
   FixedClock,
   InMemoryAccountRepository,
   RecordingActivityTelemetry,
   RecordingPublisher,
+  cuentaPersistida,
 } from './support/in-memory';
 
 /**
@@ -40,7 +40,12 @@ function build(rule: ActivityRule = RULE) {
   const monitor = new ActivityMonitor({ repository, publisher, clock, telemetry, rule });
 
   function account(accountType: 'MONETARIA' | 'AHORRO' = 'MONETARIA') {
-    const opened = openAccount({ accountId: randomUUID(), customerId: CUSTOMER, accountType, now: T0 });
+    const opened = cuentaPersistida({
+      accountId: randomUUID(),
+      customerId: CUSTOMER,
+      accountType,
+      now: T0,
+    });
     repository.accounts.set(opened.accountId, opened);
 
     return opened;
@@ -288,7 +293,10 @@ describe('telemetry', () => {
     await move(target, 'DEBIT', new Date(T0.getTime() + 2 * SECOND));
 
     expect(telemetry.anomalies).toHaveLength(1);
-    expect(telemetry.anomalies[0]).toMatchObject({ accountId: target.accountId, republished: false });
+    expect(telemetry.anomalies[0]).toMatchObject({
+      accountId: target.accountId,
+      republished: false,
+    });
   });
 });
 
@@ -348,7 +356,7 @@ describe('wired to a real use case', () => {
 
     const accountId = randomUUID();
     repository.accounts.set(accountId, {
-      ...openAccount({ accountId, customerId: CUSTOMER, accountType: 'MONETARIA', now: T0 }),
+      ...cuentaPersistida({ accountId, customerId: CUSTOMER, accountType: 'MONETARIA', now: T0 }),
       balanceMinor: 1_000_000,
     });
 

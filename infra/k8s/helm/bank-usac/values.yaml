@@ -380,9 +380,14 @@ gateway:
 # (`infra/k8s/kind/local.values.yaml`), and so does the integration agreement
 # for the real partner.
 interbank:
-  bankCode: BANK_USAC
-  partnerBankCode: PARTNER_MOCK
-  maxAmountMinor: "100000000"
+  # `BANK02` sale del contrato oficial, no de una elección: `BankCode` es
+  # `^BANK[0-9]{2}$` y somos el grupo 2. `BANK_USAC` no cumplía el patrón, así
+  # que ningún banco pareja habría aceptado un depósito nuestro.
+  bankCode: BANK02
+  partnerBankCode: BANK99
+  # Q10 000,00 en centavos: el máximo por operación que fija el contrato, no una
+  # cifra nuestra. Si se supera, el rechazo es `AMOUNT_LIMIT_EXCEEDED`.
+  maxAmountMinor: "1000000"
   callbackUrl: "http://127.0.0.1:3021/callbacks/interbank"
   # Where this bank SENDS the deposits it originates — the partner's intake, not
   # its own. Empty means "this deployment does not send deposits", which is the

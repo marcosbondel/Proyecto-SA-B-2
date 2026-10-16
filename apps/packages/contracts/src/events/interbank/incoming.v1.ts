@@ -10,7 +10,21 @@ import {
 import { defineContract } from '../contract';
 
 /** Provisional wire shapes until the course publishes its OpenAPI contract. */
-export const bankCode = z.string().regex(/^[A-Z][A-Z0-9_]{1,31}$/);
+/**
+ * El código de banco, **tal como lo define el contrato oficial** (T-56).
+ *
+ * `^BANK[0-9]{2}$`: cuatro letras fijas y dos dígitos, asignados por el curso.
+ * Hasta T-56 el patrón de aquí era `^[A-Z][A-Z0-9_]{1,31}$`, más permisivo, y
+ * eso dejó pasar dos códigos que **ningún banco pareja habría aceptado**:
+ * `BANK_USAC` para nosotros y `PARTNER_MOCK` para el mock. Un patrón laxo en el
+ * borde de un contrato ajeno no es tolerancia, es un fallo que se descubre el
+ * día de la integración.
+ *
+ * Nosotros somos `BANK02` (grupo 2) y el mock es `BANK99`, que es
+ * reconociblemente falso y a la vez válido — un sustituto que no se parece al
+ * contrato no sirve para ensayar contra él.
+ */
+export const bankCode = z.string().regex(/^BANK[0-9]{2}$/);
 export const interbankTransferId = z.string().min(1).max(128);
 export const interbankMoney = z.object({ amountMinor, currency: currencyCode });
 

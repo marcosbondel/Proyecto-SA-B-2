@@ -59,7 +59,7 @@ suite('interbank send persistence', () => {
       paymentId: randomUUID(),
       transactionId: randomUUID(),
       idempotencyKey: randomUUID(),
-      destinationBankCode: 'PARTNER_MOCK',
+      destinationBankCode: 'BANK99',
       destinationAccount: 'cuenta-de-alla-1',
       amount: { amountMinor: 12_500, currency: 'GTQ' },
       correlationId: randomUUID(),

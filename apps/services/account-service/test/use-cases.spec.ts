@@ -8,13 +8,13 @@ import { GetBalanceUseCase } from '../src/application/get-balance.use-case';
 import { GetOperationsUseCase } from '../src/application/get-operations.use-case';
 import { ListAccountsUseCase } from '../src/application/list-accounts.use-case';
 import { SetAccountStatusUseCase } from '../src/application/set-account-status.use-case';
-import { openAccount } from '../src/domain/account';
 import { quetzales } from '../src/domain/money';
 import {
   FixedClock,
   InMemoryAccountRepository,
   RecordingActivity,
   RecordingPublisher,
+  cuentaPersistida,
 } from './support/in-memory';
 
 const NOW = new Date('2026-08-26T12:00:00.000Z');
@@ -61,7 +61,7 @@ function seed(
   } = {},
 ) {
   const account = {
-    ...openAccount({
+    ...cuentaPersistida({
       accountId: overrides.accountId ?? ACCOUNT,
       customerId: overrides.customerId ?? CUSTOMER,
       accountType: overrides.accountType ?? ('MONETARIA' as const),

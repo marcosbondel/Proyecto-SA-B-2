@@ -19,7 +19,6 @@ import { CompensateDebitUseCase } from '../src/application/compensate-debit.use-
 import { CreditAccountUseCase } from '../src/application/credit-account.use-case';
 import { DebitAccountUseCase } from '../src/application/debit-account.use-case';
 import { DepositUseCase } from '../src/application/deposit.use-case';
-import { openAccount } from '../src/domain/account';
 import {
   ANOMALIES_COUNTER,
   ANOMALY_SPAN,
@@ -27,7 +26,12 @@ import {
   OtelActivityTelemetry,
 } from '../src/infrastructure/telemetry/otel-activity.telemetry';
 import { StructuredLogger } from '../src/interfaces/logging';
-import { FixedClock, InMemoryAccountRepository, RecordingPublisher } from './support/in-memory';
+import {
+  FixedClock,
+  InMemoryAccountRepository,
+  RecordingPublisher,
+  cuentaPersistida,
+} from './support/in-memory';
 
 /**
  * T-42's observability, against **real** OpenTelemetry SDK providers with
@@ -88,7 +92,7 @@ function build(accountType: 'MONETARIA' | 'AHORRO' = 'MONETARIA', balanceMinor =
 
   const accountId = randomUUID();
   repository.accounts.set(accountId, {
-    ...openAccount({ accountId, customerId: CUSTOMER, accountType, now: T0 }),
+    ...cuentaPersistida({ accountId, customerId: CUSTOMER, accountType, now: T0 }),
     balanceMinor,
   });
 
@@ -162,7 +166,12 @@ describe('the operations counter', () => {
       'deposit-1',
     );
     await new CompensateDebitUseCase(dependencies).execute(
-      { transactionId, accountId, amount: { amountMinor: 100, currency: 'GTQ' }, triggeredBy: 'PAYMENT_DECLINED' },
+      {
+        transactionId,
+        accountId,
+        amount: { amountMinor: 100, currency: 'GTQ' },
+        triggeredBy: 'PAYMENT_DECLINED',
+      },
       'compensate-1',
     );
 

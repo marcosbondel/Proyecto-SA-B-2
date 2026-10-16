@@ -163,7 +163,10 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
     request(h.app.getHttpServer())
       .post(`/api/accounts/${ACCOUNT_ID}/deposit`)
       .set('Authorization', auth(h, 'CAJERO_RECEPTOR'))
-      .send({ amount: { amountMinor: 10_000, currency: 'GTQ' }, description: 'Depósito en ventanilla' }),
+      .send({
+        amount: { amountMinor: 10_000, currency: 'GTQ' },
+        description: 'Depósito en ventanilla',
+      }),
 
   'POST /api/accounts/{accountId}/status': (h) =>
     request(h.app.getHttpServer())
@@ -179,8 +182,8 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
       .send({
         interbankTransferId,
         idempotencyKey: interbankTransferId,
-        originBankCode: 'PARTNER_MOCK',
-        destinationBankCode: 'BANK_USAC',
+        originBankCode: 'BANK99',
+        destinationBankCode: 'BANK02',
         accountId: ACCOUNT_ID,
         amount: { amountMinor: 10_000, currency: 'GTQ' },
         // Obligatorio desde T-56: §4.1 lo pide entre los datos mínimos del
@@ -217,7 +220,7 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
       .set('Authorization', auth(h, 'CLIENTE'))
       .send({
         sourceAccount: SOURCE_ACCOUNT,
-        destinationBankCode: 'PARTNER_MOCK',
+        destinationBankCode: 'BANK99',
         destinationAccount: 'cuenta-de-alla-1',
         amount: { amountMinor: 125_000, currency: 'GTQ' },
       }),

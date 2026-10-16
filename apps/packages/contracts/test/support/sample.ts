@@ -30,6 +30,9 @@ function uuidFor(field: string): string {
 /** Patterns the primitives use, answered with a value that satisfies them. */
 const BY_PATTERN: readonly (readonly [RegExp, string])[] = [
   [/\^\[A-Z\]\{3\}\$/, 'GTQ'],
+  // El código de banco del contrato oficial: `^BANK[0-9]{2}$` (T-56). Va antes
+  // que el patrón genérico de abajo porque es más específico y los dos casan.
+  [/\^BANK\[0-9\]\{2\}\$/, 'BANK07'],
   [/\[A-Z\]\[A-Z0-9_\]/, 'BANK'],
   [/\[0-9a-f\]\{64\}/, 'a'.repeat(64)],
   // A W3C trace id (T-45): the specification's own example.

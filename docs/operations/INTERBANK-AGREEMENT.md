@@ -120,14 +120,19 @@ por teléfono a quien le va a depositar.
 
 | Número | Para probar | Resultado esperado |
 | --- | --- | --- |
-| *(pendiente de T-54)* | el camino feliz | `ACCEPTED` |
-| *(pendiente de T-54)* | cuenta inactiva | `REJECTED` · `ACCOUNT_INACTIVE` |
+| *(se publica con T-54)* | el camino feliz | `ACCEPTED` |
+| *(se publica con T-54)* | cuenta inactiva | `REJECTED` · `ACCOUNT_INACTIVE` |
 | `02-999999999` | cuenta inexistente | `REJECTED` · `ACCOUNT_NOT_FOUND` |
 | cualquiera, con monto > Q10 000,00 | el límite por operación | `REJECTED` · `AMOUNT_LIMIT_EXCEEDED` |
 
-Los dos primeros se publican cuando la nube esté en pie y los números estén
-sembrados: hoy existen en local, pero un número local no le sirve a nadie de
-fuera.
+Los dos primeros se publican cuando la nube esté en pie: los números existen ya
+—la secuencia los asigna al abrir cada cuenta, y en el entorno local van del
+`02-000000052` al `02-000000060`— pero un número de un entorno local no le sirve
+a nadie de fuera, y los de la nube serán otros.
+
+El tercero no necesita existir, y por eso se puede publicar hoy: es un número
+con el formato correcto que **no corresponde a ninguna cuenta**, que es
+exactamente lo que hace falta para provocar un `ACCOUNT_NOT_FOUND`.
 
 ## 6. Límites
 
@@ -176,8 +181,9 @@ preparado:
 
 1. **Se intenta con la pareja.** Es lo que se califica.
 2. **Si la pareja no responde**, se demuestra contra nuestro propio mock
-   (`apps/partner-bank-mock`), que implementa el mismo contrato en las dos
-   direcciones y se enciende con un valor:
+   (`apps/partner-bank-mock`), que hace de **`BANK99`** —un código válido
+   según el contrato y reconociblemente falso— en las dos direcciones, y se
+   enciende con un valor:
    `--set partnerMock.enabled=true`. §4.1 lo permite como último recurso, y la
    regla de evaluación dice que los fallos del banco pareja no restan si el banco
    propio reacciona bien — compensando, reintentando y alertando.

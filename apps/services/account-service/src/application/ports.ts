@@ -1,6 +1,6 @@
 import type { AccountOperationStatus, AccountOperationType, Money } from '@bank/contracts';
 
-import type { Account } from '../domain/account';
+import type { Account, NewAccount } from '../domain/account';
 import type { ActivityRule } from '../domain/activity-policy';
 import type { DeactivationCriteria } from '../domain/deactivation-policy';
 
@@ -80,7 +80,8 @@ export interface AccountRepository {
    * same one and must not become a second account.
    */
   openAccount(input: {
-    readonly account: Account;
+    /** Sin número: lo asigna la base al insertar (T-56). */
+    readonly account: NewAccount;
     readonly idempotency: ProcessedMessage;
   }): Promise<{ readonly account: Account; readonly created: boolean }>;
 
@@ -112,7 +113,10 @@ export interface AccountRepository {
      * it up from the `account_operations` row the debit wrote, inside the same
      * lock, and hands it here so the domain can fold it into what comes back.
      */
-    readonly decide: (account: Account, commissionToReverse: Money | null) => {
+    readonly decide: (
+      account: Account,
+      commissionToReverse: Money | null,
+    ) => {
       readonly account: Account;
       readonly amount: Money;
       readonly balanceAfter: Money;
