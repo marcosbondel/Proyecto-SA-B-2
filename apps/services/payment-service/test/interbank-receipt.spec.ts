@@ -3,6 +3,8 @@ import {
   couldBeOurAccount,
   IllegalInterbankReceiptTransition,
   isReceiptDecided,
+  v1ReasonOf,
+  v1StateOf,
 } from '../src/domain/interbank-receipt';
 import type { InterbankReceiptEvent, InterbankReceiptState } from '../src/domain/interbank-receipt';
 
@@ -17,7 +19,13 @@ import type { InterbankReceiptEvent, InterbankReceiptState } from '../src/domain
  * dos veces — y acreditar dos veces es el 50 % que §8.3 penaliza.
  */
 
-const TODOS: readonly InterbankReceiptState[] = ['ELIGIBILITY', 'CREDIT', 'ACCEPTED', 'REJECTED'];
+const TODOS: readonly InterbankReceiptState[] = [
+  'ELIGIBILITY',
+  'CREDIT',
+  'ACCEPTED',
+  'REJECTED',
+  'CANCELLED',
+];
 
 const elegible: InterbankReceiptEvent = { kind: 'ELIGIBILITY_ANSWERED', rejection: null };
 const inelegible: InterbankReceiptEvent = {
@@ -71,13 +79,16 @@ describe('los dos caminos que rechazan', () => {
 describe('un depósito ya decidido no se mueve', () => {
   const eventos = [elegible, inelegible, acreditado, rehusado];
 
-  it.each(['ACCEPTED', 'REJECTED'] as const)('%s rechaza cualquier evento', (desde) => {
-    for (const evento of eventos) {
-      expect(() => applyInterbankReceipt(desde, evento)).toThrow(
-        IllegalInterbankReceiptTransition,
-      );
-    }
-  });
+  it.each(['ACCEPTED', 'REJECTED', 'CANCELLED'] as const)(
+    '%s rechaza cualquier evento',
+    (desde) => {
+      for (const evento of eventos) {
+        expect(() => applyInterbankReceipt(desde, evento)).toThrow(
+          IllegalInterbankReceiptTransition,
+        );
+      }
+    },
+  );
 
   it('y la razón es el dinero: un segundo paso sobre ACCEPTED sería un segundo crédito', () => {
     expect(() => applyInterbankReceipt('ACCEPTED', acreditado)).toThrow(
@@ -133,8 +144,8 @@ describe('ninguna transición cae en ELIGIBILITY', () => {
 });
 
 describe('isReceiptDecided', () => {
-  it('sólo los dos finales', () => {
-    expect(TODOS.filter(isReceiptDecided)).toEqual(['ACCEPTED', 'REJECTED']);
+  it('sólo los finales, que con el contrato son tres', () => {
+    expect(TODOS.filter(isReceiptDecided)).toEqual(['ACCEPTED', 'REJECTED', 'CANCELLED']);
   });
 });
 
@@ -154,5 +165,95 @@ describe('couldBeOurAccount', () => {
   it('rechaza un UUID que no es v4 y una cadena vacía', () => {
     expect(couldBeOurAccount('b0000000-0000-1000-8000-000000000003')).toBe(false);
     expect(couldBeOurAccount('')).toBe(false);
+  });
+});
+
+/**
+ * Lo que el contrato oficial añadió a esta máquina (T-56).
+ */
+describe('CANCELLED, que el contrato trajo y no teníamos', () => {
+  it('se puede cancelar mientras el dinero no se ha movido', () => {
+    for (const desde of ['ELIGIBILITY', 'CREDIT'] as const) {
+      const paso = applyInterbankReceipt(desde, { kind: 'CANCEL_REQUESTED' });
+
+      expect(paso.state).toBe('CANCELLED');
+      expect(paso.rejection).toBe('CANCELLED');
+      expect(paso.decided).toBe(true);
+    }
+  });
+
+  it('no se puede cancelar lo ya acreditado: eso se contesta ALREADY_ACCEPTED', () => {
+    expect(() => applyInterbankReceipt('ACCEPTED', { kind: 'CANCEL_REQUESTED' })).toThrow(
+      IllegalInterbankReceiptTransition,
+    );
+  });
+
+  it('una confirmación de crédito que llega después de cancelar no lo reabre', () => {
+    // El caso delicado: se canceló desde CREDIT con la confirmación en vuelo.
+    // El contrato pide que el receptor «guarde el id y rechace cualquier
+    // llegada posterior»; aquí eso es que la transición sea ilegal.
+    expect(() => applyInterbankReceipt('CANCELLED', { kind: 'CREDITED' })).toThrow(
+      IllegalInterbankReceiptTransition,
+    );
+  });
+
+  it('cuenta como decidido, así que el estado ya no se mueve', () => {
+    expect(isReceiptDecided('CANCELLED')).toBe(true);
+  });
+});
+
+describe('EXPIRED: el contrato prohíbe acreditar después del plazo', () => {
+  it('vence desde los dos estados sin decidir, con su motivo propio', () => {
+    for (const desde of ['ELIGIBILITY', 'CREDIT'] as const) {
+      const paso = applyInterbankReceipt(desde, { kind: 'EXPIRED' });
+
+      expect(paso.state).toBe('REJECTED');
+      expect(paso.rejection).toBe('EXPIRED');
+    }
+  });
+
+  it('no vence lo ya acreditado: ahí el plazo ya no decide nada', () => {
+    expect(() => applyInterbankReceipt('ACCEPTED', { kind: 'EXPIRED' })).toThrow(
+      IllegalInterbankReceiptTransition,
+    );
+  });
+});
+
+describe('la traducción a los estados del contrato', () => {
+  it('colapsa nuestros dos pasos de decisión en PROCESSING', () => {
+    // Que tengamos dos y él vea uno no es pérdida de información: el reparto
+    // interno del trabajo no es asunto suyo.
+    expect(v1StateOf('ELIGIBILITY')).toBe('PROCESSING');
+    expect(v1StateOf('CREDIT')).toBe('PROCESSING');
+  });
+
+  it('deja los tres finales como están', () => {
+    expect(v1StateOf('ACCEPTED')).toBe('ACCEPTED');
+    expect(v1StateOf('REJECTED')).toBe('REJECTED');
+    expect(v1StateOf('CANCELLED')).toBe('CANCELLED');
+  });
+});
+
+describe('la traducción de los motivos a los siete del contrato', () => {
+  it('renombra los dos que sólo cambian de nombre', () => {
+    expect(v1ReasonOf('AMOUNT_EXCEEDS_LIMIT')).toBe('AMOUNT_LIMIT_EXCEEDED');
+    expect(v1ReasonOf('UNSUPPORTED_CURRENCY')).toBe('CURRENCY_NOT_SUPPORTED');
+  });
+
+  it('manda a PROCESSING_ERROR los tres que en el contrato son códigos HTTP', () => {
+    // Un banco no autorizado recibe un 401, no un callback explicándoselo; si
+    // uno de estos llegara hasta aquí sería un error nuestro, y el motivo no
+    // debe insinuar que el otro banco hizo algo mal.
+    expect(v1ReasonOf('BANK_NOT_AUTHORIZED')).toBe('PROCESSING_ERROR');
+    expect(v1ReasonOf('IDEMPOTENCY_CONFLICT')).toBe('PROCESSING_ERROR');
+    expect(v1ReasonOf('WRONG_DESTINATION_BANK')).toBe('PROCESSING_ERROR');
+    expect(v1ReasonOf('INVALID_REQUEST')).toBe('PROCESSING_ERROR');
+  });
+
+  it('conserva los cuatro que ya coincidían', () => {
+    expect(v1ReasonOf('ACCOUNT_NOT_FOUND')).toBe('ACCOUNT_NOT_FOUND');
+    expect(v1ReasonOf('ACCOUNT_INACTIVE')).toBe('ACCOUNT_INACTIVE');
+    expect(v1ReasonOf('EXPIRED')).toBe('EXPIRED');
+    expect(v1ReasonOf('CANCELLED')).toBe('CANCELLED');
   });
 });
