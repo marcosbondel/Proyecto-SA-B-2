@@ -38,6 +38,12 @@ import { SessionTokenService } from '../../src/infrastructure/auth/jwt.service';
 import { GatewayExceptionFilter } from '../../src/interfaces/filters/gateway-exception.filter';
 import { ALERT_WEBHOOK_TOKEN } from '../../src/interfaces/guards/alert-token.guard';
 import { INTERBANK_PARTNER_TOKEN } from '../../src/interfaces/guards/interbank-token.guard';
+import { InterbankV1UseCase } from '../../src/application/routes/interbank-v1.use-case';
+import {
+  INTERBANK_API_KEYS,
+  InterbankApiKeyGuard,
+} from '../../src/interfaces/guards/interbank-api-key.guard';
+import { INTERBANK_BANK_CODE } from '../../src/interfaces/interbank-v1.tokens';
 import { JwtGuard, SESSION_VERIFIER } from '../../src/interfaces/guards/jwt.guard';
 import { RolesGuard } from '../../src/interfaces/guards/roles.guard';
 import { BROKER_HEALTH } from '../../src/interfaces/health.controller';
@@ -184,6 +190,10 @@ export const TEST_SECRET = 'a-test-secret-of-at-least-32-chars!!';
 /** The SLO webhook's shared secret in every harness (T-45). */
 export const TEST_ALERT_TOKEN = 'an-alert-webhook-token-of-32-chars!!';
 export const TEST_INTERBANK_TOKEN = 'an-interbank-partner-token-of-32-chars!!';
+/** La API key del contrato oficial (`X-Api-Key`), que identifica al banco (T-56). */
+export const TEST_INTERBANK_API_KEY = 'an-interbank-api-key-of-32-characters!!';
+export const TEST_PARTNER_BANK_CODE = 'BANK99';
+export const TEST_OWN_BANK_CODE = 'BANK02';
 
 export interface Harness {
   readonly app: INestApplication;
@@ -238,6 +248,13 @@ export async function buildHarness(
       { provide: SESSION_SIGNER, useValue: tokens },
       { provide: ALERT_WEBHOOK_TOKEN, useValue: TEST_ALERT_TOKEN },
       { provide: INTERBANK_PARTNER_TOKEN, useValue: TEST_INTERBANK_TOKEN },
+      InterbankV1UseCase,
+      InterbankApiKeyGuard,
+      {
+        provide: INTERBANK_API_KEYS,
+        useValue: { [TEST_PARTNER_BANK_CODE]: TEST_INTERBANK_API_KEY },
+      },
+      { provide: INTERBANK_BANK_CODE, useValue: TEST_OWN_BANK_CODE },
       { provide: BROKER_HEALTH, useValue: { isConnected: () => brokerUp.value } },
       { provide: APP_GUARD, useClass: JwtGuard },
       { provide: APP_GUARD, useClass: RolesGuard },

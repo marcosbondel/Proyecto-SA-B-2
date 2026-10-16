@@ -1,4 +1,5 @@
-import type { ArgumentsHost, ExceptionFilter} from '@nestjs/common';
+import type { V1ErrorCode } from '@bank/contracts';
+import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpException, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 
@@ -57,6 +58,28 @@ export class GatewayExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : statusFor(error.type, error.failureCode);
 
+    response.setHeader('X-Correlation-Id', correlationId);
+
+    /*
+     * El contrato interbancario oficial define **su propio cuerpo de error**
+     * —`code`, `message`, `timestamp`— con su propio conjunto cerrado de
+     * códigos, y un banco pareja que implemente el mismo archivo va a parsear
+     * eso. Nuestro cuerpo lleva `type`, `correlationId`, `field` y
+     * `failureCode`, que son nuestros y no significan nada para él.
+     *
+     * Se decide por la ruta y no por un indicador en el error porque es una
+     * propiedad del **canal**: el mismo `GatewayError.notFound` tiene que
+     * salir en una forma hacia el frontend y en otra hacia el otro banco.
+     */
+    if (request.path.startsWith('/interbank/v1')) {
+      response.status(status).json({
+        code: v1CodeFor(status),
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
     const body: GatewayErrorBody = {
       type: error.type,
       message: error.message,
@@ -65,7 +88,6 @@ export class GatewayExceptionFilter implements ExceptionFilter {
       ...(error.field === undefined ? {} : { field: error.field }),
     };
 
-    response.setHeader('X-Correlation-Id', correlationId);
     response.status(status).json(body);
   }
 
@@ -185,4 +207,38 @@ function correlationOf(request: GatewayRequest | undefined): string {
 
   const header = request?.headers[CORRELATION_HEADER];
   return typeof header === 'string' ? header : 'unknown';
+}
+
+/**
+ * El código del contrato para un estado HTTP.
+ *
+ * Del estado y no de nuestro `type`, porque son los estados los que el contrato
+ * enumera: tres de nuestros tipos (`VALIDATION_ERROR`, el `400` de Nest y un
+ * cuerpo malformado) acaban en el mismo `VALIDATION_ERROR` suyo, y eso es
+ * correcto — para el otro banco son el mismo problema.
+ *
+ * `503` cubre también nuestro `504`: el contrato no tiene un código para «nadie
+ * contestó a tiempo», y su `SERVICE_UNAVAILABLE` viene con la instrucción que
+ * un emisor necesita —«el que llama debe reintentar con espera creciente»—,
+ * que es exactamente lo que corresponde hacer.
+ */
+function v1CodeFor(status: number): V1ErrorCode {
+  switch (status) {
+    case 401:
+    case 403:
+      return 'UNAUTHORIZED';
+    case 404:
+      return 'NOT_FOUND';
+    case 409:
+      return 'IDEMPOTENCY_CONFLICT';
+    case 422:
+      return 'EXPIRED';
+    case 503:
+    case 504:
+      return 'SERVICE_UNAVAILABLE';
+    case 500:
+      return 'SERVICE_UNAVAILABLE';
+    default:
+      return 'VALIDATION_ERROR';
+  }
 }

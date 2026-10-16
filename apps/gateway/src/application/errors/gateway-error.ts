@@ -29,7 +29,19 @@ export type GatewayErrorType =
   /** The message could not be published. Nothing happened. */
   | 'BROKER_UNAVAILABLE'
   /** Anything else. Says as little as possible. */
-  | 'INTERNAL_ERROR';
+  | 'INTERNAL_ERROR'
+  /*
+   * Los tres que el **contrato interbancario oficial** exige y el resto del
+   * Gateway no necesitaba (T-56). Se añaden como tipos y no como rechazos de
+   * negocio porque no los decide ningún servicio: los decide el contrato, y
+   * sus códigos HTTP son parte de él.
+   */
+  /** No hay registro de ese identificador en este banco. `404`. */
+  | 'NOT_FOUND'
+  /** El mismo identificador con contenido distinto. `409`. */
+  | 'IDEMPOTENCY_CONFLICT'
+  /** Llegó después de `expiresAt`; no se procesa. `422`. */
+  | 'EXPIRED';
 
 /**
  * The five the frontend renders as asynchronous outcomes.
@@ -93,9 +105,33 @@ export class GatewayError extends Error {
     return new GatewayError('UNAUTHENTICATED', message);
   }
 
-  static forbidden(
-    message = 'Tu rol no tiene permitido realizar esta operación.',
-  ): GatewayError {
+  /**
+   * No existe registro de ese identificador, que en el contrato interbancario
+   * **es una respuesta y no un fallo**: significa «nunca lo recibí», y es lo
+   * que hace al banco emisor pasar de consultar a cancelar.
+   */
+  static notFound(message: string, field?: string): GatewayError {
+    return new GatewayError('NOT_FOUND', message, { field });
+  }
+
+  /** El mismo identificador con contenido distinto: `409` por contrato. */
+  static idempotencyConflict(message: string, field?: string): GatewayError {
+    return new GatewayError('IDEMPOTENCY_CONFLICT', message, { field });
+  }
+
+  /**
+   * Llegó después de `expiresAt`.
+   *
+   * `422` y no `400`: la solicitud es sintácticamente perfecta y llegó tarde,
+   * que son dos cosas distintas y el banco emisor las trata distinto — un
+   * `400` le diría que su mensaje está mal construido y lo mandaría a revisar
+   * su código en vez de su reloj.
+   */
+  static expired(message: string, field?: string): GatewayError {
+    return new GatewayError('EXPIRED', message, { field });
+  }
+
+  static forbidden(message = 'Tu rol no tiene permitido realizar esta operación.'): GatewayError {
     return new GatewayError('FORBIDDEN', message);
   }
 

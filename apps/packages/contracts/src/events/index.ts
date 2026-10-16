@@ -127,6 +127,8 @@ export type { Category, MessageContract } from './contract';
 export { defineContract } from './contract';
 export * from './interbank/incoming.v1';
 export * from './interbank/outgoing.v1';
+export * from './interbank/v1';
+export * from './interbank/v1-messages';
 
 export * from './customer/customer.activation.requested.v1';
 export * from './customer/customer.authenticate.replied.v1';
