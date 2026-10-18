@@ -32,11 +32,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$environment\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -516,7 +516,7 @@
             "type": "loki",
             "uid": "bank-loki"
           },
-          "expr": "{service_name=\"payment-service\", environment=\"$environment\"} |= \"interbank\"",
+          "expr": "{service_name=\"payment-service\", deployment_environment=\"$environment\"} |= \"interbank\"",
           "refId": "A",
           "queryType": "range"
         }
@@ -771,7 +771,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(increase(bank_interbank_sent_total{environment=\"$environment\", result=\"timeout\"}[1h]))",
+          "expr": "sum(sli:interbank_sent_timeouts:increase1h{environment=\"$environment\"})",
           "refId": "A",
           "instant": true
         }

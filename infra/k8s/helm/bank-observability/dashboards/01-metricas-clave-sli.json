@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$environment\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -467,7 +467,7 @@
     {
       "id": 16,
       "type": "timeseries",
-      "title": "Clientes: decisiones de KYC",
+      "title": "Clientes: verificados contra rechazados (última hora)",
       "datasource": {
         "type": "prometheus",
         "uid": "bank-prometheus"
@@ -485,7 +485,7 @@
             "fillOpacity": 8,
             "showPoints": "never"
           },
-          "unit": "reqps"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -509,12 +509,12 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum by (result) (rate(bank_customer_kyc_decisions_total{environment=\"$environment\"}[5m]))",
+          "expr": "sli:kyc_decisions:increase1h{environment=\"$environment\"}",
           "legendFormat": "{{result}}",
           "refId": "A"
         }
       ],
-      "description": "Verificados contra rechazados (§4.1, Customer Service)."
+      "description": "Decisiones de KYC por resultado (`verified` · `rejected`) en la última hora (§4.1, Customer Service). Un recuento y no una tasa por segundo: son decenas al día."
     },
     {
       "id": 17,
@@ -561,11 +561,233 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum by (account_type, operation) (rate(bank_account_operations_total{environment=\"$environment\"}[5m]))",
+          "expr": "sli:account_operations:rate5m{environment=\"$environment\"}",
           "legendFormat": "{{account_type}} · {{operation}}",
           "refId": "A"
         }
-      ]
+      ],
+      "description": "Operaciones por tipo de cuenta (`AHORRO` · `MONETARIA`) y operación (`debit` · `credit` · `compensation`), §4.1 Account Service."
+    },
+    {
+      "id": 76,
+      "type": "timeseries",
+      "title": "KYC: tiempo desde la creación hasta la verificación (p50 / p95)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:kyc_time_to_decision:seconds_p50{environment=\"$environment\"}",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:kyc_time_to_decision:seconds_p95{environment=\"$environment\"}",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ],
+      "description": "El percentil que §4.1 pide para Customer Service. Ventana de 6 h: las decisiones son pocas y con 5 m el cuantil sale vacío casi siempre."
+    },
+    {
+      "id": 77,
+      "type": "timeseries",
+      "title": "Transferencias: proporción por resultado final",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 35
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:transfer_outcome:ratio_rate5m{environment=\"$environment\"}",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Tasa de éxito y de fallo del flujo de negocio. `compensated` no es un fallo del sistema: es la Saga devolviendo el dinero."
+    },
+    {
+      "id": 78,
+      "type": "timeseries",
+      "title": "Mensajes publicados por servicio (mensajes/s)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:published_by_service:rate5m{environment=\"$environment\"}",
+          "legendFormat": "{{service_name}}",
+          "refId": "A"
+        }
+      ],
+      "description": "El throughput del lado del productor (`messaging.client.sent.messages`)."
+    },
+    {
+      "id": 79,
+      "type": "timeseries",
+      "title": "Interbancario: tasa de éxito enviados y recibidos",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:interbank_accepted_by_direction:ratio_rate5m{environment=\"$environment\"}",
+          "legendFormat": "{{direction}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Las dos direcciones de SLO-28 como dos líneas, nunca promediadas. El detalle está en el dashboard «Banco pareja»."
     }
   ]
 }

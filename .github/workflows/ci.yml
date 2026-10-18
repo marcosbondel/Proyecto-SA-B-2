@@ -423,3 +423,15 @@ jobs:
           grep -q 'otlp_grpc/tempo' /tmp/obs.yaml  # las trazas salen hacia Tempo
           grep -q 'transform/parse_bank_json' /tmp/obs.yaml  # el JSON del logger se parsea
           grep -q 'matcherType: label' /tmp/obs.yaml         # el salto de un log a su traza
+          grep -q 'transform/redact_spans' /tmp/obs.yaml     # los tokens no llegan a Tempo (T-60)
+          grep -q 'transform/redact_logs' /tmp/obs.yaml      # ni a Loki
+
+          # Los nueve dashboards, las reglas y las alertas citan lo que existe
+          # (T-60): selectores de Loki sobre etiquetas indexadas, métricas del
+          # catálogo, valores de etiqueta como los emite el código, runbooks en
+          # disco, ningún `$` que Grafana vaya a expandir, y la sintaxis de
+          # cada consulta PromQL con el promtool de la versión del subchart.
+          # Lo que NO puede ver sin un stack —que cada consulta devuelva datos—
+          # lo ejecuta `pnpm obs:kind`.
+          python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y -qq python3-yaml
+          PROMTOOL_DOCKER=1 ./infra/k8s/scripts/check-dashboards.sh

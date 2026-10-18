@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$environment\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -316,7 +316,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(increase(bank_account_anomalies_total{environment=\"$environment\"}[1h]))",
+          "expr": "sum(sli:account_anomalies:increase1h{environment=\"$environment\"}) or vector(0)",
           "refId": "A",
           "instant": true
         }
@@ -419,11 +419,12 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum by (reason) (rate(bank_transfer_finished_total{environment=\"$environment\", result=\"FAILED\"}[5m]))",
+          "expr": "sum by (reason) (rate(bank_transfer_finished_total{environment=\"$environment\", result=\"failed\"}[5m]))",
           "legendFormat": "{{reason}}",
           "refId": "A"
         }
-      ]
+      ],
+      "description": "`result` va en minúsculas: el código lo emite con `step.to.toLowerCase()` (`otel-transfer.telemetry.ts`). Con `FAILED` el panel salía vacío siempre."
     },
     {
       "id": 33,
@@ -453,7 +454,7 @@
             "type": "loki",
             "uid": "bank-loki"
           },
-          "expr": "{service_name=~\".+\", environment=\"$environment\"} | level=\"error\"",
+          "expr": "{service_name=~\".+\", deployment_environment=\"$environment\"} | level=\"error\"",
           "refId": "A",
           "queryType": "range"
         }
