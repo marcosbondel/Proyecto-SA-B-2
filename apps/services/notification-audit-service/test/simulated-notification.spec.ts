@@ -1,4 +1,5 @@
 import { SimulatedNotificationAdapter } from '../src/infrastructure/notification/simulated-notification.adapter';
+import { StructuredLogger } from '../src/interfaces/logging';
 import { notificationFor } from '../src/domain/notification';
 
 /**
@@ -82,13 +83,38 @@ describe('the simulated delivery channel', () => {
     ).resolves.toBe('FAILED');
   });
 
-  it('writes no link when it was not told to reveal one', async () => {
+  it('writes the link with the token masked when it was not told to reveal one', async () => {
     const sink = new Sink();
 
     await new SimulatedNotificationAdapter(sink, false).send(delivery);
 
-    expect(sink.lines[0]?.fields.deliveryLink).toBeUndefined();
+    expect(sink.lines[0]?.fields.deliveryLink).toBe('/activar?token=***');
     expect(JSON.stringify(sink.lines)).not.toContain('abcdef0123456789abcdef');
+  });
+
+  it('masks the token of a password-reset link too, and the default is to mask', async () => {
+    const sink = new Sink();
+
+    await new SimulatedNotificationAdapter(sink).send({
+      ...delivery,
+      type: 'customer.password-reset',
+      link: '/restablecer?token=ZZZ-reset-0123456789',
+    });
+
+    expect(sink.lines[0]?.fields.deliveryLink).toBe('/restablecer?token=***');
+    expect(JSON.stringify(sink.lines)).not.toContain('ZZZ-reset-0123456789');
+  });
+
+  it('masks a percent-encoded token as well', async () => {
+    const sink = new Sink();
+
+    await new SimulatedNotificationAdapter(sink, false).send({
+      ...delivery,
+      link: '/activar?token=a%2Bb%2Fc%3Dd1234567890123',
+    });
+
+    expect(JSON.stringify(sink.lines)).not.toContain('a%2Bb');
+    expect(sink.lines[0]?.fields.deliveryLink).toBe('/activar?token=***');
   });
 
   it('writes the link when it was, so a developer can finish signing up', async () => {
@@ -113,6 +139,40 @@ describe('the simulated delivery channel', () => {
   });
 });
 
+/**
+ * The same assertion on the line that actually reaches stdout (and from there
+ * Loki), after the shared logger's own redaction — not only on what the adapter
+ * handed to it.
+ */
+describe('the log line as it is written to stdout', () => {
+  it('carries no token when revealing is off, only the masked link', async () => {
+    const lines: string[] = [];
+    const logger = new StructuredLogger('notification-audit-service', (line) => lines.push(line));
+
+    await new SimulatedNotificationAdapter(logger, false).send(delivery);
+    await new SimulatedNotificationAdapter(logger, false).send({
+      ...delivery,
+      link: '/restablecer?token=RESET-0123456789abcdef',
+    });
+
+    const written = lines.join('\n');
+
+    expect(written).not.toContain('abcdef0123456789abcdef');
+    expect(written).not.toContain('RESET-0123456789abcdef');
+    expect(written).toContain('"deliveryLink":"/activar?token=***"');
+    expect(written).toContain('"deliveryLink":"/restablecer?token=***"');
+  });
+
+  it('carries the full link only when revealing is on', async () => {
+    const lines: string[] = [];
+    const logger = new StructuredLogger('notification-audit-service', (line) => lines.push(line));
+
+    await new SimulatedNotificationAdapter(logger, true).send(delivery);
+
+    expect(lines.join('\n')).toContain('"deliveryLink":"/activar?token=abcdef0123456789abcdef"');
+  });
+});
+
 describe('which messages produce a link at all', () => {
   it('builds one only from the activation event', () => {
     const intent = notificationFor('customer.activation.requested.v1', {
@@ -130,9 +190,9 @@ describe('which messages produce a link at all', () => {
   });
 
   it('builds none when the event carries no token', () => {
-    expect(
-      notificationFor('customer.activation.requested.v1', { customerId: 'cus-1' })?.link,
-    ).toBe(undefined);
+    expect(notificationFor('customer.activation.requested.v1', { customerId: 'cus-1' })?.link).toBe(
+      undefined,
+    );
   });
 
   /** A token with URL-unsafe characters must survive the round trip intact. */

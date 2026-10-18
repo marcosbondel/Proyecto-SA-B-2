@@ -17,6 +17,7 @@ import type {
 } from '@opentelemetry/api';
 
 import type { MessageEnvelope } from '@bank/contracts';
+import { maskedException, redactSpanText } from '@bank/observability';
 
 /**
  * Context propagation across RabbitMQ (Fase 3, §4.1: "Propagar el contexto con
@@ -265,15 +266,18 @@ export function traceDelivery(
 
 function markFailed(span: Span, error: unknown): void {
   if (error instanceof Error) {
-    span.recordException(error);
+    // The broker rejects with the driver's own message, which quotes values
+    // (a duplicate email, a malformed token); a span is readable by everyone
+    // who opens Grafana, so the text goes through the same masking as a log.
+    span.recordException(maskedException(error));
     span.setAttribute('error.type', error.name);
-    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: redactSpanText(error.message) });
     return;
   }
 
   span.setStatus({
     code: SpanStatusCode.ERROR,
-    ...(error === undefined ? {} : { message: String(error) }),
+    ...(error === undefined ? {} : { message: redactSpanText(String(error)) }),
   });
 }
 

@@ -30,6 +30,9 @@ export class InMemoryAuditRepository implements AuditRepository {
   public readonly notifications: Notification[] = [];
   public readonly deliveries = new Map<string, number>();
   public readonly dedupeKeys = new Set<string>();
+  /** The repeat guard of TD-083: `key|status` -> when the operators were last told. */
+  public readonly toldAlerts = new Map<string, Date>();
+  public alertRepeatWindowMs = 4 * 60 * 60 * 1000;
 
   public async record(input: {
     readonly event: InboundRecord;
@@ -68,12 +71,16 @@ export class InMemoryAuditRepository implements AuditRepository {
 
     const dedupeKey = notification?.intent.dedupeKey;
 
-    if (
-      notification !== null &&
-      dedupeKey !== undefined &&
-      this.dedupeKeys.has(dedupeKey)
-    ) {
+    if (notification !== null && dedupeKey !== undefined && this.dedupeKeys.has(dedupeKey)) {
       // The partial unique index of the real repository: same thing, already told.
+      return await Promise.resolve({ kind: 'RECORDED', notified: false });
+    }
+
+    if (
+      notification?.intent.repeatGuard !== undefined &&
+      !this.#claimAlerts(notification.intent.repeatGuard, now)
+    ) {
+      // The same answer as the real repository: recorded, and nobody is told.
       return await Promise.resolve({ kind: 'RECORDED', notified: false });
     }
 
@@ -104,6 +111,23 @@ export class InMemoryAuditRepository implements AuditRepository {
       notified: notification !== null,
       ...(notification === null ? {} : { notificationId: notification.notificationId }),
     });
+  }
+
+  /** The `INSERT … ON CONFLICT DO UPDATE … WHERE` of the real repository, as a `Map`. */
+  #claimAlerts(guard: NonNullable<NotificationIntent['repeatGuard']>, now: Date): boolean {
+    let anyNew = false;
+
+    for (const { key, status } of guard) {
+      const told = this.toldAlerts.get(`${key}|${status}`);
+
+      if (told === undefined || told.getTime() <= now.getTime() - this.alertRepeatWindowMs) {
+        anyNew = true;
+        this.toldAlerts.set(`${key}|${status}`, now);
+        this.toldAlerts.delete(`${key}|${status === 'firing' ? 'resolved' : 'firing'}`);
+      }
+    }
+
+    return anyNew;
   }
 
   public async inboxOf(input: {

@@ -54,6 +54,20 @@ interbank:
   sendUrl: http://bank-usac-partner-bank-mock:3021/deposits
 
 # --------------------------------------------------------------------------
+# El enlace de activación, visible en el log del servicio de notificaciones.
+#
+# En kind el log ES el buzón: el canal de entrega es simulado y, sin el enlace,
+# nadie puede activar una cuenta en su máquina (TD-043, `pnpm images:flow`, la
+# suite E2E). En el chart el valor por defecto es "false" desde T-60 porque en
+# la nube el log llega a Loki, y un enlace de activación o de recuperación
+# completo es una URL con la que se toma una cuenta ajena (§8.3, «Datos
+# sensibles expuestos»). Este archivo no participa en ningún despliegue a GKE.
+# --------------------------------------------------------------------------
+services:
+  notificationAudit:
+    revealActivationLinks: "true"
+
+# --------------------------------------------------------------------------
 # Dos secretos de juguete, y la palabra «juguete» es literal.
 #
 # No son secretos: son constantes que solo existen mientras viva un clúster

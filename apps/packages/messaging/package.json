@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@bank/contracts": "workspace:*",
+    "@bank/observability": "workspace:*",
     "@opentelemetry/api": "catalog:",
     "amqp-connection-manager": "catalog:",
     "amqplib": "catalog:"
