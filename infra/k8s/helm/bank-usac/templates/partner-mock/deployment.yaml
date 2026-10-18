@@ -1,5 +1,6 @@
 {{/*
-  partner-bank-mock (T-57): el banco pareja simulado, DENTRO del clúster.
+  partner-bank-mock (T-57, contrato v1 desde T-60): el banco pareja simulado,
+  DENTRO del clúster.
 
   Sólo existe con `partnerMock.enabled=true`, y el valor por defecto es `false`.
   Un banco que despliega a su propia contraparte es un banco que puede aprobar
@@ -42,13 +43,14 @@ spec:
   template:
     metadata:
       annotations:
-        # El checksum del Secret, no del ConfigMap: lo unico del mock que vive
-        # fuera de este Deployment es el token compartido, y **un pod no vuelve a
-        # leer un Secret**. Sin esto, dar de alta el token dejaba al mock
-        # corriendo con el valor vacio que leyo al arrancar, y la respuesta era
-        # `401 unauthorized` sin que nada explicara por que. Visto al levantar
-        # el camino local por primera vez.
+        # El checksum de los Secrets, no del ConfigMap: lo único del mock que
+        # vive fuera de este Deployment son las llaves del contrato y el token
+        # de administración, y **un pod no vuelve a leer un Secret**. Sin esto,
+        # rotar una llave dejaba al mock con la que leyó al arrancar, y la
+        # respuesta era `401` sin que nada explicara por qué (visto al levantar
+        # el camino local por primera vez).
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/partner-secret: {{ include (print $.Template.BasePath "/partner-mock/secret.yaml") . | sha256sum }}
       labels:
         {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
         bank-usac.io/role: test-double
@@ -62,34 +64,69 @@ spec:
             - name: http
               containerPort: {{ $cfg.port }}
           env:
+            {{- include "bank-usac.telemetryEnv" (dict "root" $ "tag" $cfg.image.tag) | nindent 12 }}
             - name: PARTNER_MOCK_PORT
               value: {{ $cfg.port | quote }}
-            # A qué Gateway manda los depósitos. Por defecto, el de este mismo
-            # release: el mock simula el banco de ENFRENTE, así que su destino
-            # es nuestra propia entrada.
+            # La URL de NUESTRO Gateway, sin el prefijo `/interbank/v1` (el mock
+            # lo agrega). Por defecto, el de este mismo release: el mock simula
+            # el banco de ENFRENTE, así que su destino es nuestra propia entrada.
             - name: PARTNER_GATEWAY_URL
               value: {{ $cfg.gatewayUrl | default (printf "http://%s:%v" (include "bank-usac.componentFullname" (dict "root" $ "component" $.Values.gateway.component)) $.Values.gateway.port) | quote }}
-            # El mismo secreto compartido que exige la entrada del Gateway: si
-            # no coinciden, el mock recibe 401 y eso es lo correcto.
-            - name: INTERBANK_PARTNER_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "bank-usac.fullname" . }}-secrets
-                  key: INTERBANK_PARTNER_TOKEN
-            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" }}
-            - name: {{ $key }}
+            # Su propio código (el `INTERBANK_PARTNER_BANK_CODE` de nuestro
+            # banco) y el nuestro.
+            - name: PARTNER_MOCK_BANK_CODE
               valueFrom:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" $ }}-config
-                  key: {{ $key }}
-            {{- end }}
-            # La inyección de fallos de T-51.
+                  key: INTERBANK_PARTNER_BANK_CODE
+            - name: INTERBANK_BANK_CODE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" $ }}-config
+                  key: INTERBANK_BANK_CODE
+            # La llave que el mock EXIGE en `X-Api-Key`: la que nosotros le
+            # mandamos. Si no coinciden el mock responde 401, y es lo correcto.
+            - name: PARTNER_MOCK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: INTERBANK_API_KEY_OUTBOUND
+            # La llave que el mock ENVÍA a nuestro Gateway: la que éste espera
+            # de BANK99.
+            - name: PARTNER_MOCK_CALLBACK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: INTERBANK_API_KEY_INBOUND
+            - name: PARTNER_MOCK_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.componentFullname" $ctx }}
+                  key: PARTNER_MOCK_ADMIN_TOKEN
+            # La inyección de fallos: el estado INICIAL. En caliente se cambia
+            # con `PUT /admin/config`.
             - name: PARTNER_CALLBACK_MODE
               value: {{ $cfg.callbackMode | quote }}
             - name: PARTNER_CALLBACK_DELAY_MS
               value: {{ $cfg.callbackDelayMs | quote }}
+            - name: PARTNER_CALLBACK_SLOW_MS
+              value: {{ $cfg.callbackSlowMs | quote }}
+            - name: PARTNER_CALLBACK_ACK_DELAY_MS
+              value: {{ $cfg.callbackAckDelayMs | quote }}
+            - name: PARTNER_CALLBACK_REJECT_REASON
+              value: {{ $cfg.callbackRejectReason | quote }}
+            - name: PARTNER_CALLBACK_STATUS_BEHAVIOR
+              value: {{ $cfg.callbackStatusBehavior | quote }}
             - name: PARTNER_CALLBACK_FAIL_COUNT
               value: {{ $cfg.callbackFailCount | quote }}
+            - name: PARTNER_CALLBACK_FAIL_TARGETS
+              value: {{ $cfg.callbackFailTargets | quote }}
+            - name: PARTNER_CALLBACK_FAILURE_RATE
+              value: {{ $cfg.callbackFailureRate | quote }}
+            - name: PARTNER_CALLBACK_HONOR_EXPIRY
+              value: {{ $cfg.callbackHonorExpiry | toString | quote }}
+            - name: PARTNER_CALLBACK_REVERSAL
+              value: {{ $cfg.callbackReversal | quote }}
           # Una sonda y no dos, a diferencia de los siete componentes del banco.
           # `/ready` existe en ellos porque tienen de qué no estar listos: una
           # base de datos y un broker. El mock no tiene dependencias — si el
