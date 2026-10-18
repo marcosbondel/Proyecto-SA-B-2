@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$environment\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {

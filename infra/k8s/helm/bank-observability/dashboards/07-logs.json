@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$environment\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -89,20 +89,23 @@
           "value": "$__all"
         },
         "datasource": {
-          "type": "prometheus",
-          "uid": "bank-prometheus"
+          "type": "loki",
+          "uid": "bank-loki"
         },
-        "definition": "label_values(service_name)",
+        "definition": "label_values({deployment_environment=\"$environment\"}, service_name)",
         "includeAll": true,
         "label": "Servicio",
         "multi": true,
         "name": "service",
         "query": {
-          "query": "label_values(service_name)",
-          "refId": "service"
+          "label": "service_name",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{deployment_environment=\"$environment\"}",
+          "type": 1
         },
         "refresh": 1,
-        "type": "query"
+        "type": "query",
+        "description": "Los servicios que tienen logs en este entorno, leídos de Loki. Antes salían de Prometheus, que lista quién emite métricas y no quién escribe logs."
       },
       {
         "current": {
@@ -235,7 +238,7 @@
             "type": "loki",
             "uid": "bank-loki"
           },
-          "expr": "sum by (level) (count_over_time({service_name=~\"$service\", environment=\"$environment\"} | level=~\".+\" [1m]))",
+          "expr": "sum by (level) (count_over_time({service_name=~\"$service\", deployment_environment=\"$environment\"} | level=~\".+\" [1m]))",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -286,7 +289,7 @@
             "type": "loki",
             "uid": "bank-loki"
           },
-          "expr": "sum by (service_name) (count_over_time({service_name=~\"$service\", environment=\"$environment\"}[1m]))",
+          "expr": "sum by (service_name) (count_over_time({service_name=~\"$service\", deployment_environment=\"$environment\"}[1m]))",
           "legendFormat": "{{service_name}}",
           "refId": "A"
         }
@@ -320,7 +323,7 @@
             "type": "loki",
             "uid": "bank-loki"
           },
-          "expr": "{service_name=~\"$service\", environment=\"$environment\"} | level=~\"$level\" | correlationId=~\"$correlationId\" | traceId=~\"$traceId\"",
+          "expr": "{service_name=~\"$service\", deployment_environment=\"$environment\"} | level=~\"$level\" | correlationId=~\"$correlationId\" | traceId=~\"$traceId\"",
           "refId": "A",
           "queryType": "range"
         }
