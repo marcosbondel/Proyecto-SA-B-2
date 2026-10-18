@@ -69,7 +69,17 @@ name: CD
 #   secret GRAFANA_ADMIN_PASSWORD  la contrasena de `admin` en Grafana (T-49).
 #                            Sin ella el job de observabilidad falla diciendolo,
 #                            en vez de instalar un Grafana con la contrasena
-#                            que el chart trae por defecto
+#                            que el chart trae por defecto. Tambien la usa la
+#                            anotacion de release, por port-forward
+#   secret ALERT_WEBHOOK_TOKEN  el secreto compartido del webhook de alertas
+#                            (T-60), 32 caracteres o mas. El job de
+#                            observabilidad crea con el el Secret
+#                            `grafana-alert-webhook` y falla si falta; los dos
+#                            despliegues del banco lo pasan al Gateway
+#   var    OBS_NETWORK_POLICIES  opcional — `true` enciende las NetworkPolicy
+#                            del stack en cada despliegue (exige Dataplane V2;
+#                            si el cluster no lo tiene, se avisa y quedan
+#                            apagadas)
 
 on:
   push:
@@ -85,6 +95,10 @@ on:
         default: false
       deploy_observability:
         description: 'Desplegar el stack de observabilidad (Collector, Prometheus, Tempo, Loki, Grafana)'
+        type: boolean
+        default: false
+      network_policies:
+        description: 'Con deploy_observability: encender las NetworkPolicy del stack (exige Dataplane V2). Para dejarlas encendidas en cada merge, la variable OBS_NETWORK_POLICIES=true'
         type: boolean
         default: false
 
@@ -425,6 +439,11 @@ jobs:
           HELM_WAIT_DEBUG: 'true'
           UPDATED_COMPONENTS: ${{ join(fromJSON(needs.changes.outputs.components), ' ') }}
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
+          # El token del webhook de alertas, de UNA fuente (T-60, A3): el mismo
+          # secreto que el job `deploy-observability` pone en el Secret de
+          # Grafana. `helm-deploy.sh` lo pasa despues de HELM_SECRETS, asi que
+          # gana sobre una linea vieja que siguiera ahi.
+          ALERT_WEBHOOK_TOKEN: ${{ secrets.ALERT_WEBHOOK_TOKEN }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
           GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
           # El Collector de T-49, en su nombre DNS dentro del cluster. La
@@ -620,6 +639,11 @@ jobs:
           RELEASE_NAME: bank-usac
           IMAGE_TAG: ${{ steps.version.outputs.value }}
           HELM_SECRETS: ${{ secrets.HELM_SECRETS }}
+          # El token del webhook de alertas, de UNA fuente (T-60, A3): el mismo
+          # secreto que el job `deploy-observability` pone en el Secret de
+          # Grafana. `helm-deploy.sh` lo pasa despues de HELM_SECRETS, asi que
+          # gana sobre una linea vieja que siguiera ahi.
+          ALERT_WEBHOOK_TOKEN: ${{ secrets.ALERT_WEBHOOK_TOKEN }}
           INFRA_ADDRESSES: ${{ secrets.INFRA_ADDRESSES }}
           GATEWAY_PUBLIC_URL: ${{ vars.GATEWAY_PUBLIC_URL }}
           # La IP reservada en Terraform (`terraform output -raw
@@ -723,49 +747,74 @@ jobs:
       # Hay DOS fuentes de anotacion, y no se pisan:
       #
       #   Despliegues (rollout) — los dibuja cada dashboard con una consulta
-      #     sobre `kube_deployment_metadata_generation`. No necesita token ni
-      #     paso de pipeline, asi que no puede faltar.
+      #     sobre `kube_replicaset_created`: un ReplicaSet nuevo solo nace cuando
+      #     cambia la plantilla del pod, asi que marca rollouts y no escalados
+      #     del HPA. Hasta T-60 era `kube_deployment_metadata_generation`, que
+      #     sube tambien con cada escalado (el subrecurso `scale` cambia
+      #     `spec.replicas`) y llenaba la prueba de carga de falsos despliegues.
       #   Releases (esta) — la version que se desplego, con su enlace a la
       #     corrida. La consulta no puede saber eso: la etiqueta de la imagen no
       #     esta en ninguna metrica de Kubernetes.
       #
-      # Se OMITE sin fallar si no hay Grafana configurado, igual que el resto
-      # del workflow hace con la infraestructura ausente: una anotacion que
-      # falta no justifica tumbar un despliegue que ya ocurrio.
+      # DESDE DENTRO DEL CLUSTER (T-60). Antes esto hacia
+      # `POST ${GRAFANA_URL}/api/annotations` desde el runner, y Grafana es
+      # ClusterIP a proposito (no hay IP publica libre en la cuota): la
+      # peticion no podia llegar nunca. Ahora el runner abre un `port-forward`
+      # al Service de Grafana — pasa por el API server, con las credenciales de
+      # GKE que el job ya tiene — y se autentica como `admin` con el secreto
+      # GRAFANA_ADMIN_PASSWORD que el pipeline ya usa. Sin token aparte, y sin
+      # un pod con la contrasena en sus argumentos.
+      #
+      # NO es fatal: una anotacion que falta no justifica tumbar un despliegue
+      # que ya ocurrio. Sin stack de observabilidad o sin la contrasena, se
+      # omite con su motivo en el resumen.
       - name: 'Anotar la release en Grafana'
         if: success()
+        continue-on-error: true
         env:
-          GRAFANA_URL: ${{ vars.GRAFANA_URL }}
-          GRAFANA_TOKEN: ${{ secrets.GRAFANA_TOKEN }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
           VERSION: ${{ steps.version.outputs.value }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ -z "${GRAFANA_URL:-}" ] || [ -z "${GRAFANA_TOKEN:-}" ]; then
+          set -uo pipefail
+          omitir() {
             {
               echo "### Anotacion de release: omitida"
               echo ""
-              echo "Falta \`GRAFANA_URL\` (variable) o \`GRAFANA_TOKEN\` (secreto)."
+              echo "$1"
               echo "Los dashboards siguen marcando los despliegues por consulta;"
               echo "lo que falta es la etiqueta de version sobre la linea."
             } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Anotacion de release omitida: $1"
             exit 0
-          fi
+          }
+          [ -n "${GRAFANA_ADMIN_PASSWORD:-}" ] || omitir "Falta el secreto GRAFANA_ADMIN_PASSWORD."
+          kubectl get svc grafana -n observability >/dev/null 2>&1 \
+            || omitir "No hay Service grafana en el namespace observability (el stack no esta desplegado)."
+
+          kubectl port-forward -n observability svc/grafana 13000:80 >/tmp/pf-grafana.log 2>&1 &
+          PF=$!
+          trap 'kill $PF 2>/dev/null || true' EXIT
+          for _ in $(seq 1 20); do
+            curl -s -o /dev/null --max-time 2 http://127.0.0.1:13000/api/health && break
+            sleep 1
+          done
 
           AHORA="$(date +%s)000"
-          CODIGO="$(curl -s -o /tmp/anotacion.json -w '%{http_code}' \
-            -X POST "${GRAFANA_URL%/}/api/annotations" \
-            -H "Authorization: Bearer ${GRAFANA_TOKEN}" \
-            -H 'Content-Type: application/json' \
-            -d "{
-              \"time\": ${AHORA},
-              \"tags\": [\"release\", \"prod\", \"${VERSION}\"],
-              \"text\": \"Release <b>${VERSION}</b> en prod · <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>corrida</a>\"
-            }")"
+          CUERPO="$(jq -n --argjson t "$AHORA" --arg v "$VERSION" --arg u "$RUN_URL" \
+            '{time: $t, tags: ["release", "prod", $v],
+              text: ("Release <b>" + $v + "</b> en prod · <a href=\"" + $u + "\">corrida</a>")}')"
+          CODIGO="$(curl -s -o /tmp/anotacion.json -w '%{http_code}' --max-time 15 \
+            -u "admin:${GRAFANA_ADMIN_PASSWORD}" \
+            -X POST http://127.0.0.1:13000/api/annotations \
+            -H 'Content-Type: application/json' -d "$CUERPO")"
 
           if [ "$CODIGO" = "200" ]; then
-            echo "Anotacion de release creada en Grafana."
+            echo "Anotacion de release ${VERSION} creada en Grafana."
+            echo "- Anotacion de release \`${VERSION}\` creada en Grafana." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::Grafana respondio ${CODIGO} al anotar la release."
-            cat /tmp/anotacion.json || true
+            cat /tmp/anotacion.json /tmp/pf-grafana.log 2>/dev/null || true
           fi
 
       - name: Resumen del despliegue
@@ -840,9 +889,10 @@ jobs:
           cluster_name: ${{ vars.GKE_CLUSTER }}
           location: ${{ vars.GKE_ZONE }}
 
-      - name: Comprobar la contrasena de Grafana
+      - name: Comprobar los secretos del stack
         env:
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          ALERT_WEBHOOK_TOKEN: ${{ secrets.ALERT_WEBHOOK_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${GRAFANA_ADMIN_PASSWORD}" ]; then
@@ -853,10 +903,25 @@ jobs:
             echo "::error::GRAFANA_ADMIN_PASSWORD tiene ${#GRAFANA_ADMIN_PASSWORD} caracteres. Minimo 16: es la consola que ve todo el sistema."
             exit 1
           fi
+          # El token del webhook de alertas (T-60, A3). Era el UNICO paso manual
+          # del stack: `docs/operations/CLOUD.md` pedia crear el Secret a mano, y
+          # como Grafana lo lee con `optional: true` su ausencia no fallaba nada
+          # — el Gateway respondia 401 y las alertas no llegaban a la bitacora.
+          # Ahora falta el secreto de GitHub y el job falla diciendolo.
+          if [ -z "${ALERT_WEBHOOK_TOKEN}" ]; then
+            echo "::error::Falta el secret ALERT_WEBHOOK_TOKEN (32 caracteres o mas, p. ej. 'openssl rand -hex 32'). Es el secreto que Grafana manda al webhook POST /api/alerts/slo del Gateway; el mismo valor llega a los Gateway de dev y prod por helm-deploy.sh. Sin el, las alertas se ven en Grafana y no llegan a Notification & Audit."
+            exit 1
+          fi
+          if [ "${#ALERT_WEBHOOK_TOKEN}" -lt 32 ]; then
+            echo "::error::ALERT_WEBHOOK_TOKEN tiene ${#ALERT_WEBHOOK_TOKEN} caracteres. El Gateway exige al menos 32 y no arrancaria con el."
+            exit 1
+          fi
 
-      - name: Crear el namespace y el Secret de Grafana
+      - name: Crear el namespace y los Secrets de Grafana
+        id: secrets
         env:
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          ALERT_WEBHOOK_TOKEN: ${{ secrets.ALERT_WEBHOOK_TOKEN }}
         run: |
           set -euo pipefail
           kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -870,7 +935,66 @@ jobs:
             --from-literal=admin-password="$GRAFANA_ADMIN_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+          # El que antes se creaba a mano (T-60, A3). Mismo patron idempotente.
+          kubectl create secret generic grafana-alert-webhook \
+            --namespace "$NAMESPACE" \
+            --from-literal=token="$ALERT_WEBHOOK_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # Grafana lee el token como variable de entorno AL ARRANCAR. Un Secret
+          # que cambia no reinicia el pod, y entonces Grafana seguiria mandando
+          # el token viejo mientras el Gateway ya espera el nuevo: 401 en
+          # silencio. El hash va como anotacion del pod (ver «Desplegar el
+          # stack»), y un hash distinto es un pod nuevo — la misma solucion que
+          # TD-089 dio a los Secrets del banco. Es el hash, nunca el valor.
+          echo "token_hash=$(printf '%s' "$ALERT_WEBHOOK_TOKEN" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      # Las NetworkPolicy del stack (T-54), sin el `helm upgrade` a mano que
+      # pedia `docs/operations/CLOUD.md` §5.4 (T-60, A3).
+      #
+      # Se encienden con la variable de repositorio OBS_NETWORK_POLICIES=true o
+      # con el input `network_policies` de una corrida manual. Una variable y no
+      # sólo un input porque el `helm upgrade` de abajo no usa `--reuse-values`:
+      # una politica encendida a mano se apagaba en el siguiente merge a main
+      # sin que nadie lo decidiera.
+      #
+      # Dos guardas, porque Kubernetes acepta una NetworkPolicy aunque nadie la
+      # aplique:
+      #   - sin Dataplane V2 (`ADVANCED_DATAPATH`) no se encienden: serian
+      #     decorativas, y lo honesto es decirlo en el resumen;
+      #   - `apiServerCidr` se acota a la IP real del maestro (/32). Un valor
+      #     equivocado deja a Grafana SIN DASHBOARDS y sin error, asi que la
+      #     comprobacion de despues cuenta los dashboards y, si faltan, apaga
+      #     las politicas y falla.
+      - name: Decidir las NetworkPolicy
+        id: netpol
+        env:
+          QUIERE: ${{ (github.event_name == 'workflow_dispatch' && inputs.network_policies) || vars.OBS_NETWORK_POLICIES == 'true' }}
+        run: |
+          set -euo pipefail
+          if [ "$QUIERE" != "true" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "NetworkPolicy: apagadas (OBS_NETWORK_POLICIES no es 'true')."
+            exit 0
+          fi
+          DATAPATH="$(gcloud container clusters describe "${{ vars.GKE_CLUSTER }}" \
+            --location "${{ vars.GKE_ZONE }}" --format='value(networkConfig.datapathProvider)')"
+          ENDPOINT="$(gcloud container clusters describe "${{ vars.GKE_CLUSTER }}" \
+            --location "${{ vars.GKE_ZONE }}" --format='value(endpoint)')"
+          if [ "$DATAPATH" != "ADVANCED_DATAPATH" ]; then
+            echo "::warning::Se pidieron NetworkPolicy pero el cluster tiene datapath '${DATAPATH:-legacy}', no ADVANCED_DATAPATH: nadie las aplicaria. Quedan apagadas."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "api_cidr=${ENDPOINT}/32" >> "$GITHUB_OUTPUT"
+          echo "NetworkPolicy: encendidas, API server en ${ENDPOINT}/32."
+
       - name: Desplegar el stack
+        env:
+          TOKEN_HASH: ${{ steps.secrets.outputs.token_hash }}
+          NETPOL: ${{ steps.netpol.outputs.enabled }}
+          API_CIDR: ${{ steps.netpol.outputs.api_cidr }}
         run: |
           set -euo pipefail
           # Los subcharts van versionados en `charts/`, asi que no hay
@@ -882,10 +1006,16 @@ jobs:
           helm upgrade "$RELEASE" "$CHART" \
             --install \
             --namespace "$NAMESPACE" \
+            --set-string "grafana.podAnnotations.bank-usac/alert-webhook-token-hash=${TOKEN_HASH}" \
+            --set "networkPolicies.enabled=${NETPOL:-false}" \
+            ${API_CIDR:+--set-string "networkPolicies.apiServerCidr=${API_CIDR}"} \
             --wait \
             --timeout 20m
 
       - name: Comprobar que el stack responde
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          NETPOL: ${{ steps.netpol.outputs.enabled }}
         run: |
           set -euo pipefail
           kubectl get pods,pvc -n "$NAMESPACE"
@@ -910,6 +1040,120 @@ jobs:
           else
             echo "::warning::Prometheus todavia no lista el objetivo otel-gateway. Puede tardar un intervalo de raspado (30 s)."
           fi
+
+          # Grafana, por su API, desde el runner y a traves del API server:
+          # Grafana es ClusterIP y no tiene otra entrada.
+          kubectl port-forward -n "$NAMESPACE" svc/grafana 13000:80 >/tmp/pf-grafana.log 2>&1 &
+          PF=$!
+          trap 'kill $PF 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null --max-time 2 http://127.0.0.1:13000/api/health && break
+            sleep 2
+          done
+          g() { curl -s --max-time 15 -u "admin:${GRAFANA_ADMIN_PASSWORD}" "http://127.0.0.1:13000$1"; }
+
+          # Los nueve dashboards. Si faltan con las NetworkPolicy encendidas, la
+          # causa casi segura es `apiServerCidr`: el sidecar ya no alcanza el
+          # API server y Grafana arranca vacio SIN un error. Se vuelve al
+          # estado anterior antes de fallar, que es el camino de vuelta de
+          # CLOUD.md §5.4 sin la persona.
+          ESPERADOS="$(find "$CHART/dashboards" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')"
+          CARGADOS=0
+          for _ in $(seq 1 12); do
+            CARGADOS="$(g '/api/search?type=dash-db' | jq 'length' 2>/dev/null || echo 0)"
+            [ "$CARGADOS" -ge "$ESPERADOS" ] && break
+            sleep 10
+          done
+          if [ "$CARGADOS" -lt "$ESPERADOS" ]; then
+            if [ "$NETPOL" = "true" ]; then
+              echo "::error::Grafana tiene ${CARGADOS} de ${ESPERADOS} dashboards con las NetworkPolicy encendidas. Se apagan (helm upgrade --reuse-values --set networkPolicies.enabled=false) y el job falla: revisar apiServerCidr."
+              helm upgrade "$RELEASE" "$CHART" --namespace "$NAMESPACE" --reuse-values \
+                --set networkPolicies.enabled=false --wait --timeout 10m || true
+            else
+              echo "::error::Grafana tiene ${CARGADOS} de ${ESPERADOS} dashboards."
+            fi
+            exit 1
+          fi
+          echo "Grafana cargo los ${CARGADOS} dashboards."
+
+          # El contact point del webhook (T-60, A3). Lo aprovisiona el chart, asi
+          # que si no esta, Grafana no leyo su configuracion de alertas.
+          PUNTOS="$(g '/api/v1/provisioning/contact-points' | jq -r '.[].name' 2>/dev/null || true)"
+          for cp in bank-audit-prod bank-audit-dev; do
+            if ! printf '%s\n' "$PUNTOS" | grep -qx "$cp"; then
+              echo "::error::Grafana no tiene el contact point ${cp}. Las alertas no tendrian a donde ir."
+              exit 1
+            fi
+          done
+          echo "Contact points presentes: bank-audit-prod, bank-audit-dev."
+
+      # Que la alerta llegue de verdad a la bitacora (T-60, A3): un POST de
+      # prueba al webhook de cada Gateway, con el token del secreto, y que
+      # Grafana tenga ESE token y no otro.
+      #
+      # No es fatal. El stack de observabilidad se despliega en un job aparte
+      # del de las aplicaciones, y un Gateway que todavia no existe o esta
+      # rodando no es un defecto del stack: es un aviso. Lo que si se distingue
+      # es el 401 — token distinto entre Grafana y el Gateway —, que es el fallo
+      # silencioso que esto existe para hacer visible.
+      #
+      # La alerta de prueba va como `resolved` y `info`: queda registrada en
+      # Notification & Audit, que es justo la evidencia de que el canal
+      # funciona, sin abrir un incidente.
+      - name: Probar el webhook de alertas
+        continue-on-error: true
+        env:
+          ALERT_WEBHOOK_TOKEN: ${{ secrets.ALERT_WEBHOOK_TOKEN }}
+        run: |
+          set -uo pipefail
+          ESPERADO="$(printf '%s' "$ALERT_WEBHOOK_TOKEN" | sha256sum | cut -c1-16)"
+          # Comillas simples a proposito: la variable se expande DENTRO del pod.
+          # shellcheck disable=SC2016
+          EN_GRAFANA="$(kubectl exec -n "$NAMESPACE" deploy/grafana -c grafana -- \
+            sh -c 'printf %s "$ALERT_WEBHOOK_TOKEN" | sha256sum' 2>/dev/null | cut -c1-16 || true)"
+          if [ "$EN_GRAFANA" = "$ESPERADO" ]; then
+            echo "Grafana tiene el token del secreto ALERT_WEBHOOK_TOKEN (se compara el hash)."
+          else
+            echo "::warning::El token que ve Grafana no coincide con ALERT_WEBHOOK_TOKEN (o no se pudo leer). Las alertas recibirian 401."
+          fi
+
+          AHORA="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          CUERPO="$(jq -n --arg t "$AHORA" --arg u "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '{
+            status: "resolved",
+            alerts: [{
+              status: "resolved",
+              labels: {alertname: "PipelineWebhookCheck", severity: "info"},
+              annotations: {summary: ("Prueba del canal de alertas desde cd.yml: " + $u)},
+              startsAt: $t, endsAt: $t, fingerprint: "pipeline-webhook-check"
+            }]}')"
+
+          resumen="### Webhook de alertas"$'\n\n'
+          for par in "prod bank-usac-gateway" "dev bank-usac-dev-gateway"; do
+            read -r ns svc <<< "$par"
+            if ! kubectl get svc "$svc" -n "$ns" >/dev/null 2>&1; then
+              echo "::warning::No hay Service ${svc} en ${ns} todavia: el webhook de ese entorno no se pudo probar."
+              resumen+="- \`${ns}\`: sin Gateway desplegado, no se probo"$'\n'
+              continue
+            fi
+            kubectl port-forward -n "$ns" "svc/$svc" 18080:3000 >/tmp/pf-gw.log 2>&1 &
+            PF=$!
+            for _ in $(seq 1 15); do
+              curl -s -o /dev/null --max-time 2 http://127.0.0.1:18080/health && break
+              sleep 1
+            done
+            CODIGO="$(curl -s -o /tmp/webhook.json -w '%{http_code}' --max-time 15 \
+              -X POST http://127.0.0.1:18080/api/alerts/slo \
+              -H "Authorization: Bearer ${ALERT_WEBHOOK_TOKEN}" \
+              -H 'Content-Type: application/json' -d "$CUERPO")"
+            kill $PF 2>/dev/null || true
+            wait $PF 2>/dev/null || true
+            case "$CODIGO" in
+              2??) echo "Webhook de ${ns}: HTTP ${CODIGO}."; resumen+="- \`${ns}\`: HTTP ${CODIGO}, la alerta de prueba llego a la bitacora"$'\n' ;;
+              401) echo "::warning::Webhook de ${ns}: 401. El Gateway tiene otro token: ¿se desplego ${ns} despues de definir ALERT_WEBHOOK_TOKEN?"; resumen+="- \`${ns}\`: **401**, token distinto"$'\n' ;;
+              *) echo "::warning::Webhook de ${ns}: HTTP ${CODIGO}."; cat /tmp/webhook.json 2>/dev/null || true; resumen+="- \`${ns}\`: HTTP ${CODIGO}"$'\n' ;;
+            esac
+          done
+          printf '%s' "$resumen" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resumen
         if: always()

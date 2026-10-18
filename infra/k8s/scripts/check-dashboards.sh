@@ -1,111 +1,80 @@
 #!/usr/bin/env bash
 #
-# Comprueba que cada consulta de los dashboards de T-50 cita algo que existe.
+# Comprueba que cada consulta de los dashboards, las reglas y las alertas cita
+# algo que existe — y, con `--live`, que cada una DEVUELVE algo.
+#
+#   ./infra/k8s/scripts/check-dashboards.sh            # estatico, sin cluster (CI)
+#   ./infra/k8s/scripts/check-dashboards.sh --live \
+#       --prometheus http://127.0.0.1:19090 --loki http://127.0.0.1:13100 \
+#       --tempo http://127.0.0.1:13200 [--grafana … --grafana-auth admin:…]
 #
 # POR QUE EXISTE. Un panel con un nombre de serie mal escrito no da error: sale
 # vacio, para siempre, y parece que el sistema no tiene datos. Es exactamente lo
-# que paso con `le="5"` contra una serie que Prometheus guarda como `le="5.0"`.
-# `helm lint` no lo ve, `promtool` tampoco —el JSON del dashboard no es una regla—
-# y en la calificacion se ve como un dashboard decorativo (§8.3, 25 %).
+# que paso con `le="5"` contra una serie que Prometheus guarda como `le="5.0"`,
+# y otra vez en T-60 con cinco defectos de la misma clase (los selectores de
+# Loki por una etiqueta que no existe, `result="FAILED"` contra un codigo que
+# emite `failed`, dos enlaces de Grafana que llegaban con la URL vacia y la
+# anotacion de despliegues que se disparaba con el HPA). `helm lint` no ve
+# ninguno.
 #
-# Lo que comprueba, sin necesitar un cluster:
-#   1. Cada JSON de `dashboards/` es JSON valido y trae uid, title y paneles.
-#   2. Cada nombre `slo:...` o `sli:...` que aparece en una consulta esta
-#      GRABADO en `recording_rules.yml`. Un panel no puede inventarse un SLI.
-#   3. Cada `runbook_url` de las alertas apunta a un archivo que existe.
+# El trabajo lo hace `check-dashboards.py`, al lado de este archivo; su cabecera
+# enumera las trece comprobaciones. Este script anade la UNICA que necesita un
+# binario de fuera: `promtool check rules` sobre las reglas grabadas y sobre
+# TODA consulta PromQL de los dashboards y las alertas, que el .py escribe como
+# reglas de mentira para que promtool valide su sintaxis sin un Prometheus.
 #
-# Lo que NO comprueba: que la serie tenga datos. Eso necesita un Prometheus con
-# trafico y lo hace `obs-kind.sh` (comprobaciones 8 a 10).
+# promtool se busca en el PATH. Si no esta y `PROMTOOL_DOCKER=1` (lo pone CI),
+# se corre desde la imagen `prom/prometheus` de la MISMA version que el subchart
+# versionado en `charts/`: validar con otra version es validar otro lenguaje.
+# Sin ninguno de los dos, se avisa y se sigue — el resto no depende de el.
 #
 # Escrito para bash 3.2, la version que trae macOS.
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CHART="$RAIZ/infra/k8s/helm/bank-observability"
-DASH="$CHART/dashboards"
-
-fallos=0
-aviso() {
-  echo "FALLO: $*" >&2
-  fallos=$((fallos + 1))
-}
 
 command -v python3 >/dev/null 2>&1 || {
   echo "ERROR: falta python3 en el PATH." >&2
   exit 2
 }
-
-echo "== 1. Los dashboards son JSON valido y estan completos"
-for f in "$DASH"/*.json; do
-  nombre="$(basename "$f")"
-  if ! python3 -c "
-import json, sys
-d = json.load(open(sys.argv[1], encoding='utf-8'))
-for clave in ('uid', 'title', 'panels', 'templating', 'annotations'):
-    if clave not in d:
-        raise SystemExit(f'falta \"{clave}\"')
-if not d['panels']:
-    raise SystemExit('no tiene paneles')
-" "$f" 2>/tmp/dash-err; then
-    aviso "$nombre: $(cat /tmp/dash-err)"
-  else
-    echo "   OK  $nombre"
-  fi
-done
-
-echo
-echo "== 2. Cada SLI/SLO que citan los paneles esta grabado"
-python3 - "$CHART/values.yaml" "$DASH" <<'PY' || fallos=$((fallos + 1))
-import glob, json, os, re, sys
-
-import yaml
-
-values, directorio = sys.argv[1], sys.argv[2]
-
-with open(values, encoding='utf-8') as f:
-    v = yaml.safe_load(f)
-
-grabadas = {
-    regla['record']
-    for grupo in v['prometheus']['serverFiles']['recording_rules.yml']['groups']
-    for regla in grupo['rules']
+python3 -c 'import yaml' 2>/dev/null || {
+  echo "ERROR: falta PyYAML (python3 -m pip install pyyaml, o apt-get install python3-yaml)." >&2
+  exit 2
 }
-print(f'   {len(grabadas)} reglas grabadas')
 
-CITA = re.compile(r'\b(?:slo|sli):[a-z0-9_]+:[a-z0-9_]+\b')
-malas = []
+TRABAJO="$(mktemp -d)"
+trap 'rm -rf "$TRABAJO"' EXIT
 
-for ruta in sorted(glob.glob(os.path.join(directorio, '*.json'))):
-    with open(ruta, encoding='utf-8') as f:
-        texto = f.read()
-    for nombre in sorted(set(CITA.findall(texto))):
-        if nombre not in grabadas:
-            malas.append(f'{os.path.basename(ruta)}: {nombre}')
+rc=0
+python3 "$RAIZ/infra/k8s/scripts/check-dashboards.py" \
+  --root "$RAIZ" --chart "$CHART" \
+  --emit-promql-rules "$TRABAJO/consultas.yml" "$@" || rc=$?
 
-if malas:
-    print('   FALLO: paneles que citan una regla que nadie graba:')
-    for m in malas:
-        print(f'      {m}')
-    raise SystemExit(1)
-
-print('   OK  ninguna consulta se inventa un SLI')
+python3 - "$CHART/values.yaml" "$TRABAJO/grabadas.yml" <<'PY'
+import sys, yaml
+v = yaml.safe_load(open(sys.argv[1], encoding='utf-8'))
+yaml.safe_dump(v['prometheus']['serverFiles']['recording_rules.yml'], open(sys.argv[2], 'w'), sort_keys=False)
 PY
 
 echo
-echo "== 3. Cada alerta tiene su runbook en disco"
-grep -o 'runbooks/[a-z0-9-]*\.md' "$CHART/values.yaml" | sort -u | while read -r r; do
-  if [ -f "$RAIZ/docs/operations/$r" ]; then
-    echo "   OK  $r"
-  else
-    echo "   FALLO: $r no existe" >&2
-    exit 1
-  fi
-done || fallos=$((fallos + 1))
+echo "== promtool: las reglas grabadas y cada consulta PromQL son sintaxis valida"
+if command -v promtool >/dev/null 2>&1; then
+  promtool check rules "$TRABAJO/grabadas.yml" "$TRABAJO/consultas.yml" || rc=1
+elif [ "${PROMTOOL_DOCKER:-0}" = "1" ] && command -v docker >/dev/null 2>&1; then
+  version="$(tar -xzOf "$CHART"/charts/prometheus-*.tgz prometheus/Chart.yaml | sed -n 's/^appVersion: *//p')"
+  echo "   promtool desde prom/prometheus:${version} (la version del subchart)"
+  docker run --rm --entrypoint promtool -v "$TRABAJO:/w:ro" "prom/prometheus:${version}" \
+    check rules /w/grabadas.yml /w/consultas.yml || rc=1
+else
+  echo "   AVISO: no hay promtool (ni PROMTOOL_DOCKER=1). La sintaxis PromQL no se valido aqui;"
+  echo "          CI si la valida."
+fi
 
 echo
-if [ "$fallos" -eq 0 ]; then
-  echo "RESULTADO: los dashboards citan lo que existe."
+if [ "$rc" -eq 0 ]; then
+  echo "RESULTADO FINAL: todo en orden."
 else
-  echo "RESULTADO: $fallos comprobacion(es) fallaron." >&2
-  exit 1
+  echo "RESULTADO FINAL: hay fallos (ver arriba)." >&2
 fi
+exit "$rc"

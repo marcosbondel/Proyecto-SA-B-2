@@ -1,8 +1,10 @@
 # BrokerConsumerLagHigh
 
-**SLO-14** — reintentos del broker dentro de la escalera. La alerta vigila el
-**consumer lag**: más de **500** mensajes pendientes en una cola durante 10
-minutos.
+**Sin SLO propio.** Es la alerta que §4.1 exige para la dependencia del broker
+(`docs/sre/sli-slo-sla.md` §5.3). Hasta T-60 llevaba la etiqueta SLO-14, que es
+«reintentos dentro de la escalera» y no tiene que ver con una cola llena. La
+alerta vigila el **consumer lag**: más de **500** mensajes pendientes en una
+cola durante 10 minutos.
 
 ## Qué significa
 
