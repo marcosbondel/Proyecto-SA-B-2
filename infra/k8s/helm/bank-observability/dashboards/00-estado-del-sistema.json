@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$environment\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -334,7 +334,7 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Throughput por servicio (mensajes/s)",
+      "title": "Throughput por servicio: consumido y publicado (mensajes/s)",
       "datasource": {
         "type": "prometheus",
         "uid": "bank-prometheus"
@@ -377,11 +377,20 @@
             "uid": "bank-prometheus"
           },
           "expr": "sli:throughput_by_service:rate5m{environment=\"$environment\"}",
-          "legendFormat": "{{service_name}}",
+          "legendFormat": "{{service_name}} · consumido",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:published_by_service:rate5m{environment=\"$environment\"}",
+          "legendFormat": "{{service_name}} · publicado",
+          "refId": "B"
         }
       ],
-      "description": "Si esto cae a cero, los cuatro indicadores de arriba se quedan sin denominador: nadie está usando el banco."
+      "description": "Lo consumido y lo publicado, por servicio. Con una sola de las dos, un productor que deja de publicar y un consumidor que deja de leer se ven igual."
     },
     {
       "id": 6,
