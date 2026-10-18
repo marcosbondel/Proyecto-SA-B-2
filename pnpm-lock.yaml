@@ -463,15 +463,15 @@ importers:
 
   apps/partner-bank-mock:
     devDependencies:
-      '@bank/contracts':
-        specifier: workspace:*
-        version: link:../packages/contracts
       '@bank/tooling':
         specifier: workspace:*
         version: link:../packages/tooling
       eslint:
         specifier: 'catalog:'
         version: 10.8.1(jiti@2.7.0)(supports-color@10.2.2)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
 
   apps/services/account-service:
     dependencies:

@@ -24,3 +24,8 @@ apps/web/
 .mcp.json
 opencode.json
 skills-lock.json
+
+# partner-bank-mock: the generated contract schemas (scripts/sync-contract.mjs) and the
+# vendored examples of the course contract must stay byte-for-byte as produced.
+apps/partner-bank-mock/src/contract-schemas.json
+apps/partner-bank-mock/test/fixtures/

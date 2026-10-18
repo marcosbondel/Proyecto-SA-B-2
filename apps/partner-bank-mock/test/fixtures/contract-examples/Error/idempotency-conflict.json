@@ -1,0 +1,5 @@
+{
+  "code": "IDEMPOTENCY_CONFLICT",
+  "message": "Ya existe una solicitud con ese id y otro contenido.",
+  "timestamp": "2026-10-20T15:00:00Z"
+}
