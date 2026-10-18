@@ -36,10 +36,17 @@ observability:
 # --------------------------------------------------------------------------
 partnerMock:
   enabled: true
-  # ACCEPT por defecto. Para los escenarios de fallo de T-51:
+  # De juguete y evidente, como los demás secretos de kind: protege la API
+  # `/admin/*` del mock (cambio de modo en caliente, depósitos que origina).
+  # `test/load/scenario.sh` lo lee desde dentro del pod, no de aquí.
+  adminToken: 'kind-admin-del-mock-de-juguete-no-es-un-secreto'
+  # ACCEPT por defecto. Los escenarios de fallo de T-51 ya no reinician el pod:
+  # se cambian EN CALIENTE con la API del mock (ver test/load/scenario.sh):
+  #   PUT /admin/config {"mode":"REJECT","rejectReason":"ACCOUNT_NOT_FOUND"}
+  #   PUT /admin/config {"mode":"TIMEOUT"}
+  #   PUT /admin/config {"mode":"SLOW","slowMs":12000}
+  # El estado inicial sigue siendo un valor del release:
   #   helm upgrade … --set partnerMock.callbackMode=REJECT
-  #   helm upgrade … --set partnerMock.callbackMode=TIMEOUT
-  #   helm upgrade … --set partnerMock.callbackMode=SLOW --set partnerMock.callbackDelayMs=8000
   callbackMode: ACCEPT
 
 interbank:
