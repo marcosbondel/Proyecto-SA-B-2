@@ -8,6 +8,7 @@ import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { NestInstrumentation } from '@opentelemetry/instrumentation-nestjs-core';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
+import { UndiciInstrumentation } from '@opentelemetry/instrumentation-undici';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import type { Resource } from '@opentelemetry/resources';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
@@ -18,6 +19,8 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 import { identityFrom } from './identity';
+import { dropManualTraceHeaders } from './outbound-headers';
+import { RedactingSpanProcessor, SENSITIVE_QUERY_PARAMS } from './redaction';
 
 /**
  * Registers the OpenTelemetry SDK for one process (Fase 3, §4.1
@@ -103,9 +106,13 @@ export function startTelemetry(options: TelemetryOptions): TelemetryHandle {
   const resource = telemetryResource(options.serviceName, env);
   const exporting = nonEmpty(env.OTEL_EXPORTER_OTLP_ENDPOINT) !== undefined;
 
-  const spanProcessors: SpanProcessor[] = exporting
-    ? [new BatchSpanProcessor(new OTLPTraceExporter())]
-    : [];
+  // The redactor goes FIRST and goes in even with no exporter: processors run
+  // in order, and an exporter registered later (a test's in-memory one, a debug
+  // console exporter) must also see a span with no token in it.
+  const spanProcessors: SpanProcessor[] = [
+    new RedactingSpanProcessor(),
+    ...(exporting ? [new BatchSpanProcessor(new OTLPTraceExporter())] : []),
+  ];
   const tracerProvider = new NodeTracerProvider({ resource, spanProcessors });
   tracerProvider.register();
 
@@ -133,6 +140,23 @@ export function startTelemetry(options: TelemetryOptions): TelemetryHandle {
         // An outgoing call with no request in flight is the exporter or a
         // health check, not a step of anybody's flow.
         requireParentforOutgoingSpans: true,
+        // `url.query` and `url.full` are built by this instrumentation, and it
+        // redacts only the names it is given — by default just cloud
+        // signatures. The activation link is `?token=…` (T-60, §8.3).
+        redactedQueryParams: [...SENSITIVE_QUERY_PARAMS],
+        redactedQueryParamsServer: [...SENSITIVE_QUERY_PARAMS],
+      }),
+      // Outbound `fetch` (undici) — the partner-bank client. Without it a call
+      // to another bank leaves no CLIENT span and no propagated context.
+      // Unlike the `http` one, this instrumentation appends `traceparent`
+      // **without checking** whether the request already carries one, so a
+      // caller that sets it by hand would send two. `requestHook` runs before
+      // the injection and removes the manual pair: the CLIENT span's own is
+      // the better parent anyway (the callee becomes a child of the call, not a
+      // sibling of it).
+      new UndiciInstrumentation({
+        requireParentforSpans: true,
+        requestHook: (_span, request) => dropManualTraceHeaders(request),
       }),
       new ExpressInstrumentation(),
       new NestInstrumentation(),
