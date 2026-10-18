@@ -91,10 +91,11 @@ spec:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: ALERT_WEBHOOK_TOKEN
                   optional: true
-            # Los dos códigos de banco que el contrato oficial exige (T-56). Del
-            # ConfigMap: son configuración y no secretos — están publicados en
-            # el acuerdo de integración.
-            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" }}
+            # Los dos códigos de banco y el límite por operación que el contrato
+            # oficial exige (T-56). Del ConfigMap: son configuración y no
+            # secretos — están publicados en el acuerdo de integración. El
+            # límite es la misma clave que lee payment-service.
+            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_MAX_AMOUNT_MINOR" }}
             - name: {{ $key }}
               valueFrom:
                 configMapKeyRef:
@@ -107,11 +108,13 @@ spec:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: INTERBANK_API_KEY_INBOUND
                   optional: true
+            # Solo para las rutas heredadas con Bearer, apagadas por defecto.
             - name: INTERBANK_PARTNER_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: INTERBANK_PARTNER_TOKEN
+                  optional: true
             # Names this replica's private reply queue, which the broker
             # declares `exclusive` (apps/packages/messaging/src/broker.ts) so
             # that two replicas cannot share one — a shared queue would have

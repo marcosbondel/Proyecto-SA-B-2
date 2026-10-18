@@ -90,12 +90,15 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: PAYMENT_SIM_LATENCY_MS
-            - name: INTERBANK_PARTNER_TOKEN
+            # La API key que mandamos como X-Api-Key al banco pareja. `optional`:
+            # sin ella el envio no arranca, pero el pod si.
+            - name: INTERBANK_API_KEY_OUTBOUND
               valueFrom:
                 secretKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-secrets
-                  key: INTERBANK_PARTNER_TOKEN
-            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_MAX_AMOUNT_MINOR" "INTERBANK_CALLBACK_URL" "INTERBANK_SEND_URL" "INTERBANK_CONFIRMATION_TIMEOUT_MS" "INTERBANK_RESOLVE_RETRY_MS" }}
+                  key: INTERBANK_API_KEY_OUTBOUND
+                  optional: true
+            {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_PARTNER_BASE_URL" "INTERBANK_MAX_AMOUNT_MINOR" "INTERBANK_CONFIRMATION_TIMEOUT_MS" "INTERBANK_RESOLVE_RETRY_MS" }}
             - name: {{ $key }}
               valueFrom:
                 configMapKeyRef:

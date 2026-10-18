@@ -368,17 +368,8 @@ gateway:
   # templates/NOTES.txt), so its origin is localhost:<forwarded web port>.
   corsAllowedOrigins: "http://localhost:3010"
 
-# T-46: provisional incoming interbank contract. An empty partner token keeps
-# the route closed.
-#
-# `callbackUrl` is where Payment answers the partner bank with the result. The
-# default is the Compose address, which only resolves on a laptop; in a cluster
-# it has to be a Service name. There is **no conditional default** that points
-# it at the mock when the mock is enabled, on purpose: a URL that changes
-# meaning depending on another flag is how a release ends up calling the wrong
-# bank. The local overrides file sets it explicitly
-# (`infra/k8s/kind/local.values.yaml`), and so does the integration agreement
-# for the real partner.
+# Contrato interbancario v1 (T-56 / T-60). Las dos API keys viven en `secrets:`;
+# aqui solo hay configuracion publica del acuerdo de integracion.
 interbank:
   # `BANK02` sale del contrato oficial, no de una elección: `BankCode` es
   # `^BANK[0-9]{2}$` y somos el grupo 2. `BANK_USAC` no cumplía el patrón, así
@@ -386,21 +377,27 @@ interbank:
   bankCode: BANK02
   partnerBankCode: BANK99
   # Q10 000,00 en centavos: el máximo por operación que fija el contrato, no una
-  # cifra nuestra. Si se supera, el rechazo es `AMOUNT_LIMIT_EXCEEDED`.
+  # cifra nuestra. Un solo limite para recibir y para enviar; si se supera, el
+  # rechazo es `AMOUNT_LIMIT_EXCEEDED`. Gateway y Payment lo leen de la misma
+  # clave del ConfigMap, y no se puede subir por encima del techo del contrato.
   maxAmountMinor: "1000000"
-  callbackUrl: "http://127.0.0.1:3021/callbacks/interbank"
-  # Where this bank SENDS the deposits it originates — the partner's intake, not
-  # its own. Empty means "this deployment does not send deposits", which is the
-  # right default while no partner is assigned: the `interbank` block of a
-  # payment is ignored and the money never leaves. Turning it on is one value,
-  # and the local overrides file points it at the mock's Service.
+  # Base de la API del banco pareja, **con** el sufijo `/interbank/v1`, a donde
+  # ESTE banco envia los depositos que origina. La URL del callback ya no se
+  # configura: payment-service la deriva. Vacio significa "este despliegue no
+  # envia depositos", que es lo correcto mientras no haya pareja asignada: el
+  # bloque `interbank` de un pago se ignora y el dinero no sale. Activarlo es un
+  # solo valor; el fichero de overrides local lo apunta al Service del mock.
   #
-  # T-51 found this the hard way: with `sendUrl` absent from the chart, 240
-  # interbank transfers completed as ordinary transfers into the settlement
-  # account and payment-service logged `envio interbancario desactivado`. The
-  # route answered 202 the whole time. A deployment can be wrong in a way no
-  # request is.
-  sendUrl: ""
+  # T-51 lo aprendio por las malas: sin esta clave en el chart, 240 transferencias
+  # interbancarias terminaron como transferencias ordinarias hacia la cuenta de
+  # liquidacion y payment-service registro `envio interbancario desactivado`. La
+  # ruta respondia 202 todo el tiempo. Un despliegue puede estar mal sin que
+  # ninguna peticion lo diga.
+  #
+  # No hay un valor por defecto condicionado a `partnerMock.enabled`, a
+  # proposito: una URL que cambia de sentido segun otra bandera es como un
+  # release acaba llamando al banco equivocado.
+  partnerBaseUrl: ""
   # OBSOLETA desde TD-095, y se sigue publicando a proposito.
   #
   # Decia "cuanto espera un deposito el callback del banco pareja antes de
@@ -503,8 +500,9 @@ secrets:
   # cualquiera adivina.
   interbankApiKeyInbound: ""
   interbankApiKeyOutbound: ""
-  # Optional until an interbank partner is configured. Both Gateway and
-  # Payment receive the same value from this Secret.
+  # Solo para las rutas heredadas del Gateway con Bearer
+  # (/api/interbank/deposits y /callbacks), apagadas por defecto: vacio las
+  # mantiene cerradas. payment-service ya NO lo recibe; usa la API key de salida.
   interbankPartnerToken: ""
   rabbitmq:
     user: bank_app # the app account provisioned by infra/docker/scripts/init-rabbitmq.sh

@@ -51,8 +51,8 @@ data:
   INTERBANK_BANK_CODE: {{ .Values.interbank.bankCode | quote }}
   INTERBANK_PARTNER_BANK_CODE: {{ .Values.interbank.partnerBankCode | quote }}
   INTERBANK_MAX_AMOUNT_MINOR: {{ .Values.interbank.maxAmountMinor | quote }}
-  INTERBANK_CALLBACK_URL: {{ .Values.interbank.callbackUrl | quote }}
-  INTERBANK_SEND_URL: {{ .Values.interbank.sendUrl | quote }}
+  # Base de la API de la pareja, con `/interbank/v1`. Vacia = envio apagado.
+  INTERBANK_PARTNER_BASE_URL: {{ .Values.interbank.partnerBaseUrl | default "" | quote }}
   # OBSOLETA desde TD-095: el plazo de un deposito lo fija el contrato
   # (V1_TRANSFER_TTL_MS, 180 s) y no esta variable. Se sigue publicando porque
   # payment-service la valida al arrancar; quitarla es seguro.
