@@ -4,6 +4,7 @@ import { redactPayload } from '../../domain/redaction';
 import type { AuditEvent, AuditProcessingStatus } from '../../domain/audit-event';
 import type { EventSeverity } from '../../domain/classification';
 import type {
+  AlertInstance,
   Notification,
   NotificationIntent,
   NotificationStatus,
@@ -32,11 +33,22 @@ import type {
  * the raw payload and hiding it at read time would mean the unredacted copy
  * exists on disk — and the copy on disk is the one that ends up in a backup.
  */
+/** `repeat_interval` of the Grafana notification policy: 4 h (T-50). */
+export const DEFAULT_ALERT_REPEAT_WINDOW_MS = 4 * 60 * 60 * 1000;
+
 export class PostgresAuditRepository implements AuditRepository {
   readonly #pool: Pool;
+  readonly #alertWindowMs: number;
 
-  constructor(pool: Pool) {
+  /**
+   * `alertRepeatWindowMs` is how long an alert instance that was already told
+   * in a given state stays quiet (TD-083): the same four hours as Grafana's own
+   * `repeat_interval`, so a repetition inside it is a repetition and one after
+   * it is a reminder.
+   */
+  constructor(pool: Pool, options: { readonly alertRepeatWindowMs?: number } = {}) {
     this.#pool = pool;
+    this.#alertWindowMs = options.alertRepeatWindowMs ?? DEFAULT_ALERT_REPEAT_WINDOW_MS;
   }
 
   public async record(input: {
@@ -99,6 +111,20 @@ export class PostgresAuditRepository implements AuditRepository {
         return { kind: 'DUPLICATE' };
       }
 
+      /*
+       * TD-083: an SLO alert that every instance of the webhook already told
+       * the operators about, in this same state, inside the window, is
+       * recorded above and not notified. Claimed here, in this transaction and
+       * before the notification row, so a rollback releases the claim.
+       */
+      if (
+        notification !== null &&
+        notification.intent.repeatGuard !== undefined &&
+        !(await this.#claimAlerts(client, notification.intent.repeatGuard, now))
+      ) {
+        return { kind: 'RECORDED', notified: false };
+      }
+
       if (notification !== null) {
         /*
          * `DO NOTHING` here too, against the partial unique index on
@@ -144,6 +170,51 @@ export class PostgresAuditRepository implements AuditRepository {
         ...(notification === null ? {} : { notificationId: notification.notificationId }),
       };
     });
+  }
+
+  /**
+   * Claims every `(alert instance, status)` of a webhook and says whether at
+   * least one was **new** — never told, or last told longer ago than the window.
+   *
+   * One statement per pair: `INSERT … ON CONFLICT DO UPDATE … WHERE` takes the
+   * row lock, so two replicas processing repeats of the same alert serialise
+   * and exactly one of them gets a row back. A claimed pair also removes its
+   * opposite, which is what lets a FIRING after a RESOLVED notify again even
+   * though the earlier FIRING is still inside the window.
+   *
+   * Every pair is claimed, not only until the first success: stopping early
+   * would leave the others unclaimed and re-notify on the next repeat.
+   */
+  async #claimAlerts(
+    client: PoolClient,
+    guard: readonly AlertInstance[],
+    now: Date,
+  ): Promise<boolean> {
+    const staleBefore = new Date(now.getTime() - this.#alertWindowMs);
+    let anyNew = false;
+
+    for (const { key, status } of guard) {
+      const claimed = await client.query(
+        `INSERT INTO slo_alert_notifications (alert_key, status, notified_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (alert_key, status) DO UPDATE
+           SET notified_at = EXCLUDED.notified_at
+           WHERE slo_alert_notifications.notified_at <= $4
+         RETURNING alert_key`,
+        [key, status, now, staleBefore],
+      );
+
+      if ((claimed.rowCount ?? 0) > 0) {
+        anyNew = true;
+
+        await client.query(
+          `DELETE FROM slo_alert_notifications WHERE alert_key = $1 AND status <> $2`,
+          [key, status],
+        );
+      }
+    }
+
+    return anyNew;
   }
 
   /** The only `UPDATE` in this service, and it touches no trail row. */
@@ -568,4 +639,3 @@ interface InboxRow {
   read_at: Date | null;
   severity: EventSeverity | null;
 }
-

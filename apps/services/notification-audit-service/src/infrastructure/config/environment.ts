@@ -115,6 +115,17 @@ export class NotificationAuditServiceEnvironment {
   /** The Resend emails endpoint. Defaulted; overridable for a test double. */
   @IsUrl({ require_tld: false })
   public RESEND_API_URL!: string;
+
+  /**
+   * How long, in minutes, an SLO alert instance that the operators were already
+   * told about **in a given state** stays quiet (TD-083). Defaults to 240, the
+   * `repeat_interval` of the Grafana notification policy (T-50): a repeat
+   * inside it is noise, one after it is a reminder. Never longer than a week.
+   */
+  @IsInt()
+  @Min(1)
+  @Max(10080)
+  public SLO_ALERT_REPEAT_WINDOW_MINUTES!: number;
 }
 
 /**
@@ -146,6 +157,7 @@ export function loadEnvironment(
     EMAIL_FROM: source.EMAIL_FROM,
     APP_BASE_URL: source.APP_BASE_URL,
     RESEND_API_URL: source.RESEND_API_URL ?? 'https://api.resend.com/emails',
+    SLO_ALERT_REPEAT_WINDOW_MINUTES: toInteger(source.SLO_ALERT_REPEAT_WINDOW_MINUTES) ?? 240,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
