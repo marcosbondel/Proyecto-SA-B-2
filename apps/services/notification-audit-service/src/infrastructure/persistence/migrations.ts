@@ -240,6 +240,33 @@ export const MIGRATIONS: readonly Migration[] = [
          ON notifications (dedupe_key) WHERE dedupe_key IS NOT NULL`,
     ],
   },
+  {
+    /*
+     * TD-083. Grafana re-sends a firing alert at its repeat interval (and at
+     * every group interval while it lasts), and each delivery used to notify
+     * the operators again.
+     *
+     * One row per `(alert instance, status)`: when the operators were last
+     * told. The repeat guard claims a pair with a single upsert whose `WHERE`
+     * is the window, so it is the database that arbitrates two replicas
+     * draining `audit.query` at once, not a read followed by a write.
+     *
+     * The audit trail is untouched: every delivery is still recorded, because
+     * every row is something that arrived. Only the *notification* is guarded.
+     * A pair is deleted when its opposite is claimed, so FIRING -> RESOLVED ->
+     * FIRING tells the operators three times however short the gaps.
+     */
+    name: '007_slo_alert_notifications',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS slo_alert_notifications (
+         alert_key   VARCHAR(200) NOT NULL,
+         status      VARCHAR(10)  NOT NULL,
+         notified_at TIMESTAMPTZ  NOT NULL,
+         CONSTRAINT slo_alert_notifications_pk PRIMARY KEY (alert_key, status),
+         CONSTRAINT slo_alert_notifications_status_known CHECK (status IN ('firing','resolved'))
+       )`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

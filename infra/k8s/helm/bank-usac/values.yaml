@@ -306,13 +306,19 @@ services:
     image:
       repository: bank-usac/notification-audit-service
       tag: dev # always --set at install time — see the note above `services:`
-    # On here, as in docker-compose.images.yml, because this chart's job is
-    # to demonstrate the assignment's own flow (register, activate, sign
-    # in) against a real cluster. Set to "false" for anything reachable by
-    # someone who is not the demo operator — with it false, nobody can
-    # complete a sign-up unless NOTIFICATION_CHANNEL is also switched to a
-    # real channel (docs/operations/CONTAINERS.md, docs/operations/EMAIL_RESEND.md).
-    revealActivationLinks: "true"
+    # OFF by default (T-60, §8.3 "Datos sensibles expuestos"). On, the simulated
+    # channel writes the complete activation / password-reset link into the
+    # pod's log, and the log agent ships it to Loki, where everyone with
+    # Grafana can read a working account-takeover URL. Off, the line still
+    # names the link but with the token masked (`/activar?token=***`).
+    #
+    # The local kind deployment turns it on in infra/k8s/kind/local.values.yaml
+    # (and install.sh does for any kind context), because there the log IS the
+    # mailbox: with it off nobody can complete a sign-up unless
+    # NOTIFICATION_CHANNEL is a real channel (docs/operations/CONTAINERS.md,
+    # docs/operations/EMAIL_RESEND.md). Never set it to "true" for a cluster
+    # that a stranger can reach.
+    revealActivationLinks: "false"
     notificationChannel: simulated
     # The Resend channel's non-sensitive half, read only when
     # notificationChannel is "resend". The API key is the sensitive half and

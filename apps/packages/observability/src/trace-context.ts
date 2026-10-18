@@ -1,6 +1,8 @@
 import { context, propagation, ROOT_CONTEXT, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { Attributes } from '@opentelemetry/api';
 
+import { maskedException } from './redaction';
+
 const SCOPE = '@bank/observability';
 
 /**
@@ -68,7 +70,7 @@ export async function continueTrace<T>(
         return await work();
       } catch (error) {
         if (error instanceof Error) {
-          span.recordException(error);
+          span.recordException(maskedException(error));
         }
         span.setStatus({ code: SpanStatusCode.ERROR });
         throw error;

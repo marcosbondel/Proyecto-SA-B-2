@@ -263,6 +263,21 @@ set -- "$@" \
 # install, and the evidence captured from it, exactly as it was.
 set -- "$@" --set-string "gateway.serviceType=ClusterIP"
 
+# The activation link in the notification service's log. The chart's default is
+# "false" since T-60 (the log reaches Loki in the cloud, and a complete link is
+# an account-takeover URL), but on kind the log is the only mailbox there is:
+# `pnpm k8s:install` without `--values` would otherwise leave nobody able to
+# sign up. Only for a kind context; --allow-remote-context gets the chart's own
+# default, and `-f local.values.yaml` says the same thing for `local:up`.
+# A values file that names the key keeps its say (`--set` would override it).
+reveal_decided=false
+for valores in ${extra_values[@]+"${extra_values[@]}"}; do
+  grep -q 'revealActivationLinks' "$valores" && reveal_decided=true
+done
+if [[ "$allow_remote" != "true" && "$reveal_decided" != "true" ]]; then
+  set -- "$@" --set-string "services.notificationAudit.revealActivationLinks=true"
+fi
+
 # The seven image tags. Not optional — see the note above `services:` in values.yaml.
 #
 # Y el del doble de prueba de T-57, con el MISMO tag. No es simetria: el chart
