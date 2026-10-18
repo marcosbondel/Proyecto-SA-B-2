@@ -36,6 +36,7 @@
     "images:trace": "./infra/docker/scripts/trace-images.sh",
     "k8s:cluster": "./infra/k8s/scripts/create-cluster.sh",
     "k8s:cluster:down": "kind delete cluster --name bank-usac",
+    "k8s:metrics": "./infra/k8s/scripts/install-metrics-server.sh",
     "k8s:ips": "./infra/k8s/kind/scripts/discover-external-ips.sh",
     "k8s:install": "./infra/k8s/scripts/install.sh",
     "k8s:forward": "./infra/k8s/scripts/port-forward.sh",
