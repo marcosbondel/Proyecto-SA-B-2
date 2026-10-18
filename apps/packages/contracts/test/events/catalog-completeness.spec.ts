@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(130);
+    expect(catalog).toHaveLength(134);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -285,6 +285,15 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'payment.interbank.callback.received.v1',
       'payment.interbank.receive.v1',
       'payment.interbank.rejected.v1',
+      /*
+       * Las cuatro de T-60 (B10): consultar y listar los depósitos enviados, con
+       * sus seis estados, para que la pantalla muestre el depósito y no sólo la
+       * Saga que lo contiene.
+       */
+      'payment.interbank.send.list.query.v1',
+      'payment.interbank.send.list.replied.v1',
+      'payment.interbank.send.query.v1',
+      'payment.interbank.send.replied.v1',
       'payment.interbank.sent.v1',
       /*
        * Los doce del **contrato interbancario oficial** (T-56), seis preguntas y
