@@ -8,6 +8,7 @@ import {
   uuidV4,
 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
+import { v1AccountNumber } from './v1';
 
 /** Provisional wire shapes until the course publishes its OpenAPI contract. */
 /**
@@ -122,6 +123,44 @@ export const interbankRejectionReason = z.enum([
   'IDEMPOTENCY_CONFLICT',
 ]);
 
+/**
+ * Los motivos con los que un depósito recibido puede quedar cerrado, para el
+ * evento de auditoría.
+ *
+ * Los ocho de `interbankRejectionReason` más los dos que el contrato oficial
+ * añade y que **no** son un rechazo de negocio: `EXPIRED` (venció antes de
+ * decidirse) y `CANCELLED` (el emisor lo canceló). Aparte de
+ * `interbankRejectionReason` a propósito: ese conjunto es también el del
+ * callback provisional, y ampliarlo cambiaría lo que el borde acepta.
+ */
+export const interbankDecisionReason = z.enum([
+  ...interbankRejectionReason.options,
+  'EXPIRED',
+  'CANCELLED',
+]);
+
+/**
+ * Cómo se nombra una cuenta de este banco hacia Account (T-60).
+ *
+ * O el UUID interno (`accountId`, el camino provisional) o el **número de
+ * cuenta del contrato** (`accountNumber`, `02-NNNNNNNNN`), y exactamente uno.
+ * Hasta T-60 sólo existía el primero, y un depósito del contrato oficial —que
+ * nombra la cuenta por su número, porque un UUID con guiones no cabe en los 34
+ * caracteres del `AccountNumber`— no llegaba nunca a ser acreditado: Account
+ * buscaba el número como si fuera un UUID.
+ */
+const accountReference = {
+  accountId: uuidV4.optional(),
+  accountNumber: v1AccountNumber.optional(),
+};
+
+function exactlyOneAccountReference(value: {
+  accountId?: string | undefined;
+  accountNumber?: string | undefined;
+}): boolean {
+  return (value.accountId === undefined) !== (value.accountNumber === undefined);
+}
+
 export const paymentInterbankReceiveV1 = defineContract({
   name: 'payment.interbank.receive.v1',
   category: 'command',
@@ -156,7 +195,12 @@ export const accountInterbankEligibilityQueryV1 = defineContract({
   category: 'command',
   producer: 'payment-service',
   consumers: ['account-service'],
-  schema: z.object({ depositId: uuidV4, accountId: uuidV4 }),
+  schema: z
+    .object({ depositId: uuidV4, ...accountReference })
+    .refine(exactlyOneAccountReference, {
+      path: ['accountNumber'],
+      message: 'Se nombra la cuenta por accountId o por accountNumber, y por uno solo.',
+    }),
 });
 export type AccountInterbankEligibilityQueryV1 = z.infer<
   typeof accountInterbankEligibilityQueryV1.schema
@@ -170,7 +214,8 @@ export const accountInterbankEligibilityRepliedV1 = defineContract({
   schema: z
     .object({
       depositId: uuidV4,
-      accountId: uuidV4,
+      /** Cómo se la nombró en la pregunta. La respuesta repite la referencia. */
+      ...accountReference,
       eligible: z.boolean(),
       reason: z.enum(['ACCOUNT_NOT_FOUND', 'ACCOUNT_INACTIVE']).nullable(),
     })
@@ -185,7 +230,12 @@ export const accountInterbankCreditRequestedV1 = defineContract({
   category: 'command',
   producer: 'payment-service',
   consumers: ['account-service'],
-  schema: z.object({ depositId: uuidV4, accountId: uuidV4, amount: interbankMoney }),
+  schema: z
+    .object({ depositId: uuidV4, ...accountReference, amount: interbankMoney })
+    .refine(exactlyOneAccountReference, {
+      path: ['accountNumber'],
+      message: 'Se nombra la cuenta por accountId o por accountNumber, y por uno solo.',
+    }),
 });
 export type AccountInterbankCreditRequestedV1 = z.infer<
   typeof accountInterbankCreditRequestedV1.schema
@@ -196,7 +246,13 @@ export const accountInterbankCreditedV1 = defineContract({
   category: 'event',
   producer: 'account-service',
   consumers: ['payment-service', 'notification-audit-service'],
-  schema: z.object({ depositId: uuidV4, accountId: uuidV4, creditedAt: isoTimestamp }),
+  schema: z.object({
+    depositId: uuidV4,
+    /** La cuenta acreditada, siempre resuelta: se acredita lo que se encontró. */
+    accountId: uuidV4,
+    accountNumber: v1AccountNumber.optional(),
+    creditedAt: isoTimestamp,
+  }),
 });
 export type AccountInterbankCreditedV1 = z.infer<typeof accountInterbankCreditedV1.schema>;
 
@@ -207,7 +263,8 @@ export const accountInterbankCreditRejectedV1 = defineContract({
   consumers: ['payment-service', 'notification-audit-service'],
   schema: z.object({
     depositId: uuidV4,
-    accountId: uuidV4,
+    /** Ausentes cuando la cuenta no existe: no hay nada que resolver. */
+    ...accountReference,
     reason: z.enum(['ACCOUNT_NOT_FOUND', 'ACCOUNT_INACTIVE', 'INVALID_REQUEST']),
   }),
 });
@@ -231,7 +288,7 @@ export const paymentInterbankRejectedV1 = defineContract({
   consumers: ['notification-audit-service'],
   schema: z.object({
     depositId: uuidV4,
-    reason: interbankRejectionReason,
+    reason: interbankDecisionReason,
     decidedAt: isoTimestamp,
   }),
 });

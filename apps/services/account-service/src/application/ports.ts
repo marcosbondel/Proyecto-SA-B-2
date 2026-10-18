@@ -87,6 +87,14 @@ export interface AccountRepository {
 
   findById(accountId: string): Promise<Account | null>;
 
+  /**
+   * La cuenta con ese número del contrato interbancario (`02-NNNNNNNNN`), o
+   * `null`. Un depósito del banco pareja nombra la cuenta así y no por su UUID
+   * (T-60, B3): un UUID con guiones no cabe en los 34 caracteres que el contrato
+   * admite.
+   */
+  findByNumber(accountNumber: string): Promise<Account | null>;
+
   list(filter: AccountFilter): Promise<readonly Account[]>;
 
   operationsOf(accountId: string): Promise<readonly AccountOperation[]>;

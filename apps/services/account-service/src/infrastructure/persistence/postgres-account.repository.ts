@@ -109,6 +109,15 @@ export class PostgresAccountRepository implements AccountRepository {
     return result.rows[0] === undefined ? null : accountFrom(result.rows[0]);
   }
 
+  public async findByNumber(accountNumber: string): Promise<Account | null> {
+    const result = await this.#pool.query<AccountRow>(
+      `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE account_number = $1`,
+      [accountNumber],
+    );
+
+    return result.rows[0] === undefined ? null : accountFrom(result.rows[0]);
+  }
+
   public async list(filter: AccountFilter): Promise<readonly Account[]> {
     const conditions: string[] = [];
     const values: unknown[] = [];
