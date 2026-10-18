@@ -125,7 +125,7 @@ describe('this service speaks to the system only through the broker', () => {
       (file) => file.path === 'src/infrastructure/http/partner-callback.ts',
     );
 
-    expect(adapter?.text).toMatch(/fetch\(this\.endpoint/);
+    expect(adapter?.text).toMatch(/fetch\(`\$\{this\.baseUrl\}/);
     expect(adapter?.text).toMatch(/redirect: 'error'/);
 
     /**
@@ -158,12 +158,14 @@ describe('this service speaks to the system only through the broker', () => {
       [];
 
     /*
-     * Cuatro: el callback de respuesta y el envío del depósito (T-46, T-47), más
-     * la consulta y la cancelación del protocolo de TIMEOUT (TD-095). El número
-     * se mueve a mano cuando la salida crece a propósito, que es justo lo que lo
-     * convierte en una decisión y no en un descuido.
+     * Una: desde T-60 toda salida —el envío, la consulta, la cancelación, el
+     * reverso y el callback— pasa por `PartnerHttp.call`, que es donde se ponen
+     * `X-Api-Key` y `traceparent`. Antes eran cuatro `fetch` con las cabeceras
+     * repetidas cuatro veces, que es como una ruta nueva se olvida de una. El
+     * número se mueve a mano cuando la salida crece a propósito, que es justo lo
+     * que lo convierte en una decisión y no en un descuido.
      */
-    expect(llamadas).toHaveLength(4);
+    expect(llamadas).toHaveLength(1);
     expect(configuradas).toHaveLength(llamadas.length);
   });
 

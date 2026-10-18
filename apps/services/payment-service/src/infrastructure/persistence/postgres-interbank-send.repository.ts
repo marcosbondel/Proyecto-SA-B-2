@@ -4,7 +4,9 @@ import type { Pool, PoolClient } from 'pg';
 
 import type {
   InterbankSend,
+  InterbankSendHistoryRow,
   InterbankSendRepository,
+  InterbankSendReversalState,
 } from '../../application/interbank-send.ports';
 import type { OutboxMessage } from '../../application/ports';
 import { settlementOf, type InterbankSendState } from '../../domain/interbank-send';
@@ -34,6 +36,19 @@ interface Row {
   readonly cancel_kind: 'ANSWERED' | 'UNREACHABLE' | null;
   readonly cancel_result: 'CANCELLED' | 'ALREADY_ACCEPTED' | 'ALREADY_REJECTED' | null;
   readonly resolve_not_before: Date | null;
+  readonly origin_account: string | null;
+  readonly customer_id: string | null;
+  readonly probe_attempts: number;
+  readonly cancel_attempts: number;
+  readonly reversal_id: string | null;
+  readonly reversal_state: InterbankSendReversalState | null;
+  readonly reversal_attempts: number;
+  readonly reversal_next_at: Date | null;
+  readonly reversal_refund_transfer_id: string | null;
+  readonly reversal_message: string | null;
+  readonly decided_at: Date | null;
+  readonly sent_at: Date | null;
+  readonly reversed_at: Date | null;
 }
 
 const COLUMNS = `interbank_transfer_id, payment_id, transaction_id, idempotency_key,
@@ -41,7 +56,10 @@ const COLUMNS = `interbank_transfer_id, payment_id, transaction_id, idempotency_
                  correlation_id, origin_envelope, state, reason, attempts,
                  confirmation_due_at, trace_context, created_at, verdict_enqueued_at,
                  release_not_before, probe_kind, probe_status, cancel_kind, cancel_result,
-                 resolve_not_before`;
+                 resolve_not_before, origin_account, customer_id, probe_attempts,
+                 cancel_attempts, reversal_id, reversal_state, reversal_attempts,
+                 reversal_next_at, reversal_refund_transfer_id, reversal_message,
+                 decided_at, sent_at, reversed_at`;
 
 /**
  * `amount_minor` es `BIGINT`, y el driver lo entrega como **cadena** para no
@@ -57,6 +75,8 @@ function toSend(row: Row): InterbankSend {
     idempotencyKey: row.idempotency_key,
     destinationBankCode: row.destination_bank_code,
     destinationAccount: row.destination_account,
+    originAccount: row.origin_account,
+    customerId: row.customer_id,
     amount: { amountMinor: Number(row.amount_minor), currency: row.currency },
     correlationId: row.correlation_id,
     state: row.state,
@@ -76,6 +96,22 @@ function toSend(row: Row): InterbankSend {
     probe: toProbe(row),
     cancel: toCancel(row),
     resolveNotBefore: row.resolve_not_before,
+    probeAttempts: row.probe_attempts,
+    cancelAttempts: row.cancel_attempts,
+    reversal:
+      row.reversal_id === null || row.reversal_state === null
+        ? null
+        : {
+            reversalId: row.reversal_id,
+            state: row.reversal_state,
+            attempts: row.reversal_attempts,
+            nextAt: row.reversal_next_at,
+            refundTransferId: row.reversal_refund_transfer_id,
+            message: row.reversal_message,
+          },
+    decidedAt: row.decided_at,
+    sentAt: row.sent_at,
+    reversedAt: row.reversed_at,
     origin: row.origin_envelope,
   };
 }
@@ -130,21 +166,45 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
   async open(input: {
     send: Omit<
       InterbankSend,
-      'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt' | 'probe' | 'cancel' | 'resolveNotBefore'
+      | 'state'
+      | 'reason'
+      | 'attempts'
+      | 'verdictEnqueuedAt'
+      | 'probe'
+      | 'cancel'
+      | 'resolveNotBefore'
+      | 'probeAttempts'
+      | 'cancelAttempts'
+      | 'reversal'
+      | 'decidedAt'
+      | 'sentAt'
+      | 'reversedAt'
     >;
     now: Date;
   }): Promise<{ kind: 'CREATED' | 'DUPLICATE'; send: InterbankSend }> {
     const s = input.send;
+    /*
+     * El alta y la primera línea del historial en **una sola sentencia**: un
+     * CTE que modifica datos corre aunque nadie lo lea, y si el `INSERT`
+     * principal no entra (`ON CONFLICT`) no devuelve filas y no hay historial
+     * que duplicar.
+     */
     const inserted = await this.pool.query<Row>(
-      `INSERT INTO interbank_sends
-         (interbank_transfer_id, payment_id, transaction_id, idempotency_key,
-          destination_bank_code, destination_account, amount_minor, currency,
-          correlation_id, origin_envelope, state, reason, attempts,
-          next_attempt_at, confirmation_due_at, trace_context, created_at,
-          release_not_before)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'PENDING',NULL,0,$11,$12,$13,$11,$14)
-       ON CONFLICT DO NOTHING
-       RETURNING ${COLUMNS}`,
+      `WITH alta AS (
+         INSERT INTO interbank_sends
+           (interbank_transfer_id, payment_id, transaction_id, idempotency_key,
+            destination_bank_code, destination_account, amount_minor, currency,
+            correlation_id, origin_envelope, state, reason, attempts,
+            next_attempt_at, confirmation_due_at, trace_context, created_at,
+            release_not_before, origin_account, customer_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'PENDING',NULL,0,$11,$12,$13,$11,$14,$15,$16)
+         ON CONFLICT DO NOTHING
+         RETURNING ${COLUMNS}
+       ), historial AS (
+         INSERT INTO interbank_send_history (interbank_transfer_id, state, reason, at)
+         SELECT interbank_transfer_id, 'PENDING', NULL, created_at FROM alta
+       )
+       SELECT ${COLUMNS} FROM alta`,
       [
         s.interbankTransferId,
         s.paymentId,
@@ -160,6 +220,8 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
         s.confirmationDueAt,
         s.traceContext,
         s.releaseNotBefore,
+        s.originAccount,
+        s.customerId,
       ],
     );
 
@@ -273,7 +335,24 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
          */
         `UPDATE interbank_sends
             SET state = $3::text,
-                reason = $4,
+                /*
+                 * REVERSED conserva el motivo con el que se liberó. El dominio
+                 * lo emite sin motivo —la constancia de que el dinero volvió no
+                 * tiene uno propio—, y el CHECK exige motivo en REVERSED:
+                 * escribir el NULL tal cual hacía que la base rechazara la
+                 * transición, la compensación se reintentara hasta la cola
+                 * muerta, y REVERSED fuera **inalcanzable** (T-60). El motivo
+                 * de siempre —CANCELLED_AT_PARTNER, RELEASED_NO_ANSWER…— es
+                 * además lo que un operador quiere leer en un depósito devuelto.
+                 */
+                reason = CASE
+                  WHEN $3::text = 'REVERSED' THEN COALESCE($4, reason)
+                  -- Un reintento de entrega vuelve a PENDING con el motivo del
+                  -- fallo, y el CHECK reserva el motivo a los estados que
+                  -- salieron mal: el detalle se registra en el log, no aquí.
+                  WHEN $3::text = 'PENDING' THEN NULL
+                  ELSE $4
+                END,
                 attempts = attempts + 1,
                 next_attempt_at = $5,
                 sent_at = CASE WHEN $3::text = 'SENT' AND sent_at IS NULL THEN $6 ELSE sent_at END,
@@ -307,6 +386,14 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
         await client.query('ROLLBACK');
 
         return false;
+      }
+
+      if (input.from !== input.to) {
+        await client.query(
+          `INSERT INTO interbank_send_history (interbank_transfer_id, state, reason, at)
+           VALUES ($1, $2, $3, $4)`,
+          [input.interbankTransferId, input.to, input.reason, input.now],
+        );
       }
 
       for (const message of input.outbound ?? []) {
@@ -496,6 +583,8 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
           SET probe_kind   = COALESCE($2::text, probe_kind),
               probe_status = CASE WHEN $2::text IS NULL THEN probe_status ELSE $3 END,
               probed_at    = CASE WHEN $2::text IS NULL THEN probed_at ELSE COALESCE(probed_at, $6) END,
+              probe_attempts = probe_attempts + CASE WHEN $2::text IS NULL THEN 0 ELSE 1 END,
+              cancel_attempts = cancel_attempts + CASE WHEN $4::text IS NULL THEN 0 ELSE 1 END,
               cancel_kind  = COALESCE($4::text, cancel_kind),
               cancel_result = CASE WHEN $4::text IS NULL THEN cancel_result ELSE $5 END,
               cancel_requested_at = CASE
@@ -514,5 +603,105 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
         input.resolveNotBefore,
       ],
     );
+  }
+
+  async requestReversal(input: {
+    interbankTransferId: string;
+    reversalId: string;
+    now: Date;
+  }): Promise<boolean> {
+    /*
+     * Un solo reverso por depósito (`reversal_id IS NULL`) y sólo de uno ya
+     * liberado (`state IN (...)`, que el `CHECK` también exige): dos
+     * `ACCEPTED` tardíos seguidos piden el mismo reverso una vez.
+     */
+    const { rowCount } = await this.pool.query(
+      `UPDATE interbank_sends
+          SET reversal_id = $2, reversal_state = 'PENDING',
+              reversal_next_at = $3, reversal_requested_at = $3
+        WHERE interbank_transfer_id = $1
+          AND reversal_id IS NULL
+          AND state IN ('REJECTED','REVERSED')`,
+      [input.interbankTransferId, input.reversalId, input.now],
+    );
+
+    return rowCount === 1;
+  }
+
+  async claimReversals(now: Date, limit: number): Promise<readonly InterbankSend[]> {
+    /*
+     * Con arrendamiento: tomar la fila es también empujar su próxima hora 30 s,
+     * así que dos réplicas barriendo a la vez no piden el mismo reverso en el
+     * mismo segundo. El reverso es idempotente por `reversalId` en el otro banco;
+     * esto evita ruido, no un doble pago.
+     */
+    const rows = await this.pool.query<Row>(
+      `UPDATE interbank_sends
+          SET reversal_next_at = $1::timestamptz + interval '30 seconds'
+        WHERE interbank_transfer_id IN (
+          SELECT interbank_transfer_id FROM interbank_sends
+           WHERE reversal_state IN ('PENDING','PROCESSING') AND reversal_next_at <= $1
+           ORDER BY reversal_next_at
+           FOR UPDATE SKIP LOCKED
+           LIMIT $2
+        )
+        RETURNING ${COLUMNS}`,
+      [now, limit],
+    );
+
+    return rows.rows.map(toSend);
+  }
+
+  async recordReversalStep(input: {
+    interbankTransferId: string;
+    state: InterbankSendReversalState;
+    refundTransferId: string | null;
+    message: string | null;
+    nextAt: Date | null;
+    now: Date;
+  }): Promise<void> {
+    await this.pool.query(
+      `UPDATE interbank_sends
+          SET reversal_state = $2,
+              reversal_attempts = reversal_attempts + 1,
+              reversal_refund_transfer_id = COALESCE($3, reversal_refund_transfer_id),
+              reversal_message = COALESCE($4, reversal_message),
+              reversal_next_at = $5
+        WHERE interbank_transfer_id = $1
+          AND reversal_id IS NOT NULL`,
+      [input.interbankTransferId, input.state, input.refundTransferId, input.message, input.nextAt],
+    );
+  }
+
+  async list(input: {
+    customerId: string | null;
+    state?: InterbankSendState;
+    limit: number;
+  }): Promise<readonly InterbankSend[]> {
+    const rows = await this.pool.query<Row>(
+      `SELECT ${COLUMNS} FROM interbank_sends
+        WHERE ($1::uuid IS NULL OR customer_id = $1::uuid)
+          AND ($2::text IS NULL OR state = $2::text)
+        ORDER BY created_at DESC, interbank_transfer_id
+        LIMIT $3`,
+      [input.customerId, input.state ?? null, input.limit],
+    );
+
+    return rows.rows.map(toSend);
+  }
+
+  async history(interbankTransferId: string): Promise<readonly InterbankSendHistoryRow[]> {
+    const rows = await this.pool.query<{
+      state: InterbankSendState;
+      reason: string | null;
+      at: Date;
+    }>(
+      `SELECT state, reason, at FROM interbank_send_history
+        WHERE interbank_transfer_id = $1
+        ORDER BY history_id`,
+      [interbankTransferId],
+    );
+
+    return rows.rows;
   }
 }

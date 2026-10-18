@@ -102,6 +102,12 @@ catalogs:
     '@vue/test-utils':
       specifier: 2.5.1
       version: 2.5.1
+    ajv:
+      specifier: 8.20.0
+      version: 8.20.0
+    ajv-formats:
+      specifier: 3.0.1
+      version: 3.0.1
     amqp-connection-manager:
       specifier: 5.0.0
       version: 5.0.0
@@ -767,6 +773,12 @@ importers:
       '@types/pg':
         specifier: 'catalog:'
         version: 8.23.1
+      ajv:
+        specifier: 'catalog:'
+        version: 8.20.0
+      ajv-formats:
+        specifier: 'catalog:'
+        version: 3.0.1(ajv@8.20.0)
       eslint:
         specifier: 'catalog:'
         version: 10.8.1(jiti@2.7.0)(supports-color@10.2.2)
@@ -779,6 +791,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
 
   apps/services/transaction-service:
     dependencies:
@@ -12032,6 +12047,10 @@ snapshots:
   ajv-formats@3.0.1(ajv@8.18.0):
     optionalDependencies:
       ajv: 8.18.0
+
+  ajv-formats@3.0.1(ajv@8.20.0):
+    optionalDependencies:
+      ajv: 8.20.0
 
   ajv-keywords@3.5.2(ajv@6.15.0):
     dependencies:

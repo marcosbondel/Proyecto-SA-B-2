@@ -1,3 +1,4 @@
+import { createEnvelope } from '@bank/contracts';
 import type { MessageEnvelope, PaymentInterbankReceiveV1 } from '@bank/contracts';
 import { continueTrace, currentTraceparent } from '@bank/observability';
 import type { Pool } from 'pg';
@@ -12,24 +13,78 @@ interface DepositRow {
   deposit_id: string;
   stage: InterbankStage;
   rejection_reason: string | null;
-  origin_envelope: MessageEnvelope<PaymentInterbankReceiveV1>;
+  origin_envelope: unknown;
   callback_attempts: number;
   trace_context: string | null;
   created_at: Date;
+  decided_at: Date | null;
+  correlation_id: string;
+  external_transfer_id: string;
+  origin_bank_code: string;
+  destination_account_id: string;
+  amount_minor: string;
+  currency: string;
+  partner_expires_at: Date | null;
 }
 
-const COLUMNS =
-  'deposit_id, stage, rejection_reason, origin_envelope, callback_attempts, trace_context, created_at';
+const COLUMNS = `deposit_id, stage, rejection_reason, origin_envelope, callback_attempts,
+  trace_context, created_at, decided_at, correlation_id, external_transfer_id,
+  origin_bank_code, destination_account_id, amount_minor, currency, partner_expires_at`;
+
+/** ¿Lo guardado en `origin_envelope` es de verdad un sobre del broker? */
+function isEnvelope(value: unknown): value is MessageEnvelope<unknown> {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    typeof candidate.messageId === 'string' &&
+    typeof candidate.messageType === 'string' &&
+    typeof candidate.correlationId === 'string' &&
+    'payload' in candidate
+  );
+}
+
+/**
+ * El sobre que causó el depósito, **siempre un sobre**.
+ *
+ * Las filas que el contrato oficial abrió antes de T-60 guardaban
+ * `{transfer, callerBankCode}` en esta columna. Entregarlas tal cual hacía que
+ * el barrido leyera `origin.payload.accountId` de algo que no tiene `payload`,
+ * lanzara, y dejara sin atender el resto de la vuelta (B3). Aquí se fabrica uno
+ * con la correlación y la clave de idempotencia de la propia fila, que es lo
+ * único que un sobre de causa tiene que aportar.
+ */
+function originOf(row: DepositRow): MessageEnvelope<unknown> {
+  if (isEnvelope(row.origin_envelope)) return row.origin_envelope;
+
+  return createEnvelope(
+    {},
+    {
+      messageType: 'payment.interbank.v1.transfer.query.v1',
+      producer: 'gateway',
+      identity: null,
+      correlationId: row.correlation_id,
+      idempotencyKey: row.external_transfer_id,
+    },
+  );
+}
 
 function fromRow(row: DepositRow): InterbankDeposit {
   return {
     depositId: row.deposit_id,
     stage: row.stage,
     reason: row.rejection_reason,
-    origin: row.origin_envelope,
+    origin: originOf(row),
+    correlationId: row.correlation_id,
+    externalTransferId: row.external_transfer_id,
+    originBankCode: row.origin_bank_code,
+    accountRef: row.destination_account_id,
+    amount: { amountMinor: Number(row.amount_minor), currency: row.currency },
     callbackAttempts: row.callback_attempts,
     traceContext: row.trace_context,
     createdAt: row.created_at,
+    decidedAt: row.decided_at,
+    expiresAt: row.partner_expires_at,
   };
 }
 
@@ -182,6 +237,14 @@ export class PostgresInterbankRepository implements InterbankRepository {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+      /*
+       * `result_envelope ->> 'messageId' IS NOT NULL` descarta los marcadores
+       * `'{}'` que el contrato oficial dejaba al cancelar o vencer un depósito
+       * (el `CHECK` de la tabla exige un resultado en un estado decidido). Esas
+       * filas no son un sobre, `deliver` lanzaba con ellas, y como todo ocurre
+       * en una transacción, **una sola bastaba para que ningún resultado
+       * posterior se publicara jamás** (B3).
+       */
       const rows = await client.query<{
         deposit_id: string;
         result_envelope: MessageEnvelope<unknown>;
@@ -189,23 +252,35 @@ export class PostgresInterbankRepository implements InterbankRepository {
       }>(
         `SELECT deposit_id, result_envelope, trace_context FROM interbank_deposits
           WHERE result_envelope IS NOT NULL AND result_published_at IS NULL
+            AND result_envelope ->> 'messageId' IS NOT NULL
           ORDER BY decided_at FOR UPDATE SKIP LOCKED LIMIT $1`,
         [limit],
       );
+      let published = 0;
       for (const row of rows.rows) {
-        await continueTrace(
-          row.trace_context,
-          'payment.interbank.result',
-          { 'bank.correlation_id': row.result_envelope.correlationId },
-          () => deliver(row.result_envelope),
-        );
+        /*
+         * Cada fila por su cuenta: la que no se puede publicar se queda sin
+         * marcar para el siguiente barrido, y las demás salen. Un fallo del
+         * broker en una no puede dejar sin resultado a las otras diecinueve.
+         */
+        try {
+          await continueTrace(
+            row.trace_context,
+            'payment.interbank.result',
+            { 'bank.correlation_id': row.result_envelope.correlationId },
+            () => deliver(row.result_envelope),
+          );
+        } catch {
+          continue;
+        }
         await client.query(
           'UPDATE interbank_deposits SET result_published_at = now() WHERE deposit_id = $1',
           [row.deposit_id],
         );
+        published += 1;
       }
       await client.query('COMMIT');
-      return rows.rowCount ?? 0;
+      return published;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -215,16 +290,36 @@ export class PostgresInterbankRepository implements InterbankRepository {
   }
 
   async claimCallbacks(now: Date, limit: number): Promise<readonly InterbankDeposit[]> {
+    /*
+     * Espera creciente —2 s, 4 s, 8 s…— con techo de 15 minutos, y **no más de
+     * 24 horas desde la decisión**: es lo que el contrato pide del receptor. El
+     * techo anterior era de 60 s para siempre, que insiste sin parar contra un
+     * emisor caído y nunca se rinde; el contrato fija las dos cosas.
+     * `abandonStaleCallbacks` recoge después los que cruzaron las 24 horas.
+     */
     const rows = await this.pool.query<DepositRow>(
       `UPDATE interbank_deposits SET callback_attempts = callback_attempts + 1,
            callback_due_at = $1::timestamptz +
-             (LEAST(60, POWER(2, LEAST(callback_attempts, 6))::integer) * interval '1 second')
+             (LEAST(900, POWER(2, LEAST(callback_attempts, 9) + 1)::integer) * interval '1 second')
         WHERE deposit_id IN (
           SELECT deposit_id FROM interbank_deposits
            WHERE callback_due_at <= $1 AND callback_delivered_at IS NULL
+             AND stage IN ('ACCEPTED','REJECTED')
            ORDER BY callback_due_at FOR UPDATE SKIP LOCKED LIMIT $2
         ) RETURNING ${COLUMNS}`,
       [now, limit],
+    );
+    return rows.rows.map(fromRow);
+  }
+
+  async abandonStaleCallbacks(now: Date, maxAgeMs: number): Promise<readonly InterbankDeposit[]> {
+    const rows = await this.pool.query<DepositRow>(
+      `UPDATE interbank_deposits SET callback_due_at = NULL
+        WHERE callback_delivered_at IS NULL AND callback_due_at IS NOT NULL
+          AND decided_at IS NOT NULL
+          AND decided_at <= $1::timestamptz - ($2::double precision * interval '1 millisecond')
+        RETURNING ${COLUMNS}`,
+      [now, maxAgeMs],
     );
     return rows.rows.map(fromRow);
   }
@@ -289,7 +384,7 @@ export class PostgresInterbankRepository implements InterbankRepository {
     }>(
       `UPDATE interbank_conflicts SET callback_attempts = callback_attempts + 1,
            callback_due_at = $1::timestamptz +
-             (LEAST(60, POWER(2, LEAST(callback_attempts, 6))::integer) * interval '1 second')
+             (LEAST(900, POWER(2, LEAST(callback_attempts, 9) + 1)::integer) * interval '1 second')
         WHERE message_id IN (
           SELECT message_id FROM interbank_conflicts
            WHERE callback_due_at <= $1 AND callback_delivered_at IS NULL
@@ -297,18 +392,29 @@ export class PostgresInterbankRepository implements InterbankRepository {
         ) RETURNING message_id, origin_envelope, callback_attempts, trace_context, created_at`,
       [now, limit],
     );
-    return rows.rows.map((row) => ({
-      messageId: row.message_id,
-      deposit: {
-        depositId: row.origin_envelope.payload.depositId,
-        stage: 'REJECTED' as const,
-        reason: 'IDEMPOTENCY_CONFLICT',
-        origin: row.origin_envelope,
-        callbackAttempts: row.callback_attempts,
-        traceContext: row.trace_context,
-        createdAt: row.created_at,
-      },
-    }));
+    return rows.rows.map((row) => {
+      const payload = row.origin_envelope.payload;
+
+      return {
+        messageId: row.message_id,
+        deposit: {
+          depositId: payload.depositId,
+          stage: 'REJECTED' as const,
+          reason: 'IDEMPOTENCY_CONFLICT',
+          origin: row.origin_envelope,
+          correlationId: row.origin_envelope.correlationId,
+          externalTransferId: payload.interbankTransferId,
+          originBankCode: payload.originBankCode,
+          accountRef: payload.accountId,
+          amount: payload.amount,
+          callbackAttempts: row.callback_attempts,
+          traceContext: row.trace_context,
+          createdAt: row.created_at,
+          decidedAt: row.created_at,
+          expiresAt: null,
+        },
+      };
+    });
   }
 
   async markConflictCallbackDelivered(messageId: string, now: Date): Promise<void> {

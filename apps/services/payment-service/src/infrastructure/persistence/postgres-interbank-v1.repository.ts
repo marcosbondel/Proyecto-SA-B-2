@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import { currentTraceparent } from '@bank/observability';
 import { v1AmountToMinor } from '@bank/contracts';
-import type { V1ReasonCode, V1TransferRequest, V1TransferState } from '@bank/contracts';
+import type {
+  MessageEnvelope,
+  V1ReasonCode,
+  V1TransferRequest,
+  V1TransferState,
+} from '@bank/contracts';
 import type { Pool } from 'pg';
 
 import { v1ReasonOf, v1StateOf } from '../../domain/interbank-receipt';
@@ -14,6 +19,8 @@ import type {
 } from '../../application/interbank-v1.ports';
 
 interface Fila {
+  readonly deposit_id: string;
+  readonly origin_envelope: unknown;
   readonly external_transfer_id: string;
   readonly origin_bank_code: string;
   readonly stage: InterbankReceiptState;
@@ -25,7 +32,7 @@ interface Fila {
 }
 
 const COLUMNAS = `
-  external_transfer_id, origin_bank_code, stage, rejection_reason,
+  deposit_id, origin_envelope, external_transfer_id, origin_bank_code, stage, rejection_reason,
   amount_minor, created_at, decided_at, partner_expires_at
 `;
 
@@ -51,32 +58,40 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
   constructor(private readonly pool: Pool) {}
 
   async admit(input: {
+    depositId: string;
     transfer: V1TransferRequest;
     callerBankCode: string;
+    origin: MessageEnvelope<unknown>;
+    rejection: { reason: string; result: MessageEnvelope<unknown> } | null;
     now: Date;
   }): Promise<
     | { admission: 'ACCEPTED_FOR_PROCESSING'; depositId: string }
     | { admission: 'DUPLICATE'; row: V1DepositRow }
     | { admission: 'CONFLICT' }
   > {
-    const { transfer } = input;
+    const { transfer, depositId, rejection } = input;
     const amountMinor = v1AmountToMinor(transfer.amount);
 
     if (amountMinor === null) {
       throw new Error('El monto llegó al repositorio sin validar.');
     }
 
-    const depositId = randomUUID();
     /*
      * `ON CONFLICT DO NOTHING` y después mirar: la idempotencia la decide la
      * restricción única, no una consulta previa. Un «¿ya existe?» seguido de un
      * `INSERT` es una carrera cuyo premio es acreditar dos veces.
+     *
+     * Un depósito rechazado al entrar (`rejection`) se guarda **ya decidido**,
+     * con su resultado y su callback programado: no pasa por Account, y el
+     * contrato pide que el rechazo se cuente por callback y no se devuelva
+     * como un `4xx` que no explica nada.
      */
     const insertado = await this.pool.query<{ deposit_id: string }>(
       `INSERT INTO interbank_deposits
          (deposit_id, origin_bank_code, external_transfer_id, idempotency_key,
           destination_account_id, origin_account, amount_minor, currency,
-          correlation_id, origin_envelope, stage, next_action_at,
+          correlation_id, origin_envelope, stage, rejection_reason, next_action_at,
+          result_envelope, callback_due_at, decided_at,
           partner_created_at, partner_expires_at, description, trace_context,
           -- Explícito y no por DEFAULT now(): es «cuándo lo recibimos», y el
           -- Gateway ya selló ese momento como receivedAt. Dejarlo al reloj de
@@ -84,7 +99,8 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
           -- conciliación —que se filtra por este campo— empezaría a discrepar
           -- de lo que el otro banco cree que nos mandó y cuándo.
           created_at)
-       VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9::jsonb,'ELIGIBILITY',$10,$11,$12,$13,$14,$10)
+       VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13::jsonb,$14,$15,
+               $16,$17,$18,$19,$20)
        ON CONFLICT DO NOTHING
        RETURNING deposit_id`,
       [
@@ -95,18 +111,20 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
         transfer.originAccount,
         amountMinor,
         transfer.currency,
-        /*
-         * La correlación del envoltorio del Gateway sería lo natural, pero el
-         * repositorio no lo recibe; se genera una propia y el `origin_envelope`
-         * guarda la petición completa, que es de donde sale la trazabilidad.
-         */
-        randomUUID(),
-        JSON.stringify({ transfer, callerBankCode: input.callerBankCode }),
-        input.now,
+        /* La correlación del Gateway: la misma que verá el emisor en sus trazas. */
+        input.origin.correlationId,
+        JSON.stringify(input.origin),
+        rejection === null ? 'ELIGIBILITY' : 'REJECTED',
+        rejection?.reason ?? null,
+        rejection === null ? input.now : null,
+        rejection === null ? null : JSON.stringify(rejection.result),
+        rejection === null ? null : input.now,
+        rejection === null ? null : input.now,
         transfer.createdAt,
         transfer.expiresAt,
         transfer.description ?? null,
         currentTraceparent(),
+        input.now,
       ],
     );
 
@@ -163,7 +181,20 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
     return rows[0] === undefined ? null : aFila(rows[0]);
   }
 
-  async cancel(input: { interbankTransferId: string; now: Date }): Promise<boolean> {
+  async cancel(input: {
+    interbankTransferId: string;
+    now: Date;
+    result: MessageEnvelope<unknown> | null;
+  }): Promise<boolean> {
+    /*
+     * Sólo desde `ELIGIBILITY` (B4): en `CREDIT` hay una orden de crédito dada y
+     * Account acredita incondicionalmente, así que cancelar ahí es dejar al
+     * cliente acreditado y al emisor convencido de que puede liberar.
+     *
+     * Sin resultado que publicar (una fila anterior a T-60, sin sobre del que
+     * construirlo) el marcador `'{}'` que exige el `CHECK` se deja ya publicado,
+     * para que `publishResults` no intente enviar algo que no es un mensaje.
+     */
     const { rowCount } = await this.pool.query(
       `UPDATE interbank_deposits
           SET stage = 'CANCELLED',
@@ -171,10 +202,15 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
               decided_at = $2,
               next_action_at = NULL,
               callback_due_at = NULL,
-              result_envelope = coalesce(result_envelope, '{}'::jsonb)
+              result_envelope = COALESCE($3::jsonb, '{}'::jsonb),
+              result_published_at = CASE WHEN $3::jsonb IS NULL THEN $2 ELSE result_published_at END
         WHERE external_transfer_id = $1
-          AND stage IN ('ELIGIBILITY','CREDIT')`,
-      [input.interbankTransferId, input.now],
+          AND stage = 'ELIGIBILITY'`,
+      [
+        input.interbankTransferId,
+        input.now,
+        input.result === null ? null : JSON.stringify(input.result),
+      ],
     );
 
     return rowCount === 1;
@@ -197,9 +233,10 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
       `INSERT INTO interbank_deposits
          (deposit_id, origin_bank_code, external_transfer_id, idempotency_key,
           destination_account_id, amount_minor, currency, correlation_id,
-          origin_envelope, stage, rejection_reason, decided_at, result_envelope, trace_context)
+          origin_envelope, stage, rejection_reason, decided_at, result_envelope,
+          result_published_at, trace_context)
        VALUES ($1,$2,$3,$3,'(cancelado-antes-de-llegar)',1,'GTQ',$4,
-               $5::jsonb,'CANCELLED','CANCELLED',$6,'{}'::jsonb,$7)
+               $5::jsonb,'CANCELLED','CANCELLED',$6,'{}'::jsonb,$6,$7)
        ON CONFLICT DO NOTHING`,
       [
         randomUUID(),
@@ -216,7 +253,7 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
   async claimExpired(now: Date, limit: number): Promise<readonly V1DepositRow[]> {
     const { rows } = await this.pool.query<Fila>(
       `SELECT ${COLUMNAS} FROM interbank_deposits
-        WHERE stage IN ('ELIGIBILITY','CREDIT')
+        WHERE stage = 'ELIGIBILITY'
           AND partner_expires_at IS NOT NULL
           AND partner_expires_at <= $1
         ORDER BY partner_expires_at
@@ -227,7 +264,11 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
     return rows.map(aFila);
   }
 
-  async expire(input: { interbankTransferId: string; now: Date }): Promise<boolean> {
+  async expire(input: {
+    interbankTransferId: string;
+    now: Date;
+    result: MessageEnvelope<unknown> | null;
+  }): Promise<boolean> {
     const { rowCount } = await this.pool.query(
       `UPDATE interbank_deposits
           SET stage = 'REJECTED',
@@ -237,10 +278,15 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
               -- El callback sale: el contrato pide responder REJECTED con
               -- reasonCode EXPIRED, no quedarse callado.
               callback_due_at = $2,
-              result_envelope = coalesce(result_envelope, '{}'::jsonb)
+              result_envelope = COALESCE($3::jsonb, '{}'::jsonb),
+              result_published_at = CASE WHEN $3::jsonb IS NULL THEN $2 ELSE result_published_at END
         WHERE external_transfer_id = $1
-          AND stage IN ('ELIGIBILITY','CREDIT')`,
-      [input.interbankTransferId, input.now],
+          AND stage = 'ELIGIBILITY'`,
+      [
+        input.interbankTransferId,
+        input.now,
+        input.result === null ? null : JSON.stringify(input.result),
+      ],
     );
 
     return rowCount === 1;
@@ -373,6 +419,9 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
 /** La fila, traducida a lo que el contrato nombra. */
 function aFila(fila: Fila): V1DepositRow {
   return {
+    depositId: fila.deposit_id,
+    stage: fila.stage,
+    origin: esSobre(fila.origin_envelope) ? fila.origin_envelope : null,
     interbankTransferId: fila.external_transfer_id,
     originBankCode: fila.origin_bank_code,
     status: v1StateOf(fila.stage) as V1TransferState,
@@ -386,4 +435,17 @@ function aFila(fila: Fila): V1DepositRow {
     createdAt: fila.created_at,
     expiresAt: fila.partner_expires_at,
   };
+}
+
+/** ¿Lo guardado como origen es un sobre del broker, o la forma anterior a T-60? */
+function esSobre(valor: unknown): valor is MessageEnvelope<unknown> {
+  if (typeof valor !== 'object' || valor === null) return false;
+  const candidato = valor as Record<string, unknown>;
+
+  return (
+    typeof candidato.messageId === 'string' &&
+    typeof candidato.messageType === 'string' &&
+    typeof candidato.correlationId === 'string' &&
+    'payload' in candidato
+  );
 }

@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto';
+
 import {
+  paymentInterbankRejectedV1,
   paymentInterbankV1CancelRepliedV1,
   paymentInterbankV1ReconciliationRepliedV1,
   paymentInterbankV1ReversalRepliedV1,
@@ -10,6 +13,7 @@ import {
   V1_MIN_AMOUNT_MINOR,
 } from '@bank/contracts';
 import type {
+  MessageEnvelope,
   PaymentInterbankV1CancelQueryV1,
   PaymentInterbankV1ReconciliationQueryV1,
   PaymentInterbankV1ReversalQueryV1,
@@ -23,6 +27,7 @@ import type {
 
 import { v1ReasonOf } from '../domain/interbank-receipt';
 import type { InterbankReceiptRejection } from '../domain/interbank-receipt';
+import type { InterbankMessenger } from './interbank.ports';
 import type { InterbankV1Repository, V1DepositRow, V1Reversal } from './interbank-v1.ports';
 
 /**
@@ -39,6 +44,7 @@ import type { InterbankV1Repository, V1DepositRow, V1Reversal } from './interban
  */
 export class InterbankV1UseCase {
   readonly #repository: InterbankV1Repository;
+  readonly #messenger: InterbankMessenger;
   readonly #reply: (messageType: string, payload: unknown) => Promise<void>;
   readonly #bankCode: string;
   readonly #maxAmountMinor: number;
@@ -51,6 +57,8 @@ export class InterbankV1UseCase {
 
   constructor(deps: {
     readonly repository: InterbankV1Repository;
+    /** Construye los eventos de resultado (auditoría) que viajan con una decisión. */
+    readonly messenger: InterbankMessenger;
     readonly reply: (messageType: string, payload: unknown) => Promise<void>;
     readonly bankCode: string;
     readonly maxAmountMinor?: number;
@@ -62,6 +70,7 @@ export class InterbankV1UseCase {
     };
   }) {
     this.#repository = deps.repository;
+    this.#messenger = deps.messenger;
     this.#reply = deps.reply;
     this.#bankCode = deps.bankCode;
     this.#maxAmountMinor = deps.maxAmountMinor ?? V1_MAX_AMOUNT_MINOR;
@@ -70,11 +79,29 @@ export class InterbankV1UseCase {
   }
 
   /** `POST /transfers` — admitir o no, y decirlo. */
-  async transfer(query: PaymentInterbankV1TransferQueryV1): Promise<void> {
+  async transfer(
+    query: PaymentInterbankV1TransferQueryV1,
+    cause: MessageEnvelope<unknown>,
+  ): Promise<void> {
     const now = this.#clock();
+    const depositId = randomUUID();
+    /*
+     * La política del contrato se aplica **al entrar** (B7): banco destino
+     * equivocado, moneda y monto. Antes `rejectionFor` existía y nadie la
+     * llamaba, así que un depósito dirigido a otro banco se acreditaba como si
+     * fuera nuestro. Un rechazo se guarda ya decidido y se cuenta por callback;
+     * el `202` ya se dio — «el resultado de negocio se informa después».
+     */
+    const razon = this.rejectionFor(query.transfer, query.callerBankCode);
     const resultado = await this.#repository.admit({
+      depositId,
       transfer: query.transfer,
       callerBankCode: query.callerBankCode,
+      origin: cause,
+      rejection:
+        razon === null
+          ? null
+          : { reason: razon, result: this.#rejectionResult(cause, depositId, razon, now) },
       now,
     });
 
@@ -135,7 +162,7 @@ export class InterbankV1UseCase {
     const now = this.#clock();
     const row = await this.#repository.findForBank(query.interbankTransferId, query.callerBankCode);
 
-    let result: V1CancelResult;
+    let result: V1CancelResult | 'IN_PROGRESS';
 
     if (row === null) {
       await this.#repository.admitCancellationOfUnknown({
@@ -151,10 +178,22 @@ export class InterbankV1UseCase {
     } else if (row.status === 'CANCELLED') {
       /* Idempotente por contrato: cancelar dos veces es cancelar una. */
       result = 'CANCELLED';
+    } else if (row.stage === 'CREDIT') {
+      /*
+       * Ya hay una orden de crédito dada y Account acredita incondicionalmente.
+       * Ni `CANCELLED` (liberaría la reserva del emisor mientras acreditamos) ni
+       * `ALREADY_ACCEPTED` (todavía no es verdad): «vuelve a preguntar», que el
+       * Gateway traduce al `503` con espera creciente del contrato (B4).
+       */
+      result = 'IN_PROGRESS';
     } else {
       const aplicado = await this.#repository.cancel({
         interbankTransferId: query.interbankTransferId,
         now,
+        result:
+          row.origin === null
+            ? null
+            : this.#rejectionResult(row.origin, row.depositId, 'CANCELLED', now),
       });
       /*
        * Si la cancelación no cambió nada es porque alguien decidió el depósito
@@ -268,6 +307,10 @@ export class InterbankV1UseCase {
       const aplicado = await this.#repository.expire({
         interbankTransferId: row.interbankTransferId,
         now,
+        result:
+          row.origin === null
+            ? null
+            : this.#rejectionResult(row.origin, row.depositId, 'EXPIRED', now),
       });
 
       if (aplicado) {
@@ -289,8 +332,19 @@ export class InterbankV1UseCase {
    * banco: si el curso publica una v2 con otros límites, esto cambia y el
    * dominio no. Lo que sí está en el dominio es qué significa cada estado.
    */
-  rejectionFor(transfer: V1TransferRequest): InterbankReceiptRejection | null {
+  rejectionFor(
+    transfer: V1TransferRequest,
+    callerBankCode?: string,
+  ): InterbankReceiptRejection | null {
     if (transfer.destinationBankCode !== this.#bankCode) return 'WRONG_DESTINATION_BANK';
+    /*
+     * Quién llama lo dice su API key y no el cuerpo. Un cuerpo que se atribuye a
+     * otro banco es un intento de hacerse pasar por él, y se rechaza como
+     * `BANK_NOT_AUTHORIZED` (que el contrato traduce a `PROCESSING_ERROR`).
+     */
+    if (callerBankCode !== undefined && transfer.originBankCode !== callerBankCode) {
+      return 'BANK_NOT_AUTHORIZED';
+    }
     if (transfer.currency !== 'GTQ') return 'UNSUPPORTED_CURRENCY';
 
     const amountMinor = v1AmountToMinor(transfer.amount);
@@ -299,6 +353,20 @@ export class InterbankV1UseCase {
     if (amountMinor > this.#maxAmountMinor) return 'AMOUNT_EXCEEDS_LIMIT';
 
     return null;
+  }
+
+  /** El evento de auditoría de un cierre, atado a la causa que lo originó. */
+  #rejectionResult(
+    cause: MessageEnvelope<unknown>,
+    depositId: string,
+    reason: InterbankReceiptRejection,
+    now: Date,
+  ): MessageEnvelope<unknown> {
+    return this.#messenger.result(cause, paymentInterbankRejectedV1.name, {
+      depositId,
+      reason,
+      decidedAt: now.toISOString(),
+    });
   }
 
   async #replyTransfer(
@@ -328,7 +396,8 @@ export class InterbankV1UseCase {
 }
 
 /** Lo que se le contesta a una cancelación según dónde quedó el depósito. */
-function resultOf(row: V1DepositRow | null): V1CancelResult {
+function resultOf(row: V1DepositRow | null): V1CancelResult | 'IN_PROGRESS' {
+  if (row !== null && row.stage === 'CREDIT') return 'IN_PROGRESS';
   if (row === null || row.status === 'CANCELLED') return 'CANCELLED';
   if (row.status === 'ACCEPTED') return 'ALREADY_ACCEPTED';
   return 'ALREADY_REJECTED';
