@@ -16,3 +16,22 @@ export function activeTraceId(): string | null {
 
   return context !== undefined && isSpanContextValid(context) ? context.traceId : null;
 }
+
+/**
+ * The span attribute that ties a span to the business flow. The same key the
+ * messaging layer puts on its PRODUCER and CONSUMER spans
+ * (`@bank/messaging`'s telemetry), so one query finds the HTTP span and the
+ * message spans of a flow by the one value.
+ */
+export const CORRELATION_ATTRIBUTE = 'bank.correlation_id';
+
+/**
+ * Stamps the correlation id on the span the request is served under.
+ *
+ * Until T-60 only the PRODUCER child that publishes the command carried it, so
+ * a search for a `correlationId` in Tempo found the middle of the trace and not
+ * its root, which is the span a person opens first. A no-op with no SDK.
+ */
+export function tagActiveSpanWithCorrelation(correlationId: string): void {
+  trace.getActiveSpan()?.setAttribute(CORRELATION_ATTRIBUTE, correlationId);
+}
