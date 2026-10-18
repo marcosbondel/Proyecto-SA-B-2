@@ -17,7 +17,7 @@ import {
  * La carga sobre el depósito al banco pareja (T-51, escenario obligatorio).
  *
  *   k6 run test/load/interbank.js
- *   k6 run -e PARTNER_BANK_CODE=PARTNER_MOCK test/load/interbank.js
+ *   k6 run -e PARTNER_BANK_CODE=BANK99 -e PARTNER_ACCOUNT=99-000000123 test/load/interbank.js
  *
  * Es el escenario que §4.1 exige —«el banco pareja no responde, responde lento
  * o rechaza depósitos (simulado con el mock)»— y la carga es la mitad que
@@ -26,12 +26,17 @@ import {
  * rechazados son cien débitos que hay que devolver, y si el sistema se queda
  * uno, el dinero se perdió.
  *
- * El fallo se inyecta **con el mock propio**, cambiando `partnerMock.callbackMode`:
+ * El fallo se inyecta **con el mock propio**, en caliente y sin reiniciarlo
+ * (`PUT /admin/config` de apps/partner-bank-mock; `scenario.sh` lo hace y
+ * confirma el modo por su `/health`). El modo inicial del release es
+ * `partnerMock.callbackMode`:
  *
- *   ACCEPT   → el camino feliz
- *   REJECT   → el otro banco dice no, y cada depósito compensa
- *   TIMEOUT  → el otro banco no contesta, y el vencimiento compensa
- *   SLOW     → el otro banco tarda; mide la latencia de confirmación (p95)
+ *   ACCEPT       → el camino feliz
+ *   REJECT       → el otro banco dice no, y cada depósito compensa
+ *   TIMEOUT      → el otro banco no contesta: tras los 180 s del contrato se
+ *                  consulta, se cancela y se compensa (minutos, no segundos)
+ *   SLOW         → el otro banco tarda; mide la latencia de confirmación (p95)
+ *   UNAVAILABLE  → el otro banco contesta 503: hay que reintentar sin duplicar
  *
  * Nunca apagando ni alterando el sistema del otro grupo, que es la regla
  * explícita del enunciado.
@@ -59,9 +64,24 @@ const saga = new Trend('interbank_saga_ms', true);
 const TASA = Number(__ENV.TASA || 4);
 const DURACION = __ENV.DURACION || '60s';
 
-const PARTNER_BANK_CODE = __ENV.PARTNER_BANK_CODE || 'PARTNER_MOCK';
-/** La cuenta de allá. El mock no la valida; el banco pareja real sí lo hará. */
-const PARTNER_ACCOUNT = __ENV.PARTNER_ACCOUNT || 'cuenta-de-carga-1';
+/** El código del banco de enfrente: `^BANK[0-9]{2}$` en el contrato oficial; BANK99 es el mock. */
+const PARTNER_BANK_CODE = __ENV.PARTNER_BANK_CODE || 'BANK99';
+/**
+ * La cuenta de allá, en el formato del banco dueño (`^[A-Za-z0-9-]{1,34}$`).
+ * El mock acredita cualquiera salvo las que terminan en `999999999`
+ * (ACCOUNT_NOT_FOUND) y `000000000` (ACCOUNT_INACTIVE), como fija el acuerdo.
+ */
+const PARTNER_ACCOUNT = __ENV.PARTNER_ACCOUNT || '99-000000123';
+
+/**
+ * Cuánto se espera a que cada Saga cierre, y el umbral de p95 sobre eso.
+ * 45 s alcanza para ACCEPT, REJECT y SLOW; con el mock en TIMEOUT el protocolo
+ * del contrato espera los 180 s de `expiresAt` antes de consultar y cancelar,
+ * así que `scenario.sh sin-respuesta` los sube (y baja la tasa: cada iteración
+ * ocupa un VU mientras espera).
+ */
+const SAGA_WAIT_MS = Number(__ENV.SAGA_WAIT_MS || 45_000);
+const SAGA_P95_MS = Number(__ENV.SAGA_P95_MS || 40_000);
 
 useSloFailureDefinition();
 
@@ -75,11 +95,14 @@ export const options = {
        * que se pide, no el que salga de la latencia.
        */
       executor: 'constant-arrival-rate',
-      rate: TASA,
-      timeUnit: '1s',
+      // k6 exige un entero en `rate`: por minuto admite tasas como 0.5/s (30/min).
+      rate: Math.max(1, Math.round(TASA * 60)),
+      timeUnit: '1m',
       duration: DURACION,
       preAllocatedVUs: 10,
-      maxVUs: 30,
+      // Con esperas largas (TIMEOUT) cada iteración retiene su VU hasta que la
+      // Saga cierra: hacen falta tantos como llegadas haya en esa espera.
+      maxVUs: SAGA_WAIT_MS > 60_000 ? Math.ceil(TASA * (SAGA_WAIT_MS / 1000)) + 10 : 30,
     },
   },
   thresholds: {
@@ -93,7 +116,7 @@ export const options = {
      * transferencias internas, y aplicarlo aquí haría fallar al sistema por
      * esperar exactamente lo que se le configuró esperar.
      */
-    interbank_saga_ms: ['p(95)<40000'],
+    interbank_saga_ms: [`p(95)<${SAGA_P95_MS}`],
     checks: ['rate>0.99'],
   },
 };
@@ -103,7 +126,7 @@ export function setup() {
   const accounts = pickAccounts(token);
 
   console.log(
-    `origen ${accounts.sourceAccount} -> ${PARTNER_BANK_CODE}:${PARTNER_ACCOUNT} (modo del mock: el que tenga el release)`,
+    `origen ${accounts.sourceAccount} -> ${PARTNER_BANK_CODE}:${PARTNER_ACCOUNT} (modo del mock: el que tenga armado; su GET /health lo dice)`,
   );
 
   return { token, sourceAccount: accounts.sourceAccount };
@@ -131,9 +154,10 @@ export default function (data) {
   }
 
   /*
-   * Hasta 45 s: con el mock en `TIMEOUT`, la Saga no puede cerrar antes de que
-   * venza la confirmación (30 s por configuración) más la compensación.
-   * Esperar menos contaría como «sin resolver» algo que estaba funcionando.
+   * Hasta `SAGA_WAIT_MS` (45 s por defecto): con el mock en `TIMEOUT`, la Saga
+   * no puede cerrar antes de que venza el depósito (180 s del contrato) más la
+   * consulta, la cancelación y la compensación. Esperar menos contaría como
+   * «sin resolver» algo que estaba funcionando.
    */
-  awaitTerminal(data.token, res.json('transactionId'), saga, 45_000);
+  awaitTerminal(data.token, res.json('transactionId'), saga, SAGA_WAIT_MS);
 }

@@ -436,10 +436,18 @@ interbank:
 # and the mock works — no rebuild, no code change. The runbook is
 # docs/operations/runbooks/partner-bank.md.
 #
-# The three `callback*` knobs are the fault injection T-51's mandatory scenario
-# needs: a rejection, a timeout and a slow answer. Changing them changes the
-# Deployment's own env, so the pod restarts by itself — no ConfigMap checksum
-# needed, because nothing else reads them.
+# Since T-60 (B8) the mock speaks the OFFICIAL v1 contract in both roles
+# (apps/partner-bank-mock/server.mjs documents every variable and route). The
+# keys come from the Secret this chart already renders: the mock REQUIRES our
+# `interbankApiKeyOutbound` (it is the key we send it) and SENDS our
+# `interbankApiKeyInbound` (it is the key the Gateway expects from BANK99).
+#
+# The `callback*` knobs are the fault injection T-51's mandatory scenario needs.
+# They are only the INITIAL state: with `adminToken` set they change at run time
+# with `PUT /admin/config` — no restart, which is what made T-51's first
+# measurement unreliable (`rollout status` said done while the old pod served).
+# Changing them here still changes the Deployment's env, so the pod restarts by
+# itself; nothing else reads them.
 partnerMock:
   enabled: false
   component: partner-bank-mock
@@ -449,21 +457,45 @@ partnerMock:
     tag: dev # always --set at install time, like the other components
     pullPolicy: IfNotPresent
   port: 3021
-  # Which Gateway the mock sends deposits to. In-cluster Service name.
+  # Which Gateway the mock talks to (its callbacks and the deposits it
+  # originates), WITHOUT the /interbank/v1 prefix: the mock appends it. Empty
+  # means the Gateway Service of this same release.
   gatewayUrl: ''
-  # ACCEPT · REJECT · TIMEOUT · SLOW
+  # Token of the mock's /admin/* API (mode switch, emitter). Empty disables the
+  # admin API. Rendered into its own Secret; set it with --set-string or a
+  # values file, never commit a real one. test/load/scenario.sh reads it from
+  # inside the pod, so nobody has to carry it around.
+  adminToken: ''
+  # ACCEPT · REJECT · TIMEOUT · SLOW · UNAVAILABLE
   callbackMode: ACCEPT
   callbackDelayMs: "1000"
-  # How many of the first callbacks fail before succeeding, to exercise the
-  # retry whose due time is a column rather than a timer.
+  # SLOW: delay before the callback.
+  callbackSlowMs: "10000"
+  # Delay of the 202 itself (a slow receiver). 0 = immediate.
+  callbackAckDelayMs: "0"
+  # One of the seven contract reasons, for REJECT.
+  callbackRejectReason: ACCOUNT_NOT_FOUND
+  # PROCESSING · NOT_FOUND · UNREACHABLE — how GET /transfers/{id} and cancel
+  # answer for a deposit that has no outcome yet (TIMEOUT mode).
+  callbackStatusBehavior: PROCESSING
+  # How many of the first operations of each target fail before succeeding, to
+  # exercise the retries (ours and the mock's). Targets: result (our callback to
+  # the mock), transfer, status, callback (the mock's own callback attempts).
   callbackFailCount: "0"
+  callbackFailTargets: result
+  # Random failure, in percent, over the same targets.
+  callbackFailureRate: "0"
+  # false = credit even after expiresAt, to test the late ACCEPTED / reversal path.
+  callbackHonorExpiry: "true"
+  # COMPLETE · FAIL · STALL — what POST /reversals does.
+  callbackReversal: COMPLETE
   resources:
     requests:
       cpu: 10m
-      memory: 32Mi
+      memory: 48Mi
     limits:
-      cpu: 100m
-      memory: 64Mi
+      cpu: 200m
+      memory: 128Mi
 
 # ---------------------------------------------------------------------------
 # web — the Nuxt frontend. NUXT_PUBLIC_API_BASE_URL is resolved by the
