@@ -1,6 +1,8 @@
 import {
   applyInterbankSend,
   IllegalInterbankSendTransition,
+  isContradictoryRefusal,
+  isLateAcceptAfterRelease,
   isSendSettled,
   settlementOf,
 } from '../src/domain/interbank-send';
@@ -39,10 +41,20 @@ const LEGALES: readonly (readonly [InterbankSendState, InterbankSendEvent['kind'
   ['PENDING', 'ACKNOWLEDGED'],
   ['PENDING', 'SEND_FAILED'],
   ['PENDING', 'EXPIRED'],
+  /*
+   * El callback es legal desde tres estados (T-60): `SENT`, el camino normal;
+   * `TIMEOUT`, el callback tardío que el contrato permite durante 24 horas; y
+   * `PENDING`, la carrera de un banco que contesta antes de que escribamos
+   * nuestro `ACKNOWLEDGED`.
+   */
+  ['PENDING', 'CONFIRMED'],
+  ['PENDING', 'REFUSED'],
   ['SENT', 'ACKNOWLEDGED'],
   ['SENT', 'CONFIRMED'],
   ['SENT', 'REFUSED'],
   ['SENT', 'EXPIRED'],
+  ['TIMEOUT', 'CONFIRMED'],
+  ['TIMEOUT', 'REFUSED'],
   ['REJECTED', 'COMPENSATED'],
   ['TIMEOUT', 'COMPENSATED'],
 ];
@@ -142,10 +154,62 @@ describe('las dos formas de no cobrar, que no son la misma', () => {
 });
 
 describe('lo que no se puede hacer con el dinero de alguien', () => {
-  it('no acepta una confirmación de un depósito que nunca se entregó', () => {
-    expect(() => applyInterbankSend('PENDING', { kind: 'CONFIRMED' })).toThrow(
+  it('un ACCEPTED que gana la carrera al acuse de entrega confirma, y el acuse retrasado ya no mueve nada', () => {
+    /*
+     * Un banco rápido contesta `202` y llama a nuestro callback en milisegundos.
+     * La fila sigue `PENDING` cuando el callback llega: aceptarlo no es creer
+     * una respuesta a algo que no preguntamos, porque sólo quien recibió el
+     * `interbankTransferId` puede llamar. Y el `ACKNOWLEDGED` que llega después
+     * encuentra un estado final, que es ilegal.
+     */
+    const aceptado = applyInterbankSend('PENDING', { kind: 'CONFIRMED' });
+
+    expect(aceptado.state).toBe('ACCEPTED');
+    expect(aceptado.settle).toBe('SUCCEEDED');
+    expect(() => applyInterbankSend('ACCEPTED', { kind: 'ACKNOWLEDGED' })).toThrow(
       IllegalInterbankSendTransition,
     );
+  });
+
+  it('un callback con el depósito en TIMEOUT se acepta: ACCEPTED confirma el débito, REJECTED lo libera', () => {
+    const confirmado = applyInterbankSend('TIMEOUT', { kind: 'CONFIRMED' });
+    const rechazado = applyInterbankSend('TIMEOUT', { kind: 'REFUSED', reason: 'ACCOUNT_INACTIVE' });
+
+    expect(confirmado.state).toBe('ACCEPTED');
+    expect(confirmado.settle).toBe('SUCCEEDED');
+    expect(rechazado.state).toBe('REJECTED');
+    expect(rechazado.settle).toBe('FAILED');
+    expect(rechazado.reason).toBe('ACCOUNT_INACTIVE');
+  });
+
+  it('un callback repetido no mueve el dinero dos veces, en ningún sentido', () => {
+    for (const final of ['ACCEPTED', 'REVERSED'] as const) {
+      expect(() => applyInterbankSend(final, { kind: 'CONFIRMED' })).toThrow(
+        IllegalInterbankSendTransition,
+      );
+      expect(() => applyInterbankSend(final, { kind: 'REFUSED', reason: 'X' })).toThrow(
+        IllegalInterbankSendTransition,
+      );
+    }
+    // Un segundo REJECTED sobre un REJECTED tampoco compensa otra vez.
+    expect(() => applyInterbankSend('REJECTED', { kind: 'REFUSED', reason: 'X' })).toThrow(
+      IllegalInterbankSendTransition,
+    );
+  });
+
+  it('reconoce el ACCEPTED tardío sobre un depósito ya liberado, que pide el reverso', () => {
+    expect(isLateAcceptAfterRelease('REJECTED', 'CONFIRMED')).toBe(true);
+    expect(isLateAcceptAfterRelease('REVERSED', 'CONFIRMED')).toBe(true);
+    // Un duplicado sobre uno ya aceptado NO es un incidente.
+    expect(isLateAcceptAfterRelease('ACCEPTED', 'CONFIRMED')).toBe(false);
+    expect(isLateAcceptAfterRelease('SENT', 'CONFIRMED')).toBe(false);
+    expect(isLateAcceptAfterRelease('REJECTED', 'REFUSED')).toBe(false);
+  });
+
+  it('reconoce el rechazo que contradice un depósito ya aceptado', () => {
+    expect(isContradictoryRefusal('ACCEPTED', 'REFUSED')).toBe(true);
+    expect(isContradictoryRefusal('ACCEPTED', 'CONFIRMED')).toBe(false);
+    expect(isContradictoryRefusal('REJECTED', 'REFUSED')).toBe(false);
   });
 
   it('no mueve un depósito ya aceptado, ni para aceptarlo otra vez', () => {
@@ -164,11 +228,8 @@ describe('lo que no se puede hacer con el dinero de alguien', () => {
     }
   });
 
-  it('no deja que un rechazo se convierta en aceptación', () => {
+  it('no deja que un rechazo se convierta en aceptación: eso es un reverso, no una transición', () => {
     expect(() => applyInterbankSend('REJECTED', { kind: 'CONFIRMED' })).toThrow(
-      IllegalInterbankSendTransition,
-    );
-    expect(() => applyInterbankSend('TIMEOUT', { kind: 'CONFIRMED' })).toThrow(
       IllegalInterbankSendTransition,
     );
   });

@@ -205,18 +205,37 @@ export function applyInterbankReceipt(
 
     case 'CANCEL_REQUESTED':
       /*
-       * Legal desde los dos estados sin decidir, y por el mismo motivo: en los
-       * dos el dinero **todavía no se movió**. Desde `CREDIT` es el caso
-       * delicado —el crédito está ordenado y su confirmación puede estar en
-       * vuelo— y cancelar ahí es correcto precisamente porque el corte de
-       * arriba impide que un `CREDITED` posterior lo reabra: llegará, se
-       * rechazará como transición ilegal y se registrará. El contrato lo pide
-       * así: el receptor «guarda el id y rechaza cualquier llegada posterior».
+       * Sólo desde `ELIGIBILITY`, y es el cambio de fondo de T-60 (B4).
+       *
+       * Antes era legal también desde `CREDIT`, con el argumento de que «el
+       * dinero todavía no se movió». Era falso en el sentido que importa:
+       * `CREDIT` significa que **la orden de crédito está dada o a punto de
+       * darse**, y Account acredita incondicionalmente en cuanto la recibe. Un
+       * depósito cancelado desde ahí dejaba al cliente acreditado, al emisor
+       * convencido de que podía liberar su reserva, y la confirmación del
+       * crédito llegaba después a un estado que ya no la admitía y se
+       * descartaba como transición ilegal: dinero creado de la nada, y el
+       * 50 % de §8.3.
+       *
+       * Una vez ordenado el crédito la decisión es de Account: se espera su
+       * veredicto (`CREDITED` o `CREDIT_REFUSED`) y sólo entonces hay algo que
+       * contarle al emisor. A una cancelación que llega en ese intervalo se le
+       * contesta «vuelve a preguntar» (`503`), no una afirmación que todavía no
+       * es cierta.
        */
-      return from === 'ELIGIBILITY' || from === 'CREDIT' ? to('CANCELLED', 'CANCELLED') : illegal();
+      return from === 'ELIGIBILITY' ? to('CANCELLED', 'CANCELLED') : illegal();
 
     case 'EXPIRED':
-      return from === 'ELIGIBILITY' || from === 'CREDIT' ? to('REJECTED', 'EXPIRED') : illegal();
+      /*
+       * Por lo mismo que arriba, sólo desde `ELIGIBILITY`. Un depósito en
+       * `CREDIT` que pasa de `expiresAt` espera el veredicto de Account en vez
+       * de rechazarse con `EXPIRED`: rechazar mientras Account acredita es el
+       * mismo doble crédito con otro motivo. Lo que sí se evita es *entrar* en
+       * `CREDIT` demasiado tarde: la elegibilidad respondida después de
+       * `expiresAt` se resuelve como `EXPIRED` en vez de ordenar el crédito
+       * (ver `InterbankUseCase.eligibility`).
+       */
+      return from === 'ELIGIBILITY' ? to('REJECTED', 'EXPIRED') : illegal();
   }
 }
 
@@ -319,4 +338,44 @@ const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 
 export function couldBeOurAccount(reference: string): boolean {
   return UUID_V4.test(reference);
+}
+
+/** Cómo se le nombra una cuenta a Account: por su UUID interno o por su número. */
+export type AccountReference =
+  | { readonly accountId: string }
+  | { readonly accountNumber: string };
+
+/**
+ * La forma en que hay que preguntarle a Account por la cuenta que el otro banco
+ * nombró, o `null` si la referencia no puede ser de ninguna cuenta (T-60).
+ *
+ * El contrato oficial nombra las cuentas por su **número** (`02-NNNNNNNNN`,
+ * `^[A-Za-z0-9-]{1,34}$`); el camino provisional las nombraba por UUID. Un UUID
+ * con guiones mide 36 y el número admite 34 como máximo, así que los dos
+ * conjuntos no se solapan y la clasificación no es ambigua. Qué número es de
+ * este banco y cuál no lo decide Account —que es quien los asigna—, no esta
+ * función: aquí sólo se decide si merece la pregunta.
+ */
+export function accountReferenceOf(reference: string): AccountReference | null {
+  if (UUID_V4.test(reference)) return { accountId: reference };
+  if (/^[A-Za-z0-9-]{1,34}$/.test(reference)) return { accountNumber: reference };
+  return null;
+}
+
+/**
+ * `true` cuando la respuesta de Account habla de la cuenta por la que se
+ * preguntó. Defensa en profundidad: el `depositId` ya identifica la fila, pero
+ * un crédito atribuido a una cuenta distinta de la ordenada es un error que
+ * conviene ver en vez de aplicar.
+ */
+export function answersAbout(
+  reference: string,
+  answer: { readonly accountId?: string | undefined; readonly accountNumber?: string | undefined },
+): boolean {
+  const asked = accountReferenceOf(reference);
+  if (asked === null) return false;
+  if ('accountId' in asked) {
+    return answer.accountId === undefined || answer.accountId === asked.accountId;
+  }
+  return answer.accountNumber === undefined || answer.accountNumber === asked.accountNumber;
 }

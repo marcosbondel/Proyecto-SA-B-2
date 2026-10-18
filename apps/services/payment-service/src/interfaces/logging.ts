@@ -29,6 +29,8 @@ export interface LogFields {
   readonly reason?: string;
   readonly durationMs?: number;
   readonly error?: string;
+  /** The sweep step that failed (T-60); the rest of the pass carries on. */
+  readonly step?: string;
   /** The attempt number, and what the simulated provider answered on it (T-44). */
   readonly attempt?: number;
   readonly providerResult?: string;

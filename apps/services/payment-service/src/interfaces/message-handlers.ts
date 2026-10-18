@@ -4,6 +4,7 @@ import {
   paymentInterbankCallbackReceivedV1,
   paymentInterbankReceiveV1,
   type PaymentInterbankCallbackReceivedV1,
+  type PaymentInterbankV1ResultReceivedV1,
   accountInterbankEligibilityRepliedV1,
   accountInterbankCreditedV1,
   accountInterbankCreditRejectedV1,
@@ -14,6 +15,9 @@ import {
   paymentStatusQueryV1,
   paymentInterbankV1CancelQueryV1,
   paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendQueryV1,
+  paymentInterbankV1ResultReceivedV1,
   paymentInterbankV1ReversalQueryV1,
   paymentInterbankV1ReversalRequestedV1,
   paymentInterbankV1StatusQueryV1,
@@ -27,6 +31,7 @@ import type { ProcessPaymentUseCase } from '../application/process-payment.use-c
 import type { InterbankUseCase } from '../application/interbank.use-case';
 import type { InterbankV1UseCase } from '../application/interbank-v1.use-case';
 import type { GetPaymentStatsUseCase } from '../application/get-payment-stats.use-case';
+import type { QueryInterbankSendsUseCase } from '../application/query-interbank-sends.use-case';
 import type { QueryPaymentUseCase } from '../application/query-payment.use-case';
 import type { SendInterbankDepositUseCase } from '../application/send-interbank-deposit.use-case';
 import type { InboundMessageHandler } from './inbound-message.handler';
@@ -320,7 +325,10 @@ export class InterbankV1TransferHandler implements InboundMessageHandler {
   readonly messageType = paymentInterbankV1TransferQueryV1.name;
   constructor(readonly useCase: InterbankV1UseCase) {}
   async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
-    await this.useCase.transfer(paymentInterbankV1TransferQueryV1.schema.parse(envelope.payload));
+    await this.useCase.transfer(
+      paymentInterbankV1TransferQueryV1.schema.parse(envelope.payload),
+      envelope,
+    );
   }
 }
 
@@ -367,5 +375,74 @@ export class InterbankV1ReconciliationHandler implements InboundMessageHandler {
     await this.useCase.reconciliation(
       paymentInterbankV1ReconciliationQueryV1.schema.parse(envelope.payload),
     );
+  }
+}
+
+/**
+ * `payment.interbank.v1.result.received.v1` — el callback **oficial** del banco
+ * pareja sobre un depósito que este banco envió (T-60, B2).
+ *
+ * El Gateway lo publicaba desde T-56 y ningún manejador lo consumía: el
+ * `ACCEPTED` del banco pareja se tiraba al suelo. Delgado como los demás —
+ * valida contra el contrato y delega—; que un duplicado, un tardío o un
+ * desordenado no mueva dinero dos veces lo decide la máquina de estados.
+ */
+export class InterbankV1ResultHandler implements InboundMessageHandler {
+  public readonly messageType = paymentInterbankV1ResultReceivedV1.name;
+
+  readonly #useCase: SendInterbankDepositUseCase;
+
+  constructor(useCase: SendInterbankDepositUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    paymentInterbankV1ResultReceivedV1.schema.parse(envelope.payload);
+
+    await this.#useCase.v1Result(
+      envelope as MessageEnvelope<PaymentInterbankV1ResultReceivedV1>,
+    );
+  }
+}
+
+/**
+ * `payment.interbank.send.query.v1` — un depósito enviado, con su historial
+ * (T-60, B10). Quién puede verlo lo decide el caso de uso desde la identidad del
+ * sobre.
+ */
+export class InterbankSendQueryHandler implements InboundMessageHandler {
+  public readonly messageType = paymentInterbankSendQueryV1.name;
+
+  readonly #useCase: QueryInterbankSendsUseCase;
+  readonly #publisher: EventPublisher;
+
+  constructor(useCase: QueryInterbankSendsUseCase, publisher: EventPublisher) {
+    this.#useCase = useCase;
+    this.#publisher = publisher;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const query = paymentInterbankSendQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.one(query.interbankTransferId, envelope.identity, this.#publisher);
+  }
+}
+
+/** `payment.interbank.send.list.query.v1` — los depósitos enviados que quien pregunta puede ver. */
+export class InterbankSendListHandler implements InboundMessageHandler {
+  public readonly messageType = paymentInterbankSendListQueryV1.name;
+
+  readonly #useCase: QueryInterbankSendsUseCase;
+  readonly #publisher: EventPublisher;
+
+  constructor(useCase: QueryInterbankSendsUseCase, publisher: EventPublisher) {
+    this.#useCase = useCase;
+    this.#publisher = publisher;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const query = paymentInterbankSendListQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.list(query, envelope.identity, this.#publisher);
   }
 }

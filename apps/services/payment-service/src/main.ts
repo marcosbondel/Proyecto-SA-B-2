@@ -14,7 +14,7 @@ import {
 } from '@bank/contracts';
 import type { MessageEnvelope, QueueDescriptor } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
-import { continueTrace, nestLoggerFor } from '@bank/observability';
+import { continueTrace, currentTraceparent, nestLoggerFor } from '@bank/observability';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
@@ -24,6 +24,7 @@ import { SendInterbankDepositUseCase } from './application/send-interbank-deposi
 import { InterbankV1UseCase } from './application/interbank-v1.use-case';
 import { ProcessPaymentUseCase } from './application/process-payment.use-case';
 import { GetPaymentStatsUseCase } from './application/get-payment-stats.use-case';
+import { QueryInterbankSendsUseCase } from './application/query-interbank-sends.use-case';
 import { QueryPaymentUseCase } from './application/query-payment.use-case';
 import { AppModule } from './app.module';
 import {
@@ -58,6 +59,9 @@ import {
   InterbankV1ReconciliationHandler,
   InterbankV1ReversalQueryHandler,
   InterbankV1ReversalRequestHandler,
+  InterbankV1ResultHandler,
+  InterbankSendListHandler,
+  InterbankSendQueryHandler,
   InterbankV1StatusHandler,
   InterbankV1TransferHandler,
   InterbankEligibilityReplyHandler,
@@ -154,12 +158,15 @@ async function bootstrap(): Promise<void> {
   const clock = { now: (): Date => new Date() };
   const ids = { next: (): string => randomUUID() };
   const publisherFactory = new BrokerEventPublisher(broker);
+  const interbankMessenger = new BrokerInterbankMessenger(broker);
   const interbank = new InterbankUseCase({
     repository: interbankRepository,
-    messenger: new BrokerInterbankMessenger(broker),
+    messenger: interbankMessenger,
     callback: new HttpPartnerCallback(
-      environment.INTERBANK_CALLBACK_URL,
-      environment.INTERBANK_PARTNER_TOKEN,
+      environment.INTERBANK_PARTNER_BASE_URL,
+      environment.INTERBANK_API_KEY_OUTBOUND,
+      environment.INTERBANK_BANK_CODE,
+      environment.INTERBANK_PARTNER_BANK_CODE,
     ),
     bankCode: environment.INTERBANK_BANK_CODE,
     partnerBankCode: environment.INTERBANK_PARTNER_BANK_CODE,
@@ -176,23 +183,23 @@ async function bootstrap(): Promise<void> {
    * El envío de depósitos al banco pareja (T-47).
    *
    * **`null` cuando no hay a dónde enviar.** Un despliegue sin
-   * `INTERBANK_SEND_URL` —el caso normal mientras el auxiliar no asigne la
-   * pareja— paga como siempre: el bloque `interbank` de un pago se ignora y el
+   * `INTERBANK_PARTNER_BASE_URL` —el caso normal mientras el auxiliar no asigne
+   * la pareja— paga como siempre: el bloque `interbank` de un pago se ignora y el
    * pago va al proveedor simulado. Es deliberado: un banco sin banco pareja
    * sigue siendo un banco, y arrancar con una URL vacía habría dejado todo
    * depósito fallando contra `http://`.
    */
   const interbankSend =
-    environment.INTERBANK_SEND_URL.length === 0
+    environment.INTERBANK_PARTNER_BASE_URL.length === 0
       ? null
       : new SendInterbankDepositUseCase({
           repository: interbankSendRepository,
           partner: new HttpPartnerBankClient(
-            environment.INTERBANK_SEND_URL,
-            environment.INTERBANK_PARTNER_TOKEN,
+            environment.INTERBANK_PARTNER_BASE_URL,
+            environment.INTERBANK_API_KEY_OUTBOUND,
             environment.INTERBANK_BANK_CODE,
           ),
-          messenger: new BrokerInterbankMessenger(broker),
+          messenger: interbankMessenger,
           telemetry: new OtelInterbankSendTelemetry(logger),
           clock: clock.now,
           /*
@@ -212,11 +219,17 @@ async function bootstrap(): Promise<void> {
            * vencimiento de la confirmación es el que corta.
            */
           resendDelaysMs: delays,
+          maxAmountMinor: environment.INTERBANK_MAX_AMOUNT_MINOR,
+          trace: {
+            current: () => currentTraceparent(),
+            continue: (traceparent, spanName, correlationId, work) =>
+              continueTrace(traceparent, spanName, { 'bank.correlation_id': correlationId }, work),
+          },
           log: logger,
         });
 
   if (interbankSend === null) {
-    logger.info('envio interbancario desactivado: falta INTERBANK_SEND_URL', {});
+    logger.info('envio interbancario desactivado: falta INTERBANK_PARTNER_BASE_URL', {});
   }
 
   const telemetry = new OtelProviderTelemetry(logger);
@@ -237,6 +250,9 @@ async function bootstrap(): Promise<void> {
     telemetry,
   });
   const queryPayment = new QueryPaymentUseCase({ repository });
+  const queryInterbankSends = new QueryInterbankSendsUseCase({
+    repository: interbankSendRepository,
+  });
   /**
    * El del barrido, aparte de los del router.
    *
@@ -247,6 +263,7 @@ async function bootstrap(): Promise<void> {
    */
   const interbankV1Sweeper = new InterbankV1UseCase({
     repository: interbankV1Repository,
+    messenger: interbankMessenger,
     reply: async () => {
       /* El barrido no responde: no hay nadie esperando. */
     },
@@ -272,6 +289,7 @@ async function bootstrap(): Promise<void> {
      */
     const interbankV1 = new InterbankV1UseCase({
       repository: interbankV1Repository,
+      messenger: interbankMessenger,
       reply: async (messageType, payload) => {
         await publisher.reply({ messageType, payload });
       },
@@ -297,8 +315,16 @@ async function bootstrap(): Promise<void> {
         ? []
         : [
             new InterbankCallbackHandler(interbankSend),
+            new InterbankV1ResultHandler(interbankSend),
             new InterbankCompensatedHandler(interbankSend),
           ]),
+      /*
+       * Los dos de T-60 (B10) no dependen de `interbankSend`: leen la tabla de
+       * depósitos enviados aunque este despliegue ya no envíe (la pantalla sigue
+       * pudiendo mostrar el historial de lo que se envió).
+       */
+      new InterbankSendQueryHandler(queryInterbankSends, publisher),
+      new InterbankSendListHandler(queryInterbankSends, publisher),
       new ListPaymentsHandler(queryPayment, publisher),
       new PaymentStatusHandler(queryPayment, publisher),
       new PaymentStatsHandler(new GetPaymentStatsUseCase({ repository, publisher })),
