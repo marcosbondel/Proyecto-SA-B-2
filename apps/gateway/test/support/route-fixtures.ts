@@ -298,9 +298,20 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
       .send({
         sourceAccount: SOURCE_ACCOUNT,
         destinationBankCode: 'BANK99',
-        destinationAccount: 'cuenta-de-alla-1',
+        destinationAccount: '99-000004567',
         amount: { amountMinor: 125_000, currency: 'GTQ' },
       }),
+
+  // Las dos de T-60 (B10): lecturas de los depósitos enviados.
+  'GET /api/interbank/transfers': (h) =>
+    request(h.app.getHttpServer())
+      .get('/api/interbank/transfers')
+      .set('Authorization', auth(h, 'CLIENTE')),
+
+  'GET /api/interbank/transfers/{interbankTransferId}': (h) =>
+    request(h.app.getHttpServer())
+      .get(`/api/interbank/transfers/${randomUUID()}`)
+      .set('Authorization', auth(h, 'CLIENTE')),
 
   'POST /api/interbank/callbacks': (h) =>
     request(h.app.getHttpServer())

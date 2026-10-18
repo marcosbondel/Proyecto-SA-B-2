@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { V1_MAX_AMOUNT_MINOR } from '@bank/contracts';
 import { DEFAULT_REPLY_TIMEOUT_MS } from '@bank/messaging';
 
 import { plainToInstance } from 'class-transformer';
@@ -177,6 +178,18 @@ export class GatewayEnvironment {
   @IsString()
   @Matches(/^BANK[0-9]{2}$/, { message: 'INTERBANK_PARTNER_BANK_CODE debe cumplir ^BANK[0-9]{2}$' })
   public INTERBANK_PARTNER_BANK_CODE!: string;
+
+  /**
+   * El límite por operación, en centavos: **el mismo** que aplica Payment al
+   * recibir y al enviar (T-60, B7). El Gateway lo lee para rechazar un envío
+   * por encima del límite en el borde, antes de debitar nada; Payment lo vuelve
+   * a aplicar por si algo llegó por otro camino. El techo es el del contrato
+   * (`10000.00`): la variable sólo puede bajarlo.
+   */
+  @IsInt()
+  @Min(1)
+  @Max(V1_MAX_AMOUNT_MINOR)
+  public INTERBANK_MAX_AMOUNT_MINOR!: number;
 }
 
 /**
@@ -220,6 +233,8 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Gatewa
       source.INTERBANK_API_KEY_INBOUND === '' ? undefined : source.INTERBANK_API_KEY_INBOUND,
     INTERBANK_BANK_CODE: source.INTERBANK_BANK_CODE ?? 'BANK02',
     INTERBANK_PARTNER_BANK_CODE: source.INTERBANK_PARTNER_BANK_CODE ?? 'BANK99',
+    INTERBANK_MAX_AMOUNT_MINOR:
+      toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

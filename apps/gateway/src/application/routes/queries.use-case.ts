@@ -25,6 +25,10 @@ import {
   notificationInboxRepliedV1,
   notificationListQueryV1,
   notificationListRepliedV1,
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendListRepliedV1,
+  paymentInterbankSendQueryV1,
+  paymentInterbankSendRepliedV1,
   paymentListQueryV1,
   paymentListRepliedV1,
   paymentSimulationQueryV1,
@@ -128,6 +132,78 @@ export class QueriesUseCase {
   ) {
     this.#publisher = publisher;
     this.#replies = replies;
+  }
+
+  /**
+   * El número de cuenta del contrato interbancario (`02-NNNNNNNNN`) de una
+   * cuenta, preguntado a Account por el broker (T-60, B1).
+   *
+   * El contrato exige `originAccount` en el `TransferRequest` y el Gateway no
+   * tiene otra forma de saberlo: lo guarda Account, y leer su tabla está
+   * prohibido. La pregunta pasa por la visibilidad de Account —un cliente sólo
+   * ve sus cuentas—, así que no se puede enviar un depósito «desde» la cuenta de
+   * otro ni descubrir su número.
+   */
+  public async accountNumberOf(accountId: string, context: QueryContext): Promise<string> {
+    const raw = await this.#ask(accountBalanceQueryV1.name, { accountId }, context);
+    const parsed = accountBalanceRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    if (parsed.data.outcome === 'NOT_FOUND') {
+      throw GatewayError.businessRejection(parsed.data.reason, 'La cuenta de origen no existe.');
+    }
+
+    if (parsed.data.accountNumber === undefined) {
+      // Un Account anterior a T-60: sin número no hay depósito que enviar.
+      throw GatewayError.internal('La cuenta de origen no tiene número interbancario.');
+    }
+
+    return parsed.data.accountNumber;
+  }
+
+  /**
+   * Un depósito enviado al banco pareja, con sus seis estados y su historial
+   * (T-60, B10). Quién puede verlo lo decide Payment desde la identidad del
+   * sobre; uno ajeno se contesta igual que uno inexistente.
+   */
+  public async interbankSend(
+    interbankTransferId: string,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentInterbankSendQueryV1.name, { interbankTransferId }, context);
+    const parsed = paymentInterbankSendRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    if (parsed.data.outcome === 'NOT_FOUND') {
+      throw GatewayError.notFound('No hay un depósito interbancario con ese identificador.');
+    }
+
+    return {
+      send: parsed.data.send,
+      history: parsed.data.history,
+      correlationId: context.correlationId,
+    };
+  }
+
+  /** Los depósitos enviados que quien pregunta puede ver, del más reciente al más antiguo. */
+  public async interbankSends(
+    filter: { readonly state?: string; readonly limit?: number },
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentInterbankSendListQueryV1.name, filter, context);
+    const parsed = paymentInterbankSendListRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
   }
 
   public async balanceOf(
