@@ -215,6 +215,17 @@ export class InterbankV1UseCase {
       ).payload,
     );
 
+    /*
+     * `IN_PROGRESS`: el depósito ya ordenó su crédito y Account todavía no dijo
+     * si se aplicó (B4). Ni `CANCELLED` (liberaría la reserva del emisor mientras
+     * acreditamos) ni `ALREADY_ACCEPTED` (todavía no es cierto). El contrato ya
+     * tiene la respuesta honesta —`503`, «el que llama debe reintentar con espera
+     * creciente»— y es exactamente lo que el emisor hace con ella.
+     */
+    if (answer.result === 'IN_PROGRESS') {
+      throw GatewayError.brokerUnavailable();
+    }
+
     return { interbankTransferId: answer.interbankTransferId, result: answer.result };
   }
 

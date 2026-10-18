@@ -1,14 +1,24 @@
-import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
-import { INTERBANK_SETTLEMENT_ACCOUNT_ID } from '@bank/contracts';
-import { randomUUID } from 'node:crypto';
-
-import { CommandsUseCase } from '../application/routes/commands.use-case';
+import { InterbankSendUseCase } from '../application/routes/interbank-send.use-case';
+import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { InterbankCallbackUseCase } from '../application/routes/interbank-callback.use-case';
 import { InterbankReceiveUseCase } from '../application/routes/interbank-receive.use-case';
 import { actorOf } from './actor';
-import { InterbankTransferDto } from './dto/interbank.dto';
+import { InterbankTransferDto, ListInterbankSendsQueryDto } from './dto/interbank.dto';
 import { InterbankTokenGuard } from './guards/interbank-token.guard';
 import { Public } from './guards/route-access.decorator';
 import type { GatewayRequest } from './http-request';
@@ -20,7 +30,8 @@ export class InterbankController {
   constructor(
     @Inject(InterbankReceiveUseCase) readonly receiveUseCase: InterbankReceiveUseCase,
     @Inject(InterbankCallbackUseCase) readonly callbackUseCase: InterbankCallbackUseCase,
-    @Inject(CommandsUseCase) readonly commands: CommandsUseCase,
+    @Inject(InterbankSendUseCase) readonly sendUseCase: InterbankSendUseCase,
+    @Inject(QueriesUseCase) readonly queries: QueriesUseCase,
   ) {}
 
   @ApiOperation({
@@ -132,24 +143,20 @@ export class InterbankController {
    * de fila, pago y compensación si no sale— y lo único distinto es que el paso
    * de pago se le pide al banco pareja y su respuesta llega por callback.
    *
-   * El Gateway mina los dos identificadores que no pueden venir de fuera: el
-   * `interbankTransferId`, que es la clave con la que el otro banco deduplica,
-   * y la clave de idempotencia del depósito. Uno adivinable desde fuera es uno
-   * que se puede colisionar a propósito — y un depósito duplicado es el 50 % de
-   * §8.3.
-   *
-   * No valida que la cuenta de destino exista en el otro banco. No puede y no
-   * le toca: eso lo dirá el banco pareja en su callback, y hasta entonces el
-   * dinero está reservado, no entregado.
+   * La orquestación vive en `InterbankSendUseCase` (T-60): valida el borde
+   * —moneda, banco, límite—, pregunta a Account por el número de la cuenta
+   * origen que el contrato exige, y mina los identificadores.
    */
   @ApiOperation({
     summary: 'Envía un depósito al banco pareja',
     description:
       'Inicia la Saga de siempre: debita la cuenta origen, pide el pago al banco pareja y ' +
       'compensa si lo rechaza o no contesta. El 202 significa que la transferencia se aceptó, ' +
-      'no que el otro banco la acreditó — eso llega por callback y se consulta en el estado ' +
-      'de la transferencia. El identificador interbancario y la clave de idempotencia los ' +
-      'genera el Gateway.',
+      'no que el otro banco la acreditó — eso llega por callback y se consulta en ' +
+      '`GET /api/interbank/transfers/{interbankTransferId}`. El identificador interbancario y la ' +
+      'clave de idempotencia los genera el Gateway. Se rechaza con 400, sin debitar, una moneda ' +
+      'distinta de GTQ, un banco que no es el pareja configurado y un monto por encima del ' +
+      'límite por operación.',
   })
   @ApiBearerAuth('session')
   @ApiResponse({
@@ -160,36 +167,79 @@ export class InterbankController {
       required: ['transactionId', 'interbankTransferId', 'correlationId'],
       properties: {
         transactionId: { type: 'string', format: 'uuid' },
-        interbankTransferId: { type: 'string' },
+        interbankTransferId: { type: 'string', format: 'uuid' },
         correlationId: { type: 'string', format: 'uuid' },
       },
     },
   })
-  @ApiResponse({ status: 400, description: 'Solicitud malformada.' })
+  @ApiResponse({ status: 400, description: 'Solicitud malformada o fuera de los límites.' })
   @Post('transfers')
   @HttpCode(202)
   async send(
     @Body(validated(InterbankTransferDto)) body: InterbankTransferDto,
     @Req() request: GatewayRequest,
   ): Promise<{ transactionId: string; interbankTransferId: string; correlationId: string }> {
-    const interbankTransferId = randomUUID();
-    const accepted = await this.commands.requestTransfer({
+    return await this.sendUseCase.send({
       sourceAccount: body.sourceAccount,
-      // Siempre la cuenta de liquidación: el cliente no elige dónde entra.
-      targetAccount: INTERBANK_SETTLEMENT_ACCOUNT_ID,
+      destinationBankCode: body.destinationBankCode,
+      destinationAccount: body.destinationAccount,
       amount: { amountMinor: body.amount.amountMinor, currency: body.amount.currency },
-      interbank: {
-        bankCode: body.destinationBankCode,
-        account: body.destinationAccount,
-        interbankTransferId,
-        idempotencyKey: interbankTransferId,
-      },
       actor: actorOf(request),
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,
     });
+  }
 
-    return { ...accepted, interbankTransferId };
+  /**
+   * Los depósitos que este banco envió (T-60, B10).
+   *
+   * Sin `@Roles`: la restricción es por **alcance**, no por rol. Payment Service
+   * guarda quién pidió cada depósito y acota la respuesta con la identidad del
+   * sobre —un `CLIENTE` ve los suyos; `CAJERO_RECEPTOR` y `ADMINISTRADOR`, todos—,
+   * de modo que un decorador aquí sería una segunda copia, más gruesa, de una
+   * regla que el servicio dueño ya aplica fila por fila.
+   */
+  @ApiOperation({
+    summary: 'Lista los depósitos enviados al banco pareja',
+    description:
+      'Del más reciente al más antiguo. Un CLIENTE ve los suyos; CAJERO_RECEPTOR y ' +
+      'ADMINISTRADOR ven todos. Cada depósito trae sus seis estados posibles (PENDING, SENT, ' +
+      'ACCEPTED, REJECTED, TIMEOUT, REVERSED), el motivo, el banco y la cuenta destino ' +
+      '(enmascarada), el monto, las fechas, el correlationId y el traceId.',
+  })
+  @ApiBearerAuth('session')
+  @Get('transfers')
+  async list(
+    @Query(validated(ListInterbankSendsQueryDto)) query: ListInterbankSendsQueryDto,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    return await this.queries.interbankSends(
+      {
+        ...(query.state === undefined ? {} : { state: query.state }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+      },
+      { actor: actorOf(request), correlationId: request.correlationId },
+    );
+  }
+
+  /** Un depósito enviado, con su historial de estados (T-60, B10). */
+  @ApiOperation({
+    summary: 'Consulta un depósito enviado al banco pareja',
+    description:
+      'Devuelve el depósito y su historial de estados, del más antiguo al más reciente. Un ' +
+      'depósito de otro cliente responde 404, igual que uno inexistente.',
+  })
+  @ApiBearerAuth('session')
+  @ApiResponse({ status: 404, description: 'No existe, o no es del solicitante.' })
+  @Get('transfers/:interbankTransferId')
+  async one(
+    @Param('interbankTransferId', new ParseUUIDPipe({ version: '4' })) interbankTransferId: string,
+    @Req() request: GatewayRequest,
+  ): Promise<Record<string, unknown>> {
+    return await this.queries.interbankSend(interbankTransferId, {
+      actor: actorOf(request),
+      correlationId: request.correlationId,
+    });
   }
 
   /**

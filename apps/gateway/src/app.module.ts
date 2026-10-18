@@ -28,7 +28,12 @@ import { NotificationsController } from './interfaces/notifications.controller';
 import { AlertsController } from './interfaces/alerts.controller';
 import { InterbankController } from './interfaces/interbank.controller';
 import { InterbankV1Controller } from './interfaces/interbank-v1.controller';
-import { INTERBANK_BANK_CODE } from './interfaces/interbank-v1.tokens';
+import {
+  INTERBANK_BANK_CODE,
+  INTERBANK_MAX_AMOUNT_MINOR,
+  INTERBANK_PARTNER_BANK_CODE,
+} from './interfaces/interbank-v1.tokens';
+import { InterbankSendUseCase } from './application/routes/interbank-send.use-case';
 import {
   INTERBANK_API_KEYS,
   InterbankApiKeyGuard,
@@ -152,7 +157,10 @@ export class AppModule implements NestModule {
         },
         InterbankApiKeyGuard,
         { provide: INTERBANK_BANK_CODE, useValue: environment.INTERBANK_BANK_CODE },
+        { provide: INTERBANK_PARTNER_BANK_CODE, useValue: environment.INTERBANK_PARTNER_BANK_CODE },
+        { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: environment.INTERBANK_MAX_AMOUNT_MINOR },
         InterbankV1UseCase,
+        InterbankSendUseCase,
 
         AlertWebhookUseCase,
         InterbankReceiveUseCase,

@@ -1,4 +1,8 @@
 import {
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendListRepliedV1,
+  paymentInterbankSendQueryV1,
+  paymentInterbankSendRepliedV1,
   paymentInterbankV1CancelQueryV1,
   paymentInterbankV1CancelRepliedV1,
   paymentInterbankV1ReconciliationQueryV1,
@@ -242,6 +246,18 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   },
   'POST /api/interbank/callbacks': {
     publishes: paymentInterbankCallbackReceivedV1.name,
+  },
+  /*
+   * Las dos de T-60 (B10): los depósitos enviados, con sus seis estados. Son
+   * lecturas de Payment, por el broker.
+   */
+  'GET /api/interbank/transfers': {
+    publishes: paymentInterbankSendListQueryV1.name,
+    awaits: [paymentInterbankSendListRepliedV1.name],
+  },
+  'GET /api/interbank/transfers/{interbankTransferId}': {
+    publishes: paymentInterbankSendQueryV1.name,
+    awaits: [paymentInterbankSendRepliedV1.name],
   },
   'GET /api/audit/recent': {
     publishes: auditEventsListQueryV1.name,
