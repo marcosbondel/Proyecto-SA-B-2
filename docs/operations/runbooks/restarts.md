@@ -1,8 +1,13 @@
 # PodRestarting / MassRestartDependencyLost
 
-**No tienen SLO.** Son la señal más barata y más específica que existe, y la que
-faltaba: no miden un objetivo, dicen *qué* se rompió cuando los demás paneles ya
-están rojos.
+**SLO-26** — reinicios de contenedor no provocados en operación: **0**. Llevan
+esa etiqueta desde T-60; antes no tenían ninguna. Son la señal más barata y más
+específica que existe: no miden un presupuesto, dicen *qué* se rompió cuando los
+demás paneles ya están rojos.
+
+Las dos llevan la etiqueta `environment`, derivada del namespace (`dev`, `prod`;
+`bank-usac` → `local` en kind). Antes no la tenían y la política de Grafana
+enrutaba todo reinicio de `dev` al contact point de producción.
 
 ## Qué significan
 
