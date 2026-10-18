@@ -43,15 +43,14 @@ partnerMock:
   callbackMode: ACCEPT
 
 interbank:
-  # Explícito, no derivado de `partnerMock.enabled`: el destino de un callback
-  # es una decisión que se escribe, no una que se adivina.
-  callbackUrl: http://bank-usac-partner-bank-mock:3021/callbacks/interbank
-  # Y a dónde manda este banco los depósitos que origina: la entrada del mock,
-  # que es el `POST /deposits` de `apps/partner-bank-mock`. Sin esto el envío
-  # interbancario se queda apagado y una transferencia interbancaria termina
-  # como una transferencia interna a la cuenta de liquidación — que es
-  # exactamente lo que pasó en la primera corrida de carga de T-51.
-  sendUrl: http://bank-usac-partner-bank-mock:3021/deposits
+  # Explícito, no derivado de `partnerMock.enabled`: el destino de un envío es
+  # una decisión que se escribe, no una que se adivina. Es la base de la API v1
+  # del mock, con el sufijo `/interbank/v1`; la URL del callback ya no se
+  # configura, payment-service la deriva. Sin esto el envío interbancario se
+  # queda apagado y una transferencia interbancaria termina como una
+  # transferencia interna a la cuenta de liquidación — que es exactamente lo que
+  # pasó en la primera corrida de carga de T-51.
+  partnerBaseUrl: http://bank-usac-partner-bank-mock:3021/interbank/v1
 
 # --------------------------------------------------------------------------
 # Dos secretos de juguete, y la palabra «juguete» es literal.
@@ -74,5 +73,8 @@ secrets:
   # La API key del contrato interbancario para el camino local. De juguete y
   # evidente, como el resto de los secretos de kind: lo que importa es que la
   # forma del flujo sea la real, no el valor.
-  interbankApiKeyInbound: 'kind-api-key-interbancaria-de-juguete'
-  interbankApiKeyOutbound: 'kind-api-key-interbancaria-de-juguete'
+  # De 32 caracteres o más, como las reales. Inbound es la
+  # que el mock presenta al llamarnos; outbound, la que el mock exige de
+  # nosotros: el mock lee las dos de este mismo Secret.
+  interbankApiKeyInbound: 'kind-api-key-entrante-de-juguete-no-es-secreto'
+  interbankApiKeyOutbound: 'kind-api-key-saliente-de-juguete-no-es-secreto'

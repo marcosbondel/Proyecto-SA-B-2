@@ -236,20 +236,18 @@ services:
       PAYMENT_SIM_FAILURE_RATE: ${PAYMENT_SIM_FAILURE_RATE:-0}
       PAYMENT_SIM_TIMEOUT_RATE: ${PAYMENT_SIM_TIMEOUT_RATE:-0}
       PAYMENT_SIM_LATENCY_MS: ${PAYMENT_SIM_LATENCY_MS:-0}
-      INTERBANK_PARTNER_TOKEN: ${INTERBANK_PARTNER_TOKEN:-}
-      # La API key del contrato oficial (T-56), distinta del token de T-46.
-      INTERBANK_API_KEY_INBOUND: ${INTERBANK_API_KEY_INBOUND:-}
-      INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK02}
-      INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-BANK99}
       INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK02}
       INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-BANK99}
       INTERBANK_MAX_AMOUNT_MINOR: ${INTERBANK_MAX_AMOUNT_MINOR:-1000000}
-      INTERBANK_CALLBACK_URL: ${INTERBANK_CALLBACK_URL:-http://partner-bank-mock:3021/callbacks/interbank}
-      # A dónde manda este banco los depósitos que ENVÍA. Vacío apaga el envío
+      # Base de la API v1 del banco pareja, con el sufijo `/interbank/v1`; la URL
+      # del callback ya no se configura, se deriva. Vacío apaga el envío
       # interbancario — y apagarlo sin querer es cómo una transferencia
       # interbancaria termina siendo una transferencia interna a la cuenta de
       # liquidación, con 202 y todo (T-51).
-      INTERBANK_SEND_URL: ${INTERBANK_SEND_URL:-http://partner-bank-mock:3021/deposits}
+      INTERBANK_PARTNER_BASE_URL: ${INTERBANK_PARTNER_BASE_URL:-http://partner-bank-mock:3021/interbank/v1}
+      # La X-Api-Key que mandamos a la pareja. Valor de desarrollo, el mismo que
+      # exige el mock del banco pareja.
+      INTERBANK_API_KEY_OUTBOUND: ${INTERBANK_API_KEY_OUTBOUND:-dev-interbank-outbound-key-not-a-secret-0123456789}
     depends_on:
       postgres-payment:
         condition: service_healthy
@@ -356,6 +354,15 @@ services:
       # default on purpose: with none the webhook refuses everybody.
       ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:-}
       INTERBANK_PARTNER_TOKEN: ${INTERBANK_PARTNER_TOKEN:-}
+      # La API key del contrato oficial (T-56), distinta del token de T-46. El
+      # valor por defecto es de desarrollo, evidente y de mas de 32 caracteres,
+      # para que el flujo local funcione sin configurar nada; el mock del banco
+      # pareja usa la misma. Nunca llega a nada que no sea una laptop.
+      INTERBANK_API_KEY_INBOUND: ${INTERBANK_API_KEY_INBOUND:-dev-interbank-inbound-key-not-a-secret-0123456789}
+      INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK02}
+      INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-BANK99}
+      # Un solo limite por operacion (Q10 000,00), el mismo que lee payment-service.
+      INTERBANK_MAX_AMOUNT_MINOR: ${INTERBANK_MAX_AMOUNT_MINOR:-1000000}
       # Fixed rather than random, so the reply queue survives a restart instead
       # of leaving an orphan behind on every reload.
       GATEWAY_INSTANCE_ID: gateway-images
