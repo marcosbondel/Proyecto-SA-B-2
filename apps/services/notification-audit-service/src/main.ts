@@ -131,7 +131,9 @@ async function bootstrap(): Promise<void> {
     });
   });
 
-  const repository = new PostgresAuditRepository(pool);
+  const repository = new PostgresAuditRepository(pool, {
+    alertRepeatWindowMs: environment.SLO_ALERT_REPEAT_WINDOW_MINUTES * 60_000,
+  });
   /**
    * The simulated channel prints the activation link when — and only when —
    * `REVEAL_ACTIVATION_LINKS` says so. It defaults to on outside production and
@@ -143,6 +145,8 @@ async function bootstrap(): Promise<void> {
    * production images are what a kind deployment runs, and with the link closed
    * there is no way to complete a sign-up anywhere in the system. See the
    * adapter, TD-043 and TD-044.
+   *
+   * Off, the line still names the link but masks the token (`token=***`).
    */
   const simulated = new SimulatedNotificationAdapter(logger, environment.REVEAL_ACTIVATION_LINKS);
 
@@ -151,6 +155,11 @@ async function bootstrap(): Promise<void> {
    * for real, and falls back to the simulated channel for every other
    * notification, which has no real inbox by design. `simulated` (the default)
    * sends nothing and only logs. The choice is made once, here.
+   *
+   * The `resend` fallback is its own adapter that **never reveals**, whatever
+   * `REVEAL_ACTIVATION_LINKS` says: the password-reset link is not delivered
+   * by Resend, so it reaches the fallback, and a deployment with a real email
+   * channel is one a stranger can read the logs of (T-60, §8.3).
    */
   const sender =
     environment.NOTIFICATION_CHANNEL === 'resend'
@@ -162,7 +171,7 @@ async function bootstrap(): Promise<void> {
             endpoint: environment.RESEND_API_URL,
           },
           logger,
-          simulated,
+          new SimulatedNotificationAdapter(logger, false),
         )
       : simulated;
   const broker = new MessageBroker({
