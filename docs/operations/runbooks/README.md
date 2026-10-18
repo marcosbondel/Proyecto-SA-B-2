@@ -8,11 +8,12 @@ significa, cómo diagnosticarla y cómo mitigarla"*. Cada alerta de
 | Runbook | Alertas que lo usan | SLO |
 | --- | --- | --- |
 | [gateway-availability-burn.md](gateway-availability-burn.md) | `GatewayAvailabilityFastBurn`, `GatewayAvailabilitySlowBurn` | SLO-27 |
-| [transfer-latency.md](transfer-latency.md) | `TransferLatencyBreach` | SLO-2 |
+| [transfer-latency.md](transfer-latency.md) | `TransferLatencyBreach`, `TransferLatencyFastBurn`, `TransferLatencySlowBurn` | SLO-2 |
+| [gateway-latency.md](gateway-latency.md) | `GatewayReadLatencyBreach`, `GatewayCommandLatencyBreach` | SLO-6, SLO-7 |
 | [dead-letter.md](dead-letter.md) | `DeadLetterGrowing` | SLO-1 |
-| [consumer-lag.md](consumer-lag.md) | `BrokerConsumerLagHigh` | SLO-14 |
+| [consumer-lag.md](consumer-lag.md) | `BrokerConsumerLagHigh` | — (la alerta de la dependencia del broker que exige §4.1) |
 | [partner-bank.md](partner-bank.md) | `PartnerBankDegraded`, `PartnerBankConfirmationSlow`, `PartnerBankSendDegraded`, `PartnerBankSendConfirmationSlow`, `InterbankReserveReleasedUnverified` | SLO-28 |
-| [restarts.md](restarts.md) | `PodRestarting`, `MassRestartDependencyLost` | — |
+| [restarts.md](restarts.md) | `PodRestarting`, `MassRestartDependencyLost` | SLO-26 |
 
 ## Cómo se usa uno
 

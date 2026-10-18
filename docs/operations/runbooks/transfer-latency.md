@@ -1,7 +1,33 @@
-# TransferLatencyBreach
+# TransferLatencyBreach / TransferLatencyFastBurn / TransferLatencySlowBurn
 
 **SLO-2** — transferencias que terminan en menos de **5.0 s**, objetivo
 **≥ 95 %** sobre 7 días corridos.
+
+Tres alertas sobre el mismo objetivo:
+
+| Alerta | Condición | Severidad |
+| --- | --- | --- |
+| `TransferLatencyBreach` | SLI < 95 % durante 30 min | `warning` |
+| `TransferLatencyFastBurn` | burn rate > **14.4×** en 1 h **y** en 5 min | `critical` |
+| `TransferLatencySlowBurn` | burn rate > **6×** en 6 h **y** en 30 min | `warning` |
+
+Las de *burn rate* tienen dos ventanas cada una (SRE Workbook): la larga dice
+que el gasto es real, la corta que sigue ocurriendo — sin ella la alerta seguiría
+disparada media hora después de arreglar la causa. A 14.4× el presupuesto de 7
+días se agota en unas 12 h; a 6×, antes de cerrar la ventana.
+
+```promql
+slo:transfer_under_5s:burn_rate5m
+slo:transfer_under_5s:burn_rate30m
+slo:transfer_under_5s:burn_rate1h
+slo:transfer_under_5s:burn_rate6h
+slo:transfer_under_5s:budget_remaining7d
+```
+
+**Ojo con la escalera del proveedor (TD-094).** Un solo reintento del pago
+(1 s / 5 s / 30 s) ya empuja la transferencia por encima de 5 s, así que un
+escenario de fallos del proveedor dispara estas alertas aunque la Saga esté
+haciendo exactamente lo que debe. Mirar `source` en el paso 3 antes de nada.
 
 ## Qué significa
 
