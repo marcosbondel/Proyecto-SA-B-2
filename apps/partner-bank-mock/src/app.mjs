@@ -430,6 +430,13 @@ export function createPartnerBankMock({
     let entry = outbound.get(id);
     if (entry === undefined) {
       entry = { id, kind, request, status: 'SENT', sends: [], callbacks: [] };
+      // El banco que recibe es el de la URL base, sea cual sea el código que lleve la solicitud.
+      if (request.destinationBankCode !== settings.ourBankCode) {
+        entry.destinationBankCodeMismatch = {
+          requested: request.destinationBankCode,
+          receiver: settings.ourBankCode,
+        };
+      }
       outbound.set(id, entry);
     }
     return entry;
@@ -789,12 +796,25 @@ export function createPartnerBankMock({
         throw badRequest('interbankTransferId no coincide con la ruta');
       const entry = outbound.get(id);
       if (entry === undefined) throw new HttpError(404, 'NOT_FOUND', 'No hay registro de ese id');
+      /*
+       * Quién llama lo dice la API key (ya validada arriba), no el cuerpo: el
+       * callback siempre viene del banco que de verdad recibió la solicitud —el
+       * de la URL a la que el mock llamó—, aunque el `destinationBankCode` que
+       * el mock puso en ella fuera otro (`overrides` de /admin/transfers). Un
+       * 401 aquí haría que nuestro banco reintentara para siempre un rechazo
+       * correcto. La diferencia no se esconde: queda marcada en el registro.
+       */
       if (body.destinationBankCode !== entry.request.destinationBankCode) {
-        throw new HttpError(
-          401,
-          'UNAUTHORIZED',
-          'El banco que llama no participa en esta transferencia',
-        );
+        entry.destinationBankCodeMismatch = {
+          requested: entry.request.destinationBankCode,
+          receiver: settings.ourBankCode,
+          callback: body.destinationBankCode,
+        };
+        log.warn('callback_destination_mismatch', {
+          interbankTransferId: id,
+          requested: entry.request.destinationBankCode,
+          callback: body.destinationBankCode,
+        });
       }
       const first = entry.callbacks.length === 0;
       const duplicate = entry.callbacks.some((seen) => sameContent(seen.body, body));
