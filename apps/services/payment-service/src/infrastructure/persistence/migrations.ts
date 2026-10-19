@@ -835,6 +835,36 @@ export const MIGRATIONS: readonly Migration[] = [
          ON interbank_sends (refund_inbound_id) WHERE refund_inbound_id IS NOT NULL`,
     ],
   },
+  /*
+   * 018: el arrendamiento de los reclamos (T-60, visto en producción el
+   * 2026-10-19).
+   *
+   * Los barridos reclamaban con `SELECT … FOR UPDATE SKIP LOCKED` fuera de una
+   * transacción: el candado se soltaba al volver el `SELECT`, y dos réplicas (el
+   * HPA escala este servicio) o dos barridos solapados tomaban **las mismas
+   * filas** y repetían cada llamada al banco pareja — cada envío salía ~4 veces.
+   * El dinero no corría riesgo (`advance(from)` y el número de intento lo
+   * impiden), pero el ruido sí era real.
+   *
+   * `claimed_until` es el arrendamiento: reclamar es, en **una sola sentencia**,
+   * elegir las filas vencidas sin arrendar y arrendarlas. Nulo, o ya pasado,
+   * significa libre. Quien termina el paso lo suelta (`claimed_until = NULL`) en
+   * el mismo `UPDATE` que programa el siguiente, y si el pod muere a medias el
+   * arrendamiento caduca solo y otra réplica recoge la fila.
+   *
+   * Una columna por tabla y no una por tipo de reclamo: «alguien trabaja esta
+   * fila» es una sola afirmación. Sin índice: el filtro viaja detrás de la
+   * condición de vencimiento, que ya tiene el suyo.
+   */
+  {
+    name: '018_claim_leases',
+    statements: [
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS claimed_until TIMESTAMPTZ`,
+      `ALTER TABLE payments ADD COLUMN IF NOT EXISTS claimed_until TIMESTAMPTZ`,
+      `ALTER TABLE interbank_deposits ADD COLUMN IF NOT EXISTS claimed_until TIMESTAMPTZ`,
+      `ALTER TABLE interbank_conflicts ADD COLUMN IF NOT EXISTS claimed_until TIMESTAMPTZ`,
+    ],
+  },
 ];
 
 /**
