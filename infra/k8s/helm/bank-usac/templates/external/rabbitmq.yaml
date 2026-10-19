@@ -5,4 +5,52 @@ domain services and the gateway) reach it at this same in-cluster name.
 */}}
 {{- if not (and .Values.rabbitmq .Values.rabbitmq.inCluster) }}
 {{ include "bank-usac.externalDependency" (dict "root" $ "key" "rabbitmq" "dnsName" "rabbitmq" "portName" "amqp") }}
+{{- /*
+Y su endpoint de métricas, `rabbitmq-metrics:15692` (T-60).
+
+El consumer lag por cola sale del plugin `rabbitmq_prometheus`, que la imagen
+`rabbitmq:*-management` trae habilitado, en el puerto 15692 del MISMO broker.
+El Service `rabbitmq` de arriba sólo publica el 5672, así que en kind el job de
+Prometheus no tenía a quién raspar: el dashboard de consumer lag y la alerta
+`BrokerConsumerLagHigh` salían vacíos en local.
+
+Un Service aparte y no un segundo puerto en el de arriba porque la plantilla
+`bank-usac.externalDependency` es común a las siete dependencias externas, y
+porque así el contrato del AMQP no cambia. Sólo en `dockerNetwork`: con
+`hostFallback` el 15692 no está publicado en el host (el Compose sólo publica el
+5672 y el 15672), y un Service que apunta a un puerto cerrado es peor que no
+tenerlo. Lo raspa el job `rabbitmq-local` de
+`infra/k8s/kind/observability.values.yaml`; en la nube el broker vive dentro
+del clúster y nada de esto se renderiza.
+*/}}
+{{- if ne .Values.external.mode "hostFallback" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bank-usac.componentLabels" (dict "root" $ "component" "rabbitmq") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: prometheus
+      port: 15692
+      targetPort: 15692
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: rabbitmq-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bank-usac.componentLabels" (dict "root" $ "component" "rabbitmq") | nindent 4 }}
+subsets:
+  - addresses:
+      - ip: {{ required "external.rabbitmq.dockerNetwork.host is required in external.mode=dockerNetwork" .Values.external.rabbitmq.dockerNetwork.host }}
+    ports:
+      - name: prometheus
+        port: 15692
+{{- end }}
 {{- end }}
