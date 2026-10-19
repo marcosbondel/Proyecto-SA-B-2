@@ -566,7 +566,7 @@ jobs:
           set -euo pipefail
           # La ultima version formal que release.yml publico. Sin tag no hay
           # nada que desplegar: produccion no improvisa una imagen.
-          VERSION="$(git tag -l 'v*' --sort=-v:refname | head -n 1)"
+          VERSION="$(git tag -l 'v*' --sort=-v:refname | sed -n 1p)"
 
           if [ -z "$VERSION" ]; then
             echo "::error::No hay ningun tag vX.X.X. Produccion solo despliega imagenes publicadas por release.yml."
@@ -1035,7 +1035,7 @@ jobs:
             --image=curlimages/curl:8.11.1 --quiet -- \
             curl -s --max-time 20 'http://prometheus-server/api/v1/targets?state=active' || true)"
 
-          if echo "$objetivos" | grep -q '"job":"otel-gateway"'; then
+          if grep -q '"job":"otel-gateway"' <<<"$objetivos"; then
             echo "Prometheus esta raspando el Collector."
           else
             echo "::warning::Prometheus todavia no lista el objetivo otel-gateway. Puede tardar un intervalo de raspado (30 s)."
@@ -1080,7 +1080,7 @@ jobs:
           # que si no esta, Grafana no leyo su configuracion de alertas.
           PUNTOS="$(g '/api/v1/provisioning/contact-points' | jq -r '.[].name' 2>/dev/null || true)"
           for cp in bank-audit-prod bank-audit-dev; do
-            if ! printf '%s\n' "$PUNTOS" | grep -qx "$cp"; then
+            if ! grep -qx "$cp" <<<"$PUNTOS"; then
               echo "::error::Grafana no tiene el contact point ${cp}. Las alertas no tendrian a donde ir."
               exit 1
             fi
