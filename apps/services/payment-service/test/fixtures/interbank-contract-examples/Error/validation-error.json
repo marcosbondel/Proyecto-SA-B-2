@@ -1,0 +1,5 @@
+{
+  "code": "VALIDATION_ERROR",
+  "message": "El header Idempotency-Key debe ser igual a interbankTransferId.",
+  "timestamp": "2026-10-20T15:00:00Z"
+}

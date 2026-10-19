@@ -36,6 +36,7 @@ suite('interbank send persistence', () => {
 
   beforeEach(async () => {
     await pool.query('TRUNCATE interbank_sends');
+    await pool.query('TRUNCATE interbank_send_history');
     await pool.query('TRUNCATE outbox_messages');
   });
 
@@ -58,7 +59,19 @@ suite('interbank send persistence', () => {
     overrides: Partial<
       Omit<
         InterbankSend,
-        'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt' | 'probe' | 'cancel' | 'resolveNotBefore'
+        | 'state'
+        | 'reason'
+        | 'attempts'
+        | 'verdictEnqueuedAt'
+        | 'probe'
+        | 'cancel'
+        | 'resolveNotBefore'
+        | 'probeAttempts'
+        | 'cancelAttempts'
+        | 'reversal'
+        | 'decidedAt'
+        | 'sentAt'
+        | 'reversedAt'
       >
     > = {},
   ) {
@@ -69,6 +82,8 @@ suite('interbank send persistence', () => {
       idempotencyKey: randomUUID(),
       destinationBankCode: 'BANK99',
       destinationAccount: 'cuenta-de-alla-1',
+      originAccount: '02-000000052',
+      customerId: null,
       amount: { amountMinor: 12_500, currency: 'GTQ' },
       correlationId: randomUUID(),
       // Los plazos del contrato, no los 30 s de antes de TD-095.
@@ -551,6 +566,206 @@ suite('interbank send persistence', () => {
       expect(dos.filter(Boolean)).toHaveLength(1);
       const encolado = await pool.query('SELECT 1 FROM outbox_messages');
       expect(encolado.rowCount).toBe(1);
+    });
+  });
+  /**
+   * Lo que T-60 añade a la persistencia del depósito enviado.
+   */
+  describe('REVERSED es alcanzable (T-60)', () => {
+    it('la compensación escribe REVERSED y conserva el motivo con el que se liberó', async () => {
+      /*
+       * El dominio emite `COMPENSATED` sin motivo, y el CHECK de la tabla exige
+       * motivo en REVERSED: hasta T-60 el `UPDATE` ponía `reason = NULL` y la
+       * base lo rechazaba, así que REVERSED era inalcanzable en producción y la
+       * compensación se reintentaba hasta la cola muerta. Los dobles del caso de
+       * uso no tienen CHECK y nunca lo vieron; sólo esta suite, contra una base
+       * de verdad.
+       */
+      const abierto = await repository.open({ send: nuevo(), now });
+      const id = abierto.send.interbankTransferId;
+      await repository.advance({ interbankTransferId: id, from: 'PENDING', to: 'SENT', reason: null, nextAttemptAt: null, now });
+      await repository.advance({
+        interbankTransferId: id,
+        from: 'SENT',
+        to: 'REJECTED',
+        reason: 'CANCELLED_AT_PARTNER',
+        nextAttemptAt: null,
+        now,
+      });
+
+      const movido = await repository.advance({
+        interbankTransferId: id,
+        from: 'REJECTED',
+        to: 'REVERSED',
+        reason: null,
+        nextAttemptAt: null,
+        now,
+      });
+
+      expect(movido).toBe(true);
+      const fila = await repository.find(id);
+      expect(fila?.state).toBe('REVERSED');
+      expect(fila?.reason).toBe('CANCELLED_AT_PARTNER');
+      expect(fila?.reversedAt).toEqual(now);
+    });
+  });
+
+  describe('el historial de estados', () => {
+    it('anota cada cambio, en orden, y no anota el que no cambia nada', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+      const id = abierto.send.interbankTransferId;
+      const paso = (n: number): Date => new Date(now.getTime() + n * 1_000);
+
+      // Un reintento de entrega: PENDING -> PENDING no es un cambio de estado.
+      await repository.advance({ interbankTransferId: id, from: 'PENDING', to: 'PENDING', reason: 'ECONNREFUSED', nextAttemptAt: paso(1), now: paso(1) });
+      await repository.advance({ interbankTransferId: id, from: 'PENDING', to: 'SENT', reason: null, nextAttemptAt: null, now: paso(2) });
+      await repository.advance({ interbankTransferId: id, from: 'SENT', to: 'TIMEOUT', reason: 'CONFIRMATION_TIMEOUT', nextAttemptAt: null, now: paso(3) });
+      await repository.advance({ interbankTransferId: id, from: 'TIMEOUT', to: 'ACCEPTED', reason: null, nextAttemptAt: null, now: paso(4) });
+
+      const historial = await repository.history(id);
+
+      expect(historial.map((h) => h.state)).toEqual(['PENDING', 'SENT', 'TIMEOUT', 'ACCEPTED']);
+      expect(historial[2]?.reason).toBe('CONFIRMATION_TIMEOUT');
+    });
+
+    it('el que pierde el guardia de estado no deja historial', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+      const id = abierto.send.interbankTransferId;
+
+      await repository.advance({ interbankTransferId: id, from: 'ACCEPTED', to: 'REVERSED', reason: null, nextAttemptAt: null, now });
+
+      expect((await repository.history(id)).map((h) => h.state)).toEqual(['PENDING']);
+    });
+  });
+
+  describe('quién ve qué (B10)', () => {
+    const ANA = '00000000-0000-4000-8000-0000000000a1';
+    const BETO = '00000000-0000-4000-8000-0000000000b2';
+
+    it('un cliente ve los suyos y el personal ve todos', async () => {
+      await repository.open({ send: nuevo({ customerId: ANA }), now });
+      await repository.open({ send: nuevo({ customerId: ANA }), now });
+      await repository.open({ send: nuevo({ customerId: BETO }), now });
+
+      expect(await repository.list({ customerId: ANA, limit: 50 })).toHaveLength(2);
+      expect(await repository.list({ customerId: BETO, limit: 50 })).toHaveLength(1);
+      expect(await repository.list({ customerId: null, limit: 50 })).toHaveLength(3);
+    });
+
+    it('filtra por estado y respeta el límite', async () => {
+      const a = await repository.open({ send: nuevo({ customerId: ANA }), now });
+      await repository.open({ send: nuevo({ customerId: ANA }), now });
+      await repository.advance({ interbankTransferId: a.send.interbankTransferId, from: 'PENDING', to: 'SENT', reason: null, nextAttemptAt: null, now });
+
+      expect(await repository.list({ customerId: ANA, state: 'SENT', limit: 50 })).toHaveLength(1);
+      expect(await repository.list({ customerId: ANA, limit: 1 })).toHaveLength(1);
+    });
+
+    it('guarda el cliente y la cuenta origen del depósito', async () => {
+      const abierto = await repository.open({ send: nuevo({ customerId: ANA }), now });
+
+      const fila = await repository.find(abierto.send.interbankTransferId);
+
+      expect(fila?.customerId).toBe(ANA);
+      expect(fila?.originAccount).toBe('02-000000052');
+    });
+  });
+
+  describe('el protocolo de TIMEOUT cuenta sus intentos', () => {
+    it('suma una consulta y una cancelación por cada vez, y no más', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+      const id = abierto.send.interbankTransferId;
+      await repository.advance({ interbankTransferId: id, from: 'PENDING', to: 'TIMEOUT', reason: 'CONFIRMATION_TIMEOUT', nextAttemptAt: null, now });
+
+      await repository.recordResolutionStep({ interbankTransferId: id, probe: { kind: 'UNREACHABLE' }, resolveNotBefore: now, now });
+      await repository.recordResolutionStep({ interbankTransferId: id, probe: { kind: 'UNREACHABLE' }, resolveNotBefore: now, now });
+      await repository.recordResolutionStep({ interbankTransferId: id, cancel: { kind: 'UNREACHABLE' }, resolveNotBefore: now, now });
+
+      const fila = await repository.find(id);
+
+      expect(fila?.probeAttempts).toBe(2);
+      expect(fila?.cancelAttempts).toBe(1);
+    });
+  });
+
+  describe('el reverso del paso 5', () => {
+    async function liberado() {
+      const abierto = await repository.open({ send: nuevo(), now });
+      const id = abierto.send.interbankTransferId;
+      await repository.advance({ interbankTransferId: id, from: 'PENDING', to: 'TIMEOUT', reason: 'CONFIRMATION_TIMEOUT', nextAttemptAt: null, now });
+      await repository.advance({ interbankTransferId: id, from: 'TIMEOUT', to: 'REJECTED', reason: 'RELEASED_NO_ANSWER', nextAttemptAt: null, now });
+
+      return id;
+    }
+
+    it('se pide una sola vez por depósito, aunque lleguen dos ACCEPTED tardíos a la vez', async () => {
+      const id = await liberado();
+      const reversalId = randomUUID();
+
+      const dos = await Promise.all([
+        repository.requestReversal({ interbankTransferId: id, reversalId, now }),
+        repository.requestReversal({ interbankTransferId: id, reversalId, now }),
+      ]);
+
+      expect(dos.filter(Boolean)).toHaveLength(1);
+      expect((await repository.find(id))?.reversal).toMatchObject({ reversalId, state: 'PENDING' });
+    });
+
+    it('no se pide de un depósito que no se ha liberado', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+
+      expect(
+        await repository.requestReversal({
+          interbankTransferId: abierto.send.interbankTransferId,
+          reversalId: randomUUID(),
+          now,
+        }),
+      ).toBe(false);
+    });
+
+    it('claimReversals arrienda la fila: dos barridos no piden el mismo reverso a la vez', async () => {
+      const id = await liberado();
+      await repository.requestReversal({ interbankTransferId: id, reversalId: randomUUID(), now });
+
+      const primero = await repository.claimReversals(now, 10);
+      const segundo = await repository.claimReversals(now, 10);
+
+      expect(primero.map((f) => f.interbankTransferId)).toEqual([id]);
+      expect(segundo).toEqual([]);
+    });
+
+    it('guarda en qué quedó y deja de reclamarlo al completarse', async () => {
+      const id = await liberado();
+      await repository.requestReversal({ interbankTransferId: id, reversalId: randomUUID(), now });
+      const refund = randomUUID();
+
+      await repository.recordReversalStep({
+        interbankTransferId: id,
+        state: 'COMPLETED',
+        refundTransferId: refund,
+        message: null,
+        nextAt: null,
+        now,
+      });
+
+      expect((await repository.find(id))?.reversal).toMatchObject({
+        state: 'COMPLETED',
+        refundTransferId: refund,
+        attempts: 1,
+      });
+      expect(await repository.claimReversals(new Date(now.getTime() + 3_600_000), 10)).toEqual([]);
+    });
+
+    it('la base se niega a un reverso sobre un depósito que sigue siendo nuestro', async () => {
+      const abierto = await repository.open({ send: nuevo(), now });
+
+      await expect(
+        pool.query(
+          `UPDATE interbank_sends SET reversal_id = $2, reversal_state = 'PENDING'
+            WHERE interbank_transfer_id = $1`,
+          [abierto.send.interbankTransferId, randomUUID()],
+        ),
+      ).rejects.toThrow(/reversal_after_release/);
     });
   });
 });

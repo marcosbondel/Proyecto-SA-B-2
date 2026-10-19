@@ -88,6 +88,12 @@ catalog:
   '@nestjs/swagger': 11.4.7
   yaml: 2.9.0
 
+  # Test-only: the official interbank OpenAPI is the oracle that validates what
+  # payment-service sends (T-60, B1). `ajv` is the JSON Schema validator already
+  # in the tree transitively; declaring it here only makes the version explicit.
+  ajv: 8.20.0
+  ajv-formats: 3.0.1
+
   # Object storage for the identity-document photo (gateway only). MinIO is
   # S3-compatible (ADR-012); this is a transfer buffer, never a database.
   '@aws-sdk/client-s3': 3.1116.0

@@ -83,6 +83,8 @@ export interface TransferRequest extends CommandContext {
   readonly interbank?: {
     readonly bankCode: string;
     readonly account: string;
+    /** La cuenta de este banco de la que sale el dinero (`02-NNNNNNNNN`), que el contrato exige. */
+    readonly originAccount: string;
     readonly interbankTransferId: string;
     readonly idempotencyKey: string;
   };

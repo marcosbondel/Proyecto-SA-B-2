@@ -7,7 +7,7 @@ import type { InterbankSendTelemetry } from '../../application/interbank-send.po
 // prueba de aislamiento de este servicio es la que insiste, y tiene razón: en
 // cuanto un adaptador compara estas cadenas, el vocabulario se ha mudado a un
 // sitio donde ya no se puede discutir sin levantar el servicio.
-import { isSendDecided } from '../../domain/interbank-send';
+import { sentMetricResult } from '../../domain/interbank-send';
 
 export const DEPOSITS_COUNTER = 'bank.interbank.deposits';
 export const DURATION_HISTOGRAM = 'bank.interbank.deposit.duration';
@@ -24,6 +24,9 @@ type LogFields = {
   /** De dónde venía y con qué, para una transición que el diagrama no tiene (T-56). */
   readonly from?: string;
   readonly event?: string;
+  /** El paso del barrido que falló o el motivo de un fallo, siempre al log. */
+  readonly step?: string;
+  readonly error?: string;
 };
 
 /** Closed metric labels; entity identifiers live only in correlated logs. */
@@ -37,6 +40,7 @@ export class OtelInterbankTelemetry implements InterbankTelemetry {
     readonly log: {
       info(message: string, fields: LogFields): void;
       warn(message: string, fields: LogFields): void;
+      error(message: string, fields: LogFields): void;
     },
   ) {
     const meter = metrics.getMeter('payment-service.interbank');
@@ -84,9 +88,21 @@ export class OtelInterbankTelemetry implements InterbankTelemetry {
 
   callbackAttempt(attempt: Parameters<InterbankTelemetry['callbackAttempt']>[0]): void {
     this.#callbacks.add(1, { result: attempt.result });
-    const fields = { correlationId: attempt.correlationId, outcome: attempt.result };
+    const fields = {
+      correlationId: attempt.correlationId,
+      outcome: attempt.result,
+      ...(attempt.detail === undefined ? {} : { error: attempt.detail }),
+    };
     if (attempt.result === 'delivered') this.log.info('interbank callback delivered', fields);
     else this.log.warn('interbank callback failed; retry scheduled', fields);
+  }
+
+  sweepFailed(failure: Parameters<InterbankTelemetry['sweepFailed']>[0]): void {
+    this.log.error('interbank sweep step failed; the rest of the pass continues', {
+      correlationId: failure.correlationId,
+      step: failure.step,
+      error: failure.error,
+    });
   }
 
   /**
@@ -183,17 +199,32 @@ export class OtelInterbankSendTelemetry implements InterbankSendTelemetry {
     });
 
     /*
-     * Sólo los tres veredictos cuentan para la tasa de éxito. `PENDING` y
-     * `SENT` son el depósito en vuelo, y `REVERSED` es la constancia de la
-     * devolución de uno que ya se contó como rechazado o vencido — contarlo
-     * otra vez duplicaría el denominador.
+     * Qué cuenta en `bank_interbank_sent_total`, y con qué etiqueta (B9).
+     *
+     * - **`timeout`** se cuenta **al entrar** en `TIMEOUT`. Desde TD-095
+     *   `isSendDecided` lo excluye —ya no es un veredicto, es una pregunta
+     *   abierta— y por eso la serie `result="timeout"` dejó de subir, y con ella
+     *   «el número de timeouts» que el enunciado pide expresamente y la regla
+     *   `sli:interbank_sent_timeouts:rate5m`. Se cuenta la *entrada*, que es el
+     *   suceso: que el banco pareja no contestó a tiempo.
+     * - **`accepted` / `rejected`** se cuentan al decidirse, salvo cuando vienen
+     *   de `TIMEOUT`: ese depósito ya contó como `timeout` y contarlo otra vez
+     *   duplicaría el denominador de la tasa de éxito. Que un timeout se
+     *   resolviera a favor o en contra queda en el log, el historial y el
+     *   evento `payment.interbank.sent.v1`.
+     * - `PENDING`, `SENT` y `REVERSED` no cuentan: son el depósito en vuelo y la
+     *   constancia de una devolución de uno que ya se contó.
+     *
+     * Sin histograma para el timeout: su duración es el plazo (180 s), no una
+     * latencia de confirmación, y el p95 que miden los paneles es el de los
+     * depósitos que el banco pareja *sí* contestó.
      */
-    if (isSendDecided(change.state)) {
-      const result = change.state.toLowerCase();
+    const result = sentMetricResult(change.state, change.from);
 
+    if (result !== null) {
       this.#sent.add(1, { result });
 
-      if (change.durationMs !== null) {
+      if (result !== 'timeout' && change.durationMs !== null) {
         this.#confirmation.record(change.durationMs / 1000, { result });
       }
     }
