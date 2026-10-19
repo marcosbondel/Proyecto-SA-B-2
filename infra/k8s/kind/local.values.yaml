@@ -69,6 +69,14 @@ interbank:
 # completo es una URL con la que se toma una cuenta ajena (§8.3, «Datos
 # sensibles expuestos»). Este archivo no participa en ningún despliegue a GKE.
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# El frontend (T-60): a dónde enlaza un traceId en pantalla.
+# --------------------------------------------------------------------------
+web:
+  # Grafana, con el `kubectl port-forward` de `pnpm obs:forward` (3002:80). La
+  # resuelve el NAVEGADOR, así que es localhost y no el Service del clúster.
+  grafanaUrl: http://localhost:3002
+
 services:
   notificationAudit:
     revealActivationLinks: "true"

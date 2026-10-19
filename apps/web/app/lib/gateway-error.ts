@@ -5,12 +5,18 @@
  * `SharedAsyncStateAlert`. The other two are the session boundary: they are
  * intercepted before any screen sees them, because "your session ended" and
  * "the bank refused this" are not the same news and must not look alike.
+ *
+ * `NOT_FOUND` is an eighth, added by T-60: the interbank-contract routes answer
+ * a missing (or somebody else's) deposit with it. Left unknown it folded into
+ * `INTERNAL_ERROR`, which titled "that deposit does not exist" as "an
+ * unexpected error occurred" — and gave the screen no way to tell the two apart.
  */
 export type GatewayErrorType =
   | 'VALIDATION_ERROR'
   | 'UNAUTHENTICATED'
   | 'FORBIDDEN'
   | 'BUSINESS_REJECTION'
+  | 'NOT_FOUND'
   | 'REPLY_TIMEOUT'
   | 'BROKER_UNAVAILABLE'
   | 'INTERNAL_ERROR';
@@ -60,6 +66,7 @@ const KNOWN_TYPES = new Set<GatewayErrorType>([
   'UNAUTHENTICATED',
   'FORBIDDEN',
   'BUSINESS_REJECTION',
+  'NOT_FOUND',
   'REPLY_TIMEOUT',
   'BROKER_UNAVAILABLE',
   'INTERNAL_ERROR',
@@ -133,6 +140,12 @@ export function asyncStateFor(error: GatewayError): AsyncState {
 
   if (error.type === 'FORBIDDEN') {
     return 'FORBIDDEN';
+  }
+
+  // A thing that is not there is the Gateway's own sentence about it, which is a
+  // refusal in the alert's vocabulary — not a malfunction.
+  if (error.type === 'NOT_FOUND') {
+    return 'BUSINESS_REJECTION';
   }
 
   return error.type;

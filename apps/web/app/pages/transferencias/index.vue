@@ -148,7 +148,7 @@ useHead({ title: 'Transferencias · bonking' });
           }}
         </p>
       </div>
-      <div class="flex gap-3">
+      <div class="flex flex-wrap gap-3">
         <UButton v-if="isStaff" to="/transferencias/monitor" variant="outline" color="neutral">
           Monitoreo
         </UButton>
@@ -158,6 +158,9 @@ useHead({ title: 'Transferencias · bonking' });
           estos mismos. Secundario frente a «Nueva transferencia» porque es lo
           que menos gente hace.
         -->
+        <UButton to="/transferencias/interbancarias" variant="outline" color="neutral">
+          {{ isStaff ? 'Depósitos a otros bancos' : 'Mis depósitos a otro banco' }}
+        </UButton>
         <UButton to="/transferencias/interbancaria" variant="outline" color="neutral">
           A otro banco
         </UButton>
