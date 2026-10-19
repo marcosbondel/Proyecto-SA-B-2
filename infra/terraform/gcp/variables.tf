@@ -11,8 +11,8 @@ variable "region" {
 
 variable "zone" {
   type        = string
-  description = "Zona específica de GCP para instancias de Compute Engine y nodos GKE."
-  default     = "us-central1-a"
+  description = "Zona específica de GCP para instancias de Compute Engine y nodos GKE. us-central1-c y no -a: el 2026-10-19 GKE no pudo crear el clúster en -a por falta de capacidad de Google en esa zona."
+  default     = "us-central1-c"
 }
 
 variable "network_name" {
