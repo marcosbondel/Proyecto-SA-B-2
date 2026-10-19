@@ -88,7 +88,7 @@ export const GATEWAY_RUNTIME = Symbol('GatewayRuntime');
 @Module({})
 export class AppModule implements NestModule {
   public static forRoot(environment: GatewayEnvironment): DynamicModule {
-    const broker = createMessageBroker(environment.RABBITMQ_URL);
+    const broker = createMessageBroker(environment.RABBITMQ_URL, environment.REPLY_TIMEOUT_MS);
     const replyQueue = new ReplyQueueAdapter(
       broker,
       environment.GATEWAY_INSTANCE_ID,

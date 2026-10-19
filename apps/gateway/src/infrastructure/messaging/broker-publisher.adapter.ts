@@ -32,6 +32,14 @@ export class BrokerPublisherAdapter implements MessagePublisherPort {
 
     const { exchange, routingKey } = destinationFor(contract);
 
+    // With the connection down, `amqp-connection-manager` would buffer the
+    // publish until its own timeout. The answer is already known, so give it
+    // now: the caller hears BROKER_UNAVAILABLE in milliseconds and the process
+    // never holds a request open against a broker that is not there.
+    if (!this.#broker.isConnected()) {
+      throw GatewayError.brokerUnavailable();
+    }
+
     try {
       await this.#broker.publish(exchange, routingKey, envelope);
     } catch {
