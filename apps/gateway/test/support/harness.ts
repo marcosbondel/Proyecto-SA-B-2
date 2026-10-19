@@ -45,6 +45,7 @@ import {
 } from '../../src/interfaces/guards/interbank-api-key.guard';
 import {
   INTERBANK_BANK_CODE,
+  INTERBANK_ID_SECRET,
   INTERBANK_MAX_AMOUNT_MINOR,
   INTERBANK_PARTNER_BANK_CODE,
 } from '../../src/interfaces/interbank-v1.tokens';
@@ -267,6 +268,7 @@ export async function buildHarness(
       { provide: INTERBANK_BANK_CODE, useValue: TEST_OWN_BANK_CODE },
       { provide: INTERBANK_PARTNER_BANK_CODE, useValue: TEST_PARTNER_BANK_CODE },
       { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: TEST_MAX_AMOUNT_MINOR },
+      { provide: INTERBANK_ID_SECRET, useValue: 'a-test-secret-for-derived-interbank-ids' },
       InterbankSendUseCase,
       { provide: BROKER_HEALTH, useValue: { isConnected: () => brokerUp.value } },
       { provide: APP_GUARD, useClass: JwtGuard },

@@ -11,6 +11,7 @@ import type {
 import type { OutboxMessage } from '../../application/ports';
 import { settlementOf, type InterbankSendState } from '../../domain/interbank-send';
 import type { PartnerCancel, PartnerProbe } from '../../domain/interbank-timeout';
+import { SEND_LEASE_MS } from './claim-lease';
 
 interface Row {
   readonly interbank_transfer_id: string;
@@ -153,9 +154,28 @@ function toCancel(row: Row): PartnerCancel | null {
   return { kind: 'UNREACHABLE' };
 }
 
-/** Los depósitos que este banco envía al banco pareja, y su calendario. */
+/**
+ * Los depósitos que este banco envía al banco pareja, y su calendario.
+ *
+ * **Todo reclamo es un arrendamiento** (T-60). `claimSendable`, `claimExpired`,
+ * `claimAwaitingResolution`, `claimUnreconciled` y `claimReversals` son cada uno
+ * una sola sentencia que elige las filas vencidas *sin arrendar* y las arrienda
+ * (`claimed_until = now + leaseMs`). Antes eran un `SELECT … FOR UPDATE SKIP
+ * LOCKED` fuera de una transacción: el candado se soltaba al volver el `SELECT`
+ * y dos réplicas —o dos barridos solapados— tomaban las mismas filas y
+ * repetían cada llamada al banco pareja. Ver `claim-lease.ts` para la duración.
+ *
+ * El arrendamiento se suelta donde el paso termina y programa el siguiente:
+ * `advance`, `recordResolutionStep`, `recordReversalStep` y `enqueueVerdict`
+ * ponen `claimed_until = NULL` en el mismo `UPDATE`. Si el paso lanza, la fila
+ * queda arrendada hasta que caduque — que es también una espera, y evita que
+ * una fila envenenada se reclame cada 500 ms.
+ */
 export class PostgresInterbankSendRepository implements InterbankSendRepository {
-  constructor(readonly pool: Pool) {}
+  constructor(
+    readonly pool: Pool,
+    readonly leaseMs: number = SEND_LEASE_MS,
+  ) {}
 
   /**
    * `ON CONFLICT DO NOTHING` y después leer: el comando puede reentregarse, y
@@ -196,8 +216,8 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
             destination_bank_code, destination_account, amount_minor, currency,
             correlation_id, origin_envelope, state, reason, attempts,
             next_attempt_at, confirmation_due_at, trace_context, created_at,
-            release_not_before, origin_account, customer_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'PENDING',NULL,0,$11,$12,$13,$11,$14,$15,$16)
+            release_not_before, origin_account, customer_id, claimed_until)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'PENDING',NULL,0,$11,$12,$13,$11,$14,$15,$16,$17)
          ON CONFLICT DO NOTHING
          RETURNING ${COLUMNS}
        ), historial AS (
@@ -222,6 +242,13 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
         s.releaseNotBefore,
         s.originAccount,
         s.customerId,
+        /*
+         * Nace arrendado: quien da de alta el depósito lo entrega en línea, y el
+         * barrido —que corre cada 500 ms y ve un `PENDING` con `next_attempt_at`
+         * ya vencido— lo mandaría al mismo tiempo. El arrendamiento lo suelta
+         * `advance` cuando la entrega se decide.
+         */
+        new Date(input.now.getTime() + this.leaseMs),
       ],
     );
 
@@ -367,7 +394,10 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
                 verdict_enqueued_at = CASE
                   WHEN $7 AND $8 THEN COALESCE(verdict_enqueued_at, $6)
                   ELSE verdict_enqueued_at
-                END
+                END,
+                -- El paso terminó y trae su siguiente hora: se suelta el
+                -- arrendamiento para que esa hora se respete al instante.
+                claimed_until = NULL
           WHERE interbank_transfer_id = $1
             AND state = $2::text`,
         [
@@ -420,16 +450,29 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
    * índice parcial `interbank_sends_unreconciled_idx`, que en régimen normal
    * está vacío.
    */
-  async claimUnreconciled(olderThan: Date, limit: number): Promise<readonly InterbankSend[]> {
+  async claimUnreconciled(
+    olderThan: Date,
+    limit: number,
+    now: Date,
+  ): Promise<readonly InterbankSend[]> {
     const pendientes = await this.pool.query<Row>(
-      `SELECT ${COLUMNS} FROM interbank_sends
-        WHERE state IN ('ACCEPTED','REJECTED')
-          AND verdict_enqueued_at IS NULL
-          AND decided_at <= $1
-        ORDER BY decided_at
-        FOR UPDATE SKIP LOCKED
-        LIMIT $2`,
-      [olderThan, limit],
+      `WITH claimed AS (
+         UPDATE interbank_sends
+            SET claimed_until = $3::timestamptz + ($4::double precision * interval '1 millisecond')
+          WHERE interbank_transfer_id IN (
+            SELECT interbank_transfer_id FROM interbank_sends
+             WHERE state IN ('ACCEPTED','REJECTED')
+               AND verdict_enqueued_at IS NULL
+               AND decided_at <= $1
+               AND (claimed_until IS NULL OR claimed_until <= $3)
+             ORDER BY decided_at
+             FOR UPDATE SKIP LOCKED
+             LIMIT $2
+          )
+          RETURNING ${COLUMNS}
+       )
+       SELECT ${COLUMNS} FROM claimed ORDER BY decided_at`,
+      [olderThan, limit, now, this.leaseMs],
     );
 
     return pendientes.rows.map(toSend);
@@ -454,7 +497,7 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
 
       const marked = await client.query(
         `UPDATE interbank_sends
-            SET verdict_enqueued_at = $2
+            SET verdict_enqueued_at = $2, claimed_until = NULL
           WHERE interbank_transfer_id = $1
             AND verdict_enqueued_at IS NULL`,
         [input.interbankTransferId, input.now],
@@ -504,19 +547,31 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
   }
 
   /**
-   * Los pendientes que toca reintentar, tomados con `SKIP LOCKED`.
+   * Los pendientes que toca reintentar, **arrendados** en la misma sentencia.
    *
-   * `SKIP LOCKED` es lo que permite más de una réplica sin que las dos manden
-   * el mismo depósito: la que llega segunda no espera, se lleva otras filas.
+   * El `FOR UPDATE SKIP LOCKED` del subselect reparte las filas entre los
+   * reclamos que corren a la vez; el `claimed_until` las mantiene repartidas
+   * después, cuando el candado ya se soltó con la sentencia. Sin lo segundo, la
+   * que llega medio segundo más tarde se lleva las mismas filas y el depósito
+   * sale otra vez al banco pareja.
    */
   async claimSendable(now: Date, limit: number): Promise<readonly InterbankSend[]> {
     const due = await this.pool.query<Row>(
-      `SELECT ${COLUMNS} FROM interbank_sends
-        WHERE state = 'PENDING' AND next_attempt_at <= $1
-        ORDER BY next_attempt_at
-        FOR UPDATE SKIP LOCKED
-        LIMIT $2`,
-      [now, limit],
+      `WITH claimed AS (
+         UPDATE interbank_sends
+            SET claimed_until = $1::timestamptz + ($3::double precision * interval '1 millisecond')
+          WHERE interbank_transfer_id IN (
+            SELECT interbank_transfer_id FROM interbank_sends
+             WHERE state = 'PENDING' AND next_attempt_at <= $1
+               AND (claimed_until IS NULL OR claimed_until <= $1)
+             ORDER BY next_attempt_at
+             FOR UPDATE SKIP LOCKED
+             LIMIT $2
+          )
+          RETURNING ${COLUMNS}, next_attempt_at
+       )
+       SELECT ${COLUMNS} FROM claimed ORDER BY next_attempt_at`,
+      [now, limit, this.leaseMs],
     );
 
     return due.rows.map(toSend);
@@ -524,12 +579,21 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
 
   async claimExpired(now: Date, limit: number): Promise<readonly InterbankSend[]> {
     const due = await this.pool.query<Row>(
-      `SELECT ${COLUMNS} FROM interbank_sends
-        WHERE state IN ('PENDING','SENT') AND confirmation_due_at <= $1
-        ORDER BY confirmation_due_at
-        FOR UPDATE SKIP LOCKED
-        LIMIT $2`,
-      [now, limit],
+      `WITH claimed AS (
+         UPDATE interbank_sends
+            SET claimed_until = $1::timestamptz + ($3::double precision * interval '1 millisecond')
+          WHERE interbank_transfer_id IN (
+            SELECT interbank_transfer_id FROM interbank_sends
+             WHERE state IN ('PENDING','SENT') AND confirmation_due_at <= $1
+               AND (claimed_until IS NULL OR claimed_until <= $1)
+             ORDER BY confirmation_due_at
+             FOR UPDATE SKIP LOCKED
+             LIMIT $2
+          )
+          RETURNING ${COLUMNS}
+       )
+       SELECT ${COLUMNS} FROM claimed ORDER BY confirmation_due_at`,
+      [now, limit, this.leaseMs],
     );
 
     return due.rows.map(toSend);
@@ -547,14 +611,23 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
    */
   async claimAwaitingResolution(now: Date, limit: number): Promise<readonly InterbankSend[]> {
     const pendientes = await this.pool.query<Row>(
-      `SELECT ${COLUMNS} FROM interbank_sends
-        WHERE state = 'TIMEOUT'
-          AND release_not_before IS NOT NULL
-          AND (resolve_not_before IS NULL OR resolve_not_before <= $1)
-        ORDER BY resolve_not_before NULLS FIRST
-        FOR UPDATE SKIP LOCKED
-        LIMIT $2`,
-      [now, limit],
+      `WITH claimed AS (
+         UPDATE interbank_sends
+            SET claimed_until = $1::timestamptz + ($3::double precision * interval '1 millisecond')
+          WHERE interbank_transfer_id IN (
+            SELECT interbank_transfer_id FROM interbank_sends
+             WHERE state = 'TIMEOUT'
+               AND release_not_before IS NOT NULL
+               AND (resolve_not_before IS NULL OR resolve_not_before <= $1)
+               AND (claimed_until IS NULL OR claimed_until <= $1)
+             ORDER BY resolve_not_before NULLS FIRST
+             FOR UPDATE SKIP LOCKED
+             LIMIT $2
+          )
+          RETURNING ${COLUMNS}
+       )
+       SELECT ${COLUMNS} FROM claimed ORDER BY resolve_not_before NULLS FIRST`,
+      [now, limit, this.leaseMs],
     );
 
     return pendientes.rows.map(toSend);
@@ -591,7 +664,9 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
                 WHEN $4::text IS NULL THEN cancel_requested_at
                 ELSE COALESCE(cancel_requested_at, $6)
               END,
-              resolve_not_before = $7
+              resolve_not_before = $7,
+              -- Paso hecho y siguiente hora escrita: se suelta el arrendamiento.
+              claimed_until = NULL
         WHERE interbank_transfer_id = $1`,
       [
         input.interbankTransferId,
@@ -630,23 +705,30 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
 
   async claimReversals(now: Date, limit: number): Promise<readonly InterbankSend[]> {
     /*
-     * Con arrendamiento: tomar la fila es también empujar su próxima hora 30 s,
-     * así que dos réplicas barriendo a la vez no piden el mismo reverso en el
-     * mismo segundo. El reverso es idempotente por `reversalId` en el otro banco;
-     * esto evita ruido, no un doble pago.
+     * Esta ya era una sola sentencia, con su arrendamiento escondido en la
+     * propia hora (`reversal_next_at + 30 s`). Dos defectos: 30 s es menos que un
+     * lote entero con el otro banco caído (20 × 5 s), y empujar la hora mezclaba
+     * «cuándo toca» con «alguien lo está haciendo». Ahora usa `claimed_until`
+     * como los demás, y `reversal_next_at` vuelve a significar sólo lo primero.
+     * El reverso es idempotente por `reversalId` en el otro banco; esto evita
+     * ruido, no un doble pago.
      */
     const rows = await this.pool.query<Row>(
-      `UPDATE interbank_sends
-          SET reversal_next_at = $1::timestamptz + interval '30 seconds'
-        WHERE interbank_transfer_id IN (
-          SELECT interbank_transfer_id FROM interbank_sends
-           WHERE reversal_state IN ('PENDING','PROCESSING') AND reversal_next_at <= $1
-           ORDER BY reversal_next_at
-           FOR UPDATE SKIP LOCKED
-           LIMIT $2
-        )
-        RETURNING ${COLUMNS}`,
-      [now, limit],
+      `WITH claimed AS (
+         UPDATE interbank_sends
+            SET claimed_until = $1::timestamptz + ($3::double precision * interval '1 millisecond')
+          WHERE interbank_transfer_id IN (
+            SELECT interbank_transfer_id FROM interbank_sends
+             WHERE reversal_state IN ('PENDING','PROCESSING') AND reversal_next_at <= $1
+               AND (claimed_until IS NULL OR claimed_until <= $1)
+             ORDER BY reversal_next_at
+             FOR UPDATE SKIP LOCKED
+             LIMIT $2
+          )
+          RETURNING ${COLUMNS}
+       )
+       SELECT ${COLUMNS} FROM claimed ORDER BY reversal_next_at`,
+      [now, limit, this.leaseMs],
     );
 
     return rows.rows.map(toSend);
@@ -666,7 +748,8 @@ export class PostgresInterbankSendRepository implements InterbankSendRepository 
               reversal_attempts = reversal_attempts + 1,
               reversal_refund_transfer_id = COALESCE($3, reversal_refund_transfer_id),
               reversal_message = COALESCE($4, reversal_message),
-              reversal_next_at = $5
+              reversal_next_at = $5,
+              claimed_until = NULL
         WHERE interbank_transfer_id = $1
           AND reversal_id IS NOT NULL`,
       [input.interbankTransferId, input.state, input.refundTransferId, input.message, input.nextAt],

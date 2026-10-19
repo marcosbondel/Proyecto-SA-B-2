@@ -368,6 +368,7 @@ describe('wired to a real use case', () => {
           accountId,
           amount: { amountMinor: 100, currency: 'GTQ' },
         },
+        { customerId: CUSTOMER, role: 'CLIENTE' },
         `key-${String(i)}`,
       );
     }

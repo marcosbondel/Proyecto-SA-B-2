@@ -26,15 +26,32 @@ export async function askAndWait(
 ): Promise<MessageEnvelope<unknown>> {
   const waiting = replies.waitFor(envelope.correlationId, kind);
 
-  try {
-    await publisher.publish(envelope);
-  } catch (error) {
-    // The question never left. Nothing will ever settle that wait, and leaving
-    // it unobserved would surface later as an unhandled rejection in a request
-    // that already failed for a different, clearer reason.
-    void waiting.catch(() => undefined);
-    throw error;
-  }
+  // The wait is registered first, so its ceiling is already running while the
+  // publish is in flight. If the publish outlives the ceiling — a broker that
+  // is gone makes `publish` neither resolve nor reject for seconds — the wait
+  // rejects while nothing is observing it, and Node ends the process on an
+  // unhandled rejection. That is how one scaled-down RabbitMQ took every
+  // Gateway pod down on 2026-10-19. A derived no-op handler marks it handled;
+  // the rejection itself still reaches the caller through `waiting` below.
+  const quietWait = waiting.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  const publishing = publisher.publish(envelope);
+  // Same reason, other direction: if the wait settles first, nobody awaits the
+  // publish any more and a later rejection would be unobserved.
+  void publishing.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  // Whichever happens first decides what the caller hears. A publish that
+  // fails is "the question never left" and is thrown as it is; a wait that
+  // gives up first means the ceiling was reached with the publish still
+  // pending, and the honest answer is the reply timeout — the caller must not
+  // be held past its ceiling by a broker that will not confirm.
+  await Promise.race([publishing, quietWait]);
 
   return await waiting;
 }

@@ -165,6 +165,35 @@ export class QueriesUseCase {
   }
 
   /**
+   * Whether the asker can see this account at all — the early half of "the
+   * source of a transfer must be yours" (T-60).
+   *
+   * Asked of Account Service over the broker, through its own visibility rule: a
+   * `CLIENTE` sees their accounts and nothing else, so a foreign account and an
+   * account that does not exist get the **same** `ACCOUNT_NOT_FOUND`. The
+   * Gateway decides nothing here and holds no table; it relays the owning
+   * service's verdict a step earlier than the Saga would, so a customer who
+   * names somebody else's account hears `404` instead of a `202` followed by a
+   * transfer that fails.
+   *
+   * It is **not** the authority. Account re-decides ownership under the row lock
+   * when the debit is actually made, which is what stops a race or a second
+   * producer; this only spares the caller a pointless Saga.
+   */
+  public async requireVisibleAccount(accountId: string, context: QueryContext): Promise<void> {
+    const raw = await this.#ask(accountBalanceQueryV1.name, { accountId }, context);
+    const parsed = accountBalanceRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    if (parsed.data.outcome === 'NOT_FOUND') {
+      throw GatewayError.businessRejection(parsed.data.reason, 'La cuenta de origen no existe.');
+    }
+  }
+
+  /**
    * Un depósito enviado al banco pareja, con sus seis estados y su historial
    * (T-60, B10). Quién puede verlo lo decide Payment desde la identidad del
    * sobre; uno ajeno se contesta igual que uno inexistente.

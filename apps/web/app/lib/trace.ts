@@ -65,3 +65,38 @@ export function remember(
 export function traceFor(ledger: TraceLedger, correlationId: string | null): string | null {
   return correlationId === null ? null : (ledger[correlationId] ?? null);
 }
+
+/**
+ * Which trace a screen shows for an operation it did **not** start (T-60).
+ *
+ * A detail screen — a transfer, a payment — shows the correlation the operation
+ * was *born* under, which is not the correlation of the question the screen just
+ * asked. The ledger knows the trace of what this session sent (the transfer that
+ * was just created, then redirected to), so that comes first and is the trace of
+ * the operation itself. A page opened from a link, or after a reload, has no
+ * such entry; the Gateway still answered *this* query under a trace of its own,
+ * and showing it — named as the query's, never as the operation's — beats a
+ * screen with a correlation id and nowhere to go with it.
+ */
+export interface ShownTrace {
+  readonly traceId: string;
+  /** `true` when this is the trace of the question the screen asked, not of the operation. */
+  readonly ofQuery: boolean;
+}
+
+export function traceToShow(
+  ledger: TraceLedger,
+  correlationId: string | null,
+  queryTraceId: string | null,
+): ShownTrace | null {
+  const ofOperation = traceFor(ledger, correlationId);
+
+  if (ofOperation !== null) {
+    return { traceId: ofOperation, ofQuery: false };
+  }
+
+  return queryTraceId === null ? null : { traceId: queryTraceId, ofQuery: true };
+}
+
+/** What the badge calls a trace that belongs to the question rather than the operation. */
+export const QUERY_TRACE_LABEL = 'Traza de esta consulta';

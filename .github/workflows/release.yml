@@ -77,7 +77,7 @@ jobs:
           VERSION="v${VERSION#v}"
 
           # El mismo Artifact Registry que consume el despliegue: la region es
-          # la zona del cluster sin su sufijo de letra (us-central1-a ->
+          # la zona del cluster sin su sufijo de letra (us-central1-c ->
           # us-central1). Publicar en otro registry distinto del que produccion
           # descarga es como esta fase acabo entregando imagenes que nadie podia
           # usar.

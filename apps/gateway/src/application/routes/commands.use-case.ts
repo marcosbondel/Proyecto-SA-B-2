@@ -61,6 +61,13 @@ export interface SetAccountStatusRequest extends CommandContext {
 }
 
 export interface TransferRequest extends CommandContext {
+  /**
+   * Un identificador de transferencia ya decidido por quien llama. Sólo lo
+   * fija un flujo que debe devolver el mismo al reintentarse con la misma
+   * clave de idempotencia (el envío interbancario); el resto lo deja vacío y se
+   * mina uno nuevo, como siempre.
+   */
+  readonly transactionId?: string;
   readonly sourceAccount: string;
   readonly targetAccount: string;
   readonly amount: Money;
@@ -199,7 +206,7 @@ export class CommandsUseCase {
   public async requestTransfer(
     request: TransferRequest,
   ): Promise<AcceptedCommand & { readonly transactionId: string }> {
-    const transactionId = randomUUID();
+    const transactionId = request.transactionId ?? randomUUID();
 
     await this.#publish(
       transferRequestedV1,
