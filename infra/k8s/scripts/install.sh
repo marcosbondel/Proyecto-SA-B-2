@@ -215,10 +215,17 @@ if [[ "$skip_discover" != "true" && "$dry_run" != "true" && "$print_only" != "tr
   "$DISCOVER"
 fi
 
+# `--force-conflicts`: Helm 4 aplica del lado del servidor, y un
+# `kubectl set image` o `kubectl set env` de una prueba anterior (los escenarios
+# de carga cambian el mock asi) deja al gestor `kubectl-set` como dueno del
+# campo. El siguiente upgrade fallaba entero con "conflict with kubectl-set
+# … .containers[name=app].image" en cinco Deployments. En este cluster local el
+# chart es la unica fuente de verdad, asi que gana el chart.
 set -- \
   upgrade --install "$RELEASE" "$CHART" \
   --kube-context "$KUBE_CONTEXT" \
-  --namespace "$NAMESPACE" --create-namespace
+  --namespace "$NAMESPACE" --create-namespace \
+  --force-conflicts
 
 [[ -f "$GENERATED" ]] && set -- "$@" -f "$GENERATED"
 
