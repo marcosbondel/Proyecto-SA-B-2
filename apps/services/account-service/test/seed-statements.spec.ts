@@ -18,17 +18,25 @@ interface Recorded {
   readonly params: readonly unknown[];
 }
 
-function fakePool(rowCount = 1): { pool: Pool; statements: Recorded[] } {
+/**
+ * `statements` guarda sólo las sentencias que tocan filas; `control` guarda el
+ * resto (BEGIN, el advisory lock, COMMIT) en orden, junto con ellas.
+ */
+function fakePool(rowCount = 1): { pool: Pool; statements: Recorded[]; control: string[] } {
   const statements: Recorded[] = [];
-  const pool = {
-    query: async (sql: string, params: readonly unknown[] = []) => {
-      statements.push({ sql, params });
+  const control: string[] = [];
+  const query = async (sql: string, params: readonly unknown[] = []) => {
+    if (/\bINSERT\b/i.test(sql)) statements.push({ sql, params });
+    control.push(sql.trim().split(/\s+/).slice(0, 2).join(' '));
 
-      return { rowCount, rows: [] };
-    },
+    return { rowCount, rows: [] };
+  };
+  const pool = {
+    query,
+    connect: async () => ({ query, release: () => undefined }),
   } as unknown as Pool;
 
-  return { pool, statements };
+  return { pool, statements, control };
 }
 
 /** El `SET` de la cláusula `ON CONFLICT`, que es lo único que toca una cuenta existente. */
@@ -49,6 +57,16 @@ describe('las siembras de cuentas no tocan el saldo de lo que ya existe', () => 
   it('la demo informa sólo de las cuentas que creó', async () => {
     expect(await seedDemoAccounts(fakePool(1).pool)).toHaveLength(4);
     expect(await seedDemoAccounts(fakePool(0).pool)).toEqual([]);
+  });
+
+  it('los billers se siembran dentro de una transacción con advisory lock, para que dos réplicas no choquen', async () => {
+    const { pool, control } = fakePool();
+
+    await seedBillerAccounts(pool);
+
+    expect(control[0]).toBe('BEGIN');
+    expect(control[1]).toMatch(/^SELECT pg_advisory_xact_lock/);
+    expect(control.at(-1)).toBe('COMMIT');
   });
 
   it('los billers no mencionan el saldo en su ON CONFLICT y no escriben si nada cambió', async () => {
