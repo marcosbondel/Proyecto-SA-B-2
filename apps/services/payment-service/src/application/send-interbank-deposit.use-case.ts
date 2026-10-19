@@ -450,13 +450,11 @@ export class SendInterbankDepositUseCase {
     let resolved = 0;
 
     for (const send of await this.#repository.claimAwaitingResolution(this.#clock(), limit)) {
-      const done = await this.#guarded('resolve', send, () =>
+      await this.#guarded('resolve', send, () =>
         this.#traced(send, 'payment.interbank.resolve', async () => {
           if (await this.#resolveOne(send)) resolved += 1;
         }),
       );
-
-      void done;
     }
 
     return resolved;
