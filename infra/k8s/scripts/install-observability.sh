@@ -152,9 +152,35 @@ else
   echo "         bitacora de auditoria. Anade la variable y vuelve a correr esto."
 fi
 
+# Tempo paso de no tener disco a tenerlo (T-60), y Kubernetes no deja cambiar
+# los `volumeClaimTemplates` de un StatefulSet existente: el `helm upgrade`
+# fallaria con «spec: Forbidden». Si el StatefulSet viejo no pide volumen, se
+# retira ANTES —con `--cascade=orphan`, para que el pod siga sirviendo hasta que
+# el nuevo lo reemplace— y helm lo recrea con su PVC. Las trazas que tenia
+# vivian en un `emptyDir` y se perdian con el pod de todos modos.
+tempo_huerfano=false
+if k get statefulset tempo -n "$NAMESPACE" >/dev/null 2>&1; then
+  plantillas="$(k get statefulset tempo -n "$NAMESPACE" -o jsonpath='{.spec.volumeClaimTemplates[*].metadata.name}' 2>/dev/null || true)"
+  if [[ -z "$plantillas" ]]; then
+    echo "  Tempo no tenia volumen: se retira su StatefulSet para recrearlo con PVC."
+    k delete statefulset tempo -n "$NAMESPACE" --cascade=orphan >/dev/null
+    tempo_huerfano=true
+  fi
+fi
+
 echo
 echo "helm $*"
 helm "$@"
+
+# El StatefulSet nuevo ADOPTA el pod huerfano y no lo reemplaza: lo da por
+# actualizado («rolling update complete 0 pods») con la plantilla vieja, sin
+# volumen. Medido en kind-bank-usac. Hay que borrarlo para que vuelva con su
+# PVC.
+if [[ "$tempo_huerfano" == true ]]; then
+  echo "  Reiniciando tempo-0 para que monte su volumen…"
+  k delete pod tempo-0 -n "$NAMESPACE" --ignore-not-found --wait=true >/dev/null
+  k wait --for=condition=Ready pod/tempo-0 -n "$NAMESPACE" --timeout=240s >/dev/null || true
+fi
 
 echo
 k get pods -n "$NAMESPACE"
