@@ -278,7 +278,9 @@ async function bootstrap(): Promise<void> {
         /** The demo client's accounts, gated and idempotent — see `seedDemoAccounts`. */
         if (environment.SEED_DEMO_DATA) {
           const seeded = await seedDemoAccounts(pool);
-          logger.info('demo accounts seeded', { outcome: seeded.join(', ') });
+          logger.info('demo accounts seeded', {
+            outcome: seeded.length === 0 ? 'already present, nothing touched' : seeded.join(', '),
+          });
         }
 
         await broker.start();
