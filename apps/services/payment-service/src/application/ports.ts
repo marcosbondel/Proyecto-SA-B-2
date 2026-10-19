@@ -203,11 +203,19 @@ export interface ProviderCall {
   /** Whether a further attempt is owed. Only meaningful for a failure or a timeout. */
   readonly willRetry: boolean;
   /**
-   * `SCENARIO` when the transfer scripted the answer, `CONFIGURATION` when the
-   * provider's rates did. Either way the failure is simulated: there is no real
-   * provider in this system.
+   * Who decided the answer (T-60, QA 20):
+   *
+   * - `SCENARIO` when the transfer scripted it;
+   * - `CONFIGURATION` when the provider's rates did and they are the ConfigMap's;
+   * - `RUNTIME` when they are an administrator's override, set while the system
+   *   runs. It used to report `CONFIGURATION` for both, so the failures somebody
+   *   injected on purpose were indistinguishable from the ConfigMap's, which is
+   *   exactly what the label exists to tell apart.
+   *
+   * Either way the failure is simulated: there is no real provider in this
+   * system.
    */
-  readonly source: 'SCENARIO' | 'CONFIGURATION';
+  readonly source: 'SCENARIO' | 'CONFIGURATION' | 'RUNTIME';
   /** How long the provider took to answer, in milliseconds. */
   readonly latencyMs: number;
 }

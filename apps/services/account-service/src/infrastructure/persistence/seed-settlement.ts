@@ -32,7 +32,10 @@ export async function seedSettlementAccount(pool: Pool): Promise<string> {
        (account_id, customer_id, account_type, balance, status)
      VALUES ($1, $2, 'MONETARIA', 0.00, 'ACTIVE')
      ON CONFLICT (account_id) DO UPDATE
-       SET status = 'ACTIVE'`,
+       SET status = 'ACTIVE'
+     -- Reactiva si hace falta y no escribe si no; el saldo, que recibe los
+     -- reembolsos, no se toca jamás desde el arranque (T-60, QA 20).
+     WHERE accounts.status <> 'ACTIVE'`,
     [INTERBANK_SETTLEMENT_ACCOUNT_ID, SYSTEM_CUSTOMER_ID],
   );
 

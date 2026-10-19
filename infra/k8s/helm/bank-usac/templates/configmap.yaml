@@ -63,5 +63,8 @@ data:
   # respuesta. Esta si es nuestra: el acuerdo dice cuando se puede liberar la
   # reserva, no con que frecuencia preguntamos.
   INTERBANK_RESOLVE_RETRY_MS: {{ .Values.interbank.resolveRetryMs | quote }}
-  SEED_DEMO_DATA: "true"
+  # Cuentas y usuarios de demostracion. Antes fijo en "true"; ahora un valor del
+  # chart (`demo.seedData`). Sembrar solo CREA lo que falta y nunca toca lo que ya
+  # existe, asi que es seguro con varias replicas y con un HPA que arranque pods.
+  SEED_DEMO_DATA: {{ .Values.demo.seedData | quote }}
   SEED_PASSWORD: "BankUsac#2026"
