@@ -197,6 +197,16 @@ per-debit commission (`AHORRO` only, for the account's whole life).
 which is a debit's own refusal when the account cannot cover the amount plus a commission it may
 carry.
 
+## Fase 3 extension: account usage monitoring (T-42)
+
+The assignment's Fase 3 (§4.1, Account Service) asks the system to measure how accounts are used
+and to flag a pattern: more than N debits and credits on one account inside a window of M minutes.
+The flag is an event, and Notification & Audit turns it into a `WARNING` (T-45).
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| event | `account.anomaly.detected` | **Added by T-42.** Published at most once per account per window. It reports and does not block the account: the reasoning is the ADR that closes T-42 |
+
 Enforcing account-type rules is entirely Account Service's own job — the opening minimum is
 checked once, before an account is created; the commission is applied atomically alongside the
 debit it accompanies — so no other service needed a change to consume this. Both rules live
@@ -237,3 +247,27 @@ Verifiable against the tables above without reading any code.
 | M-4 | Every transfer step that can fail after the debit has a compensation path | `payment.failed` and `account.credit.rejected` both lead to `account.debit.compensation.requested` |
 | M-5 | No message carries data from the "does not cross" list | The single exception is the email in `customer.activation.requested` |
 | M-6 | Every message propagates `correlationId` | Cross-cutting invariant X-3, no exceptions |
+
+## Fase 3 extension: audit by trace, the anomaly and the SLO alert (T-45)
+
+The assignment's Fase 3 (§4.1, Notification & Audit Service) asks the audit to be queryable "por correlationId, traceId, servicio y nivel",
+and to notify on `AccountAnomalyDetected` and on an SLO alert. The first is two additive fields on existing contracts; the anomaly
+needed no new message (T-42 made it); only the alert, which comes from outside the bank, is new.
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| command | `alert.slo.received` | **Added by T-45.** An SLO alert from the monitoring stack, mapped by the Gateway's webhook and recorded and notified by Notification & Audit |
+
+`audit.events.list.query.v1` gained `correlationId`, `traceId` and `service`; its reply and `audit.query.replied.v1` gained `traceId`. All of them optional.
+
+## Fase 3 extension: advanced provider simulation (T-44)
+
+The assignment's Fase 3 (§4.1, Payment Service) asks for intermittent failures with a configurable rate, timeouts and slow
+responses with a configurable latency, changeable at run time without a redeploy, through a protected endpoint at the API Gateway.
+The change is a command over the broker, never HTTP between services.
+
+| Category | Message | Why it was needed |
+| --- | --- | --- |
+| command | `payment.simulation.update` | **Added by T-44.** Sets the three parameters, or resets them to the ConfigMap's values |
+| command | `payment.simulation.query` | **Added by T-44.** Reads the simulation as it is now |
+| reply | `payment.simulation.replied` | **Added by T-44.** The simulation in force; also the confirmation of an update |

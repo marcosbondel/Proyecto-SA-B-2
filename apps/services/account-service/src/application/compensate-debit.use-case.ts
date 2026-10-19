@@ -2,7 +2,7 @@ import { accountDebitCompensatedV1 } from '@bank/contracts';
 import type { AccountDebitCompensationRequestedV1 } from '@bank/contracts';
 
 import { compensate } from '../domain/account';
-import type { AccountRepository, Clock, EventPublisher } from './ports';
+import type { AccountActivity, AccountRepository, Clock, EventPublisher } from './ports';
 
 /**
  * The Saga's undo: money that left and must come back.
@@ -30,15 +30,18 @@ export class CompensateDebitUseCase {
   readonly #repository: AccountRepository;
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
+  readonly #activity: AccountActivity;
 
   constructor(dependencies: {
     readonly repository: AccountRepository;
     readonly publisher: EventPublisher;
     readonly clock: Clock;
+    readonly activity: AccountActivity;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
+    this.#activity = dependencies.activity;
   }
 
   public async execute(
@@ -95,6 +98,12 @@ export class CompensateDebitUseCase {
         balanceAfter: applied.operation.balanceAfter,
         compensatedAt: applied.operation.occurredAt.toISOString(),
       },
+    });
+
+    await this.#activity.afterMovement({
+      account: applied.account,
+      type: 'COMPENSATION',
+      transactionId: payload.transactionId,
     });
   }
 }

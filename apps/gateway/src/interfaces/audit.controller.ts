@@ -1,6 +1,9 @@
 import { Controller, Get, Inject, Query, Req } from '@nestjs/common';
 
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+
+import { producer } from '@bank/contracts';
+import type { Producer } from '@bank/contracts';
 
 import { QueriesUseCase } from '../application/routes/queries.use-case';
 import { GatewayError } from '../application/errors/gateway-error';
@@ -14,6 +17,11 @@ const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 
 /** §4.1's classification (T-30). Matches `eventSeverity` in `@bank/contracts`. */
 const EVENT_SEVERITIES = new Set(['INFO', 'WARNING', 'ERROR']);
+
+/** A W3C trace-id: 32 lowercase hex digits, and not the reserved all-zero one. */
+const TRACE_ID = /^(?!0{32}$)[0-9a-f]{32}$/;
+
+const SERVICES = new Set<string>(producer.options);
 
 /**
  * The audit trail and the notifications console, both restricted to
@@ -66,15 +74,25 @@ export class AuditController {
   @ApiOperation({
     summary: 'Consulta los eventos de auditoría más recientes paginados',
     description:
-      'Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y, ' +
-      'opcionalmente, acotar por severidad (§4.1: INFO/WARNING/ERROR).',
+      'Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y acotar ' +
+      'por los cuatro filtros de §4.1, combinables: severity (INFO/WARNING/ERROR), ' +
+      'correlationId, traceId y service (el servicio que publicó el evento).',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Página, desde 1.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Eventos por página, de 1 a 100 (10 por omisión).' })
+  @ApiQuery({ name: 'severity', required: false, enum: ['INFO', 'WARNING', 'ERROR'], description: 'Nivel del evento.' })
+  @ApiQuery({ name: 'correlationId', required: false, type: String, description: 'UUID v4 del flujo de negocio.' })
+  @ApiQuery({ name: 'traceId', required: false, type: String, description: 'trace-id W3C: 32 hexadecimales en minúscula, no todo ceros.' })
+  @ApiQuery({ name: 'service', required: false, enum: producer.options, description: 'Servicio que publicó el evento.' })
   @Roles('ADMINISTRADOR')
   @Get('recent')
   public async recent(
     @Query('page') pageRaw: string | undefined,
     @Query('limit') limitRaw: string | undefined,
     @Query('severity') severityRaw: string | undefined,
+    @Query('correlationId') correlationRaw: string | undefined,
+    @Query('traceId') traceRaw: string | undefined,
+    @Query('service') serviceRaw: string | undefined,
     @Req() request: GatewayRequest,
   ): Promise<Record<string, unknown>> {
     const page = Math.max(1, Number(pageRaw) || 1);
@@ -84,6 +102,27 @@ export class AuditController {
       throw GatewayError.validation('severity debe ser INFO, WARNING o ERROR', 'severity');
     }
 
+    // Each filter is checked at the edge, so a malformed one is a 400 here and
+    // never a query that silently matches nothing: an auditor who mistypes a
+    // trace id must be told so, not shown an empty trail as if nothing happened.
+    if (correlationRaw !== undefined && !UUID_V4.test(correlationRaw)) {
+      throw GatewayError.validation('correlationId debe ser un UUID v4', 'correlationId');
+    }
+
+    if (traceRaw !== undefined && !TRACE_ID.test(traceRaw)) {
+      throw GatewayError.validation(
+        'traceId debe ser un identificador W3C de 32 caracteres hexadecimales en minúscula',
+        'traceId',
+      );
+    }
+
+    if (serviceRaw !== undefined && !SERVICES.has(serviceRaw)) {
+      throw GatewayError.validation(
+        `service debe ser uno de: ${producer.options.join(', ')}`,
+        'service',
+      );
+    }
+
     return await this.#queries.auditEventsList(
       {
         page,
@@ -91,6 +130,9 @@ export class AuditController {
         ...(severityRaw === undefined
           ? {}
           : { severity: severityRaw as 'INFO' | 'WARNING' | 'ERROR' }),
+        ...(correlationRaw === undefined ? {} : { correlationId: correlationRaw }),
+        ...(traceRaw === undefined ? {} : { traceId: traceRaw }),
+        ...(serviceRaw === undefined ? {} : { service: serviceRaw as Producer }),
       },
       {
         actor: actorOf(request),

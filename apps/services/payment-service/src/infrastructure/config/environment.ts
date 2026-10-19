@@ -1,8 +1,20 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { V1_MAX_AMOUNT_MINOR } from '@bank/contracts';
 import { plainToInstance } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsString, Max, Min, validateSync } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsString,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
+
+import { MAX_LATENCY_MS, isValidSettings } from '../../domain/simulation';
 
 /**
  * Raised when a required environment variable is missing or malformed.
@@ -67,6 +79,115 @@ export class PaymentServiceEnvironment {
   @Min(100)
   @Max(600_000)
   public PAYMENT_RETRY_SWEEP_MS!: number;
+
+  /**
+   * How the simulated provider behaves until an administrator changes it
+   * (Fase 3, T-44): the share of attempts that fail, the share that time out,
+   * and how long an answer takes. The ConfigMap supplies them; an override made
+   * at run time takes precedence and is removed by a reset, which brings these
+   * back. All zero by default, so an unconfigured deployment behaves as the
+   * provider did before this ticket.
+   */
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  public PAYMENT_SIM_FAILURE_RATE!: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  public PAYMENT_SIM_TIMEOUT_RATE!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(MAX_LATENCY_MS)
+  public PAYMENT_SIM_LATENCY_MS!: number;
+
+  @IsString()
+  @IsNotEmpty()
+  public INTERBANK_BANK_CODE!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  public INTERBANK_PARTNER_BANK_CODE!: string;
+
+  /**
+   * El límite por operación, en centavos: **uno solo, para recibir y para
+   * enviar** (B7).
+   *
+   * Antes eran dos y no se parecían: el camino nuevo tenía Q10 000 fijos en el
+   * código y esta variable (Q1 000 000) sólo gobernaba el provisional, y enviar
+   * no tenía límite. El techo es el del contrato —`10000.00`— y la variable sólo
+   * puede **bajarlo**: un límite mayor haría a este banco aceptar y mandar
+   * depósitos que cualquier pareja que cumpla el contrato rechaza con
+   * `AMOUNT_LIMIT_EXCEEDED`.
+   */
+  @IsInt()
+  @Min(1)
+  @Max(V1_MAX_AMOUNT_MINOR)
+  public INTERBANK_MAX_AMOUNT_MINOR!: number;
+
+  /**
+   * La API del banco pareja, **con** el prefijo `/interbank/v1`
+   * (`http://host/interbank/v1`): de aquí salen el envío, la consulta, la
+   * cancelación, el reverso y —derivado, no configurado— el callback.
+   *
+   * Vacío significa «este despliegue no envía depósitos»: el bloque `interbank`
+   * de un pago se ignora y el pago va al proveedor simulado, que es lo correcto
+   * para un entorno sin pareja asignada. No se valida como URL con `@IsUrl` a
+   * propósito — en el clúster el destino es un nombre de Service
+   * (`http://partner-mock:3021/interbank/v1`), que no pasa ese validador y es
+   * exactamente lo que hay que poner.
+   *
+   * Sustituye a `INTERBANK_SEND_URL` y `INTERBANK_CALLBACK_URL` (T-60): el
+   * acuerdo de integración fija que el callback no se configura sino que se
+   * deriva de la URL base de la pareja.
+   */
+  @IsString()
+  public INTERBANK_PARTNER_BASE_URL!: string;
+
+  /**
+   * La API key que **mandamos** a la pareja en `X-Api-Key` (secreto). La que
+   * exigimos nosotros a quien nos llama (`INTERBANK_API_KEY_INBOUND`) es del
+   * Gateway y este servicio no la lee jamás. Vacía = no se puede hablar con la
+   * pareja, y el envío lo dice en vez de mandar sin autenticar.
+   */
+  @IsString()
+  public INTERBANK_API_KEY_OUTBOUND!: string;
+
+  /**
+   * Cuánto se espera la confirmación del banco pareja antes de rendirse y
+   * compensar.
+   *
+   * **OBSOLETA desde TD-095, y se sigue aceptando a propósito.** El plazo de un
+   * depósito interbancario lo fija el CONTRATO —`V1_TRANSFER_TTL_MS`, 180 s, más
+   * un margen de `V1_RELEASE_MARGIN_MS` antes de poder liberar a ciegas— y no
+   * una variable de entorno: un plazo de interoperabilidad que cada banco
+   * configura a su gusto no es un plazo, y con 30 s aquí dábamos por muerto lo
+   * que para el otro lado seguía vivo durante 24 horas.
+   *
+   * Ya no se lee. Se mantiene declarada para que un despliegue que todavía la
+   * ponga en su ConfigMap no falle la validación de arranque; quitarla del chart
+   * es seguro y no hace falta coordinarlo.
+   */
+  @IsInt()
+  @Min(1_000)
+  @Max(600_000)
+  public INTERBANK_CONFIRMATION_TIMEOUT_MS!: number;
+
+  /**
+   * Cada cuánto se reintenta un paso del protocolo de TIMEOUT que no obtuvo
+   * respuesta (TD-095).
+   *
+   * Ésta sí es nuestra y no del contrato: el acuerdo dice cuándo se puede
+   * liberar, no con qué frecuencia preguntamos. Cinco segundos por defecto —
+   * suficiente para no apretar a un banco que ya va mal, y suficientemente
+   * frecuente para que los 300 s del margen den para unos sesenta intentos.
+   */
+  @IsInt()
+  @Min(500)
+  @Max(60_000)
+  public INTERBANK_RESOLVE_RETRY_MS!: number;
 }
 
 /**
@@ -119,6 +240,18 @@ export function loadEnvironment(
     RABBITMQ_URL: source.RABBITMQ_URL,
     PAYMENT_RETRY_DELAYS_MS: source.PAYMENT_RETRY_DELAYS_MS ?? '1000,5000,30000',
     PAYMENT_RETRY_SWEEP_MS: toInteger(source.PAYMENT_RETRY_SWEEP_MS) ?? 500,
+    PAYMENT_SIM_FAILURE_RATE: toNumber(source.PAYMENT_SIM_FAILURE_RATE) ?? 0,
+    PAYMENT_SIM_TIMEOUT_RATE: toNumber(source.PAYMENT_SIM_TIMEOUT_RATE) ?? 0,
+    PAYMENT_SIM_LATENCY_MS: toInteger(source.PAYMENT_SIM_LATENCY_MS) ?? 0,
+    INTERBANK_BANK_CODE: source.INTERBANK_BANK_CODE ?? 'BANK02',
+    INTERBANK_PARTNER_BANK_CODE: source.INTERBANK_PARTNER_BANK_CODE ?? 'BANK99',
+    INTERBANK_MAX_AMOUNT_MINOR:
+      toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
+    INTERBANK_PARTNER_BASE_URL: (source.INTERBANK_PARTNER_BASE_URL ?? '').replace(/\/+$/, ''),
+    INTERBANK_API_KEY_OUTBOUND: source.INTERBANK_API_KEY_OUTBOUND ?? '',
+    INTERBANK_CONFIRMATION_TIMEOUT_MS:
+      toInteger(source.INTERBANK_CONFIRMATION_TIMEOUT_MS) ?? 30_000,
+    INTERBANK_RESOLVE_RETRY_MS: toInteger(source.INTERBANK_RESOLVE_RETRY_MS) ?? 5_000,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });
@@ -133,7 +266,29 @@ export function loadEnvironment(
 
   parseRetryDelays(candidate.PAYMENT_RETRY_DELAYS_MS);
 
+  // Each rate is in range on its own; together a failure and a timeout are two
+  // ways one attempt goes wrong, so they cannot exceed every attempt.
+  if (!isValidSettings(simulationDefaults(candidate))) {
+    throw new EnvironmentValidationError(
+      ['PAYMENT_SIM_FAILURE_RATE', 'PAYMENT_SIM_TIMEOUT_RATE'],
+      '  - PAYMENT_SIM_FAILURE_RATE + PAYMENT_SIM_TIMEOUT_RATE must not exceed 100',
+    );
+  }
+
   return candidate;
+}
+
+/** The ConfigMap's three numbers, as the domain's settings. */
+export function simulationDefaults(environment: PaymentServiceEnvironment): {
+  readonly failureRatePercent: number;
+  readonly timeoutRatePercent: number;
+  readonly latencyMs: number;
+} {
+  return {
+    failureRatePercent: environment.PAYMENT_SIM_FAILURE_RATE,
+    timeoutRatePercent: environment.PAYMENT_SIM_TIMEOUT_RATE,
+    latencyMs: environment.PAYMENT_SIM_LATENCY_MS,
+  };
 }
 
 /** `undefined` when absent, `NaN` when present but not an integer. */
@@ -143,4 +298,12 @@ function toInteger(raw: string | undefined): number | undefined {
   }
   const parsed = Number(raw);
   return Number.isInteger(parsed) ? parsed : Number.NaN;
+}
+
+/** `undefined` when absent, `NaN` when present but not a number. */
+function toNumber(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === '') {
+    return undefined;
+  }
+  return Number(raw);
 }

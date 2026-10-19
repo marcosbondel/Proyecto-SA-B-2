@@ -7,9 +7,12 @@ Short map for AI agents working in this repository. Durable knowledge lives in
 
 A pnpm workspace with everything under `apps/`: the Gateway and the Nuxt
 frontend at the top level, the five domain services under `apps/services/`, and
-`@bank/contracts`, `@bank/messaging` and `@bank/tooling` under
-`apps/packages/`. All seven applications install, build, lint and test from a
-clean checkout.
+`@bank/contracts`, `@bank/messaging`, `@bank/observability` and `@bank/tooling`
+under `apps/packages/`. All seven applications install, build, lint and test
+from a clean checkout.
+
+`apps/partner-bank-mock/` is an optional local T-46 test application; it is
+not one of the seven bank deployments.
 
 **The API Gateway is implemented** (T-15, extended by T-17, T-19, T-20 and the
 prototype-parity work): twenty-four paths, JWT authentication, role
@@ -211,7 +214,13 @@ Consult these documents before making decisions or describing the repository:
 - [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md): **the Kubernetes runbook** — prerequisites, the four commands that take the system from a clean machine to a running cluster, verification, the Saga run, scaling limits and every failure mode. Read it before changing the Helm chart, the kind configuration or anything under `infra/k8s/`.
 - [docs/manual/](docs/manual/README.md): the user manual — the general guide, one walkthrough per role, and the 78-step visual tour.
 - [docs/qa/](docs/qa/README.md): the test evidence — the happy-path and error-case guide, the validation report, and the screenshots the suites produce.
-- [docs/sre/](docs/sre/sli-slo-sla.md): the unified SLI, SLO and SLA framework; `docs/RELIABILITY.md` states the design concerns they answer.
+- [docs/sre/](docs/sre/sli-slo-sla.md): the unified SLI, SLO and SLA framework; §5.3 names the
+  five SLO the Fase 3 measures with real data, with their PromQL and error budget.
+  `docs/RELIABILITY.md` states the design concerns they answer.
+- [docs/sre/telemetry-catalog.md](docs/sre/telemetry-catalog.md): **the telemetry catalogue** — one row
+  per metric with its unit, its permitted labels and its cardinality justification, plus the span
+  names and the log fields. Read it before adding a metric, a label or a span: a label that is not
+  in it fails `pnpm --filter @bank/observability test`, which is deliberate.
 - [docs/references/README.md](docs/references/README.md): the assignment statements, phase 1 and phase 2, and the prototype prompt.
 - [apps/web/README.md](apps/web/README.md): Nuxt starter-level application commands when working inside the web app.
 - [.specify/memory/constitution.md](.specify/memory/constitution.md): mandatory architecture principles before writing a spec or plan.

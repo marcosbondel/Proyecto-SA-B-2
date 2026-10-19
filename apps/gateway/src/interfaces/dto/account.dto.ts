@@ -7,6 +7,7 @@ import {
   IsString,
   IsUUID,
   Length,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -70,19 +71,23 @@ export class ListAccountsQueryDto {
 /**
  * Deactivating or reactivating an account by hand.
  *
- * The reason is required and it is not decoration: this is the one account
- * operation with no automatic trigger behind it, so the audit trail's only
- * record of *why* is what the administrator typed. `account.set-status.v1`
- * makes it mandatory; this mirrors that so the refusal arrives as a `400` with
- * a field name rather than as a contract failure inside the broker.
+ * The reason is required **to deactivate** and it is not decoration: this is
+ * the one account operation with no automatic trigger behind it, so the audit
+ * trail's only record of *why* is what the administrator typed.
+ * `account.set-status.v1` makes it mandatory there; this mirrors that so the
+ * refusal arrives as a `400` with a field name rather than as a contract failure
+ * inside the broker. Activating needs none (T-60): nothing downstream records
+ * why an account was reactivated. A reason sent anyway is still validated and
+ * kept, so existing clients that always send one keep working.
  */
 export class SetAccountStatusDto {
   @IsIn(ACCOUNT_STATUSES, { message: `El estado debe ser uno de: ${ACCOUNT_STATUSES.join(', ')}.` })
   public status!: (typeof ACCOUNT_STATUSES)[number];
 
+  @ValidateIf((dto: SetAccountStatusDto) => dto.status === 'INACTIVE' || dto.reason !== undefined)
   @IsString({ message: 'El motivo debe ser un texto.' })
   @Length(1, 300, { message: 'El motivo debe tener entre 1 y 300 caracteres.' })
-  public reason!: string;
+  public reason?: string;
 }
 
 /**

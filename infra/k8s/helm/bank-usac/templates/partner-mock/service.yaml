@@ -1,0 +1,22 @@
+{{- if .Values.partnerMock.enabled }}
+{{- $component := .Values.partnerMock.component }}
+{{- $ctx := dict "root" $ "component" $component }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bank-usac.componentFullname" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
+    bank-usac.io/role: test-double
+spec:
+  # ClusterIP siempre: el mock no se expone fuera del clúster ni por accidente.
+  # Para enviarle un depósito desde una laptop se usa `kubectl port-forward`.
+  type: ClusterIP
+  selector:
+    {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.partnerMock.port }}
+      targetPort: http
+{{- end }}

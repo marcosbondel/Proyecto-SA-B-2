@@ -1,3 +1,5 @@
+// First, before anything else: see `instrumentation.ts` for why the order matters.
+import { otel } from './instrumentation';
 import 'reflect-metadata';
 
 import { randomUUID } from 'node:crypto';
@@ -11,6 +13,7 @@ import {
   parseEnvelope,
 } from '@bank/messaging';
 import type { ParkedMessage } from '@bank/messaging';
+import { nestLoggerFor } from '@bank/observability';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
@@ -28,6 +31,8 @@ import { BrokerReplyPublisher } from './infrastructure/messaging/broker-reply.pu
 import { ResendNotificationAdapter } from './infrastructure/notification/resend-notification.adapter';
 import { SimulatedNotificationAdapter } from './infrastructure/notification/simulated-notification.adapter';
 import { migrate } from './infrastructure/persistence/migrations';
+import { activeTraceId } from './infrastructure/telemetry/active-trace';
+import { OtelAuditTelemetry } from './infrastructure/telemetry/otel-audit.telemetry';
 import { PostgresAuditRepository } from './infrastructure/persistence/postgres-audit.repository';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
@@ -126,7 +131,9 @@ async function bootstrap(): Promise<void> {
     });
   });
 
-  const repository = new PostgresAuditRepository(pool);
+  const repository = new PostgresAuditRepository(pool, {
+    alertRepeatWindowMs: environment.SLO_ALERT_REPEAT_WINDOW_MINUTES * 60_000,
+  });
   /**
    * The simulated channel prints the activation link when — and only when —
    * `REVEAL_ACTIVATION_LINKS` says so. It defaults to on outside production and
@@ -138,6 +145,8 @@ async function bootstrap(): Promise<void> {
    * production images are what a kind deployment runs, and with the link closed
    * there is no way to complete a sign-up anywhere in the system. See the
    * adapter, TD-043 and TD-044.
+   *
+   * Off, the line still names the link but masks the token (`token=***`).
    */
   const simulated = new SimulatedNotificationAdapter(logger, environment.REVEAL_ACTIVATION_LINKS);
 
@@ -146,6 +155,11 @@ async function bootstrap(): Promise<void> {
    * for real, and falls back to the simulated channel for every other
    * notification, which has no real inbox by design. `simulated` (the default)
    * sends nothing and only logs. The choice is made once, here.
+   *
+   * The `resend` fallback is its own adapter that **never reveals**, whatever
+   * `REVEAL_ACTIVATION_LINKS` says: the password-reset link is not delivered
+   * by Resend, so it reaches the fallback, and a deployment with a real email
+   * channel is one a stranger can read the logs of (T-60, §8.3).
    */
   const sender =
     environment.NOTIFICATION_CHANNEL === 'resend'
@@ -157,7 +171,7 @@ async function bootstrap(): Promise<void> {
             endpoint: environment.RESEND_API_URL,
           },
           logger,
-          simulated,
+          new SimulatedNotificationAdapter(logger, false),
         )
       : simulated;
   const broker = new MessageBroker({
@@ -170,11 +184,16 @@ async function bootstrap(): Promise<void> {
   const ids = { next: (): string => randomUUID() };
   const publisherFactory = new BrokerReplyPublisher(broker);
 
+  // Built here, after T-48 (or a test) has registered a provider, so its
+  // instruments are bound to it and not to the no-op meter.
+  const auditTelemetry = new OtelAuditTelemetry();
+
   const recorderFor = (consumer: string): RecordEventHandler =>
     new RecordEventHandler(
-      new RecordEventUseCase({ repository, sender, clock, ids }),
+      new RecordEventUseCase({ repository, sender, clock, ids, telemetry: auditTelemetry }),
       consumer,
       logger,
+      activeTraceId,
     );
 
   /**
@@ -263,7 +282,13 @@ async function bootstrap(): Promise<void> {
    * never re-parked (the drain acknowledges whatever happens), so this closes the
    * hole without adding a new failure of its own.
    */
-  const drainRecorder = new RecordEventUseCase({ repository, sender, clock, ids });
+  const drainRecorder = new RecordEventUseCase({
+    repository,
+    sender,
+    clock,
+    ids,
+    telemetry: auditTelemetry,
+  });
 
   const drainErrors = async (): Promise<void> => {
     await broker.drainErrors(async (parked: ParkedMessage): Promise<void> => {
@@ -305,6 +330,7 @@ async function bootstrap(): Promise<void> {
                 processingStatus: 'INVALID',
                 parked: true,
               }),
+              traceId: activeTraceId(),
             }
           : {
               eventId: envelope.messageId,
@@ -322,6 +348,7 @@ async function bootstrap(): Promise<void> {
                 processingStatus: 'INVALID',
                 parked: true,
               }),
+              traceId: activeTraceId(),
             };
 
       const outcome = await drainRecorder.execute({ event, customerId: null });
@@ -401,6 +428,7 @@ async function bootstrap(): Promise<void> {
       isDatabaseReachable: async () => await repository.isReachable(),
       isConsuming: () => consuming,
     }),
+    { logger: nestLoggerFor(logger) },
   );
 
   await application.listen(environment.PORT);
@@ -416,6 +444,8 @@ async function bootstrap(): Promise<void> {
     await application.close();
     await broker.stop();
     await pool.end();
+    // Last: flushes the spans and metrics the shutdown itself produced.
+    await otel.shutdown();
   };
 
   process.on('SIGTERM', () => void shutdown());
@@ -423,6 +453,10 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // JSON like every other line: the one that explains a crash is the one the
+  // collection agent most needs to parse.
+  new StructuredLogger().error('boot failed', {
+    error: error instanceof Error ? error.message : String(error),
+  });
   process.exit(1);
 });

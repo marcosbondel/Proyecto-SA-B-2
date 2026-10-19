@@ -17,6 +17,9 @@ export interface UpstreamStub {
 }
 
 /** 90 bytes that look enough like a JPEG to be a believable "photo" — the exact bytes are what the sha256 assertion is about, not the format. */
+/** The trace id the stub's `/traced` route answers with. */
+export const UPSTREAM_TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
+
 export function fakeJpegBytes(): Buffer {
   const marker = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
   const filler = Buffer.alloc(86, 0x42);
@@ -74,6 +77,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
     res.writeHead(200, { 'content-type': 'image/jpeg', 'content-length': String(bytes.length) });
     res.end(bytes);
+    return;
+  }
+
+  // T-45: an upstream that says which trace it served the request under, the way
+  // the Gateway does once an SDK is registered.
+  if (path.endsWith('/traced')) {
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'x-correlation-id': 'corr-traced',
+      'x-trace-id': UPSTREAM_TRACE_ID,
+    });
+    res.end('{}');
     return;
   }
 

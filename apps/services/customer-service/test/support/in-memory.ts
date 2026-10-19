@@ -10,7 +10,10 @@ import type {
   CustomerRepository,
   EventPublisher,
   IdentityDocumentReader,
+  CreationSpan,
   IdentityDocumentStager,
+  LifecycleEvent,
+  LifecycleTelemetry,
   OutboundMessage,
   PasswordHasher,
   ProcessedMessage,
@@ -41,6 +44,7 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     { customerId: string; expiresAt: string; usedAt: string | null }
   >();
   public readonly processed = new Map<string, ProcessedMessage>();
+  public readonly creationTraces = new Map<string, string>();
 
   public async registerCustomer(input: {
     readonly registration: RegistrationRequest;
@@ -53,6 +57,7 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     readonly emailVerifiedAt?: string | null;
     readonly idempotency: ProcessedMessage;
     readonly now: Date;
+    readonly creationTrace?: string | null;
   }): Promise<Customer> {
     const shape = registerCustomer(input.registration, 'pending', input.now);
 
@@ -97,6 +102,10 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     this.customers.set(customer.customerId, customer);
     this.credentials.set(customer.customerId, input.credentialHash);
 
+    if (input.creationTrace !== undefined && input.creationTrace !== null) {
+      this.creationTraces.set(customer.customerId, input.creationTrace);
+    }
+
     if (input.document !== null) {
       this.documents.push({
         ...input.document,
@@ -116,6 +125,10 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     await this.recordProcessed(input.idempotency);
 
     return customer;
+  }
+
+  public async findCreationTrace(customerId: string): Promise<string | null> {
+    return await Promise.resolve(this.creationTraces.get(customerId) ?? null);
   }
 
   public async findById(customerId: string): Promise<Customer | null> {
@@ -528,5 +541,35 @@ export class FixedClock implements Clock {
 
   public advanceTo(instant: Date): void {
     this.#instant = instant;
+  }
+}
+
+/** Remembers what the lifecycle reported, so a use-case test can assert it. */
+export class RecordingLifecycleTelemetry implements LifecycleTelemetry {
+  public static readonly TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+
+  public readonly created: { customerId: string; path: string; createdAt: string }[] = [];
+  public readonly refused: { customerId: string; reason: string }[] = [];
+  public readonly recorded: LifecycleEvent[] = [];
+  public readonly ignoredEvents: { transition: string; customerId: string; reason: string }[] = [];
+
+  public beginCreation(): CreationSpan {
+    return {
+      traceparent: RecordingLifecycleTelemetry.TRACEPARENT,
+      created: (event) => {
+        this.created.push(event);
+      },
+      refused: (event) => {
+        this.refused.push(event);
+      },
+    };
+  }
+
+  public record(event: LifecycleEvent): void {
+    this.recorded.push(event);
+  }
+
+  public ignored(event: { transition: string; customerId: string; reason: string }): void {
+    this.ignoredEvents.push(event);
   }
 }

@@ -1,3 +1,4 @@
+import { JsonLogger } from '@bank/observability';
 import type { DynamicModule, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
@@ -9,6 +10,9 @@ import {
   REPLY_WAITER,
   SESSION_SIGNER,
 } from './application/ports';
+import { AlertWebhookUseCase } from './application/routes/alert-webhook.use-case';
+import { InterbankCallbackUseCase } from './application/routes/interbank-callback.use-case';
+import { InterbankReceiveUseCase } from './application/routes/interbank-receive.use-case';
 import { CommandsUseCase } from './application/routes/commands.use-case';
 import { ChangePasswordUseCase } from './application/routes/change-password.use-case';
 import { DepositUseCase } from './application/routes/deposit.use-case';
@@ -22,6 +26,20 @@ import { RegisterCustomerUseCase } from './application/routes/register-customer.
 import { VerifyEmailUseCase } from './application/routes/verify-email.use-case';
 import { DashboardController } from './interfaces/dashboard.controller';
 import { NotificationsController } from './interfaces/notifications.controller';
+import { AlertsController } from './interfaces/alerts.controller';
+import { InterbankController } from './interfaces/interbank.controller';
+import { InterbankV1Controller } from './interfaces/interbank-v1.controller';
+import {
+  INTERBANK_BANK_CODE,
+  INTERBANK_MAX_AMOUNT_MINOR,
+  INTERBANK_PARTNER_BANK_CODE,
+} from './interfaces/interbank-v1.tokens';
+import { InterbankSendUseCase } from './application/routes/interbank-send.use-case';
+import {
+  INTERBANK_API_KEYS,
+  InterbankApiKeyGuard,
+} from './interfaces/guards/interbank-api-key.guard';
+import { InterbankV1UseCase } from './application/routes/interbank-v1.use-case';
 import { AuditController } from './interfaces/audit.controller';
 import { AccountsController } from './interfaces/accounts.controller';
 import { AuthController } from './interfaces/auth.controller';
@@ -35,9 +53,15 @@ import { createMessageBroker } from './infrastructure/messaging/broker.provider'
 import { ReplyQueueAdapter } from './infrastructure/messaging/reply-queue.adapter';
 import { S3ObjectStorageAdapter } from './infrastructure/storage/s3-object-storage.adapter';
 import { GatewayExceptionFilter } from './interfaces/filters/gateway-exception.filter';
+import { ALERT_WEBHOOK_TOKEN, AlertTokenGuard } from './interfaces/guards/alert-token.guard';
+import {
+  INTERBANK_PARTNER_TOKEN,
+  InterbankTokenGuard,
+} from './interfaces/guards/interbank-token.guard';
 import { JwtGuard, SESSION_VERIFIER } from './interfaces/guards/jwt.guard';
 import { RolesGuard } from './interfaces/guards/roles.guard';
 import { BROKER_HEALTH, HealthController } from './interfaces/health.controller';
+import { accessLogMiddleware } from './interfaces/middleware/access-log.middleware';
 import { CorrelationMiddleware } from './interfaces/middleware/correlation.middleware';
 import { validationExceptionFactory } from './interfaces/validation';
 
@@ -90,6 +114,9 @@ export class AppModule implements NestModule {
         TransfersController,
         PaymentsController,
         AuditController,
+        AlertsController,
+        InterbankController,
+        InterbankV1Controller,
         NotificationsController,
         DashboardController,
       ],
@@ -109,7 +136,37 @@ export class AppModule implements NestModule {
         },
         { provide: SESSION_VERIFIER, useValue: sessions },
         { provide: SESSION_SIGNER, useValue: sessions },
+        // The webhook's secret, or `null` — and `null` means the webhook refuses everyone.
+        { provide: ALERT_WEBHOOK_TOKEN, useValue: environment.ALERT_WEBHOOK_TOKEN ?? null },
+        AlertTokenGuard,
+        { provide: INTERBANK_PARTNER_TOKEN, useValue: environment.INTERBANK_PARTNER_TOKEN ?? null },
+        InterbankTokenGuard,
+        /*
+         * El mapa de API keys del contrato oficial: **una por banco pareja**.
+         * Hoy es una, la de `INTERBANK_PARTNER_BANK_CODE`; la forma admite más
+         * sin cambiar el guardián, porque la clave es lo que identifica a quien
+         * llama y con dos parejas una clave compartida no distingue.
+         */
+        {
+          provide: INTERBANK_API_KEYS,
+          useValue:
+            environment.INTERBANK_API_KEY_INBOUND === undefined ||
+            environment.INTERBANK_API_KEY_INBOUND.length === 0
+              ? {}
+              : {
+                  [environment.INTERBANK_PARTNER_BANK_CODE]: environment.INTERBANK_API_KEY_INBOUND,
+                },
+        },
+        InterbankApiKeyGuard,
+        { provide: INTERBANK_BANK_CODE, useValue: environment.INTERBANK_BANK_CODE },
+        { provide: INTERBANK_PARTNER_BANK_CODE, useValue: environment.INTERBANK_PARTNER_BANK_CODE },
+        { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: environment.INTERBANK_MAX_AMOUNT_MINOR },
+        InterbankV1UseCase,
+        InterbankSendUseCase,
 
+        AlertWebhookUseCase,
+        InterbankReceiveUseCase,
+        InterbankCallbackUseCase,
         ChangePasswordUseCase,
         DepositUseCase,
         DashboardUseCase,
@@ -153,6 +210,11 @@ export class AppModule implements NestModule {
     // Every route, probes included: a response with no correlation identifier
     // is one nobody can trace afterwards, and errors are exactly when somebody
     // will try.
-    consumer.apply(CorrelationMiddleware).forRoutes('*path');
+    //
+    // The access log goes second: it reads the correlation identifier the first
+    // one assigns, and writes one line per request when the response is done.
+    consumer
+      .apply(CorrelationMiddleware, accessLogMiddleware(new JsonLogger({ service: 'gateway' })))
+      .forRoutes('*path');
   }
 }

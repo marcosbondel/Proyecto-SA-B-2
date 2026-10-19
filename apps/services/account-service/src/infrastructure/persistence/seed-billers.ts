@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 /**
  * The billers' collection accounts, created at boot and **not** behind
@@ -38,20 +38,56 @@ export const BILLERS: readonly Biller[] = [
   { id: 'c0000000-0000-4000-8000-000000000003', code: 'CLARO', name: 'Claro · Telefonía' },
 ];
 
-/** Creates or refreshes the three collection accounts. Returns their codes. */
+/**
+ * Key of the transaction-level advisory lock that serialises this seed across
+ * replicas. Any fixed bigint works; this one only has to be unique to the
+ * seed.
+ */
+const BILLER_SEED_LOCK = 7_206_001;
+
+/**
+ * Creates or refreshes the three collection accounts. Returns their codes.
+ *
+ * Serialised with an advisory lock because `ON CONFLICT (account_id)` only
+ * arbitrates the primary key. Two replicas booting at the same instant (an HPA
+ * scale-up) both attempt the INSERT; the second one then collides with the
+ * OTHER unique index, `accounts_biller_code_once`, and Postgres raises instead
+ * of taking the `DO UPDATE` branch — the pod's boot fails. CI caught it with
+ * six concurrent seeds (T-60).
+ */
 export async function seedBillerAccounts(pool: Pool): Promise<readonly string[]> {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1)', [BILLER_SEED_LOCK]);
+    await upsertBillers(client);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  return BILLERS.map((biller) => biller.code);
+}
+
+async function upsertBillers(client: PoolClient): Promise<void> {
   for (const biller of BILLERS) {
-    await pool.query(
+    await client.query(
       `INSERT INTO accounts
          (account_id, customer_id, account_type, balance, status, biller_code, biller_name)
        VALUES ($1, $2, 'MONETARIA', 0.00, 'ACTIVE', $3, $4)
        ON CONFLICT (account_id) DO UPDATE
          SET biller_code = EXCLUDED.biller_code,
              biller_name = EXCLUDED.biller_name,
-             status = 'ACTIVE'`,
+             status = 'ACTIVE'
+       -- Sólo si algo del catálogo cambió: arrancar una réplica no escribe filas
+       -- que no necesitan cambio, y nunca toca el saldo (T-60, QA 20).
+       WHERE (accounts.biller_code, accounts.biller_name, accounts.status)
+             IS DISTINCT FROM (EXCLUDED.biller_code, EXCLUDED.biller_name, 'ACTIVE')`,
       [biller.id, BILLER_CUSTOMER_ID, biller.code, biller.name],
     );
   }
-
-  return BILLERS.map((biller) => biller.code);
 }

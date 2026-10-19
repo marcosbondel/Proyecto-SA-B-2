@@ -1,0 +1,13 @@
+# Configuración parcial del backend remoto del módulo principal.
+#
+# Cópialo a `backend.hcl` (que no se commitea) con el nombre real del bucket, o
+# genéralo desde el submódulo de arranque, que es lo recomendado:
+#
+#   cd bootstrap && terraform init && terraform apply -var project_id=<proyecto>
+#   terraform output -raw backend_hcl > ../backend.hcl
+#
+# Y después, en este directorio:
+#
+#   terraform init -backend-config=backend.hcl
+
+bucket = "tu-proyecto-gcp-id-tfstate"

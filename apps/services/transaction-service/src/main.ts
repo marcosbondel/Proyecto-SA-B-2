@@ -1,3 +1,5 @@
+// First, before anything else: see `instrumentation.ts` for why the order matters.
+import { otel } from './instrumentation';
 import 'reflect-metadata';
 
 import { randomUUID } from 'node:crypto';
@@ -5,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { EXCHANGES, QUEUES } from '@bank/contracts';
 import type { MessageEnvelope, QueueDescriptor } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
+import { nestLoggerFor } from '@bank/observability';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
@@ -20,6 +23,7 @@ import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.pu
 import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresTransactionRepository } from './infrastructure/persistence/postgres-transaction.repository';
 import { OutboxRelay } from './infrastructure/scheduler/outbox.scheduler';
+import { OtelTransferTelemetry } from './infrastructure/telemetry/otel-transfer.telemetry';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
@@ -113,6 +117,9 @@ async function bootstrap(): Promise<void> {
 
   const clock = { now: (): Date => new Date() };
   const ids = { next: (): string => randomUUID() };
+  // One instance for the process: the telemetry reads the correlation id off the
+  // transaction itself, so there is no per-delivery state to bind.
+  const telemetry = new OtelTransferTelemetry(logger);
   const publisherFactory = new BrokerEventPublisher(broker);
 
   /**
@@ -138,17 +145,17 @@ async function bootstrap(): Promise<void> {
    */
   const routerFor = (envelope: MessageEnvelope<unknown>): InboundMessageRouter => {
     const publisher = publisherFactory.forCause(envelope);
-    const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids });
+    const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids, telemetry });
 
     return new InboundMessageRouter([
       new RequestTransferHandler(
-        new RequestTransferUseCase({ repository, publisher, saga, clock }),
+        new RequestTransferUseCase({ repository, publisher, saga, clock, telemetry }),
         logger,
       ),
       new TransactionStatusHandler(new GetTransactionStatusUseCase({ repository, publisher })),
       new TransactionListHandler(new ListTransactionsUseCase({ repository, publisher })),
       new TransactionStatsHandler(new GetTransactionStatsUseCase({ repository, publisher })),
-      new PaymentAttemptFailedHandler(new RecordPaymentAttemptUseCase({ repository }), logger),
+      new PaymentAttemptFailedHandler(new RecordPaymentAttemptUseCase({ repository, telemetry }), logger),
       ...sagaHandlers(saga, logger),
     ]);
   };
@@ -254,6 +261,7 @@ async function bootstrap(): Promise<void> {
       isDatabaseReachable: async () => await repository.isReachable(),
       isConsuming: () => consuming,
     }),
+    { logger: nestLoggerFor(logger) },
   );
 
   await application.listen(environment.PORT);
@@ -270,6 +278,8 @@ async function bootstrap(): Promise<void> {
     await application.close();
     await broker.stop();
     await pool.end();
+    // Last: flushes the spans and metrics the shutdown itself produced.
+    await otel.shutdown();
   };
 
   process.on('SIGTERM', () => void shutdown());
@@ -277,6 +287,10 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // JSON like every other line: the one that explains a crash is the one the
+  // collection agent most needs to parse.
+  new StructuredLogger().error('boot failed', {
+    error: error instanceof Error ? error.message : String(error),
+  });
   process.exit(1);
 });

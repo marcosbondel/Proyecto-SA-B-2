@@ -2,7 +2,15 @@ import { randomUUID } from 'node:crypto';
 
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
-import type { Account } from '../../domain/account';
+import type { Account, NewAccount } from '../../domain/account';
+import {
+  ANOMALY_CLAIM_TTL_MS,
+  COUNTED_OPERATION_TYPES,
+  exceedsLimit,
+  isCoolingDown,
+  windowStart,
+} from '../../domain/activity-policy';
+import type { ActivityRule } from '../../domain/activity-policy';
 import { minorUnitsFromNumeric, numericFromMinorUnits, quetzales } from '../../domain/money';
 import { inactivityThreshold } from '../../domain/deactivation-policy';
 import type { DeactivationCriteria } from '../../domain/deactivation-policy';
@@ -10,6 +18,8 @@ import type {
   AccountFilter,
   AccountOperation,
   AccountRepository,
+  AnomalyClaim,
+  AnomalyRecord,
   AppliedMovement,
   ProcessedMessage,
 } from '../../application/ports';
@@ -43,13 +53,21 @@ export class PostgresAccountRepository implements AccountRepository {
   }
 
   public async openAccount(input: {
-    readonly account: Account;
+    /** Sin número: lo asigna `account_number_seq` en el `INSERT` (T-56). */
+    readonly account: NewAccount;
     readonly idempotency: ProcessedMessage;
   }): Promise<{ readonly account: Account; readonly created: boolean }> {
     return await this.#inTransaction(async (client) => {
       const inserted = await client.query<AccountRow>(
+        /*
+         * `account_number` no se nombra: lo pone el `DEFAULT` de la columna
+         * (migración 010). Es deliberado — hay cuatro caminos que insertan
+         * cuentas y tres son SQL propio; con la expresión aquí, los otros tres
+         * se olvidaban, y el despliegue se quedó sin arrancar por eso.
+         */
         `INSERT INTO accounts
-           (account_id, customer_id, account_type, balance, status, last_activity_at, version, created_at, updated_at)
+           (account_id, customer_id, account_type, balance, status,
+            last_activity_at, version, created_at, updated_at)
          VALUES ($1, $2, $3, $4::NUMERIC, 'ACTIVE', $5, 0, $5, $5)
          ON CONFLICT (account_id) DO NOTHING
          RETURNING ${ACCOUNT_COLUMNS}`,
@@ -86,6 +104,15 @@ export class PostgresAccountRepository implements AccountRepository {
     const result = await this.#pool.query<AccountRow>(
       `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE account_id = $1`,
       [accountId],
+    );
+
+    return result.rows[0] === undefined ? null : accountFrom(result.rows[0]);
+  }
+
+  public async findByNumber(accountNumber: string): Promise<Account | null> {
+    const result = await this.#pool.query<AccountRow>(
+      `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE account_number = $1`,
+      [accountNumber],
     );
 
     return result.rows[0] === undefined ? null : accountFrom(result.rows[0]);
@@ -457,6 +484,117 @@ export class PostgresAccountRepository implements AccountRepository {
     });
   }
 
+  /**
+   * The count, the cooldown and the insert are one decision, taken under a
+   * per-account advisory lock — **not** the `accounts` row lock. Detection
+   * runs after `applyMovement` has committed, so it must never be able to make
+   * a balance movement wait; this lock is a different key that only other
+   * detections for the same account ever contend for.
+   *
+   * `pg_advisory_xact_lock` is released by the transaction ending, so a pod that
+   * dies mid-decision releases it by disconnecting, like the sweep's lease.
+   */
+  public async claimAnomaly(input: {
+    readonly account: Pick<Account, 'accountId' | 'customerId' | 'accountType'>;
+    readonly rule: ActivityRule;
+    readonly now: Date;
+  }): Promise<AnomalyClaim | null> {
+    const { account, rule, now } = input;
+
+    return await this.#inTransaction(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `account-anomaly:${account.accountId}`,
+      ]);
+
+      const latest = await client.query<AnomalyRow>(
+        `SELECT anomaly_id, operation_count, threshold, window_minutes, window_start,
+                detected_at, claimed_at, published_at
+           FROM account_anomalies
+          WHERE account_id = $1
+          ORDER BY detected_at DESC
+          LIMIT 1`,
+        [account.accountId],
+      );
+      const previous = latest.rows[0];
+
+      // An anomaly already covers this window: say nothing, unless its
+      // announcement was never completed and whoever claimed it has gone quiet.
+      if (previous !== undefined && isCoolingDown(previous.detected_at, now, rule)) {
+        const stale =
+          previous.published_at === null &&
+          previous.claimed_at.getTime() <= now.getTime() - ANOMALY_CLAIM_TTL_MS;
+
+        if (!stale) {
+          return null;
+        }
+
+        await client.query(`UPDATE account_anomalies SET claimed_at = $2 WHERE anomaly_id = $1`, [
+          previous.anomaly_id,
+          now,
+        ]);
+
+        return { anomaly: anomalyFrom(previous, account), firstTime: false };
+      }
+
+      const start = windowStart(now, rule);
+      const counted = await client.query<{ count: string }>(
+        `SELECT COUNT(*)::TEXT AS count
+           FROM account_operations
+          WHERE account_id = $1
+            AND type = ANY($2::TEXT[])
+            AND created_at > $3
+            AND created_at <= $4`,
+        [account.accountId, [...COUNTED_OPERATION_TYPES], start, now],
+      );
+      const operationCount = Number(counted.rows[0]?.count ?? '0');
+
+      if (!exceedsLimit(operationCount, rule)) {
+        return null;
+      }
+
+      const anomalyId = randomUUID();
+
+      await client.query(
+        `INSERT INTO account_anomalies
+           (anomaly_id, account_id, operation_count, threshold, window_minutes,
+            window_start, detected_at, claimed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        [
+          anomalyId,
+          account.accountId,
+          operationCount,
+          rule.maxOperations,
+          rule.windowMinutes,
+          start,
+          now,
+        ],
+      );
+
+      return {
+        anomaly: {
+          anomalyId,
+          accountId: account.accountId,
+          customerId: account.customerId,
+          accountType: account.accountType,
+          operationCount,
+          threshold: rule.maxOperations,
+          windowMinutes: rule.windowMinutes,
+          windowStart: start,
+          detectedAt: now,
+        },
+        firstTime: true,
+      };
+    });
+  }
+
+  public async markAnomalyPublished(anomalyId: string, now: Date): Promise<void> {
+    await this.#pool.query(
+      `UPDATE account_anomalies SET published_at = $2
+        WHERE anomaly_id = $1 AND published_at IS NULL`,
+      [anomalyId, now],
+    );
+  }
+
   public async deactivateInactive(input: {
     readonly now: Date;
     readonly criteria: DeactivationCriteria;
@@ -601,6 +739,7 @@ async function recordProcessedWith(
  */
 const ACCOUNT_COLUMNS = `
   account_id,
+  account_number,
   customer_id,
   account_type,
   balance::TEXT AS balance,
@@ -645,9 +784,38 @@ interface OperationRow extends QueryResultRow {
   created_at: Date;
 }
 
+interface AnomalyRow extends QueryResultRow {
+  anomaly_id: string;
+  operation_count: number;
+  threshold: number;
+  window_minutes: number;
+  window_start: Date;
+  detected_at: Date;
+  claimed_at: Date;
+  published_at: Date | null;
+}
+
+function anomalyFrom(
+  row: AnomalyRow,
+  account: Pick<Account, 'accountId' | 'customerId' | 'accountType'>,
+): AnomalyRecord {
+  return {
+    anomalyId: row.anomaly_id,
+    accountId: account.accountId,
+    customerId: account.customerId,
+    accountType: account.accountType,
+    operationCount: row.operation_count,
+    threshold: row.threshold,
+    windowMinutes: row.window_minutes,
+    windowStart: row.window_start,
+    detectedAt: row.detected_at,
+  };
+}
+
 function accountFrom(row: AccountRow): Account {
   return {
     accountId: row.account_id,
+    accountNumber: row.account_number,
     customerId: row.customer_id,
     accountType: row.account_type,
     balanceMinor: minorUnitsFromNumeric(row.balance),

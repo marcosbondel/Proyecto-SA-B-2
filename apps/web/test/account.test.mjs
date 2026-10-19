@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { test, describe } from 'node:test';
 
 import {
@@ -13,6 +14,7 @@ import {
   mayTakeDeposits,
   outcomeFromAccountAudit,
   totalBalanceMinor,
+  OPERATION_PRESENTATION,
 } from '../app/lib/account.ts';
 
 const NOW = new Date('2026-08-26T12:00:00.000Z');
@@ -26,6 +28,31 @@ const account = (overrides = {}) => ({
   lastActivityAt: '2026-02-26T12:00:00.000Z',
   openedAt: '2026-01-01T00:00:00.000Z',
   ...overrides,
+});
+
+describe('every kind of operation the ledger records has a name on the statement', () => {
+  const primitives = readFileSync(
+    new URL('../../packages/contracts/src/schemas/primitives.ts', import.meta.url),
+    'utf8',
+  );
+  const declared = /accountOperationType\s*=\s*z\.enum\(\[([^\]]*)\]\)/.exec(primitives)?.[1]
+    ?.match(/'([A-Z_]+)'/g)
+    ?.map((quoted) => quoted.slice(1, -1));
+
+  test('reads the kinds from the contract, which is where they are decided', () => {
+    assert.ok(declared !== undefined && declared.length >= 4, `read ${JSON.stringify(declared)}`);
+  });
+
+  test('has a label and a sign for each of them — a missing one stops the whole statement drawing', () => {
+    for (const type of declared ?? []) {
+      assert.ok(OPERATION_PRESENTATION[type], `${type} has no entry in OPERATION_PRESENTATION`);
+      assert.ok(OPERATION_PRESENTATION[type].label.length > 0);
+    }
+  });
+
+  test('shows the savings-account commission as money that left, like a debit', () => {
+    assert.deepEqual(OPERATION_PRESENTATION.COMMISSION, { label: 'Comisión', sign: '−' });
+  });
 });
 
 describe('an identifier worth sending', () => {

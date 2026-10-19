@@ -36,6 +36,12 @@ services do not: the Gateway is the system's only entry point (§4.1,
 constitution V), and a published 3001-3005 would be five ways around the one
 door the design has.
 
+T-46 añade una imagen **auxiliar** `apps/partner-bank-mock/Dockerfile`, fuera
+de las siete imágenes de entrega y del chart. El perfil opcional `interbank`
+de Compose la inicia en el puerto local 3021 para simular otro banco; expone
+`GET /health` y recibe transferencias y callbacks con el token compartido.
+Véase [INTERBANK.md](INTERBANK.md) para sus modos de fallo.
+
 ### Variables each image requires at run time
 
 Nothing is baked in. The only variables an image carries are `NODE_ENV`, which
@@ -47,15 +53,47 @@ serve Compose, kind and a demonstration alike.
 | Component | Required | Optional |
 | --- | --- | --- |
 | `customer-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` `OBJECT_STORAGE_ENDPOINT` `OBJECT_STORAGE_ACCESS_KEY` `OBJECT_STORAGE_SECRET_KEY` `OBJECT_STORAGE_BUCKET` `OBJECT_STORAGE_REGION` | `SEED_DEMO_DATA` `SEED_PASSWORD` |
-| `account-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `DEACTIVATION_ENABLED` `DEACTIVATION_INTERVAL_MS` `INACTIVITY_MONTHS` `INACTIVITY_MIN_BALANCE_MINOR` `SEED_DEMO_DATA` |
+| `account-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `DEACTIVATION_ENABLED` `DEACTIVATION_INTERVAL_MS` `INACTIVITY_MONTHS` `INACTIVITY_MIN_BALANCE_MINOR` `ANOMALY_MAX_OPERATIONS` `ANOMALY_WINDOW_MINUTES` `SEED_DEMO_DATA` |
 | `transaction-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | — |
-| `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` |
+| `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` `PAYMENT_SIM_FAILURE_RATE` `PAYMENT_SIM_TIMEOUT_RATE` `PAYMENT_SIM_LATENCY_MS` `INTERBANK_PARTNER_TOKEN` `INTERBANK_BANK_CODE` `INTERBANK_PARTNER_BANK_CODE` `INTERBANK_MAX_AMOUNT_MINOR` `INTERBANK_CALLBACK_URL` (T-46) `INTERBANK_SEND_URL` `INTERBANK_CONFIRMATION_TIMEOUT_MS` (T-47; see [INTERBANK.md](INTERBANK.md)) |
 | `notification-audit-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `REVEAL_ACTIVATION_LINKS` `NOTIFICATION_CHANNEL` `RESEND_API_KEY`¹ `EMAIL_FROM`¹ `APP_BASE_URL`¹ `RESEND_API_URL` |
-| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) |
+| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) `ALERT_WEBHOOK_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/alerts/slo` refuses every caller) `INTERBANK_PARTNER_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/interbank/deposits` refuses every caller) |
 | `web` | — | `NUXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:3000`) |
 
 The Gateway has **no** `DATABASE_URL` and no way to acquire one: it holds no
 business data (constitution II and V).
+
+#### Telemetry, the same in six images (T-48)
+
+The five services and the Gateway register the OpenTelemetry SDK through
+`@bank/observability` before anything else loads (`src/instrumentation.ts`), and
+read the same six variables. **All of them are optional**: with none set, a
+container behaves as before T-48, except that its log lines now carry a
+`traceId`. `web` is not instrumented and reads none of them.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Where spans and metrics go, over OTLP/HTTP (`/v1/traces`, `/v1/metrics` are appended). **Empty means record and drop**: the SDK is still registered, so `traceparent` still crosses the broker and every log line still names its trace, but nothing leaves the process and nothing retries a collector that is not there. The chart sets it to the Collector of T-49. |
+| `DEPLOYMENT_ENVIRONMENT` | `local` | `deployment.environment(.name)` on every span and metric, `environment` on every log line. `helm-deploy.sh` sets it to the namespace, `dev` or `prod`, so the two never mix in one Grafana. |
+| `SERVICE_VERSION` | `dev` | `service.version` and the log line's `version`. The chart sets it to the tag of the image the Deployment runs — the same value as its `image:` — so it cannot drift from the code. The images Compose sets it to `BANK_IMAGE_TAG`. |
+| `OTEL_SDK_DISABLED` | `false` | `true` registers nothing at all: no spans, no metrics, no `traceId` in the logs. The standard switch, and the escape hatch if instrumentation is ever the suspect. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `15000` | Milliseconds between metric pushes. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
+
+`HOSTNAME`, which Docker and Kubernetes already set to the container or pod
+name, becomes `service.instance.id`, so two replicas are two instances of one
+service in a trace rather than two services. None of these is a secret, and
+none is baked into an image: `images:smoke` still finds only `NODE_ENV` there.
+
+**Every log line is JSON with a fixed head**, in this order: `timestamp`,
+`level`, `serviceName`, `environment`, `version`, `message`, then
+`correlationId`, `traceId` and `spanId` when there are any, then the component's
+own fields. A field whose name suggests a secret or personal data (`password`,
+`token`, `authorization`, `jwt`, `email`, `document`, `dpi`, `photo`,
+`recipient`, `phone`, `address`, …) is dropped, and a JWT, a `Bearer` token or an
+email address is masked wherever it appears in a value. Nest's own lines go
+through the same logger. Logs are written to stdout only: the collection agent
+of T-49 ships them, and no service sends its logs anywhere itself.
 
 Two of the optional ones are worth reading before a deployment.
 
@@ -239,8 +277,23 @@ pnpm images:build -- --kind bank-usac  # and load them into a kind cluster
 pnpm images:up                       # the stack, from the built images
 pnpm images:smoke                    # every check the ticket asks for
 pnpm images:flow                     # register, open accounts, transfer
+pnpm images:trace                    # one transfer is one trace (needs the telemetry profile)
 pnpm images:down
 ```
+
+`images:trace` needs somewhere for the spans to go. The images Compose carries a
+Jaeger behind the `telemetry` profile — off unless asked for, in-memory, and on
+the loopback only — and the services export to it when told to:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 \
+  docker compose -f infra/docker/docker-compose.images.yml --profile telemetry up -d
+SEED_DEMO_DATA=true pnpm images:flow
+pnpm images:trace                    # Jaeger's UI is at http://localhost:16686
+```
+
+It is a check for a laptop, not the cluster's tracing backend; that is Tempo,
+in T-49.
 
 `infra/docker/docker-compose.images.yml` is the third of three Compose files and
 they answer three different questions:

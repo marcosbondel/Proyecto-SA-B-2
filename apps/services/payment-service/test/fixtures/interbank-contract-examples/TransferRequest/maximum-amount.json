@@ -1,0 +1,11 @@
+{
+  "interbankTransferId": "8f14e45f-ceea-467a-9b36-4b1c2d6a7e01",
+  "originBankCode": "BANK03",
+  "destinationBankCode": "BANK07",
+  "originAccount": "3001-000123",
+  "destinationAccount": "7002-004567",
+  "amount": "10000.00",
+  "currency": "GTQ",
+  "createdAt": "2026-10-20T15:00:00Z",
+  "expiresAt": "2026-10-20T15:03:00Z"
+}

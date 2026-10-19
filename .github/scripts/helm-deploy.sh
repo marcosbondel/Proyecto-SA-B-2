@@ -25,6 +25,11 @@
 #                    exige (`external.*.dockerNetwork.host`) y falla el render
 #                    si faltan, que es preferible a desplegar siete pods que no
 #                    pueden alcanzar su base de datos.
+#   OTEL_EXPORTER_OTLP_ENDPOINT  opcional — el Collector al que los seis
+#                    componentes instrumentados envian trazas y metricas (T-49). Vacio, el SDK
+#                    registra igual y no exporta. `observability.environment`
+#                    no se pide: es el namespace, para que la telemetria de dev
+#                    y la de prod nunca se confundan en el mismo Grafana (T-48).
 #   UPDATED_COMPONENTS  opcional — los componentes que cambiaron, separados por
 #                    espacios. Solo esos reciben la etiqueta nueva; el resto
 #                    conserva la suya. Sin definir, todos se actualizan.
@@ -35,6 +40,17 @@
 #                    inservible en GKE: el despliegue tendria exito y entregaria
 #                    un frontend que no puede hablar con su backend. Se exige
 #                    aqui para que ese caso no exista.
+#
+# Variable opcional:
+#   GATEWAY_STATIC_IP  la IP reservada por Terraform
+#                    (`terraform output -raw gateway_public_ip`). El chart pone
+#                    el Service del Gateway en LoadBalancer por defecto; esto
+#                    fija ADEMAS la direccion, para que la entrada publica del
+#                    banco sobreviva a que se borre el Service o se reinstale
+#                    el release (TD-080). Solo produccion la define: el
+#                    acuerdo de integracion con el banco pareja lleva esa
+#                    direccion escrita, y una IP que cambia rompe el acuerdo.
+#                    Sin ella, el proveedor asigna una efimera.
 #
 # Variable opcional:
 #   IN_CLUSTER_BROKER  `true` levanta RabbitMQ DENTRO del namespace en vez de
@@ -58,6 +74,11 @@
 #
 #   ZERO_DOWNTIME_PROBE_URL  si esta definida, se sondea durante la
 #                    actualizacion para medir si hubo caida.
+#
+#   ALERT_WEBHOOK_TOKEN  el secreto compartido del webhook de alertas (T-60).
+#                    Si esta, gana sobre `secrets.alertWebhookToken` de
+#                    HELM_SECRETS; es el mismo valor que el job
+#                    `deploy-observability` pone en el Secret de Grafana.
 #
 #   WEB_PUBLIC_URL   el origen desde el que el navegador carga el frontend, para
 #                    `gateway.corsAllowedOrigins`. Opcional y sin valor por
@@ -109,6 +130,37 @@ declare -a SECRET_ARGS=("${SET_LINES[@]}")
 if [ ${#SECRET_ARGS[@]} -eq 0 ]; then
   echo "::error::HELM_SECRETS vacio. templates/secret.yaml marca esos valores como 'required' y helm fallaria con un error mucho menos claro."
   exit 1
+fi
+
+# El token del webhook de alertas (T-60, A3), con UNA fuente.
+#
+# Grafana (namespace `observability`) y el Gateway de cada entorno tienen que
+# tener el MISMO valor: Grafana lo manda como `Bearer` y el Gateway lo compara.
+# Antes eran dos: el Gateway lo leia de una linea de HELM_SECRETS y Grafana de
+# un Secret que se creaba a mano (`docs/operations/CLOUD.md`). Dos copias de un
+# secreto divergen, y cuando divergen el Gateway responde 401 y la alerta no
+# llega a la bitacora sin que nada falle.
+#
+# Ahora las dos mitades leen el secreto de GitHub `ALERT_WEBHOOK_TOKEN`: el job
+# `deploy-observability` crea con el el Secret de Grafana, y este script lo
+# pasa al chart del banco DESPUES de HELM_SECRETS, de modo que gana sobre una
+# linea vieja que siguiera ahi. Sin la variable, se conserva el comportamiento
+# anterior (lo que traiga HELM_SECRETS) con un aviso.
+declare -a ALERT_ARGS=()
+if [ -n "${ALERT_WEBHOOK_TOKEN:-}" ]; then
+  # El Gateway se niega a arrancar con un token de menos de 32 caracteres; es
+  # mejor decirlo aqui que en un CrashLoopBackOff.
+  if [ "${#ALERT_WEBHOOK_TOKEN}" -lt 32 ]; then
+    echo "::error::ALERT_WEBHOOK_TOKEN tiene ${#ALERT_WEBHOOK_TOKEN} caracteres. El Gateway exige al menos 32 y no arrancaria."
+    exit 1
+  fi
+  if grep -q '^[[:space:]]*secrets\.alertWebhookToken=' <<<"${HELM_SECRETS:-}"; then
+    echo "::warning::HELM_SECRETS todavia trae secrets.alertWebhookToken; se ignora en favor del secreto ALERT_WEBHOOK_TOKEN. Conviene quitar esa linea para que haya una sola fuente."
+  fi
+  ALERT_ARGS+=(--set-string "secrets.alertWebhookToken=${ALERT_WEBHOOK_TOKEN}")
+  echo "Token del webhook de alertas: desde el secreto ALERT_WEBHOOK_TOKEN (el mismo que recibe Grafana)."
+else
+  echo "::warning::Sin ALERT_WEBHOOK_TOKEN: el Gateway usa lo que traiga HELM_SECRETS. Si no coincide con el Secret grafana-alert-webhook, las alertas de Grafana reciben 401 y no llegan a la bitacora."
 fi
 
 read_set_lines "${INFRA_ADDRESSES:-}"
@@ -180,6 +232,22 @@ add_image services.payment           payment-service
 add_image services.notificationAudit notification-audit-service
 add_image gateway                    gateway
 add_image web                        web
+
+# El banco pareja simulado (T-60). Encendido solo donde se pide
+# (`PARTNER_MOCK_ENABLED=true`, que cd.yml pone en prod): `release.yml` publica
+# su imagen con la etiqueta de la version, pero el build de `dev` no la
+# construye. Sin `INTERBANK_PARTNER_BASE_URL`, el chart apunta el envio al mock
+# de ESTE release; con ella (el banco pareja real), el mock queda disponible
+# solo para inyectar fallos.
+declare -a INTERBANK_ARGS=()
+if [ "${PARTNER_MOCK_ENABLED:-false}" = "true" ]; then
+  INTERBANK_ARGS+=(--set "partnerMock.enabled=true")
+  add_image partnerMock partner-bank-mock
+  IMAGE_ARGS+=(--set-string "partnerMock.image.tag=${IMAGE_TAG}")
+fi
+if [ -n "${INTERBANK_PARTNER_BASE_URL:-}" ]; then
+  INTERBANK_ARGS+=(--set-string "interbank.partnerBaseUrl=${INTERBANK_PARTNER_BASE_URL}")
+fi
 
 if [ ${#SIN_TOCAR[@]} -gt 0 ]; then
   echo "Sin cambios, conservan su etiqueta: ${SIN_TOCAR[*]}"
@@ -324,11 +392,16 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   --set-string "imagePullPolicy=IfNotPresent" \
   --set-string "web.apiBaseUrl=${GATEWAY_PUBLIC_URL}" \
   ${INFRA_PROPIA_ARGS[@]+"${INFRA_PROPIA_ARGS[@]}"} \
+  ${GATEWAY_STATIC_IP:+--set-string "gateway.loadBalancerIP=${GATEWAY_STATIC_IP}"} \
   --set-string "databaseSuffix=${DATABASE_SUFFIX:-}" \
+  --set-string "observability.environment=${NAMESPACE}" \
+  ${OTEL_EXPORTER_OTLP_ENDPOINT:+--set-string "observability.otlpEndpoint=${OTEL_EXPORTER_OTLP_ENDPOINT}"} \
   ${WEB_PUBLIC_URL:+--set-string "gateway.corsAllowedOrigins=${WEB_PUBLIC_URL}"} \
   "${SECRET_ARGS[@]}" \
+  ${ALERT_ARGS[@]+"${ALERT_ARGS[@]}"} \
   "${INFRA_ARGS[@]}" \
   "${IMAGE_ARGS[@]}" \
+  ${INTERBANK_ARGS[@]+"${INTERBANK_ARGS[@]}"} \
   --wait \
   ${HELM_WAIT_DEBUG:+--debug} \
   --timeout "${HELM_TIMEOUT:-10m}"

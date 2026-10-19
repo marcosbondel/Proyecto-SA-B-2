@@ -56,7 +56,8 @@ export interface OpenAccountRequest extends CommandContext {
 export interface SetAccountStatusRequest extends CommandContext {
   readonly accountId: string;
   readonly status: 'ACTIVE' | 'INACTIVE';
-  readonly reason: string;
+  /** Obligatorio al desactivar; al activar puede faltar. */
+  readonly reason?: string;
 }
 
 export interface TransferRequest extends CommandContext {
@@ -68,6 +69,26 @@ export interface TransferRequest extends CommandContext {
   /** Carried when the target is a biller's collection account. Never read here. */
   readonly reference?: string;
   readonly paymentScenario?: PaymentScenario;
+  /**
+   * A dónde va de verdad el dinero, cuando el destino está en otro banco
+   * (T-47).
+   *
+   * Cuando viene, `targetAccount` es la cuenta de liquidación interbancaria de
+   * este banco y esto dice a qué banco y a qué cuenta de allá corresponde. El
+   * Gateway no lo interpreta —no sabe si esa cuenta existe en el otro banco, y
+   * no le toca— pero sí **mina los dos identificadores**, que es lo único de
+   * este bloque que no puede venir de fuera: el `interbankTransferId` es la
+   * clave con la que el otro banco deduplica, y uno adivinable desde fuera es
+   * uno que se puede colisionar a propósito.
+   */
+  readonly interbank?: {
+    readonly bankCode: string;
+    readonly account: string;
+    /** La cuenta de este banco de la que sale el dinero (`02-NNNNNNNNN`), que el contrato exige. */
+    readonly originAccount: string;
+    readonly interbankTransferId: string;
+    readonly idempotencyKey: string;
+  };
 }
 
 /**
@@ -167,7 +188,7 @@ export class CommandsUseCase {
       {
         accountId: request.accountId,
         status: request.status,
-        reason: request.reason,
+        ...(request.reason === undefined ? {} : { reason: request.reason }),
       },
       request,
     );
@@ -194,6 +215,9 @@ export class CommandsUseCase {
         ...(request.paymentScenario === undefined
           ? {}
           : { paymentScenario: request.paymentScenario }),
+        // El destino en el otro banco (T-47). Igual que los dos de arriba: se
+        // lleva y no se obedece — quien habla con el banco pareja es Payment.
+        ...(request.interbank === undefined ? {} : { interbank: request.interbank }),
       },
       request,
     );

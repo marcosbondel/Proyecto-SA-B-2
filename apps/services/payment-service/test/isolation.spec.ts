@@ -113,15 +113,60 @@ describe('this service reads no other service', () => {
 });
 
 describe('this service speaks to the system only through the broker', () => {
-  it('makes no HTTP call to anybody', () => {
-    // A Saga in choreography reaches nobody synchronously. If this ever fails,
-    // the pattern the assignment asks for has been replaced by orchestration
-    // over HTTP, whatever the diagram still says.
-    for (const source of SOURCES) {
+  it('makes HTTP calls only through the fixed partner-bank callback adapter', () => {
+    for (const source of SOURCES.filter(
+      (file) => file.path !== 'src/infrastructure/http/partner-callback.ts',
+    )) {
       // `(?<![.#\w])` so a private method of this service — or any `.fetch(` on
       // an SDK object — is not mistaken for the global.
       expect(source.text).not.toMatch(/(?<![.#\w])fetch\(|axios|node-fetch|HttpService/);
     }
+    const adapter = SOURCES.find(
+      (file) => file.path === 'src/infrastructure/http/partner-callback.ts',
+    );
+
+    expect(adapter?.text).toMatch(/fetch\(`\$\{this\.baseUrl\}/);
+    expect(adapter?.text).toMatch(/redirect: 'error'/);
+
+    /**
+     * Y **todas** las llamadas de ese archivo apuntan a un destino de la
+     * configuración, no sólo la primera.
+     *
+     * T-46 dejó una sola salida y bastaba con comprobar que existía. T-47 añadió
+     * la segunda —el envío del depósito, además del callback de respuesta— y
+     * con dos la pregunta deja de ser «¿hay una salida fija?» y pasa a ser
+     * «¿son fijas todas?». Un `fetch(payload.callbackUrl)` sería un banco al
+     * que cualquiera le dice a dónde mandar el dinero, y la prueba anterior lo
+     * habría dejado pasar mientras la primera llamada siguiera siendo correcta.
+     */
+    const llamadas = adapter?.text.match(/(?<![.#\w])fetch\(/g) ?? [];
+    /*
+     * Dos formas de empezar una URL, y las dos tienen que arrancar en `this.`:
+     *
+     *   fetch(this.endpoint, …)                    — el destino entero
+     *   fetch(`${this.apiBaseUrl}/transfers/…`, …) — la base más un camino fijo
+     *
+     * La segunda la añadió TD-095, porque el protocolo de TIMEOUT necesita
+     * `GET /transfers/{id}` y `POST /transfers/{id}/cancel`. Lo que la prueba
+     * sigue impidiendo es lo único que importa: que la URL empiece en algo que
+     * no sea configuración. Un `fetch(`${payload.baseUrl}/…`)` no coincide, que
+     * es el punto — sería un banco al que cualquiera le dice a dónde mandar el
+     * dinero.
+     */
+    const configuradas =
+      adapter?.text.match(/(?<![.#\w])fetch\(\s*(?:this\.[A-Za-z]+|`\$\{this\.[A-Za-z]+)/g) ??
+      [];
+
+    /*
+     * Una: desde T-60 toda salida —el envío, la consulta, la cancelación, el
+     * reverso y el callback— pasa por `PartnerHttp.call`, que es donde se ponen
+     * `X-Api-Key` y `traceparent`. Antes eran cuatro `fetch` con las cabeceras
+     * repetidas cuatro veces, que es como una ruta nueva se olvida de una. El
+     * número se mueve a mano cuando la salida crece a propósito, que es justo lo
+     * que lo convierte en una decisión y no en un descuido.
+     */
+    expect(llamadas).toHaveLength(1);
+    expect(configuradas).toHaveLength(llamadas.length);
   });
 
   it('exposes HTTP for health and readiness only', () => {
@@ -174,7 +219,7 @@ describe('the retry decision lives in one place', () => {
   });
 });
 
-describe('this service orders nothing from anybody', () => {
+describe('the Saga payment publisher orders nothing from anybody', () => {
   /**
    * Payment Service is the end of the command chain. A `send` on the publisher,
    * or a publish onto the commands exchange, would mean it had begun telling
@@ -189,7 +234,9 @@ describe('this service orders nothing from anybody', () => {
      * succeed — declaring it is not a route to publishing on it. The route
      * would be here.
      */
-    const publishers = SOURCES.filter((source) => source.path.includes('messaging'));
+    const publishers = SOURCES.filter(
+      (source) => source.path === 'src/infrastructure/messaging/broker-event.publisher.ts',
+    );
 
     expect(publishers.map((source) => source.path)).toEqual([
       'src/infrastructure/messaging/broker-event.publisher.ts',
@@ -198,6 +245,10 @@ describe('this service orders nothing from anybody', () => {
     for (const source of publishers) {
       expect(source.text).not.toMatch(/EXCHANGES\.commands/);
     }
+    const interbank = SOURCES.find(
+      (source) => source.path === 'src/infrastructure/messaging/broker-interbank.messenger.ts',
+    );
+    expect(interbank?.text).toMatch(/EXCHANGES\.commands/);
   });
 
   it('offers no `send` on the port the application layer holds', () => {

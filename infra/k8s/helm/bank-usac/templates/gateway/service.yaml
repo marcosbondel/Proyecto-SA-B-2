@@ -9,6 +9,15 @@ metadata:
     {{- include "bank-usac.componentLabels" $ctx | nindent 4 }}
 spec:
   type: {{ .Values.gateway.serviceType | default "ClusterIP" }}
+  {{- if and (eq (.Values.gateway.serviceType | default "ClusterIP") "LoadBalancer") .Values.gateway.loadBalancerIP }}
+  # La IP reservada en Terraform (`google_compute_address.gateway`). Fijarla
+  # aquí es lo que hace que la entrada pública del banco sobreviva a que se
+  # borre este Service, se reinstale el release o se recree el namespace —
+  # TD-080. Vacía, el proveedor asigna una dirección efímera; en kind no hay
+  # controlador de balanceadores y el Service se queda en `<pending>`, que es
+  # lo correcto porque allí se entra por `port-forward`.
+  loadBalancerIP: {{ .Values.gateway.loadBalancerIP | quote }}
+  {{- end }}
   selector:
     {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 4 }}
   ports:

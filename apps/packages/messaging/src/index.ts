@@ -30,3 +30,6 @@ export {
   ReplyTimeoutError,
   replyQueueName,
 } from './request-reply';
+
+export type { DeliveryOutcome } from './telemetry';
+export { contextFromHeaders } from './telemetry';

@@ -205,6 +205,47 @@ describe('the five asynchronous commands', () => {
       expect(harness.publisher.published).toHaveLength(0);
     });
 
+    it('lets an account be reactivated with no reason (QA 21)', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/accounts/${SOURCE}/status`)
+        .set('Authorization', admin)
+        .send({ status: 'ACTIVE' });
+
+      expect(response.status).toBe(202);
+      expect(harness.publisher.published.at(-1)?.payload).toEqual({
+        accountId: SOURCE,
+        status: 'ACTIVE',
+      });
+    });
+
+    it('still accepts, and keeps, a reason sent with a reactivation (backward compatible)', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/accounts/${SOURCE}/status`)
+        .set('Authorization', admin)
+        .send({ status: 'ACTIVE', reason: 'Se resolvió el motivo' });
+
+      expect(response.status).toBe(202);
+      expect(harness.publisher.published.at(-1)?.payload).toMatchObject({
+        status: 'ACTIVE',
+        reason: 'Se resolvió el motivo',
+      });
+    });
+
+    it.each([
+      ['an empty reason', { status: 'INACTIVE', reason: '' }],
+      ['a reason over 300 characters', { status: 'INACTIVE', reason: 'x'.repeat(301) }],
+      ['a reason that is not text', { status: 'INACTIVE', reason: 42 }],
+      ['an empty reason even when activating', { status: 'ACTIVE', reason: '' }],
+    ])('refuses %s', async (_name, body) => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/accounts/${SOURCE}/status`)
+        .set('Authorization', admin)
+        .send(body);
+
+      expect(response.status).toBe(400);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
     it('refuses a status outside the closed set', async () => {
       const response = await request(app.getHttpServer())
         .post(`/api/accounts/${SOURCE}/status`)

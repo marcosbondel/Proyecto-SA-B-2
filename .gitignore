@@ -113,3 +113,22 @@ terraform.rc
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+# La configuración parcial del backend remoto: el nombre del bucket de estado
+# depende del proyecto de GCP, así que no se commitea. La plantilla sí
+# (backend.hcl.example). `.terraform.lock.hcl` no se ve afectado.
+backend.hcl
+
+# Lo que las corridas de carga de T-51 dejan por el camino: el resumen de k6, su
+# salida y los recuentos de antes y después. Los **números** van al postmortem y
+# a la evidencia, que es donde alguien los va a leer; el archivo crudo es de una
+# corrida concreta en una máquina concreta y no se versiona.
+tmp/load/
+
+# Los worktrees que crean los agentes al trabajar en paralelo (`isolation:
+# worktree`). Son checkouts completos del repositorio con su propio
+# `node_modules`: versionarlos duplicaria el repo dentro de si mismo.
+.claude/worktrees/
+
+# Bitacoras de validacion y verificacion local de T-60. Lo que importa de ellas
+# pasa a la evidencia de docs/qa/; el log crudo es de una maquina y una corrida.
+tmp/t60/

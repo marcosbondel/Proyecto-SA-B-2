@@ -44,6 +44,8 @@ and the headers a parked message carries. It lives in
   stage verifies, and what a green run does not prove.
 - [EMAIL_RESEND.md](EMAIL_RESEND.md) — sending real activation email instead of
   the simulated channel.
+- [INTERBANK.md](INTERBANK.md) — provisional incoming interbank contract, local
+  partner mock, callback retries and deposit state (T-46).
 
 > **Still open**: the stalled-Saga procedure — what to do when a compensation
 > does not arrive — is not written. Owner: Marcos Bonifasi. Arrives with T-23.

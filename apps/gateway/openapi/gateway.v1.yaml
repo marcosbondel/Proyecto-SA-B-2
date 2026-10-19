@@ -421,8 +421,8 @@ paths:
   /api/accounts/{accountId}/status:
     post:
       description: "ADMINISTRADOR, CAJERO_RECEPTOR y CLIENTE (para sus propias cuentas). Devuelve 202: el
-        cambio todavía no ocurrió. El motivo es obligatorio porque es el único registro de por qué
-        se hizo."
+        cambio todavía no ocurrió. El motivo es obligatorio al desactivar porque es el único
+        registro de por qué se hizo; al activar es opcional."
       operationId: AccountsController_setStatus
       parameters:
         - name: accountId
@@ -524,6 +524,47 @@ paths:
       x-bank-publishes: payment.list.query.v1
       x-bank-awaits:
         - payment.list.replied.v1
+  /api/payments/simulation:
+    get:
+      description: Solo ADMINISTRADOR. Devuelve la tasa de fallos, la tasa de timeouts y la latencia
+        vigentes, y si vienen del ConfigMap (DEFAULTS) o de un cambio en caliente (RUNTIME).
+      operationId: PaymentsController_simulation
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Consulta la simulación del proveedor de pagos
+      tags:
+        - payments
+      x-bank-publishes: payment.simulation.query.v1
+      x-bank-awaits:
+        - payment.simulation.replied.v1
+    put:
+      description: 'Solo ADMINISTRADOR. Cuerpo: failureRatePercent, timeoutRatePercent (0–100, su suma no
+        puede superar 100) y latencyMs (0–30 000), o bien { "reset": true } para volver a los
+        valores del ConfigMap. Aplica solo a pagos cuya transferencia no indicó un scenario.
+        Responde con la simulación que quedó vigente.'
+      operationId: PaymentsController_updateSimulation
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePaymentSimulationDto"
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Cambia en caliente la simulación del proveedor de pagos
+      tags:
+        - payments
+      x-bank-publishes: payment.simulation.update.v1
+      x-bank-awaits:
+        - payment.simulation.replied.v1
   /api/payments/{paymentId}:
     get:
       description: Un 504 aquí no significa que el pago falló. Los intentos vienen de la tabla de
@@ -565,10 +606,58 @@ paths:
         - audit.query.replied.v1
   /api/audit/recent:
     get:
-      description: "Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y,
-        opcionalmente, acotar por severidad (§4.1: INFO/WARNING/ERROR)."
+      description: "Solo ADMINISTRADOR. Permite navegar los eventos del sistema con paginación y acotar
+        por los cuatro filtros de §4.1, combinables: severity (INFO/WARNING/ERROR), correlationId,
+        traceId y service (el servicio que publicó el evento)."
       operationId: AuditController_recent
-      parameters: []
+      parameters:
+        - name: service
+          required: false
+          in: query
+          description: Servicio que publicó el evento.
+          schema:
+            enum:
+              - gateway
+              - customer-service
+              - account-service
+              - transaction-service
+              - payment-service
+              - notification-audit-service
+            type: string
+        - name: traceId
+          required: false
+          in: query
+          description: "trace-id W3C: 32 hexadecimales en minúscula, no todo ceros."
+          schema:
+            type: string
+        - name: correlationId
+          required: false
+          in: query
+          description: UUID v4 del flujo de negocio.
+          schema:
+            type: string
+        - name: severity
+          required: false
+          in: query
+          description: Nivel del evento.
+          schema:
+            enum:
+              - INFO
+              - WARNING
+              - ERROR
+            type: string
+        - name: limit
+          required: false
+          in: query
+          description: Eventos por página, de 1 a 100 (10 por omisión).
+          schema:
+            type: number
+        - name: page
+          required: false
+          in: query
+          description: Página, desde 1.
+          schema:
+            type: number
       responses:
         "200":
           description: ""
@@ -598,6 +687,297 @@ paths:
       x-bank-publishes: notification.list.query.v1
       x-bank-awaits:
         - notification.list.replied.v1
+  /api/alerts/slo:
+    post:
+      description: "Sin sesión: se autentica con `Authorization: Bearer <ALERT_WEBHOOK_TOKEN>`, un secreto
+        compartido que vive en un Secret de Kubernetes, y se rechaza si no hay uno configurado.
+        Publica la alerta en el broker para que Notification & Audit la registre y notifique;
+        responde 202 sin esperar. Cuerpo: el formato de webhook de Grafana (`alerts[]` con
+        `labels.alertname`, `labels.severity`, `annotations.summary`, `annotations.runbook_url`)."
+      operationId: AlertsController_slo
+      parameters: []
+      responses:
+        "202":
+          description: Alertas aceptadas y publicadas en el broker.
+        "400":
+          description: El cuerpo no trae alertas utilizables.
+        "401":
+          description: Falta el secreto, es incorrecto o el Gateway no tiene uno configurado.
+      security:
+        - alertWebhook: []
+      summary: Recibe el webhook de alertas de SLO de Grafana
+      tags:
+        - alerts
+      x-bank-publishes: alert.slo.received.v1
+  /api/interbank/deposits:
+    post:
+      description: "Contrato provisional (T-46, reconciliado con §4.1 en T-56). Requiere el token
+        compartido del banco asociado; responde al aceptar el comando y el resultado llega por
+        callback. El monto se acepta en centavos (`amountMinor`) o en decimal (`value`), y la cuenta
+        destino es una cadena: una que este banco no reconozca se rechaza con `ACCOUNT_NOT_FOUND`
+        **por callback**, no con un 400."
+      operationId: InterbankController_receive
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - interbankTransferId
+                - idempotencyKey
+                - originBankCode
+                - destinationBankCode
+                - accountId
+                - amount
+                - timestamp
+              additionalProperties: false
+              properties:
+                interbankTransferId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                idempotencyKey:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                originBankCode:
+                  type: string
+                  pattern: ^[A-Z][A-Z0-9_]{1,31}$
+                destinationBankCode:
+                  type: string
+                  pattern: ^[A-Z][A-Z0-9_]{1,31}$
+                accountId:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  description: La cuenta destino. Este banco identifica las suyas por UUID v4, que es lo que fija el
+                    acuerdo de integración; cualquier otra forma se acepta y se rechaza con
+                    ACCOUNT_NOT_FOUND por callback.
+                amount:
+                  oneOf:
+                    - type: object
+                      required:
+                        - amountMinor
+                        - currency
+                      additionalProperties: false
+                      properties:
+                        amountMinor:
+                          type: integer
+                          description: Centavos. El formato de este banco.
+                        currency:
+                          type: string
+                          pattern: ^[A-Z]{3}$
+                    - type: object
+                      required:
+                        - value
+                        - currency
+                      additionalProperties: false
+                      properties:
+                        value:
+                          oneOf:
+                            - type: string
+                            - type: number
+                          description: 'Decimal de dos cifras como máximo, p. ej. "125.00". Se convierte a centavos con
+                            aritmética entera: ningún float toca el dinero.'
+                        currency:
+                          type: string
+                          pattern: ^[A-Z]{3}$
+                timestamp:
+                  type: string
+                  format: date-time
+                  description: Cuándo lo originó el banco de origen (§4.1, datos mínimos). Se conserva aparte del
+                    momento en que lo recibimos.
+      responses:
+        "202":
+          description: Comando publicado para validación y crédito.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - depositId
+                  - correlationId
+                properties:
+                  depositId:
+                    type: string
+                    format: uuid
+                  correlationId:
+                    type: string
+                    format: uuid
+        "400":
+          description: Solicitud malformada.
+        "401":
+          description: Token ausente, incorrecto o sin configurar.
+      security:
+        - interbankPartner: []
+      summary: Recibe un depósito del banco asociado
+      tags:
+        - interbank
+      x-bank-publishes: payment.interbank.receive.v1
+  /api/interbank/transfers:
+    post:
+      description: "Inicia la Saga de siempre: debita la cuenta origen, pide el pago al banco pareja y
+        compensa si lo rechaza o no contesta. El 202 significa que la transferencia se aceptó, no
+        que el otro banco la acreditó — eso llega por callback y se consulta en `GET
+        /api/interbank/transfers/{interbankTransferId}`. El identificador interbancario y la clave
+        de idempotencia los genera el Gateway. Se rechaza con 400, sin debitar, una moneda distinta
+        de GTQ, un banco que no es el pareja configurado y un monto por encima del límite por
+        operación."
+      operationId: InterbankController_send
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterbankTransferDto"
+      responses:
+        "202":
+          description: Transferencia aceptada; el resultado del banco pareja llega después.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - transactionId
+                  - interbankTransferId
+                  - correlationId
+                properties:
+                  transactionId:
+                    type: string
+                    format: uuid
+                  interbankTransferId:
+                    type: string
+                    format: uuid
+                  correlationId:
+                    type: string
+                    format: uuid
+        "400":
+          description: Solicitud malformada o fuera de los límites.
+      security:
+        - session: []
+      summary: Envía un depósito al banco pareja
+      tags:
+        - interbank
+      x-bank-publishes: transfer.requested.v1
+    get:
+      description: Del más reciente al más antiguo. Un CLIENTE ve los suyos; CAJERO_RECEPTOR y
+        ADMINISTRADOR ven todos. Cada depósito trae sus seis estados posibles (PENDING, SENT,
+        ACCEPTED, REJECTED, TIMEOUT, REVERSED), el motivo, el banco y la cuenta destino
+        (enmascarada), el monto, las fechas, el correlationId y el traceId.
+      operationId: InterbankController_list
+      parameters:
+        - name: state
+          required: false
+          in: query
+          schema:
+            type: string
+            enum:
+              - PENDING
+              - SENT
+              - ACCEPTED
+              - REJECTED
+              - TIMEOUT
+              - REVERSED
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 200
+            default: 50
+            type: number
+      responses:
+        "200":
+          description: ""
+      security:
+        - session: []
+      summary: Lista los depósitos enviados al banco pareja
+      tags:
+        - interbank
+      x-bank-publishes: payment.interbank.send.list.query.v1
+      x-bank-awaits:
+        - payment.interbank.send.list.replied.v1
+  /api/interbank/transfers/{interbankTransferId}:
+    get:
+      description: Devuelve el depósito y su historial de estados, del más antiguo al más reciente. Un
+        depósito de otro cliente responde 404, igual que uno inexistente.
+      operationId: InterbankController_one
+      parameters:
+        - name: interbankTransferId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "404":
+          description: No existe, o no es del solicitante.
+      security:
+        - session: []
+      summary: Consulta un depósito enviado al banco pareja
+      tags:
+        - interbank
+      x-bank-publishes: payment.interbank.send.query.v1
+      x-bank-awaits:
+        - payment.interbank.send.replied.v1
+  /api/interbank/callbacks:
+    post:
+      description: Autenticado con el token compartido. Un ACCEPTED confirma el débito; un REJECTED, o el
+        vencimiento del plazo, compensan y devuelven el dinero. Un callback repetido no cuenta la
+        decisión dos veces.
+      operationId: InterbankController_callback
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - interbankTransferId
+                - status
+                - receivedAt
+              additionalProperties: false
+              properties:
+                interbankTransferId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                status:
+                  type: string
+                  enum:
+                    - ACCEPTED
+                    - REJECTED
+                reason:
+                  type: string
+                  enum:
+                    - ACCOUNT_NOT_FOUND
+                    - ACCOUNT_INACTIVE
+                    - AMOUNT_EXCEEDS_LIMIT
+                    - UNSUPPORTED_CURRENCY
+                    - WRONG_DESTINATION_BANK
+                    - BANK_NOT_AUTHORIZED
+                    - INVALID_REQUEST
+                    - IDEMPOTENCY_CONFLICT
+                  description: Obligatorio en un REJECTED y prohibido en un ACCEPTED.
+                receivedAt:
+                  type: string
+                  format: date-time
+      responses:
+        "202":
+          description: Decisión publicada para su registro.
+        "400":
+          description: Callback malformado.
+        "401":
+          description: Token ausente, incorrecto o sin configurar.
+      security:
+        - interbankPartner: []
+      summary: Recibe la decisión del banco pareja sobre un depósito enviado
+      tags:
+        - interbank
+      x-bank-publishes: payment.interbank.callback.received.v1
   /api/notifications:
     get:
       description: "El alcance sale del token y la consulta no lleva customerId: no hay forma de apuntarla
@@ -677,6 +1057,14 @@ components:
       scheme: bearer
       bearerFormat: JWT
       type: http
+    alertWebhook:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
+    interbankPartner:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
   schemas:
     LoginDto:
       type: object
@@ -714,6 +1102,34 @@ components:
     TransferDto:
       type: object
       properties: {}
+    UpdatePaymentSimulationDto:
+      type: object
+      properties: {}
+    MoneyDto:
+      type: object
+      properties: {}
+    InterbankTransferDto:
+      type: object
+      properties:
+        sourceAccount:
+          type: string
+          format: uuid
+          description: La cuenta de este banco de la que sale el dinero.
+        destinationBankCode:
+          type: string
+          pattern: ^BANK[0-9]{2}$
+          description: El código del banco pareja, acordado en el acuerdo de integración.
+        destinationAccount:
+          type: string
+          pattern: ^[A-Za-z0-9-]{1,34}$
+          description: El número de la cuenta en el banco pareja, tal como ese banco lo publica.
+        amount:
+          $ref: "#/components/schemas/MoneyDto"
+      required:
+        - sourceAccount
+        - destinationBankCode
+        - destinationAccount
+        - amount
     MarkNotificationsReadDto:
       type: object
       properties: {}

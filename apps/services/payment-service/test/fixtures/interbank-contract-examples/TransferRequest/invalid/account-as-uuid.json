@@ -1,0 +1,12 @@
+{
+  "interbankTransferId": "8f14e45f-ceea-467a-9b36-4b1c2d6a7e01",
+  "originBankCode": "BANK03",
+  "destinationBankCode": "BANK07",
+  "originAccount": "3001-000123",
+  "destinationAccount": "8f14e45f-ceea-467a-9b36-4b1c2d6a7e01-extra-largo-de-mas",
+  "amount": "150.00",
+  "currency": "GTQ",
+  "description": "Pago de alquiler",
+  "createdAt": "2026-10-20T15:00:00Z",
+  "expiresAt": "2026-10-20T15:03:00Z"
+}

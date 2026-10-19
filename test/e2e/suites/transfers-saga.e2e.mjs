@@ -188,15 +188,17 @@ export async function run() {
   }
 
   // ---------------------------------------------------------------------
-  // TX-NOFUNDS-01 — antes de fondear nada, ambas cuentas de custA están en
-  // Q0.00. `ownTarget` (AHORRO) es la fuente aquí a propósito: todavía no ha
-  // recibido ningún depósito en ningún caso anterior.
+  // TX-NOFUNDS-01 — antes de fondear nada, `ownTarget` (AHORRO) solo tiene
+  // el depósito de apertura de Q100.00 que exige su tipo (T-27); la otra
+  // cuenta de custA está en Q0.00. `ownTarget` es la fuente aquí a propósito:
+  // todavía no ha recibido ningún otro depósito. El monto (Q500.00) supera
+  // con holgura ese saldo, así el caso sigue siendo «por más del saldo real».
   // ---------------------------------------------------------------------
   {
     const before = await balanceOf(ownTarget, custA.token);
     const res = await api('/api/transfers', custA.token, {
       method: 'POST',
-      body: { sourceAccount: ownTarget, targetAccount: srcAcc, amount: money(100) },
+      body: { sourceAccount: ownTarget, targetAccount: srcAcc, amount: money(50_000) },
       headers: { 'Idempotency-Key': `qa-nofunds-${Date.now()}` },
     });
     if (res.status === 202 && res.body.transactionId) {
@@ -417,8 +419,16 @@ export async function run() {
   }
 
   // ---------------------------------------------------------------------
-  // TX-IDEMPOTENT-01 — misma Idempotency-Key dos veces: mismo transactionId,
-  // y el saldo se mueve UNA sola vez (no dos).
+  // TX-IDEMPOTENT-01 — misma Idempotency-Key dos veces: ambas solicitudes
+  // resuelven a la MISMA transferencia, y el saldo se mueve UNA sola vez.
+  //
+  // «La misma transferencia» y no «el mismo transactionId en la respuesta del
+  // POST»: el Gateway acuña un transactionId por solicitud y Transaction
+  // Service guarda una tabla de alias, de modo que el reintento recibe su
+  // propio id, que resuelve a la transferencia que ya existe. Exigir ids
+  // idénticos en el 202 comprobaba un diseño anterior, y además cortaba la
+  // prueba antes de esperar al pago, dejando el débito en vuelo cuando el caso
+  // siguiente leía el saldo.
   // ---------------------------------------------------------------------
   {
     const srcBefore = await balanceOf(srcAcc, custA.token);
@@ -427,26 +437,35 @@ export async function run() {
     const body = { sourceAccount: srcAcc, targetAccount: extTarget, amount: money(amount), paymentScenario: 'APPROVE' };
     const first = await api('/api/transfers', custA.token, { method: 'POST', body, headers: { 'Idempotency-Key': key } });
     const second = await api('/api/transfers', custA.token, { method: 'POST', body, headers: { 'Idempotency-Key': key } });
-    const sameId =
+    const bothAccepted =
       first.status === 202 &&
       second.status === 202 &&
       typeof first.body.transactionId === 'string' &&
-      first.body.transactionId === second.body.transactionId;
+      typeof second.body.transactionId === 'string';
 
+    let sameTransfer = false;
     let singleDebit = false;
     let srcAfter = null;
-    if (sameId) {
-      await pollTerminal(first.body.transactionId, custA.token);
+    if (bothAccepted) {
+      // Both ids are polled to the end: the retry's id must resolve (alias) to
+      // the transfer that exists, and the debit must have settled before the
+      // balance is read.
+      const termFirst = await pollTerminal(first.body.transactionId, custA.token);
+      const termSecond = await pollTerminal(second.body.transactionId, custA.token);
+      sameTransfer =
+        termFirst.body.transactionId === termSecond.body.transactionId &&
+        termFirst.body.status === 'COMPLETED' &&
+        termSecond.body.status === 'COMPLETED';
       srcAfter = await balanceOf(srcAcc, custA.token);
       singleDebit = srcAfter === srcBefore - amount;
     }
     report.record(
       'TX-IDEMPOTENT-01',
       'Idempotencia',
-      'Misma Idempotency-Key repetida devuelve el mismo transactionId y debita una sola vez',
-      `transactionId idéntico en ambas respuestas, saldo -${amount} exactamente una vez`,
-      `first=${first.body.transactionId} second=${second.body.transactionId} srcBefore=${srcBefore} srcAfter=${srcAfter}`,
-      sameId && singleDebit,
+      'Misma Idempotency-Key repetida resuelve a la misma transferencia y debita una sola vez',
+      `ambas solicitudes resuelven a la misma transferencia COMPLETED, saldo -${amount} exactamente una vez`,
+      `first=${first.body.transactionId} second=${second.body.transactionId} sameTransfer=${sameTransfer} srcBefore=${srcBefore} srcAfter=${srcAfter}`,
+      bothAccepted && sameTransfer && singleDebit,
     );
   }
 

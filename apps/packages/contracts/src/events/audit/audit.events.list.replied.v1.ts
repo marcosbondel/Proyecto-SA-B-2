@@ -1,6 +1,6 @@
 ﻿import { z } from 'zod';
 
-import { eventSeverity, isoTimestamp, uuidV4 } from '../../schemas/primitives';
+import { eventSeverity, isoTimestamp, traceId, uuidV4 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
 
 export const auditEventsListRepliedV1 = defineContract({
@@ -16,6 +16,9 @@ export const auditEventsListRepliedV1 = defineContract({
         producer: z.string(),
         occurredAt: isoTimestamp,
         correlationId: uuidV4,
+        /** T-45. Absent when no SDK recorded a trace for the event. */
+        traceId: traceId.optional(),
+        causationId: uuidV4.optional(),
         processingStatus: z.string(),
         consumer: z.string(),
         payload: z.record(z.string(), z.unknown()),

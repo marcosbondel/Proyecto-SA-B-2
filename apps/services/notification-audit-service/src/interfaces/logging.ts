@@ -1,3 +1,6 @@
+import { JsonLogger, redactFields } from '@bank/observability';
+import type { LogSink } from '@bank/observability';
+
 /**
  * Structured logs — and for this service, the base of the distributed logging
  * the assignment asks for (§4.1, notas SRE).
@@ -21,6 +24,8 @@
  */
 export interface LogFields {
   readonly correlationId?: string;
+  /** The W3C trace id, when an SDK records one (T-45). */
+  readonly traceId?: string;
   readonly causationId?: string | null;
   readonly eventId?: string;
   readonly messageType?: string;
@@ -33,8 +38,9 @@ export interface LogFields {
   readonly attempt?: number;
   /**
    * The path an email would link to — the activation link, or the
-   * password-reset one — written only by the simulated delivery channel and
-   * only outside production (TD-043).
+   * password-reset one — written only by the simulated delivery channel, with
+   * the token masked (`token=***`) unless `REVEAL_ACTIVATION_LINKS` is on, which
+   * is for a developer's machine (TD-043, T-60).
    *
    * Named for what it is rather than for the first flow that needed it: two
    * messages in the catalogue carry a token now, and a reset link logged under
@@ -50,53 +56,24 @@ export interface LogFields {
   readonly error?: string;
 }
 
-const FORBIDDEN = /credential|password|token|secret|email|document|recipient/i;
-
-export class StructuredLogger {
-  readonly #service: string;
-  readonly #sink: (line: string) => void;
-
-  constructor(service = 'notification-audit-service', sink: (line: string) => void = console.log) {
-    this.#service = service;
-    this.#sink = sink;
-  }
-
-  public info(message: string, fields: LogFields = {}): void {
-    this.#write('info', message, fields);
-  }
-
-  public warn(message: string, fields: LogFields = {}): void {
-    this.#write('warn', message, fields);
-  }
-
-  public error(message: string, fields: LogFields = {}): void {
-    this.#write('error', message, fields);
-  }
-
-  #write(level: string, message: string, fields: LogFields): void {
-    this.#sink(
-      JSON.stringify({
-        level,
-        service: this.#service,
-        message,
-        timestamp: new Date().toISOString(),
-        ...redact(fields),
-      }),
-    );
+/**
+ * The line itself — the fields the assignment requires, their order, the trace
+ * ids from the active span, and the redaction of secrets and personal data — is
+ * `@bank/observability`'s `JsonLogger`, the one format all seven components
+ * write since T-48. What stays in this file is the list above: what this
+ * service is allowed to say.
+ */
+export class StructuredLogger extends JsonLogger<LogFields> {
+  constructor(service = 'notification-audit-service', sink?: LogSink) {
+    super({ service, ...(sink === undefined ? {} : { sink }) });
   }
 }
 
 /**
- * Drops any field whose **name** suggests a secret or a person.
- *
- * Deliberately blunt, and blunter here than in the other services: this one
- * handles every event in the system, so it is the process most likely to have
- * something private in reach. A log line that loses a field is a nuisance; a
- * log line that carries a customer's address is a disclosure in a file somebody
- * ships to an aggregator.
+ * The shared redaction, under the name this service's tests already use: drops
+ * any field whose **name** suggests a secret or a person, and masks a JWT or an
+ * email address wherever one appears in a value.
  */
 export function redact(fields: LogFields): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(fields).filter(([key, value]) => value !== undefined && !FORBIDDEN.test(key)),
-  );
+  return redactFields(fields as Readonly<Record<string, unknown>>);
 }

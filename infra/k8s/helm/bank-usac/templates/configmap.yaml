@@ -11,6 +11,14 @@ metadata:
     {{- include "bank-usac.labels" . | nindent 4 }}
 data:
   NODE_ENV: production
+  # Telemetry (T-48), read by `@bank/observability` in the five services and
+  # the Gateway. An empty endpoint is a valid value: spans and metrics are
+  # recorded and dropped, and logs still carry their traceId.
+  DEPLOYMENT_ENVIRONMENT: {{ .Values.observability.environment | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.observability.otlpEndpoint | quote }}
+  OTEL_SDK_DISABLED: {{ .Values.observability.sdkDisabled | quote }}
+  OTEL_METRIC_EXPORT_INTERVAL: {{ .Values.observability.metricExportIntervalMs | quote }}
+  LOG_LEVEL: {{ .Values.observability.logLevel | quote }}
   CORS_ALLOWED_ORIGINS: {{ .Values.gateway.corsAllowedOrigins | quote }}
   JWT_EXPIRES_IN: {{ .Values.gateway.jwtExpiresIn | quote }}
   # GATEWAY_INSTANCE_ID is deliberately absent: it must differ per replica, so
@@ -19,6 +27,8 @@ data:
   # Resolved by the browser, not by the web pod — see the comment on
   # `web.apiBaseUrl` in values.yaml.
   NUXT_PUBLIC_API_BASE_URL: {{ .Values.web.apiBaseUrl | quote }}
+  # Optional, also resolved by the browser. Empty keeps trace ids as plain text.
+  NUXT_PUBLIC_GRAFANA_URL: {{ .Values.web.grafanaUrl | default "" | quote }}
   NOTIFICATION_CHANNEL: {{ .Values.services.notificationAudit.notificationChannel | quote }}
   REVEAL_ACTIVATION_LINKS: {{ .Values.services.notificationAudit.revealActivationLinks | quote }}
   # The Resend channel's non-sensitive half. Harmless while the channel is
@@ -33,7 +43,35 @@ data:
   DEACTIVATION_INTERVAL_MS: {{ .Values.services.account.deactivation.intervalMs | quote }}
   INACTIVITY_MONTHS: {{ .Values.services.account.deactivation.inactivityMonths | quote }}
   INACTIVITY_MIN_BALANCE_MINOR: {{ .Values.services.account.deactivation.inactivityMinBalanceMinor | quote }}
+  ANOMALY_MAX_OPERATIONS: {{ .Values.services.account.anomaly.maxOperations | quote }}
+  ANOMALY_WINDOW_MINUTES: {{ .Values.services.account.anomaly.windowMinutes | quote }}
   PAYMENT_RETRY_DELAYS_MS: {{ .Values.services.payment.retryDelaysMs | quote }}
   PAYMENT_RETRY_SWEEP_MS: {{ .Values.services.payment.retrySweepMs | quote }}
-  SEED_DEMO_DATA: "true"
+  PAYMENT_SIM_FAILURE_RATE: {{ .Values.services.payment.simulation.failureRatePercent | quote }}
+  PAYMENT_SIM_TIMEOUT_RATE: {{ .Values.services.payment.simulation.timeoutRatePercent | quote }}
+  PAYMENT_SIM_LATENCY_MS: {{ .Values.services.payment.simulation.latencyMs | quote }}
+  INTERBANK_BANK_CODE: {{ .Values.interbank.bankCode | quote }}
+  INTERBANK_PARTNER_BANK_CODE: {{ .Values.interbank.partnerBankCode | quote }}
+  INTERBANK_MAX_AMOUNT_MINOR: {{ .Values.interbank.maxAmountMinor | quote }}
+  # Base de la API de la pareja, con `/interbank/v1`. Vacia = envio apagado.
+  # Sin una URL explicita y con el mock encendido, apunta al mock de ESTE
+  # release: el nombre del Service depende del release (`bank-usac` en prod,
+  # `bank-usac-dev` en dev), asi que no se puede fijar en un secreto compartido.
+  {{- $mockUrl := "" }}
+  {{- if .Values.partnerMock.enabled }}
+  {{- $mockUrl = printf "http://%s:%v/interbank/v1" (include "bank-usac.componentFullname" (dict "root" . "component" .Values.partnerMock.component)) (.Values.partnerMock.port | default 3021) }}
+  {{- end }}
+  INTERBANK_PARTNER_BASE_URL: {{ .Values.interbank.partnerBaseUrl | default $mockUrl | quote }}
+  # OBSOLETA desde TD-095: el plazo de un deposito lo fija el contrato
+  # (V1_TRANSFER_TTL_MS, 180 s) y no esta variable. Se sigue publicando porque
+  # payment-service la valida al arrancar; quitarla es seguro.
+  INTERBANK_CONFIRMATION_TIMEOUT_MS: {{ .Values.interbank.confirmationTimeoutMs | quote }}
+  # Cada cuanto se reintenta un paso del protocolo de TIMEOUT que no obtuvo
+  # respuesta. Esta si es nuestra: el acuerdo dice cuando se puede liberar la
+  # reserva, no con que frecuencia preguntamos.
+  INTERBANK_RESOLVE_RETRY_MS: {{ .Values.interbank.resolveRetryMs | quote }}
+  # Cuentas y usuarios de demostracion. Antes fijo en "true"; ahora un valor del
+  # chart (`demo.seedData`). Sembrar solo CREA lo que falta y nunca toca lo que ya
+  # existe, asi que es seguro con varias replicas y con un HPA que arranque pods.
+  SEED_DEMO_DATA: {{ .Values.demo.seedData | quote }}
   SEED_PASSWORD: "BankUsac#2026"

@@ -223,6 +223,17 @@ export const auditProcessingStatus = z.enum(['PROCESSED', 'INVALID', 'ERROR']);
 export const eventSeverity = z.enum(['INFO', 'WARNING', 'ERROR']);
 
 /**
+ * A W3C Trace Context `trace-id` (T-45): thirty-two lowercase hex digits, and
+ * not the all-zero value the specification reserves for "no trace". It names
+ * the technical trace; the `correlationId` names the business flow, and the
+ * audit trail is queryable by either.
+ */
+export const traceId = z
+  .string()
+  .regex(/^[0-9a-f]{32}$/, 'a W3C trace id: 32 lowercase hex digits')
+  .refine((value) => !/^0+$/.test(value), 'the all-zero trace id is invalid');
+
+/**
  * The failure codes `docs/domain/entities.md` names as expected failures.
  *
  * Closed on purpose: a consumer that receives an unlisted code cannot know

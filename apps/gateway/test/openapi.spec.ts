@@ -6,6 +6,8 @@ import { catalogByName } from '@bank/contracts';
 import { parse, stringify } from 'yaml';
 
 import { AccountsController } from '../src/interfaces/accounts.controller';
+import { AlertsController } from '../src/interfaces/alerts.controller';
+import { InterbankController } from '../src/interfaces/interbank.controller';
 import { AuditController } from '../src/interfaces/audit.controller';
 import { DashboardController } from '../src/interfaces/dashboard.controller';
 import { NotificationsController } from '../src/interfaces/notifications.controller';
@@ -36,6 +38,8 @@ const CONTROLLERS = [
   TransfersController,
   PaymentsController,
   AuditController,
+  AlertsController,
+  InterbankController,
   NotificationsController,
   DashboardController,
 ];
@@ -85,7 +89,7 @@ describe('the versioned API contract', () => {
    * `/api/audit` because D-06 grants the trail and the notifications together
    * and they are the same record read two ways.
    */
-  it('declares the twenty-six paths the tickets fixed', () => {
+  it('declares the paths the tickets fixed', () => {
     expect(Object.keys(committed.paths).sort()).toEqual(
       [
         '/api/accounts',
@@ -100,6 +104,8 @@ describe('the versioned API contract', () => {
         '/api/accounts/{accountId}/deposit',
         '/api/accounts/{accountId}/operations',
         '/api/accounts/{accountId}/status',
+        // Added by T-45: the webhook Grafana calls with a shared secret, not a session.
+        '/api/alerts/slo',
         '/api/audit',
         '/api/audit/recent',
         // Added by T-20. Not the customer's inbox: that has no domain (TD-041).
@@ -107,6 +113,16 @@ describe('the versioned API contract', () => {
         // Added for the prototype's D-01 and D-02: five services' own counts,
         // composed. The Gateway holds five replies and computes nothing.
         '/api/dashboard',
+        /*
+         * Las dos de T-47: el cliente manda un depósito al banco pareja, y el
+         * banco pareja contesta sobre uno que le mandamos. La de entrada
+         * (`deposits`) es de T-46 y es la dirección contraria.
+         */
+        '/api/interbank/callbacks',
+        '/api/interbank/deposits',
+        '/api/interbank/transfers',
+        // Added by T-60 (B10): a single deposit sent to the partner bank, with its history.
+        '/api/interbank/transfers/{interbankTransferId}',
         '/api/auth/login',
         // Added for the prototype's P-07: the password recovery the assignment's
         // flow needs and that no route offered.
@@ -139,6 +155,8 @@ describe('the versioned API contract', () => {
         // Added by T-19. Read-only: a payment is born from a transfer, never
         // from a route.
         '/api/payments',
+        // Added by T-44: the administrator's dial for the simulated provider.
+        '/api/payments/simulation',
         '/api/payments/{paymentId}',
         '/api/transfers',
         '/api/transfers/{transactionId}',
@@ -174,7 +192,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(27);
+      expect(functional).toHaveLength(33);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
@@ -211,6 +229,10 @@ describe('the versioned API contract', () => {
     /**
      * The seven public routes, and only those. If an eighth ever appears here
      * without a bearer requirement, this is where it is noticed.
+     *
+     * T-45's SLO webhook is not among them although the session guards let it
+     * through: it declares the `alertWebhook` scheme, because a route that needs a
+     * shared secret should not be described as one that needs nothing.
      *
      * The two password-recovery routes are public because they have to be: the
      * whole premise is somebody who cannot sign in. The token in the emailed

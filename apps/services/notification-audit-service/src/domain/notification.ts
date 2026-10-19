@@ -7,7 +7,7 @@
  * second `if` in a handler is how one event ends up notifying twice.
  */
 
-import { classify, type EventSeverity } from './classification';
+import { classify, classifyAlerts, type EventSeverity } from './classification';
 
 export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED';
 
@@ -67,7 +67,52 @@ export interface NotificationIntent {
    * `SimulatedNotificationAdapter`.
    */
   readonly link?: string;
+  /**
+   * What makes two notifications the same one even when two different events
+   * caused them (T-45). `caused_by` already makes a *redelivery* of one event
+   * produce one notification; this is for the event the producer announces
+   * twice under two message ids — Account Service republishes an anomaly whose
+   * first publication failed, and a person told twice about the same window
+   * stops believing the second warning. Absent for the great majority, whose
+   * event id is identity enough.
+   */
+  readonly dedupeKey?: string;
+  /**
+   * Who the notification is *for* when it is not a customer (T-45): the people
+   * who operate the bank. An SLO alert has no customer, and a notification with
+   * no recipient is reported `FAILED` by the channel — which is exactly how the
+   * first version of this feature showed up in the operators' console, as an
+   * alert nobody had been told about and a red banner saying so.
+   */
+  readonly audience?: 'OPERATORS';
+  /**
+   * The alert instances a webhook speaks about, for the repeat guard (TD-083).
+   *
+   * Grafana re-sends a firing alert at its repeat interval and at every group
+   * interval; the operators should be told once per `(instance, status)` inside
+   * that window, not once per delivery. Present only on an SLO alert, and only
+   * when at least one alert in the batch names a state the contract knows. The
+   * repository claims every pair atomically and drops the notification — never
+   * the audit row — when none of them is new.
+   */
+  readonly repeatGuard?: readonly AlertInstance[];
 }
+
+/** One alert instance in one state: the unit the repeat guard counts once. */
+export interface AlertInstance {
+  /** The fingerprint Grafana gives the instance, else the alert's name. */
+  readonly key: string;
+  readonly status: 'firing' | 'resolved';
+}
+
+/**
+ * The simulated address of the operators, for the notifications that are theirs.
+ *
+ * Derived from nothing and naming nobody: like a customer's simulated address it
+ * exists so the channel has somewhere to say it delivered, and unlike one it
+ * could never be mistaken for a person's.
+ */
+export const OPERATORS_RECIPIENT = 'operadores@simulado.bonking.gt';
 
 /**
  * Which events produce a notification, and what it says.
@@ -191,7 +236,26 @@ const POLICY: Readonly<
     subject: 'Tu cuenta volvió a estar activa',
     reference: 'accountId',
   },
+  /*
+   * T-45 (Fase 3, §4.1 — Account Service): the anomaly the producer detected
+   * becomes a `WARNING` notification. It goes to the account's holder — the
+   * event carries a `customerId` — and, like every notification, to the
+   * administrator's console. It says only that something unusual happened:
+   * no count, no window and no amount, because the inbox is a customer's and
+   * the numbers belong to the audit trail. When the event names no customer it
+   * goes to the operators instead — see `isAnomalyWithoutHolder`.
+   */
+  'account.anomaly.detected.v1': {
+    type: 'account.anomaly',
+    subject: 'Detectamos actividad inusual en tu cuenta',
+    reference: 'accountId',
+  },
 };
+
+const SLO_ALERT = 'alert.slo.received.v1';
+
+/** The longest subject a notification row holds (`VARCHAR(200)`). */
+const MAX_SUBJECT = 200;
 
 /**
  * The notification this message calls for, or `null` for the great majority
@@ -203,6 +267,10 @@ const POLICY: Readonly<
  * happens to hide this week.
  */
 export function notificationFor(messageType: string, payload: unknown): NotificationIntent | null {
+  if (messageType === SLO_ALERT) {
+    return sloAlertNotification(payload);
+  }
+
   const rule = POLICY[messageType];
 
   if (rule === undefined) {
@@ -210,14 +278,151 @@ export function notificationFor(messageType: string, payload: unknown): Notifica
   }
 
   const link = linkFrom(messageType, payload);
+  const dedupeKey = dedupeKeyFor(messageType, payload);
+  const forOperators = isAnomalyWithoutHolder(messageType, payload);
 
   return {
     type: rule.type,
-    subject: rule.subject,
+    subject: forOperators ? ANOMALY_FOR_OPERATORS_SUBJECT : rule.subject,
     referenceId: readString(payload, rule.reference),
     severity: classify({ messageType, processingStatus: 'PROCESSED' }),
     ...(link === null ? {} : { link }),
+    ...(dedupeKey === null ? {} : { dedupeKey }),
+    ...(forOperators ? { audience: 'OPERATORS' as const } : {}),
   };
+}
+
+/**
+ * What the operators read when an anomaly names no customer. The holder's
+ * subject speaks to the holder ("tu cuenta"); said to the operators it would
+ * claim an owner the event never named. Like the holder's, it carries no count,
+ * window or amount — those are in the audit trail.
+ */
+const ANOMALY_FOR_OPERATORS_SUBJECT = 'Actividad inusual detectada en una cuenta';
+
+/**
+ * An anomaly whose `customerId` the contract left optional and the producer did
+ * not send (T-45). There is no inbox to put it in, and a notification with no
+ * recipient is reported `FAILED` by the channel, so the warning would be
+ * recorded and told to nobody. It goes to the operators instead — the audience
+ * an SLO alert already uses — rather than being dropped or invented a holder.
+ */
+function isAnomalyWithoutHolder(messageType: string, payload: unknown): boolean {
+  return (
+    messageType === 'account.anomaly.detected.v1' &&
+    subjectCustomerIdFrom(messageType, payload) === null
+  );
+}
+
+/**
+ * The same anomaly, however many times it is announced: one account and one
+ * window. `windowStart` is part of the key because the next window on the same
+ * account is a different anomaly and deserves its own warning.
+ */
+function dedupeKeyFor(messageType: string, payload: unknown): string | null {
+  if (messageType !== 'account.anomaly.detected.v1') {
+    return null;
+  }
+
+  const accountId = readString(payload, 'accountId');
+  const windowStart = readString(payload, 'windowStart');
+
+  return accountId === null || windowStart === null ? null : `anomaly:${accountId}:${windowStart}`;
+}
+
+/**
+ * One notification for one webhook, however many alerts it batches (T-45).
+ *
+ * A Grafana notification groups alerts that fire together; telling the
+ * operators fifty times about one incident would bury the one that matters. The
+ * subject names the alert when there is one and counts them when there are
+ * several; the details are in the audit trail, which stores every alert of the
+ * batch. The severity is the batch's worst (`classifyAlerts`), so the
+ * notification and the audit row it came from cannot disagree.
+ *
+ * Tolerant of a payload that is not what the contract says, because this runs
+ * before anybody has checked: it falls back to a generic subject rather than
+ * throwing, and the audit row carries the `INVALID` verdict.
+ */
+function sloAlertNotification(payload: unknown): NotificationIntent {
+  const alerts = alertsIn(payload);
+  const firing = alerts.filter((alert) => alert.status === 'firing').length;
+
+  const subject =
+    alerts.length === 0
+      ? 'Alerta de SLO'
+      : alerts.length === 1
+        ? `Alerta de SLO ${firing === 1 ? 'activa' : 'resuelta'}: ${alerts[0]?.alertName ?? ''}`
+        : `${String(alerts.length)} alertas de SLO (${String(firing)} activas)`;
+
+  const repeatGuard = alertInstancesIn(payload);
+
+  return {
+    type: 'alert.slo',
+    subject: subject.slice(0, MAX_SUBJECT),
+    referenceId: null,
+    severity: classifyAlerts(payload),
+    audience: 'OPERATORS',
+    ...(repeatGuard.length === 0 ? {} : { repeatGuard }),
+  };
+}
+
+/** The longest key the repeat guard stores (`VARCHAR(200)`). */
+const MAX_ALERT_KEY = 200;
+
+/**
+ * `(instance, status)` for every alert of the webhook that says something this
+ * service can count: a state outside `firing` / `resolved` is skipped, as it is
+ * for the metrics, so a repeat guard cannot be fed a state off the wire.
+ *
+ * The instance is Grafana's fingerprint, which is stable across repeats of the
+ * same label set; the contract makes it optional, so an alert without one is
+ * told apart by its name — coarser (two label sets of one rule count once) but
+ * never a reason to notify on every repeat. Duplicates inside one batch collapse.
+ */
+export function alertInstancesIn(payload: unknown): readonly AlertInstance[] {
+  const seen = new Map<string, AlertInstance>();
+
+  for (const alert of alertsIn(payload)) {
+    const status = alert.status;
+
+    if (status !== 'firing' && status !== 'resolved') {
+      continue;
+    }
+
+    const instance =
+      typeof alert.fingerprint === 'string' && alert.fingerprint.length > 0
+        ? `fp:${alert.fingerprint}`
+        : typeof alert.alertName === 'string' && alert.alertName.length > 0
+          ? `name:${alert.alertName}`
+          : null;
+
+    if (instance !== null) {
+      const key = instance.slice(0, MAX_ALERT_KEY);
+
+      seen.set(`${key}|${status}`, { key, status });
+    }
+  }
+
+  return [...seen.values()];
+}
+
+function alertsIn(payload: unknown): readonly {
+  readonly alertName?: string;
+  readonly status?: string;
+  readonly fingerprint?: string;
+}[] {
+  const alerts =
+    typeof payload === 'object' && payload !== null
+      ? (payload as { alerts?: unknown }).alerts
+      : undefined;
+
+  return Array.isArray(alerts)
+    ? alerts.filter(
+        (alert): alert is { alertName?: string; status?: string; fingerprint?: string } =>
+          typeof alert === 'object' && alert !== null,
+      )
+    : [];
 }
 
 /**
@@ -252,7 +457,7 @@ function linkFrom(messageType: string, payload: unknown): string | null {
 
 /** Every message type that notifies. For the tests, and for the documentation. */
 export function notifyingMessageTypes(): readonly string[] {
-  return Object.keys(POLICY);
+  return [...Object.keys(POLICY), SLO_ALERT];
 }
 
 /**
@@ -307,7 +512,8 @@ export function subjectCustomerIdFrom(messageType: string, payload: unknown): st
     !messageType.startsWith('transaction.') &&
     messageType !== 'account.opened.v1' &&
     messageType !== 'account.deactivated.v1' &&
-    messageType !== 'account.reactivated.v1'
+    messageType !== 'account.reactivated.v1' &&
+    messageType !== 'account.anomaly.detected.v1'
   ) {
     return null;
   }

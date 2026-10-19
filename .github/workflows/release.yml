@@ -137,6 +137,13 @@ jobs:
             dockerfile: apps/gateway/Dockerfile
           - component: web
             dockerfile: apps/web/Dockerfile
+          # El banco pareja simulado (T-57). Se publica porque §4.1 admite
+          # evaluar contra el mock como ultimo recurso si el banco pareja no
+          # esta disponible, y ese ultimo recurso tiene que existir en el
+          # registro. El chart lo deja APAGADO (`partnerMock.enabled=false`):
+          # publicar una imagen no es desplegarla.
+          - component: partner-bank-mock
+            dockerfile: apps/partner-bank-mock/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v7

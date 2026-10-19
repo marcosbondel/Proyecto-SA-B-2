@@ -101,6 +101,33 @@ export const QUEUES: readonly QueueDescriptor[] = [
      */
     bindings: [{ exchange: EXCHANGES.commands, pattern: 'payment.#' }],
   },
+  {
+    name: 'payment.interbank',
+    owner: 'payment-service',
+    // These are persisted state-machine inputs, so any replica may consume them.
+    // The Gateway's private reply queue is only needed for in-memory waiters.
+    bindings: [
+      { exchange: EXCHANGES.replies, pattern: 'account.interbank.eligibility.replied.v1' },
+      { exchange: EXCHANGES.events, pattern: 'account.interbank.credited.v1' },
+      { exchange: EXCHANGES.events, pattern: 'account.interbank.credit.rejected.v1' },
+      /*
+       * Añadida por T-47, y es la única de esta cola que no es del flujo
+       * entrante. Payment escucha la compensación de la Saga por un motivo
+       * concreto: es el único que puede escribir `REVERSED` en el depósito que
+       * envió, y `REVERSED` es la constancia de que el dinero **volvió**, no de
+       * que se ordenó devolverlo. Sin este binding, «rechazado» y «rechazado y
+       * devuelto» serían el mismo estado.
+       *
+       * Oye las compensaciones de todas las transferencias, también las
+       * internas, y las descarta sin ruido: busca por `transactionId` y no
+       * encuentra fila. El precio es un mensaje consumido y tirado; la
+       * alternativa —un evento nuevo sólo para las interbancarias— sería pedirle
+       * a Account que sepa qué transferencias son de qué tipo, que es
+       * precisamente lo que no sabe ni debe saber.
+       */
+      { exchange: EXCHANGES.events, pattern: 'account.debit.compensated.v1' },
+    ],
+  },
   /**
    * Audit listens on one queue per family, not on one queue for everything.
    *
@@ -141,6 +168,17 @@ export const QUEUES: readonly QueueDescriptor[] = [
     name: 'audit.payment',
     owner: 'notification-audit-service',
     bindings: [{ exchange: EXCHANGES.events, pattern: 'payment.#' }],
+  },
+  {
+    /*
+     * What the monitoring stack says about the bank (T-45). Its own queue, like
+     * each family's, because an alert storm must not sit in front of the audit
+     * of a transfer — and because the alert is a command the Gateway publishes
+     * on `bank.commands`, which none of the four event queues listen to.
+     */
+    name: 'audit.alert',
+    owner: 'notification-audit-service',
+    bindings: [{ exchange: EXCHANGES.commands, pattern: 'alert.slo.received.v1' }],
   },
   {
     /*

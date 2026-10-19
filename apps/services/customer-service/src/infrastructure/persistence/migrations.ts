@@ -181,6 +181,40 @@ export const MIGRATIONS: readonly Migration[] = [
          CHECK (kyc_status IN ('PENDING', 'VERIFIED', 'REJECTED'))`,
     ],
   },
+  {
+    /**
+     * T-41: the W3C `traceparent` of the span that recorded the creation.
+     *
+     * A KYC decision arrives as a different message, possibly hours later, so
+     * it cannot be in the same trace as the creation by being in the same call.
+     * It links back to this stored context instead. Nullable and unindexed: it
+     * is read by customer id only, and is `NULL` for every customer created
+     * before this migration or while no tracing SDK was registered.
+     */
+    name: '008_customers_creation_trace',
+    statements: [`ALTER TABLE customers ADD COLUMN IF NOT EXISTS creation_trace VARCHAR(80)`],
+  },
+  {
+    /**
+     * A rejected identity releases the customer's document, email and username
+     * so the same person can register again, by appending
+     * `#rejected#<customerId>` to each: 46 characters. `document_number` was
+     * VARCHAR(50) and `username` VARCHAR(60), so a 13-digit DPI became 59
+     * characters, the UPDATE failed with "value too long" and a teller's
+     * REJECTED verdict could never be stored.
+     *
+     * Widened, not shortened: each column keeps its original limit as the
+     * limit of what a customer can *submit* (the DTO and the domain enforce
+     * it), plus room for the suffix. Raising a VARCHAR limit rewrites nothing
+     * in PostgreSQL, and every unique index and constraint stays as it was.
+     */
+    name: '009_customers_room_for_rejection_suffix',
+    statements: [
+      `ALTER TABLE customers ALTER COLUMN document_number TYPE VARCHAR(100)`,
+      `ALTER TABLE customers ALTER COLUMN username TYPE VARCHAR(120)`,
+      `ALTER TABLE customers ALTER COLUMN email TYPE VARCHAR(400)`,
+    ],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

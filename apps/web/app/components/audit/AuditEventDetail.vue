@@ -35,6 +35,10 @@ const props = defineProps<{ event: AuditEventRow | null }>();
 
 const emit = defineEmits<{ close: [] }>();
 
+const traceLink = useTraceLink();
+/** Where to open this event's trace, when the deployment knows where Grafana is (T-60). */
+const traceHref = computed(() => traceLink(props.event?.traceId));
+
 const payload = computed(() => formatPayload(props.event?.payload));
 const hidden = computed(() => redactedCount(props.event?.payload));
 
@@ -120,6 +124,34 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
               wrong: the honest statement is that this is where the flow began.
             -->
             <span v-else class="text-[#5A5B63]">Primer mensaje del flujo</span>
+          </dd>
+        </div>
+        <!--
+          The technical trace the event was handled under (T-45). Absent, and
+          said to be absent, when no SDK recorded one: a dash would read as
+          "this event has no trace", which is a claim about the event rather
+          than about whether telemetry was running.
+        -->
+        <div class="flex justify-between gap-4 border-t border-[#E9E9EC] py-3">
+          <dt class="text-[13px] text-[#75767F]">Traza</dt>
+          <dd class="text-right text-[13px] font-medium text-[#23242A]">
+            <a
+              v-if="event.traceId && traceHref"
+              :href="traceHref"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="break-all rounded-sm font-mono text-[11px] font-semibold underline decoration-[#A8A9B2] underline-offset-2 hover:decoration-[#17191F] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17191F]"
+              style="font-variant-numeric: tabular-nums lining-nums"
+              title="Abrir esta traza en Grafana"
+              data-testid="event-trace-link"
+            ><code data-testid="event-trace-id">{{ event.traceId }}</code><span aria-hidden="true"> ↗</span><span class="sr-only"> (abre Grafana en una pestaña nueva)</span></a>
+            <code
+              v-else-if="event.traceId"
+              class="break-all font-mono text-[11px]"
+              style="font-variant-numeric: tabular-nums lining-nums"
+              data-testid="event-trace-id"
+            >{{ event.traceId }}</code>
+            <span v-else class="text-[#5A5B63]">Sin traza registrada</span>
           </dd>
         </div>
         <div

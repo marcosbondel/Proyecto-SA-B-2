@@ -10,8 +10,13 @@ project_id = "tu-proyecto-gcp-id"
 region = "us-central1"
 zone   = "us-central1-a"
 
-# Nombre de la red VPC
+# Nombre de la red VPC. Prefija también el clúster de GKE y la IP reservada
+# del Gateway, así que cambiarlo renombra los tres.
 network_name = "bank-usac-vpc"
+
+# Repositorio de Artifact Registry al que publica el pipeline. Es el valor de
+# la variable de repositorio ARTIFACT_REPO en GitHub.
+artifact_repo = "bank-images"
 
 # Dimensionamiento de GKE
 gke_machine_type = "e2-standard-2"
@@ -38,5 +43,13 @@ deploy_cloud_run = true
 # Imagen de contenedor de Frontend en Artifact Registry o Container Registry
 # web_image = "us-central1-docker.pkg.dev/tu-proyecto-gcp-id/bank-repo/web:latest"
 
-# URL pública donde responderá el API Gateway (IP externa del LoadBalancer en GKE)
-gateway_public_url = "http://34.123.45.67:3000"
+# URL pública del API Gateway, la que resuelve el NAVEGADOR.
+#
+# Déjala vacía: se deriva de la IP que reserva `gateway_address.tf`, y así no
+# hay una dirección escrita a mano que se quede obsoleta — que es exactamente
+# cómo nació TD-080. Fíjala sólo si pones un nombre DNS o un proxy delante.
+#
+# gateway_public_url = "https://bank.ejemplo.gt"
+
+# Puerto del Service del Gateway. Debe coincidir con `gateway.port` del chart.
+gateway_port = 3000

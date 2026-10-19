@@ -1,4 +1,5 @@
 import type { MessageEnvelope } from '@bank/contracts';
+import { currentTraceparent } from '@bank/observability';
 import type { Pool, PoolClient } from 'pg';
 
 import { IllegalTransition } from '../../domain/transaction';
@@ -19,6 +20,7 @@ import type {
   PaymentOutcome,
   StartOutcome,
   TransactionRepository,
+  TransferObservation,
 } from '../../application/ports';
 
 /**
@@ -54,6 +56,8 @@ export class PostgresTransactionRepository implements TransactionRepository {
   public async start(input: {
     readonly transaction: Transaction;
     readonly outbound?: (transaction: Transaction) => OutboxMessage;
+    readonly requestedAt?: Date;
+    readonly traceContext?: string | null;
   }): Promise<StartOutcome> {
     const { transaction } = input;
 
@@ -61,9 +65,10 @@ export class PostgresTransactionRepository implements TransactionRepository {
       const inserted = await client.query<TransactionRow>(
         `INSERT INTO transactions
            (transaction_id, source_account, target_account, amount, status,
-            correlation_id, idempotency_key, customer_id, reference, failure_reason,
-            payment_scenario, created_at, updated_at, completed_at)
-         VALUES ($1, $2, $3, $4::NUMERIC, $5, $6, $7, $8, $9, NULL, $10, $11, $11, NULL)
+            correlation_id, idempotency_key, customer_id, reference, interbank, failure_reason,
+            payment_scenario, created_at, updated_at, completed_at,
+            requested_at, trace_context)
+         VALUES ($1, $2, $3, $4::NUMERIC, $5, $6, $7, $8, $9, $10::jsonb, NULL, $11, $12, $12, NULL, $13, $14)
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
@@ -76,8 +81,11 @@ export class PostgresTransactionRepository implements TransactionRepository {
           transaction.idempotencyKey,
           transaction.customerId,
           transaction.reference,
+          transaction.interbank === null ? null : JSON.stringify(transaction.interbank),
           transaction.paymentScenario,
           transaction.createdAt,
+          input.requestedAt ?? transaction.createdAt,
+          input.traceContext ?? null,
         ],
       );
 
@@ -473,6 +481,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
         kind: 'APPLIED',
         transaction: applied,
         transition,
+        observation: observationFrom(updated.rows[0]),
       };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -510,9 +519,10 @@ export class PostgresTransactionRepository implements TransactionRepository {
        * `applyEvent` does for every other Saga event, rather than tripping the
        * foreign key on `transaction_events`.
        */
-      const found = await client.query('SELECT 1 FROM transactions WHERE transaction_id = $1', [
-        input.transactionId,
-      ]);
+      const found = await client.query<TransactionRow>(
+        `SELECT ${COLUMNS} FROM transactions WHERE transaction_id = $1`,
+        [input.transactionId],
+      );
 
       if (found.rowCount === 0) {
         await client.query('ROLLBACK');
@@ -538,7 +548,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
 
       await client.query('COMMIT');
 
-      return { kind: 'RECORDED' };
+      return { kind: 'RECORDED', observation: observationFrom(found.rows[0]!) };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
 
@@ -565,7 +575,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
        * arrive in.
        */
       const pending = await client.query<OutboxRow>(
-        `SELECT id, exchange, routing_key, envelope
+        `SELECT id, exchange, routing_key, envelope, trace_context
            FROM outbox_messages
           WHERE dispatch_status = 'PENDING'
           ORDER BY id
@@ -588,6 +598,7 @@ export class PostgresTransactionRepository implements TransactionRepository {
           exchange: row.exchange,
           routingKey: row.routing_key,
           envelope: row.envelope,
+          traceparent: row.trace_context,
         });
 
         await client.query(
@@ -747,9 +758,16 @@ export class PostgresTransactionRepository implements TransactionRepository {
     message: OutboxMessage,
   ): Promise<void> {
     await client.query(
-      `INSERT INTO outbox_messages (transaction_id, exchange, routing_key, envelope)
-       VALUES ($1, $2, $3, $4::JSONB)`,
-      [transactionId, message.exchange, message.routingKey, JSON.stringify(message.envelope)],
+      `INSERT INTO outbox_messages (transaction_id, exchange, routing_key, envelope, trace_context)
+       VALUES ($1, $2, $3, $4::JSONB, $5)`,
+      [
+        transactionId,
+        message.exchange,
+        message.routingKey,
+        JSON.stringify(message.envelope),
+        // The Saga step's trace, so the relay publishes inside it (T-48).
+        currentTraceparent(),
+      ],
     );
   }
 
@@ -780,8 +798,9 @@ const TERMINAL: ReadonlySet<TransactionStatus> = new Set<TransactionStatus>([
 ]);
 
 const COLUMNS = `transaction_id, source_account, target_account, amount::TEXT AS amount,
-                 status, correlation_id, idempotency_key, customer_id, reference, failure_reason,
-                 payment_scenario, created_at, updated_at, completed_at`;
+                 status, correlation_id, idempotency_key, customer_id, reference, interbank, failure_reason,
+                 payment_scenario, created_at, updated_at, completed_at,
+                 requested_at, trace_context`;
 
 interface TransactionRow {
   transaction_id: string;
@@ -794,11 +813,20 @@ interface TransactionRow {
   idempotency_key: string;
   customer_id: string | null;
   reference: string | null;
+  interbank: {
+    bankCode: string;
+    account: string;
+    interbankTransferId: string;
+    idempotencyKey: string;
+  } | null;
   failure_reason: string | null;
   payment_scenario: string | null;
   created_at: Date;
   updated_at: Date;
   completed_at: Date | null;
+  /** T-43. `null` for a row from before migration 010. */
+  requested_at: Date | null;
+  trace_context: string | null;
 }
 
 interface TransitionRow {
@@ -815,6 +843,7 @@ interface OutboxRow {
   routing_key: string;
   /** JSONB, parsed by the driver back into the envelope it was stored as. */
   envelope: MessageEnvelope<unknown>;
+  trace_context: string | null;
 }
 
 interface PaymentEventPayload {
@@ -825,6 +854,14 @@ interface PaymentEventPayload {
   errorType?: 'TRANSIENT' | 'PERMANENT';
   succeededAt?: string;
   failedAt?: string;
+}
+
+/**
+ * What the telemetry needs beyond the state. A row from before migration 010
+ * has neither column, and falls back to when it was created and to no trace.
+ */
+function observationFrom(row: TransactionRow): TransferObservation {
+  return { requestedAt: row.requested_at ?? row.created_at, traceContext: row.trace_context };
 }
 
 function transactionFrom(row: TransactionRow): Transaction {
@@ -843,6 +880,7 @@ function transactionFrom(row: TransactionRow): Transaction {
     idempotencyKey: row.idempotency_key,
     customerId: row.customer_id,
     reference: row.reference,
+    interbank: row.interbank,
     failureReason: row.failure_reason as FailureReason | null,
     paymentScenario: row.payment_scenario as PaymentScenario | null,
     createdAt: row.created_at,

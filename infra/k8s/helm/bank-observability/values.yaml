@@ -1,0 +1,2412 @@
+# ===========================================================================
+# bank-observability — el stack de la Fase 3
+#
+# Un solo release sirve a `dev` y a `prod`. Lo que los distingue es el atributo
+# `deployment.environment` que cada pod ya trae (T-48, `observability.environment`
+# del chart de la aplicación), no dos copias del stack: con la cuota de esta
+# región no caben dos, y un Grafana por entorno obliga a mirar en dos sitios
+# para comparar un incidente.
+#
+# Dos cuotas de `us-central1` mandan sobre el dimensionado, medidas el
+# 2026-10-13 (ver docs/operations/CLOUD.md):
+#
+#   INSTANCES        = 8, y el sistema ya usa 8 (5 VMs + 3 nodos). NO hay un
+#                      cuarto nodo, así que todo lo de aquí tiene que caber en
+#                      los tres que existen. De ahí las requests explícitas.
+#   IN_USE_ADDRESSES = 4, y el sistema usa 3. La que queda es el margen de la
+#                      entrada del banco: **Grafana no se expone por un
+#                      LoadBalancer**, se alcanza por `kubectl port-forward`.
+#
+# Retención: 7 días en los tres almacenes, que es lo que el enunciado sugiere
+# (§4.2, Consideraciones de costo) y lo que cubre la ventana de una prueba de
+# carga y su postmortem sin pagar por historia que nadie va a leer.
+# ===========================================================================
+
+# Nombres de Service predecibles. Sin esto, el nombre lo compone Helm con el
+# del release y el del subchart (`bank-observability-otlpGateway-opentelemetry-collector`),
+# y la URL que las aplicaciones necesitan dejaría de ser escribible a mano.
+nameOverride: bank-observability
+
+# ---------------------------------------------------------------------------
+# 1. El Collector al que exportan los siete componentes
+#
+# Un Deployment, no un DaemonSet: las aplicaciones le hablan por un Service y
+# no les importa en qué nodo está. Recibe OTLP (gRPC y HTTP), manda las trazas
+# a Tempo y publica las métricas en un endpoint que Prometheus raspa.
+# ---------------------------------------------------------------------------
+otlpGateway:
+  enabled: true
+  fullnameOverride: otel-gateway
+
+  # `contrib` y no `core` porque `k8sattributes`, `filelog` y `transform` sólo
+  # existen en contrib. La versión la fija `Chart.lock` a través del chart.
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: deployment
+  replicaCount: 1
+
+  # El Collector se mide a sí mismo en 8888. Se raspa por anotación, que es lo
+  # que el job `kubernetes-pods` del chart de Prometheus ya busca: sin esto, un
+  # pipeline que descarta datos por presión de memoria no se vería en ninguna
+  # parte, y «las métricas no reflejan el sistema real» cuesta un 50 % (§8.3).
+  podAnnotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '8888'
+
+  # Añade namespace, pod, nodo y las etiquetas del Deployment a cada span y
+  # cada métrica, y crea el ClusterRole que eso necesita.
+  presets:
+    kubernetesAttributes:
+      enabled: true
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  ports:
+    otlp:
+      enabled: true
+    otlp-http:
+      enabled: true
+    # Donde Prometheus raspa lo que las aplicaciones empujaron por OTLP.
+    prometheus:
+      enabled: true
+      containerPort: 8889
+      servicePort: 8889
+      protocol: TCP
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+
+  # `alternateConfig` y no `config`.
+  #
+  # `config` se FUSIONA con la configuración por defecto del chart, que trae
+  # pipelines de trazas, métricas y logs con receptores de Jaeger, Zipkin y
+  # Prometheus y un exportador `debug`. Poner `logs: null` para quitar uno no
+  # funciona: Helm ignora los nulos del `values.yaml` de un chart padre. El
+  # render lo demostró — el pipeline de logs seguía ahí, recibiendo OTLP y
+  # tirándolo a `debug`.
+  #
+  # `alternateConfig` REEMPLAZA esa base (`templates/_config.tpl`, define
+  # `opentelemetry-collector.baseConfig`), así que lo que queda es exactamente
+  # lo que está escrito aquí. El precio es que hay que declarar también lo que
+  # el chart daba gratis: la extensión `health_check`, que es la que contestan
+  # las probes en el 13133, y la auto-telemetría del 8888.
+  alternateConfig:
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+
+    # Escuchan en la IP del pod, no en 0.0.0.0, que es lo que hace el chart por
+    # defecto y lo que corresponde: el trafico entra por el Service.
+    #
+    # Consecuencia que sorprende y conviene saber: `kubectl port-forward` a este
+    # Collector NO funciona — el forward entra por `localhost` dentro del pod y
+    # ahi no hay nada escuchando, asi que da `connection refused`. Para probarlo
+    # a mano hay que mandar la peticion desde DENTRO del cluster, al nombre del
+    # Service, que es lo que hace `infra/scripts/cloud/obs-kind.sh`.
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: ${env:MY_POD_IP}:4317
+          http:
+            endpoint: ${env:MY_POD_IP}:4318
+
+    processors:
+      # El preset de `kubernetesAttributes` ANTEPONE `k8s_attributes` a la lista
+      # de cada pipeline, así que el orden final empieza por él y no por
+      # `memory_limiter`. No es un descuido: es lo que el chart hace y no se
+      # puede cambiar sin renunciar al RBAC que el preset genera.
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+
+      # La segunda capa de redacción de las trazas (T-60, C2).
+      #
+      # La primera vive en el SDK de cada servicio. Ésta existe porque la
+      # auditoría encontró el token de `GET /api/customers/verify-email?token=…`
+      # en Tempo: la instrumentación de Nest escribe `url.full` con
+      # `req.originalUrl` sin redactar, y la lista por defecto de
+      # `HttpInstrumentation` sólo cubre `sig` y las firmas de AWS/GCP. Una
+      # instrumentación nueva, o una versión que cambie de atributo, vuelve a
+      # abrir el agujero sin que ningún test del servicio lo vea; el Collector es
+      # el último punto por el que pasa TODA traza antes de quedarse siete días
+      # en un disco.
+      #
+      # Se aplica a TODOS los atributos del span y de sus eventos, no a una lista
+      # de claves: `url.full`, `url.query`, `http.target` y `http.url` son los
+      # que hoy llevan el token, pero el mensaje de una excepción
+      # (`exception.message`) o el `status.message` pueden citar la misma URL.
+      #
+      # Los reemplazos son los mismos de `maskText` en `@bank/observability`
+      # (`Bearer [REDACTED]`, `[REDACTED:jwt]`, `[REDACTED:email]`), para que un
+      # valor redactado se lea igual en un log que en una traza.
+      #
+      # Dos trampas de escritura, por si alguien toca las expresiones:
+      #   - `$${1}` y no `$1`: el Collector expande `${…}` como variable de
+      #     entorno al leer su configuración, y `$$` es su escape. Lo que llega a
+      #     OTTL es `${1}`, el grupo capturado.
+      #   - El valor del parámetro es una clase POSITIVA (`[A-Za-z0-9._~%+/=-]`)
+      #     y no «todo hasta el `&`»: en un cuerpo JSON la URL va entre comillas,
+      #     y una clase negativa se comería la comilla de cierre y el resto de la
+      #     línea. Aquí no importa tanto como en los logs, pero es la misma regex.
+      transform/redact_spans:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - 'replace_all_patterns(attributes, "value", "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_all_patterns(attributes, "value", "eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*", "[REDACTED:jwt]")'
+              - 'replace_all_patterns(attributes, "value", "(?i)bearer[ ]+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")'
+              - 'replace_all_patterns(attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}", "[REDACTED:email]")'
+              - 'replace_pattern(name, "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_pattern(status.message, "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_pattern(status.message, "eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*", "[REDACTED:jwt]")'
+              - 'replace_pattern(status.message, "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}", "[REDACTED:email]")'
+          - context: spanevent
+            statements:
+              - 'replace_all_patterns(attributes, "value", "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_all_patterns(attributes, "value", "eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*", "[REDACTED:jwt]")'
+              - 'replace_all_patterns(attributes, "value", "(?i)bearer[ ]+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")'
+              - 'replace_all_patterns(attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}", "[REDACTED:email]")'
+
+      # Las dos ÚNICAS etiquetas que los contadores y los histogramas del banco
+      # reciben de sus atributos de recurso.
+      #
+      # El enunciado prohíbe las etiquetas de alta cardinalidad (`accountId`,
+      # `customerId`) y el código ya no las emite; esto es la segunda barrera, y
+      # está escrita como una lista cerrada en vez de como una conversión
+      # automática: `resource_to_telemetry_conversion` habría subido TODOS los
+      # atributos de recurso, incluido `k8s.pod.name`, que cambia en cada
+      # despliegue y multiplica las series por el número de pods que han
+      # existido.
+      transform/metric_labels:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["service_name"], resource.attributes["service.name"])
+              - set(attributes["environment"], resource.attributes["deployment.environment"])
+
+    exporters:
+      otlp/tempo:
+        endpoint: tempo:4317
+        tls:
+          insecure: true
+
+      prometheus:
+        endpoint: ${env:MY_POD_IP}:8889
+        # `true`, que es la convención de Prometheus: `_total` para un contador
+        # monotónico y la unidad al final del nombre.
+        #
+        # Estuvo en `false` con el argumento de que el nombre ya trae la unidad
+        # («`bank.interbank.deposit.duration` en segundos») y que el sufijo
+        # produciría `..._seconds_seconds`. No es así: el sufijo sale del campo
+        # `unit` del instrumento (`s`), no del nombre, y el resultado es
+        # `bank_interbank_deposit_duration_seconds`. La duplicación sólo
+        # ocurriría si el nombre terminara en la unidad, y ninguno termina.
+        #
+        # El coste de dejarlo en `false` era mayor que un nombre feo: las
+        # consultas de los anexos de `docs/sre/sli-slo-sla.md` (T-43 a T-48)
+        # están escritas contra `bank_*_total` y `*_seconds_bucket`, y contra un
+        # Collector sin sufijos **no devuelven nada**. T-50 habría construido
+        # los paneles sobre series vacías. Los nombres de este exportador son
+        # los que fija `docs/sre/telemetry-catalog.md`.
+        add_metric_suffixes: true
+        resource_to_telemetry_conversion:
+          enabled: false
+
+    service:
+      telemetry:
+        resource:
+          k8s.namespace.name: ${env:OTEL_K8S_NAMESPACE}
+          k8s.node.name: ${env:OTEL_K8S_NODE_NAME}
+          k8s.pod.name: ${env:OTEL_K8S_POD_NAME}
+          host.name: ${env:OTEL_K8S_NODE_NAME}
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: ${env:MY_POD_IP}
+                    port: 8888
+      extensions:
+        - health_check
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, transform/redact_spans, batch]
+          exporters: [otlp/tempo]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, transform/metric_labels, batch]
+          exporters: [prometheus]
+        # Y no hay pipeline de logs. Los logs no llegan por OTLP: los recoge el
+        # agente de abajo desde el disco del nodo. Un servicio que empujara sus
+        # logs por red sería más lento cada vez que el almacén lo fuera, y mudo
+        # cuando estuviera caído.
+
+# ---------------------------------------------------------------------------
+# 2. El agente que recoge los logs de los pods
+#
+# Un DaemonSet leyendo `/var/log/pods` del nodo. Es lo que el enunciado llama
+# «agente de recolección de infraestructura» (§4.1): los servicios escriben
+# JSON en stdout y no saben que esto existe.
+# ---------------------------------------------------------------------------
+logAgent:
+  enabled: true
+  # El chart añade el sufijo `-agent` en modo daemonset, así que esto produce
+  # el Service y el DaemonSet `otel-log-agent`.
+  fullnameOverride: otel-log
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: daemonset
+
+  # El Collector se mide a sí mismo en 8888. Se raspa por anotación, que es lo
+  # que el job `kubernetes-pods` del chart de Prometheus ya busca: sin esto, un
+  # pipeline que descarta datos por presión de memoria no se vería en ninguna
+  # parte, y «las métricas no reflejan el sistema real» cuesta un 50 % (§8.3).
+  podAnnotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '8888'
+
+  presets:
+    # Monta `/var/log/pods` y declara el receptor `filelog` con el formato de
+    # los runtimes de contenedor, que es la parte que no vale la pena escribir
+    # a mano.
+    logsCollection:
+      enabled: true
+      includeCollectorLogs: false
+    kubernetesAttributes:
+      enabled: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  ports:
+    otlp:
+      enabled: false
+    otlp-http:
+      enabled: false
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+
+  # Mismo motivo que en el Collector de arriba: `alternateConfig` reemplaza la
+  # base del chart en vez de fusionarse con ella. Aquí importaba más — el
+  # DaemonSet heredaba pipelines de trazas y métricas con receptores de Jaeger,
+  # Zipkin y OTLP escuchando en cada nodo del clúster, para exportarlos a
+  # `debug`. Tres pods abriendo puertos que nadie usaba.
+  alternateConfig:
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+
+    # Sin `receivers`: el único que hace falta es `filelog`, y lo declara el
+    # preset `logsCollection` junto con el montaje de `/var/log/pods`.
+    # Nombrarlo también aquí lo duplicaría en la lista del pipeline, y el
+    # Collector no arranca con un receptor repetido.
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+
+      # Aquí es donde el formato de `@bank/observability` deja de ser una
+      # cadena y se vuelve consultable.
+      #
+      # El receptor `filelog` entrega la línea cruda en `body`. Estas cuatro
+      # sentencias la abren: los campos del logger (`timestamp`, `level`,
+      # `serviceName`, `environment`, `version`, `message`, `correlationId`,
+      # `traceId`, `spanId`) pasan a ser atributos, y `traceId`/`spanId` pasan
+      # además a los campos propios del registro OTLP, que es lo que hace que
+      # Grafana pueda enlazar un log con su traza.
+      #
+      # `where IsMatch(...)` deja en paz lo que no es JSON: el arranque de
+      # PostgreSQL, las líneas de RabbitMQ y el volcado de un proceso que murió
+      # antes de poder formatear nada. Esas se guardan igual, sin parsear,
+      # porque un log que el recolector no entiende sigue siendo evidencia — es
+      # el mismo criterio que hace que el servicio de auditoría registre
+      # `INVALID` en vez de descartar un mensaje ilegible.
+      # La redacción de los logs (T-60, C2): la misma idea que
+      # `transform/redact_spans` del Collector de arriba, sobre la línea CRUDA.
+      #
+      # Va ANTES de `transform/parse_bank_json` y sobre `body`, no sobre los
+      # atributos: así el JSON se abre ya limpio y lo que llega a Loki —el texto
+      # de la línea y su metadato estructurado— sale de una sola cadena
+      # redactada. Al revés habría que redactar dos veces y bastaría olvidar una.
+      #
+      # Cubre también la línea que NO es JSON (el volcado de un proceso que murió
+      # antes de formatear, un log de terceros): ésa no pasa por el `maskText`
+      # del logger del banco, así que aquí es la única barrera.
+      #
+      # El valor del parámetro es una clase POSITIVA de caracteres a propósito:
+      # dentro de un JSON la URL va entre comillas (`"…?token=abc","next":…`), y
+      # «todo hasta el siguiente `&`» se comería la comilla de cierre y el resto
+      # de la línea, que entonces ya no se podría parsear.
+      transform/redact_logs:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - 'replace_pattern(body, "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_pattern(body, "eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*", "[REDACTED:jwt]")'
+              - 'replace_pattern(body, "(?i)bearer[ ]+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")'
+              - 'replace_pattern(body, "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}", "[REDACTED:email]")'
+
+      transform/parse_bank_json:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - merge_maps(attributes, ParseJSON(body), "upsert") where IsMatch(body, "^\\s*\\{")
+              - set(severity_text, attributes["level"]) where attributes["level"] != nil
+              # El servicio se nombra a si mismo, y es la unica fuente correcta.
+              #
+              # Sin esta linea, `service.name` lo deriva `k8s_attributes` de la
+              # etiqueta `app.kubernetes.io/name` del pod, que en el chart
+              # `bank-usac` vale **bank-usac para los siete componentes**. Los
+              # siete colapsaban en una sola etiqueta de Loki y
+              # `{service_name="gateway"}` no devolvia nada.
+              #
+              # Peor que eso: las METRICAS si traian el nombre correcto
+              # (`gateway`, `customer-service`, …), porque ese viene del SDK de
+              # la aplicacion y no del pod. Las dos senales se contradecian, y
+              # un panel que cruzara metrica y log por servicio habria salido
+              # vacio sin decir por que. Encontrado en el primer despliegue en
+              # GKE (2026-10-14); en kind no se vio, porque el productor de
+              # prueba no lleva esa etiqueta.
+              - set(resource.attributes["service.name"], attributes["serviceName"]) where attributes["serviceName"] != nil
+              # Y el entorno, por la misma razón (T-60).
+              #
+              # Loki indexa `deployment.environment` como etiqueta
+              # (`deployment_environment`, ver `otlp_config` más abajo), pero
+              # nadie lo ponía: el agente sólo sobrescribía `service.name`, y el
+              # campo `environment` del log quedaba como metadato estructurado.
+              # Los paneles de logs filtraban `{…, environment="$environment"}`
+              # —un selector sobre una etiqueta que no existe— y salían VACÍOS en
+              # los tres dashboards que tienen logs, sin un solo error.
+              #
+              # La fuente es el propio log, igual que el servicio. Lo que no es
+              # JSON del banco (PostgreSQL, RabbitMQ, un volcado) cae al
+              # namespace, que en GKE ES el entorno (`dev`, `prod`); en kind el
+              # banco vive en `bank-usac` y sus logs dicen `local`, así que sólo
+              # las líneas sin parsear de ese namespace quedan con `bank-usac`.
+              - set(resource.attributes["deployment.environment"], attributes["environment"]) where attributes["environment"] != nil
+              - set(resource.attributes["deployment.environment"], resource.attributes["k8s.namespace.name"]) where resource.attributes["deployment.environment"] == nil
+              - set(trace_id.string, attributes["traceId"]) where IsMatch(attributes["traceId"], "^[0-9a-f]{32}$")
+              - set(span_id.string, attributes["spanId"]) where IsMatch(attributes["spanId"], "^[0-9a-f]{16}$")
+
+    exporters:
+      # Loki 3.x ingiere OTLP nativamente. Se usa eso y no el exportador `loki`
+      # —obsoleto— para no depender de un componente que ya no se mantiene.
+      otlphttp/loki:
+        logs_endpoint: http://loki:3100/otlp/v1/logs
+        tls:
+          insecure: true
+
+    service:
+      telemetry:
+        resource:
+          k8s.namespace.name: ${env:OTEL_K8S_NAMESPACE}
+          k8s.node.name: ${env:OTEL_K8S_NODE_NAME}
+          k8s.pod.name: ${env:OTEL_K8S_POD_NAME}
+          host.name: ${env:OTEL_K8S_NODE_NAME}
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: ${env:MY_POD_IP}
+                    port: 8888
+      extensions:
+        - health_check
+      pipelines:
+        logs:
+          # Vacío a propósito: el preset le añade `filelog`.
+          receivers: []
+          processors: [memory_limiter, transform/redact_logs, transform/parse_bank_json, batch]
+          exporters: [otlphttp/loki]
+
+# ---------------------------------------------------------------------------
+# 3. Prometheus
+# ---------------------------------------------------------------------------
+prometheus:
+  enabled: true
+
+  server:
+    # El chart compone el nombre con el del release
+    # (`obs-prometheus-server`), y el datasource de Grafana de más abajo tiene
+    # que nombrarlo. Se fija aquí para que la URL no dependa de cómo se llame
+    # el release.
+    fullnameOverride: prometheus-server
+    retention: 7d
+    persistentVolume:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    # Las reglas de grabación de los SLI viven en `prometheus.serverFiles`, que
+    # es hermano de este bloque y no hijo (T-50, más abajo). Las de ALERTA no
+    # están en Prometheus: alertan en Grafana, porque Alertmanager está
+    # desactivado y una alerta que nadie entrega no es una alerta.
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+
+  # Grafana Alerting es quien alerta (T-50), con su propio runbook por alerta.
+  # Dos sistemas de alertas compitiendo es la forma más segura de que una alerta
+  # real se pierda entre dos consolas.
+  alertmanager:
+    enabled: false
+
+  # CPU y memoria por contenedor vienen de cAdvisor, que el chart ya raspa en
+  # el job `kubernetes-nodes-cadvisor`. node-exporter añadiría tres pods por
+  # métricas de host que ningún panel obligatorio pide.
+  prometheus-node-exporter:
+    enabled: false
+
+  prometheus-pushgateway:
+    enabled: false
+
+  # Pods, Deployments, HPA y sus réplicas — la evidencia de autoescalado que
+  # §4.1 pide ver en los dashboards.
+  kube-state-metrics:
+    enabled: true
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  # ---------------------------------------------------------------------------
+  # Las reglas de grabación de los SLI (T-50).
+  #
+  # Una regla grabada y no una consulta repetida en cada panel: el SLI se define
+  # UNA vez, y el panel, la alerta y el error budget leen la misma serie. Si el
+  # numerador de la disponibilidad cambia, cambia en un sitio.
+  #
+  # Los nombres siguen la convención de Prometheus `nivel:metrica:operaciones`.
+  # Los nombres de las series de origen son los de
+  # `docs/sre/telemetry-catalog.md`, y los objetivos, los de
+  # `docs/sre/sli-slo-sla.md` §5.3.
+  #
+  # `environment` está en todos los `by (...)`: un stack sirve a `dev` y a
+  # `prod`, y un SLO que los sume no es el SLO de ninguno de los dos.
+  # ---------------------------------------------------------------------------
+  serverFiles:
+    recording_rules.yml:
+      groups:
+        # ---- SLO-27: disponibilidad del Gateway (objetivo 99 %) -------------
+        - name: slo-gateway-availability
+          interval: 30s
+          rules:
+            # Los sondeos del kubelet quedan fuera: `/health` y `/ready` se
+            # piden cada diez segundos y esconderían una caída real detrás de
+            # miles de respuestas exitosas que no son de ningún cliente.
+            - record: sli:gateway_requests:rate5m
+              expr: |
+                sum by (environment) (
+                  rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[5m])
+                )
+            - record: sli:gateway_requests_ok:rate5m
+              expr: |
+                sum by (environment) (
+                  rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[5m])
+                )
+            # ---- Por qué el `or 0 *` de aquí abajo (T-51) ----------------
+            #
+            # En PromQL una división cuyo **numerador no tiene series** no da
+            # cero: da vacío. Y una alerta con `noDataState: OK` sobre un SLI
+            # vacío se queda en OK. Junto, eso significa que **el peor caso
+            # posible no dispara nada**: si el 100 % de los depósitos se
+            # rechaza, `{result="accepted"}` no existe, el cociente desaparece
+            # y el sistema informa que todo está bien.
+            #
+            # No es hipotético. La carga de T-51 rechazó 241 depósitos de 241 y
+            # `slo:interbank_sent_accepted:ratio_rate5m` devolvió vacío con los
+            # contadores en `rejected=241`. Es el mismo error que T-58 encontró
+            # con el `le="5"` de SLO-2, en otra forma: el fallo total se parece
+            # a la ausencia de tráfico.
+            #
+            # `A or 0 * B` fabrica la serie en cero con las etiquetas de B
+            # cuando A no existe, y no cambia nada cuando A existe.
+            #
+            # Y el `> 0` del denominador, que es la otra mitad (T-60): sin
+            # tráfico en la ventana el cociente es 0/0 = NaN, y un NaN no es
+            # «sin datos» — es un número que envenena todo lo que lo use. El
+            # presupuesto de 7 días se calculaba como `avg_over_time` de este
+            # cociente, y con UNA ventana de cinco minutos sin transferencias
+            # el promedio de la semana entera salía NaN (medido en kind:
+            # todos los presupuestos y burn rates en NaN salvo el del Gateway,
+            # que es el único con tráfico constante). Con `> 0`, sin tráfico la
+            # serie no existe, que es lo que quiere decir.
+            - record: slo:gateway_availability:ratio_rate5m
+              expr: |
+                (sli:gateway_requests_ok:rate5m or 0 * sli:gateway_requests:rate5m)
+                /
+                (sli:gateway_requests:rate5m > 0)
+
+        # ---- SLO-6 / SLO-7: latencia del Gateway ----------------------------
+        - name: sli-gateway-latency
+          interval: 30s
+          rules:
+            - record: sli:gateway_latency:seconds_p50
+              expr: |
+                histogram_quantile(0.50, sum by (le, environment, http_request_method) (
+                  rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready"}[5m])
+                ))
+            - record: sli:gateway_latency:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment, http_request_method) (
+                  rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready"}[5m])
+                ))
+            - record: sli:gateway_latency:seconds_p99
+              expr: |
+                histogram_quantile(0.99, sum by (le, environment, http_request_method) (
+                  rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready"}[5m])
+                ))
+
+            # El p95 de arriba dice CUÁNTO tarda; esto dice si se cumple el
+            # objetivo, y es lo único sobre lo que se puede calcular un
+            # presupuesto (T-60). «p95 < 1 s» es lo mismo que «el 95 % de las
+            # lecturas baja de 1 s», y la segunda forma es una proporción.
+            #
+            # SLO-6: lecturas (`GET`) bajo 1 s. El bucket existe exacto: los
+            # límites de `http.server.request.duration` que trae la
+            # instrumentación HTTP son 0.005 … 1, 2.5, 5, 7.5, 10. Regex por lo
+            # mismo que en SLO-2: Prometheus guarda `le="1.0"`, no `le="1"`.
+            - record: slo:gateway_reads_under_1s:ratio_rate5m
+              expr: |
+                (
+                  sum by (environment) (rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET", le=~"1(\\.0+)?"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET"}[5m]))
+                )
+                /
+                (sum by (environment) (rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET"}[5m])) > 0)
+
+            # SLO-7: comandos (`POST`) bajo 3 s. **No hay bucket en 3 s**: el
+            # más cercano por debajo es 2.5, y se usa ése. Es una aproximación
+            # CONSERVADORA —una petición de 2.7 s cuenta como mala— y es la
+            # única honesta sin interpolar entre buckets, que daría un número
+            # que no es un porcentaje medido. Medirlo exacto exige una vista del
+            # SDK con un límite en 3, que es código de `@bank/observability`.
+            - record: slo:gateway_commands_under_3s:ratio_rate5m
+              expr: |
+                (
+                  sum by (environment) (rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST", le=~"2\\.50*"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST"}[5m]))
+                )
+                /
+                (sum by (environment) (rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST"}[5m])) > 0)
+
+        # ---- SLO-2: transferencias en menos de 5 s (objetivo 95 %) ----------
+        - name: slo-transfer-latency
+          interval: 30s
+          rules:
+            # El límite de 5 s existe exacto porque T-43 puso un bucket justo
+            # ahí para esto. Sin él esta pregunta no se puede responder: habría
+            # que interpolar entre dos buckets y el resultado no sería el
+            # porcentaje real.
+            #
+            # El selector es una REGEX y no `le="5"`, y eso no es paranoia:
+            # medido contra este mismo stack, el Collector expone `le="5"` en su
+            # texto y **Prometheus guarda la serie con `le="5.0"`**. Con
+            # `le="5"` la consulta no devuelve nada — ni un error, ni un cero:
+            # vacío — y el panel de SLO-2 habría salido en blanco para siempre
+            # sin que nada lo dijera.
+            - record: slo:transfer_under_5s:ratio_rate5m
+              # El `or 0 *`: ver la nota del grupo slo-gateway. Sin él, un
+              # sistema en el que **ninguna** transferencia baja de 5 s informa
+              # vacío en vez de 0 %.
+              expr: |
+                (
+                  sum by (environment) (rate(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(bank_transfer_duration_seconds_count[5m]))
+                )
+                /
+                (sum by (environment) (rate(bank_transfer_duration_seconds_count[5m])) > 0)
+            - record: sli:transfer_latency:seconds_p50
+              expr: |
+                histogram_quantile(0.50, sum by (le, environment) (rate(bank_transfer_duration_seconds_bucket[5m])))
+            - record: sli:transfer_latency:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (rate(bank_transfer_duration_seconds_bucket[5m])))
+            - record: sli:transfer_latency:seconds_p99
+              expr: |
+                histogram_quantile(0.99, sum by (le, environment) (rate(bank_transfer_duration_seconds_bucket[5m])))
+            # Tasa de error del flujo de negocio, desglosada por resultado: una
+            # transferencia COMPENSATED no es un fallo del sistema — es el
+            # sistema devolviendo el dinero, que es lo que debe hacer.
+            - record: sli:transfer_outcome:ratio_rate5m
+              expr: |
+                sum by (environment, result) (rate(bank_transfer_finished_total[5m]))
+                /
+                ignoring(result) group_left()
+                (sum by (environment) (rate(bank_transfer_finished_total[5m])) > 0)
+
+        # ---- SLO-1: entregas que no acaban en la cola muerta (99 %) ---------
+        - name: slo-messaging
+          interval: 30s
+          rules:
+            - record: slo:messages_not_dead_lettered:ratio_rate5m
+              # Aquí el numerador desaparece en el caso **bueno** —cero cartas
+              # muertas— y el panel sale en blanco justo cuando todo va bien.
+              # El mismo `or 0 *` sirve en las dos direcciones.
+              expr: |
+                1 - (
+                  (
+                    sum by (environment) (rate(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[5m]))
+                    or
+                    0 * sum by (environment) (rate(messaging_client_consumed_messages_total[5m]))
+                  )
+                  /
+                  (sum by (environment) (rate(messaging_client_consumed_messages_total[5m])) > 0)
+                )
+            # Throughput, el SLI base de §4.1: por servicio y por cola.
+            - record: sli:throughput_by_service:rate5m
+              expr: |
+                sum by (environment, service_name) (rate(messaging_client_consumed_messages_total[5m]))
+            - record: sli:throughput_by_queue:rate5m
+              expr: |
+                sum by (environment, messaging_destination_name) (rate(messaging_client_consumed_messages_total[5m]))
+            # Y la otra mitad del throughput: lo PUBLICADO (T-60). Sólo con el
+            # consumo, un productor que deja de publicar se ve igual que un
+            # consumidor que deja de leer — las dos líneas caen a cero — y son
+            # incidentes opuestos. `messaging_destination_name` aquí es el
+            # EXCHANGE (`@bank/messaging` publica a un exchange, no a una
+            # cola); en el consumo es la cola.
+            - record: sli:published_by_service:rate5m
+              expr: |
+                sum by (environment, service_name) (rate(messaging_client_sent_messages_total[5m]))
+            - record: sli:published_by_exchange:rate5m
+              expr: |
+                sum by (environment, messaging_destination_name) (rate(messaging_client_sent_messages_total[5m]))
+            # Las publicaciones que el broker rechazó: el contador lleva
+            # `error_type` sólo cuando `send` lanzó. Con `or 0 *` para que cero
+            # fallos sea una línea en cero y no un panel vacío.
+            - record: sli:publish_failures:rate5m
+              expr: |
+                sum by (environment, messaging_destination_name) (rate(messaging_client_sent_messages_total{error_type!=""}[5m]))
+                or
+                0 * sum by (environment, messaging_destination_name) (rate(messaging_client_sent_messages_total[5m]))
+            - record: sli:message_process:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment, messaging_destination_name) (
+                  rate(messaging_process_duration_seconds_bucket[5m])
+                ))
+            # Consumer lag por cola. La serie lleva el prefijo
+            # `rabbitmq_detailed_` porque sólo el endpoint detallado la desglosa
+            # por cola; ver el comentario del job `rabbitmq-detailed`.
+            - record: sli:broker_consumer_lag:messages
+              expr: |
+                sum by (environment, queue) (rabbitmq_detailed_queue_messages_ready)
+            - record: sli:broker_unacked:messages
+              expr: |
+                sum by (environment, queue) (rabbitmq_detailed_queue_messages_unacked)
+
+        # ---- SLO-28: la dependencia con el banco pareja (95 %) --------------
+        - name: slo-interbank
+          interval: 30s
+          rules:
+            - record: slo:interbank_accepted:ratio_rate5m
+              expr: |
+                (
+                  sum by (environment) (rate(bank_interbank_deposits_total{result="accepted"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(bank_interbank_deposits_total[5m]))
+                )
+                /
+                (sum by (environment) (rate(bank_interbank_deposits_total[5m])) > 0)
+            - record: slo:interbank_confirmation:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (
+                  rate(bank_interbank_deposit_duration_seconds_bucket[5m])
+                ))
+            # Y la otra dirección, la que este banco ENVÍA (T-47).
+            #
+            # Dos reglas y no una con etiqueta `direction`, porque §4.1 pide la
+            # tasa «enviados y recibidos» como dos números: un solo indicador
+            # los habría promediado, y el día que el banco pareja rechaza todo
+            # lo nuestro mientras acepta todo lo suyo el promedio sale bien.
+            #
+            # La carga de T-51 encontró que faltaban: el escenario obligatorio
+            # —el pareja rechazando depósitos— no disparaba **ninguna** alerta,
+            # porque las dos que existían miraban sólo el entrante.
+            - record: slo:interbank_sent_accepted:ratio_rate5m
+              expr: |
+                (
+                  sum by (environment) (rate(bank_interbank_sent_total{result="accepted"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(bank_interbank_sent_total[5m]))
+                )
+                /
+                (sum by (environment) (rate(bank_interbank_sent_total[5m])) > 0)
+            - record: slo:interbank_sent_confirmation:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (
+                  rate(bank_interbank_confirmation_duration_seconds_bucket[5m])
+                ))
+            # Los vencimientos por sí solos, que es lo que §4.1 nombra aparte
+            # («número de timeouts»). Sale de la etiqueta y no de un contador
+            # propio: un contador aparte se desincroniza del total en cuanto
+            # alguien añade un estado.
+            - record: sli:interbank_sent_timeouts:rate5m
+              expr: |
+                sum by (environment) (rate(bank_interbank_sent_total{result="timeout"}[5m]))
+            # El número que §4.1 pide, como número: cuántos vencieron en la
+            # última hora. Un vencimiento es raro y una tasa por segundo de algo
+            # raro se lee como cero aunque haya pasado.
+            - record: sli:interbank_sent_timeouts:increase1h
+              expr: |
+                sum by (environment) (increase(bank_interbank_sent_total{result="timeout"}[1h]))
+                or
+                0 * sum by (environment) (increase(bank_interbank_sent_total[1h]))
+            # La tasa de éxito ENVIADOS y RECIBIDOS en un solo gráfico, sin
+            # promediarlas: la etiqueta `direction` la pone la regla y no el
+            # código, que mantiene sus dos contadores separados a propósito.
+            - record: sli:interbank_accepted_by_direction:ratio_rate5m
+              expr: |
+                label_replace(slo:interbank_accepted:ratio_rate5m, "direction", "received", "", "")
+                or
+                label_replace(slo:interbank_sent_accepted:ratio_rate5m, "direction", "sent", "", "")
+
+        # =====================================================================
+        # Error budget y burn rate, DESDE LOS CONTADORES (T-60)
+        #
+        # Antes eran `avg_over_time(<cociente de 5 m>[W])`, y eso tenía dos
+        # defectos. El grave: el cociente de 5 m es 0/0 = NaN en cualquier
+        # ventana sin tráfico, y un solo NaN en la semana deja el promedio en
+        # NaN — medido en kind, todos los presupuestos menos el del Gateway
+        # salían NaN tras la primera pausa de la carga. El sutil: un promedio
+        # de cocientes pesa igual cinco minutos con una transferencia que cinco
+        # minutos con mil, y eso no es la proporción de la semana.
+        #
+        # Ahora la proporción de la ventana W es `increase(bueno[W]) /
+        # increase(total[W])`: los eventos reales de la ventana, sin promediar
+        # nada. Con el mismo `or 0 *` de arriba (numerador ausente = 0) y con
+        # `> 0` en el denominador: sin tráfico en W la serie NO EXISTE, que una
+        # alerta con `noDataState: OK` lee como «nada que avisar» y un panel
+        # como «sin datos», nunca como NaN.
+        #
+        #   presupuesto restante = 1 - (1 - proporción_7d) / (1 - objetivo)
+        #   burn rate            = (1 - proporción_W) / (1 - objetivo)
+        #
+        # Dos grupos por coste: las ventanas de horas se evalúan cada 30 s,
+        # que es lo que necesita una alerta de cinco minutos; la de 7 días cada
+        # 5 m, porque recorrer una semana de buckets cada 30 s sería el
+        # Prometheus entero gastándose en un panel que cambia despacio.
+        # =====================================================================
+        # ---- Burn rate: ventanas de 5 m a 6 h ---------------------------------
+        - name: slo-burn-rate-windows
+          interval: 30s
+          rules:
+            # SLO-27, disponibilidad del Gateway (99 %)
+            - record: slo:gateway_availability:ratio_1h
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[1h]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[1h]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[1h])) > 0)
+            - record: slo:gateway_availability:burn_rate1h
+              expr: (1 - slo:gateway_availability:ratio_1h) / 0.01
+            - record: slo:gateway_availability:ratio_6h
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[6h]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[6h]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[6h])) > 0)
+            - record: slo:gateway_availability:burn_rate6h
+              expr: (1 - slo:gateway_availability:ratio_6h) / 0.01
+            # SLO-2, transferencias bajo 5 s (95 %)
+            - record: slo:transfer_under_5s:ratio_5m
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[5m]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[5m]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[5m])) > 0)
+            - record: slo:transfer_under_5s:burn_rate5m
+              expr: (1 - slo:transfer_under_5s:ratio_5m) / 0.05
+            - record: slo:transfer_under_5s:ratio_30m
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[30m]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[30m]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[30m])) > 0)
+            - record: slo:transfer_under_5s:burn_rate30m
+              expr: (1 - slo:transfer_under_5s:ratio_30m) / 0.05
+            - record: slo:transfer_under_5s:ratio_1h
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[1h]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[1h]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[1h])) > 0)
+            - record: slo:transfer_under_5s:burn_rate1h
+              expr: (1 - slo:transfer_under_5s:ratio_1h) / 0.05
+            - record: slo:transfer_under_5s:ratio_6h
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[6h]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[6h]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[6h])) > 0)
+            - record: slo:transfer_under_5s:burn_rate6h
+              expr: (1 - slo:transfer_under_5s:ratio_6h) / 0.05
+            # SLO-1, entregas fuera de la cola muerta (99 %)
+            - record: slo:messages_not_dead_lettered:ratio_1h
+              expr: |
+                1 - (
+                (
+                  sum by (environment) (increase(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[1h]))
+                  or
+                  0 * sum by (environment) (increase(messaging_client_consumed_messages_total[1h]))
+                )
+                /
+                (sum by (environment) (increase(messaging_client_consumed_messages_total[1h])) > 0)
+                )
+            - record: slo:messages_not_dead_lettered:burn_rate1h
+              expr: (1 - slo:messages_not_dead_lettered:ratio_1h) / 0.01
+
+        # ---- Error budget: la ventana de 7 días -------------------------------
+        - name: slo-error-budget
+          interval: 5m
+          rules:
+            # SLO-27, disponibilidad del Gateway (99 %)
+            - record: slo:gateway_availability:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[7d]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[7d]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[7d])) > 0)
+            - record: slo:gateway_availability:budget_remaining7d
+              expr: 1 - ((1 - slo:gateway_availability:ratio_7d) / 0.01)
+            # SLO-6, lecturas GET bajo 1 s (95 %)
+            - record: slo:gateway_reads_under_1s:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET", le=~"1(\\.0+)?"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET"}[7d]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET"}[7d])) > 0)
+            - record: slo:gateway_reads_under_1s:budget_remaining7d
+              expr: 1 - ((1 - slo:gateway_reads_under_1s:ratio_7d) / 0.05)
+            # SLO-7, comandos POST bajo 3 s, contra el bucket de 2.5 s (95 %)
+            - record: slo:gateway_commands_under_3s:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST", le=~"2\\.50*"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST"}[7d]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST"}[7d])) > 0)
+            - record: slo:gateway_commands_under_3s:budget_remaining7d
+              expr: 1 - ((1 - slo:gateway_commands_under_3s:ratio_7d) / 0.05)
+            # SLO-2, transferencias bajo 5 s (95 %)
+            - record: slo:transfer_under_5s:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[7d]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[7d])) > 0)
+            - record: slo:transfer_under_5s:budget_remaining7d
+              expr: 1 - ((1 - slo:transfer_under_5s:ratio_7d) / 0.05)
+            # SLO-1, entregas fuera de la cola muerta (99 %)
+            - record: slo:messages_not_dead_lettered:ratio_7d
+              expr: |
+                1 - (
+                (
+                  sum by (environment) (increase(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(messaging_client_consumed_messages_total[7d]))
+                )
+                /
+                (sum by (environment) (increase(messaging_client_consumed_messages_total[7d])) > 0)
+                )
+            - record: slo:messages_not_dead_lettered:budget_remaining7d
+              expr: 1 - ((1 - slo:messages_not_dead_lettered:ratio_7d) / 0.01)
+            # SLO-28, depósitos RECIBIDOS aceptados (95 %)
+            - record: slo:interbank_accepted:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(bank_interbank_deposits_total{result="accepted"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(bank_interbank_deposits_total[7d]))
+                )
+                /
+                (sum by (environment) (increase(bank_interbank_deposits_total[7d])) > 0)
+            - record: slo:interbank_accepted:budget_remaining7d
+              expr: 1 - ((1 - slo:interbank_accepted:ratio_7d) / 0.05)
+            # SLO-28, depósitos ENVIADOS aceptados (95 %)
+            - record: slo:interbank_sent_accepted:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(bank_interbank_sent_total{result="accepted"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(bank_interbank_sent_total[7d]))
+                )
+                /
+                (sum by (environment) (increase(bank_interbank_sent_total[7d])) > 0)
+            - record: slo:interbank_sent_accepted:budget_remaining7d
+              expr: 1 - ((1 - slo:interbank_sent_accepted:ratio_7d) / 0.05)
+
+        # ---- Clientes y cuentas (T-41, T-42; reglas desde T-60) --------------
+        #
+        # Las métricas obligatorias de §4.1 para Customer y Account Service.
+        # Antes los paneles las consultaban crudas y el p95 de KYC no lo
+        # consultaba nadie: el histograma existía desde T-41 y el panel no.
+        - name: sli-customer-account
+          interval: 30s
+          rules:
+            # «Tiempo desde la creación hasta la verificación KYC (p95)».
+            #
+            # Ventana de 6 h y no de 5 m: una decisión de KYC es un evento de
+            # decenas al día, no de cientos por segundo, y con 5 m el cuantil es
+            # NaN casi siempre. Los buckets van de 1 s a 7 días
+            # (`TIME_TO_DECISION_BUCKETS_S`), así que el p95 es legible aunque el
+            # cliente tarde un día en volver.
+            - record: sli:kyc_time_to_decision:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (
+                  rate(bank_customer_kyc_time_to_decision_seconds_bucket[6h])
+                ))
+            - record: sli:kyc_time_to_decision:seconds_p50
+              expr: |
+                histogram_quantile(0.50, sum by (le, environment) (
+                  rate(bank_customer_kyc_time_to_decision_seconds_bucket[6h])
+                ))
+            # Verificados contra rechazados, en la última hora.
+            - record: sli:kyc_decisions:increase1h
+              expr: |
+                sum by (environment, result) (increase(bank_customer_kyc_decisions_total[1h]))
+            - record: sli:kyc_verified:ratio_increase1h
+              expr: |
+                (
+                  sum by (environment) (increase(bank_customer_kyc_decisions_total{result="verified"}[1h]))
+                  or
+                  0 * sum by (environment) (increase(bank_customer_kyc_decisions_total[1h]))
+                )
+                /
+                (sum by (environment) (increase(bank_customer_kyc_decisions_total[1h])) > 0)
+            # Operaciones por tipo de cuenta y operación. `account_type` vale
+            # `AHORRO` o `MONETARIA` y `operation` `debit`, `credit` o
+            # `compensation` (`otel-activity.telemetry.ts`).
+            - record: sli:account_operations:rate5m
+              expr: |
+                sum by (environment, account_type, operation) (rate(bank_account_operations_total[5m]))
+            # Anomalías detectadas en la última hora, por regla. El contador sólo
+            # existe tras la PRIMERA anomalía, así que el panel completa con
+            # `or vector(0)`: cero anomalías es una respuesta, no un hueco.
+            - record: sli:account_anomalies:increase1h
+              expr: |
+                sum by (environment, rule) (increase(bank_account_anomalies_total[1h]))
+
+        # ---- El proveedor externo simulado (T-44) ---------------------------
+        - name: sli-payment-provider
+          interval: 30s
+          rules:
+            # Tasa de fallos externos. `source` distingue el fallo real del
+            # inyectado por un administrador para una prueba: sumarlos haría
+            # que un escenario de fallo pareciera una caída del proveedor.
+            - record: sli:payment_provider_failure:ratio_rate5m
+              # Cero fallos es el caso bueno y dejaba el panel vacío; el `or 0 *`
+              # lo convierte en un cero que se puede graficar.
+              expr: |
+                (
+                  sum by (environment, source) (rate(bank_payment_provider_calls_total{result!="success"}[5m]))
+                  or
+                  0 * sum by (environment, source) (rate(bank_payment_provider_calls_total[5m]))
+                )
+                /
+                (sum by (environment, source) (rate(bank_payment_provider_calls_total[5m])) > 0)
+            - record: sli:payment_provider:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (
+                  rate(bank_payment_provider_duration_seconds_bucket[5m])
+                ))
+
+        # ---- Reinicios de contenedor (TD-091) ------------------------------
+        #
+        # La señal que faltaba, y la carga de T-51 lo demostró del peor modo:
+        # los siete servicios se reiniciaron **dentro de seis segundos** y la
+        # única pista fue un `kubectl get pods` hecho a mano. Las alertas de
+        # latencia y de error rate sí dispararon, pero describiendo el síntoma,
+        # así que el diagnóstico empezó por las sondas — el camino equivocado.
+        # La causa era el latido de AMQP a 5 s.
+        #
+        # Un reinicio simultáneo de todo es **la señal más barata y más
+        # específica** que existe para una dependencia compartida que se cayó, y
+        # es exactamente la que no había.
+        - name: reliability-restarts
+          interval: 30s
+          rules:
+            # Reinicios por pod en diez minutos.
+            #
+            # `increase` y no `rate`: lo que importa es «cuántas veces», no
+            # «cuántas por segundo», y un contador que se reinicia con el pod
+            # hace que `rate` devuelva basura en el primer scrape de un pod
+            # nuevo. `max by` sobre los contenedores del pod porque un pod con
+            # un sidecar tiene dos series y lo que se vigila es el pod.
+            - record: sli:pod_restarts:increase10m
+              expr: |
+                max by (namespace, pod) (
+                  increase(kube_pod_container_status_restarts_total[10m])
+                )
+
+            # Cuántos pods del banco se reiniciaron en la ventana.
+            #
+            # El numerador de la alerta que importa. `> 0` convierte «veces» en
+            # «cuántos pods», que es la pregunta: dos reinicios de un pod enfermo
+            # no son lo mismo que un reinicio de cada uno.
+            - record: sli:pods_restarting:count10m
+              expr: |
+                count by (namespace) (sli:pod_restarts:increase10m > 0)
+
+            # Cuántos pods hay, para poder decir «más de la mitad».
+            #
+            # Sin esto la alerta tendría que llevar el número siete escrito
+            # dentro, y dejaría de servir en cuanto el chart creciera o un HPA
+            # subiera una réplica. `kube_deployment_spec_replicas` y no un conteo
+            # de pods porque durante un reinicio masivo el conteo de pods es
+            # justo lo que está cambiando.
+            - record: sli:deployments_expected:count
+              expr: |
+                count by (namespace) (kube_deployment_spec_replicas)
+
+            # Las mismas tres, con la etiqueta `environment` (T-60).
+            #
+            # Las alertas de reinicio leían series que sólo tienen `namespace`,
+            # y la política de Grafana enruta por `environment`: sin ella, todo
+            # reinicio de `dev` caía en la ruta por defecto, que es la de
+            # PRODUCCIÓN. En este clúster el namespace ES el entorno (`dev`,
+            # `prod`), salvo en kind, donde el banco vive en `bank-usac` y su
+            # `deployment.environment` es `local` — que es la ruta que existe
+            # para él. Cualquier otro namespace (`observability`,
+            # `kube-system`) conserva su nombre y va a la ruta por defecto, que
+            # es la correcta: el stack es uno solo y lo opera producción.
+            #
+            # Se hace aquí, en Prometheus, y no con una plantilla en la alerta:
+            # los archivos de aprovisionamiento de Grafana expanden `$…` como
+            # variables de entorno, y un `$1` o un `$labels` escrito ahí llega
+            # vacío sin dar error.
+            - record: sli:pod_restarts_by_environment:max10m
+              expr: |
+                label_replace(
+                  label_replace(max by (namespace) (sli:pod_restarts:increase10m), "environment", "$1", "namespace", "(.+)"),
+                  "environment", "local", "namespace", "bank-usac"
+                )
+            # La correspondencia namespace -> entorno, como serie (T-60).
+            #
+            # Los paneles de plataforma filtran por namespace y el selector de
+            # todos los dashboards es el entorno. En la nube son la misma
+            # palabra (`dev`, `prod`) y bastaba `namespace=~"$environment"`; en
+            # kind el banco vive en `bank-usac` y su entorno es `local`, así que
+            # los paneles de pods, réplicas y HPA —y la anotación de
+            # despliegues— salían vacíos en local. La variable oculta
+            # `$namespace` de cada dashboard lee esta serie: misma regla que
+            # las alertas de reinicio, escrita una vez.
+            - record: sli:namespace_environment:info
+              expr: |
+                label_replace(
+                  label_replace(max by (namespace) (kube_namespace_status_phase{phase="Active"}), "environment", "$1", "namespace", "(.+)"),
+                  "environment", "local", "namespace", "bank-usac"
+                )
+            - record: sli:pods_restarting_by_environment:ratio10m
+              expr: |
+                label_replace(
+                  label_replace(
+                    (sli:pods_restarting:count10m or 0 * sli:deployments_expected:count)
+                    /
+                    (sli:deployments_expected:count > 0),
+                    "environment", "$1", "namespace", "(.+)"
+                  ),
+                  "environment", "local", "namespace", "bank-usac"
+                )
+
+  extraScrapeConfigs: |
+    # Lo que las aplicaciones empujaron por OTLP, republicado por el Collector.
+    - job_name: otel-gateway
+      scrape_interval: 15s
+      static_configs:
+        - targets: ['otel-gateway:8889']
+
+    # El consumer lag del broker. RabbitMQ lo publica él mismo en 15692 con el
+    # plugin `rabbitmq_prometheus`, que el chart de la aplicación habilita; un
+    # exportador aparte habría sido un pod más y una versión más que mantener.
+    # Hay un broker por namespace, así que hay un target por entorno y la
+    # etiqueta `environment` es lo que los separa.
+    - job_name: rabbitmq
+      scrape_interval: 30s
+      metrics_path: /metrics
+      static_configs:
+        - targets: ['rabbitmq.dev.svc.cluster.local:15692']
+          labels:
+            environment: dev
+        - targets: ['rabbitmq.prod.svc.cluster.local:15692']
+          labels:
+            environment: prod
+
+    # El consumer lag POR COLA, que es el que pide §4.1 ("mensajes pendientes
+    # por consumidor"), no está en `/metrics`. Medido contra
+    # `rabbitmq:3.13-management`, la misma imagen del chart de la aplicación:
+    #
+    #   /metrics          -> rabbitmq_queue_messages_ready 3
+    #                        un unico numero, SIN etiqueta `queue`
+    #   /metrics/detailed -> rabbitmq_detailed_queue_messages_ready{queue="audit.customer"} 3
+    #
+    # Dos diferencias, y las dos importan: la etiqueta `queue` sólo existe en el
+    # endpoint detallado, y ahí la serie se llama con el prefijo
+    # `rabbitmq_detailed_`. Un panel de consumer lag construido sobre `/metrics`
+    # habría sido una línea plana sin desglose — un dashboard decorativo, que es
+    # justo lo que §8.3 penaliza con un 25 %.
+    #
+    # Se pide una sola familia (`queue_coarse_metrics`): el endpoint detallado
+    # cuesta en proporción a lo que se le pide, y las demás familias no
+    # alimentan ningún panel obligatorio.
+    - job_name: rabbitmq-detailed
+      scrape_interval: 30s
+      metrics_path: /metrics/detailed
+      params:
+        family: [queue_coarse_metrics]
+      static_configs:
+        - targets: ['rabbitmq.dev.svc.cluster.local:15692']
+          labels:
+            environment: dev
+        - targets: ['rabbitmq.prod.svc.cluster.local:15692']
+          labels:
+            environment: prod
+
+# ---------------------------------------------------------------------------
+# 4. Tempo — trazas
+# ---------------------------------------------------------------------------
+tempo:
+  enabled: true
+  fullnameOverride: tempo
+
+  tempo:
+    retention: 168h # 7 días
+    # El límite sigue en 1 GiB a propósito: no hay cuota para un cuarto nodo
+    # (ver la cabecera), y lo que mataba a Tempo no era el tamaño del límite
+    # sino tres cosas que lo ignoraban. Medido en kind bajo la carga de
+    # `test/load/` (2026-10-19): seis `OOMKilled` en una hora, en el límite de
+    # 1 GiB, y como el pod no tenía disco cada reinicio borró todas las trazas.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    # 1. El balasto del chart. Su defecto es `-mem-ballast-size-mbs=1024`: un
+    #    GiB reservado para que el recolector de Go espere a que el montón
+    #    DOBLE (balasto + vivo) antes de limpiar. Con un límite de 1 GiB eso es
+    #    dejar crecer la basura hasta el `OOMKilled`. El truco es anterior a
+    #    GOMEMLIMIT y lo reemplaza lo de abajo.
+    memBallastSizeMbs: 0
+
+    # 2. GOMEMLIMIT al 85 % del límite. Desde Go 1.19 el recolector se vuelve
+    #    agresivo al acercarse a esta cifra en vez de dejar que el kernel mate
+    #    el proceso: bajo presión, Tempo va más lento, no se cae. El 15 % que
+    #    queda es lo que el runtime usa fuera del montón (pilas, mmap de los
+    #    bloques). Si el límite de arriba cambia, esto cambia con él.
+    extraEnv:
+      - name: GOMEMLIMIT
+        value: 870MiB
+
+    # 3. Que el bloque en memoria no pueda crecer hasta el límite. Los
+    #    defectos de Tempo (`max_block_bytes` 500 MB, `max_block_duration`
+    #    30 m) están pensados para ingesters de varios GiB: aquí el bloque
+    #    abierto solo podía ocupar la mitad del pod. Una transferencia con
+    #    compensación son ~230 spans (~250 KB), y la carga de `test/load/`
+    #    —15 VUs— produce del orden de 1-2 MB/s: 50 MB es medio minuto de carga
+    #    máxima, y cortar el bloque a los 5 minutos lo manda al disco aunque el
+    #    tráfico sea poco.
+    ingester:
+      trace_idle_period: 10s
+      max_block_bytes: 50000000
+      max_block_duration: 5m
+      complete_block_timeout: 10m
+      flush_check_period: 10s
+
+    # Y una búsqueda no puede abrir cien bloques a la vez sobre el mismo GiB.
+    querier:
+      max_concurrent_queries: 4
+
+    # Los límites por inquilino (el formato nuevo de Tempo 2.x: `defaults`).
+    # Generosos para la carga real (×3 a ×5 sobre lo medido) y lo bastante
+    # cerca del límite para que un emisor desbocado reciba un rechazo —que el
+    # Collector reintenta y cuenta en su auto-telemetría— en vez de tumbar el
+    # almacén de trazas de todo el banco.
+    overrides:
+      defaults:
+        ingestion:
+          rate_limit_bytes: 6000000
+          burst_size_bytes: 12000000
+          max_traces_per_user: 5000
+        global:
+          max_bytes_per_trace: 2000000
+    # Sólo OTLP se declara, pero el chart NO deja quitar el resto, y conviene
+    # saberlo antes de auditar la salida:
+    #
+    #   - `templates/_ports.tpl` escribe los puertos de Zipkin (9411),
+    #     OpenCensus (55678) y los OTLP heredados (55680/55681) en el Service
+    #     con valores fijos, sin mirar esta configuración.
+    #   - El mismo helper desreferencia `receivers.jaeger.protocols.*` sin
+    #     comprobar si existe, así que poner `jaeger: null` rompería el render
+    #     — y además no serviría: Helm ignora los nulos del `values.yaml` de un
+    #     chart padre, sólo los respeta en `--set` y en un `-f`.
+    #
+    # El Service es ClusterIP en un clúster privado, así que son puertos que
+    # nadie de fuera alcanza. Se deja así y se registra como deuda en vez de
+    # pelearse con el chart.
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# ---------------------------------------------------------------------------
+# 5. Loki — logs
+#
+# `SingleBinary` con almacenamiento de fichero: un pod y un disco. El modo
+# distribuido son once Deployments y un bucket, y aquí no hay volumen de logs
+# que lo justifique ni cuota de nodos para pagarlo.
+# ---------------------------------------------------------------------------
+loki:
+  enabled: true
+  fullnameOverride: loki
+
+  deploymentMode: SingleBinary
+
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    schemaConfig:
+      configs:
+        - from: '2024-04-01'
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    limits_config:
+      retention_period: 168h # 7 días
+      # Hace consultables `traceId`, `spanId` y `correlationId` sin convertirlos
+      # en etiquetas. Es la distinción que el enunciado pide cuidar: una etiqueta
+      # por identificador crearía una serie por transferencia.
+      allow_structured_metadata: true
+      volume_enabled: true
+      # Qué atributos de recurso se vuelven ETIQUETA al ingerir por OTLP.
+      # Lista cerrada y corta: todo lo demás —incluidos `traceId`, `spanId` y
+      # `correlationId`— queda como metadato estructurado, que es consultable
+      # (`| traceId="..."`) sin crear una serie por transferencia. Es la
+      # distinción que el enunciado pide cuidar al prohibir las etiquetas de
+      # alta cardinalidad.
+      #
+      # Va dentro de `limits_config` y no al nivel de `loki`: una clave
+      # `otlpConfig` ahí fuera no existe en este chart y se ignora en silencio.
+      otlp_config:
+        resource_attributes:
+          ignore_defaults: true
+          attributes_config:
+            - action: index_label
+              attributes:
+                - service.name
+                - deployment.environment
+                - k8s.namespace.name
+    compactor:
+      working_directory: /var/loki/compactor
+      retention_enabled: true
+      delete_request_store: filesystem
+
+  singleBinary:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 150m
+        memory: 512Mi
+      limits:
+        cpu: 750m
+        memory: 1Gi
+    persistence:
+      enabled: true
+      size: 10Gi
+
+  # El modo de un solo binario no necesita ninguna de estas piezas.
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+  lokiCanary:
+    enabled: false
+  test:
+    enabled: false
+  gateway:
+    enabled: false
+
+# ---------------------------------------------------------------------------
+# 6. Grafana
+#
+# Sin LoadBalancer: queda una sola IP pública libre en la cuota y es el margen
+# de la entrada del banco. Se entra con
+#   kubectl port-forward -n <ns> svc/grafana 3000:80
+# ---------------------------------------------------------------------------
+grafana:
+  enabled: true
+  fullnameOverride: grafana
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  persistence:
+    enabled: true
+    size: 2Gi
+
+  # SIN el `init-chown-data` del chart (T-60). Ese contenedor corre como root
+  # con TODAS las capacidades quitadas salvo CHOWN, así que no puede entrar en
+  # un directorio 0700 que no es suyo — y Grafana 12 crea `png/`, `pdf/` y
+  # `csv/` en `/var/lib/grafana` justo así. Resultado medido en kind: la
+  # primera instalación arranca (el volumen está vacío), y CUALQUIER reinicio
+  # posterior del pod se queda en `Init:CrashLoopBackOff` con
+  # `chown: /var/lib/grafana/png: Permission denied`. En GKE habría sido
+  # Grafana caído tras el primer reinicio del nodo.
+  #
+  # No hace falta: el pod ya corre con `fsGroup: 472` (defecto del chart), y un
+  # disco persistente de GKE aplica ese grupo al montarlo.
+  initChownData:
+    enabled: false
+
+  # Un pod más en tres nodos sin margen, para una prueba que no comprueba nada
+  # que `kubectl rollout status` no diga ya.
+  testFramework:
+    enabled: false
+
+  # La contraseña NO está aquí. El Secret lo pasa el pipeline, igual que los
+  # del chart de la aplicación.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+
+  # Los tres datasources, provisionados como código. Es la mitad del criterio
+  # 2.6 de la rúbrica: nada creado a mano en la interfaz.
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          uid: bank-prometheus
+          access: proxy
+          url: http://prometheus-server
+          isDefault: true
+          jsonData:
+            timeInterval: 30s
+            # Enlaza una métrica con las trazas de ejemplo que la produjeron.
+            exemplarTraceIdDestinations:
+              - name: trace_id
+                datasourceUid: bank-tempo
+
+        - name: Loki
+          type: loki
+          uid: bank-loki
+          access: proxy
+          url: http://loki:3100
+          jsonData:
+            # «Navegación desde un log hacia su traza» (§4.1). El `traceId`
+            # llega como metadato estructurado, así que el matcher es `label` y
+            # no una expresión regular sobre el texto: una regex habría enlazado
+            # también el traceId que aparezca citado dentro de un mensaje.
+            derivedFields:
+              - name: TraceID
+                matcherType: label
+                matcherRegex: traceId
+                # `$$` y no `$`: Grafana expande `${…}` como variable de
+                # entorno en TODO archivo de aprovisionamiento, y
+                # `${__value.raw}` sin escapar llegaba como cadena vacía — el
+                # botón existía y abría Tempo sin consulta (T-60). Es el mismo
+                # escape que ya usa `tracesToLogsV2` más abajo.
+                url: '$${__value.raw}'
+                datasourceUid: bank-tempo
+                urlDisplayLabel: Ver la traza
+              # El flujo de negocio de la Fase 1, que no es el traceId: busca
+              # todos los logs del mismo correlationId, en todos los servicios.
+              #
+              # Enlace INTERNO a este mismo datasource (T-60). Antes era una URL
+              # de Explore que consultaba `{job=~".+"}`, y con la lista cerrada
+              # de `otlp_config` la etiqueta `job` no existe: el selector no
+              # encontraba ningún stream. `service_name` sí está en todos.
+              - name: CorrelationID
+                matcherType: label
+                matcherRegex: correlationId
+                datasourceUid: bank-loki
+                url: '{service_name=~".+"} | correlationId="$${__value.raw}"'
+                urlDisplayLabel: Ver el flujo completo
+
+        - name: Tempo
+          type: tempo
+          uid: bank-tempo
+          access: proxy
+          # 3200, el `http_listen_port` de Tempo. No 3100, que es el de Loki:
+          # el render de este chart fue lo que lo descubrió.
+          url: http://tempo:3200
+          jsonData:
+            # Y la vuelta: de un span a sus logs.
+            tracesToLogsV2:
+              datasourceUid: bank-loki
+              spanStartTimeShift: -5m
+              spanEndTimeShift: 5m
+              filterByTraceID: true
+              customQuery: true
+              query: '{service_name="$${__span.tags["service.name"]}"} | traceId="$${__span.traceId}"'
+            tracesToMetrics:
+              datasourceUid: bank-prometheus
+            nodeGraph:
+              enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Las alertas (T-50), provisionadas como código.
+  #
+  # Alertan en GRAFANA y no en Prometheus porque Alertmanager está desactivado:
+  # una regla de Prometheus sin Alertmanager se dispara y no se la cuenta a
+  # nadie. Grafana consulta el datasource, evalúa y entrega — y es además quien
+  # muestra el SLO, así que la alerta y el panel leen la misma serie grabada.
+  #
+  # Seis reglas, dos de ellas por TASA DE CONSUMO del error budget, que es lo
+  # que §4.1 exige ("incluida al menos una por tasa de consumo del error budget
+  # (burn rate)"). Cada una lleva `runbook_url`: el runbook es parte de la
+  # alerta, no documentación aparte.
+  #
+  # `severity` vale `critical`, `warning` o `info` y no otra cosa: es lo que
+  # acepta el contrato `alert.slo.received.v1` de T-45, y cualquier otro valor
+  # el Gateway lo degrada a `warning` sin decir nada.
+  #
+  # `noDataState: OK` en las reglas de ratio es una decisión, no un descuido:
+  # sin tráfico el cociente es NaN, y "nadie está usando el banco" no es
+  # "el banco está caído". Lo que sí avisa de eso es el panel de throughput.
+  # ---------------------------------------------------------------------------
+  alerting:
+    contactpoints.yaml:
+      apiVersion: 1
+      contactPoints:
+        - orgId: 1
+          name: bank-audit-prod
+          receivers:
+            - uid: bank-audit-webhook-prod
+              type: webhook
+              settings:
+                # El webhook de T-45: el Gateway publica la alerta en el broker
+                # y Notification & Audit la registra y la notifica. Es el
+                # "canal visible" que pide §4.1, y además deja la alerta en la
+                # misma bitácora que el resto de lo que pasó.
+                url: http://bank-usac-gateway.prod.svc.cluster.local:3000/api/alerts/slo
+                httpMethod: POST
+                authorization_scheme: Bearer
+                # Del Secret `grafana-alert-webhook`, que pone el pipeline. Si
+                # falta, la variable queda vacía y el Gateway responde 401: la
+                # alerta se ve en Grafana y no se registra. Preferible a un pod
+                # de Grafana que no arranca por un secreto ausente.
+                authorization_credentials: $ALERT_WEBHOOK_TOKEN
+        - orgId: 1
+          name: bank-audit-dev
+          receivers:
+            - uid: bank-audit-webhook-dev
+              type: webhook
+              settings:
+                # `bank-usac-dev-gateway` y no `bank-usac-gateway` (T-60): el
+                # release de desarrollo se llama `bank-usac-dev` (cd.yml), y el
+                # chart compone el nombre del Service con el del release. Con
+                # el nombre de producción, toda alerta de `dev` moría en el DNS
+                # y no llegaba nunca a la bitácora de desarrollo.
+                url: http://bank-usac-dev-gateway.dev.svc.cluster.local:3000/api/alerts/slo
+                httpMethod: POST
+                authorization_scheme: Bearer
+                authorization_credentials: $ALERT_WEBHOOK_TOKEN
+        # Y el camino local, que faltaba (T-51).
+        #
+        # La política enruta `environment=dev` al receptor de dev y **todo lo
+        # demás a prod**, cuyo destino es el namespace `prod`. En el clúster
+        # local el banco vive en `bank-usac` y ese namespace no existe, así que
+        # la alerta se disparaba y el webhook moría en el DNS:
+        #
+        #   lookup bank-usac-gateway.prod.svc.cluster.local: no such host
+        #
+        # Resultado: la alerta se veía en la consola de Grafana y **no llegaba
+        # a la bitácora**, que es justo el «canal visible» que pide §4.1. Lo
+        # encontró la carga de T-51, con `PartnerBankSendDegraded` disparada y
+        # cero registros en Notification & Audit.
+        - orgId: 1
+          name: bank-audit-local
+          receivers:
+            - uid: bank-audit-webhook-local
+              type: webhook
+              settings:
+                url: http://bank-usac-gateway.bank-usac.svc.cluster.local:3000/api/alerts/slo
+                httpMethod: POST
+                authorization_scheme: Bearer
+                authorization_credentials: $ALERT_WEBHOOK_TOKEN
+
+    policies.yaml:
+      apiVersion: 1
+      policies:
+        - orgId: 1
+          receiver: bank-audit-prod
+          # Agrupa por alerta y entorno: dos entornos degradados son dos
+          # incidentes, no uno.
+          group_by: [alertname, environment]
+          group_wait: 30s
+          group_interval: 1m
+          # Cuatro horas. Grafana reenvía una alerta que sigue activa en cada
+          # intervalo, y cada reenvío llega al webhook: con un intervalo corto
+          # una sola alerta enterraría a las demás en la consola de operadores
+          # (TD-083).
+          repeat_interval: 4h
+          routes:
+            - receiver: bank-audit-dev
+              object_matchers:
+                - ['environment', '=', 'dev']
+            - receiver: bank-audit-local
+              object_matchers:
+                - ['environment', '=', 'local']
+
+    rules.yaml:
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: slo-burn-rate
+          folder: Bank USAC
+          interval: 1m
+          rules:
+            - uid: bank-gw-fast-burn
+              title: GatewayAvailabilityFastBurn
+              condition: C
+              for: 5m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-27
+              annotations:
+                summary: La disponibilidad del Gateway está consumiendo el error budget 14 veces más rápido de lo admisible.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/gateway-availability-burn.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:gateway_availability:burn_rate1h
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [14.4]
+
+            - uid: bank-gw-slow-burn
+              title: GatewayAvailabilitySlowBurn
+              condition: C
+              for: 30m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-27
+              annotations:
+                summary: La disponibilidad del Gateway gasta el error budget 6 veces más rápido de lo admisible; a este ritmo se agota antes de cerrar la ventana.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/gateway-availability-burn.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:gateway_availability:burn_rate6h
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [6]
+
+            # ---- Burn rate de SLO-2, multi-ventana (T-60) -----------------
+            #
+            # El burn rate de transferencias se grababa y no se alertaba. Éstas
+            # son las dos del SRE Workbook, con las DOS ventanas cada una: la
+            # larga dice que el gasto es real, la corta que sigue ocurriendo.
+            #
+            # La condición «las dos por encima» se escribe en PromQL como el
+            # MÍNIMO de las dos series: `(A <= B) or B` deja, por entorno, la
+            # menor. Que el mínimo supere 14.4 es que ambas lo superan. No se
+            # usa una expresión matemática de Grafana (`$A > 14.4 && $B > 14.4`)
+            # porque este archivo de aprovisionamiento expande `$…` como
+            # variable de entorno y `$A` llegaría vacío.
+            - uid: bank-transfer-fast-burn
+              title: TransferLatencyFastBurn
+              condition: C
+              for: 2m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-2
+              annotations:
+                summary: Las transferencias lentas (más de 5 s) consumen el error budget de SLO-2 más de 14.4 veces más rápido de lo admisible, en la última hora Y en los últimos cinco minutos.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/transfer-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: |
+                      (slo:transfer_under_5s:burn_rate1h <= slo:transfer_under_5s:burn_rate5m)
+                      or
+                      slo:transfer_under_5s:burn_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [14.4]
+
+            - uid: bank-transfer-slow-burn
+              title: TransferLatencySlowBurn
+              condition: C
+              for: 15m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-2
+              annotations:
+                summary: Las transferencias lentas gastan el error budget de SLO-2 más de 6 veces más rápido de lo admisible en las últimas 6 h y en la última media hora; a este ritmo se agota antes de cerrar la ventana.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/transfer-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: |
+                      (slo:transfer_under_5s:burn_rate6h <= slo:transfer_under_5s:burn_rate30m)
+                      or
+                      slo:transfer_under_5s:burn_rate30m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [6]
+
+        - orgId: 1
+          name: slo-breach
+          folder: Bank USAC
+          interval: 1m
+          rules:
+            - uid: bank-transfer-latency
+              title: TransferLatencyBreach
+              condition: C
+              for: 30m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-2
+              annotations:
+                summary: Menos del 95 % de las transferencias terminan en 5 segundos.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/transfer-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:transfer_under_5s:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            # ---- SLO-6 y SLO-7: la latencia del Gateway (T-60) -------------
+            #
+            # Se grababa el p95 y nada más: ni proporción, ni presupuesto, ni
+            # alerta. Mismo criterio que TransferLatencyBreach — media hora por
+            # debajo del 95 % — porque es la misma clase de objetivo: lento no
+            # es caído, y una ráfaga de un minuto no debería despertar a nadie.
+            - uid: bank-gw-read-latency
+              title: GatewayReadLatencyBreach
+              condition: C
+              for: 30m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-6
+              annotations:
+                summary: Menos del 95 % de las lecturas (GET) del Gateway responden en menos de 1 segundo.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/gateway-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:gateway_reads_under_1s:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            - uid: bank-gw-command-latency
+              title: GatewayCommandLatencyBreach
+              condition: C
+              for: 30m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-7
+              annotations:
+                summary: Menos del 95 % de los comandos (POST) del Gateway responden en menos de 3 segundos (medido contra el bucket de 2.5 s, el más cercano por debajo).
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/gateway-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:gateway_commands_under_3s:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            - uid: bank-dead-letter
+              title: DeadLetterGrowing
+              condition: C
+              for: 15m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-1
+              annotations:
+                summary: 'Más del 1 % de las entregas acaba en la cola muerta: hay trabajo detenido que nadie está procesando.'
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/dead-letter.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:messages_not_dead_lettered:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.99]
+
+            - uid: bank-broker-lag
+              title: BrokerConsumerLagHigh
+              condition: C
+              for: 10m
+              noDataState: OK
+              execErrState: Error
+              # Sin etiqueta `slo` (T-60). Llevaba SLO-14, que es «reintentos
+              # dentro de la escalera» y no tiene nada que ver con una cola
+              # llena. `docs/sre/sli-slo-sla.md` §5.3 la registra como la alerta
+              # que §4.1 exige para la dependencia del broker, sin objetivo
+              # propio; una etiqueta equivocada mandaría al runbook de otro SLO.
+              labels:
+                severity: warning
+              annotations:
+                summary: 'Una cola acumula más de 500 mensajes pendientes: su consumidor no sigue el ritmo.'
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/consumer-lag.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: max by (environment, queue) (sli:broker_consumer_lag:messages)
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [500]
+
+        - orgId: 1
+          name: slo-partner-bank
+          folder: Bank USAC
+          interval: 1m
+          rules:
+            - uid: bank-partner-degraded
+              title: PartnerBankDegraded
+              condition: C
+              for: 15m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-28
+              annotations:
+                summary: Menos del 95 % de los depósitos interbancarios se confirman. La compensación debe estar devolviendo el dinero.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:interbank_accepted:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            - uid: bank-partner-slow
+              title: PartnerBankConfirmationSlow
+              condition: C
+              for: 15m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-28
+              annotations:
+                summary: El banco pareja tarda más de 5 segundos (p95) en confirmar un depósito; el tiempo de espera de la Saga está cerca.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:interbank_confirmation:seconds_p95
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [5]
+
+            # Las dos de la dirección saliente (T-51).
+            #
+            # Existen porque el escenario obligatorio de carga —el banco pareja
+            # rechazando lo que le enviamos— no disparaba nada: las dos de
+            # arriba miran `bank_interbank_deposits_total`, que es el depósito
+            # que ÉL nos manda. Un sistema que no avisa cuando el otro banco
+            # deja de aceptar su dinero está mirando la mitad del enlace.
+            #
+            # `for: 5m` y no 15: el vencimiento de la confirmación es de 30 s, y
+            # quince minutos de rechazos son treinta compensaciones por minuto
+            # antes del primer aviso. El entrante puede esperar quince porque
+            # ahí el dinero del cliente no está retenido.
+            - uid: bank-partner-send-degraded
+              title: PartnerBankSendDegraded
+              condition: C
+              for: 5m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-28
+              annotations:
+                summary: Menos del 95 % de los depósitos que este banco ENVÍA se confirman; el pareja rechaza o no contesta y la Saga está compensando.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:interbank_sent_accepted:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            - uid: bank-partner-send-slow
+              title: PartnerBankSendConfirmationSlow
+              condition: C
+              for: 5m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-28
+              annotations:
+                summary: El banco pareja tarda más de 5 segundos (p95) en decidir un depósito enviado; con 30 s vence y se compensa.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:interbank_sent_confirmation:seconds_p95
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [5]
+
+            # ---- Reinicios (TD-091) -------------------------------------
+            #
+            # Dos alertas y no una, porque son dos cosas distintas: un pod que
+            # se reinicia es un pod enfermo, y TODOS los pods reiniciándose a la
+            # vez es una dependencia caída. Mezclarlas en un umbral haría que la
+            # segunda —la que importa— se pareciera a la primera.
+            - uid: bank-pod-restarting
+              title: PodRestarting
+              condition: C
+              # Sin `for`: el reinicio ya ocurrió. Un `for` aquí pediría que el
+              # pod siguiera reiniciándose durante cinco minutos más para
+              # avisar, que es esperar a que empeore lo que ya pasó.
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-26
+              annotations:
+                summary: Un pod se reinició más de dos veces en diez minutos. Mirar sus sondas y el OOMKill antes que el código.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/restarts.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    # Por entorno (T-60): sin `environment` la política
+                    # enrutaba todo reinicio de `dev` a producción. Ver la
+                    # regla `sli:pod_restarts_by_environment:max10m`.
+                    expr: max by (environment) (sli:pod_restarts_by_environment:max10m)
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [2]
+
+            # **La que importa.**
+            #
+            # Durante la carga de T-51 los siete servicios se reiniciaron dentro
+            # de seis segundos por el latido de AMQP a 5 s, y la única señal fue
+            # un `kubectl get pods` a mano. Las de latencia y error rate
+            # dispararon describiendo el síntoma, así que el diagnóstico empezó
+            # por las sondas — el camino equivocado.
+            #
+            # El umbral es una **fracción** y no un número de pods: con un siete
+            # escrito dentro, la alerta dejaría de servir en cuanto el chart
+            # creciera o un HPA subiera una réplica. La mitad es el punto donde
+            # «varios pods enfermos» deja de ser una explicación plausible.
+            #
+            # `severity: critical`. El runbook es `restarts.md`, que cubre las
+            # dos alertas de reinicio y enlaza el postmortem del latido de AMQP
+            # (la cronología y el log que hay que buscar). Hasta T-60 el enlace
+            # apuntaba directo al postmortem: un postmortem dice qué pasó una
+            # vez, el runbook qué hacer la próxima.
+            - uid: bank-mass-restart
+              title: MassRestartDependencyLost
+              condition: C
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-26
+              annotations:
+                summary: >-
+                  Más de la mitad de los componentes se reiniciaron en diez
+                  minutos. No es un pod enfermo: es una dependencia compartida
+                  caída — el broker, una base, el DNS.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/restarts.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    # `or 0 *` por lo mismo que las cinco de arriba: sin
+                    # reinicios, el numerador no tiene series y el cociente
+                    # desaparece en vez de valer cero. Aquí da igual el sentido
+                    # —un cociente vacío no supera un umbral— pero una serie que
+                    # existe siempre es una que se puede graficar, y un panel en
+                    # blanco no distingue «cero reinicios» de «la regla se
+                    # rompió».
+                    #
+                    # La fracción se graba ya con `environment`
+                    # (`sli:pods_restarting_by_environment:ratio10m`, T-60).
+                    expr: max by (environment) (sli:pods_restarting_by_environment:ratio10m)
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [0.5]
+
+            # ---- Reserva liberada sin confirmación (TD-095) --------------
+            #
+            # El contrato oficial **exige alertar** en esta rama, y es la única
+            # de su protocolo que devuelve dinero sin saber qué hizo el otro
+            # banco: pasados `expiresAt + 300 s` sin respuesta a la consulta ni a
+            # la cancelación, se libera la reserva y se avisa.
+            #
+            # Por qué es `critical` aunque el sistema haya hecho lo correcto: lo
+            # que sigue es una **conciliación manual**. Si el otro banco acreditó
+            # y su callback llega después, este banco ha pagado dos veces y hace
+            # falta pedir un reverso. Una liberación a ciegas que nadie mira es
+            # exactamente el descuadre que todo el protocolo existe para evitar.
+            #
+            # Se cuenta por el log y no por una métrica porque el evento es raro
+            # y lo que hace falta es el `interbankTransferId` concreto para poder
+            # conciliarlo — un contador diría «pasó tres veces» y no cuáles.
+            - uid: bank-interbank-blind-release
+              title: InterbankReserveReleasedUnverified
+              condition: C
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-28
+              annotations:
+                summary: >-
+                  Se liberó una reserva interbancaria SIN confirmación del banco
+                  pareja, pasado el margen del contrato. Conciliar a mano: si
+                  acreditaron, hace falta un reverso.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/partner-bank.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 900, to: 0 }
+                  datasourceUid: bank-loki
+                  model:
+                    refId: A
+                    editorMode: code
+                    queryType: instant
+                    # Por entorno (T-60). `deployment_environment` es la etiqueta
+                    # indexada que pone el agente de logs; se renombra a
+                    # `environment` porque es la que lee la política de
+                    # Grafana. Sin esto, una liberación a ciegas en `dev` se
+                    # notificaba como si fuera de producción.
+                    expr: |
+                      sum by (environment) (count_over_time(
+                        {service_name="payment-service"}
+                          |~ "RELEASED_NO_ANSWER|RELEASED_UNKNOWN_AT_PARTNER"
+                          | label_format environment=deployment_environment
+                        [15m]
+                      ))
+                - refId: C
+                  relativeTimeRange: { from: 900, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [0]
+
+  # El token del webhook de alertas, del Secret que pone el pipeline.
+  # `optional: true` a propósito: sin el Secret, Grafana arranca igual y la
+  # alerta se ve en su consola aunque no llegue a la bitácora. Un pod de
+  # Grafana que no arranca por un secreto ausente deja ciego al equipo entero.
+  envValueFrom:
+    ALERT_WEBHOOK_TOKEN:
+      secretKeyRef:
+        name: grafana-alert-webhook
+        key: token
+        optional: true
+
+  # Los dashboards de T-50 se recogen de cualquier ConfigMap etiquetado
+  # `grafana_dashboard: "1"`, así que se añaden como JSON en el repositorio sin
+  # tocar este archivo ni la interfaz.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: '1'
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: false
+
+  grafana.ini:
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+    users:
+      default_theme: dark
+    # Correlacionar sin pelear con la interfaz: las dos funciones que hacen
+    # utilizable el salto log → traza.
+    feature_toggles:
+      enable: traceToMetrics correlations
+
+# =============================================================================
+# Las políticas de red del namespace (T-54, límite de TD-088)
+# =============================================================================
+#
+# El detalle de qué abre cada una está en
+# `templates/network-policies.yaml`; aquí sólo los tres valores que dependen del
+# entorno y la razón de cada defecto.
+networkPolicies:
+  # APAGADO A PROPÓSITO, y el defecto importa más que la política.
+  #
+  # Kubernetes acepta una NetworkPolicy aunque no haya quién la aplique, y
+  # entonces la ignora en silencio. En kind (kindnet) y en un GKE sin
+  # `ADVANCED_DATAPATH` eso significa que encenderlas no protege nada —pero
+  # tampoco avisa—, así que lo que uno verifica en local no dice nada de lo que
+  # pasará en el clúster. Y al revés: el día que el datapath SÍ las aplique, un
+  # error en un selector no es un aviso, es el stack caído.
+  #
+  # Por eso el camino es: instalar con esto en `false`, comprobar que el stack
+  # está verde, encenderlo con un `--set`, y volver a comprobarlo. Los comandos
+  # están en `docs/operations/CLOUD.md`.
+  enabled: false
+
+  # Los namespaces del banco: de ahí entra la telemetría al Collector, y ahí
+  # sale el webhook de alertas de Grafana hacia el Gateway.
+  #
+  # `bank-usac` es el del despliegue local en kind; `dev` y `prod` los del
+  # clúster. Los tres están porque el chart sirve a los tres y la lista no
+  # cuesta nada; un namespace que no existe en un selector simplemente no
+  # coincide con nada.
+  #
+  # Dependen de la etiqueta `kubernetes.io/metadata.name`, que el propio
+  # Kubernetes pone en todo Namespace desde 1.21 — no hay que etiquetarlos a
+  # mano.
+  bankNamespaces:
+    - dev
+    - prod
+    - bank-usac
+
+  # El endpoint del API server, para el sidecar de Grafana y para
+  # kube-state-metrics. Sólo el 443.
+  #
+  # Abierto a propósito. Una NetworkPolicy no puede seleccionar un Service, así
+  # que el maestro sólo se nombra por `ipBlock`; en este clúster el endpoint es
+  # PÚBLICO (no hay `private_cluster_config` en `gke.tf`), de modo que su IP no
+  # es un CIDR que el chart pueda conocer y cambia si el clúster se recrea.
+  #
+  # Un valor equivocado aquí no da error: el sidecar no descubre los ConfigMaps
+  # y Grafana arranca entero SIN NI UN DASHBOARD, que es justamente el
+  # artefacto que se califica. Acotarlo es una línea —
+  # `--set networkPolicies.apiServerCidr=<IP>/32`, con la IP que da
+  # `gcloud container clusters describe … --format='value(endpoint)'` — y
+  # conviene hacerlo; no es el defecto porque fallar abierto aquí deja el
+  # sistema funcionando y fallar cerrado lo deja mudo.
+  apiServerCidr: 0.0.0.0/0

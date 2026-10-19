@@ -29,8 +29,8 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | Documento | Qué responde |
 | --- | --- |
 | [architecture/README.md](architecture/README.md) | Índice de los diagramas y de los ADR: qué diagrama es cuál y en qué formato se entrega. |
-| [architecture/adr/](architecture/adr/README.md) | Los dieciséis registros de decisión, cada uno con las alternativas descartadas. Los tres de la Fase II son [ADR-014](architecture/adr/ADR-014-cloud-provider.md) (proveedor cloud), [ADR-015](architecture/adr/ADR-015-ci-cd-platform.md) (CI/CD) y [ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md) (infraestructura). Léelos antes de introducir o cambiar una tecnología. |
-| [architecture/decision-matrix.md](architecture/decision-matrix.md) | Los dieciséis ADR en una sola tabla: decisión, alternativa descartada, trade-off aceptado, y las penalizaciones del enunciado que cada uno evita. |
+| [architecture/adr/](architecture/adr/README.md) | Los diecinueve registros de decisión, cada uno con las alternativas descartadas. Los tres de la Fase II son [ADR-014](architecture/adr/ADR-014-cloud-provider.md) (proveedor cloud), [ADR-015](architecture/adr/ADR-015-ci-cd-platform.md) (CI/CD) y [ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md) (infraestructura); los de la Fase III son [ADR-017](architecture/adr/ADR-017-account-anomaly-reports-not-blocks.md) (una anomalía se reporta, no se bloquea), [ADR-018](architecture/adr/ADR-018-observability-stack.md) (el stack de observabilidad) y [ADR-019](architecture/adr/ADR-019-payment-http-egress.md) (**ningún servicio llama a otro por HTTP**, y las dos salidas que existen van a terceros). Léelos antes de introducir o cambiar una tecnología. |
+| [architecture/decision-matrix.md](architecture/decision-matrix.md) | Los diecinueve ADR en una sola tabla: decisión, alternativa descartada, trade-off aceptado, y las penalizaciones del enunciado que cada uno evita. |
 | [architecture/diagrams/](architecture/diagrams/) | Las fuentes versionadas (`.puml`, `.dsl`, `.dbml`) y sus renders `.png`. |
 | [architecture/c4-context.md](architecture/c4-context.md) · [c4-container.md](architecture/c4-container.md) · [c4-component.md](architecture/c4-component.md) | La lectura de cada nivel C4: qué muestra el diagrama y qué significa cada elemento. |
 | [architecture/deployment.md](architecture/deployment.md) | La forma del despliegue: nodos, contenedores, puertos y protocolos. Para *ejecutarlo*, [operations/DEPLOYMENT.md](operations/DEPLOYMENT.md). |
@@ -42,7 +42,7 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | Documento | Qué responde |
 | --- | --- |
 | [domain/](domain/README.md) | El modelo de dominio como contrato funcional: quién posee qué dato, qué invariante protege, qué comandos acepta. Léelo antes de implementar cualquier servicio. |
-| [events/](events/README.md) | Cómo el sistema se habla a sí mismo: el sobre, el catálogo de los 103 contratos, la topología del broker y la Saga de transferencia. |
+| [events/](events/README.md) | Cómo el sistema se habla a sí mismo: el sobre, el catálogo de los 108 contratos, la topología del broker y la Saga de transferencia. |
 | [generated/db-schema.md](generated/db-schema.md) | El catálogo de las cinco bases de datos: tabla, columna, tipo, restricción e índice. |
 | [architecture/diagrams/er/](architecture/diagrams/er/README.md) | Los diagramas entidad-relación por microservicio, en DBML y PNG. |
 
@@ -57,8 +57,13 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | [operations/CONTAINERS.md](operations/CONTAINERS.md) | El inventario de las siete imágenes: Dockerfile, puerto, health checks y variables requeridas. |
 | [operations/CI.md](operations/CI.md) | Los cuatro workflows de GitHub Actions: qué los dispara, qué verifica cada etapa, cómo se publica una versión y qué no demuestra un run verde. |
 | [operations/EMAIL_RESEND.md](operations/EMAIL_RESEND.md) | Cómo enviar correo de activación real en lugar del canal simulado. |
+| [operations/INTERBANK.md](operations/INTERBANK.md) | Contrato provisional T-46, mock local y reintentos de callbacks para depósitos interbancarios entrantes. |
+| [operations/INTERBANK-AGREEMENT.md](operations/INTERBANK-AGREEMENT.md) | **Dónde vive el acuerdo con el banco pareja, que no es aquí**: es [`bank-interbank-contract`](https://github.com/marcosbondel/bank-interbank-contract), el repositorio público que consultan los dos grupos y donde cada cambio necesita la aprobación de ambos. Esta página es el puntero y las tres cosas que sí conviene repetir del lado del despliegue. |
 | [RELIABILITY.md](RELIABILITY.md) | Las preocupaciones de confiabilidad que el enunciado exige resolver: idempotencia, reintentos, consistencia eventual, trazabilidad. |
 | [sre/sli-slo-sla.md](sre/sli-slo-sla.md) | Qué se mide ([SLI](sre/sli-slo-sla.md#4-indicadores-de-nivel-de-servicio-sli)), qué meta se persigue ([SLO](sre/sli-slo-sla.md#5-objetivos-de-nivel-de-servicio-slo)) y qué se promete ([SLA](sre/sli-slo-sla.md#7-acuerdo-de-nivel-de-servicio-sla)). Encadenados: ninguna promesa sin un número que la verifique. |
+| [sre/telemetry-catalog.md](sre/telemetry-catalog.md) | El catálogo de telemetría: cada métrica con su tipo, unidad, etiquetas permitidas y justificación de cardinalidad, más los nombres de span y los campos de log. La fuente única de la que salen los dashboards y las alertas, y lo que el enunciado pide definir **antes** de implementar. |
+| [sre/postmortems/](sre/postmortems/README.md) | Un postmortem por incidente: cronología, qué SLO se rompió y con qué número, la evidencia, la causa raíz y las acciones. Los *runbooks* dicen qué hacer; estos dicen qué pasó. Los cuatro primeros salieron de la sesión de carga de T-51, y uno de ellos de una caída que no hubo que inyectar. |
+| [operations/runbooks/](operations/runbooks/README.md) | Un runbook por alerta: qué significa, cómo diagnosticarla y cómo mitigarla, con las consultas de este sistema. La anotación `runbook_url` de cada alerta apunta aquí, así que un runbook que falta es un enlace roto. |
 
 ## Producto, diseño y calidad
 
@@ -77,6 +82,7 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 | --- | --- |
 | [manual/](manual/README.md) | El manual de usuario: la guía general, una por rol y el recorrido visual de 78 pasos. |
 | [qa/](qa/README.md) | La evidencia de pruebas: guía de happy path y casos de error, informe de validación y las capturas que producen las suites. |
+| [qa/backend/](qa/backend/) | Un documento de evidencia por ticket, con **salida real de comandos** y no descripciones. Los de la integración interbancaria son [T-46](qa/backend/T-46-interbank-receipt-evidence.md) (la recepción) y [T-47](qa/backend/T-47-interbank-send-evidence.md) (el envío); el del stack de observabilidad es [T-49](qa/backend/T-49-observability-stack-evidence.md); el de la reconciliación del mensaje con el enunciado es [T-56](qa/backend/T-56-interbank-reconciliation-evidence.md); el de la carga y los escenarios de fallo es [T-51](qa/backend/T-51-load-and-failures-evidence.md). |
 | [process/implementations.md](process/implementations.md) | Guía de pruebas de Fase 2 para quien no implementó los tickets: qué pedía cada uno, cómo se cubrió, y los pasos concretos en la web — con lo que no tiene superficie visible dicho de frente. |
 | [images/kubernetes/](images/kubernetes/README.md) | Las capturas del despliegue en el clúster, con la lectura de qué prueba cada una. |
 

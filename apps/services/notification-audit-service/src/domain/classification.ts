@@ -36,6 +36,14 @@ export interface Classifiable {
    * `ERROR_DRAIN_CONSUMER`.
    */
   readonly parked?: boolean;
+  /**
+   * Read for one message type only: the SLO alert (T-45), whose severity *is*
+   * what it says. Every other classification stays a function of the name and
+   * the status, as above. The alert's own fields (`status`, `severity`) are not
+   * among those redaction removes, so the stored row still holds what this was
+   * derived from.
+   */
+  readonly payload?: unknown;
 }
 
 /**
@@ -95,11 +103,19 @@ const CATALOGUE: Readonly<Record<string, EventSeverity>> = {
   'account.open.rejected.v1': 'WARNING',
   'account.deactivated.v1': 'WARNING',
   'account.reactivated.v1': 'WARNING',
+  /**
+   * T-42. A pattern worth a person's attention, not a failure: the account did
+   * what it was asked and the system noticed how often. The assignment names
+   * this one `WARNING` (§4.1, Account Service).
+   */
+  'account.anomaly.detected.v1': 'WARNING',
   'account.deposited.v1': 'INFO',
   'account.deposit.rejected.v1': 'WARNING',
   'account.debited.v1': 'INFO',
   'account.debit.rejected.v1': 'WARNING',
   'account.credited.v1': 'INFO',
+  'account.interbank.credited.v1': 'INFO',
+  'account.interbank.credit.rejected.v1': 'WARNING',
   'account.credit.rejected.v1': 'WARNING',
   'account.debit.compensated.v1': 'ERROR',
   'account.commission.charged.v1': 'INFO',
@@ -113,7 +129,27 @@ const CATALOGUE: Readonly<Record<string, EventSeverity>> = {
   // payment.*
   'payment.attempt.failed.v1': 'WARNING',
   'payment.succeeded.v1': 'INFO',
+  'payment.interbank.accepted.v1': 'INFO',
+  'payment.interbank.rejected.v1': 'WARNING',
   'payment.failed.v1': 'ERROR',
+  /**
+   * El cambio de estado de un depósito que este banco ENVÍA (T-47).
+   *
+   * `INFO` para el mensaje entero, y no `WARNING`, aunque entre sus estados
+   * haya dos que son malas noticias. El motivo: esta tabla clasifica por tipo
+   * de mensaje, y este tipo lleva los **seis** estados del depósito —desde que
+   * se pide hasta que se devuelve el dinero—, así que la mayoría de sus
+   * apariciones son el curso normal de un envío. Marcarlo `WARNING` haría que
+   * un depósito perfectamente exitoso levantara tres avisos por el camino, y un
+   * canal que avisa de todo no avisa de nada.
+   *
+   * Lo que de verdad hay que notificar cuando un depósito no sale sí se
+   * notifica: el `payment.failed.v1` que cierra la Saga está arriba como
+   * `ERROR`, y el estado concreto del depósito queda en la bitácora, en la
+   * métrica `bank.interbank.sent` por resultado, y en la alerta
+   * `PartnerBankDegraded` de T-50 — que es el sitio donde esto se mira.
+   */
+  'payment.interbank.sent.v1': 'INFO',
 };
 
 /**
@@ -168,7 +204,95 @@ export function classify(event: Classifiable): EventSeverity {
     return 'WARNING';
   }
 
+  if (event.messageType === SLO_ALERT) {
+    return classifyAlerts(event.payload);
+  }
+
   return CATALOGUE[event.messageType] ?? classifyBySuffix(event.messageType);
+}
+
+/**
+ * Not in the catalogue above, on purpose: that table is exactly the *event*
+ * contracts (a test holds it to that), and the alert is a command the Gateway
+ * publishes. Its severity is not a property of its name at all.
+ */
+const SLO_ALERT = 'alert.slo.received.v1';
+
+/**
+ * What an SLO webhook is worth to whoever operates the bank (T-45).
+ *
+ * The question is the one the axis always asks — does somebody need to look at
+ * this? — and the answer lives in the alert itself:
+ *
+ * - **ERROR** — at least one alert is firing and critical: an objective is
+ *   being broken or its error budget is burning fast enough to break it.
+ * - **WARNING** — something is firing at `warning`, and nothing critical.
+ * - **INFO** — nothing is firing above `info`: everything in the batch has
+ *   resolved, or what fires is informational. Recovery is not noise (it closes
+ *   the story the firing alert opened) but it needs nobody.
+ *
+ * A batch holds alerts of mixed severity, and the most serious one decides.
+ * A payload that is not an alert list at all falls back to `WARNING`: a
+ * message that arrived and could not be read is worth a look.
+ */
+export function classifyAlerts(payload: unknown): EventSeverity {
+  return worstOf(alertSummaries(payload));
+}
+
+/**
+ * The state and severity of each alert in a webhook payload, **only the ones that
+ * say something this service knows how to count**: a state outside
+ * `firing`/`resolved` or a severity outside `critical`/`warning`/`info` is
+ * skipped, because the values end up as metric labels and a label that came off
+ * the wire is a label anybody can mint.
+ */
+export function alertSummaries(
+  payload: unknown,
+): readonly {
+  readonly status: 'firing' | 'resolved';
+  readonly severity: 'critical' | 'warning' | 'info';
+}[] {
+  const alerts =
+    typeof payload === 'object' && payload !== null
+      ? (payload as { alerts?: unknown }).alerts
+      : undefined;
+
+  if (!Array.isArray(alerts)) {
+    return [];
+  }
+
+  return (alerts as readonly { status?: unknown; severity?: unknown }[]).flatMap((alert) =>
+    (alert?.status === 'firing' || alert?.status === 'resolved') &&
+    (alert.severity === 'critical' || alert.severity === 'warning' || alert.severity === 'info')
+      ? [{ status: alert.status, severity: alert.severity }]
+      : [],
+  );
+}
+
+function worstOf(
+  alerts: readonly { readonly status: string; readonly severity: string }[],
+): EventSeverity {
+  if (alerts.length === 0) {
+    return 'WARNING';
+  }
+
+  let worst: EventSeverity = 'INFO';
+
+  for (const alert of alerts) {
+    if (alert.status !== 'firing') {
+      continue;
+    }
+
+    if (alert.severity === 'critical') {
+      return 'ERROR';
+    }
+
+    if (alert.severity === 'warning') {
+      worst = 'WARNING';
+    }
+  }
+
+  return worst;
 }
 
 /** The catalogue above, for the tests that cross-check it and for documentation. */

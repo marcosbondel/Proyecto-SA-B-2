@@ -31,6 +31,16 @@ import { SessionTokenService } from '../../src/infrastructure/auth/jwt.service';
 /** A fixed, valid HS256 secret — same shape `test/support/harness.ts` uses. */
 export const TEST_JWT_SECRET = 'a-real-broker-test-secret-of-32-chars!!';
 
+/** The SLO webhook's shared secret in the real-broker harness (T-45). */
+export const TEST_ALERT_WEBHOOK_TOKEN = 'a-real-broker-alert-token-of-32-chars!!';
+
+/** The partner bank's shared secret for routes exercised against RabbitMQ. */
+export const TEST_INTERBANK_PARTNER_TOKEN = 'a-real-broker-interbank-token-of-32-chars!!';
+/** La API key del contrato oficial, para las siete rutas de `/interbank/v1` (T-56). */
+export const TEST_INTERBANK_API_KEY = 'a-real-broker-interbank-api-key-32-chars!';
+export const TEST_OWN_BANK_CODE = 'BANK02';
+export const TEST_PARTNER_BANK_CODE = 'BANK99';
+
 export interface BrokerHarness {
   readonly app: INestApplication;
   readonly environment: GatewayEnvironment;
@@ -91,6 +101,11 @@ export async function buildBrokerHarness(
     OBJECT_STORAGE_BUCKET: 'customer-identity-documents',
     OBJECT_STORAGE_REGION: 'us-east-1',
     CORS_ALLOWED_ORIGINS: 'http://localhost:3010',
+    ALERT_WEBHOOK_TOKEN: TEST_ALERT_WEBHOOK_TOKEN,
+    INTERBANK_PARTNER_TOKEN: TEST_INTERBANK_PARTNER_TOKEN,
+    INTERBANK_API_KEY_INBOUND: TEST_INTERBANK_API_KEY,
+    INTERBANK_BANK_CODE: TEST_OWN_BANK_CODE,
+    INTERBANK_PARTNER_BANK_CODE: TEST_PARTNER_BANK_CODE,
   });
 
   const app = await NestFactory.create(AppModule.forRoot(environment), {

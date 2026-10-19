@@ -53,15 +53,17 @@ assignment refuses to award (§8.2, page 25).
 | `transaction.commands` | Transaction | `transfer.requested.v1`, `transaction.status.requested.v1`, `transaction.list.query.v1`, `transaction.stats.query.v1` on `bank.commands` |
 | `transaction.saga` | Transaction | The seven Saga events, plus `payment.attempt.failed.v1`, on `bank.events` |
 | `payment.commands` | Payment | `payment.#` on `bank.commands` |
+| `payment.interbank` | Payment | `account.interbank.eligibility.replied.v1` on `bank.replies`; `account.interbank.credited.v1` and `account.interbank.credit.rejected.v1` on `bank.events` |
 | `audit.customer` | Notification & Audit | `customer.#` on `bank.events` |
 | `audit.account` | Notification & Audit | `account.#` on `bank.events` |
 | `audit.transaction` | Notification & Audit | `transaction.#` on `bank.events` |
 | `audit.payment` | Notification & Audit | `payment.#` on `bank.events` |
+| `audit.alert` | Notification & Audit | `alert.slo.received.v1` on `bank.commands` (T-45) |
 | `audit.query` | Notification & Audit | `audit.query.requested.v1`, `audit.events.list.query.v1`, `notification.list.query.v1`, `notification.inbox.query.v1`, `notification.mark-read.v1`, `audit.stats.query.v1` on `bank.commands` |
 
-Ten declared queues, plus one more that is not declared here — see below.
+Twelve declared queues, plus one more that is not declared here — see below.
 
-**Seven of them are wildcards and three enumerate their messages, and the split is deliberate.**
+**Seven of them are wildcards and four enumerate their messages, and the split is deliberate.**
 The wide ones are wide because enumerating names in the broker means every new question needs a
 broker change as well as a contract, and the one that gets forgotten is the binding — which is
 how a route returns a timeout that nothing in the code explains. `customer.commands` is

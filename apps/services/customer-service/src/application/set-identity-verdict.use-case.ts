@@ -7,7 +7,13 @@ import {
 import type { CustomerSetIdentityVerdictV1, Identity } from '@bank/contracts';
 
 import { DomainRejection, mayValidateIdentity, recordIdentityVerdict } from '../domain/customer';
-import type { ActivationTokenFactory, Clock, CustomerRepository, EventPublisher } from './ports';
+import type {
+  ActivationTokenFactory,
+  Clock,
+  CustomerRepository,
+  EventPublisher,
+  LifecycleTelemetry,
+} from './ports';
 
 const MESSAGE_TYPE = 'customer.set-identity-verdict.v1';
 
@@ -26,16 +32,19 @@ export class SetIdentityVerdictUseCase {
   readonly #repository: CustomerRepository;
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
+  readonly #telemetry: LifecycleTelemetry;
 
   constructor(dependencies: {
     readonly repository: CustomerRepository;
     readonly publisher: EventPublisher;
     readonly clock: Clock;
+    readonly telemetry: LifecycleTelemetry;
     readonly tokens?: ActivationTokenFactory;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
+    this.#telemetry = dependencies.telemetry;
   }
 
   public async execute(
@@ -59,6 +68,11 @@ export class SetIdentityVerdictUseCase {
         messageType: MESSAGE_TYPE,
         resultSummary: { outcome: 'IGNORED', reason: 'UNKNOWN_CUSTOMER' },
       });
+      this.#telemetry.ignored({
+        transition: transitionOf(command.verdict),
+        customerId: command.customerId,
+        reason: 'UNKNOWN_CUSTOMER',
+      });
       return;
     }
 
@@ -76,6 +90,11 @@ export class SetIdentityVerdictUseCase {
           idempotencyKey,
           messageType: MESSAGE_TYPE,
           resultSummary: { outcome: 'IGNORED', reason: error.code },
+        });
+        this.#telemetry.ignored({
+          transition: transitionOf(command.verdict),
+          customerId: command.customerId,
+          reason: error.code,
         });
         return;
       }
@@ -95,6 +114,15 @@ export class SetIdentityVerdictUseCase {
           verdict: command.verdict,
         },
       },
+    });
+
+    this.#telemetry.record({
+      transition: transitionOf(command.verdict),
+      customerId: updated.customerId,
+      path: 'review',
+      createdAt: existing.createdAt,
+      at: now,
+      creationTrace: await this.#repository.findCreationTrace(command.customerId),
     });
 
     if (command.verdict === 'VALIDATED') {
@@ -139,4 +167,10 @@ export class SetIdentityVerdictUseCase {
       },
     });
   }
+}
+
+function transitionOf(
+  verdict: CustomerSetIdentityVerdictV1['verdict'],
+): 'verified' | 'rejected' {
+  return verdict === 'VALIDATED' ? 'verified' : 'rejected';
 }
