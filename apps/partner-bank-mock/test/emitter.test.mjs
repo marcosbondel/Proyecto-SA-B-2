@@ -227,7 +227,7 @@ test('nuestro callback: se registra, es idempotente y GET /admin/transfers/{id} 
   assert.equal((await mock.admin('GET', `/admin/transfers/${id}`)).body.status, 'ACCEPTED');
 });
 
-test('nuestro callback: 404 de un id ajeno, 400 con los ejemplos inválidos, 401 de otro banco', async () => {
+test('nuestro callback: 404 de un id ajeno y 400 con los ejemplos inválidos', async () => {
   const mock = await startMock({ ourBank: await idempotentBank() });
   const { body } = await mock.admin('POST', '/admin/transfers', {
     destinationAccount: '02-000000052',
@@ -253,13 +253,6 @@ test('nuestro callback: 404 de un id ajeno, 400 con los ejemplos inválidos, 401
     'Error',
     await mock.call('POST', `/interbank/v1/transfers/${randomUUID()}/result`, { body: result }),
     400,
-  );
-  await expectContract(
-    'Error',
-    await mock.call('POST', `/interbank/v1/transfers/${id}/result`, {
-      body: { ...result, destinationBankCode: 'BANK55' },
-    }),
-    401,
   );
   for (const file of readdirSync(join(examples, 'TransferResult', 'invalid'))) {
     const invalid = JSON.parse(
@@ -327,4 +320,60 @@ test('administración: sin token configurado es 403, con token equivocado 401, y
     }
   }
   assert.equal((await mock.admin('GET', '/admin/config')).status, 200);
+});
+
+test('destinationBankCode equivocado en la solicitud: el callback autenticado con nuestra llave se acepta y la diferencia queda marcada', async () => {
+  const ourBank = await idempotentBank();
+  const mock = await startMock({ ourBank });
+  const { body } = await mock.admin('POST', '/admin/transfers', {
+    destinationAccount: '02-000000052',
+    amount: '5.00',
+    overrides: { destinationBankCode: 'BANK07' },
+  });
+  const id = body.interbankTransferId;
+  assert.equal(ourBank.requests[0].body.destinationBankCode, 'BANK07');
+  // Ya antes del callback el registro dice que el destino pedido no es el banco que recibió.
+  const before = await mock.admin('GET', `/admin/transfers/${id}`);
+  assert.deepEqual(before.body.destinationBankCodeMismatch, {
+    requested: 'BANK07',
+    receiver: OUR_CODE,
+  });
+
+  // Nuestro banco rechaza (PROCESSING_ERROR) y avisa con SU código, no con el de la solicitud.
+  const result = {
+    interbankTransferId: id,
+    destinationBankCode: OUR_CODE,
+    status: 'REJECTED',
+    reasonCode: 'PROCESSING_ERROR',
+    processedAt: '2026-10-20T15:00:04Z',
+  };
+  const ack = await mock.call('POST', `/interbank/v1/transfers/${id}/result`, { body: result });
+  assert.equal((await expectContract('CallbackAck', ack, 200)).received, true);
+
+  const record = await mock.admin('GET', `/admin/transfers/${id}`);
+  assert.equal(record.body.status, 'REJECTED');
+  assert.equal(record.body.reasonCode, 'PROCESSING_ERROR');
+  assert.deepEqual(record.body.destinationBankCodeMismatch, {
+    requested: 'BANK07',
+    receiver: OUR_CODE,
+    callback: OUR_CODE,
+  });
+  assert.ok(mock.lines.some((line) => line.event === 'callback_destination_mismatch'));
+
+  // La autenticación sigue siendo la llave: sin ella, 401.
+  const noKey = await mock.call('POST', `/interbank/v1/transfers/${id}/result`, {
+    body: result,
+    key: null,
+  });
+  assert.equal(noKey.status, 401);
+});
+
+test('sin diferencia de banco destino no hay marca', async () => {
+  const mock = await startMock({ ourBank: await idempotentBank() });
+  const { body } = await mock.admin('POST', '/admin/transfers', {
+    destinationAccount: '02-000000052',
+    amount: '5.00',
+  });
+  const record = await mock.admin('GET', `/admin/transfers/${body.interbankTransferId}`);
+  assert.equal('destinationBankCodeMismatch' in record.body, false);
 });
