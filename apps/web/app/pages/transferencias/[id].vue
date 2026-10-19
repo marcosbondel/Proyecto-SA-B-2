@@ -14,6 +14,7 @@ import { mayQueryAudit } from '../../lib/audit';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
 import { formatDate, formatQuetzales } from '../../lib/money';
+import { QUERY_TRACE_LABEL, traceToShow } from '../../lib/trace';
 
 /**
  * One transfer, followed until it stops moving.
@@ -44,6 +45,7 @@ import { formatDate, formatQuetzales } from '../../lib/money';
 const route = useRoute();
 const api = useGatewayApi();
 const { role } = useSession();
+const { ledger } = useTraces();
 
 const transactionId = computed(() => String(route.params.id ?? ''));
 const malformed = computed(() => !isUuidV4(transactionId.value));
@@ -52,6 +54,8 @@ const transfer = ref<TransferStatus | null>(null);
 const state = ref<'LOADING' | 'READY' | 'STARTING' | 'GAVE_UP' | AsyncState>('LOADING');
 const message = ref<string | undefined>(undefined);
 const correlationId = ref<string | null>(null);
+/** The trace of the last question this screen asked, whatever it answered. */
+const queryTraceId = ref<string | null>(null);
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 let startedAt = 0;
@@ -59,6 +63,14 @@ let startedAt = 0;
 /** The correlation to show, and the only one worth searching the trail with. */
 const shownCorrelation = computed(
   () => transfer.value?.originCorrelationId ?? correlationId.value,
+);
+
+/**
+ * The trace to show beside the correlation: the transfer's own when this session
+ * created it, otherwise the trace of the question just asked, named as such.
+ */
+const shownTrace = computed(() =>
+  traceToShow(ledger.value, shownCorrelation.value, queryTraceId.value),
 );
 
 /**
@@ -105,6 +117,7 @@ async function load(): Promise<void> {
   const result = await api.call<TransferStatus>(`/api/transfers/${transactionId.value}`);
 
   if (result.ok) {
+    queryTraceId.value = result.traceId;
     transfer.value = result.data;
     correlationId.value = result.data.originCorrelationId ?? result.correlationId;
     state.value = 'READY';
@@ -317,6 +330,8 @@ useHead({ title: 'Transferencia · bonking' });
       <SharedCorrelationIdBadge
         v-if="shownCorrelation"
         :correlation-id="shownCorrelation"
+        :trace-id="shownTrace?.traceId ?? null"
+        :trace-label="shownTrace?.ofQuery ? QUERY_TRACE_LABEL : undefined"
         label="Código de seguimiento de la transferencia"
       />
     </template>

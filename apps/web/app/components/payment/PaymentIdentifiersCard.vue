@@ -15,12 +15,17 @@
  * which is how the wrong one ends up in a bug report. Tabular figures for the
  * same reason — hexadecimal compared by eye needs its digits to line up.
  *
+ * The trace is shown beside the correlation (T-60) so the panel opened during an
+ * incident has both identifiers; the screen says whose trace it is.
+ *
  * Owned by T-19.
  */
 defineProps<{
   paymentId: string;
   transactionId: string;
   correlationId?: string | null;
+  traceId?: string | null;
+  traceLabel?: string;
   providerReference?: string | null;
 }>();
 
@@ -81,6 +86,8 @@ async function copy(value: string, key: string): Promise<void> {
       <div v-if="correlationId">
         <SharedCorrelationIdBadge
           :correlation-id="correlationId"
+          :trace-id="traceId ?? null"
+          :trace-label="traceLabel"
           label="Código de seguimiento de origen"
         />
       </div>
