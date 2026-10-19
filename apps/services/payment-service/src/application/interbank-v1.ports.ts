@@ -31,6 +31,8 @@ export interface V1DepositRow {
   readonly stage: InterbankReceiptState;
   /** El sobre que lo originó, o `null` en las filas anteriores a T-60. */
   readonly origin: MessageEnvelope<unknown> | null;
+  /** El reverso cuyo reembolso podría ser este depósito, mientras se retiene; si no, `null`. */
+  readonly heldForReversal: string | null;
   readonly originBankCode: string;
   readonly status: V1TransferState;
   readonly reasonCode: V1ReasonCode | null;
@@ -50,7 +52,61 @@ export interface V1Reversal {
   readonly reasonMessage: string | null;
 }
 
+/** Un reverso nuestro que espera un reembolso con este banco, monto y destino. */
+export interface ExpectedRefundRow {
+  /** El depósito que enviamos y cuyo reverso se pidió. */
+  readonly sendId: string;
+  readonly reversalId: string;
+  readonly state: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  readonly refundTransferId: string | null;
+}
+
+/** Un depósito retenido, con lo que dice hoy el reverso que lo retiene. */
+export interface HeldRefundRow {
+  readonly depositId: string;
+  readonly interbankTransferId: string;
+  readonly reversalId: string;
+  readonly sendId: string;
+  readonly reversal: ExpectedRefundRow;
+  readonly traceContext: string | null;
+  readonly correlationId: string;
+}
+
 export interface InterbankV1Repository {
+  /**
+   * El reverso abierto de un envío nuestro que podría estar esperando **este**
+   * depósito: mismo banco, mismo monto y moneda, y destino igual a la cuenta
+   * origen del envío (T-60, QA 13c). Incluye uno `COMPLETED` cuyo reembolso
+   * todavía no se ha liquidado, y el que ya nombra este depósito por su id.
+   */
+  findExpectedRefund(input: {
+    readonly callerBankCode: string;
+    readonly interbankTransferId: string;
+    readonly destinationAccount: string;
+    readonly amountMinor: number;
+    readonly currency: string;
+  }): Promise<ExpectedRefundRow | null>;
+
+  /** Los depósitos retenidos, con el estado actual de su reverso. */
+  claimHeldRefunds(limit: number): Promise<readonly HeldRefundRow[]>;
+
+  /**
+   * Resuelve un depósito retenido **como reembolso**: se acredita a la cuenta de
+   * liquidación y el reverso queda liquidado. `false` si otro depósito ya lo
+   * liquidó o el depósito dejó de estar retenido.
+   */
+  settleHeld(input: {
+    readonly depositId: string;
+    readonly interbankTransferId: string;
+    readonly reversalId: string;
+    readonly sendId: string;
+    readonly creditAccountRef: string;
+    readonly now: Date;
+  }): Promise<boolean>;
+
+  /** Resuelve un depósito retenido **como depósito normal**: se acredita al cliente. */
+  releaseHeld(input: { readonly depositId: string; readonly now: Date }): Promise<boolean>;
+
   /**
    * Abre un depósito del contrato, o dice que ya existía.
    *
@@ -73,6 +129,17 @@ export interface InterbankV1Repository {
     readonly rejection: {
       readonly reason: InterbankReceiptRejection;
       readonly result: MessageEnvelope<unknown>;
+    } | null;
+    /**
+     * Si el depósito es (o podría ser) el reembolso de un reverso nuestro: se
+     * acredita a `creditAccountRef` en vez de al cliente (`SETTLE`) o se retiene
+     * hasta que el reverso se resuelva (`HOLD`).
+     */
+    readonly refund: {
+      readonly decision: 'SETTLE' | 'HOLD';
+      readonly reversalId: string;
+      readonly sendId: string;
+      readonly creditAccountRef: string;
     } | null;
     readonly now: Date;
   }): Promise<

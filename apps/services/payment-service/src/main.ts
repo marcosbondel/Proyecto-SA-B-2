@@ -278,6 +278,10 @@ async function bootstrap(): Promise<void> {
     bankCode: environment.INTERBANK_BANK_CODE,
     maxAmountMinor: environment.INTERBANK_MAX_AMOUNT_MINOR,
     clock: clock.now,
+    trace: {
+      continue: (traceparent, spanName, correlationId, work) =>
+        continueTrace(traceparent, spanName, { 'bank.correlation_id': correlationId }, work),
+    },
     log: logger,
   });
 
@@ -430,6 +434,26 @@ async function bootstrap(): Promise<void> {
       }
     } catch (error) {
       logger.error('el barrido del contrato interbancario fallo', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    /*
+     * Los depósitos retenidos por si eran el reembolso de un reverso (QA 13c).
+     * Antes del barrido de envíos: la resolución mira lo que éste dejó escrito en
+     * la vuelta anterior, y cuanto antes se resuelva, más lejos queda el
+     * vencimiento de 180 s del depósito.
+     */
+    try {
+      const retenidos = await interbankV1Sweeper.resolveHeldRefunds(SWEEP_BATCH);
+
+      if (retenidos > 0) {
+        logger.warn('depositos interbancarios retenidos resueltos', {
+          outcome: `${retenidos} resueltos`,
+        });
+      }
+    } catch (error) {
+      logger.error('la resolucion de reembolsos interbancarios fallo', {
         error: error instanceof Error ? error.message : String(error),
       });
     }

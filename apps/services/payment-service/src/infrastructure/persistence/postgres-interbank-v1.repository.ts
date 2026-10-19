@@ -13,12 +13,15 @@ import type { Pool } from 'pg';
 import { v1ReasonOf, v1StateOf } from '../../domain/interbank-receipt';
 import type { InterbankReceiptState } from '../../domain/interbank-receipt';
 import type {
+  ExpectedRefundRow,
+  HeldRefundRow,
   InterbankV1Repository,
   V1DepositRow,
   V1Reversal,
 } from '../../application/interbank-v1.ports';
 
 interface Fila {
+  readonly hold_reversal_id: string | null;
   readonly deposit_id: string;
   readonly origin_envelope: unknown;
   readonly external_transfer_id: string;
@@ -32,7 +35,7 @@ interface Fila {
 }
 
 const COLUMNAS = `
-  deposit_id, origin_envelope, external_transfer_id, origin_bank_code, stage, rejection_reason,
+  hold_reversal_id, deposit_id, origin_envelope, external_transfer_id, origin_bank_code, stage, rejection_reason,
   amount_minor, created_at, decided_at, partner_expires_at
 `;
 
@@ -63,13 +66,19 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
     callerBankCode: string;
     origin: MessageEnvelope<unknown>;
     rejection: { reason: string; result: MessageEnvelope<unknown> } | null;
+    refund: {
+      decision: 'SETTLE' | 'HOLD';
+      reversalId: string;
+      sendId: string;
+      creditAccountRef: string;
+    } | null;
     now: Date;
   }): Promise<
     | { admission: 'ACCEPTED_FOR_PROCESSING'; depositId: string }
     | { admission: 'DUPLICATE'; row: V1DepositRow }
     | { admission: 'CONFLICT' }
   > {
-    const { transfer, depositId, rejection } = input;
+    const { transfer, depositId, rejection, refund } = input;
     const amountMinor = v1AmountToMinor(transfer.amount);
 
     if (amountMinor === null) {
@@ -93,6 +102,7 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
           correlation_id, origin_envelope, stage, rejection_reason, next_action_at,
           result_envelope, callback_due_at, decided_at,
           partner_created_at, partner_expires_at, description, trace_context,
+          credit_account_ref, hold_reversal_id, refund_of_reversal_id,
           -- Explícito y no por DEFAULT now(): es «cuándo lo recibimos», y el
           -- Gateway ya selló ese momento como receivedAt. Dejarlo al reloj de
           -- la base los haría diferir por la latencia del broker, y la
@@ -100,7 +110,7 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
           -- de lo que el otro banco cree que nos mandó y cuándo.
           created_at)
        VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13::jsonb,$14,$15,
-               $16,$17,$18,$19,$20)
+               $16,$17,$18,$19,$20,$21,$22,$23)
        ON CONFLICT DO NOTHING
        RETURNING deposit_id`,
       [
@@ -116,7 +126,11 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
         JSON.stringify(input.origin),
         rejection === null ? 'ELIGIBILITY' : 'REJECTED',
         rejection?.reason ?? null,
-        rejection === null ? input.now : null,
+        /*
+         * Un depósito retenido no se programa: `next_action_at` nulo es lo que
+         * hace que el barrido no se lo mande a Account hasta que se resuelva.
+         */
+        rejection === null && refund?.decision !== 'HOLD' ? input.now : null,
         rejection === null ? null : JSON.stringify(rejection.result),
         rejection === null ? null : input.now,
         rejection === null ? null : input.now,
@@ -124,11 +138,24 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
         transfer.expiresAt,
         transfer.description ?? null,
         currentTraceparent(),
+        // Un rechazado al entrar no es reembolso de nada: se cuenta como rechazo.
+        rejection === null && refund?.decision === 'SETTLE' ? refund.creditAccountRef : null,
+        rejection === null && refund?.decision === 'HOLD' ? refund.reversalId : null,
+        rejection === null && refund?.decision === 'SETTLE' ? refund.reversalId : null,
         input.now,
       ],
     );
 
     if (insertado.rowCount === 1) {
+      if (rejection === null && refund !== null) {
+        await this.#enlazarReembolso({
+          decision: refund.decision,
+          sendId: refund.sendId,
+          interbankTransferId: transfer.interbankTransferId,
+          now: input.now,
+        });
+      }
+
       return { admission: 'ACCEPTED_FOR_PROCESSING', depositId };
     }
 
@@ -168,6 +195,187 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
     return igual ? { admission: 'DUPLICATE', row: aFila(fila) } : { admission: 'CONFLICT' };
   }
 
+  async findExpectedRefund(input: {
+    callerBankCode: string;
+    interbankTransferId: string;
+    destinationAccount: string;
+    amountMinor: number;
+    currency: string;
+  }): Promise<ExpectedRefundRow | null> {
+    /*
+     * Mismo banco, monto y moneda, y destino igual a la cuenta origen del envío —
+     * o el reverso que ya nombra a **este** depósito como su reembolso, aunque
+     * llegue a otra cuenta. Primero el que lo nombra por identificador.
+     */
+    const { rows } = await this.pool.query<{
+      interbank_transfer_id: string;
+      reversal_id: string;
+      reversal_state: ExpectedRefundRow['state'];
+      reversal_refund_transfer_id: string | null;
+    }>(
+      `SELECT interbank_transfer_id, reversal_id, reversal_state, reversal_refund_transfer_id
+         FROM interbank_sends
+        WHERE destination_bank_code = $1
+          AND reversal_id IS NOT NULL
+          AND refund_settled_at IS NULL
+          AND reversal_state IN ('PENDING','PROCESSING','COMPLETED')
+          AND amount_minor = $3 AND currency = $4
+          AND (origin_account = $2 OR reversal_refund_transfer_id::text = $5)
+        ORDER BY (reversal_refund_transfer_id::text = $5) DESC NULLS LAST, reversal_requested_at
+        LIMIT 1`,
+      [
+        input.callerBankCode,
+        input.destinationAccount,
+        input.amountMinor,
+        input.currency,
+        input.interbankTransferId,
+      ],
+    );
+    const fila = rows[0];
+
+    return fila === undefined
+      ? null
+      : {
+          sendId: fila.interbank_transfer_id,
+          reversalId: fila.reversal_id,
+          state: fila.reversal_state,
+          refundTransferId: fila.reversal_refund_transfer_id,
+        };
+  }
+
+  async claimHeldRefunds(limit: number): Promise<readonly HeldRefundRow[]> {
+    const { rows } = await this.pool.query<{
+      deposit_id: string;
+      external_transfer_id: string;
+      hold_reversal_id: string;
+      trace_context: string | null;
+      correlation_id: string;
+      send_id: string;
+      reversal_state: ExpectedRefundRow['state'];
+      reversal_refund_transfer_id: string | null;
+    }>(
+      `SELECT d.deposit_id, d.external_transfer_id, d.hold_reversal_id, d.trace_context,
+              d.correlation_id, s.interbank_transfer_id AS send_id, s.reversal_state,
+              s.reversal_refund_transfer_id
+         FROM interbank_deposits d
+         JOIN interbank_sends s ON s.reversal_id = d.hold_reversal_id
+        WHERE d.hold_reversal_id IS NOT NULL AND d.stage = 'ELIGIBILITY'
+        ORDER BY d.created_at
+        LIMIT $1`,
+      [limit],
+    );
+
+    return rows.map((fila) => ({
+      depositId: fila.deposit_id,
+      interbankTransferId: fila.external_transfer_id,
+      reversalId: fila.hold_reversal_id,
+      sendId: fila.send_id,
+      traceContext: fila.trace_context,
+      correlationId: fila.correlation_id,
+      reversal: {
+        sendId: fila.send_id,
+        reversalId: fila.hold_reversal_id,
+        state: fila.reversal_state,
+        refundTransferId: fila.reversal_refund_transfer_id,
+      },
+    }));
+  }
+
+  async settleHeld(input: {
+    depositId: string;
+    interbankTransferId: string;
+    reversalId: string;
+    sendId: string;
+    creditAccountRef: string;
+    now: Date;
+  }): Promise<boolean> {
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      /*
+       * Un reverso se liquida con **un** depósito: el `UPDATE` con su guardia
+       * (`refund_settled_at IS NULL`) y el índice único de `refund_inbound_id`
+       * hacen que, si dos depósitos retenidos se parecieran al reembolso, sólo
+       * el primero gane; el otro se acredita como normal.
+       */
+      const liquidado = await client.query(
+        `UPDATE interbank_sends
+            SET refund_settled_at = $2, refund_inbound_id = $3
+          WHERE interbank_transfer_id = $1 AND refund_settled_at IS NULL`,
+        [input.sendId, input.now, input.interbankTransferId],
+      );
+      const movido =
+        liquidado.rowCount === 1
+          ? await client.query(
+              `UPDATE interbank_deposits
+                  SET credit_account_ref = $2, refund_of_reversal_id = $3,
+                      hold_reversal_id = NULL, next_action_at = $4
+                WHERE deposit_id = $1 AND hold_reversal_id IS NOT NULL AND stage = 'ELIGIBILITY'`,
+              [input.depositId, input.creditAccountRef, input.reversalId, input.now],
+            )
+          : null;
+
+      if (movido?.rowCount !== 1) {
+        await client.query('ROLLBACK');
+
+        return false;
+      }
+
+      await client.query('COMMIT');
+
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async releaseHeld(input: { depositId: string; now: Date }): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE interbank_deposits
+          SET hold_reversal_id = NULL, next_action_at = $2
+        WHERE deposit_id = $1 AND hold_reversal_id IS NOT NULL AND stage = 'ELIGIBILITY'`,
+      [input.depositId, input.now],
+    );
+
+    return rowCount === 1;
+  }
+
+  /**
+   * Lo que el reembolso le hace al envío cuyo reverso lo espera, en cuanto el
+   * depósito entra: si ya es el reembolso, el reverso queda liquidado; si se
+   * retiene, se adelanta la próxima consulta del reverso para resolverlo con
+   * prisa (el depósito vence a los 180 s y no puede esperar el ritmo normal).
+   */
+  async #enlazarReembolso(input: {
+    decision: 'SETTLE' | 'HOLD';
+    sendId: string;
+    interbankTransferId: string;
+    now: Date;
+  }): Promise<void> {
+    if (input.decision === 'SETTLE') {
+      await this.pool.query(
+        `UPDATE interbank_sends
+            SET refund_settled_at = $2, refund_inbound_id = $3
+          WHERE interbank_transfer_id = $1 AND refund_settled_at IS NULL`,
+        [input.sendId, input.now, input.interbankTransferId],
+      );
+
+      return;
+    }
+
+    await this.pool.query(
+      `UPDATE interbank_sends
+          SET reversal_next_at = LEAST(COALESCE(reversal_next_at, $2), $2)
+        WHERE interbank_transfer_id = $1 AND reversal_state IN ('PENDING','PROCESSING')`,
+      [input.sendId, input.now],
+    );
+  }
+
   async findForBank(
     interbankTransferId: string,
     callerBankCode: string,
@@ -201,6 +409,7 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
               rejection_reason = 'CANCELLED',
               decided_at = $2,
               next_action_at = NULL,
+              hold_reversal_id = NULL,
               callback_due_at = NULL,
               result_envelope = COALESCE($3::jsonb, '{}'::jsonb),
               result_published_at = CASE WHEN $3::jsonb IS NULL THEN $2 ELSE result_published_at END
@@ -275,6 +484,7 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
               rejection_reason = 'EXPIRED',
               decided_at = $2,
               next_action_at = NULL,
+              hold_reversal_id = NULL,
               -- El callback sale: el contrato pide responder REJECTED con
               -- reasonCode EXPIRED, no quedarse callado.
               callback_due_at = $2,
@@ -420,6 +630,7 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
 function aFila(fila: Fila): V1DepositRow {
   return {
     depositId: fila.deposit_id,
+    heldForReversal: fila.hold_reversal_id,
     stage: fila.stage,
     origin: esSobre(fila.origin_envelope) ? fila.origin_envelope : null,
     interbankTransferId: fila.external_transfer_id,
