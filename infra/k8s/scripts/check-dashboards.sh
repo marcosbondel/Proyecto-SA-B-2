@@ -64,7 +64,13 @@ if command -v promtool >/dev/null 2>&1; then
 elif [ "${PROMTOOL_DOCKER:-0}" = "1" ] && command -v docker >/dev/null 2>&1; then
   version="$(tar -xzOf "$CHART"/charts/prometheus-*.tgz prometheus/Chart.yaml | sed -n 's/^appVersion: *//p')"
   echo "   promtool desde prom/prometheus:${version} (la version del subchart)"
-  docker run --rm --entrypoint promtool -v "$TRABAJO:/w:ro" "prom/prometheus:${version}" \
+  chmod -R a+rX "$TRABAJO"   # solo reglas y consultas; nada secreto
+  # `--user` del host: `mktemp -d` crea el directorio con permisos 700 y la
+  # imagen corre como `nobody`, asi que en Linux (CI) promtool no podia leer
+  # /w ("permission denied"). En macOS no se veia: Docker Desktop no aplica los
+  # permisos del host al montar.
+  docker run --rm --user "$(id -u):$(id -g)" --entrypoint promtool \
+    -v "$TRABAJO:/w:ro" "prom/prometheus:${version}" \
     check rules /w/grabadas.yml /w/consultas.yml || rc=1
 else
   echo "   AVISO: no hay promtool (ni PROMTOOL_DOCKER=1). La sintaxis PromQL no se valido aqui;"
