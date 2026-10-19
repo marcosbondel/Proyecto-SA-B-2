@@ -38,6 +38,8 @@ describeIntegration('PostgresAccountRepository', () => {
 
   const NOW = new Date('2026-08-26T12:00:00.000Z');
   const CUSTOMER = '9f1c8b2a-4d63-4e57-8a90-1b2c3d4e5f60';
+  /** Who orders the debits below: the owner of every account `seed` opens by default (T-60). */
+  const ORDERED_BY = { customerId: CUSTOMER, role: 'CLIENTE' as const };
 
   beforeAll(async () => {
     if (DATABASE_URL === undefined) {
@@ -1028,7 +1030,7 @@ describeIntegration('PostgresAccountRepository', () => {
 
       for (let i = 0; i < 12; i += 1) {
         clock.advanceTo(new Date(NOW.getTime() + i * SECOND));
-        await debit.execute(debitCommand(accountId), randomUUID());
+        await debit.execute(debitCommand(accountId), ORDERED_BY, randomUUID());
       }
 
       const events = anomalyEvents(publisher);
@@ -1059,7 +1061,7 @@ describeIntegration('PostgresAccountRepository', () => {
       // counted, this account would be flagged.
       for (let i = 0; i < 9; i += 1) {
         clock.advanceTo(new Date(NOW.getTime() + i * SECOND));
-        await debit.execute(debitCommand(accountId), randomUUID());
+        await debit.execute(debitCommand(accountId), ORDERED_BY, randomUUID());
       }
 
       const rows = await pool.query(
@@ -1079,7 +1081,9 @@ describeIntegration('PostgresAccountRepository', () => {
       const { publisher, debit } = stack();
 
       await Promise.all(
-        Array.from({ length: 12 }, () => debit.execute(debitCommand(accountId), randomUUID())),
+        Array.from({ length: 12 }, () =>
+          debit.execute(debitCommand(accountId), ORDERED_BY, randomUUID()),
+        ),
       );
 
       expect(anomalyEvents(publisher)).toHaveLength(1);
@@ -1097,7 +1101,11 @@ describeIntegration('PostgresAccountRepository', () => {
 
       await Promise.all(
         Array.from({ length: 14 }, (_unused, i) =>
-          (i % 2 === 0 ? replicaA : replicaB).debit.execute(debitCommand(accountId), randomUUID()),
+          (i % 2 === 0 ? replicaA : replicaB).debit.execute(
+            debitCommand(accountId),
+            ORDERED_BY,
+            randomUUID(),
+          ),
         ),
       );
 
@@ -1113,8 +1121,8 @@ describeIntegration('PostgresAccountRepository', () => {
       const lenient = stack({ maxOperations: 10, windowMinutes: 5 });
 
       for (let i = 0; i < 5; i += 1) {
-        await strict.debit.execute(debitCommand(first), randomUUID());
-        await lenient.debit.execute(debitCommand(second), randomUUID());
+        await strict.debit.execute(debitCommand(first), ORDERED_BY, randomUUID());
+        await lenient.debit.execute(debitCommand(second), ORDERED_BY, randomUUID());
       }
 
       expect(anomalyEvents(strict.publisher)).toHaveLength(1);
@@ -1130,7 +1138,7 @@ describeIntegration('PostgresAccountRepository', () => {
       const { publisher, debit, compensate } = stack({ maxOperations: 2, windowMinutes: 5 });
 
       const command = debitCommand(accountId);
-      await debit.execute(command, randomUUID());
+      await debit.execute(command, ORDERED_BY, randomUUID());
       await compensate.execute({ ...command, triggeredBy: 'PAYMENT_DECLINED' }, randomUUID());
 
       // One debit and one compensation: one operation by the customer, which is under the limit of two.
@@ -1146,7 +1154,9 @@ describeIntegration('PostgresAccountRepository', () => {
         broken,
       );
 
-      await expect(debit.execute(debitCommand(accountId), randomUUID())).resolves.toBeUndefined();
+      await expect(
+        debit.execute(debitCommand(accountId), ORDERED_BY, randomUUID()),
+      ).resolves.toBeUndefined();
 
       // The debit committed and was announced; the failure is telemetry, not an error.
       expect(publisher.typesPublished()).toContain('account.debited.v1');

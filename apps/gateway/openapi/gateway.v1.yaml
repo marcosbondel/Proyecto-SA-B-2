@@ -467,7 +467,10 @@ paths:
         - transaction.list.replied.v1
     post:
       description: "paymentScenario es opcional y solo de demostración: el Gateway lo valida y lo
-        traslada, y nunca actúa sobre él."
+        traslada, y nunca actúa sobre él. Un CLIENTE sólo puede transferir desde una cuenta propia
+        (D-06): una ajena responde 404, igual que una inexistente, y customerId, si viene, debe ser
+        el suyo. El cajero y el administrador originan en nombre del cliente que nombran. Account
+        vuelve a decidir la propiedad al debitar."
       operationId: TransfersController_request
       parameters: []
       requestBody:
@@ -478,7 +481,25 @@ paths:
               $ref: "#/components/schemas/TransferDto"
       responses:
         "202":
-          description: ""
+          description: Transferencia aceptada; su resultado se consulta con el transactionId.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - transactionId
+                  - correlationId
+                properties:
+                  transactionId:
+                    type: string
+                    format: uuid
+                  correlationId:
+                    type: string
+                    format: uuid
+        "403":
+          description: Un CLIENTE nombró el customerId de otra persona.
+        "404":
+          description: La cuenta de origen no existe o no es del CLIENTE que la nombra.
       security:
         - session: []
       summary: Solicita una transferencia e inicia la Saga
