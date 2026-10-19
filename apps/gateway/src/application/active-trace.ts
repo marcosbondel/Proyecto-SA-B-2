@@ -1,3 +1,4 @@
+import { setRequestAttribute } from '@bank/observability';
 import { isSpanContextValid, trace } from '@opentelemetry/api';
 
 /**
@@ -26,12 +27,16 @@ export function activeTraceId(): string | null {
 export const CORRELATION_ATTRIBUTE = 'bank.correlation_id';
 
 /**
- * Stamps the correlation id on the span the request is served under.
+ * Stamps the correlation id on the request's spans.
  *
  * Until T-60 only the PRODUCER child that publishes the command carried it, so
  * a search for a `correlationId` in Tempo found the middle of the trace and not
- * its root, which is the span a person opens first. A no-op with no SDK.
+ * its root. The first fix tagged `trace.getActiveSpan()`, which inside a Nest
+ * middleware is the framework's INTERNAL span, not the HTTP SERVER span the
+ * instrumentation opened; `setRequestAttribute` reaches the server span through
+ * the RPC metadata `HttpInstrumentation` leaves in the context, and tags the
+ * active one too. A no-op with no SDK.
  */
 export function tagActiveSpanWithCorrelation(correlationId: string): void {
-  trace.getActiveSpan()?.setAttribute(CORRELATION_ATTRIBUTE, correlationId);
+  setRequestAttribute(CORRELATION_ATTRIBUTE, correlationId);
 }
