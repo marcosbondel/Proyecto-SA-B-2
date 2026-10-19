@@ -27,6 +27,8 @@ data:
   # Resolved by the browser, not by the web pod — see the comment on
   # `web.apiBaseUrl` in values.yaml.
   NUXT_PUBLIC_API_BASE_URL: {{ .Values.web.apiBaseUrl | quote }}
+  # Optional, also resolved by the browser. Empty keeps trace ids as plain text.
+  NUXT_PUBLIC_GRAFANA_URL: {{ .Values.web.grafanaUrl | default "" | quote }}
   NOTIFICATION_CHANNEL: {{ .Values.services.notificationAudit.notificationChannel | quote }}
   REVEAL_ACTIVATION_LINKS: {{ .Values.services.notificationAudit.revealActivationLinks | quote }}
   # The Resend channel's non-sensitive half. Harmless while the channel is
