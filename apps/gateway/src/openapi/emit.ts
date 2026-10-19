@@ -34,6 +34,7 @@ async function emit(): Promise<void> {
     CORS_ALLOWED_ORIGINS: 'http://localhost:3010',
     INTERBANK_BANK_CODE: 'BANK02',
     INTERBANK_PARTNER_BANK_CODE: 'BANK99',
+    INTERBANK_MAX_AMOUNT_MINOR: 1_000_000,
   };
 
   const app = await NestFactory.create(AppModule.forRoot(environment), { logger: false });

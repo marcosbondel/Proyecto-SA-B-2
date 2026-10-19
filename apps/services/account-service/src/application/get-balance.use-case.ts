@@ -42,6 +42,7 @@ export class GetBalanceUseCase {
       payload: {
         outcome: 'FOUND',
         accountId: account.accountId,
+        accountNumber: account.accountNumber,
         balance: quetzales(account.balanceMinor),
         status: account.status,
         lastActivityAt: account.lastActivityAt?.toISOString() ?? null,

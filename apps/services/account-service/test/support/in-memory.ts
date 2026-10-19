@@ -76,6 +76,10 @@ export class InMemoryAccountRepository implements AccountRepository {
     return this.accounts.get(accountId) ?? null;
   }
 
+  public async findByNumber(accountNumber: string): Promise<Account | null> {
+    return [...this.accounts.values()].find((a) => a.accountNumber === accountNumber) ?? null;
+  }
+
   public async list(filter: AccountFilter): Promise<readonly Account[]> {
     return [...this.accounts.values()].filter(
       (account) =>

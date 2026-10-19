@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { V1_MAX_AMOUNT_MINOR } from '@bank/contracts';
 import { plainToInstance } from 'class-transformer';
 import {
   IsIn,
@@ -110,29 +111,49 @@ export class PaymentServiceEnvironment {
   @IsNotEmpty()
   public INTERBANK_PARTNER_BANK_CODE!: string;
 
+  /**
+   * El límite por operación, en centavos: **uno solo, para recibir y para
+   * enviar** (B7).
+   *
+   * Antes eran dos y no se parecían: el camino nuevo tenía Q10 000 fijos en el
+   * código y esta variable (Q1 000 000) sólo gobernaba el provisional, y enviar
+   * no tenía límite. El techo es el del contrato —`10000.00`— y la variable sólo
+   * puede **bajarlo**: un límite mayor haría a este banco aceptar y mandar
+   * depósitos que cualquier pareja que cumpla el contrato rechaza con
+   * `AMOUNT_LIMIT_EXCEEDED`.
+   */
   @IsInt()
   @Min(1)
+  @Max(V1_MAX_AMOUNT_MINOR)
   public INTERBANK_MAX_AMOUNT_MINOR!: number;
 
-  @IsString()
-  @IsNotEmpty()
-  public INTERBANK_CALLBACK_URL!: string;
-
-  @IsString()
-  public INTERBANK_PARTNER_TOKEN!: string;
-
   /**
-   * A dónde manda este banco los depósitos que ENVÍA (T-47).
+   * La API del banco pareja, **con** el prefijo `/interbank/v1`
+   * (`http://host/interbank/v1`): de aquí salen el envío, la consulta, la
+   * cancelación, el reverso y —derivado, no configurado— el callback.
    *
-   * El Gateway del banco pareja, no el propio. Vacío significa «este
-   * despliegue no envía depósitos»: el bloque `interbank` de un pago se ignora
-   * y el pago va al proveedor simulado, que es lo correcto para un entorno sin
-   * pareja asignada. No se valida como URL con `@IsUrl` a propósito — en el
-   * clúster el destino es un nombre de Service (`http://partner-mock:3021`),
-   * que no pasa ese validador y es exactamente lo que hay que poner.
+   * Vacío significa «este despliegue no envía depósitos»: el bloque `interbank`
+   * de un pago se ignora y el pago va al proveedor simulado, que es lo correcto
+   * para un entorno sin pareja asignada. No se valida como URL con `@IsUrl` a
+   * propósito — en el clúster el destino es un nombre de Service
+   * (`http://partner-mock:3021/interbank/v1`), que no pasa ese validador y es
+   * exactamente lo que hay que poner.
+   *
+   * Sustituye a `INTERBANK_SEND_URL` y `INTERBANK_CALLBACK_URL` (T-60): el
+   * acuerdo de integración fija que el callback no se configura sino que se
+   * deriva de la URL base de la pareja.
    */
   @IsString()
-  public INTERBANK_SEND_URL!: string;
+  public INTERBANK_PARTNER_BASE_URL!: string;
+
+  /**
+   * La API key que **mandamos** a la pareja en `X-Api-Key` (secreto). La que
+   * exigimos nosotros a quien nos llama (`INTERBANK_API_KEY_INBOUND`) es del
+   * Gateway y este servicio no la lee jamás. Vacía = no se puede hablar con la
+   * pareja, y el envío lo dice en vez de mandar sin autenticar.
+   */
+  @IsString()
+  public INTERBANK_API_KEY_OUTBOUND!: string;
 
   /**
    * Cuánto se espera la confirmación del banco pareja antes de rendirse y
@@ -224,14 +245,13 @@ export function loadEnvironment(
     PAYMENT_SIM_LATENCY_MS: toInteger(source.PAYMENT_SIM_LATENCY_MS) ?? 0,
     INTERBANK_BANK_CODE: source.INTERBANK_BANK_CODE ?? 'BANK02',
     INTERBANK_PARTNER_BANK_CODE: source.INTERBANK_PARTNER_BANK_CODE ?? 'BANK99',
-    INTERBANK_MAX_AMOUNT_MINOR: toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? 100_000_000,
-    INTERBANK_CALLBACK_URL:
-      source.INTERBANK_CALLBACK_URL ?? 'http://localhost:3021/callbacks/interbank',
-    INTERBANK_SEND_URL: source.INTERBANK_SEND_URL ?? '',
+    INTERBANK_MAX_AMOUNT_MINOR:
+      toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
+    INTERBANK_PARTNER_BASE_URL: (source.INTERBANK_PARTNER_BASE_URL ?? '').replace(/\/+$/, ''),
+    INTERBANK_API_KEY_OUTBOUND: source.INTERBANK_API_KEY_OUTBOUND ?? '',
     INTERBANK_CONFIRMATION_TIMEOUT_MS:
       toInteger(source.INTERBANK_CONFIRMATION_TIMEOUT_MS) ?? 30_000,
     INTERBANK_RESOLVE_RETRY_MS: toInteger(source.INTERBANK_RESOLVE_RETRY_MS) ?? 5_000,
-    INTERBANK_PARTNER_TOKEN: source.INTERBANK_PARTNER_TOKEN ?? '',
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

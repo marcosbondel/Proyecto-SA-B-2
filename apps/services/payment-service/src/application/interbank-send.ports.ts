@@ -12,6 +12,14 @@ export interface InterbankSend {
   readonly idempotencyKey: string;
   readonly destinationBankCode: string;
   readonly destinationAccount: string;
+  /**
+   * La cuenta de este banco de la que sale el dinero, con su número del contrato
+   * (`02-NNNNNNNNN`). `null` en un depósito pedido antes de T-60: sin ella no se
+   * puede formar un `TransferRequest`, y el depósito no se envía.
+   */
+  readonly originAccount: string | null;
+  /** El cliente que lo pidió, para decidir quién puede ver el depósito. */
+  readonly customerId: string | null;
   readonly amount: { readonly amountMinor: number; readonly currency: string };
   readonly correlationId: string;
   readonly state: InterbankSendState;
@@ -49,6 +57,17 @@ export interface InterbankSend {
   readonly probe: PartnerProbe | null;
   /** La última respuesta de la cancelación, o `null` si no se ha pedido. */
   readonly cancel: PartnerCancel | null;
+  /** Cuántas consultas y cuántas cancelaciones se han intentado (T-60). */
+  readonly probeAttempts: number;
+  readonly cancelAttempts: number;
+  /**
+   * El reverso pedido al banco pareja por un `ACCEPTED` tardío (paso 5 del
+   * contrato), o `null` si no hizo falta.
+   */
+  readonly reversal: InterbankSendReversal | null;
+  readonly decidedAt: Date | null;
+  readonly sentAt: Date | null;
+  readonly reversedAt: Date | null;
   /**
    * Cuándo toca el siguiente paso del protocolo.
    *
@@ -71,6 +90,42 @@ export interface InterbankSend {
   readonly origin: MessageEnvelope<unknown>;
 }
 
+/** Lo que el banco pareja contestó sobre un reverso, o que no se le pudo preguntar. */
+export type PartnerReversal =
+  /** `202`/`200` con un cuerpo válido de `ReversalStatus`. */
+  | {
+      readonly kind: 'ANSWERED';
+      readonly status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+      readonly refundTransferId: string | null;
+      readonly reasonMessage: string | null;
+    }
+  /**
+   * `400`/`404`: el banco pareja **se niega** a hacer el reverso (no conoce el
+   * depósito, o el cuerpo no le vale). No hay nada que reintentar: quien decide
+   * es una persona, y queda registrado en ERROR.
+   */
+  | { readonly kind: 'REFUSED'; readonly detail: string }
+  /** Red, `5xx`, tiempo límite: no se sabe. Se reintenta. */
+  | { readonly kind: 'UNREACHABLE' };
+
+export type InterbankSendReversalState = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export interface InterbankSendReversal {
+  readonly reversalId: string;
+  readonly state: InterbankSendReversalState;
+  readonly attempts: number;
+  readonly nextAt: Date | null;
+  readonly refundTransferId: string | null;
+  readonly message: string | null;
+}
+
+/** Un paso del historial de estados, tal como se guardó. */
+export interface InterbankSendHistoryRow {
+  readonly state: InterbankSendState;
+  readonly reason: string | null;
+  readonly at: Date;
+}
+
 export interface InterbankSendRepository {
   /**
    * Da de alta el depósito, o devuelve el que ya existe.
@@ -80,7 +135,22 @@ export interface InterbankSendRepository {
    * depósito pedido dos veces es un depósito.
    */
   open(input: {
-    readonly send: Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt' | 'probe' | 'cancel' | 'resolveNotBefore'>;
+    readonly send: Omit<
+      InterbankSend,
+      | 'state'
+      | 'reason'
+      | 'attempts'
+      | 'verdictEnqueuedAt'
+      | 'probe'
+      | 'cancel'
+      | 'resolveNotBefore'
+      | 'probeAttempts'
+      | 'cancelAttempts'
+      | 'reversal'
+      | 'decidedAt'
+      | 'sentAt'
+      | 'reversedAt'
+    >;
     readonly now: Date;
   }): Promise<{ readonly kind: 'CREATED' | 'DUPLICATE'; readonly send: InterbankSend }>;
 
@@ -156,6 +226,44 @@ export interface InterbankSendRepository {
   }): Promise<void>;
 
   /**
+   * Deja pedido el reverso de un depósito que el banco pareja acreditó después
+   * de que lo liberáramos (paso 5, T-60). Idempotente: un depósito tiene un
+   * solo reverso, `false` si ya lo tenía o si el depósito no está liberado.
+   */
+  requestReversal(input: {
+    readonly interbankTransferId: string;
+    readonly reversalId: string;
+    readonly now: Date;
+  }): Promise<boolean>;
+
+  /** Los reversos que toca pedir o consultar ahora. */
+  claimReversals(now: Date, limit: number): Promise<readonly InterbankSend[]>;
+
+  /** Guarda lo que el banco pareja contestó sobre el reverso, y cuándo volver. */
+  recordReversalStep(input: {
+    readonly interbankTransferId: string;
+    readonly state: InterbankSendReversalState;
+    readonly refundTransferId: string | null;
+    readonly message: string | null;
+    /** `null` cuando el reverso terminó (`COMPLETED` o `FAILED`). */
+    readonly nextAt: Date | null;
+    readonly now: Date;
+  }): Promise<void>;
+
+  /**
+   * Los depósitos visibles para quien pregunta (B10): los de `customerId`, o
+   * todos cuando es `null` (personal).
+   */
+  list(input: {
+    readonly customerId: string | null;
+    readonly state?: InterbankSendState;
+    readonly limit: number;
+  }): Promise<readonly InterbankSend[]>;
+
+  /** El historial de estados de un depósito, del más antiguo al más reciente. */
+  history(interbankTransferId: string): Promise<readonly InterbankSendHistoryRow[]>;
+
+  /**
    * Los depósitos **ya decididos cuyo veredicto nunca llegó al outbox**, que es
    * la pieza (b) de TD-093: la reconciliación.
    *
@@ -209,6 +317,12 @@ export interface PartnerBankClient {
 
   /** `POST /transfers/{id}/cancel` — pedir que no se acredite (TD-095, paso 3). */
   cancel(send: InterbankSend): Promise<PartnerCancel>;
+
+  /** `POST /reversals` — pedir la devolución de un depósito acreditado tarde (paso 5). */
+  requestReversal(send: InterbankSend, reversalId: string): Promise<PartnerReversal>;
+
+  /** `GET /reversals/{id}` — en qué quedó el reverso pedido. */
+  reversalStatus(reversalId: string): Promise<PartnerReversal>;
 }
 
 /** Lo que este caso de uso publica, con la causa que lo originó. */
@@ -246,6 +360,8 @@ export interface InterbankSendTelemetry {
     readonly interbankTransferId: string;
     readonly transactionId: string;
     readonly state: InterbankSendState;
+    /** De qué estado viene; `null` en el alta. Lo necesita la métrica de vencimientos. */
+    readonly from: InterbankSendState | null;
     readonly reason: string | null;
     /** Milisegundos desde que se pidió, cuando el estado es final. */
     readonly durationMs: number | null;

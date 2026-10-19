@@ -121,6 +121,8 @@ describe('the versioned API contract', () => {
         '/api/interbank/callbacks',
         '/api/interbank/deposits',
         '/api/interbank/transfers',
+        // Added by T-60 (B10): a single deposit sent to the partner bank, with its history.
+        '/api/interbank/transfers/{interbankTransferId}',
         '/api/auth/login',
         // Added for the prototype's P-07: the password recovery the assignment's
         // flow needs and that no route offered.
@@ -190,7 +192,7 @@ describe('the versioned API contract', () => {
         ([path]) => path !== '/health' && path !== '/ready',
       );
 
-      expect(functional).toHaveLength(32);
+      expect(functional).toHaveLength(33);
 
       for (const [path, operations] of functional) {
         for (const [method, operation] of Object.entries(operations)) {
