@@ -3,7 +3,15 @@ import { createServer } from 'node:http';
 import type { IncomingHttpHeaders, Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-import { createEnvelope, v1ExpiresAt, v1TransferResult } from '@bank/contracts';
+import {
+  accountInterbankCreditRequestedV1,
+  accountInterbankCreditedV1,
+  accountInterbankEligibilityQueryV1,
+  accountInterbankEligibilityRepliedV1,
+  createEnvelope,
+  v1ExpiresAt,
+  v1TransferResult,
+} from '@bank/contracts';
 import type { MessageEnvelope, V1TransferRequest } from '@bank/contracts';
 import { Pool } from 'pg';
 
@@ -214,21 +222,27 @@ suite('un depósito del contrato oficial, de punta a punta en este servicio', ()
       payload: { depositId, accountNumber: CUENTA },
     });
     expect(comandos[0]?.payload).not.toHaveProperty('accountId');
+    // Lo que sale es un mensaje que el manejador REAL de Account acepta: se
+    // valida con el mismo esquema que éste usa para parsear su entrada.
+    expect(accountInterbankEligibilityQueryV1.schema.safeParse(comandos[0]?.payload).success).toBe(true);
 
     // 2. Account contesta que la cuenta existe y está activa.
-    await core.eligibility(respuestaDeAccount(), {
+    const elegible = {
       depositId,
       accountId: CUENTA_ID,
       accountNumber: CUENTA,
       eligible: true,
       reason: null,
-    });
+    };
+    expect(accountInterbankEligibilityRepliedV1.schema.safeParse(elegible).success).toBe(true);
+    await core.eligibility(respuestaDeAccount(), elegible);
     expect(await etapa(depositId)).toBe('CREDIT');
 
     // 3. El barrido ordena el crédito, con el monto en centavos y la cuenta por número.
     reloj = new Date(reloj.getTime() + 6_000);
     await core.sweep();
     const credito = comandos.find((c) => c.messageType === 'account.interbank.credit.requested.v1');
+    expect(accountInterbankCreditRequestedV1.schema.safeParse(credito?.payload).success).toBe(true);
     expect(credito?.payload).toMatchObject({
       depositId,
       accountNumber: CUENTA,
@@ -236,12 +250,14 @@ suite('un depósito del contrato oficial, de punta a punta en este servicio', ()
     });
 
     // 4. Account acredita.
-    await core.credited(respuestaDeAccount(), {
+    const acreditado = {
       depositId,
       accountId: CUENTA_ID,
       accountNumber: CUENTA,
       creditedAt: reloj.toISOString(),
-    });
+    };
+    expect(accountInterbankCreditedV1.schema.safeParse(acreditado).success).toBe(true);
+    await core.credited(respuestaDeAccount(), acreditado);
     expect(await etapa(depositId)).toBe('ACCEPTED');
 
     // 5. El resultado sale a la auditoría y el callback sale al banco pareja, en v1.
