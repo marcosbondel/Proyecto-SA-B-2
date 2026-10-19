@@ -14,6 +14,7 @@ import { mayQueryAudit } from '../../lib/audit';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState } from '../../lib/gateway-error';
 import { formatDate, formatQuetzales } from '../../lib/money';
+import { QUERY_TRACE_LABEL, traceToShow } from '../../lib/trace';
 
 /**
  * "Estado de pago" — the prototype's G-02a to G-02d, as one screen with four
@@ -41,6 +42,7 @@ import { formatDate, formatQuetzales } from '../../lib/money';
 const route = useRoute();
 const api = useGatewayApi();
 const { role } = useSession();
+const { ledger } = useTraces();
 
 const paymentId = computed(() => String(route.params.id ?? ''));
 const malformed = computed(() => !isUuidV4(paymentId.value));
@@ -50,9 +52,19 @@ const attempts = ref<PaymentAttempt[]>([]);
 const state = ref<'LOADING' | 'READY' | 'GAVE_UP' | AsyncState>('LOADING');
 const message = ref<string | undefined>(undefined);
 const correlationId = ref<string | null>(null);
+/** The trace of the last question this screen asked, whatever it answered. */
+const queryTraceId = ref<string | null>(null);
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 let startedAt = 0;
+
+/**
+ * The trace beside the origin correlation: the payment's own when this session
+ * started it, otherwise the trace of the question just asked, named as such.
+ */
+const shownTrace = computed(() =>
+  traceToShow(ledger.value, payment.value?.originCorrelationId ?? null, queryTraceId.value),
+);
 
 const signals = computed(() => (payment.value === null ? null : signalsOf(payment.value)));
 
@@ -92,6 +104,7 @@ async function load(): Promise<void> {
     return;
   }
 
+  queryTraceId.value = result.traceId;
   payment.value = result.data.payment;
   attempts.value = result.data.attempts;
   correlationId.value = result.data.payment.originCorrelationId ?? result.correlationId;
@@ -272,6 +285,8 @@ useHead({ title: 'Pago · bonking' });
           :payment-id="payment.paymentId"
           :transaction-id="payment.transactionId"
           :correlation-id="payment.originCorrelationId"
+          :trace-id="shownTrace?.traceId ?? null"
+          :trace-label="shownTrace?.ofQuery ? QUERY_TRACE_LABEL : undefined"
           :provider-reference="payment.providerReference"
         />
       </div>
