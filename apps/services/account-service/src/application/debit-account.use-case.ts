@@ -1,7 +1,7 @@
 import { accountCommissionChargedV1, accountDebitRejectedV1, accountDebitedV1 } from '@bank/contracts';
-import type { AccountDebitRequestedV1, FailureCode } from '@bank/contracts';
+import type { AccountDebitRequestedV1, FailureCode, Identity } from '@bank/contracts';
 
-import { DomainRejection, debit } from '../domain/account';
+import { DomainRejection, debit, mayDebit } from '../domain/account';
 import type { AccountActivity, AccountRepository, Clock, EventPublisher } from './ports';
 
 /**
@@ -10,6 +10,14 @@ import type { AccountActivity, AccountRepository, Clock, EventPublisher } from '
  * The whole of the ticket's balance contract meets here, and the order is what
  * makes it true:
  *
+ * 0. **Whose account it is comes before everything else** (T-60). The debit
+ *    carries the identity of whoever ordered the transfer, and a `CLIENTE` may
+ *    only take money out of their own accounts. It is decided against the row
+ *    the lock holds, ahead of the funds and the status, so a refusal can never
+ *    tell a stranger what a foreign account holds — and it is *answered* as
+ *    `ACCOUNT_NOT_FOUND`, the same as an account that does not exist, because a
+ *    refusal that distinguishes "not yours" from "not there" is a lookup service
+ *    for other people's accounts (`visibility.ts` says the same of reads).
  * 1. **Idempotency first, before the balance is touched.** A redelivery is
  *    answered with the result already recorded. Deciding this after the debit
  *    would move the money twice and then notice.
@@ -37,7 +45,11 @@ export class DebitAccountUseCase {
     this.#activity = dependencies.activity;
   }
 
-  public async execute(payload: AccountDebitRequestedV1, idempotencyKey: string): Promise<void> {
+  public async execute(
+    payload: AccountDebitRequestedV1,
+    identity: Identity | null,
+    idempotencyKey: string,
+  ): Promise<void> {
     const seen = await this.#repository.findProcessed(idempotencyKey, 'account.debit.requested.v1');
 
     if (seen !== null) {
@@ -55,7 +67,16 @@ export class DebitAccountUseCase {
         transactionId: payload.transactionId,
         idempotencyKey,
         messageType: 'account.debit.requested.v1',
-        decide: (account) => debit(account, payload.amount, now),
+        decide: (account) => {
+          if (!mayDebit(identity, account)) {
+            throw new DomainRejection(
+              'FORBIDDEN_ACCOUNT_ACCESS',
+              'La cuenta de origen no pertenece a quien ordenó el débito.',
+            );
+          }
+
+          return debit(account, payload.amount, now);
+        },
         now,
       });
 
@@ -120,6 +141,10 @@ export class DebitAccountUseCase {
       resultSummary: {
         outcome: 'REJECTED',
         reason: permitted.success ? reason : 'ACCOUNT_NOT_FOUND',
+        // What the Saga is told is deliberately blunter than what happened. The
+        // true cause stays in this service's own record, where an audit of a
+        // forbidden attempt can find it.
+        ...(permitted.success ? {} : { cause: reason }),
       },
     });
 

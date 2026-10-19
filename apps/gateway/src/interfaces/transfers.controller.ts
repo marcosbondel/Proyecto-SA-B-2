@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from '@nestjs/common';
 
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CommandsUseCase } from '../application/routes/commands.use-case';
 import { QueriesUseCase } from '../application/routes/queries.use-case';
@@ -103,7 +103,30 @@ export class TransfersController {
     summary: 'Solicita una transferencia e inicia la Saga',
     description:
       'paymentScenario es opcional y solo de demostración: el Gateway lo valida y lo ' +
-      'traslada, y nunca actúa sobre él.',
+      'traslada, y nunca actúa sobre él. Un CLIENTE sólo puede transferir desde una cuenta ' +
+      'propia (D-06): una ajena responde 404, igual que una inexistente, y customerId, si ' +
+      'viene, debe ser el suyo. El cajero y el administrador originan en nombre del cliente ' +
+      'que nombran. Account vuelve a decidir la propiedad al debitar.',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Transferencia aceptada; su resultado se consulta con el transactionId.',
+    schema: {
+      type: 'object',
+      required: ['transactionId', 'correlationId'],
+      properties: {
+        transactionId: { type: 'string', format: 'uuid' },
+        correlationId: { type: 'string', format: 'uuid' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Un CLIENTE nombró el customerId de otra persona.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'La cuenta de origen no existe o no es del CLIENTE que la nombra.',
   })
   @Post()
   @HttpCode(202)
@@ -111,6 +134,29 @@ export class TransfersController {
     @Body(validated(TransferDto)) body: TransferDto,
     @Req() request: GatewayRequest,
   ): Promise<{ readonly transactionId: string; readonly correlationId: string }> {
+    const actor = actorOf(request);
+
+    if (actor.role === 'CLIENTE') {
+      /*
+       * `customerId` is for staff acting on behalf of a customer. A customer
+       * naming anyone but themselves is asking to be judged as somebody else
+       * (the KYC gate reads it), so it is refused rather than quietly ignored.
+       */
+      if (body.customerId !== undefined && body.customerId !== actor.customerId) {
+        throw GatewayError.businessRejection(
+          'FORBIDDEN_ACCOUNT_ACCESS',
+          'Un cliente sólo puede transferir en su propio nombre.',
+        );
+      }
+
+      // Cheap, over the broker, and answered by the service that owns the
+      // accounts. See `requireVisibleAccount` for why it is not the authority.
+      await this.#queries.requireVisibleAccount(body.sourceAccount, {
+        actor,
+        correlationId: request.correlationId,
+      });
+    }
+
     return await this.#commands.requestTransfer({
       sourceAccount: body.sourceAccount,
       targetAccount: body.targetAccount,
@@ -118,7 +164,7 @@ export class TransfersController {
       ...(body.customerId === undefined ? {} : { customerId: body.customerId }),
       ...(body.reference === undefined ? {} : { reference: body.reference }),
       ...(body.paymentScenario === undefined ? {} : { paymentScenario: body.paymentScenario }),
-      actor: actorOf(request),
+      actor,
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,
     });

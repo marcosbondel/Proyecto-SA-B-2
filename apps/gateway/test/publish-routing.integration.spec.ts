@@ -99,7 +99,8 @@ describeBroker('publishing onto the real broker', () => {
        * publica la Saga que esta prueba busca. Account se dobla aquí con una
        * respuesta, como lo haría el servicio.
        */
-      const contestar = routeKey === 'POST /api/interbank/transfers';
+      const contestar =
+        routeKey === 'POST /api/interbank/transfers' || routeKey === 'POST /api/transfers';
       const desde = Date.now() - 50;
       const pending = fire(builder(harness));
       if (contestar) {

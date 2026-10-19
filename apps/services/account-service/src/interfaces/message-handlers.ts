@@ -209,7 +209,9 @@ export class DebitAccountHandler extends ContractHandler<
     payload: ReturnType<typeof accountDebitRequestedV1.schema.parse>,
     envelope: MessageEnvelope<unknown>,
   ): Promise<void> {
-    await this.#useCase.execute(payload, envelope.idempotencyKey);
+    // Whoever ordered the transfer, carried through the Saga: the debit is theirs
+    // to order only if the account is theirs (T-60).
+    await this.#useCase.execute(payload, envelope.identity, envelope.idempotencyKey);
   }
 }
 

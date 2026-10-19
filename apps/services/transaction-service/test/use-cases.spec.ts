@@ -144,6 +144,41 @@ describe('step 1: accepting a transfer', () => {
     expect(repository.transactions.get(TRANSACTION)!.status).toBe('PENDING');
   });
 
+  describe('whose transfer it is (T-60)', () => {
+    const VERIFIED_STRANGER = '88888888-8888-4888-8888-888888888802';
+    const TELLER = {
+      customerId: '99999999-9999-4999-8999-999999999903',
+      role: 'CAJERO_RECEPTOR' as const,
+    };
+
+    it('judges a CLIENTE as themselves, whoever payload.customerId names', async () => {
+      const { request, publisher, repository } = world();
+
+      await request.execute(transferRequest({ customerId: VERIFIED_STRANGER }), envelope());
+
+      expect(repository.transactions.get(TRANSACTION)!.customerId).toBe(OWNER.customerId);
+      expect(publisher.sent[0]!.payload).toEqual({
+        transactionId: TRANSACTION,
+        customerId: OWNER.customerId,
+      });
+    });
+
+    it('lets staff originate on behalf of the customer they name', async () => {
+      const { request, publisher, repository } = world();
+
+      await request.execute(
+        transferRequest({ customerId: VERIFIED_STRANGER }),
+        envelope({ identity: TELLER }),
+      );
+
+      expect(repository.transactions.get(TRANSACTION)!.customerId).toBe(VERIFIED_STRANGER);
+      expect(publisher.sent[0]!.payload).toEqual({
+        transactionId: TRANSACTION,
+        customerId: VERIFIED_STRANGER,
+      });
+    });
+  });
+
   it('orders the debit once the KYC gate approves', async () => {
     const { request, approveKyc, publisher, repository } = world();
 

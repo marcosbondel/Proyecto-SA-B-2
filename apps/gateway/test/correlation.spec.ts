@@ -26,7 +26,10 @@ describe('correlation and idempotency', () => {
   beforeEach(async () => {
     harness = await buildHarness([CustomersController, AccountsController, TransfersController]);
     app = harness.app;
-    auth = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'CLIENTE' })}`;
+    // Staff, on purpose: a CLIENTE's transfer is preceded by a read that asks
+    // Account whether the source is theirs (T-60, `transfer-ownership.spec.ts`),
+    // and this file is about the envelope of the command itself.
+    auth = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'CAJERO_RECEPTOR' })}`;
   });
 
   afterEach(async () => {

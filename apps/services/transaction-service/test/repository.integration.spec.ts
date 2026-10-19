@@ -1348,7 +1348,7 @@ describeIntegration('PostgresTransactionRepository', () => {
           messageId: randomUUID(),
           correlationId: randomUUID(),
           idempotencyKey: randomUUID(),
-          identity: { customerId },
+          identity: { customerId, role: 'CLIENTE' },
           occurredAt: NOW.toISOString(),
         },
       );
