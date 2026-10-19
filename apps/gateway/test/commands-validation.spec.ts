@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import { AccountsController } from '../src/interfaces/accounts.controller';
 import { CustomersController } from '../src/interfaces/customers.controller';
 import { TransfersController } from '../src/interfaces/transfers.controller';
+import { accountIsVisible } from './support/account-replies';
 import { buildHarness } from './support/harness';
 import type { Harness } from './support/harness';
 
@@ -34,6 +35,7 @@ describe('a request that fails validation', () => {
     harness = await buildHarness([CustomersController, AccountsController, TransfersController]);
     app = harness.app;
     auth = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'CLIENTE' })}`;
+    accountIsVisible(harness, SOURCE);
   });
 
   afterEach(async () => {
@@ -66,7 +68,11 @@ describe('a request that fails validation', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.type).toBe('VALIDATION_ERROR');
-      expect(harness.publisher.published).toHaveLength(0);
+      // No command. A CLIENTE's request may have asked Account whether the
+      // source is theirs before the contract rejected the pair (T-60) — a read.
+      expect(
+        harness.publisher.published.filter((m) => m.messageType === 'transfer.requested.v1'),
+      ).toHaveLength(0);
     });
 
     it('names the field that is wrong, rather than saying the request is', async () => {

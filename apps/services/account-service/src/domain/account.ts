@@ -192,6 +192,33 @@ export function openingRefusal(
 }
 
 /**
+ * Whether this actor may order a debit from this account (D-06, CDU003.1).
+ *
+ * "Transferir fondos: Cliente desde cuentas propias | Cajero en ventanilla |
+ * Administrador". A `CLIENTE` debits their own accounts and no others; staff
+ * originate on behalf of a customer, so no ownership is asked of them. The
+ * `role` comes from the verified session, so a customer cannot present as staff.
+ *
+ * A `null` actor is **no one**: a debit that nobody ordered is not a debit the
+ * system may make on its own initiative. The Saga's commands carry the identity
+ * of whoever started the transfer, and one that arrives without it is refused
+ * rather than trusted.
+ *
+ * Evaluated inside the row lock, next to `debit`, so the answer is about the
+ * row that is actually being changed and not about a copy read a moment before.
+ */
+export function mayDebit(
+  actor: { readonly customerId: string; readonly role: Role } | null,
+  account: Pick<Account, 'customerId'>,
+): boolean {
+  if (actor === null) {
+    return false;
+  }
+
+  return actor.role === 'CLIENTE' ? actor.customerId === account.customerId : true;
+}
+
+/**
  * Takes money out. Refuses rather than going negative.
  *
  * The order of the checks is the order of the answers a caller deserves: a
