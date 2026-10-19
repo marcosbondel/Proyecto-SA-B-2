@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$namespace\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -81,6 +81,28 @@
           "refId": "env"
         },
         "refresh": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+        "description": "El namespace del entorno elegido, leído de la regla sli:namespace_environment:info. En la nube es el mismo nombre (dev, prod); en kind el entorno local vive en bank-usac.",
+        "hide": 2,
+        "includeAll": false,
+        "label": "Namespace",
+        "name": "namespace",
+        "query": {
+          "query": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+          "refId": "namespace"
+        },
+        "refresh": 2,
         "type": "query"
       }
     ]
@@ -142,11 +164,12 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"gateway\", environment=\"$environment\", http_response_status_code=~\"5..\"}[5m]))",
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"gateway\", environment=\"$environment\", http_response_status_code=~\"5..\"}[5m])) or vector(0)",
           "refId": "A",
           "instant": true
         }
-      ]
+      ],
+      "description": "Cero eventos es una respuesta, no un hueco: la serie sólo existe tras el primer error, así que sin `or vector(0)` un sistema sano mostraba «No data» (T-60)."
     },
     {
       "id": 28,
@@ -200,11 +223,12 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(rate(messaging_client_consumed_messages_total{environment=\"$environment\", bank_delivery_outcome=\"dead_letter\"}[5m]))",
+          "expr": "sum(rate(messaging_client_consumed_messages_total{environment=\"$environment\", bank_delivery_outcome=\"dead_letter\"}[5m])) or vector(0)",
           "refId": "A",
           "instant": true
         }
-      ]
+      ],
+      "description": "Cero eventos es una respuesta, no un hueco: la serie sólo existe tras el primer error, así que sin `or vector(0)` un sistema sano mostraba «No data» (T-60)."
     },
     {
       "id": 29,
@@ -258,11 +282,12 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(rate(bank_audit_events_total{environment=\"$environment\", processing=\"invalid\"}[5m]))",
+          "expr": "sum(rate(bank_audit_events_total{environment=\"$environment\", processing=\"invalid\"}[5m])) or vector(0)",
           "refId": "A",
           "instant": true
         }
-      ]
+      ],
+      "description": "Cero eventos es una respuesta, no un hueco: la serie sólo existe tras el primer error, así que sin `or vector(0)` un sistema sano mostraba «No data» (T-60)."
     },
     {
       "id": 30,
@@ -316,7 +341,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(increase(bank_account_anomalies_total{environment=\"$environment\"}[1h]))",
+          "expr": "sum(sli:account_anomalies:increase1h{environment=\"$environment\"}) or vector(0)",
           "refId": "A",
           "instant": true
         }
@@ -419,11 +444,12 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum by (reason) (rate(bank_transfer_finished_total{environment=\"$environment\", result=\"FAILED\"}[5m]))",
+          "expr": "sum by (reason) (rate(bank_transfer_finished_total{environment=\"$environment\", result=\"failed\"}[5m]))",
           "legendFormat": "{{reason}}",
           "refId": "A"
         }
-      ]
+      ],
+      "description": "`result` va en minúsculas: el código lo emite con `step.to.toLowerCase()` (`otel-transfer.telemetry.ts`). Con `FAILED` el panel salía vacío siempre."
     },
     {
       "id": 33,
@@ -453,7 +479,7 @@
             "type": "loki",
             "uid": "bank-loki"
           },
-          "expr": "{service_name=~\".+\", environment=\"$environment\"} | level=\"error\"",
+          "expr": "{service_name=~\".+\", deployment_environment=\"$environment\"} | level=\"error\"",
           "refId": "A",
           "queryType": "range"
         }

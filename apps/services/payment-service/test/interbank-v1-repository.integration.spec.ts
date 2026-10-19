@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { v1ExpiresAt } from '@bank/contracts';
+import { createEnvelope, v1ExpiresAt } from '@bank/contracts';
 import type { V1TransferRequest } from '@bank/contracts';
 import { Pool } from 'pg';
 
@@ -38,6 +38,29 @@ suite('el contrato interbancario, en la base', () => {
     await pool.end();
   });
 
+  /** Lo que el caso de uso aporta: el id, el sobre del Gateway y la política de admisión. */
+  function admitir(input: {
+    transfer: V1TransferRequest;
+    callerBankCode: string;
+    now: Date;
+    rejection?: Parameters<PostgresInterbankV1Repository['admit']>[0]['rejection'];
+  }) {
+    return repository.admit({
+      depositId: randomUUID(),
+      origin: createEnvelope(
+        { transfer: input.transfer, callerBankCode: input.callerBankCode },
+        {
+          messageType: 'payment.interbank.v1.transfer.query.v1',
+          producer: 'gateway',
+          identity: null,
+        },
+      ),
+      rejection: null,
+      refund: null,
+      ...input,
+    });
+  }
+
   function deposito(overrides: Partial<V1TransferRequest> = {}): V1TransferRequest {
     return {
       interbankTransferId: randomUUID(),
@@ -57,8 +80,8 @@ suite('el contrato interbancario, en la base', () => {
     it('admite uno nuevo y reconoce el mismo otra vez como duplicado', async () => {
       const transfer = deposito();
 
-      const primero = await repository.admit({ transfer, callerBankCode: BANCO, now });
-      const repetido = await repository.admit({ transfer, callerBankCode: BANCO, now });
+      const primero = await admitir({ transfer, callerBankCode: BANCO, now });
+      const repetido = await admitir({ transfer, callerBankCode: BANCO, now });
 
       expect(primero.admission).toBe('ACCEPTED_FOR_PROCESSING');
       expect(repetido.admission).toBe('DUPLICATE');
@@ -72,14 +95,14 @@ suite('el contrato interbancario, en la base', () => {
 
     it('da CONFLICT cuando el mismo id trae otro contenido', async () => {
       const transfer = deposito();
-      await repository.admit({ transfer, callerBankCode: BANCO, now });
+      await admitir({ transfer, callerBankCode: BANCO, now });
 
       for (const distinto of [
         { amount: '999.00' },
         { destinationAccount: '02-000000099' },
         { originAccount: '99-000000999' },
       ]) {
-        const resultado = await repository.admit({
+        const resultado = await admitir({
           transfer: { ...transfer, ...distinto },
           callerBankCode: BANCO,
           now,
@@ -99,9 +122,9 @@ suite('el contrato interbancario, en la base', () => {
        * primero — acreditándole a uno el dinero del otro.
        */
       const transfer = deposito();
-      await repository.admit({ transfer, callerBankCode: BANCO, now });
+      await admitir({ transfer, callerBankCode: BANCO, now });
 
-      const otro = await repository.admit({ transfer, callerBankCode: 'BANK07', now });
+      const otro = await admitir({ transfer, callerBankCode: 'BANK07', now });
 
       expect(otro.admission).toBe('ACCEPTED_FOR_PROCESSING');
       // Y cada uno sólo ve el suyo.
@@ -115,7 +138,7 @@ suite('el contrato interbancario, en la base', () => {
 
     it('guarda el monto en centavos, no el texto', async () => {
       const transfer = deposito({ amount: '1.15' });
-      await repository.admit({ transfer, callerBankCode: BANCO, now });
+      await admitir({ transfer, callerBankCode: BANCO, now });
 
       const { rows } = await pool.query<{ amount_minor: string }>(
         'SELECT amount_minor FROM interbank_deposits WHERE external_transfer_id = $1',
@@ -130,7 +153,7 @@ suite('el contrato interbancario, en la base', () => {
   describe('la identidad de quien pregunta', () => {
     it('no deja ver un depósito a un banco que no participa', async () => {
       const transfer = deposito();
-      await repository.admit({ transfer, callerBankCode: BANCO, now });
+      await admitir({ transfer, callerBankCode: BANCO, now });
 
       expect(await repository.findForBank(transfer.interbankTransferId, BANCO)).not.toBeNull();
       // «Un banco sólo puede consultar transferencias en las que participa.»
@@ -141,14 +164,14 @@ suite('el contrato interbancario, en la base', () => {
   describe('la cancelación', () => {
     it('cancela uno sin decidir, y la segunda vez ya no cambia nada', async () => {
       const transfer = deposito();
-      await repository.admit({ transfer, callerBankCode: BANCO, now });
+      await admitir({ transfer, callerBankCode: BANCO, now });
 
       expect(
-        await repository.cancel({ interbankTransferId: transfer.interbankTransferId, now }),
+        await repository.cancel({ interbankTransferId: transfer.interbankTransferId, now, result: null }),
       ).toBe(true);
       // El guardia del `WHERE`: dos cancelaciones no ganan las dos.
       expect(
-        await repository.cancel({ interbankTransferId: transfer.interbankTransferId, now }),
+        await repository.cancel({ interbankTransferId: transfer.interbankTransferId, now, result: null }),
       ).toBe(false);
 
       const fila = await repository.findForBank(transfer.interbankTransferId, BANCO);
@@ -173,7 +196,7 @@ suite('el contrato interbancario, en la base', () => {
       expect(fila?.status).toBe('CANCELLED');
 
       // Y si el mensaje original llega después, no se admite.
-      const tarde = await repository.admit({
+      const tarde = await admitir({
         transfer: deposito({ interbankTransferId: id }),
         callerBankCode: BANCO,
         now,
@@ -186,7 +209,7 @@ suite('el contrato interbancario, en la base', () => {
   describe('el vencimiento, que el contrato prohíbe ignorar', () => {
     it('encuentra los vencidos y los cierra con EXPIRED', async () => {
       const transfer = deposito();
-      await repository.admit({ transfer, callerBankCode: BANCO, now });
+      await admitir({ transfer, callerBankCode: BANCO, now });
 
       const despues = new Date(now.getTime() + 181_000);
       const vencidos = await repository.claimExpired(despues, 20);
@@ -197,6 +220,7 @@ suite('el contrato interbancario, en la base', () => {
         await repository.expire({
           interbankTransferId: transfer.interbankTransferId,
           now: despues,
+          result: null,
         }),
       ).toBe(true);
 
@@ -210,7 +234,7 @@ suite('el contrato interbancario, en la base', () => {
 
     it('no toca uno que todavía está en plazo', async () => {
       const transfer = deposito();
-      await repository.admit({ transfer, callerBankCode: BANCO, now });
+      await admitir({ transfer, callerBankCode: BANCO, now });
 
       const antes = new Date(now.getTime() + 60_000);
 
@@ -219,8 +243,8 @@ suite('el contrato interbancario, en la base', () => {
 
     it('no vence uno ya cancelado', async () => {
       const transfer = deposito();
-      await repository.admit({ transfer, callerBankCode: BANCO, now });
-      await repository.cancel({ interbankTransferId: transfer.interbankTransferId, now });
+      await admitir({ transfer, callerBankCode: BANCO, now });
+      await repository.cancel({ interbankTransferId: transfer.interbankTransferId, now, result: null });
 
       const despues = new Date(now.getTime() + 181_000);
 
@@ -228,6 +252,7 @@ suite('el contrato interbancario, en la base', () => {
         await repository.expire({
           interbankTransferId: transfer.interbankTransferId,
           now: despues,
+          result: null,
         }),
       ).toBe(false);
     });
@@ -236,9 +261,9 @@ suite('el contrato interbancario, en la base', () => {
   describe('la conciliación', () => {
     it('cuenta y pagina sólo los del banco que pregunta, en el día UTC', async () => {
       for (let i = 0; i < 3; i += 1) {
-        await repository.admit({ transfer: deposito(), callerBankCode: BANCO, now });
+        await admitir({ transfer: deposito(), callerBankCode: BANCO, now });
       }
-      await repository.admit({ transfer: deposito(), callerBankCode: 'BANK07', now });
+      await admitir({ transfer: deposito(), callerBankCode: 'BANK07', now });
 
       const pagina = await repository.reconcile({
         callerBankCode: BANCO,
@@ -261,7 +286,7 @@ suite('el contrato interbancario, en la base', () => {
     });
 
     it('no devuelve los de otro día', async () => {
-      await repository.admit({ transfer: deposito(), callerBankCode: BANCO, now });
+      await admitir({ transfer: deposito(), callerBankCode: BANCO, now });
 
       const otroDia = await repository.reconcile({
         callerBankCode: BANCO,

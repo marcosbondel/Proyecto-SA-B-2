@@ -152,8 +152,9 @@ function activeSpanIds(): { traceId: string; spanId: string } | undefined {
  *
  * Deliberately blunt and name-based. A line that loses a field is a nuisance; a
  * line that carries a customer's DPI is a disclosure. `deliveryLink` does not
- * match on purpose: the audit service reveals it only outside production, a
- * decision made once in its `main.ts`, not an exception taught to this filter.
+ * match on purpose: the audit service masks the token in it unless a developer
+ * asked to see it, a decision made once in its adapter, not an exception taught
+ * to this filter.
  */
 const DROPPED_FIELD =
   /credential|password|passwd|secret|token|authorization|cookie|jwt|api[-_]?key|e-?mail|correo|document|dpi|photo|foto|selfie|recipient|phone|telefono|address|direccion/i;

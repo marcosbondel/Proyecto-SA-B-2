@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$namespace\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -81,6 +81,28 @@
           "refId": "env"
         },
         "refresh": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+        "description": "El namespace del entorno elegido, leído de la regla sli:namespace_environment:info. En la nube es el mismo nombre (dev, prod); en kind el entorno local vive en bank-usac.",
+        "hide": 2,
+        "includeAll": false,
+        "label": "Namespace",
+        "name": "namespace",
+        "query": {
+          "query": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+          "refId": "namespace"
+        },
+        "refresh": 2,
         "type": "query"
       }
     ]
@@ -428,7 +450,7 @@
     {
       "id": 24,
       "type": "timeseries",
-      "title": "Burn rate de transferencias (1 h y 6 h)",
+      "title": "Burn rate de transferencias (5 m, 30 m, 1 h y 6 h)",
       "datasource": {
         "type": "prometheus",
         "uid": "bank-prometheus"
@@ -501,8 +523,27 @@
           "expr": "slo:transfer_under_5s:burn_rate6h{environment=\"$environment\"}",
           "legendFormat": "6 h",
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:transfer_under_5s:burn_rate5m{environment=\"$environment\"}",
+          "legendFormat": "5 m",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:transfer_under_5s:burn_rate30m{environment=\"$environment\"}",
+          "legendFormat": "30 m",
+          "refId": "D"
         }
-      ]
+      ],
+      "description": "Las cuatro ventanas de las dos alertas multi-ventana: TransferLatencyFastBurn (1 h y 5 m sobre 14.4) y TransferLatencySlowBurn (6 h y 30 m sobre 6)."
     },
     {
       "id": 25,
@@ -639,6 +680,192 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 80,
+      "type": "stat",
+      "title": "Error budget · SLO-6 Lecturas GET < 1 s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:gateway_reads_under_1s:budget_remaining7d{environment=\"$environment\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 81,
+      "type": "stat",
+      "title": "Error budget · SLO-7 Comandos POST < 3 s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:gateway_commands_under_3s:budget_remaining7d{environment=\"$environment\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "description": "Medido contra el bucket de 2.5 s, el más cercano por debajo de 3 s: es una aproximación conservadora (una petición de 2.7 s cuenta como mala)."
+    },
+    {
+      "id": 82,
+      "type": "timeseries",
+      "title": "SLI contra su objetivo · Latencia del Gateway (95 %)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "bank-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:gateway_reads_under_1s:ratio_rate5m{environment=\"$environment\"}",
+          "legendFormat": "SLO-6 · GET < 1 s",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:gateway_commands_under_3s:ratio_rate5m{environment=\"$environment\"}",
+          "legendFormat": "SLO-7 · POST < 3 s",
+          "refId": "B"
+        }
+      ],
+      "description": "La proporción de peticiones bajo su umbral. «p95 < 1 s» es lo mismo que «el 95 % baja de 1 s», y sólo la segunda forma admite un presupuesto."
     }
   ]
 }

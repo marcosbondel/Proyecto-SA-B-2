@@ -88,6 +88,8 @@ function fromNode(node: JsonSchema, field = 'id'): unknown {
         value[key] = fromNode(child, key);
       }
       if (value.eligible === true && 'reason' in value) value.reason = null;
+      // T-60: la cuenta se nombra por `accountId` o por `accountNumber`, y por uno solo.
+      if ('depositId' in value && 'accountId' in value && 'accountNumber' in value) delete value.accountNumber;
       /*
        * La misma clase de arreglo que el de arriba, para la refinación del
        * contrato oficial (T-56): sólo un duplicado lleva estado, y todo

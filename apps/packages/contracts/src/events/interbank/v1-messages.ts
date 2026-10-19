@@ -138,7 +138,19 @@ export const paymentInterbankV1CancelRepliedV1 = defineContract({
   category: 'reply',
   producer: 'payment-service',
   consumers: ['gateway'],
-  schema: z.object({ interbankTransferId: uuidV4, result: v1CancelResult }),
+  schema: z.object({
+    interbankTransferId: uuidV4,
+    /**
+     * Las tres respuestas del contrato, más `IN_PROGRESS` (T-60), que **no**
+     * lo es y el Gateway traduce a `503`: el depósito ya ordenó su crédito y
+     * Account todavía no ha dicho si se aplicó. Contestar `CANCELLED` ahí
+     * liberaría la reserva del emisor mientras nosotros acreditamos — el mismo
+     * dinero dos veces — y contestar `ALREADY_ACCEPTED` sería afirmar algo que
+     * aún no es cierto. Lo honesto es «vuelve a preguntar», y el contrato ya
+     * tiene esa respuesta: `503` con espera creciente.
+     */
+    result: z.enum([...v1CancelResult.options, 'IN_PROGRESS']),
+  }),
 });
 export type PaymentInterbankV1CancelRepliedV1 = z.infer<
   typeof paymentInterbankV1CancelRepliedV1.schema

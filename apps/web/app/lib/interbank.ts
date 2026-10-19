@@ -21,6 +21,8 @@
  *   el depósito duplicado que el enunciado penaliza con la mitad de la nota.
  */
 
+import { isUuidV4 } from './account.ts';
+
 /** Lo que la pantalla tiene a medio llenar. */
 export interface InterbankDraft {
   readonly sourceAccount: string;
@@ -30,18 +32,35 @@ export interface InterbankDraft {
 }
 
 /**
- * La forma de un código de banco, la misma que el contrato exige.
+ * Los formatos que el contrato oficial fija, los mismos que el Gateway valida
+ * con un `400` (T-60): el código de banco es `^BANK[0-9]{2}$` y la cuenta
+ * `^[A-Za-z0-9-]{1,34}$`.
  *
- * Se repite aquí en vez de importarse porque `app/lib/` no depende de
+ * Se repiten aquí en vez de importarse porque `app/lib/` no depende de
  * `@bank/contracts`: el navegador no debe cargar el catálogo de mensajes del
  * sistema para validar un campo de texto. El precio es que si el contrato
  * cambia hay dos sitios que tocar, y la prueba de abajo es la que lo recuerda.
+ *
+ * Antes se aceptaban formas más laxas (`^[A-Z][A-Z0-9_]{1,31}$`, hasta 64
+ * caracteres) que ningún banco pareja habría aceptado: el formulario dejaba
+ * pasar lo que el Gateway rechazaba, y el cliente se enteraba por un error en
+ * vez de por un campo marcado.
  */
-const BANK_CODE = /^[A-Z][A-Z0-9_]{1,31}$/;
-const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BANK_CODE = /^BANK[0-9]{2}$/;
+const PARTNER_ACCOUNT = /^[A-Za-z0-9-]{1,34}$/;
 
-/** Lo máximo que el contrato acepta como referencia de cuenta del otro banco. */
-export const MAX_PARTNER_ACCOUNT = 64;
+/** Lo máximo que el contrato acepta como número de cuenta del otro banco. */
+export const MAX_PARTNER_ACCOUNT = 34;
+
+/**
+ * El techo por operación que fija el contrato: Q 10,000.00, en centavos.
+ *
+ * Es un **techo**, no necesariamente el límite vigente: el Gateway lo toma del
+ * ConfigMap y puede ser más bajo. Aquí sólo se detiene lo que ninguna
+ * configuración aceptaría; si el límite configurado es menor, el Gateway
+ * contesta con un `400` que dice cuál es y la pantalla lo muestra tal cual.
+ */
+export const MAX_INTERBANK_AMOUNT_MINOR = 1_000_000;
 
 export function interbankProblems(draft: InterbankDraft): Readonly<Record<string, string>> {
   const problems: Record<string, string> = {};
@@ -49,7 +68,7 @@ export function interbankProblems(draft: InterbankDraft): Readonly<Record<string
   const bank = draft.destinationBankCode.trim();
   const account = draft.destinationAccount.trim();
 
-  if (!UUID_V4.test(source)) {
+  if (!isUuidV4(source)) {
     problems.sourceAccount = 'Elige la cuenta de la que va a salir el dinero.';
   }
 
@@ -57,17 +76,22 @@ export function interbankProblems(draft: InterbankDraft): Readonly<Record<string
     problems.destinationBankCode = 'Indica el código del banco de destino.';
   } else if (!BANK_CODE.test(bank)) {
     problems.destinationBankCode =
-      'El código del banco va en mayúsculas, sin espacios, como lo acordaron los dos bancos.';
+      'El código del banco es BANK seguido de dos dígitos, en mayúsculas y sin espacios. Por ejemplo BANK99.';
   }
 
   if (account.length === 0) {
     problems.destinationAccount = 'Indica la cuenta que va a recibir el dinero en el otro banco.';
   } else if (account.length > MAX_PARTNER_ACCOUNT) {
     problems.destinationAccount = `La cuenta de destino no puede pasar de ${String(MAX_PARTNER_ACCOUNT)} caracteres.`;
+  } else if (!PARTNER_ACCOUNT.test(account)) {
+    problems.destinationAccount =
+      'La cuenta de destino sólo puede llevar letras, números y guiones, sin espacios ni otros símbolos.';
   }
 
-  if (draft.amountMinor === null || draft.amountMinor <= 0) {
-    problems.amount = 'Ingresa un monto mayor que Q 0.00.';
+  if (draft.amountMinor === null || !Number.isInteger(draft.amountMinor) || draft.amountMinor <= 0) {
+    problems.amount = 'Ingresa un monto mayor que Q 0.00, con dos decimales como máximo.';
+  } else if (draft.amountMinor > MAX_INTERBANK_AMOUNT_MINOR) {
+    problems.amount = 'El monto máximo por depósito a otro banco es Q 10,000.00.';
   }
 
   return problems;

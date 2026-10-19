@@ -76,3 +76,22 @@ describe('the activation-link flag', () => {
     );
   });
 });
+
+describe('the SLO alert repeat window (TD-083)', () => {
+  it('defaults to the four hours of Grafana’s repeat_interval', () => {
+    expect(loadEnvironment(complete).SLO_ALERT_REPEAT_WINDOW_MINUTES).toBe(240);
+  });
+
+  it('is configurable, and refuses nonsense by name', () => {
+    expect(
+      loadEnvironment({ ...complete, SLO_ALERT_REPEAT_WINDOW_MINUTES: '30' })
+        .SLO_ALERT_REPEAT_WINDOW_MINUTES,
+    ).toBe(30);
+    expect(() => loadEnvironment({ ...complete, SLO_ALERT_REPEAT_WINDOW_MINUTES: '0' })).toThrow(
+      /SLO_ALERT_REPEAT_WINDOW_MINUTES/,
+    );
+    expect(() => loadEnvironment({ ...complete, SLO_ALERT_REPEAT_WINDOW_MINUTES: 'soon' })).toThrow(
+      /SLO_ALERT_REPEAT_WINDOW_MINUTES/,
+    );
+  });
+});

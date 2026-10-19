@@ -73,6 +73,14 @@ export interface TimeoutFacts {
   readonly probe: PartnerProbe | null;
   /** La última cancelación pedida, o `null` si todavía no se ha pedido. */
   readonly cancel: PartnerCancel | null;
+  /** Cuántas veces se ha consultado ya, contestara o no. */
+  readonly probeAttempts: number;
+  /**
+   * Cuántas consultas seguidas se hacen antes de pasar a cancelar cuando el
+   * otro banco no contesta. El contrato dice «con reintentos» y no cuántos: lo
+   * fija este banco, y entra como dato para que una prueba lo ponga en dos.
+   */
+  readonly maxProbeAttempts: number;
 }
 
 /** Qué hacer ahora con un depósito vencido. */
@@ -93,9 +101,7 @@ export type TimeoutAction =
    * pueda quitar: una liberación a ciegas que nadie mira es exactamente el
    * descuadre que este protocolo existe para evitar.
    */
-  | { readonly kind: 'RELEASE_UNVERIFIED'; readonly reason: string }
-  /** Todavía no toca: esperar al siguiente barrido. */
-  | { readonly kind: 'WAIT'; readonly until: Date };
+  | { readonly kind: 'RELEASE_UNVERIFIED'; readonly reason: string };
 
 /**
  * Qué toca hacer con un depósito que venció.
@@ -142,8 +148,16 @@ export function resolveTimeout(facts: TimeoutFacts): TimeoutAction {
          * plazo también venció, y sin cancelar podrían acreditar en cualquier
          * momento de las próximas 24 horas sobre una reserva que nosotros
          * queremos soltar.
+         *
+         * Se insiste en cancelar mientras corre el margen. Pasado el margen,
+         * con la cancelación sin contestar, se cae a la liberación sin
+         * verificar de más abajo: de otro modo un banco que contesta la
+         * consulta y nunca la cancelación retendría el dinero para siempre.
          */
-        return { kind: 'CANCEL' };
+        if (facts.cancel === null || facts.now < facts.releaseNotBefore) {
+          return { kind: 'CANCEL' };
+        }
+        break;
     }
   }
 
@@ -163,22 +177,86 @@ export function resolveTimeout(facts: TimeoutFacts): TimeoutAction {
   }
 
   /*
-   * 5. No contestan. Aquí es donde el margen gobierna, y es la única rama que
-   *    libera sin saber.
+   * 5. Nadie contesta. Hasta aquí es el caso en que el otro banco está caído o
+   *    lento, y lo que el contrato pide es **insistir antes de rendirse**
+   *    (T-60): «consulta … con reintentos», y si eso da `404` o `PROCESSING`,
+   *    cancela. Antes de este cambio un `UNREACHABLE` esperaba al margen sin
+   *    preguntar de nuevo ni cancelar, y liberaba a ciegas aunque el otro banco
+   *    hubiera vuelto un minuto después de la primera consulta.
    *
-   * Antes del margen se espera **con el dinero reservado**, que es
-   * incómodo para el cliente y correcto para el banco: el otro lado tiene 24
-   * horas para reintentar su callback, y devolver el dinero mientras ellos
-   * acreditan es pagarlo dos veces.
+   *    El orden es: reintentar la consulta unas cuantas veces; luego cancelar —
+   *    que es la única pregunta cuya respuesta cubre las tres salidas— y seguir
+   *    cancelando con espera creciente. La cadencia no la decide esta función
+   *    sino el barrido, que lee la columna `resolve_not_before`.
    */
-  if (facts.now < facts.releaseNotBefore) {
-    return { kind: 'WAIT', until: facts.releaseNotBefore };
+  const margenCumplido = facts.now >= facts.releaseNotBefore;
+
+  if (
+    !margenCumplido &&
+    facts.probe.kind === 'UNREACHABLE' &&
+    facts.probeAttempts < facts.maxProbeAttempts
+  ) {
+    return { kind: 'PROBE' };
   }
 
+  /*
+   * Cancelar al menos una vez **siempre**, también cuando el margen ya pasó: es
+   * lo que deja la constancia de que se pidió que no se acredite, y lo que hace
+   * defendible una liberación a ciegas.
+   */
+  if (facts.cancel === null) {
+    return { kind: 'CANCEL' };
+  }
+
+  if (!margenCumplido) {
+    return { kind: 'CANCEL' };
+  }
+
+  /*
+   * 6. El margen pasó y ninguna de las dos preguntas obtuvo respuesta. Es la
+   *    única rama que libera sin saber.
+   *
+   *    Antes del margen se retiene el dinero, que es incómodo para el cliente y
+   *    correcto para el banco: el otro lado tiene 24 horas para reintentar su
+   *    callback, y devolver el dinero mientras ellos acreditan es pagarlo dos
+   *    veces.
+   */
   return {
     kind: 'RELEASE_UNVERIFIED',
     reason: facts.probe.kind === 'UNKNOWN' ? 'RELEASED_UNKNOWN_AT_PARTNER' : 'RELEASED_NO_ANSWER',
   };
+}
+
+/**
+ * Cuánto esperar antes del siguiente intento de un paso del protocolo que no
+ * obtuvo respuesta (T-60).
+ *
+ * Espera creciente —`base`, `2·base`, `4·base`…— con un techo, para no apretar a
+ * un banco que ya va mal y no dejar pasar de largo los 300 s del margen:
+ * `releaseNotBefore` es también un tope, porque a esa hora hay que volver a
+ * mirar aunque el siguiente intento «tocara» después.
+ */
+export function resolveBackoff(input: {
+  readonly now: Date;
+  readonly failures: number;
+  readonly baseMs: number;
+  readonly capMs: number;
+  readonly releaseNotBefore: Date;
+}): Date {
+  /*
+   * Pasado el margen ya no hay nada que esperar: lo que queda es el último
+   * intento de cancelar y la decisión, así que se vuelve a mirar al ritmo base y
+   * no al creciente — de otro modo liberar costaría hasta un minuto más con el
+   * dinero del cliente retenido.
+   */
+  if (input.now >= input.releaseNotBefore) {
+    return new Date(input.now.getTime() + input.baseMs);
+  }
+
+  const factor = 2 ** Math.max(0, Math.min(input.failures - 1, 16));
+  const delay = Math.min(input.baseMs * factor, input.capMs);
+
+  return new Date(Math.min(input.now.getTime() + delay, input.releaseNotBefore.getTime()));
 }
 
 /**

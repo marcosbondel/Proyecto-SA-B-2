@@ -157,15 +157,34 @@ export function applyInterbankSend(
       return from === 'PENDING' ? to('PENDING', event.detail, null, true) : illegal();
 
     case 'CONFIRMED':
-      /**
-       * Sólo desde `SENT`. Un `ACCEPTED` para un depósito que nunca se entregó
-       * es una respuesta a algo que no preguntamos, y aceptarla cerraría como
-       * pagado un dinero que no salió.
+    case 'REFUSED': {
+      /*
+       * El callback del banco pareja es legal desde **tres** estados, y los tres
+       * importan (T-60, TD-095 paso 2 del contrato):
+       *
+       * - `SENT` es el camino normal.
+       * - `TIMEOUT` es el callback tardío. Antes se descartaba con un `warn`, y
+       *   era exactamente el caso que el protocolo existe para no perder: el
+       *   contrato le da al banco pareja **24 horas** para reintentar su
+       *   callback, y un `ACCEPTED` que llega con el monto todavía reservado
+       *   confirma el débito, mientras un `REJECTED` lo libera. Tirarlo
+       *   obligaba a esperar al sondeo, y si el sondeo fallaba se liberaba un
+       *   dinero que el otro banco ya había acreditado.
+       * - `PENDING` es la carrera de un banco rápido: contesta `202`, llama a
+       *   nuestro callback en milisegundos, y el callback gana a la escritura
+       *   de nuestro `ACKNOWLEDGED`. Sólo un banco que conoce el
+       *   `interbankTransferId` puede llamar, así que la respuesta es a algo
+       *   que sí preguntamos — la persistencia de la fila, `advance(from)`, es
+       *   la que impide que el `ACKNOWLEDGED` retrasado la mueva después.
        */
-      return from === 'SENT' ? to('ACCEPTED', null, 'SUCCEEDED') : illegal();
+      if (from !== 'SENT' && from !== 'TIMEOUT' && from !== 'PENDING') {
+        return illegal();
+      }
 
-    case 'REFUSED':
-      return from === 'SENT' ? to('REJECTED', event.reason, 'FAILED') : illegal();
+      return event.kind === 'CONFIRMED'
+        ? to('ACCEPTED', null, 'SUCCEEDED')
+        : to('REJECTED', event.reason, 'FAILED');
+    }
 
     case 'EXPIRED':
       /**
@@ -229,6 +248,34 @@ export function applyInterbankSend(
   }
 }
 
+/**
+ * `true` cuando un evento es un `ACCEPTED` del banco pareja sobre un depósito
+ * que este banco **ya liberó** (paso 5 del contrato, T-60).
+ *
+ * Es el caso en que el dinero está entregado allá y devuelto aquí. No es una
+ * transición —el depósito ya no se mueve—, es un incidente que pide un
+ * `POST /reversals`. Vive en el dominio por la razón de siempre: qué estados
+ * significan «ya liberado» es vocabulario, y no debe decidirse comparando
+ * cadenas en una capa de arriba.
+ */
+export function isLateAcceptAfterRelease(
+  from: InterbankSendState,
+  event: InterbankSendEvent['kind'],
+): boolean {
+  return (from === 'REJECTED' || from === 'REVERSED') && event === 'CONFIRMED';
+}
+
+/**
+ * `true` cuando un `REJECTED` llega sobre un depósito que ya se confirmó: los
+ * dos bancos se contradicen y el dinero ya salió. Se registra como incidente.
+ */
+export function isContradictoryRefusal(
+  from: InterbankSendState,
+  event: InterbankSendEvent['kind'],
+): boolean {
+  return from === 'ACCEPTED' && event === 'REFUSED';
+}
+
 /** `true` cuando el depósito ya no espera nada de nadie. */
 export function isSendSettled(state: InterbankSendState): boolean {
   return state === 'ACCEPTED' || state === 'REVERSED';
@@ -256,6 +303,32 @@ export function isSendDecided(state: InterbankSendState): boolean {
    * plazo en vez de la realidad.
    */
   return state === 'ACCEPTED' || state === 'REJECTED';
+}
+
+/**
+ * Con qué etiqueta cuenta un cambio de estado en `bank_interbank_sent_total`, o
+ * `null` si no cuenta (T-60, B9).
+ *
+ * - `timeout` se cuenta **al entrar** en `TIMEOUT`: desde TD-095 `isSendDecided`
+ *   lo excluye —ya no es un veredicto— y por eso la serie dejó de subir, con el
+ *   «número de timeouts» que el enunciado pide.
+ * - `accepted` y `rejected` se cuentan al decidirse, **salvo** si vienen de
+ *   `TIMEOUT`: ese depósito ya contó como `timeout`, y contarlo otra vez
+ *   duplicaría el denominador de la tasa de éxito.
+ * - El resto (`PENDING`, `SENT`, `REVERSED`) no cuenta.
+ *
+ * Vive en el dominio por lo de siempre: qué cuenta como qué es vocabulario.
+ */
+export function sentMetricResult(
+  state: InterbankSendState,
+  from: InterbankSendState | null,
+): 'accepted' | 'rejected' | 'timeout' | null {
+  if (state === 'TIMEOUT') return 'timeout';
+  if (from === 'TIMEOUT') return null;
+  if (state === 'ACCEPTED') return 'accepted';
+  if (state === 'REJECTED') return 'rejected';
+
+  return null;
 }
 
 /**

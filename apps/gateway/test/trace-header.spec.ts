@@ -78,11 +78,7 @@ function runMiddleware(): Record<string, string> {
     },
   };
 
-  new CorrelationMiddleware().use(
-    { headers: {} } as never,
-    response as never,
-    () => undefined,
-  );
+  new CorrelationMiddleware().use({ headers: {} } as never, response as never, () => undefined);
 
   return headers;
 }
@@ -148,5 +144,57 @@ describe('the trace id the Gateway hands back', () => {
     const main = readFileSync(resolve(__dirname, '..', 'src', 'main.ts'), 'utf8');
 
     expect(main).toMatch(/exposedHeaders:\s*\[[^\]]*'X-Trace-Id'/);
+  });
+});
+
+describe('the correlation id on the HTTP span', () => {
+  function serve(
+    span: ReturnType<typeof tracer.startSpan>,
+    requestHeaders: Record<string, string>,
+  ) {
+    const headers: Record<string, string> = {};
+
+    context.with(trace.setSpan(context.active(), span), () => {
+      new CorrelationMiddleware().use(
+        { headers: requestHeaders } as never,
+        {
+          setHeader: (name: string, value: string) => {
+            headers[name.toLowerCase()] = value;
+          },
+        } as never,
+        () => undefined,
+      );
+    });
+    span.end();
+
+    return headers;
+  }
+
+  it('is set on the active SERVER span with the key the messaging layer uses', () => {
+    const span = tracer.startSpan('GET /api/transfers');
+    const mine = '6f1c8a30-9c2e-4a71-b8f5-2d6e7c0a1b93';
+
+    const headers = serve(span, { 'x-correlation-id': mine });
+
+    expect((span as unknown as { attributes: Record<string, unknown> }).attributes).toMatchObject({
+      'bank.correlation_id': mine,
+    });
+    expect(headers['x-correlation-id']).toBe(mine);
+  });
+
+  it('is the generated id when the caller brought none', () => {
+    const span = tracer.startSpan('GET /api/accounts');
+
+    const headers = serve(span, {});
+
+    expect(
+      (span as unknown as { attributes: Record<string, unknown> }).attributes[
+        'bank.correlation_id'
+      ],
+    ).toBe(headers['x-correlation-id']);
+  });
+
+  it('does nothing, and does not throw, with no span active', () => {
+    expect(() => runMiddleware()).not.toThrow();
   });
 });

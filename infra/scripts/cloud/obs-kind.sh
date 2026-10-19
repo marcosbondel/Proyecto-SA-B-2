@@ -31,6 +31,21 @@
 # Usa su PROPIO cluster (`bank-obs-test`), no el `bank-usac` del flujo local,
 # para no interferir con una sesion de desarrollo en curso.
 #
+# DESDE T-60 hace dos cosas mas, y las dos salieron de defectos que las once
+# comprobaciones de abajo dejaban pasar:
+#
+#   - Ejecuta CADA consulta de los nueve dashboards (PromQL, LogQL, TraceQL,
+#     variables y anotaciones) contra el stack y falla si alguna sale vacia
+#     (`check-dashboards.sh --live`). Para eso los productores falsos emiten una
+#     de cada metrica del catalogo (`obs-kind-payloads.py`), logs de cuatro
+#     servicios, un RabbitMQ de mentira que publica el consumer lag y un HPA:
+#     un panel vacio por falta de productor no se distinguiria de uno roto.
+#     Los productores viven en el namespace `prod`, porque es el que los
+#     paneles de plataforma filtran.
+#   - Manda un span y una linea de log con `?token=abc123` (y un JWT, un
+#     Bearer y un correo) y comprueba que ni Tempo ni Loki guardan `abc123`,
+#     y que SI guardaron el span y la linea que lo llevaban.
+#
 # Escrito para bash 3.2, la version que trae macOS.
 set -euo pipefail
 
@@ -43,6 +58,13 @@ CTX="kind-${CLUSTER}"
 NS=observability
 # Solo existe mientras vive un cluster de prueba local. No es un secreto.
 GRAFANA_PASS="kind-solo-para-probar-123"
+# Donde viven los productores falsos: el namespace que los paneles filtran.
+NS_BANCO=prod
+# El secreto de la prueba de redaccion, y la marca que permite encontrar la
+# linea y el span que lo llevaban. Tampoco son secretos: son el cebo.
+SECRETO=abc123
+MARCA=obs-kind-redaccion
+PAYLOADS="${SCRIPT_DIR}/obs-kind-payloads.py"
 
 accion=todo
 for arg in "$@"; do
@@ -63,23 +85,14 @@ done
 k() { kubectl --context "$CTX" "$@"; }
 paso() { echo; echo "=== $* ==="; }
 
-# Manda al Collector la traza ya generada y DOS metricas con la forma
-# exacta del catalogo. Es una funcion y no un paso en linea porque
-# `--verify` tambien tiene que llamarla: el exportador de Prometheus del
-# Collector olvida una serie que no se vuelve a reportar (`metric_expiration`,
-# cinco minutos por defecto), asi que verificar sin volver a empujar daria
-# un falso rojo en la comprobacion 8 — y un falso rojo en la prueba que
-# vigila los nombres es peor que no tenerla.
+# Manda al Collector la traza ya generada y UNA metrica de cada fila del
+# catalogo. Es una funcion y no un paso en linea porque `--verify` tambien
+# tiene que llamarla: el exportador de Prometheus del Collector olvida una serie
+# que no se vuelve a reportar (`metric_expiration`, cinco minutos por defecto),
+# asi que verificar sin volver a empujar daria un falso rojo — y un falso rojo
+# en la prueba que vigila los nombres es peor que no tenerla.
 enviar_otlp() {
-  # Y dos metricas con la forma EXACTA del catalogo
-  # (docs/sre/telemetry-catalog.md): un contador monotonico con pseudo-unidad
-  # entre llaves y un histograma en segundos. Son las dos formas de las que
-  # depende toda consulta de T-50, y lo que se comprueba mas abajo es el nombre
-  # con el que salen por el otro lado.
-  #
-  # `k8s.pod.name` va a proposito en el recurso: si algun dia
-  # `resource_to_telemetry_conversion` se enciende, la comprobacion 9 lo ve.
-  # DOS instantaneas y no una, con el contador subiendo entre ellas.
+  # DOS instantaneas y no una, con los contadores subiendo entre ellas.
   #
   # `rate()` necesita pendiente: un unico empujon deja el contador constante,
   # `rate` vale 0 y todas las reglas de grabacion de T-50 salen NaN. Con un
@@ -87,35 +100,10 @@ enviar_otlp() {
   # exigir que lo produzca — que es la diferencia entre «la regla esta cargada»
   # y «la regla calcula».
   #
-  # Las dos duraciones caben bajo los 5 s, asi que el SLI de SLO-2 debe salir
-  # exactamente 1.
+  # Que metricas, con que etiquetas y por que: la cabecera de
+  # `obs-kind-payloads.py`. Hablan como el codigo, no como los paneles.
   for n in 1 2; do
-    python3 - "$n" > "/tmp/obs-kind-metrics-$n.json" <<'PYM'
-import json, sys, time
-paso = int(sys.argv[1])
-now = int(time.time() * 1e9) + (paso - 1) * 20_000_000_000
-inicio = int(time.time() * 1e9) - 300_000_000_000
-transferencias = 3 * paso
-recurso = {"attributes": [
-    {"key": "service.name", "value": {"stringValue": "transaction-service"}},
-    {"key": "deployment.environment", "value": {"stringValue": "prod"}},
-    {"key": "k8s.pod.name", "value": {"stringValue": "transaction-service-7d9f-xyz"}}]}
-etiquetas = [{"key": "result", "value": {"stringValue": "COMPLETED"}}]
-print(json.dumps({"resourceMetrics": [{
-    "resource": recurso,
-    "scopeMetrics": [{"scope": {"name": "transaction-service"}, "metrics": [
-        {"name": "bank.transfer.finished", "unit": "{transfer}",
-         "sum": {"aggregationTemporality": 2, "isMonotonic": True, "dataPoints": [
-             {"asInt": str(transferencias), "startTimeUnixNano": str(inicio),
-              "timeUnixNano": str(now), "attributes": etiquetas}]}},
-        {"name": "bank.transfer.duration", "unit": "s",
-         "histogram": {"aggregationTemporality": 2, "dataPoints": [
-             {"count": str(transferencias), "sum": 1.75 * transferencias,
-              "explicitBounds": [5.0],
-              "bucketCounts": [str(transferencias), "0"],
-              "startTimeUnixNano": str(inicio),
-              "timeUnixNano": str(now), "attributes": etiquetas}]}}]}]}]}))
-PYM
+    python3 "$PAYLOADS" metrics "$n" > "/tmp/obs-kind-metrics-$n.json"
   done
 
   k create configmap otlp-payload -n "$NS" \
@@ -193,8 +181,14 @@ if [[ "$accion" == "todo" ]]; then
     kind create cluster --name "$CLUSTER" --wait 180s
   fi
 
-  paso "2. Namespace y Secret de Grafana"
+  paso "2. Namespaces y Secrets de Grafana"
   k create namespace "$NS" --dry-run=client -o yaml | k apply -f -
+  k create namespace "$NS_BANCO" --dry-run=client -o yaml | k apply -f -
+  # El del webhook de alertas, como lo crea el pipeline (T-60, A3): sin el,
+  # Grafana arranca igual y el contact point manda un Bearer vacio.
+  k create secret generic grafana-alert-webhook --namespace "$NS" \
+    --from-literal=token=kind-token-de-prueba-de-32-caracteres \
+    --dry-run=client -o yaml | k apply -f -
   k create secret generic grafana-admin --namespace "$NS" \
     --from-literal=admin-user=admin \
     --from-literal=admin-password="$GRAFANA_PASS" \
@@ -206,16 +200,33 @@ if [[ "$accion" == "todo" ]]; then
     --install --namespace "$NS" --wait --timeout 15m >/dev/null
   k get pods -n "$NS"
 
-  paso "4. Un servicio del banco, falso, con un traceId conocido"
+  paso "4. Un banco falso en ${NS_BANCO}, con un traceId conocido"
   TRACE_ID="$(python3 -c 'import secrets;print(secrets.token_hex(16))')"
   SPAN_ID="$(python3 -c 'import secrets;print(secrets.token_hex(8))')"
-  echo "    traceId = ${TRACE_ID}"
+  TRACE_REDACCION="$(python3 -c 'import secrets;print(secrets.token_hex(16))')"
+  echo "    traceId = ${TRACE_ID}   (redaccion: ${TRACE_REDACCION})"
+
+  # Lo de un intento anterior en `observability`, de antes de T-60.
+  k delete deployment fake-bank-service -n "$NS" --ignore-not-found >/dev/null
 
   # El formato es el de `@bank/observability` (apps/packages/observability/src/logger.ts):
   # timestamp, level, serviceName, environment, version, message, correlationId,
   # traceId, spanId y los campos propios del componente.
   #
-  # La segunda linea NO es JSON a proposito: comprueba que el guardia
+  # UN CONTENEDOR POR SERVICIO, y no uno que escriba por los cuatro: el agente
+  # fija `service.name` en el RECURSO, y todas las lineas de un mismo archivo de
+  # log comparten recurso. Con un solo contenedor, la ultima linea del lote
+  # renombraba a las demas y las cuatro salian como `gateway` (medido en la
+  # primera corrida de T-60). Un pod real del banco es un servicio por
+  # contenedor, que es lo que esto reproduce.
+  #
+  # Cuatro servicios porque cuatro paneles de logs los nombran: el de errores
+  # (`level="error"`), el del banco pareja (`payment-service` con «interbank»),
+  # el de logs por servicio y el de redaccion. La linea del gateway con
+  # `?token=` es el cebo de la prueba 13: el agente la tiene que guardar, pero
+  # sin el secreto.
+  #
+  # La ultima linea NO es JSON a proposito: comprueba que el guardia
   # `where IsMatch(body, "^\\s*\\{")` del procesador deja pasar sin parsear lo
   # que no entiende, en vez de descartarlo. Un log que el recolector no entiende
   # sigue siendo evidencia.
@@ -224,7 +235,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fake-bank-service
-  namespace: ${NS}
+  namespace: ${NS_BANCO}
 spec:
   replicas: 1
   selector:
@@ -234,43 +245,144 @@ spec:
       labels: { app: fake-bank-service }
     spec:
       containers:
-        - name: emisor
+        - name: transaction-service
           image: busybox:1.37
           command: ['sh', '-c']
           args:
             - |
               while true; do
-                echo '{"timestamp":"'\$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'","level":"info","serviceName":"transaction-service","environment":"prod","version":"abc123","message":"transfer state changed","correlationId":"corr-obs-kind","traceId":"${TRACE_ID}","spanId":"${SPAN_ID}","fromState":"PENDING","toState":"DEBITED"}'
+                t=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+                echo '{"timestamp":"'\$t'","level":"info","serviceName":"transaction-service","environment":"prod","version":"1.0.0-obs-kind","message":"transfer state changed","correlationId":"corr-obs-kind","traceId":"${TRACE_ID}","spanId":"${SPAN_ID}","fromState":"PENDING","toState":"DEBITED"}'
                 echo 'esta linea NO es JSON y debe guardarse sin parsear'
                 sleep 5
               done
           resources:
-            requests: { cpu: 10m, memory: 16Mi }
+            requests: { cpu: 5m, memory: 8Mi }
+        - name: payment-service
+          image: busybox:1.37
+          command: ['sh', '-c']
+          args:
+            - |
+              while true; do
+                t=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+                echo '{"timestamp":"'\$t'","level":"info","serviceName":"payment-service","environment":"prod","version":"1.0.0-obs-kind","message":"interbank deposit state changed","correlationId":"corr-obs-kind","status":"ACCEPTED"}'
+                sleep 5
+              done
+          resources:
+            requests: { cpu: 5m, memory: 8Mi }
+        - name: account-service
+          image: busybox:1.37
+          command: ['sh', '-c']
+          args:
+            - |
+              while true; do
+                t=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+                echo '{"timestamp":"'\$t'","level":"error","serviceName":"account-service","environment":"prod","version":"1.0.0-obs-kind","message":"debit refused","correlationId":"corr-obs-kind","stage":"debit"}'
+                sleep 5
+              done
+          resources:
+            requests: { cpu: 5m, memory: 8Mi }
+        - name: gateway
+          image: busybox:1.37
+          command: ['sh', '-c']
+          args:
+            - |
+              while true; do
+                t=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+                echo '{"timestamp":"'\$t'","level":"warn","serviceName":"gateway","environment":"prod","version":"1.0.0-obs-kind","message":"${MARCA} GET /api/customers/verify-email?token=${SECRETO}","deliveryLink":"https://bank.example/activar?token=${SECRETO}&next=/","authorization":"Bearer ${SECRETO}${SECRETO}${SECRETO}","contact":"cliente.${SECRETO}@example.com"}'
+                sleep 5
+              done
+          resources:
+            requests: { cpu: 5m, memory: 8Mi }
+---
+# Un HPA de verdad sobre el Deployment falso: kube-state-metrics publica
+# kube_horizontalpodautoscaler_* en cuanto el objeto existe, aunque kind no
+# tenga metrics-server para decidir nada. Es lo que el dashboard 06 grafica.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fake-bank-service
+  namespace: ${NS_BANCO}
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: fake-bank-service }
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 80 } }
+---
+# Un RabbitMQ de mentira: sólo su endpoint de métricas, en el nombre y el
+# puerto que raspan los jobs rabbitmq y rabbitmq-detailed del chart. Python
+# y no busybox httpd porque Prometheus 3 rechaza una respuesta sin un
+# Content-Type de texto de Prometheus, y httpd no deja ponerlo a un archivo sin
+# extensión.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: ${NS_BANCO}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: fake-rabbitmq }
+  template:
+    metadata:
+      labels: { app: fake-rabbitmq }
+    spec:
+      containers:
+        - name: metricas
+          image: python:3.13-alpine
+          command: ['python3', '-c']
+          args:
+            - |
+              import http.server
+              CUERPO = (
+                  "# TYPE rabbitmq_detailed_queue_messages_ready gauge\n"
+                  'rabbitmq_detailed_queue_messages_ready{vhost="/",queue="audit.transaction"} 7\n'
+                  'rabbitmq_detailed_queue_messages_ready{vhost="/",queue="payment.commands"} 2\n'
+                  "# TYPE rabbitmq_detailed_queue_messages_unacked gauge\n"
+                  'rabbitmq_detailed_queue_messages_unacked{vhost="/",queue="audit.transaction"} 1\n'
+                  'rabbitmq_detailed_queue_messages_unacked{vhost="/",queue="payment.commands"} 0\n'
+              ).encode()
+              class H(http.server.BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      self.send_response(200)
+                      self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+                      self.end_headers()
+                      self.wfile.write(CUERPO)
+                  def log_message(self, *a):
+                      pass
+              http.server.HTTPServer(("0.0.0.0", 15692), H).serve_forever()
+          ports: [{ containerPort: 15692 }]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: ${NS_BANCO}
+spec:
+  selector: { app: fake-rabbitmq }
+  ports: [{ name: prometheus, port: 15692, targetPort: 15692 }]
 YAML
-  k rollout status deployment/fake-bank-service -n "$NS" --timeout 120s
+  k rollout status deployment/fake-bank-service -n "$NS_BANCO" --timeout 120s
+  k rollout status deployment/rabbitmq -n "$NS_BANCO" --timeout 180s
 
   paso "5. Una traza OTLP con el MISMO traceId"
   # Se envia desde DENTRO del cluster. `kubectl port-forward` al Collector no
   # funciona: los receptores escuchan en `${env:MY_POD_IP}`, no en localhost, y
   # un port-forward entra por localhost. El trafico real llega por el Service,
   # que es lo que esto reproduce.
-  python3 - "$TRACE_ID" "$SPAN_ID" > /tmp/obs-kind-trace.json <<'PY'
-import json, sys, time
-t, s = sys.argv[1], sys.argv[2]
-now = int(time.time() * 1e9)
-print(json.dumps({"resourceSpans": [{
-    "resource": {"attributes": [
-        {"key": "service.name", "value": {"stringValue": "transaction-service"}},
-        {"key": "deployment.environment", "value": {"stringValue": "prod"}}]},
-    "scopeSpans": [{"scope": {"name": "bank.saga"}, "spans": [{
-        "traceId": t, "spanId": s, "name": "bank.transfer.state_changed", "kind": 1,
-        "startTimeUnixNano": str(now), "endTimeUnixNano": str(now + 50_000_000),
-        "attributes": [{"key": "bank.correlation_id",
-                        "value": {"stringValue": "corr-obs-kind"}}]}]}]}]}))
-PY
+  # La traza de la Saga (los tres nombres de span que buscan los paneles de
+  # Tempo del dashboard 04) y, en otra traza, el span con secretos de la
+  # prueba de redaccion.
+  python3 "$PAYLOADS" traces "$TRACE_ID" "$SPAN_ID" "$TRACE_REDACCION" "$SECRETO" "$MARCA" \
+    > /tmp/obs-kind-trace.json
   enviar_otlp
 
   echo "$TRACE_ID" > /tmp/obs-kind-trace-id.txt
+  echo "$TRACE_REDACCION" > /tmp/obs-kind-trace-redaccion.txt
   echo "    Esperando 45 s a que Loki y Tempo ingieran y Prometheus raspe las dos instantaneas…"
   sleep 45
 fi
@@ -280,6 +392,7 @@ fi
 # ---------------------------------------------------------------------------
 paso "6. Verificacion"
 TRACE_ID="$(cat /tmp/obs-kind-trace-id.txt 2>/dev/null || true)"
+TRACE_REDACCION="$(cat /tmp/obs-kind-trace-redaccion.txt 2>/dev/null || true)"
 if [[ -z "$TRACE_ID" ]]; then
   echo "ERROR: no se de que traceId verificar. Corre el script sin --verify." >&2
   exit 2
@@ -290,12 +403,20 @@ if [[ "$accion" == "verificar" ]]; then
     echo "ERROR: faltan los payloads en /tmp. Corre el script sin --verify." >&2
     exit 2
   fi
+  # Un ReplicaSet nuevo, para que la anotacion de despliegues (que marca los
+  # ReplicaSets creados en los ultimos tres minutos) tenga que encontrar algo.
+  k rollout restart deployment/fake-bank-service -n "$NS_BANCO" >/dev/null
+  k rollout status deployment/fake-bank-service -n "$NS_BANCO" --timeout 120s >/dev/null
   echo "    Reenviando la telemetria (las series expiran) y esperando los raspados…"
   enviar_otlp
   sleep 45
 fi
 
 k delete job verificar-obs -n "$NS" --ignore-not-found >/dev/null
+# SIN acentos graves en los comentarios del heredoc de abajo (T-60): es un
+# heredoc sin comillas, y bash los ejecutaba como sustitucion de comandos. Un
+# `rate()` citado asi era una definicion de funcion a medias y rompia el resto
+# de la sustitucion con «unexpected end of file» en cada corrida.
 k apply -f - >/dev/null <<YAML
 apiVersion: batch/v1
 kind: Job
@@ -334,14 +455,14 @@ spec:
               fi
 
               echo "3. El JSON del banco se parseo: filtrar por traceId encuentra la linea"
-              # El stream se llama `transaction-service` y no `fake-bank-service`
-              # A PROPOSITO: `transform/parse_bank_json` toma `service.name` del
-              # campo `serviceName` de la propia linea (values.yaml), no de la
-              # etiqueta del pod, porque en el chart `bank-usac` los siete
-              # componentes comparten `app.kubernetes.io/name` y colapsaban en
+              # El stream se llama "transaction-service" y no "fake-bank-service"
+              # A PROPOSITO: "transform/parse_bank_json" toma "service.name" del
+              # campo "serviceName" de la propia linea (values.yaml), no de la
+              # etiqueta del pod, porque en el chart "bank-usac" los siete
+              # componentes comparten "app.kubernetes.io/name" y colapsaban en
               # una sola etiqueta. El Deployment de prueba se llama
-              # `fake-bank-service`; lo que el log dice ser es
-              # `transaction-service`, y Loki hace bien en creerle al log.
+              # "fake-bank-service"; lo que el log dice ser es
+              # "transaction-service", y Loki hace bien en creerle al log.
               if curl -s -G 'http://loki:3100/loki/api/v1/query_range' \\
                    --data-urlencode "query={service_name=\"transaction-service\"} | traceId=\"\$T\"" \\
                    --data-urlencode 'limit=1' | grep -q '"transfer state changed"'; then
@@ -361,11 +482,11 @@ spec:
 
               echo "5. La linea que NO es JSON se guardo igual"
               # Se busca por namespace y no por servicio: una linea que no es
-              # JSON no tiene campo `serviceName`, asi que no puede nombrarse a
+              # JSON no tiene campo "serviceName", asi que no puede nombrarse a
               # si misma y su stream queda con lo que derivo el agente. Que se
               # guarde es justo lo que se esta comprobando.
               if curl -s -G 'http://loki:3100/loki/api/v1/query_range' \\
-                   --data-urlencode 'query={k8s_namespace_name="observability"} |= "NO es JSON"' \\
+                   --data-urlencode 'query={k8s_namespace_name="${NS_BANCO}"} |= "NO es JSON"' \\
                    --data-urlencode 'limit=1' | grep -q 'guardarse sin parsear'; then
                 echo "   OK"
               else
@@ -447,13 +568,13 @@ spec:
 
               # Lo que se comprueba es que el SELECTOR devuelve serie, no que el
               # cociente valga un numero concreto: con dos muestras sinteticas
-              # `rate()` apenas tiene pendiente y el ratio sale NaN sin que nada
+              # "rate()" apenas tiene pendiente y el ratio sale NaN sin que nada
               # este roto. Un ratio de verdad necesita carga sostenida, y eso es
               # T-51 contra el entorno de T-54.
               #
-              # Y el selector es exactamente lo que se rompio: con `le="5"`
+              # Y el selector es exactamente lo que se rompio: con "le="5""
               # —el valor que el Collector muestra en su texto— esta consulta
-              # devolvia VACIO, porque Prometheus guarda `le="5.0"`. Un panel
+              # devolvia VACIO, porque Prometheus guarda "le="5.0"". Un panel
               # de SLO-2 en blanco para siempre, sin un solo error.
               bucket=\$(curl -s -G 'http://prometheus-server/api/v1/query' \\
                 --data-urlencode 'query=sum(rate(bank_transfer_duration_seconds_bucket{le=~"5(\\\\.0+)?"}[5m]))' \\
@@ -476,9 +597,21 @@ spec:
                 echo "   FALLO: la regla no produce serie"; fallos=\$((fallos+1))
               fi
 
+              echo "11. El entorno es ETIQUETA de Loki (deployment_environment), no metadato"
+              # Lo que rompio los tres dashboards de logs (T-60): el agente no
+              # ponia "deployment.environment" y los paneles filtraban por una
+              # etiqueta que no existia.
+              if curl -s -G 'http://loki:3100/loki/api/v1/query_range' \\
+                   --data-urlencode 'query={deployment_environment="prod", service_name="transaction-service"}' \\
+                   --data-urlencode 'limit=1' | grep -q '"totalEntriesReturned":[1-9]'; then
+                echo "   OK"
+              else
+                echo "   FALLO: el agente de logs no fija deployment.environment"; fallos=\$((fallos+1))
+              fi
+
               echo
               if [ "\$fallos" -eq 0 ]; then
-                echo "RESULTADO: 10 de 10. El stack mide lo que dice medir."
+                echo "RESULTADO: 11 de 11. El stack mide lo que dice medir."
               else
                 echo "RESULTADO: \$fallos comprobacion(es) fallaron."
                 exit 1
@@ -492,6 +625,48 @@ else
   k logs -n "$NS" job/verificar-obs 2>/dev/null | sed 's/^/    /' || true
   rc=1
 fi
+
+# ---------------------------------------------------------------------------
+# 7. Cada consulta de los nueve dashboards, ejecutada (T-60).
+#
+# Desde el HOST y no desde un Job: son cien consultas con su URL-encoding y su
+# JSON, y eso es Python, no curl en un heredoc. Prometheus, Loki, Tempo y
+# Grafana escuchan en 0.0.0.0, asi que un port-forward si les llega (al
+# Collector no: ver su comentario en values.yaml).
+# ---------------------------------------------------------------------------
+paso "7. Cada consulta de los dashboards devuelve datos, y el secreto no se guardo"
+P_PROM="${OBS_KIND_PORT_PROM:-19090}"
+P_LOKI="${OBS_KIND_PORT_LOKI:-13100}"
+P_TEMPO="${OBS_KIND_PORT_TEMPO:-13200}"
+P_GRAFANA="${OBS_KIND_PORT_GRAFANA:-13000}"
+FORWARDS=""
+cerrar_forwards() { [ -n "$FORWARDS" ] && kill $FORWARDS 2>/dev/null || true; }
+trap cerrar_forwards EXIT
+for par in "prometheus-server ${P_PROM}:80" "loki ${P_LOKI}:3100" "tempo ${P_TEMPO}:3200" "grafana ${P_GRAFANA}:80"; do
+  set -- $par
+  # `kubectl` directo y no la funcion `k`: una funcion con `&` corre en una
+  # subshell, `$!` es el PID de esa subshell y matarla deja vivo al kubectl
+  # hijo. Asi quedaban cuatro port-forwards ocupando los puertos tras cada
+  # corrida, y la siguiente consultaba sin saberlo el stack equivocado.
+  kubectl --context "$CTX" port-forward -n "$NS" "svc/$1" "$2" >/dev/null 2>&1 &
+  FORWARDS="$FORWARDS $!"
+done
+sleep 5
+if "${REPO_ROOT}/infra/k8s/scripts/check-dashboards.sh" --live \
+     --prometheus "http://127.0.0.1:${P_PROM}" \
+     --loki "http://127.0.0.1:${P_LOKI}" \
+     --tempo "http://127.0.0.1:${P_TEMPO}" \
+     --grafana "http://127.0.0.1:${P_GRAFANA}" --grafana-auth "admin:${GRAFANA_PASS}" \
+     --environment prod \
+     --redaction-secret "$SECRETO" --redaction-marker "$MARCA" --redaction-namespace "$NS_BANCO" \
+     ${TRACE_REDACCION:+--redaction-trace-id "$TRACE_REDACCION"} 2>&1 | sed 's/^/    /'; then
+  :
+else
+  # `pipefail` (arriba) hace que la tuberia falle si falla el chequeo y no
+  # solo si falla `sed`: sin el, esto daria verde siempre.
+  rc=1
+fi
+cerrar_forwards
 
 paso "Como mirarlo con los ojos"
 cat <<FIN

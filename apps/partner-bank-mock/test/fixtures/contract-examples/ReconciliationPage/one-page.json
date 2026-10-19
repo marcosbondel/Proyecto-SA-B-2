@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-20",
+  "page": 1,
+  "pageSize": 100,
+  "totalItems": 2,
+  "items": [
+    {
+      "interbankTransferId": "8f14e45f-ceea-467a-9b36-4b1c2d6a7e01",
+      "amount": "150.00",
+      "currency": "GTQ",
+      "status": "ACCEPTED",
+      "updatedAt": "2026-10-20T15:00:04Z"
+    },
+    {
+      "interbankTransferId": "62536908-839e-419a-89b4-21cea06edbcc",
+      "amount": "0.01",
+      "currency": "GTQ",
+      "status": "REJECTED",
+      "updatedAt": "2026-10-20T16:12:00Z"
+    }
+  ]
+}

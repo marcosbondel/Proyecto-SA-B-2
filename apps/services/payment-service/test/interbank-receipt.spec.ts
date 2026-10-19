@@ -172,14 +172,23 @@ describe('couldBeOurAccount', () => {
  * Lo que el contrato oficial añadió a esta máquina (T-56).
  */
 describe('CANCELLED, que el contrato trajo y no teníamos', () => {
-  it('se puede cancelar mientras el dinero no se ha movido', () => {
-    for (const desde of ['ELIGIBILITY', 'CREDIT'] as const) {
-      const paso = applyInterbankReceipt(desde, { kind: 'CANCEL_REQUESTED' });
+  it('se puede cancelar mientras la orden de crédito no se ha dado', () => {
+    const paso = applyInterbankReceipt('ELIGIBILITY', { kind: 'CANCEL_REQUESTED' });
 
-      expect(paso.state).toBe('CANCELLED');
-      expect(paso.rejection).toBe('CANCELLED');
-      expect(paso.decided).toBe(true);
-    }
+    expect(paso.state).toBe('CANCELLED');
+    expect(paso.rejection).toBe('CANCELLED');
+    expect(paso.decided).toBe(true);
+  });
+
+  it('NO se puede cancelar una vez ordenado el crédito: Account acredita sin condiciones (B4)', () => {
+    /*
+     * El doble crédito de T-60. Cancelado desde `CREDIT`, el cliente quedaba
+     * acreditado, el emisor liberaba su reserva, y el `CREDITED` posterior se
+     * descartaba como transición ilegal: dinero creado de la nada.
+     */
+    expect(() => applyInterbankReceipt('CREDIT', { kind: 'CANCEL_REQUESTED' })).toThrow(
+      IllegalInterbankReceiptTransition,
+    );
   });
 
   it('no se puede cancelar lo ya acreditado: eso se contesta ALREADY_ACCEPTED', () => {
@@ -203,12 +212,64 @@ describe('CANCELLED, que el contrato trajo y no teníamos', () => {
 });
 
 describe('EXPIRED: el contrato prohíbe acreditar después del plazo', () => {
-  it('vence desde los dos estados sin decidir, con su motivo propio', () => {
-    for (const desde of ['ELIGIBILITY', 'CREDIT'] as const) {
-      const paso = applyInterbankReceipt(desde, { kind: 'EXPIRED' });
+  it('vence sólo mientras no se ha ordenado el crédito, con su motivo propio', () => {
+    const paso = applyInterbankReceipt('ELIGIBILITY', { kind: 'EXPIRED' });
 
-      expect(paso.state).toBe('REJECTED');
-      expect(paso.rejection).toBe('EXPIRED');
+    expect(paso.state).toBe('REJECTED');
+    expect(paso.rejection).toBe('EXPIRED');
+  });
+
+  it('NO vence una vez ordenado el crédito: espera el veredicto de Account (B4)', () => {
+    expect(() => applyInterbankReceipt('CREDIT', { kind: 'EXPIRED' })).toThrow(
+      IllegalInterbankReceiptTransition,
+    );
+  });
+
+  it('la elegibilidad contestada después del plazo no ordena el crédito: se rechaza con EXPIRED', () => {
+    // La puerta que sustituye a la de vencer desde CREDIT: se cierra antes de entrar.
+    const paso = applyInterbankReceipt('ELIGIBILITY', {
+      kind: 'ELIGIBILITY_ANSWERED',
+      rejection: 'EXPIRED',
+    });
+
+    expect(paso.state).toBe('REJECTED');
+    expect(paso.rejection).toBe('EXPIRED');
+  });
+
+  /**
+   * La matriz completa de transiciones del depósito recibido, enumerada (B4): lo
+   * que no está en esta tabla es ilegal. Es la prueba que habría atrapado el
+   * doble crédito, porque `CREDIT × (CANCEL_REQUESTED | EXPIRED)` figuraba como
+   * legal y nadie lo discutía.
+   */
+  it('acepta exactamente las combinaciones del diagrama y ninguna más', () => {
+    const estados = ['ELIGIBILITY', 'CREDIT', 'ACCEPTED', 'REJECTED', 'CANCELLED'] as const;
+    const eventos = [
+      { kind: 'ELIGIBILITY_ANSWERED', rejection: null },
+      { kind: 'ELIGIBILITY_ANSWERED', rejection: 'ACCOUNT_NOT_FOUND' },
+      { kind: 'CREDITED' },
+      { kind: 'CREDIT_REFUSED', rejection: 'ACCOUNT_INACTIVE' },
+      { kind: 'CANCEL_REQUESTED' },
+      { kind: 'EXPIRED' },
+    ] as const;
+    const legales = new Set([
+      'ELIGIBILITY:ELIGIBILITY_ANSWERED',
+      'CREDIT:CREDITED',
+      'CREDIT:CREDIT_REFUSED',
+      'ELIGIBILITY:CANCEL_REQUESTED',
+      'ELIGIBILITY:EXPIRED',
+    ]);
+
+    for (const estado of estados) {
+      for (const evento of eventos) {
+        const intento = (): unknown => applyInterbankReceipt(estado, evento);
+
+        if (legales.has(`${estado}:${evento.kind}`)) {
+          expect(intento).not.toThrow();
+        } else {
+          expect(intento).toThrow(IllegalInterbankReceiptTransition);
+        }
+      }
     }
   });
 

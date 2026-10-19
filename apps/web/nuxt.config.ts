@@ -79,7 +79,15 @@ export default defineNuxtConfig({
    */
   runtimeConfig: {
     public: {
-      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000'
+      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000',
+      /**
+       * Optional (T-60). The address of Grafana as a person's browser reaches
+       * it. When set, a trace id on screen becomes a link to Explore on Tempo;
+       * empty — the default — leaves the copyable text it always was. Public
+       * for the same reason as the Gateway's address, and it carries no secret:
+       * a Grafana address is not one, and the login still stands in front of it.
+       */
+      grafanaUrl: process.env.NUXT_PUBLIC_GRAFANA_URL ?? ''
     }
   }
 })

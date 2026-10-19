@@ -1,3 +1,4 @@
+import { JsonLogger } from '@bank/observability';
 import type { DynamicModule, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
@@ -28,7 +29,12 @@ import { NotificationsController } from './interfaces/notifications.controller';
 import { AlertsController } from './interfaces/alerts.controller';
 import { InterbankController } from './interfaces/interbank.controller';
 import { InterbankV1Controller } from './interfaces/interbank-v1.controller';
-import { INTERBANK_BANK_CODE } from './interfaces/interbank-v1.tokens';
+import {
+  INTERBANK_BANK_CODE,
+  INTERBANK_MAX_AMOUNT_MINOR,
+  INTERBANK_PARTNER_BANK_CODE,
+} from './interfaces/interbank-v1.tokens';
+import { InterbankSendUseCase } from './application/routes/interbank-send.use-case';
 import {
   INTERBANK_API_KEYS,
   InterbankApiKeyGuard,
@@ -55,6 +61,7 @@ import {
 import { JwtGuard, SESSION_VERIFIER } from './interfaces/guards/jwt.guard';
 import { RolesGuard } from './interfaces/guards/roles.guard';
 import { BROKER_HEALTH, HealthController } from './interfaces/health.controller';
+import { accessLogMiddleware } from './interfaces/middleware/access-log.middleware';
 import { CorrelationMiddleware } from './interfaces/middleware/correlation.middleware';
 import { validationExceptionFactory } from './interfaces/validation';
 
@@ -152,7 +159,10 @@ export class AppModule implements NestModule {
         },
         InterbankApiKeyGuard,
         { provide: INTERBANK_BANK_CODE, useValue: environment.INTERBANK_BANK_CODE },
+        { provide: INTERBANK_PARTNER_BANK_CODE, useValue: environment.INTERBANK_PARTNER_BANK_CODE },
+        { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: environment.INTERBANK_MAX_AMOUNT_MINOR },
         InterbankV1UseCase,
+        InterbankSendUseCase,
 
         AlertWebhookUseCase,
         InterbankReceiveUseCase,
@@ -200,6 +210,11 @@ export class AppModule implements NestModule {
     // Every route, probes included: a response with no correlation identifier
     // is one nobody can trace afterwards, and errors are exactly when somebody
     // will try.
-    consumer.apply(CorrelationMiddleware).forRoutes('*path');
+    //
+    // The access log goes second: it reads the correlation identifier the first
+    // one assigns, and writes one line per request when the response is done.
+    consumer
+      .apply(CorrelationMiddleware, accessLogMiddleware(new JsonLogger({ service: 'gateway' })))
+      .forRoutes('*path');
   }
 }

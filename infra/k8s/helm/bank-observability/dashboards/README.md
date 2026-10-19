@@ -26,22 +26,40 @@ la observabilidad que §4.1 pide a Notification & Audit.
    que no está en el repositorio no está desplegado.
 2. Si quieres probar un panel con el ratón primero, hazlo y luego trae el JSON:
    *Dashboard → Export → Save to file*, y pega sólo el panel que cambió.
-3. `pnpm obs:check:dashboards` antes de subir. Falla si un panel cita un
-   `slo:`/`sli:` que ninguna regla graba — que es el error que no da error:
-   el panel sale vacío para siempre y parece que no hay datos.
-4. `pnpm obs:kind` si cambiaste una consulta: es la única forma de ver que
-   devuelve algo.
+3. `pnpm obs:check:dashboards` antes de subir (también corre en CI). Falla si
+   un panel cita un `slo:`/`sli:` que ninguna regla graba, una métrica que no
+   está en el catálogo, una etiqueta de Loki que no se indexa o un valor que el
+   código no emite — que son los errores que no dan error: el panel sale vacío
+   para siempre y parece que no hay datos.
+4. `pnpm obs:kind` si cambiaste una consulta: ejecuta **cada** consulta de los
+   nueve dashboards contra un stack en kind con productores falsos y falla si
+   alguna sale vacía.
 
 ## Convenciones
 
 - **Una variable `$environment`** en todos, enlazada a `label_values(environment)`.
   Un panel que suma `dev` y `prod` no es el panel de ninguno de los dos.
+- **Y una oculta, `$namespace`**, para lo que se filtra por namespace (pods,
+  réplicas, HPA, la anotación de despliegues). Sale de la regla
+  `sli:namespace_environment:info`: en la nube el namespace se llama como el
+  entorno, pero en kind el entorno `local` vive en `bank-usac`, y
+  `namespace=~"$environment"` dejaba esos paneles vacíos en local.
 - **Las consultas leen reglas grabadas** (`slo:…`, `sli:…`), no expresiones
   crudas. El SLI se define una vez, en `values.yaml`, y el panel, la alerta y el
   error budget leen la misma serie.
 - **Percentiles, nunca promedios**, para cualquier latencia.
 - **Los despliegues se dibujan como anotaciones** en los nueve, con una consulta
-  sobre `kube_deployment_metadata_generation`. `cd.yml` añade además la
-  anotación de *release* con la versión, cuando hay Grafana configurado.
+  sobre `kube_replicaset_created`: un ReplicaSet nuevo sólo nace cuando cambia
+  la plantilla del pod, así que marca rollouts y no escalados. Hasta T-60 era
+  `kube_deployment_metadata_generation`, que sube también cada vez que el HPA
+  escala. `cd.yml` añade la anotación de *release* con la versión, por
+  `port-forward` a Grafana desde el job de producción.
+- **Loki se filtra sólo por sus tres etiquetas indexadas**: `service_name`,
+  `deployment_environment` y `k8s_namespace_name`. Todo lo demás (`level`,
+  `correlationId`, `traceId`, `environment`) es metadato estructurado y va
+  después de un `|`. Un selector `{environment="prod"}` no da error: no
+  encuentra nada.
+- **Los valores de etiqueta se escriben como los emite el código**: `result`,
+  `outcome`, `operation`… en minúsculas (`failed`, no `FAILED`).
 - El nombre del servicio se filtra por `service_name`, nunca por `job`: el
   Collector renombra el suyo a `exported_job`.

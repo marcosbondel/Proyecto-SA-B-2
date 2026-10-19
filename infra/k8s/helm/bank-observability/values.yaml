@@ -137,6 +137,55 @@ otlpGateway:
         timeout: 5s
         send_batch_size: 1024
 
+      # La segunda capa de redacción de las trazas (T-60, C2).
+      #
+      # La primera vive en el SDK de cada servicio. Ésta existe porque la
+      # auditoría encontró el token de `GET /api/customers/verify-email?token=…`
+      # en Tempo: la instrumentación de Nest escribe `url.full` con
+      # `req.originalUrl` sin redactar, y la lista por defecto de
+      # `HttpInstrumentation` sólo cubre `sig` y las firmas de AWS/GCP. Una
+      # instrumentación nueva, o una versión que cambie de atributo, vuelve a
+      # abrir el agujero sin que ningún test del servicio lo vea; el Collector es
+      # el último punto por el que pasa TODA traza antes de quedarse siete días
+      # en un disco.
+      #
+      # Se aplica a TODOS los atributos del span y de sus eventos, no a una lista
+      # de claves: `url.full`, `url.query`, `http.target` y `http.url` son los
+      # que hoy llevan el token, pero el mensaje de una excepción
+      # (`exception.message`) o el `status.message` pueden citar la misma URL.
+      #
+      # Los reemplazos son los mismos de `maskText` en `@bank/observability`
+      # (`Bearer [REDACTED]`, `[REDACTED:jwt]`, `[REDACTED:email]`), para que un
+      # valor redactado se lea igual en un log que en una traza.
+      #
+      # Dos trampas de escritura, por si alguien toca las expresiones:
+      #   - `$${1}` y no `$1`: el Collector expande `${…}` como variable de
+      #     entorno al leer su configuración, y `$$` es su escape. Lo que llega a
+      #     OTTL es `${1}`, el grupo capturado.
+      #   - El valor del parámetro es una clase POSITIVA (`[A-Za-z0-9._~%+/=-]`)
+      #     y no «todo hasta el `&`»: en un cuerpo JSON la URL va entre comillas,
+      #     y una clase negativa se comería la comilla de cierre y el resto de la
+      #     línea. Aquí no importa tanto como en los logs, pero es la misma regex.
+      transform/redact_spans:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - 'replace_all_patterns(attributes, "value", "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_all_patterns(attributes, "value", "eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*", "[REDACTED:jwt]")'
+              - 'replace_all_patterns(attributes, "value", "(?i)bearer[ ]+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")'
+              - 'replace_all_patterns(attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}", "[REDACTED:email]")'
+              - 'replace_pattern(name, "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_pattern(status.message, "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_pattern(status.message, "eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*", "[REDACTED:jwt]")'
+              - 'replace_pattern(status.message, "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}", "[REDACTED:email]")'
+          - context: spanevent
+            statements:
+              - 'replace_all_patterns(attributes, "value", "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_all_patterns(attributes, "value", "eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*", "[REDACTED:jwt]")'
+              - 'replace_all_patterns(attributes, "value", "(?i)bearer[ ]+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")'
+              - 'replace_all_patterns(attributes, "value", "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}", "[REDACTED:email]")'
+
       # Las dos ÚNICAS etiquetas que los contadores y los histogramas del banco
       # reciben de sus atributos de recurso.
       #
@@ -202,7 +251,7 @@ otlpGateway:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, batch]
+          processors: [memory_limiter, transform/redact_spans, batch]
           exporters: [otlp/tempo]
         metrics:
           receivers: [otlp]
@@ -312,6 +361,32 @@ logAgent:
       # porque un log que el recolector no entiende sigue siendo evidencia — es
       # el mismo criterio que hace que el servicio de auditoría registre
       # `INVALID` en vez de descartar un mensaje ilegible.
+      # La redacción de los logs (T-60, C2): la misma idea que
+      # `transform/redact_spans` del Collector de arriba, sobre la línea CRUDA.
+      #
+      # Va ANTES de `transform/parse_bank_json` y sobre `body`, no sobre los
+      # atributos: así el JSON se abre ya limpio y lo que llega a Loki —el texto
+      # de la línea y su metadato estructurado— sale de una sola cadena
+      # redactada. Al revés habría que redactar dos veces y bastaría olvidar una.
+      #
+      # Cubre también la línea que NO es JSON (el volcado de un proceso que murió
+      # antes de formatear, un log de terceros): ésa no pasa por el `maskText`
+      # del logger del banco, así que aquí es la única barrera.
+      #
+      # El valor del parámetro es una clase POSITIVA de caracteres a propósito:
+      # dentro de un JSON la URL va entre comillas (`"…?token=abc","next":…`), y
+      # «todo hasta el siguiente `&`» se comería la comilla de cierre y el resto
+      # de la línea, que entonces ya no se podría parsear.
+      transform/redact_logs:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - 'replace_pattern(body, "(?i)((?:^|[?&;])(?:token|access_token|refresh_token|id_token|password|passwd|pwd|secret|code|api_key|apikey|signature|sig)=)[A-Za-z0-9._~%+/=-]+", "$${1}[REDACTED]")'
+              - 'replace_pattern(body, "eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]*", "[REDACTED:jwt]")'
+              - 'replace_pattern(body, "(?i)bearer[ ]+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]")'
+              - 'replace_pattern(body, "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}", "[REDACTED:email]")'
+
       transform/parse_bank_json:
         error_mode: ignore
         log_statements:
@@ -335,6 +410,23 @@ logAgent:
               # GKE (2026-10-14); en kind no se vio, porque el productor de
               # prueba no lleva esa etiqueta.
               - set(resource.attributes["service.name"], attributes["serviceName"]) where attributes["serviceName"] != nil
+              # Y el entorno, por la misma razón (T-60).
+              #
+              # Loki indexa `deployment.environment` como etiqueta
+              # (`deployment_environment`, ver `otlp_config` más abajo), pero
+              # nadie lo ponía: el agente sólo sobrescribía `service.name`, y el
+              # campo `environment` del log quedaba como metadato estructurado.
+              # Los paneles de logs filtraban `{…, environment="$environment"}`
+              # —un selector sobre una etiqueta que no existe— y salían VACÍOS en
+              # los tres dashboards que tienen logs, sin un solo error.
+              #
+              # La fuente es el propio log, igual que el servicio. Lo que no es
+              # JSON del banco (PostgreSQL, RabbitMQ, un volcado) cae al
+              # namespace, que en GKE ES el entorno (`dev`, `prod`); en kind el
+              # banco vive en `bank-usac` y sus logs dicen `local`, así que sólo
+              # las líneas sin parsear de ese namespace quedan con `bank-usac`.
+              - set(resource.attributes["deployment.environment"], attributes["environment"]) where attributes["environment"] != nil
+              - set(resource.attributes["deployment.environment"], resource.attributes["k8s.namespace.name"]) where resource.attributes["deployment.environment"] == nil
               - set(trace_id.string, attributes["traceId"]) where IsMatch(attributes["traceId"], "^[0-9a-f]{32}$")
               - set(span_id.string, attributes["spanId"]) where IsMatch(attributes["spanId"], "^[0-9a-f]{16}$")
 
@@ -366,7 +458,7 @@ logAgent:
         logs:
           # Vacío a propósito: el preset le añade `filelog`.
           receivers: []
-          processors: [memory_limiter, transform/parse_bank_json, batch]
+          processors: [memory_limiter, transform/redact_logs, transform/parse_bank_json, batch]
           exporters: [otlphttp/loki]
 
 # ---------------------------------------------------------------------------
@@ -479,23 +571,21 @@ prometheus:
             #
             # `A or 0 * B` fabrica la serie en cero con las etiquetas de B
             # cuando A no existe, y no cambia nada cuando A existe.
+            #
+            # Y el `> 0` del denominador, que es la otra mitad (T-60): sin
+            # tráfico en la ventana el cociente es 0/0 = NaN, y un NaN no es
+            # «sin datos» — es un número que envenena todo lo que lo use. El
+            # presupuesto de 7 días se calculaba como `avg_over_time` de este
+            # cociente, y con UNA ventana de cinco minutos sin transferencias
+            # el promedio de la semana entera salía NaN (medido en kind:
+            # todos los presupuestos y burn rates en NaN salvo el del Gateway,
+            # que es el único con tráfico constante). Con `> 0`, sin tráfico la
+            # serie no existe, que es lo que quiere decir.
             - record: slo:gateway_availability:ratio_rate5m
               expr: |
                 (sli:gateway_requests_ok:rate5m or 0 * sli:gateway_requests:rate5m)
                 /
-                sli:gateway_requests:rate5m
-            # Error budget restante sobre la ventana de 7 días, la misma que la
-            # retención del stack: con 0 % queda gastado y con 1 (100 %) intacto.
-            - record: slo:gateway_availability:budget_remaining7d
-              expr: |
-                1 - ((1 - avg_over_time(slo:gateway_availability:ratio_rate5m[7d])) / 0.01)
-            # Tasa de consumo: cuántas veces más rápido se gasta el presupuesto
-            # de lo que la ventana admite. Dos ventanas, porque una sola corta
-            # alerta de cada pico y una sola larga avisa cuando ya se gastó.
-            - record: slo:gateway_availability:burn_rate1h
-              expr: (1 - avg_over_time(slo:gateway_availability:ratio_rate5m[1h])) / 0.01
-            - record: slo:gateway_availability:burn_rate6h
-              expr: (1 - avg_over_time(slo:gateway_availability:ratio_rate5m[6h])) / 0.01
+                (sli:gateway_requests:rate5m > 0)
 
         # ---- SLO-6 / SLO-7: latencia del Gateway ----------------------------
         - name: sli-gateway-latency
@@ -516,6 +606,41 @@ prometheus:
                 histogram_quantile(0.99, sum by (le, environment, http_request_method) (
                   rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready"}[5m])
                 ))
+
+            # El p95 de arriba dice CUÁNTO tarda; esto dice si se cumple el
+            # objetivo, y es lo único sobre lo que se puede calcular un
+            # presupuesto (T-60). «p95 < 1 s» es lo mismo que «el 95 % de las
+            # lecturas baja de 1 s», y la segunda forma es una proporción.
+            #
+            # SLO-6: lecturas (`GET`) bajo 1 s. El bucket existe exacto: los
+            # límites de `http.server.request.duration` que trae la
+            # instrumentación HTTP son 0.005 … 1, 2.5, 5, 7.5, 10. Regex por lo
+            # mismo que en SLO-2: Prometheus guarda `le="1.0"`, no `le="1"`.
+            - record: slo:gateway_reads_under_1s:ratio_rate5m
+              expr: |
+                (
+                  sum by (environment) (rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET", le=~"1(\\.0+)?"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET"}[5m]))
+                )
+                /
+                (sum by (environment) (rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET"}[5m])) > 0)
+
+            # SLO-7: comandos (`POST`) bajo 3 s. **No hay bucket en 3 s**: el
+            # más cercano por debajo es 2.5, y se usa ése. Es una aproximación
+            # CONSERVADORA —una petición de 2.7 s cuenta como mala— y es la
+            # única honesta sin interpolar entre buckets, que daría un número
+            # que no es un porcentaje medido. Medirlo exacto exige una vista del
+            # SDK con un límite en 3, que es código de `@bank/observability`.
+            - record: slo:gateway_commands_under_3s:ratio_rate5m
+              expr: |
+                (
+                  sum by (environment) (rate(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST", le=~"2\\.50*"}[5m]))
+                  or
+                  0 * sum by (environment) (rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST"}[5m]))
+                )
+                /
+                (sum by (environment) (rate(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST"}[5m])) > 0)
 
         # ---- SLO-2: transferencias en menos de 5 s (objetivo 95 %) ----------
         - name: slo-transfer-latency
@@ -543,14 +668,7 @@ prometheus:
                   0 * sum by (environment) (rate(bank_transfer_duration_seconds_count[5m]))
                 )
                 /
-                sum by (environment) (rate(bank_transfer_duration_seconds_count[5m]))
-            - record: slo:transfer_under_5s:budget_remaining7d
-              expr: |
-                1 - ((1 - avg_over_time(slo:transfer_under_5s:ratio_rate5m[7d])) / 0.05)
-            - record: slo:transfer_under_5s:burn_rate1h
-              expr: (1 - avg_over_time(slo:transfer_under_5s:ratio_rate5m[1h])) / 0.05
-            - record: slo:transfer_under_5s:burn_rate6h
-              expr: (1 - avg_over_time(slo:transfer_under_5s:ratio_rate5m[6h])) / 0.05
+                (sum by (environment) (rate(bank_transfer_duration_seconds_count[5m])) > 0)
             - record: sli:transfer_latency:seconds_p50
               expr: |
                 histogram_quantile(0.50, sum by (le, environment) (rate(bank_transfer_duration_seconds_bucket[5m])))
@@ -567,8 +685,8 @@ prometheus:
               expr: |
                 sum by (environment, result) (rate(bank_transfer_finished_total[5m]))
                 /
-                ignoring(result) group_left
-                sum by (environment) (rate(bank_transfer_finished_total[5m]))
+                ignoring(result) group_left()
+                (sum by (environment) (rate(bank_transfer_finished_total[5m])) > 0)
 
         # ---- SLO-1: entregas que no acaban en la cola muerta (99 %) ---------
         - name: slo-messaging
@@ -586,13 +704,8 @@ prometheus:
                     0 * sum by (environment) (rate(messaging_client_consumed_messages_total[5m]))
                   )
                   /
-                  sum by (environment) (rate(messaging_client_consumed_messages_total[5m]))
+                  (sum by (environment) (rate(messaging_client_consumed_messages_total[5m])) > 0)
                 )
-            - record: slo:messages_not_dead_lettered:budget_remaining7d
-              expr: |
-                1 - ((1 - avg_over_time(slo:messages_not_dead_lettered:ratio_rate5m[7d])) / 0.01)
-            - record: slo:messages_not_dead_lettered:burn_rate1h
-              expr: (1 - avg_over_time(slo:messages_not_dead_lettered:ratio_rate5m[1h])) / 0.01
             # Throughput, el SLI base de §4.1: por servicio y por cola.
             - record: sli:throughput_by_service:rate5m
               expr: |
@@ -600,6 +713,26 @@ prometheus:
             - record: sli:throughput_by_queue:rate5m
               expr: |
                 sum by (environment, messaging_destination_name) (rate(messaging_client_consumed_messages_total[5m]))
+            # Y la otra mitad del throughput: lo PUBLICADO (T-60). Sólo con el
+            # consumo, un productor que deja de publicar se ve igual que un
+            # consumidor que deja de leer — las dos líneas caen a cero — y son
+            # incidentes opuestos. `messaging_destination_name` aquí es el
+            # EXCHANGE (`@bank/messaging` publica a un exchange, no a una
+            # cola); en el consumo es la cola.
+            - record: sli:published_by_service:rate5m
+              expr: |
+                sum by (environment, service_name) (rate(messaging_client_sent_messages_total[5m]))
+            - record: sli:published_by_exchange:rate5m
+              expr: |
+                sum by (environment, messaging_destination_name) (rate(messaging_client_sent_messages_total[5m]))
+            # Las publicaciones que el broker rechazó: el contador lleva
+            # `error_type` sólo cuando `send` lanzó. Con `or 0 *` para que cero
+            # fallos sea una línea en cero y no un panel vacío.
+            - record: sli:publish_failures:rate5m
+              expr: |
+                sum by (environment, messaging_destination_name) (rate(messaging_client_sent_messages_total{error_type!=""}[5m]))
+                or
+                0 * sum by (environment, messaging_destination_name) (rate(messaging_client_sent_messages_total[5m]))
             - record: sli:message_process:seconds_p95
               expr: |
                 histogram_quantile(0.95, sum by (le, environment, messaging_destination_name) (
@@ -627,10 +760,7 @@ prometheus:
                   0 * sum by (environment) (rate(bank_interbank_deposits_total[5m]))
                 )
                 /
-                sum by (environment) (rate(bank_interbank_deposits_total[5m]))
-            - record: slo:interbank_accepted:budget_remaining7d
-              expr: |
-                1 - ((1 - avg_over_time(slo:interbank_accepted:ratio_rate5m[7d])) / 0.05)
+                (sum by (environment) (rate(bank_interbank_deposits_total[5m])) > 0)
             - record: slo:interbank_confirmation:seconds_p95
               expr: |
                 histogram_quantile(0.95, sum by (le, environment) (
@@ -654,10 +784,7 @@ prometheus:
                   0 * sum by (environment) (rate(bank_interbank_sent_total[5m]))
                 )
                 /
-                sum by (environment) (rate(bank_interbank_sent_total[5m]))
-            - record: slo:interbank_sent_accepted:budget_remaining7d
-              expr: |
-                1 - ((1 - avg_over_time(slo:interbank_sent_accepted:ratio_rate5m[7d])) / 0.05)
+                (sum by (environment) (rate(bank_interbank_sent_total[5m])) > 0)
             - record: slo:interbank_sent_confirmation:seconds_p95
               expr: |
                 histogram_quantile(0.95, sum by (le, environment) (
@@ -670,6 +797,277 @@ prometheus:
             - record: sli:interbank_sent_timeouts:rate5m
               expr: |
                 sum by (environment) (rate(bank_interbank_sent_total{result="timeout"}[5m]))
+            # El número que §4.1 pide, como número: cuántos vencieron en la
+            # última hora. Un vencimiento es raro y una tasa por segundo de algo
+            # raro se lee como cero aunque haya pasado.
+            - record: sli:interbank_sent_timeouts:increase1h
+              expr: |
+                sum by (environment) (increase(bank_interbank_sent_total{result="timeout"}[1h]))
+                or
+                0 * sum by (environment) (increase(bank_interbank_sent_total[1h]))
+            # La tasa de éxito ENVIADOS y RECIBIDOS en un solo gráfico, sin
+            # promediarlas: la etiqueta `direction` la pone la regla y no el
+            # código, que mantiene sus dos contadores separados a propósito.
+            - record: sli:interbank_accepted_by_direction:ratio_rate5m
+              expr: |
+                label_replace(slo:interbank_accepted:ratio_rate5m, "direction", "received", "", "")
+                or
+                label_replace(slo:interbank_sent_accepted:ratio_rate5m, "direction", "sent", "", "")
+
+        # =====================================================================
+        # Error budget y burn rate, DESDE LOS CONTADORES (T-60)
+        #
+        # Antes eran `avg_over_time(<cociente de 5 m>[W])`, y eso tenía dos
+        # defectos. El grave: el cociente de 5 m es 0/0 = NaN en cualquier
+        # ventana sin tráfico, y un solo NaN en la semana deja el promedio en
+        # NaN — medido en kind, todos los presupuestos menos el del Gateway
+        # salían NaN tras la primera pausa de la carga. El sutil: un promedio
+        # de cocientes pesa igual cinco minutos con una transferencia que cinco
+        # minutos con mil, y eso no es la proporción de la semana.
+        #
+        # Ahora la proporción de la ventana W es `increase(bueno[W]) /
+        # increase(total[W])`: los eventos reales de la ventana, sin promediar
+        # nada. Con el mismo `or 0 *` de arriba (numerador ausente = 0) y con
+        # `> 0` en el denominador: sin tráfico en W la serie NO EXISTE, que una
+        # alerta con `noDataState: OK` lee como «nada que avisar» y un panel
+        # como «sin datos», nunca como NaN.
+        #
+        #   presupuesto restante = 1 - (1 - proporción_7d) / (1 - objetivo)
+        #   burn rate            = (1 - proporción_W) / (1 - objetivo)
+        #
+        # Dos grupos por coste: las ventanas de horas se evalúan cada 30 s,
+        # que es lo que necesita una alerta de cinco minutos; la de 7 días cada
+        # 5 m, porque recorrer una semana de buckets cada 30 s sería el
+        # Prometheus entero gastándose en un panel que cambia despacio.
+        # =====================================================================
+        # ---- Burn rate: ventanas de 5 m a 6 h ---------------------------------
+        - name: slo-burn-rate-windows
+          interval: 30s
+          rules:
+            # SLO-27, disponibilidad del Gateway (99 %)
+            - record: slo:gateway_availability:ratio_1h
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[1h]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[1h]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[1h])) > 0)
+            - record: slo:gateway_availability:burn_rate1h
+              expr: (1 - slo:gateway_availability:ratio_1h) / 0.01
+            - record: slo:gateway_availability:ratio_6h
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[6h]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[6h]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[6h])) > 0)
+            - record: slo:gateway_availability:burn_rate6h
+              expr: (1 - slo:gateway_availability:ratio_6h) / 0.01
+            # SLO-2, transferencias bajo 5 s (95 %)
+            - record: slo:transfer_under_5s:ratio_5m
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[5m]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[5m]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[5m])) > 0)
+            - record: slo:transfer_under_5s:burn_rate5m
+              expr: (1 - slo:transfer_under_5s:ratio_5m) / 0.05
+            - record: slo:transfer_under_5s:ratio_30m
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[30m]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[30m]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[30m])) > 0)
+            - record: slo:transfer_under_5s:burn_rate30m
+              expr: (1 - slo:transfer_under_5s:ratio_30m) / 0.05
+            - record: slo:transfer_under_5s:ratio_1h
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[1h]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[1h]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[1h])) > 0)
+            - record: slo:transfer_under_5s:burn_rate1h
+              expr: (1 - slo:transfer_under_5s:ratio_1h) / 0.05
+            - record: slo:transfer_under_5s:ratio_6h
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[6h]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[6h]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[6h])) > 0)
+            - record: slo:transfer_under_5s:burn_rate6h
+              expr: (1 - slo:transfer_under_5s:ratio_6h) / 0.05
+            # SLO-1, entregas fuera de la cola muerta (99 %)
+            - record: slo:messages_not_dead_lettered:ratio_1h
+              expr: |
+                1 - (
+                (
+                  sum by (environment) (increase(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[1h]))
+                  or
+                  0 * sum by (environment) (increase(messaging_client_consumed_messages_total[1h]))
+                )
+                /
+                (sum by (environment) (increase(messaging_client_consumed_messages_total[1h])) > 0)
+                )
+            - record: slo:messages_not_dead_lettered:burn_rate1h
+              expr: (1 - slo:messages_not_dead_lettered:ratio_1h) / 0.01
+
+        # ---- Error budget: la ventana de 7 días -------------------------------
+        - name: slo-error-budget
+          interval: 5m
+          rules:
+            # SLO-27, disponibilidad del Gateway (99 %)
+            - record: slo:gateway_availability:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_response_status_code!~"5.."}[7d]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[7d]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready"}[7d])) > 0)
+            - record: slo:gateway_availability:budget_remaining7d
+              expr: 1 - ((1 - slo:gateway_availability:ratio_7d) / 0.01)
+            # SLO-6, lecturas GET bajo 1 s (95 %)
+            - record: slo:gateway_reads_under_1s:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET", le=~"1(\\.0+)?"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET"}[7d]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="GET"}[7d])) > 0)
+            - record: slo:gateway_reads_under_1s:budget_remaining7d
+              expr: 1 - ((1 - slo:gateway_reads_under_1s:ratio_7d) / 0.05)
+            # SLO-7, comandos POST bajo 3 s, contra el bucket de 2.5 s (95 %)
+            - record: slo:gateway_commands_under_3s:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(http_server_request_duration_seconds_bucket{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST", le=~"2\\.50*"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST"}[7d]))
+                )
+                /
+                (sum by (environment) (increase(http_server_request_duration_seconds_count{service_name="gateway", http_route!~"/health|/ready", http_request_method="POST"}[7d])) > 0)
+            - record: slo:gateway_commands_under_3s:budget_remaining7d
+              expr: 1 - ((1 - slo:gateway_commands_under_3s:ratio_7d) / 0.05)
+            # SLO-2, transferencias bajo 5 s (95 %)
+            - record: slo:transfer_under_5s:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(bank_transfer_duration_seconds_count[7d]))
+                )
+                /
+                (sum by (environment) (increase(bank_transfer_duration_seconds_count[7d])) > 0)
+            - record: slo:transfer_under_5s:budget_remaining7d
+              expr: 1 - ((1 - slo:transfer_under_5s:ratio_7d) / 0.05)
+            # SLO-1, entregas fuera de la cola muerta (99 %)
+            - record: slo:messages_not_dead_lettered:ratio_7d
+              expr: |
+                1 - (
+                (
+                  sum by (environment) (increase(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(messaging_client_consumed_messages_total[7d]))
+                )
+                /
+                (sum by (environment) (increase(messaging_client_consumed_messages_total[7d])) > 0)
+                )
+            - record: slo:messages_not_dead_lettered:budget_remaining7d
+              expr: 1 - ((1 - slo:messages_not_dead_lettered:ratio_7d) / 0.01)
+            # SLO-28, depósitos RECIBIDOS aceptados (95 %)
+            - record: slo:interbank_accepted:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(bank_interbank_deposits_total{result="accepted"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(bank_interbank_deposits_total[7d]))
+                )
+                /
+                (sum by (environment) (increase(bank_interbank_deposits_total[7d])) > 0)
+            - record: slo:interbank_accepted:budget_remaining7d
+              expr: 1 - ((1 - slo:interbank_accepted:ratio_7d) / 0.05)
+            # SLO-28, depósitos ENVIADOS aceptados (95 %)
+            - record: slo:interbank_sent_accepted:ratio_7d
+              expr: |
+                (
+                  sum by (environment) (increase(bank_interbank_sent_total{result="accepted"}[7d]))
+                  or
+                  0 * sum by (environment) (increase(bank_interbank_sent_total[7d]))
+                )
+                /
+                (sum by (environment) (increase(bank_interbank_sent_total[7d])) > 0)
+            - record: slo:interbank_sent_accepted:budget_remaining7d
+              expr: 1 - ((1 - slo:interbank_sent_accepted:ratio_7d) / 0.05)
+
+        # ---- Clientes y cuentas (T-41, T-42; reglas desde T-60) --------------
+        #
+        # Las métricas obligatorias de §4.1 para Customer y Account Service.
+        # Antes los paneles las consultaban crudas y el p95 de KYC no lo
+        # consultaba nadie: el histograma existía desde T-41 y el panel no.
+        - name: sli-customer-account
+          interval: 30s
+          rules:
+            # «Tiempo desde la creación hasta la verificación KYC (p95)».
+            #
+            # Ventana de 6 h y no de 5 m: una decisión de KYC es un evento de
+            # decenas al día, no de cientos por segundo, y con 5 m el cuantil es
+            # NaN casi siempre. Los buckets van de 1 s a 7 días
+            # (`TIME_TO_DECISION_BUCKETS_S`), así que el p95 es legible aunque el
+            # cliente tarde un día en volver.
+            - record: sli:kyc_time_to_decision:seconds_p95
+              expr: |
+                histogram_quantile(0.95, sum by (le, environment) (
+                  rate(bank_customer_kyc_time_to_decision_seconds_bucket[6h])
+                ))
+            - record: sli:kyc_time_to_decision:seconds_p50
+              expr: |
+                histogram_quantile(0.50, sum by (le, environment) (
+                  rate(bank_customer_kyc_time_to_decision_seconds_bucket[6h])
+                ))
+            # Verificados contra rechazados, en la última hora.
+            - record: sli:kyc_decisions:increase1h
+              expr: |
+                sum by (environment, result) (increase(bank_customer_kyc_decisions_total[1h]))
+            - record: sli:kyc_verified:ratio_increase1h
+              expr: |
+                (
+                  sum by (environment) (increase(bank_customer_kyc_decisions_total{result="verified"}[1h]))
+                  or
+                  0 * sum by (environment) (increase(bank_customer_kyc_decisions_total[1h]))
+                )
+                /
+                (sum by (environment) (increase(bank_customer_kyc_decisions_total[1h])) > 0)
+            # Operaciones por tipo de cuenta y operación. `account_type` vale
+            # `AHORRO` o `MONETARIA` y `operation` `debit`, `credit` o
+            # `compensation` (`otel-activity.telemetry.ts`).
+            - record: sli:account_operations:rate5m
+              expr: |
+                sum by (environment, account_type, operation) (rate(bank_account_operations_total[5m]))
+            # Anomalías detectadas en la última hora, por regla. El contador sólo
+            # existe tras la PRIMERA anomalía, así que el panel completa con
+            # `or vector(0)`: cero anomalías es una respuesta, no un hueco.
+            - record: sli:account_anomalies:increase1h
+              expr: |
+                sum by (environment, rule) (increase(bank_account_anomalies_total[1h]))
 
         # ---- El proveedor externo simulado (T-44) ---------------------------
         - name: sli-payment-provider
@@ -688,7 +1086,7 @@ prometheus:
                   0 * sum by (environment, source) (rate(bank_payment_provider_calls_total[5m]))
                 )
                 /
-                sum by (environment, source) (rate(bank_payment_provider_calls_total[5m]))
+                (sum by (environment, source) (rate(bank_payment_provider_calls_total[5m])) > 0)
             - record: sli:payment_provider:seconds_p95
               expr: |
                 histogram_quantile(0.95, sum by (le, environment) (
@@ -742,6 +1140,56 @@ prometheus:
             - record: sli:deployments_expected:count
               expr: |
                 count by (namespace) (kube_deployment_spec_replicas)
+
+            # Las mismas tres, con la etiqueta `environment` (T-60).
+            #
+            # Las alertas de reinicio leían series que sólo tienen `namespace`,
+            # y la política de Grafana enruta por `environment`: sin ella, todo
+            # reinicio de `dev` caía en la ruta por defecto, que es la de
+            # PRODUCCIÓN. En este clúster el namespace ES el entorno (`dev`,
+            # `prod`), salvo en kind, donde el banco vive en `bank-usac` y su
+            # `deployment.environment` es `local` — que es la ruta que existe
+            # para él. Cualquier otro namespace (`observability`,
+            # `kube-system`) conserva su nombre y va a la ruta por defecto, que
+            # es la correcta: el stack es uno solo y lo opera producción.
+            #
+            # Se hace aquí, en Prometheus, y no con una plantilla en la alerta:
+            # los archivos de aprovisionamiento de Grafana expanden `$…` como
+            # variables de entorno, y un `$1` o un `$labels` escrito ahí llega
+            # vacío sin dar error.
+            - record: sli:pod_restarts_by_environment:max10m
+              expr: |
+                label_replace(
+                  label_replace(max by (namespace) (sli:pod_restarts:increase10m), "environment", "$1", "namespace", "(.+)"),
+                  "environment", "local", "namespace", "bank-usac"
+                )
+            # La correspondencia namespace -> entorno, como serie (T-60).
+            #
+            # Los paneles de plataforma filtran por namespace y el selector de
+            # todos los dashboards es el entorno. En la nube son la misma
+            # palabra (`dev`, `prod`) y bastaba `namespace=~"$environment"`; en
+            # kind el banco vive en `bank-usac` y su entorno es `local`, así que
+            # los paneles de pods, réplicas y HPA —y la anotación de
+            # despliegues— salían vacíos en local. La variable oculta
+            # `$namespace` de cada dashboard lee esta serie: misma regla que
+            # las alertas de reinicio, escrita una vez.
+            - record: sli:namespace_environment:info
+              expr: |
+                label_replace(
+                  label_replace(max by (namespace) (kube_namespace_status_phase{phase="Active"}), "environment", "$1", "namespace", "(.+)"),
+                  "environment", "local", "namespace", "bank-usac"
+                )
+            - record: sli:pods_restarting_by_environment:ratio10m
+              expr: |
+                label_replace(
+                  label_replace(
+                    (sli:pods_restarting:count10m or 0 * sli:deployments_expected:count)
+                    /
+                    (sli:deployments_expected:count > 0),
+                    "environment", "$1", "namespace", "(.+)"
+                  ),
+                  "environment", "local", "namespace", "bank-usac"
+                )
 
   extraScrapeConfigs: |
     # Lo que las aplicaciones empujaron por OTLP, republicado por el Collector.
@@ -805,6 +1253,11 @@ tempo:
 
   tempo:
     retention: 168h # 7 días
+    # El límite sigue en 1 GiB a propósito: no hay cuota para un cuarto nodo
+    # (ver la cabecera), y lo que mataba a Tempo no era el tamaño del límite
+    # sino tres cosas que lo ignoraban. Medido en kind bajo la carga de
+    # `test/load/` (2026-10-19): seis `OOMKilled` en una hora, en el límite de
+    # 1 GiB, y como el pod no tenía disco cada reinicio borró todas las trazas.
     resources:
       requests:
         cpu: 100m
@@ -812,6 +1265,55 @@ tempo:
       limits:
         cpu: 500m
         memory: 1Gi
+
+    # 1. El balasto del chart. Su defecto es `-mem-ballast-size-mbs=1024`: un
+    #    GiB reservado para que el recolector de Go espere a que el montón
+    #    DOBLE (balasto + vivo) antes de limpiar. Con un límite de 1 GiB eso es
+    #    dejar crecer la basura hasta el `OOMKilled`. El truco es anterior a
+    #    GOMEMLIMIT y lo reemplaza lo de abajo.
+    memBallastSizeMbs: 0
+
+    # 2. GOMEMLIMIT al 85 % del límite. Desde Go 1.19 el recolector se vuelve
+    #    agresivo al acercarse a esta cifra en vez de dejar que el kernel mate
+    #    el proceso: bajo presión, Tempo va más lento, no se cae. El 15 % que
+    #    queda es lo que el runtime usa fuera del montón (pilas, mmap de los
+    #    bloques). Si el límite de arriba cambia, esto cambia con él.
+    extraEnv:
+      - name: GOMEMLIMIT
+        value: 870MiB
+
+    # 3. Que el bloque en memoria no pueda crecer hasta el límite. Los
+    #    defectos de Tempo (`max_block_bytes` 500 MB, `max_block_duration`
+    #    30 m) están pensados para ingesters de varios GiB: aquí el bloque
+    #    abierto solo podía ocupar la mitad del pod. Una transferencia con
+    #    compensación son ~230 spans (~250 KB), y la carga de `test/load/`
+    #    —15 VUs— produce del orden de 1-2 MB/s: 50 MB es medio minuto de carga
+    #    máxima, y cortar el bloque a los 5 minutos lo manda al disco aunque el
+    #    tráfico sea poco.
+    ingester:
+      trace_idle_period: 10s
+      max_block_bytes: 50000000
+      max_block_duration: 5m
+      complete_block_timeout: 10m
+      flush_check_period: 10s
+
+    # Y una búsqueda no puede abrir cien bloques a la vez sobre el mismo GiB.
+    querier:
+      max_concurrent_queries: 4
+
+    # Los límites por inquilino (el formato nuevo de Tempo 2.x: `defaults`).
+    # Generosos para la carga real (×3 a ×5 sobre lo medido) y lo bastante
+    # cerca del límite para que un emisor desbocado reciba un rechazo —que el
+    # Collector reintenta y cuenta en su auto-telemetría— en vez de tumbar el
+    # almacén de trazas de todo el banco.
+    overrides:
+      defaults:
+        ingestion:
+          rate_limit_bytes: 6000000
+          burst_size_bytes: 12000000
+          max_traces_per_user: 5000
+        global:
+          max_bytes_per_trace: 2000000
     # Sólo OTLP se declara, pero el chart NO deja quitar el resto, y conviene
     # saberlo antes de auditar la salida:
     #
@@ -954,6 +1456,20 @@ grafana:
     enabled: true
     size: 2Gi
 
+  # SIN el `init-chown-data` del chart (T-60). Ese contenedor corre como root
+  # con TODAS las capacidades quitadas salvo CHOWN, así que no puede entrar en
+  # un directorio 0700 que no es suyo — y Grafana 12 crea `png/`, `pdf/` y
+  # `csv/` en `/var/lib/grafana` justo así. Resultado medido en kind: la
+  # primera instalación arranca (el volumen está vacío), y CUALQUIER reinicio
+  # posterior del pod se queda en `Init:CrashLoopBackOff` con
+  # `chown: /var/lib/grafana/png: Permission denied`. En GKE habría sido
+  # Grafana caído tras el primer reinicio del nodo.
+  #
+  # No hace falta: el pod ya corre con `fsGroup: 472` (defecto del chart), y un
+  # disco persistente de GKE aplica ese grupo al montarlo.
+  initChownData:
+    enabled: false
+
   # Un pod más en tres nodos sin margen, para una prueba que no comprueba nada
   # que `kubectl rollout status` no diga ya.
   testFramework:
@@ -999,15 +1515,26 @@ grafana:
               - name: TraceID
                 matcherType: label
                 matcherRegex: traceId
-                url: '${__value.raw}'
+                # `$$` y no `$`: Grafana expande `${…}` como variable de
+                # entorno en TODO archivo de aprovisionamiento, y
+                # `${__value.raw}` sin escapar llegaba como cadena vacía — el
+                # botón existía y abría Tempo sin consulta (T-60). Es el mismo
+                # escape que ya usa `tracesToLogsV2` más abajo.
+                url: '$${__value.raw}'
                 datasourceUid: bank-tempo
                 urlDisplayLabel: Ver la traza
               # El flujo de negocio de la Fase 1, que no es el traceId: busca
               # todos los logs del mismo correlationId, en todos los servicios.
+              #
+              # Enlace INTERNO a este mismo datasource (T-60). Antes era una URL
+              # de Explore que consultaba `{job=~".+"}`, y con la lista cerrada
+              # de `otlp_config` la etiqueta `job` no existe: el selector no
+              # encontraba ningún stream. `service_name` sí está en todos.
               - name: CorrelationID
                 matcherType: label
                 matcherRegex: correlationId
-                url: '/explore?left={"datasource":"bank-loki","queries":[{"expr":"{job=~\".+\"} | correlationId=\"${__value.raw}\""}]}'
+                datasourceUid: bank-loki
+                url: '{service_name=~".+"} | correlationId="$${__value.raw}"'
                 urlDisplayLabel: Ver el flujo completo
 
         - name: Tempo
@@ -1080,7 +1607,12 @@ grafana:
             - uid: bank-audit-webhook-dev
               type: webhook
               settings:
-                url: http://bank-usac-gateway.dev.svc.cluster.local:3000/api/alerts/slo
+                # `bank-usac-dev-gateway` y no `bank-usac-gateway` (T-60): el
+                # release de desarrollo se llama `bank-usac-dev` (cd.yml), y el
+                # chart compone el nombre del Service con el del release. Con
+                # el nombre de producción, toda alerta de `dev` moría en el DNS
+                # y no llegaba nunca a la bitácora de desarrollo.
+                url: http://bank-usac-dev-gateway.dev.svc.cluster.local:3000/api/alerts/slo
                 httpMethod: POST
                 authorization_scheme: Bearer
                 authorization_credentials: $ALERT_WEBHOOK_TOKEN
@@ -1205,6 +1737,90 @@ grafana:
                           type: gt
                           params: [6]
 
+            # ---- Burn rate de SLO-2, multi-ventana (T-60) -----------------
+            #
+            # El burn rate de transferencias se grababa y no se alertaba. Éstas
+            # son las dos del SRE Workbook, con las DOS ventanas cada una: la
+            # larga dice que el gasto es real, la corta que sigue ocurriendo.
+            #
+            # La condición «las dos por encima» se escribe en PromQL como el
+            # MÍNIMO de las dos series: `(A <= B) or B` deja, por entorno, la
+            # menor. Que el mínimo supere 14.4 es que ambas lo superan. No se
+            # usa una expresión matemática de Grafana (`$A > 14.4 && $B > 14.4`)
+            # porque este archivo de aprovisionamiento expande `$…` como
+            # variable de entorno y `$A` llegaría vacío.
+            - uid: bank-transfer-fast-burn
+              title: TransferLatencyFastBurn
+              condition: C
+              for: 2m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: critical
+                slo: SLO-2
+              annotations:
+                summary: Las transferencias lentas (más de 5 s) consumen el error budget de SLO-2 más de 14.4 veces más rápido de lo admisible, en la última hora Y en los últimos cinco minutos.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/transfer-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: |
+                      (slo:transfer_under_5s:burn_rate1h <= slo:transfer_under_5s:burn_rate5m)
+                      or
+                      slo:transfer_under_5s:burn_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [14.4]
+
+            - uid: bank-transfer-slow-burn
+              title: TransferLatencySlowBurn
+              condition: C
+              for: 15m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-2
+              annotations:
+                summary: Las transferencias lentas gastan el error budget de SLO-2 más de 6 veces más rápido de lo admisible en las últimas 6 h y en la última media hora; a este ritmo se agota antes de cerrar la ventana.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/transfer-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: |
+                      (slo:transfer_under_5s:burn_rate6h <= slo:transfer_under_5s:burn_rate30m)
+                      or
+                      slo:transfer_under_5s:burn_rate30m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [6]
+
         - orgId: 1
           name: slo-breach
           folder: Bank USAC
@@ -1231,6 +1847,78 @@ grafana:
                     editorMode: code
                     instant: true
                     expr: slo:transfer_under_5s:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            # ---- SLO-6 y SLO-7: la latencia del Gateway (T-60) -------------
+            #
+            # Se grababa el p95 y nada más: ni proporción, ni presupuesto, ni
+            # alerta. Mismo criterio que TransferLatencyBreach — media hora por
+            # debajo del 95 % — porque es la misma clase de objetivo: lento no
+            # es caído, y una ráfaga de un minuto no debería despertar a nadie.
+            - uid: bank-gw-read-latency
+              title: GatewayReadLatencyBreach
+              condition: C
+              for: 30m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-6
+              annotations:
+                summary: Menos del 95 % de las lecturas (GET) del Gateway responden en menos de 1 segundo.
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/gateway-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:gateway_reads_under_1s:ratio_rate5m
+                - refId: C
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: lt
+                          params: [0.95]
+
+            - uid: bank-gw-command-latency
+              title: GatewayCommandLatencyBreach
+              condition: C
+              for: 30m
+              noDataState: OK
+              execErrState: Error
+              labels:
+                severity: warning
+                slo: SLO-7
+              annotations:
+                summary: Menos del 95 % de los comandos (POST) del Gateway responden en menos de 3 segundos (medido contra el bucket de 2.5 s, el más cercano por debajo).
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/gateway-latency.md
+              data:
+                - refId: A
+                  relativeTimeRange: { from: 600, to: 0 }
+                  datasourceUid: bank-prometheus
+                  model:
+                    refId: A
+                    editorMode: code
+                    instant: true
+                    expr: slo:gateway_commands_under_3s:ratio_rate5m
                 - refId: C
                   relativeTimeRange: { from: 600, to: 0 }
                   datasourceUid: __expr__
@@ -1282,9 +1970,13 @@ grafana:
               for: 10m
               noDataState: OK
               execErrState: Error
+              # Sin etiqueta `slo` (T-60). Llevaba SLO-14, que es «reintentos
+              # dentro de la escalera» y no tiene nada que ver con una cola
+              # llena. `docs/sre/sli-slo-sla.md` §5.3 la registra como la alerta
+              # que §4.1 exige para la dependencia del broker, sin objetivo
+              # propio; una etiqueta equivocada mandaría al runbook de otro SLO.
               labels:
                 severity: warning
-                slo: SLO-14
               annotations:
                 summary: 'Una cola acumula más de 500 mensajes pendientes: su consumidor no sigue el ritmo.'
                 runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/consumer-lag.md
@@ -1474,6 +2166,7 @@ grafana:
               execErrState: Error
               labels:
                 severity: warning
+                slo: SLO-26
               annotations:
                 summary: Un pod se reinició más de dos veces en diez minutos. Mirar sus sondas y el OOMKill antes que el código.
                 runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/restarts.md
@@ -1485,7 +2178,10 @@ grafana:
                     refId: A
                     editorMode: code
                     instant: true
-                    expr: max(sli:pod_restarts:increase10m)
+                    # Por entorno (T-60): sin `environment` la política
+                    # enrutaba todo reinicio de `dev` a producción. Ver la
+                    # regla `sli:pod_restarts_by_environment:max10m`.
+                    expr: max by (environment) (sli:pod_restarts_by_environment:max10m)
                 - refId: C
                   relativeTimeRange: { from: 600, to: 0 }
                   datasourceUid: __expr__
@@ -1511,9 +2207,11 @@ grafana:
             # creciera o un HPA subiera una réplica. La mitad es el punto donde
             # «varios pods enfermos» deja de ser una explicación plausible.
             #
-            # `severity: critical` y sin `runbook` propio: el camino es el
-            # postmortem del latido, que ya tiene la cronología y el log que hay
-            # que buscar.
+            # `severity: critical`. El runbook es `restarts.md`, que cubre las
+            # dos alertas de reinicio y enlaza el postmortem del latido de AMQP
+            # (la cronología y el log que hay que buscar). Hasta T-60 el enlace
+            # apuntaba directo al postmortem: un postmortem dice qué pasó una
+            # vez, el runbook qué hacer la próxima.
             - uid: bank-mass-restart
               title: MassRestartDependencyLost
               condition: C
@@ -1521,12 +2219,13 @@ grafana:
               execErrState: Error
               labels:
                 severity: critical
+                slo: SLO-26
               annotations:
                 summary: >-
                   Más de la mitad de los componentes se reiniciaron en diez
                   minutos. No es un pod enfermo: es una dependencia compartida
                   caída — el broker, una base, el DNS.
-                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/sre/postmortems/2026-10-15-latido-amqp.md
+                runbook_url: https://github.com/marcosbondel/Proyecto-SA-B-2/blob/main/docs/operations/runbooks/restarts.md
               data:
                 - refId: A
                   relativeTimeRange: { from: 600, to: 0 }
@@ -1542,12 +2241,10 @@ grafana:
                     # existe siempre es una que se puede graficar, y un panel en
                     # blanco no distingue «cero reinicios» de «la regla se
                     # rompió».
-                    expr: |
-                      max(
-                        (sli:pods_restarting:count10m or 0 * sli:deployments_expected:count)
-                        /
-                        sli:deployments_expected:count
-                      )
+                    #
+                    # La fracción se graba ya con `environment`
+                    # (`sli:pods_restarting_by_environment:ratio10m`, T-60).
+                    expr: max by (environment) (sli:pods_restarting_by_environment:ratio10m)
                 - refId: C
                   relativeTimeRange: { from: 600, to: 0 }
                   datasourceUid: __expr__
@@ -1598,10 +2295,16 @@ grafana:
                     refId: A
                     editorMode: code
                     queryType: instant
+                    # Por entorno (T-60). `deployment_environment` es la etiqueta
+                    # indexada que pone el agente de logs; se renombra a
+                    # `environment` porque es la que lee la política de
+                    # Grafana. Sin esto, una liberación a ciegas en `dev` se
+                    # notificaba como si fuera de producción.
                     expr: |
-                      sum(count_over_time(
+                      sum by (environment) (count_over_time(
                         {service_name="payment-service"}
                           |~ "RELEASED_NO_ANSWER|RELEASED_UNKNOWN_AT_PARTNER"
+                          | label_format environment=deployment_environment
                         [15m]
                       ))
                 - refId: C

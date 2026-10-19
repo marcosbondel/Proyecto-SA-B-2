@@ -32,11 +32,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$namespace\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -76,6 +76,28 @@
           "refId": "env"
         },
         "refresh": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+        "description": "El namespace del entorno elegido, leído de la regla sli:namespace_environment:info. En la nube es el mismo nombre (dev, prod); en kind el entorno local vive en bank-usac.",
+        "hide": 2,
+        "includeAll": false,
+        "label": "Namespace",
+        "name": "namespace",
+        "query": {
+          "query": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+          "refId": "namespace"
+        },
+        "refresh": 2,
         "type": "query"
       }
     ]
@@ -516,7 +538,7 @@
             "type": "loki",
             "uid": "bank-loki"
           },
-          "expr": "{service_name=\"payment-service\", environment=\"$environment\"} |= \"interbank\"",
+          "expr": "{service_name=\"payment-service\", deployment_environment=\"$environment\"} |= \"interbank\"",
           "refId": "A",
           "queryType": "range"
         }
@@ -771,7 +793,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(increase(bank_interbank_sent_total{environment=\"$environment\", result=\"timeout\"}[1h]))",
+          "expr": "sum(sli:interbank_sent_timeouts:increase1h{environment=\"$environment\"})",
           "refId": "A",
           "instant": true
         }

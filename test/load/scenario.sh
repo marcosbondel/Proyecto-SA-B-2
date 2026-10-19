@@ -6,6 +6,7 @@
 #   ./test/load/scenario.sh rechazo         # el banco pareja dice no a todo
 #   ./test/load/scenario.sh sin-respuesta   # el banco pareja no contesta
 #   ./test/load/scenario.sh lento           # el banco pareja tarda
+#   ./test/load/scenario.sh indisponible    # el banco pareja contesta 503
 #   ./test/load/scenario.sh proveedor       # el proveedor de pagos falla (T-44)
 #   ./test/load/scenario.sh pod             # se elimina un pod a mitad de carga
 #
@@ -30,7 +31,7 @@ RELEASE="${RELEASE:-bank-usac}"
 # La cuenta MONETARIA sembrada con saldo: la misma que elige `pickAccounts`.
 CUENTA="${CUENTA:-b0000000-0000-4000-8000-000000000003}"
 
-escenario="${1:?Uso: scenario.sh base|rechazo|sin-respuesta|lento|proveedor|pod}"
+escenario="${1:?Uso: scenario.sh base|rechazo|sin-respuesta|lento|indisponible|proveedor|pod}"
 salida="${REPO_ROOT}/tmp/load/${escenario}"
 mkdir -p "$salida"
 
@@ -91,38 +92,72 @@ limpiar() {
 }
 trap limpiar EXIT
 
-# Armar el fallo en el banco pareja simulado.
+# Llamar a la API de administración del banco pareja simulado, **desde dentro de
+# su pod**.
 #
-# **No alcanza con `rollout status`**, y eso costó una medición entera: dice que
-# el despliegue terminó mientras el pod anterior sigue en los Endpoints del
-# Service, así que la carga arranca y la mitad se mide contra el modo viejo. La
-# primera corrida del escenario «rechazo» salió con 113 aceptados y 120
-# rechazados por esto.
+# Desde T-60 el mock cambia de modo EN CALIENTE (`PUT /admin/config`) y ya no
+# hace falta reiniciarlo. Eso elimina de raíz el fallo que costó una medición
+# entera en T-51: `kubectl set env` + `rollout status` decía que el despliegue
+# había terminado mientras el pod anterior seguía en los Endpoints, y la mitad
+# de la carga se medía contra el modo viejo. Aquí no hay pod nuevo que esperar.
 #
-# Lo que sí es determinista: esperar a que quede **un solo pod**, Ready, y que
-# su propio `/health` diga el modo que se pidió. Lo dice sin token justamente
-# para que se pueda preguntar desde aquí.
-modo_del_mock() {
-  local modo="$1" retraso="${2:-}"
-  kc set env "deploy/${RELEASE}-partner-bank-mock" "PARTNER_CALLBACK_MODE=${modo}"     ${retraso:+"PARTNER_CALLBACK_DELAY_MS=${retraso}"} >/dev/null
-  kc rollout status "deploy/${RELEASE}-partner-bank-mock" --timeout=180s >/dev/null
+# Se ejecuta con `kubectl exec` y `node` (la imagen ya lo trae) para que el
+# token de administración se lea del propio entorno del pod y nadie tenga que
+# llevarlo en un archivo o en el historial de la shell.
+#
+#   mock_admin METODO RUTA [CUERPO_JSON]
+mock_admin() {
+  kc exec "deploy/${RELEASE}-partner-bank-mock" -c app -- node -e '
+    const [method, path, body] = process.argv.slice(1);
+    const token = process.env.PARTNER_MOCK_ADMIN_TOKEN;
+    if (!token) { console.error("PARTNER_MOCK_ADMIN_TOKEN vacío: instala el release con partnerMock.adminToken"); process.exit(2); }
+    fetch("http://127.0.0.1:" + (process.env.PARTNER_MOCK_PORT ?? 3021) + path, {
+      method,
+      headers: { "x-admin-token": token, "content-type": "application/json" },
+      body: body || undefined,
+    }).then(async (res) => { console.log(await res.text()); process.exit(res.ok ? 0 : 1); })
+      .catch((error) => { console.error(String(error)); process.exit(1); });
+  ' "$@"
+}
 
-  local pods
-  for _ in $(seq 1 60); do
-    pods="$(kc get pods -l app.kubernetes.io/component=partner-bank-mock       -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.status.containerStatuses[0].ready}{" "}{end}')"
-    if [[ "$(echo "$pods" | wc -w | tr -d ' ')" == "1" && "$pods" == *"=true"* ]]; then
-      local visto
-      visto="$(kc exec "deploy/${RELEASE}-partner-bank-mock" -c app --         node -e 'fetch("http://127.0.0.1:"+(process.env.PARTNER_MOCK_PORT??3021)+"/health").then(r=>r.json()).then(b=>console.log(b.callbackMode))' 2>/dev/null || true)"
-      if [[ "$visto" == "$modo" ]]; then
-        echo "banco pareja en modo ${modo}${retraso:+ con ${retraso} ms de retraso}, confirmado por su /health"
-        return 0
-      fi
+# Armar el fallo en el banco pareja simulado y **comprobar que se armó**.
+#
+# Se confirma por el `/health` del mock —sin token, el mismo que usa el probe—,
+# que dice el modo vigente: es la pregunta que se hace cualquiera que vea un
+# depósito rechazado («¿está el mock en REJECT o es el otro banco?»), y la única
+# garantía de que la carga no arranca contra el modo anterior.
+#
+#   modo_del_mock MODO [CAMPOS_JSON_EXTRA]     p. ej.  modo_del_mock SLOW '"slowMs":12000'
+modo_del_mock() {
+  local modo="$1" extra="${2:-}"
+  local cuerpo="{\"mode\":\"${modo}\"${extra:+,${extra}}}"
+
+  if ! mock_admin PUT /admin/config "$cuerpo" >"${salida}/mock-config.json"; then
+    echo "ERROR: el mock no aceptó la configuración ${cuerpo}: $(cat "${salida}/mock-config.json")" >&2
+    exit 1
+  fi
+
+  local visto
+  for _ in $(seq 1 15); do
+    visto="$(kc exec "deploy/${RELEASE}-partner-bank-mock" -c app -- \
+      node -e 'fetch("http://127.0.0.1:"+(process.env.PARTNER_MOCK_PORT??3021)+"/health").then(r=>r.json()).then(b=>console.log(b.callbackMode))' 2>/dev/null || true)"
+    if [[ "$visto" == "$modo" ]]; then
+      echo "banco pareja en modo ${modo}${extra:+ (${extra})}, confirmado por su /health"
+      return 0
     fi
-    sleep 2
+    sleep 1
   done
 
-  echo "ERROR: el mock no confirmó el modo ${modo} (pods: ${pods})" >&2
+  echo "ERROR: el mock no confirmó el modo ${modo} (su /health dice: ${visto:-nada})" >&2
   exit 1
+}
+
+# Devolver al mock a su estado normal, **sin reiniciarlo y sin borrar lo que
+# recibió** (`/admin/reset` lo borraría: la evidencia del escenario se quedaría
+# sin sus registros).
+restaurar_mock() {
+  mock_admin PUT /admin/config \
+    '{"mode":"ACCEPT","delayMs":1000,"ackDelayMs":0,"failCount":0,"failureRate":0,"statusBehavior":"PROCESSING","honorExpiry":true,"reversal":"COMPLETE"}'
 }
 
 # Mover la perilla de T-44, y **comprobar que se movió**.
@@ -149,9 +184,18 @@ apagar_simulacion() {
 script="interbank.js"
 case "$escenario" in
   base)          modo_del_mock ACCEPT;  restaurar+=("true") ;;
-  rechazo)       modo_del_mock REJECT;  restaurar+=("kubectl --context $CONTEXT -n $NAMESPACE set env deploy/${RELEASE}-partner-bank-mock PARTNER_CALLBACK_MODE=ACCEPT") ;;
-  sin-respuesta) modo_del_mock TIMEOUT; restaurar+=("kubectl --context $CONTEXT -n $NAMESPACE set env deploy/${RELEASE}-partner-bank-mock PARTNER_CALLBACK_MODE=ACCEPT") ;;
-  lento)         modo_del_mock SLOW 12000; restaurar+=("kubectl --context $CONTEXT -n $NAMESPACE set env deploy/${RELEASE}-partner-bank-mock PARTNER_CALLBACK_MODE=ACCEPT PARTNER_CALLBACK_DELAY_MS=1000") ;;
+  rechazo)       modo_del_mock REJECT '"rejectReason":"ACCOUNT_NOT_FOUND"'; restaurar+=("restaurar_mock") ;;
+  # El banco recibe el depósito (202) y no contesta jamás. El contrato manda
+  # esperar los 180 s de `expiresAt`, consultar (PROCESSING), cancelar y sólo
+  # entonces compensar: la Saga tarda minutos, no segundos. Por eso la carga es
+  # menor y la espera por Saga mayor, y los dos son sobrescribibles.
+  sin-respuesta) modo_del_mock TIMEOUT; restaurar+=("restaurar_mock")
+                 export TASA="${TASA:-0.5}" SAGA_WAIT_MS="${SAGA_WAIT_MS:-260000}" SAGA_P95_MS="${SAGA_P95_MS:-260000}"
+                 ESPERA_FINAL="${ESPERA_FINAL:-30}" ;;
+  lento)         modo_del_mock SLOW '"slowMs":12000'; restaurar+=("restaurar_mock") ;;
+  # Todo el contrato responde 503 con Retry-After: el emisor debe reintentar con
+  # espera creciente y no perder ni duplicar el dinero.
+  indisponible)  modo_del_mock UNAVAILABLE; restaurar+=("restaurar_mock") ;;
   proveedor)
     script="transfer.js"
     # En caliente y por la ruta de administración de T-44: sin reinicio, que es
@@ -186,8 +230,12 @@ wait 2>/dev/null || true
 # Treinta segundos: el plazo de confirmación del banco pareja es de 30 s y el
 # barrido corre después. Mirar antes de eso es contar compensaciones que todavía
 # no tocaba hacer.
-echo "esperando 45 s a que cierre lo que quedó en vuelo…"
-sleep 45
+echo "esperando ${ESPERA_FINAL:-45} s a que cierre lo que quedó en vuelo…"
+sleep "${ESPERA_FINAL:-45}"
+
+# Lo que el mock vio, según el mock: la otra mitad de la evidencia. Falla en
+# silencio a propósito (`|| true`): sin esto el resumen sigue siendo válido.
+mock_admin GET /admin/received >"${salida}/mock-recibidos.json" 2>/dev/null || true
 
 {
   echo "escenario:      $escenario"

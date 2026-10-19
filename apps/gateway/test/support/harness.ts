@@ -43,10 +43,17 @@ import {
   INTERBANK_API_KEYS,
   InterbankApiKeyGuard,
 } from '../../src/interfaces/guards/interbank-api-key.guard';
-import { INTERBANK_BANK_CODE } from '../../src/interfaces/interbank-v1.tokens';
+import {
+  INTERBANK_BANK_CODE,
+  INTERBANK_MAX_AMOUNT_MINOR,
+  INTERBANK_PARTNER_BANK_CODE,
+} from '../../src/interfaces/interbank-v1.tokens';
+import { InterbankSendUseCase } from '../../src/application/routes/interbank-send.use-case';
 import { JwtGuard, SESSION_VERIFIER } from '../../src/interfaces/guards/jwt.guard';
 import { RolesGuard } from '../../src/interfaces/guards/roles.guard';
 import { BROKER_HEALTH } from '../../src/interfaces/health.controller';
+import { accessLogMiddleware } from '../../src/interfaces/middleware/access-log.middleware';
+import type { AccessLog } from '../../src/interfaces/middleware/access-log.middleware';
 import { CorrelationMiddleware } from '../../src/interfaces/middleware/correlation.middleware';
 import { validationExceptionFactory } from '../../src/interfaces/validation';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
@@ -194,6 +201,8 @@ export const TEST_INTERBANK_TOKEN = 'an-interbank-partner-token-of-32-chars!!';
 export const TEST_INTERBANK_API_KEY = 'an-interbank-api-key-of-32-characters!!';
 export const TEST_PARTNER_BANK_CODE = 'BANK99';
 export const TEST_OWN_BANK_CODE = 'BANK02';
+/** El límite por operación del contrato: Q10 000,00 (T-60). */
+export const TEST_MAX_AMOUNT_MINOR = 1_000_000;
 
 export interface Harness {
   readonly app: INestApplication;
@@ -207,6 +216,7 @@ export interface Harness {
 export async function buildHarness(
   controllers: readonly unknown[],
   providers: readonly unknown[] = [],
+  options: { readonly accessLog?: AccessLog } = {},
 ): Promise<Harness> {
   const publisher = new RecordingPublisher();
   const replier = new ScriptedReplier();
@@ -255,6 +265,9 @@ export async function buildHarness(
         useValue: { [TEST_PARTNER_BANK_CODE]: TEST_INTERBANK_API_KEY },
       },
       { provide: INTERBANK_BANK_CODE, useValue: TEST_OWN_BANK_CODE },
+      { provide: INTERBANK_PARTNER_BANK_CODE, useValue: TEST_PARTNER_BANK_CODE },
+      { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: TEST_MAX_AMOUNT_MINOR },
+      InterbankSendUseCase,
       { provide: BROKER_HEALTH, useValue: { isConnected: () => brokerUp.value } },
       { provide: APP_GUARD, useClass: JwtGuard },
       { provide: APP_GUARD, useClass: RolesGuard },
@@ -277,6 +290,10 @@ export async function buildHarness(
   // no `configure`, so it is attached here to keep the request shape identical.
   const correlation = new CorrelationMiddleware();
   app.use(correlation.use.bind(correlation));
+  // And the access log, only for the specs that ask to read it.
+  if (options.accessLog !== undefined) {
+    app.use(accessLogMiddleware(options.accessLog));
+  }
   await app.init();
 
   return { app, publisher, replier, storage, tokens, brokerUp };

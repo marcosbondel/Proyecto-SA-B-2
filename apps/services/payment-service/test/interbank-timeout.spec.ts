@@ -1,4 +1,5 @@
 import {
+  resolveBackoff,
   resolveTimeout,
   timeoutSchedule,
   type PartnerCancel,
@@ -34,6 +35,8 @@ function hechos(overrides: Partial<TimeoutFacts> = {}): TimeoutFacts {
     releaseNotBefore,
     probe: null,
     cancel: null,
+    probeAttempts: 0,
+    maxProbeAttempts: 3,
     ...overrides,
   };
 }
@@ -161,30 +164,76 @@ describe('las tres respuestas de la cancelación', () => {
   });
 });
 
-describe('sin respuesta, el margen gobierna', () => {
-  it('espera con el dinero reservado mientras el margen no pase', () => {
-    const action = resolveTimeout(
-      hechos({ now: new Date(releaseNotBefore.getTime() - 1), probe: { kind: 'UNREACHABLE' } }),
-    );
+describe('sin respuesta, se insiste y sólo entonces el margen libera (T-60)', () => {
+  const justoAntes = new Date(releaseNotBefore.getTime() - 1);
 
-    expect(action).toEqual({ kind: 'WAIT', until: releaseNotBefore });
+  it('un sondeo sin respuesta se reintenta hasta agotar los intentos', () => {
+    /*
+     * Antes un `UNREACHABLE` esperaba al margen sin volver a preguntar, y el
+     * contrato dice «consulta … con reintentos». Un banco que vuelve un minuto
+     * después de la primera consulta fallida tiene que ser consultado otra vez.
+     */
+    for (const intentos of [1, 2]) {
+      expect(
+        resolveTimeout(
+          hechos({ probe: { kind: 'UNREACHABLE' }, probeAttempts: intentos, now: justoAntes }),
+        ),
+      ).toEqual({ kind: 'PROBE' });
+    }
   });
 
-  it('espera también con la cancelación sin contestar', () => {
+  it('agotados los intentos de consulta pasa a cancelar', () => {
+    expect(
+      resolveTimeout(
+        hechos({ probe: { kind: 'UNREACHABLE' }, probeAttempts: 3, now: justoAntes }),
+      ),
+    ).toEqual({ kind: 'CANCEL' });
+  });
+
+  it('con la cancelación sin contestar sigue cancelando mientras corre el margen', () => {
+    /*
+     * La cancelación cubre las tres salidas (`CANCELLED`, `ALREADY_ACCEPTED`,
+     * `ALREADY_REJECTED`), así que es la pregunta que más vale repetir. Antes
+     * esperaba (`WAIT`) sin intentarlo de nuevo.
+     */
     const action = resolveTimeout(
       hechos({
-        now: new Date(releaseNotBefore.getTime() - 1),
+        now: justoAntes,
         probe: { kind: 'UNKNOWN' },
         cancel: { kind: 'UNREACHABLE' },
+        probeAttempts: 1,
       }),
     );
 
-    expect(action).toEqual({ kind: 'WAIT', until: releaseNotBefore });
+    expect(action).toEqual({ kind: 'CANCEL' });
   });
 
-  it('pasado el margen libera, marcado como no verificado', () => {
+  it('nunca libera sin haber intentado cancelar, ni siquiera pasado el margen', () => {
+    /*
+     * Cancelar al menos una vez es lo que deja la constancia que hace
+     * defendible una liberación a ciegas. Si el margen pasó con la consulta
+     * reintentándose y la cancelación sin intentar, primero se cancela.
+     */
     const action = resolveTimeout(
-      hechos({ now: releaseNotBefore, probe: { kind: 'UNREACHABLE' } }),
+      hechos({
+        now: releaseNotBefore,
+        probe: { kind: 'UNREACHABLE' },
+        probeAttempts: 1,
+        cancel: null,
+      }),
+    );
+
+    expect(action).toEqual({ kind: 'CANCEL' });
+  });
+
+  it('pasado el margen, con las dos preguntas sin respuesta, libera marcado como no verificado', () => {
+    const action = resolveTimeout(
+      hechos({
+        now: releaseNotBefore,
+        probe: { kind: 'UNREACHABLE' },
+        probeAttempts: 3,
+        cancel: { kind: 'UNREACHABLE' },
+      }),
     );
 
     expect(action).toEqual({ kind: 'RELEASE_UNVERIFIED', reason: 'RELEASED_NO_ANSWER' });
@@ -205,16 +254,66 @@ describe('sin respuesta, el margen gobierna', () => {
     });
   });
 
-  it('el límite es exacto: un milisegundo antes todavía se espera', () => {
-    const justoAntes = new Date(releaseNotBefore.getTime() - 1);
-    const justo = releaseNotBefore;
-
-    expect(resolveTimeout(hechos({ now: justoAntes, probe: { kind: 'UNREACHABLE' } })).kind).toBe(
-      'WAIT',
+  it('un banco que contesta la consulta (PROCESSING) y nunca la cancelación no retiene el dinero para siempre', () => {
+    const antes = resolveTimeout(
+      hechos({
+        now: justoAntes,
+        probe: contesta('PROCESSING'),
+        cancel: { kind: 'UNREACHABLE' },
+      }),
     );
-    expect(resolveTimeout(hechos({ now: justo, probe: { kind: 'UNREACHABLE' } })).kind).toBe(
+    const despues = resolveTimeout(
+      hechos({
+        now: releaseNotBefore,
+        probe: contesta('PROCESSING'),
+        cancel: { kind: 'UNREACHABLE' },
+      }),
+    );
+
+    expect(antes).toEqual({ kind: 'CANCEL' });
+    expect(despues.kind).toBe('RELEASE_UNVERIFIED');
+  });
+
+  it('el límite es exacto: un milisegundo antes todavía se insiste', () => {
+    const sinRespuesta = {
+      probe: { kind: 'UNREACHABLE' } as const,
+      cancel: { kind: 'UNREACHABLE' } as const,
+      probeAttempts: 3,
+    };
+
+    expect(resolveTimeout(hechos({ ...sinRespuesta, now: justoAntes })).kind).toBe('CANCEL');
+    expect(resolveTimeout(hechos({ ...sinRespuesta, now: releaseNotBefore })).kind).toBe(
       'RELEASE_UNVERIFIED',
     );
+  });
+
+  it('una respuesta tardía manda sobre el margen: ACCEPTED confirma tras el margen', () => {
+    expect(
+      resolveTimeout(
+        hechos({ now: new Date(releaseNotBefore.getTime() + 1), probe: contesta('ACCEPTED') }),
+      ),
+    ).toEqual({ kind: 'CONFIRM' });
+  });
+});
+
+describe('la espera entre intentos', () => {
+  const ahora = new Date(expiresAt.getTime() + 1_000);
+  const base = { now: ahora, baseMs: 5_000, capMs: 60_000, releaseNotBefore };
+
+  it('crece al doble con cada fallo, hasta un techo', () => {
+    const esperas = [1, 2, 3, 4, 5, 6].map(
+      (failures) => resolveBackoff({ ...base, failures }).getTime() - ahora.getTime(),
+    );
+
+    expect(esperas).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000]);
+  });
+
+  it('no pasa del margen: a esa hora hay que volver a mirar', () => {
+    const casiAlMargen = new Date(releaseNotBefore.getTime() - 2_000);
+
+    expect(
+      resolveBackoff({ ...base, now: casiAlMargen, failures: 6 }).getTime(),
+    ).toBe(releaseNotBefore.getTime());
   });
 });
 
@@ -230,17 +329,20 @@ describe('lo que nunca hace', () => {
       null,
       { kind: 'UNREACHABLE' },
       { kind: 'UNKNOWN' },
+      contesta('PROCESSING'),
     ];
     const cancelaciones: (PartnerCancel | null)[] = [null, { kind: 'UNREACHABLE' }];
 
     for (const probe of sinRespuesta) {
       for (const cancel of cancelaciones) {
-        for (const offset of [1, 1_000, MARGEN - 1]) {
-          const action = resolveTimeout(
-            hechos({ now: new Date(expiresAt.getTime() + offset), probe, cancel }),
-          );
+        for (const probeAttempts of [0, 1, 3, 10]) {
+          for (const offset of [1, 1_000, MARGEN - 1]) {
+            const action = resolveTimeout(
+              hechos({ now: new Date(expiresAt.getTime() + offset), probe, cancel, probeAttempts }),
+            );
 
-          expect(['PROBE', 'CANCEL', 'WAIT']).toContain(action.kind);
+            expect(['PROBE', 'CANCEL']).toContain(action.kind);
+          }
         }
       }
     }

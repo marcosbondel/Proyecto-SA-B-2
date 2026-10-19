@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$namespace\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -81,6 +81,28 @@
           "refId": "env"
         },
         "refresh": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+        "description": "El namespace del entorno elegido, leído de la regla sli:namespace_environment:info. En la nube es el mismo nombre (dev, prod); en kind el entorno local vive en bank-usac.",
+        "hide": 2,
+        "includeAll": false,
+        "label": "Namespace",
+        "name": "namespace",
+        "query": {
+          "query": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+          "refId": "namespace"
+        },
+        "refresh": 2,
         "type": "query"
       }
     ]
@@ -334,7 +356,7 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Throughput por servicio (mensajes/s)",
+      "title": "Throughput por servicio: consumido y publicado (mensajes/s)",
       "datasource": {
         "type": "prometheus",
         "uid": "bank-prometheus"
@@ -377,11 +399,20 @@
             "uid": "bank-prometheus"
           },
           "expr": "sli:throughput_by_service:rate5m{environment=\"$environment\"}",
-          "legendFormat": "{{service_name}}",
+          "legendFormat": "{{service_name}} · consumido",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "sli:published_by_service:rate5m{environment=\"$environment\"}",
+          "legendFormat": "{{service_name}} · publicado",
+          "refId": "B"
         }
       ],
-      "description": "Si esto cae a cero, los cuatro indicadores de arriba se quedan sin denominador: nadie está usando el banco."
+      "description": "Lo consumido y lo publicado, por servicio. Con una sola de las dos, un productor que deja de publicar y un consumidor que deja de leer se ven igual."
     },
     {
       "id": 6,
@@ -478,7 +509,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum by (deployment) (kube_deployment_status_replicas_available{namespace=~\"$environment\"})",
+          "expr": "sum by (deployment) (kube_deployment_status_replicas_available{namespace=~\"$namespace\"})",
           "legendFormat": "{{deployment}}",
           "refId": "A"
         }

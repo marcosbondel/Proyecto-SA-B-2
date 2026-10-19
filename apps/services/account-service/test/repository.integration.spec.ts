@@ -126,6 +126,43 @@ describeIntegration('PostgresAccountRepository', () => {
     ]);
   });
 
+  it('resolves an account by its contract number and credits it once, even when the deposit is redelivered (B3)', async () => {
+    /*
+     * The inbound v1 flow names the destination `02-NNNNNNNNN`. The lookup used
+     * to be by UUID only, so no v1 deposit was ever credited.
+     */
+    const id = await seed(0);
+    const stored = await repository.findById(id);
+    const publisher = new RecordingPublisher();
+    const useCase = new InterbankAccountUseCase({
+      repository,
+      publisher,
+      clock: new FixedClock(NOW),
+    });
+    const depositId = randomUUID();
+
+    expect(stored?.accountNumber).toMatch(/^02-\d{9}$/);
+    expect((await repository.findByNumber(stored!.accountNumber))?.accountId).toBe(id);
+    expect(await repository.findByNumber('02-999999999')).toBeNull();
+
+    await useCase.credit({
+      depositId,
+      accountNumber: stored!.accountNumber,
+      amount: quetzales(15000),
+    });
+    await useCase.credit({
+      depositId,
+      accountNumber: stored!.accountNumber,
+      amount: quetzales(15000),
+    });
+
+    expect((await repository.findById(id))?.balanceMinor).toBe(15000);
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.interbank.credited.v1',
+      payload: { accountId: id, accountNumber: stored!.accountNumber },
+    });
+  });
+
   describe('money survives the round trip', () => {
     it('stores and reads back the values that floating point ruins', async () => {
       for (const minor of [1, 7, 1_999, 5_000, 100_049]) {

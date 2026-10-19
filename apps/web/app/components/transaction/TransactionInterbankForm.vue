@@ -4,10 +4,12 @@ import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState, LoadState } from '../../lib/gateway-error';
 import {
   INTERBANK_ACCEPTED_MESSAGE,
+  MAX_INTERBANK_AMOUNT_MINOR,
   MAX_PARTNER_ACCOUNT,
   interbankProblems,
   interbankRequestBody,
 } from '../../lib/interbank';
+import { interbankDetailPath } from '../../lib/interbank-deposit';
 import { formatQuetzales } from '../../lib/money';
 
 /**
@@ -177,12 +179,17 @@ async function submit(): Promise<void> {
   correlationId.value = result.data.correlationId ?? result.correlationId;
 
   /**
-   * A la pantalla que sigue la transferencia, no a un cartel de éxito. Es la
-   * misma de `T-03` y vale sin cambios porque un depósito interbancario **es**
-   * una transferencia: sus estados son los de la Saga, y lo que el banco
-   * pareja decida se verá ahí como se ve cualquier pago.
+   * Al depósito, no a la Saga (TD-090). Lo que alguien espera ver después de
+   * enviar es lo que el otro banco decida —`SENT`, `ACCEPTED`, `REJECTED`,
+   * `TIMEOUT`, `REVERSED`—, y la Saga no tiene esos estados. El identificador de
+   * la transferencia viaja en la dirección: la pantalla del depósito ofrece ir a
+   * ella, que sigue siendo la que cuenta el débito y la devolución, y es la que
+   * explica por qué no hay depósito si la verificación o el débito lo cerraron
+   * antes de llegar al otro banco.
    */
-  await navigateTo(`/transferencias/${result.data.transactionId}`);
+  await navigateTo(
+    interbankDetailPath(result.data.interbankTransferId, result.data.transactionId),
+  );
 }
 </script>
 
@@ -242,13 +249,13 @@ async function submit(): Promise<void> {
         label="Código del banco de destino"
         name="destinationBankCode"
         :error="shown.destinationBankCode"
-        help="El que acordaron los dos bancos, en mayúsculas. Por ejemplo BANCO_PAREJA."
+        help="BANK seguido de dos dígitos, el que acordaron los dos bancos. Por ejemplo BANK99."
       >
         <UInput
           v-model="destinationBankCode"
           class="w-full"
           data-testid="interbank-bank-code"
-          placeholder="BANCO_PAREJA"
+          placeholder="BANK99"
           autocapitalize="characters"
         />
       </UFormField>
@@ -257,7 +264,7 @@ async function submit(): Promise<void> {
         label="Cuenta de destino en ese banco"
         name="destinationAccount"
         :error="shown.destinationAccount"
-        :help="`Tal como la nombra el otro banco, hasta ${MAX_PARTNER_ACCOUNT} caracteres. Este banco no puede comprobar que exista.`"
+        :help="`Tal como la nombra el otro banco: letras, números y guiones, hasta ${MAX_PARTNER_ACCOUNT} caracteres. Este banco no puede comprobar que exista.`"
       >
         <UInput
           v-model="destinationAccount"
@@ -267,7 +274,12 @@ async function submit(): Promise<void> {
         />
       </UFormField>
 
-      <UFormField label="Monto" name="amount" :error="shown.amount" help="En quetzales.">
+      <UFormField
+        label="Monto"
+        name="amount"
+        :error="shown.amount"
+        :help="`En quetzales. Máximo ${formatQuetzales(MAX_INTERBANK_AMOUNT_MINOR)} por depósito.`"
+      >
         <UInput
           v-model.number="amountQuetzales"
           class="w-full"

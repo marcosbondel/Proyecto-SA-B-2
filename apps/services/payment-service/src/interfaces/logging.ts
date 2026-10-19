@@ -29,13 +29,18 @@ export interface LogFields {
   readonly reason?: string;
   readonly durationMs?: number;
   readonly error?: string;
+  /** The sweep step that failed (T-60); the rest of the pass carries on. */
+  readonly step?: string;
   /** The attempt number, and what the simulated provider answered on it (T-44). */
   readonly attempt?: number;
   readonly providerResult?: string;
   readonly errorType?: string;
   /** Always `true` for a provider failure: there is no real provider in this system. */
   readonly simulated?: boolean;
-  /** `scenario` when the transfer scripted the answer, `configuration` when the rates did. */
+  /**
+   * `scenario` when the transfer scripted the answer, `configuration` when the
+   * ConfigMap's rates did, `runtime` when an administrator's override did (T-60).
+   */
   readonly source?: string;
   readonly latencyMs?: number;
   readonly failureRatePercent?: number;

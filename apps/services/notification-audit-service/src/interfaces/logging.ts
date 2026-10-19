@@ -38,8 +38,9 @@ export interface LogFields {
   readonly attempt?: number;
   /**
    * The path an email would link to — the activation link, or the
-   * password-reset one — written only by the simulated delivery channel and
-   * only outside production (TD-043).
+   * password-reset one — written only by the simulated delivery channel, with
+   * the token masked (`token=***`) unless `REVEAL_ACTIVATION_LINKS` is on, which
+   * is for a developer's machine (TD-043, T-60).
    *
    * Named for what it is rather than for the first flow that needed it: two
    * messages in the catalogue carry a token now, and a reset link logged under

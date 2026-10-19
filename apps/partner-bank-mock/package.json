@@ -2,19 +2,20 @@
   "name": "partner-bank-mock",
   "version": "0.0.0",
   "private": true,
-  "description": "Optional local partner bank for provisional interbank contract T-46",
+  "description": "Banco pareja simulado: implementa el contrato interbancario oficial v1 en los dos roles (receptor y emisor), con inyeccion de fallos en caliente",
   "type": "module",
   "scripts": {
-    "build": "node --check server.mjs",
+    "build": "node scripts/check-syntax.mjs && node scripts/sync-contract.mjs --check",
+    "contract:sync": "node scripts/sync-contract.mjs",
     "dev": "node --env-file-if-exists=../../infra/docker/.env server.mjs",
     "start": "node server.mjs",
     "lint": "eslint .",
     "test": "node --test test/*.test.mjs",
-    "typecheck": "node --check server.mjs"
+    "typecheck": "node scripts/check-syntax.mjs"
   },
   "devDependencies": {
-    "@bank/contracts": "workspace:*",
     "@bank/tooling": "workspace:*",
-    "eslint": "catalog:"
+    "eslint": "catalog:",
+    "yaml": "catalog:"
   }
 }

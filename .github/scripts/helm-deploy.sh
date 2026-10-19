@@ -75,6 +75,11 @@
 #   ZERO_DOWNTIME_PROBE_URL  si esta definida, se sondea durante la
 #                    actualizacion para medir si hubo caida.
 #
+#   ALERT_WEBHOOK_TOKEN  el secreto compartido del webhook de alertas (T-60).
+#                    Si esta, gana sobre `secrets.alertWebhookToken` de
+#                    HELM_SECRETS; es el mismo valor que el job
+#                    `deploy-observability` pone en el Secret de Grafana.
+#
 #   WEB_PUBLIC_URL   el origen desde el que el navegador carga el frontend, para
 #                    `gateway.corsAllowedOrigins`. Opcional y sin valor por
 #                    defecto derivado a proposito: es el origen del *frontend*,
@@ -125,6 +130,37 @@ declare -a SECRET_ARGS=("${SET_LINES[@]}")
 if [ ${#SECRET_ARGS[@]} -eq 0 ]; then
   echo "::error::HELM_SECRETS vacio. templates/secret.yaml marca esos valores como 'required' y helm fallaria con un error mucho menos claro."
   exit 1
+fi
+
+# El token del webhook de alertas (T-60, A3), con UNA fuente.
+#
+# Grafana (namespace `observability`) y el Gateway de cada entorno tienen que
+# tener el MISMO valor: Grafana lo manda como `Bearer` y el Gateway lo compara.
+# Antes eran dos: el Gateway lo leia de una linea de HELM_SECRETS y Grafana de
+# un Secret que se creaba a mano (`docs/operations/CLOUD.md`). Dos copias de un
+# secreto divergen, y cuando divergen el Gateway responde 401 y la alerta no
+# llega a la bitacora sin que nada falle.
+#
+# Ahora las dos mitades leen el secreto de GitHub `ALERT_WEBHOOK_TOKEN`: el job
+# `deploy-observability` crea con el el Secret de Grafana, y este script lo
+# pasa al chart del banco DESPUES de HELM_SECRETS, de modo que gana sobre una
+# linea vieja que siguiera ahi. Sin la variable, se conserva el comportamiento
+# anterior (lo que traiga HELM_SECRETS) con un aviso.
+declare -a ALERT_ARGS=()
+if [ -n "${ALERT_WEBHOOK_TOKEN:-}" ]; then
+  # El Gateway se niega a arrancar con un token de menos de 32 caracteres; es
+  # mejor decirlo aqui que en un CrashLoopBackOff.
+  if [ "${#ALERT_WEBHOOK_TOKEN}" -lt 32 ]; then
+    echo "::error::ALERT_WEBHOOK_TOKEN tiene ${#ALERT_WEBHOOK_TOKEN} caracteres. El Gateway exige al menos 32 y no arrancaria."
+    exit 1
+  fi
+  if grep -q '^[[:space:]]*secrets\.alertWebhookToken=' <<<"${HELM_SECRETS:-}"; then
+    echo "::warning::HELM_SECRETS todavia trae secrets.alertWebhookToken; se ignora en favor del secreto ALERT_WEBHOOK_TOKEN. Conviene quitar esa linea para que haya una sola fuente."
+  fi
+  ALERT_ARGS+=(--set-string "secrets.alertWebhookToken=${ALERT_WEBHOOK_TOKEN}")
+  echo "Token del webhook de alertas: desde el secreto ALERT_WEBHOOK_TOKEN (el mismo que recibe Grafana)."
+else
+  echo "::warning::Sin ALERT_WEBHOOK_TOKEN: el Gateway usa lo que traiga HELM_SECRETS. Si no coincide con el Secret grafana-alert-webhook, las alertas de Grafana reciben 401 y no llegan a la bitacora."
 fi
 
 read_set_lines "${INFRA_ADDRESSES:-}"
@@ -346,6 +382,7 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   ${OTEL_EXPORTER_OTLP_ENDPOINT:+--set-string "observability.otlpEndpoint=${OTEL_EXPORTER_OTLP_ENDPOINT}"} \
   ${WEB_PUBLIC_URL:+--set-string "gateway.corsAllowedOrigins=${WEB_PUBLIC_URL}"} \
   "${SECRET_ARGS[@]}" \
+  ${ALERT_ARGS[@]+"${ALERT_ARGS[@]}"} \
   "${INFRA_ARGS[@]}" \
   "${IMAGE_ARGS[@]}" \
   --wait \

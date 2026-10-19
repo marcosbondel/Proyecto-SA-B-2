@@ -123,6 +123,12 @@ import {
   paymentInterbankSentV1,
 } from './interbank/outgoing.v1';
 import {
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendListRepliedV1,
+  paymentInterbankSendQueryV1,
+  paymentInterbankSendRepliedV1,
+} from './interbank/send-views.v1';
+import {
   paymentInterbankV1CancelQueryV1,
   paymentInterbankV1CancelRepliedV1,
   paymentInterbankV1ReconciliationQueryV1,
@@ -143,6 +149,7 @@ export * from './interbank/incoming.v1';
 export * from './interbank/outgoing.v1';
 export * from './interbank/v1';
 export * from './interbank/v1-messages';
+export * from './interbank/send-views.v1';
 
 export * from './customer/customer.activation.requested.v1';
 export * from './customer/customer.authenticate.replied.v1';
@@ -391,6 +398,11 @@ export const catalog: readonly MessageContract[] = [
    */
   paymentInterbankV1TransferQueryV1,
   paymentInterbankV1TransferRepliedV1,
+  /* Las cuatro de T-60 (B10): consultar los depósitos enviados. */
+  paymentInterbankSendQueryV1,
+  paymentInterbankSendRepliedV1,
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendListRepliedV1,
   paymentInterbankV1StatusQueryV1,
   paymentInterbankV1StatusRepliedV1,
   paymentInterbankV1CancelQueryV1,

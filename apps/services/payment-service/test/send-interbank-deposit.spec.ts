@@ -3,6 +3,8 @@ import type { MessageEnvelope, PaymentRequestedV1 } from '@bank/contracts';
 import type {
   InterbankSend,
   InterbankSendRepository,
+  InterbankSendReversalState,
+  PartnerReversal,
 } from '../src/application/interbank-send.ports';
 import type { OutboxMessage } from '../src/application/ports';
 import type { PartnerCancel, PartnerProbe } from '../src/domain/interbank-timeout';
@@ -22,6 +24,8 @@ import { settlementOf, type InterbankSendState } from '../src/domain/interbank-s
 const TRANSFER = 'local-demo-1';
 const PAYMENT = '00000000-0000-4000-8000-00000000aaaa';
 const TRANSACTION = '00000000-0000-4000-8000-00000000bbbb';
+const CLIENTE = '00000000-0000-4000-8000-00000000cccc';
+const TRACEPARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
 
 function comando(): MessageEnvelope<PaymentRequestedV1> {
   return {
@@ -33,7 +37,7 @@ function comando(): MessageEnvelope<PaymentRequestedV1> {
     causationId: null,
     idempotencyKey: 'clave-del-cliente',
     occurredAt: '2026-01-01T00:00:00.000Z',
-    identity: null,
+    identity: { customerId: CLIENTE, role: 'CLIENTE' },
     payload: {
       paymentId: PAYMENT,
       transactionId: TRANSACTION,
@@ -43,6 +47,7 @@ function comando(): MessageEnvelope<PaymentRequestedV1> {
         account: 'cuenta-de-alla-1',
         interbankTransferId: TRANSFER,
         idempotencyKey: 'clave-interbancaria',
+        originAccount: '02-000000052',
       },
     },
   } as MessageEnvelope<PaymentRequestedV1>;
@@ -58,7 +63,22 @@ class RepositorioEnMemoria implements InterbankSendRepository {
   public perderCarrera = false;
 
   public async open(input: {
-    send: Omit<InterbankSend, 'state' | 'reason' | 'attempts' | 'verdictEnqueuedAt' | 'probe' | 'cancel' | 'resolveNotBefore'>;
+    send: Omit<
+      InterbankSend,
+      | 'state'
+      | 'reason'
+      | 'attempts'
+      | 'verdictEnqueuedAt'
+      | 'probe'
+      | 'cancel'
+      | 'resolveNotBefore'
+      | 'probeAttempts'
+      | 'cancelAttempts'
+      | 'reversal'
+      | 'decidedAt'
+      | 'sentAt'
+      | 'reversedAt'
+    >;
     now: Date;
   }): Promise<{ kind: 'CREATED' | 'DUPLICATE'; send: InterbankSend }> {
     const existente = this.filas.get(input.send.interbankTransferId);
@@ -76,6 +96,12 @@ class RepositorioEnMemoria implements InterbankSendRepository {
       probe: null,
       cancel: null,
       resolveNotBefore: null,
+      probeAttempts: 0,
+      cancelAttempts: 0,
+      reversal: null,
+      decidedAt: null,
+      sentAt: null,
+      reversedAt: null,
     };
     this.filas.set(fila.interbankTransferId, fila);
 
@@ -190,8 +216,78 @@ class RepositorioEnMemoria implements InterbankSendRepository {
       ...fila,
       probe: input.probe ?? fila.probe,
       cancel: input.cancel ?? fila.cancel,
+      probeAttempts: fila.probeAttempts + (input.probe === undefined ? 0 : 1),
+      cancelAttempts: fila.cancelAttempts + (input.cancel === undefined ? 0 : 1),
       resolveNotBefore: input.resolveNotBefore,
     });
+  }
+
+  public async requestReversal(input: {
+    interbankTransferId: string;
+    reversalId: string;
+    now: Date;
+  }): Promise<boolean> {
+    const fila = this.filas.get(input.interbankTransferId);
+
+    if (fila === undefined || fila.reversal !== null) return false;
+    if (fila.state !== 'REJECTED' && fila.state !== 'REVERSED') return false;
+
+    this.filas.set(input.interbankTransferId, {
+      ...fila,
+      reversal: {
+        reversalId: input.reversalId,
+        state: 'PENDING',
+        attempts: 0,
+        nextAt: input.now,
+        refundTransferId: null,
+        message: null,
+      },
+    });
+
+    return true;
+  }
+
+  public async claimReversals(now: Date): Promise<readonly InterbankSend[]> {
+    return [...this.filas.values()].filter(
+      (f) =>
+        f.reversal !== null &&
+        (f.reversal.state === 'PENDING' || f.reversal.state === 'PROCESSING') &&
+        f.reversal.nextAt !== null &&
+        f.reversal.nextAt <= now,
+    );
+  }
+
+  public async recordReversalStep(input: {
+    interbankTransferId: string;
+    state: InterbankSendReversalState;
+    refundTransferId: string | null;
+    message: string | null;
+    nextAt: Date | null;
+    now: Date;
+  }): Promise<void> {
+    const fila = this.filas.get(input.interbankTransferId);
+
+    if (fila?.reversal === null || fila === undefined) return;
+
+    this.filas.set(input.interbankTransferId, {
+      ...fila,
+      reversal: {
+        ...fila.reversal,
+        state: input.state,
+        attempts: fila.reversal.attempts + 1,
+        nextAt: input.nextAt,
+        refundTransferId: input.refundTransferId ?? fila.reversal.refundTransferId,
+        message: input.message ?? fila.reversal.message,
+      },
+    });
+  }
+
+  public async list(): Promise<readonly InterbankSend[]> {
+    return [...this.filas.values()];
+  }
+
+  public async history(): Promise<readonly { state: InterbankSendState; reason: string | null; at: Date }[]> {
+    return [];
   }
 
   public async enqueueVerdict(input: {
@@ -234,6 +330,13 @@ interface Montado {
   cancelaCon: (cancel: PartnerCancel) => void;
   /** Lo que se registró en `log.error`, que es lo que dispara la alerta. */
   readonly alertas: readonly Record<string, unknown>[];
+  /** Los cambios de estado tal como llegaron a la telemetría, con su origen. */
+  readonly cambios: readonly { state: InterbankSendState; from: InterbankSendState | null }[];
+  /** Las trazas continuadas, por nombre de span y `traceparent`. */
+  readonly trazas: readonly { traceparent: string | null; span: string }[];
+  /** Lo que contesta el banco pareja a los reversos. */
+  reversoCon: (respuesta: PartnerReversal) => void;
+  readonly reversos: readonly string[];
 }
 
 function montar(): Montado {
@@ -247,6 +350,10 @@ function montar(): Montado {
   let respuestaCancelacion: PartnerCancel = { kind: 'UNREACHABLE' };
   const pasos: string[] = [];
   const alertas: Record<string, unknown>[] = [];
+  const cambios: { state: InterbankSendState; from: InterbankSendState | null }[] = [];
+  const trazas: { traceparent: string | null; span: string }[] = [];
+  const reversos: string[] = [];
+  let respuestaReverso: PartnerReversal = { kind: 'UNREACHABLE' };
 
   const caso = new SendInterbankDepositUseCase({
     repository: repositorio,
@@ -262,6 +369,14 @@ function montar(): Montado {
       cancel: async (): Promise<PartnerCancel> => {
         pasos.push('cancel');
         return respuestaCancelacion;
+      },
+      requestReversal: async (_send, reversalId): Promise<PartnerReversal> => {
+        reversos.push(`request:${reversalId}`);
+        return respuestaReverso;
+      },
+      reversalStatus: async (reversalId): Promise<PartnerReversal> => {
+        reversos.push(`status:${reversalId}`);
+        return respuestaReverso;
       },
     },
     messenger: {
@@ -282,6 +397,7 @@ function montar(): Montado {
     telemetry: {
       stateChanged: (cambio): void => {
         estados.push(cambio.state);
+        cambios.push({ state: cambio.state, from: cambio.from });
       },
     },
     clock: (): Date => ahora,
@@ -289,6 +405,14 @@ function montar(): Montado {
     releaseMarginMs: 300_000,
     resolveRetryMs: 5_000,
     resendDelaysMs: [1_000, 5_000, 30_000],
+    maxAmountMinor: 1_000_000,
+    trace: {
+      current: (): string | null => TRACEPARENT,
+      continue: async (traceparent, span, _correlationId, work) => {
+        trazas.push({ traceparent, span });
+        return await work();
+      },
+    },
     log: {
       info: (): void => {},
       warn: (): void => {},
@@ -334,6 +458,12 @@ function montar(): Montado {
       respuestaCancelacion = cancel;
     },
     alertas,
+    cambios,
+    trazas,
+    reversoCon: (respuesta): void => {
+      respuestaReverso = respuesta;
+    },
+    reversos,
   };
 }
 
@@ -875,6 +1005,14 @@ describe('el protocolo de TIMEOUT, paso a paso', () => {
 
     // 300 s desde el vencimiento: el margen del contrato.
     m.avanzar(300_001);
+    /*
+     * Primero cancela: nunca se libera sin haber intentado cancelar, que es lo
+     * que deja la constancia que hace defendible la liberación. Y sólo después,
+     * con la cancelación sin respuesta, libera (T-60).
+     */
+    expect((await m.caso.sweep()).resolved).toBe(0);
+    expect(m.pasos).toContain('cancel');
+    m.avanzar(5_001);
     const resultado = await m.caso.sweep();
 
     expect(resultado.resolved).toBe(1);
@@ -929,6 +1067,8 @@ describe('un ACCEPTED que llega cuando ya se devolvió el dinero', () => {
       await x.caso.sweep();
       x.avanzar(300_001);
       await x.caso.sweep();
+      x.avanzar(5_001);
+      await x.caso.sweep();
 
       return x;
     })();
@@ -942,6 +1082,8 @@ describe('un ACCEPTED que llega cuando ya se devolvió el dinero', () => {
     expect(m.alertas[alertasAntes]?.outcome).toBe('LATE_ACCEPT_AFTER_RELEASE');
     // Y no se aplica: el depósito sigue liberado, porque el dinero ya volvió.
     expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('REJECTED');
+    // Pero desde T-60 SE PIDE EL REVERSO: la reparación ya no es un paso humano.
+    expect(m.repositorio.filas.get(TRANSFER)?.reversal?.state).toBe('PENDING');
   });
 
   it('un callback duplicado normal sigue siendo un warn, no un incidente', async () => {
@@ -958,5 +1100,459 @@ describe('un ACCEPTED que llega cuando ya se devolvió el dinero', () => {
      * alertar de eso enterraría el incidente de arriba entre ruido.
      */
     expect(m.alertas).toHaveLength(alertasAntes);
+  });
+});
+
+/** Lleva un depósito liberado sin respuesta del banco pareja: REJECTED, con el dinero devuelto. */
+async function liberado(m: Montado): Promise<void> {
+  await m.caso.requested(comando());
+  m.avanzar(180_001);
+  await m.caso.sweep();
+  m.avanzar(300_001);
+  await m.caso.sweep();
+  m.avanzar(5_001);
+  await m.caso.sweep();
+}
+
+function resultadoV1(
+  estado: 'ACCEPTED' | 'REJECTED',
+  extra: { reasonCode?: string; llamador?: string; destino?: string } = {},
+): never {
+  return {
+    ...comando(),
+    messageType: 'payment.interbank.v1.result.received.v1',
+    payload: {
+      result: {
+        interbankTransferId: TRANSFER,
+        destinationBankCode: extra.destino ?? 'BANK99',
+        status: estado,
+        ...(extra.reasonCode === undefined ? {} : { reasonCode: extra.reasonCode }),
+        processedAt: '2026-01-01T00:00:10.000Z',
+      },
+      callerBankCode: extra.llamador ?? 'BANK99',
+      receivedAt: '2026-01-01T00:00:11.000Z',
+    },
+  } as never;
+}
+
+describe('el callback oficial del contrato v1 (B2)', () => {
+  it('un ACCEPTED confirma el débito: SENT -> ACCEPTED y la Saga cierra bien', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+
+    await m.caso.v1Result(resultadoV1('ACCEPTED'));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('ACCEPTED');
+    expect(m.publicado.map((p) => p.messageType)).toContain('payment.succeeded.v1');
+    expect(m.publicado.map((p) => p.messageType)).not.toContain('payment.failed.v1');
+  });
+
+  it('un REJECTED compensa, con el motivo del contrato', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+
+    await m.caso.v1Result(resultadoV1('REJECTED', { reasonCode: 'ACCOUNT_NOT_FOUND' }));
+
+    const fila = m.repositorio.filas.get(TRANSFER);
+    expect(fila?.state).toBe('REJECTED');
+    expect(fila?.reason).toBe('ACCOUNT_NOT_FOUND');
+    expect(m.publicado.find((p) => p.messageType === 'payment.failed.v1')).toBeDefined();
+  });
+
+  it('un callback duplicado no mueve el dinero dos veces', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+
+    await m.caso.v1Result(resultadoV1('ACCEPTED'));
+    await m.caso.v1Result(resultadoV1('ACCEPTED'));
+
+    const finales = m.publicado.filter((p) => p.messageType === 'payment.succeeded.v1');
+    expect(finales).toHaveLength(1);
+  });
+
+  it('un REJECTED duplicado no compensa dos veces', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+
+    await m.caso.v1Result(resultadoV1('REJECTED', { reasonCode: 'ACCOUNT_INACTIVE' }));
+    await m.caso.v1Result(resultadoV1('REJECTED', { reasonCode: 'ACCOUNT_INACTIVE' }));
+
+    expect(m.publicado.filter((p) => p.messageType === 'payment.failed.v1')).toHaveLength(1);
+  });
+
+  it('reordenado: un REJECTED tras un ACCEPTED no devuelve un dinero ya entregado', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+
+    await m.caso.v1Result(resultadoV1('ACCEPTED'));
+    await m.caso.v1Result(resultadoV1('REJECTED', { reasonCode: 'ACCOUNT_NOT_FOUND' }));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('ACCEPTED');
+    expect(m.publicado.find((p) => p.messageType === 'payment.failed.v1')).toBeUndefined();
+    // Se ve: los dos bancos se contradicen.
+    expect(m.alertas.some((a) => a.outcome === 'CONTRADICTORY_REFUSAL')).toBe(true);
+  });
+
+  it('gana la carrera al acuse: un ACCEPTED con la fila aún PENDING confirma', async () => {
+    const m = montar();
+    m.responder(false);
+    await m.caso.requested(comando());
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('PENDING');
+
+    await m.caso.v1Result(resultadoV1('ACCEPTED'));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('ACCEPTED');
+  });
+
+  it('descarta el callback de un banco que no participa', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+
+    await m.caso.v1Result(resultadoV1('ACCEPTED', { llamador: 'BANK07' }));
+    await m.caso.v1Result(resultadoV1('ACCEPTED', { destino: 'BANK07' }));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('SENT');
+    expect(m.alertas.filter((a) => a.outcome === 'CALLBACK_FROM_NON_PARTICIPANT')).toHaveLength(2);
+  });
+
+  it('ignora el de un depósito que no mandamos', async () => {
+    const m = montar();
+
+    await m.caso.v1Result(resultadoV1('ACCEPTED'));
+
+    expect(m.repositorio.filas.size).toBe(0);
+    expect(m.publicado).toEqual([]);
+  });
+});
+
+describe('el callback con el depósito en TIMEOUT (B5)', () => {
+  async function vencido(): Promise<Montado> {
+    const m = montar();
+    await m.caso.requested(comando());
+    m.avanzar(180_001);
+    await m.caso.sweep();
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('TIMEOUT');
+
+    return m;
+  }
+
+  it('un ACCEPTED tardío confirma el débito: el dinero NO se devuelve', async () => {
+    const m = await vencido();
+
+    await m.caso.callback(callback('CONFIRMED'));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('ACCEPTED');
+    expect(m.publicado.find((p) => p.messageType === 'payment.succeeded.v1')).toBeDefined();
+    expect(m.publicado.find((p) => p.messageType === 'payment.failed.v1')).toBeUndefined();
+  });
+
+  it('un REJECTED tardío compensa', async () => {
+    const m = await vencido();
+
+    await m.caso.v1Result(resultadoV1('REJECTED', { reasonCode: 'ACCOUNT_INACTIVE' }));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('REJECTED');
+    expect(m.publicado.find((p) => p.messageType === 'payment.failed.v1')).toBeDefined();
+  });
+
+  it('el protocolo que corría en paralelo no mueve el dinero otra vez', async () => {
+    const m = await vencido();
+    m.contesta({ kind: 'ANSWERED', status: 'ACCEPTED' });
+
+    await m.caso.v1Result(resultadoV1('ACCEPTED'));
+    await m.caso.sweep();
+
+    expect(m.publicado.filter((p) => p.messageType === 'payment.succeeded.v1')).toHaveLength(1);
+  });
+});
+
+describe('insistir antes de rendirse (B5)', () => {
+  it('reintenta la consulta, luego cancela, y sólo libera pasado el margen', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+    m.avanzar(180_001);
+
+    const pasos: string[] = [];
+    // Barridos cada 61 s (más que el techo de la espera) hasta cruzar el margen.
+    for (let i = 0; i < 4; i += 1) {
+      await m.caso.sweep();
+      pasos.push(...m.pasos.slice(pasos.length));
+      m.avanzar(61_000);
+    }
+
+    // Nunca soltó antes del margen...
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('TIMEOUT');
+    // ...y no se limitó a esperar: preguntó varias veces y luego cancela.
+    expect(m.pasos.filter((p) => p === 'probe').length).toBeGreaterThan(1);
+    expect(m.pasos.filter((p) => p === 'probe').length).toBeLessThanOrEqual(3);
+    expect(m.pasos).toContain('cancel');
+    expect(m.pasos.indexOf('cancel')).toBeGreaterThan(m.pasos.lastIndexOf('probe') - 1);
+  });
+
+  it('si el banco vuelve a mitad del margen y contesta la consulta, se resuelve sin liberar a ciegas', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+    m.avanzar(180_001);
+    await m.caso.sweep(); // consulta sin respuesta
+    m.avanzar(10_000);
+    m.contesta({ kind: 'ANSWERED', status: 'ACCEPTED' });
+    await m.caso.sweep(); // consulta, y esta vez contestan
+    await m.caso.sweep(); // decide
+
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('ACCEPTED');
+    expect(m.alertas.some((a) => a.outcome === 'RELEASED_NO_ANSWER')).toBe(false);
+  });
+
+  it('la liberación sin verificar conserva la línea de error que lee la alerta', async () => {
+    const m = montar();
+    await liberado(m);
+
+    const alerta = m.alertas.find((a) => a.outcome === 'RELEASED_NO_ANSWER');
+
+    expect(alerta).toMatchObject({
+      outcome: 'RELEASED_NO_ANSWER',
+      interbankTransferId: TRANSFER,
+      transactionId: TRANSACTION,
+    });
+  });
+});
+
+describe('el paso 5: pedir el reverso de un ACCEPTED tardío', () => {
+  it('lo pide, lo consulta y lo da por completado', async () => {
+    const m = montar();
+    await liberado(m);
+    m.reversoCon({
+      kind: 'ANSWERED',
+      status: 'PROCESSING',
+      refundTransferId: null,
+      reasonMessage: null,
+    });
+    await m.caso.callback(callback('CONFIRMED'));
+    const reversalId = m.repositorio.filas.get(TRANSFER)?.reversal?.reversalId;
+
+    expect(reversalId).toBeDefined();
+
+    await m.caso.sweep();
+    expect(m.repositorio.filas.get(TRANSFER)?.reversal?.state).toBe('PROCESSING');
+    expect(m.reversos).toEqual([`request:${reversalId}`]);
+
+    m.reversoCon({
+      kind: 'ANSWERED',
+      status: 'COMPLETED',
+      refundTransferId: '00000000-0000-4000-8000-0000000000aa',
+      reasonMessage: null,
+    });
+    m.avanzar(31_000);
+    await m.caso.sweep();
+
+    expect(m.reversos).toEqual([`request:${reversalId}`, `status:${reversalId}`]);
+    expect(m.repositorio.filas.get(TRANSFER)?.reversal?.state).toBe('COMPLETED');
+    expect(m.repositorio.filas.get(TRANSFER)?.reversal?.refundTransferId).toBe(
+      '00000000-0000-4000-8000-0000000000aa',
+    );
+  });
+
+  it('dos ACCEPTED tardíos piden un solo reverso, con el mismo identificador', async () => {
+    const m = montar();
+    await liberado(m);
+
+    await m.caso.callback(callback('CONFIRMED'));
+    const primero = m.repositorio.filas.get(TRANSFER)?.reversal?.reversalId;
+    await m.caso.callback(callback('CONFIRMED'));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.reversal?.reversalId).toBe(primero);
+  });
+
+  it('el reversalId es siempre el mismo para el mismo depósito', async () => {
+    const a = montar();
+    const b = montar();
+    await liberado(a);
+    await liberado(b);
+    await a.caso.callback(callback('CONFIRMED'));
+    await b.caso.callback(callback('CONFIRMED'));
+
+    expect(a.repositorio.filas.get(TRANSFER)?.reversal?.reversalId).toBe(
+      b.repositorio.filas.get(TRANSFER)?.reversal?.reversalId,
+    );
+  });
+
+  it('si el banco pareja no contesta, reintenta con espera creciente en vez de darlo por pedido', async () => {
+    const m = montar();
+    await liberado(m);
+    await m.caso.callback(callback('CONFIRMED'));
+
+    await m.caso.sweep();
+    await m.caso.sweep(); // dentro de la espera: no repite
+
+    expect(m.reversos).toHaveLength(1);
+    expect(m.repositorio.filas.get(TRANSFER)?.reversal?.state).toBe('PENDING');
+
+    m.avanzar(6_000);
+    await m.caso.sweep();
+
+    expect(m.reversos).toHaveLength(2);
+  });
+
+  it('una negativa del banco pareja deja el reverso fallido y lo grita en ERROR', async () => {
+    const m = montar();
+    await liberado(m);
+    await m.caso.callback(callback('CONFIRMED'));
+    m.reversoCon({ kind: 'REFUSED', detail: 'HTTP_404' });
+
+    await m.caso.sweep();
+
+    expect(m.repositorio.filas.get(TRANSFER)?.reversal?.state).toBe('FAILED');
+    expect(m.alertas.some((a) => String(a.outcome).startsWith('REVERSAL_REFUSED'))).toBe(true);
+  });
+
+  it('un ACCEPTED duplicado sobre un depósito aceptado NO pide ningún reverso', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+    await m.caso.callback(callback('CONFIRMED'));
+    await m.caso.callback(callback('CONFIRMED'));
+
+    expect(m.repositorio.filas.get(TRANSFER)?.reversal).toBeNull();
+  });
+});
+
+describe('la telemetría de vencimientos (B9)', () => {
+  it('informa de dónde viene cada cambio, para contar el timeout al entrar', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+    m.avanzar(180_001);
+    await m.caso.sweep();
+    m.avanzar(1);
+    m.contesta({ kind: 'ANSWERED', status: 'ACCEPTED' });
+    await m.caso.sweep();
+    m.avanzar(5_001);
+    await m.caso.sweep(); // consulta
+    await m.caso.sweep(); // decide
+
+    expect(m.cambios).toEqual([
+      { state: 'PENDING', from: null },
+      { state: 'SENT', from: 'PENDING' },
+      { state: 'TIMEOUT', from: 'SENT' },
+      { state: 'ACCEPTED', from: 'TIMEOUT' },
+    ]);
+  });
+});
+
+describe('la traza no se corta en el barrido (B9)', () => {
+  it('guarda el traceparent al crear el depósito', async () => {
+    const m = montar();
+
+    await m.caso.requested(comando());
+
+    expect(m.repositorio.filas.get(TRANSFER)?.traceContext).toBe(TRACEPARENT);
+  });
+
+  it('cada paso del barrido continúa la traza guardada', async () => {
+    const m = montar();
+    m.responder(false);
+    await m.caso.requested(comando()); // PENDING: se reenviará
+    await m.caso.sweep(); // reenvío
+    m.avanzar(180_001);
+    await m.caso.sweep(); // vencimiento, y consulta
+    m.avanzar(10_000);
+    await m.caso.sweep(); // más del protocolo
+
+    const spans = new Set(m.trazas.map((t) => t.span));
+
+    expect(spans).toContain('payment.interbank.resend');
+    expect(spans).toContain('payment.interbank.expire');
+    expect(spans).toContain('payment.interbank.resolve');
+    // Ninguno abre una traza nueva: todos arrancan en la guardada.
+    expect(m.trazas.every((t) => t.traceparent === TRACEPARENT)).toBe(true);
+  });
+});
+
+describe('un paso que falla no detiene el barrido (B3)', () => {
+  it('registra el depósito malo y atiende al siguiente', async () => {
+    const m = montar();
+    const otro = (): MessageEnvelope<PaymentRequestedV1> => {
+      const e = comando();
+      return {
+        ...e,
+        payload: {
+          ...e.payload,
+          paymentId: '00000000-0000-4000-8000-00000000a001',
+          transactionId: '00000000-0000-4000-8000-00000000b001',
+          interbank: {
+            ...e.payload.interbank!,
+            interbankTransferId: 'local-demo-2',
+            idempotencyKey: 'clave-2',
+          },
+        },
+      };
+    };
+    m.responder(false);
+    await m.caso.requested(comando());
+    await m.caso.requested(otro());
+    const original = m.repositorio.claimSendable.bind(m.repositorio);
+    m.repositorio.claimSendable = async () => {
+      const filas = await original();
+      return filas.map((f) =>
+        f.interbankTransferId === TRANSFER ? ({ ...f, destinationAccount: undefined } as never) : f,
+      );
+    };
+    // El primero lanza al entregar; el segundo debe entregarse igual.
+    const entregasAntes = m.entregas.length;
+    const lanza = m.caso as unknown as { sweep: () => Promise<unknown> };
+
+    await lanza.sweep();
+
+    expect(m.entregas.length).toBeGreaterThan(entregasAntes);
+  });
+});
+
+describe('lo que impide hablar el contrato se declina antes de la red (B1, B7)', () => {
+  it('un pago sin la cuenta origen no se envía: la Saga lo devuelve', async () => {
+    const m = montar();
+    const e = comando();
+    const interbank = { ...e.payload.interbank! };
+    delete (interbank as { originAccount?: string }).originAccount;
+
+    await m.caso.requested({ ...e, payload: { ...e.payload, interbank } });
+
+    expect(m.entregas).toEqual([]);
+    expect(m.repositorio.filas.size).toBe(0);
+    expect(m.directo.find((p) => p.messageType === 'payment.failed.v1')).toBeDefined();
+  });
+
+  it('un monto por encima del límite no se envía', async () => {
+    const m = montar();
+    const e = comando();
+
+    await m.caso.requested({
+      ...e,
+      payload: { ...e.payload, amount: { amountMinor: 1_000_001, currency: 'GTQ' } },
+    });
+
+    expect(m.entregas).toEqual([]);
+    expect(m.directo.find((p) => p.messageType === 'payment.failed.v1')).toBeDefined();
+  });
+
+  it('el límite exacto sí se envía', async () => {
+    const m = montar();
+    const e = comando();
+
+    await m.caso.requested({
+      ...e,
+      payload: { ...e.payload, amount: { amountMinor: 1_000_000, currency: 'GTQ' } },
+    });
+
+    expect(m.entregas).toEqual([TRANSFER]);
+  });
+
+  it('otra moneda no se envía', async () => {
+    const m = montar();
+    const e = comando();
+
+    await m.caso.requested({
+      ...e,
+      payload: { ...e.payload, amount: { amountMinor: 100, currency: 'USD' } },
+    });
+
+    expect(m.entregas).toEqual([]);
   });
 });

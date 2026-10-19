@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { idempotencyKey, isoTimestamp, uuidV4 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
 import { bankCode, interbankRejectionReason, interbankTransferId } from './incoming.v1';
+import { v1AccountNumber } from './v1';
 
 /**
  * Enviar un depósito al banco pareja (Fase 3, §4.1 — Integración interbancaria;
@@ -115,6 +116,19 @@ export const interbankDestination = z.object({
   bankCode,
   /** La cuenta en el banco pareja: una cadena que él entiende, no un UUID nuestro. */
   account: partnerAccountRef,
+  /**
+   * La cuenta de **este** banco de la que sale el dinero, con su número del
+   * contrato (`02-NNNNNNNNN`), que es lo que `TransferRequest.originAccount`
+   * exige (T-60).
+   *
+   * Opcional en el esquema y obligatoria en la práctica: la pone el Gateway
+   * —que la pregunta a Account por el broker— y Payment se niega a enviar sin
+   * ella. Opcional porque la Saga guarda este bloque en su base: un depósito
+   * pedido antes de T-60 y todavía en vuelo lo trae sin ella, y rechazar su
+   * `payment.requested.v1` con un error de validación lo mandaría a la cola
+   * muerta con el dinero ya debitado. Sin ella se compensa de forma explícita.
+   */
+  originAccount: v1AccountNumber.optional(),
   /**
    * El identificador con el que el depósito viaja al otro banco, y la clave de
    * idempotencia con la que él lo deduplica. Lo genera el Gateway: un

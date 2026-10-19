@@ -85,6 +85,24 @@ export interface NotificationIntent {
    * alert nobody had been told about and a red banner saying so.
    */
   readonly audience?: 'OPERATORS';
+  /**
+   * The alert instances a webhook speaks about, for the repeat guard (TD-083).
+   *
+   * Grafana re-sends a firing alert at its repeat interval and at every group
+   * interval; the operators should be told once per `(instance, status)` inside
+   * that window, not once per delivery. Present only on an SLO alert, and only
+   * when at least one alert in the batch names a state the contract knows. The
+   * repository claims every pair atomically and drops the notification — never
+   * the audit row — when none of them is new.
+   */
+  readonly repeatGuard?: readonly AlertInstance[];
+}
+
+/** One alert instance in one state: the unit the repeat guard counts once. */
+export interface AlertInstance {
+  /** The fingerprint Grafana gives the instance, else the alert's name. */
+  readonly key: string;
+  readonly status: 'firing' | 'resolved';
 }
 
 /**
@@ -337,26 +355,72 @@ function sloAlertNotification(payload: unknown): NotificationIntent {
         ? `Alerta de SLO ${firing === 1 ? 'activa' : 'resuelta'}: ${alerts[0]?.alertName ?? ''}`
         : `${String(alerts.length)} alertas de SLO (${String(firing)} activas)`;
 
+  const repeatGuard = alertInstancesIn(payload);
+
   return {
     type: 'alert.slo',
     subject: subject.slice(0, MAX_SUBJECT),
     referenceId: null,
     severity: classifyAlerts(payload),
     audience: 'OPERATORS',
+    ...(repeatGuard.length === 0 ? {} : { repeatGuard }),
   };
 }
 
-function alertsIn(
-  payload: unknown,
-): readonly { readonly alertName?: string; readonly status?: string }[] {
+/** The longest key the repeat guard stores (`VARCHAR(200)`). */
+const MAX_ALERT_KEY = 200;
+
+/**
+ * `(instance, status)` for every alert of the webhook that says something this
+ * service can count: a state outside `firing` / `resolved` is skipped, as it is
+ * for the metrics, so a repeat guard cannot be fed a state off the wire.
+ *
+ * The instance is Grafana's fingerprint, which is stable across repeats of the
+ * same label set; the contract makes it optional, so an alert without one is
+ * told apart by its name — coarser (two label sets of one rule count once) but
+ * never a reason to notify on every repeat. Duplicates inside one batch collapse.
+ */
+export function alertInstancesIn(payload: unknown): readonly AlertInstance[] {
+  const seen = new Map<string, AlertInstance>();
+
+  for (const alert of alertsIn(payload)) {
+    const status = alert.status;
+
+    if (status !== 'firing' && status !== 'resolved') {
+      continue;
+    }
+
+    const instance =
+      typeof alert.fingerprint === 'string' && alert.fingerprint.length > 0
+        ? `fp:${alert.fingerprint}`
+        : typeof alert.alertName === 'string' && alert.alertName.length > 0
+          ? `name:${alert.alertName}`
+          : null;
+
+    if (instance !== null) {
+      const key = instance.slice(0, MAX_ALERT_KEY);
+
+      seen.set(`${key}|${status}`, { key, status });
+    }
+  }
+
+  return [...seen.values()];
+}
+
+function alertsIn(payload: unknown): readonly {
+  readonly alertName?: string;
+  readonly status?: string;
+  readonly fingerprint?: string;
+}[] {
   const alerts =
     typeof payload === 'object' && payload !== null
       ? (payload as { alerts?: unknown }).alerts
       : undefined;
 
   return Array.isArray(alerts)
-    ? alerts.filter((alert): alert is { alertName?: string; status?: string } =>
-        typeof alert === 'object' && alert !== null,
+    ? alerts.filter(
+        (alert): alert is { alertName?: string; status?: string; fingerprint?: string } =>
+          typeof alert === 'object' && alert !== null,
       )
     : [];
 }

@@ -18,6 +18,8 @@ const telemetry = startTelemetry({ serviceName: 'fixture-service' });
 // Required only now, after the SDK — exactly the ordering `main.ts` relies on.
 const http = require('node:http');
 const { metrics, trace } = require('@opentelemetry/api');
+// Node's global fetch is undici's; the SDK instruments it through diagnostics_channel.
+const { fetch } = globalThis;
 
 const logger = new JsonLogger({ service: 'fixture-service' });
 const tracer = trace.getTracer('fixture');
@@ -33,6 +35,9 @@ const duracion = meter.createHistogram('bank.transfer.duration', {
   description: 'Time from transfer.requested to a final state.',
   advice: { explicitBucketBoundaries: [0.1, 1, 5, 30] },
 });
+
+// An error whose message quotes what a driver would: a token and an address.
+const SECRET_MESSAGE = 'cannot verify token=SECRET-TOKEN-123 for a.person@example.com';
 
 const server = http.createServer((request, response) => {
   if (request.url === '/health') {
@@ -54,6 +59,53 @@ const server = http.createServer((request, response) => {
       span.end();
     });
     response.writeHead(200).end('done');
+    return;
+  }
+
+  // The activation link, as the Gateway receives it: the secret is in the
+  // query string, the NestJS instrumentation writes `url.full` from it, and the
+  // handler fails with a message that quotes the secret.
+  if (request.url.startsWith('/verify-email')) {
+    tracer.startActiveSpan(
+      'fixture.nest',
+      { attributes: { 'url.full': request.url } },
+      (span) => {
+        span.recordException(new Error(SECRET_MESSAGE));
+        span.setStatus({ code: 2, message: SECRET_MESSAGE });
+        span.end();
+      },
+    );
+    response.writeHead(200).end('verified');
+    return;
+  }
+
+  // Reports every `traceparent` that reached it, header by header.
+  if (request.url.startsWith('/echo')) {
+    const received = [];
+    for (let index = 0; index < request.rawHeaders.length; index += 2) {
+      if (request.rawHeaders[index].toLowerCase() === 'traceparent') {
+        received.push(request.rawHeaders[index + 1]);
+      }
+    }
+    response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(received));
+    return;
+  }
+
+  // An outbound `fetch` (undici) that sets its own `traceparent`, the way the
+  // payment service's partner-bank client does, with a secret in the URL.
+  if (request.url === '/outbound') {
+    const port = server.address().port;
+    tracer.startActiveSpan('fixture.caller', async (span) => {
+      try {
+        const reply = await fetch(`http://127.0.0.1:${String(port)}/echo?token=OUTBOUND-SECRET-456`, {
+          headers: { traceparent: '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01' },
+        });
+        const body = await reply.text();
+        response.writeHead(200, { 'content-type': 'application/json' }).end(body);
+      } finally {
+        span.end();
+      }
+    });
     return;
   }
 

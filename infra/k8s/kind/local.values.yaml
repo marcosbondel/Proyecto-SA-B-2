@@ -36,22 +36,50 @@ observability:
 # --------------------------------------------------------------------------
 partnerMock:
   enabled: true
-  # ACCEPT por defecto. Para los escenarios de fallo de T-51:
+  # De juguete y evidente, como los demás secretos de kind: protege la API
+  # `/admin/*` del mock (cambio de modo en caliente, depósitos que origina).
+  # `test/load/scenario.sh` lo lee desde dentro del pod, no de aquí.
+  adminToken: 'kind-admin-del-mock-de-juguete-no-es-un-secreto'
+  # ACCEPT por defecto. Los escenarios de fallo de T-51 ya no reinician el pod:
+  # se cambian EN CALIENTE con la API del mock (ver test/load/scenario.sh):
+  #   PUT /admin/config {"mode":"REJECT","rejectReason":"ACCOUNT_NOT_FOUND"}
+  #   PUT /admin/config {"mode":"TIMEOUT"}
+  #   PUT /admin/config {"mode":"SLOW","slowMs":12000}
+  # El estado inicial sigue siendo un valor del release:
   #   helm upgrade … --set partnerMock.callbackMode=REJECT
-  #   helm upgrade … --set partnerMock.callbackMode=TIMEOUT
-  #   helm upgrade … --set partnerMock.callbackMode=SLOW --set partnerMock.callbackDelayMs=8000
   callbackMode: ACCEPT
 
 interbank:
-  # Explícito, no derivado de `partnerMock.enabled`: el destino de un callback
-  # es una decisión que se escribe, no una que se adivina.
-  callbackUrl: http://bank-usac-partner-bank-mock:3021/callbacks/interbank
-  # Y a dónde manda este banco los depósitos que origina: la entrada del mock,
-  # que es el `POST /deposits` de `apps/partner-bank-mock`. Sin esto el envío
-  # interbancario se queda apagado y una transferencia interbancaria termina
-  # como una transferencia interna a la cuenta de liquidación — que es
-  # exactamente lo que pasó en la primera corrida de carga de T-51.
-  sendUrl: http://bank-usac-partner-bank-mock:3021/deposits
+  # Explícito, no derivado de `partnerMock.enabled`: el destino de un envío es
+  # una decisión que se escribe, no una que se adivina. Es la base de la API v1
+  # del mock, con el sufijo `/interbank/v1`; la URL del callback ya no se
+  # configura, payment-service la deriva. Sin esto el envío interbancario se
+  # queda apagado y una transferencia interbancaria termina como una
+  # transferencia interna a la cuenta de liquidación — que es exactamente lo que
+  # pasó en la primera corrida de carga de T-51.
+  partnerBaseUrl: http://bank-usac-partner-bank-mock:3021/interbank/v1
+
+# --------------------------------------------------------------------------
+# El enlace de activación, visible en el log del servicio de notificaciones.
+#
+# En kind el log ES el buzón: el canal de entrega es simulado y, sin el enlace,
+# nadie puede activar una cuenta en su máquina (TD-043, `pnpm images:flow`, la
+# suite E2E). En el chart el valor por defecto es "false" desde T-60 porque en
+# la nube el log llega a Loki, y un enlace de activación o de recuperación
+# completo es una URL con la que se toma una cuenta ajena (§8.3, «Datos
+# sensibles expuestos»). Este archivo no participa en ningún despliegue a GKE.
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# El frontend (T-60): a dónde enlaza un traceId en pantalla.
+# --------------------------------------------------------------------------
+web:
+  # Grafana, con el `kubectl port-forward` de `pnpm obs:forward` (3002:80). La
+  # resuelve el NAVEGADOR, así que es localhost y no el Service del clúster.
+  grafanaUrl: http://localhost:3002
+
+services:
+  notificationAudit:
+    revealActivationLinks: "true"
 
 # --------------------------------------------------------------------------
 # Dos secretos de juguete, y la palabra «juguete» es literal.
@@ -74,5 +102,8 @@ secrets:
   # La API key del contrato interbancario para el camino local. De juguete y
   # evidente, como el resto de los secretos de kind: lo que importa es que la
   # forma del flujo sea la real, no el valor.
-  interbankApiKeyInbound: 'kind-api-key-interbancaria-de-juguete'
-  interbankApiKeyOutbound: 'kind-api-key-interbancaria-de-juguete'
+  # De 32 caracteres o más, como las reales. Inbound es la
+  # que el mock presenta al llamarnos; outbound, la que el mock exige de
+  # nosotros: el mock lee las dos de este mismo Secret.
+  interbankApiKeyInbound: 'kind-api-key-entrante-de-juguete-no-es-secreto'
+  interbankApiKeyOutbound: 'kind-api-key-saliente-de-juguete-no-es-secreto'
