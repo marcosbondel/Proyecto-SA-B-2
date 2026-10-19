@@ -230,6 +230,14 @@ async function bootstrap(): Promise<void> {
 
   if (interbankSend === null) {
     logger.info('envio interbancario desactivado: falta INTERBANK_PARTNER_BASE_URL', {});
+  } else if (environment.INTERBANK_API_KEY_OUTBOUND.length === 0) {
+    /*
+     * Con la URL y sin la llave, el envío arranca y **no puede autenticarse**:
+     * cada depósito se quedaría PENDING hasta vencer y acabaría liberado sin
+     * verificar. Es una configuración incompleta, y se grita al arrancar en vez
+     * de descubrirla ocho minutos después en la primera transferencia.
+     */
+    logger.error('INTERBANK_API_KEY_OUTBOUND vacia: los depositos no podran enviarse', {});
   }
 
   const telemetry = new OtelProviderTelemetry(logger);
