@@ -14,9 +14,11 @@ import {
 } from '../app/lib/audit.ts';
 import {
   MAX_REMEMBERED_TRACES,
+  QUERY_TRACE_LABEL,
   remember,
   traceFor,
   traceIdFrom,
+  traceToShow,
 } from '../app/lib/trace.ts';
 
 /**
@@ -288,5 +290,29 @@ describe('the edges of the filters and the ledger', () => {
   test('a header read off a response with a trailing newline is still the trace', () => {
     assert.equal(traceIdFrom(`${TRACE}
 `), TRACE);
+  });
+});
+
+describe('the trace a detail screen shows for an operation it did not start', () => {
+  test('is the operation\'s own trace when this session sent it', () => {
+    const ledger = remember({}, CORRELATION, TRACE);
+
+    assert.deepEqual(traceToShow(ledger, CORRELATION, OTHER_TRACE), { traceId: TRACE, ofQuery: false });
+  });
+
+  test('falls back to the trace of the question asked, and says so, when the page was opened from a link', () => {
+    assert.deepEqual(traceToShow({}, CORRELATION, OTHER_TRACE), { traceId: OTHER_TRACE, ofQuery: true });
+    assert.match(QUERY_TRACE_LABEL, /consulta/);
+  });
+
+  test('is nothing at all when the Gateway sent no trace, rather than an invented one', () => {
+    assert.equal(traceToShow({}, CORRELATION, null), null);
+    assert.equal(traceToShow({}, null, null), null);
+  });
+
+  test('never takes another operation\'s trace for this one', () => {
+    const ledger = remember({}, 'someone-else', TRACE);
+
+    assert.deepEqual(traceToShow(ledger, CORRELATION, OTHER_TRACE), { traceId: OTHER_TRACE, ofQuery: true });
   });
 });
