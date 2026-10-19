@@ -20,7 +20,7 @@ import { InterbankReceiveUseCase } from '../application/routes/interbank-receive
 import { actorOf } from './actor';
 import { InterbankTransferDto, ListInterbankSendsQueryDto } from './dto/interbank.dto';
 import { InterbankTokenGuard } from './guards/interbank-token.guard';
-import { Public } from './guards/route-access.decorator';
+import { Public, Roles } from './guards/route-access.decorator';
 import type { GatewayRequest } from './http-request';
 import { validated } from './validation';
 
@@ -143,6 +143,15 @@ export class InterbankController {
    * de fila, pago y compensación si no sale— y lo único distinto es que el paso
    * de pago se le pide al banco pareja y su respuesta llega por callback.
    *
+   * **Sólo `CLIENTE`** (D7a). Un envío interbancario es un producto del cliente
+   * sobre sus propias cuentas; a diferencia de la transferencia interna, D-06 no
+   * le da ninguna fila a la ventanilla ni al administrador. Sin este decorador
+   * un `CAJERO_RECEPTOR` o un `ADMINISTRADOR` —que la visibilidad de Account sí
+   * deja leer cualquier cuenta— podían originar un envío, con el débito
+   * incluido, desde la cuenta de cualquier cliente. La otra mitad, que el
+   * `CLIENTE` sea el dueño de la cuenta origen, la decide Account al contestar
+   * la pregunta del número de cuenta: la ajena responde `NOT_FOUND`.
+   *
    * La orquestación vive en `InterbankSendUseCase` (T-60): valida el borde
    * —moneda, banco, límite—, pregunta a Account por el número de la cuenta
    * origen que el contrato exige, y mina los identificadores.
@@ -154,7 +163,9 @@ export class InterbankController {
       'compensa si lo rechaza o no contesta. El 202 significa que la transferencia se aceptó, ' +
       'no que el otro banco la acreditó — eso llega por callback y se consulta en ' +
       '`GET /api/interbank/transfers/{interbankTransferId}`. El identificador interbancario y la ' +
-      'clave de idempotencia los genera el Gateway. Se rechaza con 400, sin debitar, una moneda ' +
+      'clave de idempotencia los genera el Gateway, derivados de la `Idempotency-Key` de la ' +
+      'petición: reintentar con la misma clave devuelve los mismos identificadores. Sólo un ' +
+      'CLIENTE puede enviar, y sólo desde una cuenta propia. Se rechaza con 400, sin debitar, una moneda ' +
       'distinta de GTQ, un banco que no es el pareja configurado y un monto por encima del ' +
       'límite por operación.',
   })
@@ -173,6 +184,11 @@ export class InterbankController {
     },
   })
   @ApiResponse({ status: 400, description: 'Solicitud malformada o fuera de los límites.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Sólo un CLIENTE puede enviar un depósito interbancario, desde sus cuentas.',
+  })
+  @Roles('CLIENTE')
   @Post('transfers')
   @HttpCode(202)
   async send(

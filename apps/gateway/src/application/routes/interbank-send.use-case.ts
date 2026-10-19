@@ -1,11 +1,11 @@
-import { randomUUID } from 'node:crypto';
-
 import { INTERBANK_SETTLEMENT_ACCOUNT_ID, v1AmountFromMinor } from '@bank/contracts';
 import type { Identity, Money } from '@bank/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 
+import { deriveUuidV4 } from '../derived-id';
 import {
   INTERBANK_BANK_CODE,
+  INTERBANK_ID_SECRET,
   INTERBANK_MAX_AMOUNT_MINOR,
   INTERBANK_PARTNER_BANK_CODE,
 } from '../interbank-config';
@@ -42,6 +42,7 @@ export class InterbankSendUseCase {
     @Inject(INTERBANK_BANK_CODE) readonly ownBankCode: string,
     @Inject(INTERBANK_PARTNER_BANK_CODE) readonly partnerBankCode: string,
     @Inject(INTERBANK_MAX_AMOUNT_MINOR) readonly maxAmountMinor: number,
+    @Inject(INTERBANK_ID_SECRET) readonly idSecret: string,
   ) {}
 
   async send(input: {
@@ -72,8 +73,27 @@ export class InterbankSendUseCase {
      * Uno adivinable desde fuera es uno que se puede colisionar a propósito — y
      * un depósito duplicado es el 50 % de §8.3.
      */
-    const interbankTransferId = randomUUID();
+    /*
+     * Derivados, no aleatorios (D7b): la misma `Idempotency-Key` del mismo
+     * cliente da los mismos identificadores. Transaction ya hace que un
+     * reintento produzca un solo débito; esto hace que además devuelva el id
+     * del original en vez de uno nuevo que no nombra nada y da 404. Sin cabecera
+     * la clave es aleatoria por petición, y los identificadores con ella.
+     */
+    const interbankTransferId = deriveUuidV4(
+      this.idSecret,
+      'interbank-transfer',
+      input.actor.customerId,
+      input.idempotencyKey,
+    );
+    const transactionId = deriveUuidV4(
+      this.idSecret,
+      'interbank-transaction',
+      input.actor.customerId,
+      input.idempotencyKey,
+    );
     const accepted = await this.commands.requestTransfer({
+      transactionId,
       sourceAccount: input.sourceAccount,
       // Siempre la cuenta de liquidación: el cliente no elige dónde entra.
       targetAccount: INTERBANK_SETTLEMENT_ACCOUNT_ID,
