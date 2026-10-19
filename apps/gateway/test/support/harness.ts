@@ -52,6 +52,8 @@ import { InterbankSendUseCase } from '../../src/application/routes/interbank-sen
 import { JwtGuard, SESSION_VERIFIER } from '../../src/interfaces/guards/jwt.guard';
 import { RolesGuard } from '../../src/interfaces/guards/roles.guard';
 import { BROKER_HEALTH } from '../../src/interfaces/health.controller';
+import { accessLogMiddleware } from '../../src/interfaces/middleware/access-log.middleware';
+import type { AccessLog } from '../../src/interfaces/middleware/access-log.middleware';
 import { CorrelationMiddleware } from '../../src/interfaces/middleware/correlation.middleware';
 import { validationExceptionFactory } from '../../src/interfaces/validation';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
@@ -214,6 +216,7 @@ export interface Harness {
 export async function buildHarness(
   controllers: readonly unknown[],
   providers: readonly unknown[] = [],
+  options: { readonly accessLog?: AccessLog } = {},
 ): Promise<Harness> {
   const publisher = new RecordingPublisher();
   const replier = new ScriptedReplier();
@@ -287,6 +290,10 @@ export async function buildHarness(
   // no `configure`, so it is attached here to keep the request shape identical.
   const correlation = new CorrelationMiddleware();
   app.use(correlation.use.bind(correlation));
+  // And the access log, only for the specs that ask to read it.
+  if (options.accessLog !== undefined) {
+    app.use(accessLogMiddleware(options.accessLog));
+  }
   await app.init();
 
   return { app, publisher, replier, storage, tokens, brokerUp };

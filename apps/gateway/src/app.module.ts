@@ -1,3 +1,4 @@
+import { JsonLogger } from '@bank/observability';
 import type { DynamicModule, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
@@ -60,6 +61,7 @@ import {
 import { JwtGuard, SESSION_VERIFIER } from './interfaces/guards/jwt.guard';
 import { RolesGuard } from './interfaces/guards/roles.guard';
 import { BROKER_HEALTH, HealthController } from './interfaces/health.controller';
+import { accessLogMiddleware } from './interfaces/middleware/access-log.middleware';
 import { CorrelationMiddleware } from './interfaces/middleware/correlation.middleware';
 import { validationExceptionFactory } from './interfaces/validation';
 
@@ -208,6 +210,11 @@ export class AppModule implements NestModule {
     // Every route, probes included: a response with no correlation identifier
     // is one nobody can trace afterwards, and errors are exactly when somebody
     // will try.
-    consumer.apply(CorrelationMiddleware).forRoutes('*path');
+    //
+    // The access log goes second: it reads the correlation identifier the first
+    // one assigns, and writes one line per request when the response is done.
+    consumer
+      .apply(CorrelationMiddleware, accessLogMiddleware(new JsonLogger({ service: 'gateway' })))
+      .forRoutes('*path');
   }
 }

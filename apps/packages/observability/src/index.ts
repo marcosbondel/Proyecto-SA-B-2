@@ -10,7 +10,13 @@ export { DEFAULT_ENVIRONMENT, DEFAULT_VERSION, identityFrom } from './identity';
 export type { TelemetryHandle, TelemetryOptions } from './sdk';
 export { startTelemetry, telemetryResource } from './sdk';
 
-export { continueTrace, currentTraceparent, withTraceparent } from './trace-context';
+export {
+  continueTrace,
+  currentTraceparent,
+  serverSpan,
+  setRequestAttribute,
+  withTraceparent,
+} from './trace-context';
 
 export type { OutboundRequest } from './outbound-headers';
 export { dropManualTraceHeaders } from './outbound-headers';
