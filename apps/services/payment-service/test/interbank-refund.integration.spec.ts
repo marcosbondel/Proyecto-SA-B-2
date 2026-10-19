@@ -308,6 +308,28 @@ suite('el reembolso de un reverso', () => {
     expect(trazas.some((t) => t.startsWith('payment.interbank.refund:'))).toBe(true);
   });
 
+  it('un reverso ya cerrado con OTRO reembolso no tapa al reverso abierto del mismo cliente y monto', async () => {
+    // Lo que se vio en kind: un envío anterior de Q150.00 de la misma cuenta,
+    // con su reverso COMPLETED y su propio reembolso, salía primero en la
+    // búsqueda y la decisión quedaba NORMAL: el reembolso nuevo iba al cliente.
+    await envioLiberado({ state: 'COMPLETED', refundTransferId: randomUUID() });
+    const { sendId } = await envioLiberado({ state: 'PENDING' });
+    const id = randomUUID();
+
+    const depositId = await llega(reembolso(id));
+
+    expect(await etapa(depositId)).toBe('ELIGIBILITY');
+    await nucleo().sweep();
+    expect(creditos()).toEqual([]);
+
+    await resolverReverso(sendId, 'COMPLETED', id);
+    expect(await contrato().resolveHeldRefunds()).toBe(1);
+    await conAccount(depositId);
+
+    expect(creditos()).toEqual([LIQUIDACION]);
+    expect(creditos()).not.toContain(CUENTA_CLIENTE);
+  });
+
   it('el reembolso llega DESPUÉS de que el reverso dijo COMPLETED con su identificador: directo a liquidación', async () => {
     const id = randomUUID();
     const { sendId } = await envioLiberado({ state: 'COMPLETED', refundTransferId: id });

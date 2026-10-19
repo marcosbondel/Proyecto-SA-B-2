@@ -205,7 +205,15 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
     /*
      * Mismo banco, monto y moneda, y destino igual a la cuenta origen del envío —
      * o el reverso que ya nombra a **este** depósito como su reembolso, aunque
-     * llegue a otra cuenta. Primero el que lo nombra por identificador.
+     * llegue a otra cuenta. Primero el que lo nombra por identificador; después
+     * los reversos **abiertos**.
+     *
+     * Un reverso `COMPLETED` que nombra a OTRO depósito no es candidato: ese
+     * reverso ya sabe cuál fue su reembolso. Antes entraba en la búsqueda y,
+     * por ser el más antiguo, tapaba al reverso abierto del mismo cliente y
+     * monto: la decisión salía NORMAL y el reembolso nuevo se le acreditaba al
+     * cliente ya compensado. Visto en kind el 2026-10-19 con dos envíos de
+     * Q150.00 de la misma cuenta, uno de ellos con su reverso ya cerrado.
      */
     const { rows } = await this.pool.query<{
       interbank_transfer_id: string;
@@ -220,8 +228,15 @@ export class PostgresInterbankV1Repository implements InterbankV1Repository {
           AND refund_settled_at IS NULL
           AND reversal_state IN ('PENDING','PROCESSING','COMPLETED')
           AND amount_minor = $3 AND currency = $4
-          AND (origin_account = $2 OR reversal_refund_transfer_id::text = $5)
-        ORDER BY (reversal_refund_transfer_id::text = $5) DESC NULLS LAST, reversal_requested_at
+          AND (
+                reversal_refund_transfer_id::text = $5
+             OR (origin_account = $2 AND reversal_state IN ('PENDING','PROCESSING'))
+             OR (origin_account = $2 AND reversal_state = 'COMPLETED'
+                 AND reversal_refund_transfer_id IS NULL)
+          )
+        ORDER BY (reversal_refund_transfer_id::text = $5) IS TRUE DESC,
+                 (reversal_state IN ('PENDING','PROCESSING')) DESC,
+                 reversal_requested_at
         LIMIT 1`,
       [
         input.callerBankCode,
