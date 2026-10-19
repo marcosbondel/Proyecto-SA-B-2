@@ -25,6 +25,11 @@
  * `NUXT_PUBLIC_GRAFANA_URL` set it opens Explore on Tempo, already searching
  * for that trace. Without it, it is the copyable text it always was.
  *
+ * **A detail screen names whose trace it is** (T-60). A transfer or a payment
+ * shows the correlation it was born under, and a page opened from a link has no
+ * ledger entry for it; `traceLabel` lets the screen fall back to the trace of
+ * the question it asked without passing it off as the operation's.
+ *
  * Tabular figures, because a hexadecimal string compared by eye needs its
  * digits to line up.
  */
@@ -32,6 +37,8 @@ const props = defineProps<{
   correlationId: string | null;
   label?: string;
   traceId?: string | null;
+  /** What to call the trace; `Traza de esta consulta` when it is the query's, not the operation's. */
+  traceLabel?: string;
 }>();
 
 const { traceOf } = useTraces();
@@ -84,7 +91,7 @@ async function copy(which: 'correlation' | 'trace'): Promise<void> {
         class="text-[11px] uppercase tracking-[0.06em] text-[#75767F]"
         title="El identificador de la traza técnica de esta operación, para buscarla en Grafana."
       >
-        Traza
+        {{ traceLabel ?? 'Traza' }}
       </span>
       <span class="flex items-start gap-2">
         <a
