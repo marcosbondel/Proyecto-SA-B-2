@@ -105,6 +105,129 @@ describe('enviar un depósito al banco pareja', () => {
     expect(response.body.interbankTransferId).toBe(interbank.interbankTransferId);
   });
 
+  describe('quién puede originar un envío (D7a)', () => {
+    const como = (role: Role): request.Test =>
+      request(app.getHttpServer())
+        .post('/api/interbank/transfers')
+        .set('Authorization', auth(role))
+        .send(BODY);
+
+    it.each(['CAJERO_RECEPTOR', 'ADMINISTRADOR'] as const)(
+      'un %s recibe 403 y no se publica nada, ni siquiera la pregunta a Account',
+      async (role) => {
+        harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
+
+        const response = await como(role);
+
+        expect(response.status).toBe(403);
+        expect(response.body.type).toBe('FORBIDDEN');
+        expect(harness.publisher.published).toEqual([]);
+      },
+    );
+
+    it('un CLIENTE sí puede, y la Saga lleva su identidad', async () => {
+      harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
+
+      const response = await como('CLIENTE');
+
+      expect(response.status).toBe(202);
+      const saga = harness.publisher.published[1]!;
+      expect(saga.identity).toEqual({ customerId: CUSTOMER_ID, role: 'CLIENTE' });
+    });
+
+    it('un CLIENTE con la cuenta de otro recibe NOT_FOUND de Account y no se envía nada', async () => {
+      harness.replier.answerWith(accountBalanceRepliedV1.name, {
+        outcome: 'NOT_FOUND',
+        reason: 'ACCOUNT_NOT_FOUND',
+      });
+
+      const response = await como('CLIENTE');
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(harness.publisher.published.map((e) => e.messageType)).toEqual([
+        'account.balance.query.v1',
+      ]);
+    });
+
+    it('sin sesión, 401', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/interbank/transfers')
+        .send(BODY);
+
+      expect(response.status).toBe(401);
+      expect(harness.publisher.published).toEqual([]);
+    });
+  });
+
+  describe('reintentar con la misma Idempotency-Key (D7b)', () => {
+    const conClave = (key: string, customerId: string = CUSTOMER_ID): request.Test =>
+      request(app.getHttpServer())
+        .post('/api/interbank/transfers')
+        .set(
+          'Authorization',
+          `Bearer ${harness.tokens.sign({ customerId, username: 'ana', role: 'CLIENTE' })}`,
+        )
+        .set('Idempotency-Key', key)
+        .send(BODY);
+
+    it('devuelve el mismo interbankTransferId y el mismo transactionId que el original', async () => {
+      harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
+
+      const first = await conClave('retry-key-1');
+      const second = await conClave('retry-key-1');
+
+      expect(first.status).toBe(202);
+      expect(second.status).toBe(202);
+      expect(second.body.interbankTransferId).toBe(first.body.interbankTransferId);
+      expect(second.body.transactionId).toBe(first.body.transactionId);
+      // Y el id devuelto es el que viaja en la Saga, el que Payment guarda y
+      // el que `GET /api/interbank/transfers/{id}` sabrá encontrar.
+      const sagas = harness.publisher.published.filter(
+        (e) => e.messageType === 'transfer.requested.v1',
+      );
+      expect(sagas).toHaveLength(2);
+      for (const saga of sagas) {
+        const payload = saga.payload as {
+          transactionId: string;
+          interbank: { interbankTransferId: string };
+        };
+        expect(payload.transactionId).toBe(first.body.transactionId);
+        expect(payload.interbank.interbankTransferId).toBe(first.body.interbankTransferId);
+      }
+    });
+
+    it('el identificador es un UUID v4, que es lo que valida la consulta', async () => {
+      harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
+
+      const response = await conClave('retry-key-2');
+
+      expect(response.body.interbankTransferId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    });
+
+    it('otra clave, u otro cliente con la misma clave, da identificadores distintos', async () => {
+      harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
+
+      const base = await conClave('retry-key-3');
+      const otherKey = await conClave('retry-key-4');
+      const otherCustomer = await conClave('retry-key-3', '7a2d9c10-9c2e-4a71-b8f5-2d6e7c0a1b93');
+
+      expect(otherKey.body.interbankTransferId).not.toBe(base.body.interbankTransferId);
+      expect(otherCustomer.body.interbankTransferId).not.toBe(base.body.interbankTransferId);
+      expect(otherCustomer.body.transactionId).not.toBe(base.body.transactionId);
+    });
+
+    it('sin cabecera cada petición es independiente', async () => {
+      harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
+
+      const first = await enviar();
+      const second = await enviar();
+
+      expect(second.body.interbankTransferId).not.toBe(first.body.interbankTransferId);
+    });
+  });
+
   it('si Account no ve la cuenta, no se envía nada', async () => {
     harness.replier.answerWith(accountBalanceRepliedV1.name, {
       outcome: 'NOT_FOUND',

@@ -5,6 +5,7 @@
  */
 export {
   INTERBANK_BANK_CODE,
+  INTERBANK_ID_SECRET,
   INTERBANK_MAX_AMOUNT_MINOR,
   INTERBANK_PARTNER_BANK_CODE,
 } from '../application/interbank-config';
