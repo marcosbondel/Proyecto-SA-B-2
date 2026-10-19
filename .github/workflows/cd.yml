@@ -661,6 +661,12 @@ jobs:
           # lo cobra al 50 %.
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-gateway.observability.svc.cluster.local:4318' }}
           WEB_PUBLIC_URL: ${{ vars.WEB_PUBLIC_URL }}
+          # El banco pareja (T-60). Mientras no haya uno real, el envio va al
+          # mock de este release; con la URL del banco pareja, el mock queda
+          # solo para inyectar fallos (enunciado §4.1: los fallos se inyectan
+          # con el mock propio, nunca alterando el sistema del otro grupo).
+          PARTNER_MOCK_ENABLED: ${{ vars.PARTNER_MOCK_ENABLED || 'true' }}
+          INTERBANK_PARTNER_BASE_URL: ${{ vars.INTERBANK_PARTNER_BASE_URL }}
           # Mide la disponibilidad mientras el rolling update ocurre. El chart
           # declara `maxUnavailable: 0`; esto es lo que lo demuestra.
           ZERO_DOWNTIME_PROBE_URL: ${{ vars.GATEWAY_PUBLIC_URL }}/health

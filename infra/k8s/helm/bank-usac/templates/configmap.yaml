@@ -54,7 +54,14 @@ data:
   INTERBANK_PARTNER_BANK_CODE: {{ .Values.interbank.partnerBankCode | quote }}
   INTERBANK_MAX_AMOUNT_MINOR: {{ .Values.interbank.maxAmountMinor | quote }}
   # Base de la API de la pareja, con `/interbank/v1`. Vacia = envio apagado.
-  INTERBANK_PARTNER_BASE_URL: {{ .Values.interbank.partnerBaseUrl | default "" | quote }}
+  # Sin una URL explicita y con el mock encendido, apunta al mock de ESTE
+  # release: el nombre del Service depende del release (`bank-usac` en prod,
+  # `bank-usac-dev` en dev), asi que no se puede fijar en un secreto compartido.
+  {{- $mockUrl := "" }}
+  {{- if .Values.partnerMock.enabled }}
+  {{- $mockUrl = printf "http://%s:%v/interbank/v1" (include "bank-usac.componentFullname" (dict "root" . "component" .Values.partnerMock.component)) (.Values.partnerMock.port | default 3021) }}
+  {{- end }}
+  INTERBANK_PARTNER_BASE_URL: {{ .Values.interbank.partnerBaseUrl | default $mockUrl | quote }}
   # OBSOLETA desde TD-095: el plazo de un deposito lo fija el contrato
   # (V1_TRANSFER_TTL_MS, 180 s) y no esta variable. Se sigue publicando porque
   # payment-service la valida al arrancar; quitarla es seguro.
