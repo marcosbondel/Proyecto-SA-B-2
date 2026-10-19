@@ -295,7 +295,7 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Depósitos interbancarios aceptados (SLO-28 ≥ 95 %)",
+      "title": "Interbancario aceptado (SLO-28 ≥ 95 %): recibidos y enviados",
       "datasource": {
         "type": "prometheus",
         "uid": "bank-prometheus"
@@ -339,7 +339,7 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value_and_name"
       },
       "targets": [
         {
@@ -349,9 +349,21 @@
           },
           "expr": "slo:interbank_accepted:ratio_rate5m{environment=\"$environment\"}",
           "refId": "A",
+          "instant": true,
+          "legendFormat": "recibidos"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_sent_accepted:ratio_rate5m{environment=\"$environment\"}",
+          "legendFormat": "enviados",
+          "refId": "B",
           "instant": true
         }
-      ]
+      ],
+      "description": "Proporción aceptada en 5 minutos, en las dos direcciones: «recibidos» son los depósitos que llegan del banco pareja; «enviados» son los envíos nuestros hacia él. Una dirección en rojo con la otra en verde indica de qué lado está el fallo."
     },
     {
       "id": 5,

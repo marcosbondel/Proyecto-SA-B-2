@@ -102,7 +102,15 @@ resource "google_compute_instance" "db_instances" {
     echo "PostgreSQL aprovisionado exitosamente para la base de datos ${each.value.db_name}."
   EOF
 
-  lifecycle {
-    create_before_destroy = true
-  }
+  # SIN `create_before_destroy`, a propósito. Con él, reemplazar una VM crea la
+  # nueva antes de borrar la vieja y necesita una 9.ª instancia, pero la cuota
+  # INSTANCES del proyecto es 8 y el sistema usa exactamente 8 (5 VMs + 3 nodos
+  # de GKE). Así ningún reemplazo cabía jamás: el 2026-10-19 mover las VMs de
+  # zona falló con "Quota 'INSTANCES' exceeded" y hubo que borrar a mano las
+  # VMs viejas (vacías) para que Terraform siguiera.
+  #
+  # El orden por defecto (borrar y luego crear) sí cabe. El costo es que el
+  # reemplazo de una VM con datos los pierde: es el disco de arranque el que
+  # guarda PostgreSQL. Por eso un reemplazo de VM aquí exige un respaldo antes,
+  # nunca un `apply` a ciegas — `terraform plan` dice "must be replaced".
 }

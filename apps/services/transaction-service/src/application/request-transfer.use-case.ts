@@ -1,5 +1,5 @@
 import { transactionFailedV1, transactionInitiatedV1 } from '@bank/contracts';
-import type { TransferRequestedV1 } from '@bank/contracts';
+import type { Identity, TransferRequestedV1 } from '@bank/contracts';
 
 import {
   conflictsWithOriginal,
@@ -82,7 +82,7 @@ export class RequestTransferUseCase {
        * once is missing it forever — which is why the column is written on the
        * insert rather than derived later (TD-033, TD-035).
        */
-      readonly identity: { readonly customerId: string } | null;
+      readonly identity: Identity | null;
       /**
        * When `transfer.requested.v1` was emitted, ISO-8601: the start of the
        * transfer's latency (SLI-3). Optional so a caller that does not have the
@@ -94,11 +94,7 @@ export class RequestTransferUseCase {
     const refusal = requestRefusal(payload);
 
     if (refusal !== null) {
-      await this.#refuse(
-        payload.transactionId,
-        refusal,
-        payload.customerId ?? envelope.identity?.customerId ?? null,
-      );
+      await this.#refuse(payload.transactionId, refusal, subjectOf(payload, envelope.identity));
 
       return { kind: 'REFUSED', reason: refusal };
     }
@@ -111,7 +107,7 @@ export class RequestTransferUseCase {
       amount: payload.amount,
       correlationId: envelope.correlationId,
       idempotencyKey: envelope.idempotencyKey,
-      customerId: payload.customerId ?? envelope.identity?.customerId ?? null,
+      customerId: subjectOf(payload, envelope.identity),
       reference: payload.reference ?? null,
       /*
        * Se copia tal cual, sin mirarlo (T-47). Este servicio no sabe si el
@@ -303,6 +299,25 @@ export class RequestTransferUseCase {
       },
     });
   }
+}
+
+/**
+ * Who the transfer is about: the customer the KYC gate is asked about and the
+ * one the row is scoped to.
+ *
+ * A `CLIENTE` is only ever acting for themselves, whatever `payload.customerId`
+ * says. The field exists for staff who originate on behalf of a customer; read
+ * from a customer's own request it would let them name a verified customer — or
+ * a staff account, which the gate exempts — and be judged as that person
+ * instead of as themselves (T-60). The role is the one the session carried, so
+ * it cannot be claimed from the body.
+ */
+function subjectOf(payload: TransferRequestedV1, identity: Identity | null): string | null {
+  if (identity?.role === 'CLIENTE') {
+    return identity.customerId;
+  }
+
+  return payload.customerId ?? identity?.customerId ?? null;
 }
 
 /** An ISO-8601 instant, or `null` when it is absent or not one. */

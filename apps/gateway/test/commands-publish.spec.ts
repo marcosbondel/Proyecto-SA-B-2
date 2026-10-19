@@ -13,6 +13,7 @@ import {
 import { AccountsController } from '../src/interfaces/accounts.controller';
 import { CustomersController } from '../src/interfaces/customers.controller';
 import { TransfersController } from '../src/interfaces/transfers.controller';
+import { accountIsVisible } from './support/account-replies';
 import { buildHarness } from './support/harness';
 import type { Harness } from './support/harness';
 
@@ -41,6 +42,8 @@ describe('the five asynchronous commands', () => {
     app = harness.app;
     auth = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'CLIENTE' })}`;
     admin = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'ADMINISTRADOR' })}`;
+    // A CLIENTE's transfer is preceded by a read: is the source theirs? (T-60)
+    accountIsVisible(harness, SOURCE);
   });
 
   afterEach(async () => {
@@ -145,7 +148,8 @@ describe('the five asynchronous commands', () => {
         amount: { amountMinor: 500, currency: 'GTQ' },
       });
 
-    expect(harness.publisher.published).toHaveLength(3);
+    // Three commands, and the read that asks Account whether the source is theirs.
+    expect(harness.publisher.published).toHaveLength(4);
 
     for (const envelope of harness.publisher.published) {
       expect(validateMessage(envelope).ok).toBe(true);

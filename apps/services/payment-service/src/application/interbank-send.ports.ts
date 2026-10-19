@@ -194,6 +194,15 @@ export interface InterbankSendRepository {
     readonly outbound?: readonly OutboxMessage[];
   }): Promise<boolean>;
 
+  /*
+   * **Todos los `claim*` de este puerto arriendan lo que devuelven** (T-60): una
+   * fila reclamada no la devuelve ningún otro reclamo —de esta réplica o de otra—
+   * hasta que quien la tiene termine el paso (`advance`, `recordResolutionStep`,
+   * `recordReversalStep`, `enqueueVerdict`) o caduque el arrendamiento porque el
+   * pod murió. `open` entrega la fila ya arrendada a quien la dio de alta, que
+   * es quien la entrega en línea.
+   */
+
   /** Los pendientes cuyo reintento de entrega ya vence. */
   claimSendable(now: Date, limit: number): Promise<readonly InterbankSend[]>;
 
@@ -280,7 +289,11 @@ export interface InterbankSendRepository {
    * `messageId` distintos. Dos minutos es mucho más que cualquier transacción
    * de este servicio.
    */
-  claimUnreconciled(olderThan: Date, limit: number): Promise<readonly InterbankSend[]>;
+  claimUnreconciled(
+    olderThan: Date,
+    limit: number,
+    now: Date,
+  ): Promise<readonly InterbankSend[]>;
 
   /**
    * Encola el veredicto de un depósito que se quedó sin él, y lo marca.

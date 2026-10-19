@@ -103,6 +103,7 @@ function build(accountType: 'MONETARIA' | 'AHORRO' = 'MONETARIA', balanceMinor =
     clock.advanceTo(new Date(T0.getTime() + index * SECOND));
     await new DebitAccountUseCase(dependencies).execute(
       { transactionId, accountId, amount: { amountMinor: 100, currency: 'GTQ' } },
+      { customerId: CUSTOMER, role: 'CLIENTE' },
       key,
     );
 

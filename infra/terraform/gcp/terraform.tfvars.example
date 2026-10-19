@@ -8,7 +8,7 @@ project_id = "tu-proyecto-gcp-id"
 
 # Región y Zona
 region = "us-central1"
-zone   = "us-central1-a"
+zone   = "us-central1-c"
 
 # Nombre de la red VPC. Prefija también el clúster de GKE y la IP reservada
 # del Gateway, así que cambiarlo renombra los tres.

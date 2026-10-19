@@ -458,6 +458,7 @@ describe('reading the movements', () => {
 
     await new DebitAccountUseCase(dependencies).execute(
       { transactionId: TRANSACTION, accountId: ACCOUNT, amount: quetzales(2_500) },
+      CLIENT,
       'key-1',
     );
     await new GetOperationsUseCase(dependencies).execute({ accountId: ACCOUNT }, CLIENT);
@@ -488,7 +489,7 @@ describe('debiting, which is criteria 3 and 4', () => {
     const { repository, publisher, dependencies } = fixture();
     seed(repository, { balanceMinor: 10_000 });
 
-    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(command, CLIENT, 'key-1');
 
     expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(7_500);
     expect(publisher.typesPublished()).toEqual(['account.debited.v1']);
@@ -499,7 +500,7 @@ describe('debiting, which is criteria 3 and 4', () => {
     const { repository, publisher, dependencies } = fixture();
     seed(repository, { balanceMinor: 1_000 });
 
-    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(command, CLIENT, 'key-1');
 
     expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(1_000);
     expect(publisher.typesPublished()).toEqual(['account.debit.rejected.v1']);
@@ -510,7 +511,7 @@ describe('debiting, which is criteria 3 and 4', () => {
     const { publisher, dependencies } = fixture();
 
     await expect(
-      new DebitAccountUseCase(dependencies).execute(command, 'key-1'),
+      new DebitAccountUseCase(dependencies).execute(command, CLIENT, 'key-1'),
     ).resolves.toBeUndefined();
 
     expect(publisher.events[0]?.payload).toMatchObject({ reason: 'ACCOUNT_NOT_FOUND' });
@@ -521,8 +522,8 @@ describe('debiting, which is criteria 3 and 4', () => {
     seed(repository, { balanceMinor: 10_000 });
     const useCase = new DebitAccountUseCase(dependencies);
 
-    await useCase.execute(command, 'key-1');
-    await useCase.execute(command, 'key-1');
+    await useCase.execute(command, CLIENT, 'key-1');
+    await useCase.execute(command, CLIENT, 'key-1');
 
     expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(7_500);
     expect(repository.operations).toHaveLength(1);
@@ -538,8 +539,8 @@ describe('debiting, which is criteria 3 and 4', () => {
     seed(repository, { balanceMinor: 10_000 });
     const useCase = new DebitAccountUseCase(dependencies);
 
-    await useCase.execute(command, 'key-1');
-    await useCase.execute(command, 'key-1');
+    await useCase.execute(command, CLIENT, 'key-1');
+    await useCase.execute(command, CLIENT, 'key-1');
 
     expect(publisher.typesPublished()).toEqual(['account.debited.v1', 'account.debited.v1']);
     expect(publisher.events[1]?.payload).toEqual(publisher.events[0]?.payload);
@@ -550,8 +551,8 @@ describe('debiting, which is criteria 3 and 4', () => {
     seed(repository, { balanceMinor: 100 });
     const useCase = new DebitAccountUseCase(dependencies);
 
-    await useCase.execute(command, 'key-1');
-    await useCase.execute(command, 'key-1');
+    await useCase.execute(command, CLIENT, 'key-1');
+    await useCase.execute(command, CLIENT, 'key-1');
 
     expect(publisher.typesPublished()).toEqual([
       'account.debit.rejected.v1',
@@ -563,7 +564,7 @@ describe('debiting, which is criteria 3 and 4', () => {
     const { publisher, repository, dependencies } = fixture();
     seed(repository, { balanceMinor: 100_000, status: 'INACTIVE' });
 
-    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(command, CLIENT, 'key-1');
 
     expect(publisher.events[0]?.payload).toMatchObject({ reason: 'ACCOUNT_INACTIVE' });
   });
@@ -576,7 +577,7 @@ describe('the AHORRO commission a debit charges alongside itself (T-27)', () => 
     const { repository, publisher, dependencies } = fixture();
     seed(repository, { balanceMinor: 20_000, accountType: 'AHORRO' });
 
-    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(command, CLIENT, 'key-1');
 
     expect(publisher.typesPublished()).toEqual([
       'account.debited.v1',
@@ -597,7 +598,7 @@ describe('the AHORRO commission a debit charges alongside itself (T-27)', () => 
     const { repository, publisher, dependencies } = fixture();
     seed(repository, { balanceMinor: 20_000, accountType: 'MONETARIA' });
 
-    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(command, CLIENT, 'key-1');
 
     expect(publisher.typesPublished()).toEqual(['account.debited.v1']);
   });
@@ -607,8 +608,8 @@ describe('the AHORRO commission a debit charges alongside itself (T-27)', () => 
     seed(repository, { balanceMinor: 20_000, accountType: 'AHORRO' });
     const useCase = new DebitAccountUseCase(dependencies);
 
-    await useCase.execute(command, 'key-1');
-    await useCase.execute(command, 'key-1');
+    await useCase.execute(command, CLIENT, 'key-1');
+    await useCase.execute(command, CLIENT, 'key-1');
 
     expect(publisher.typesPublished()).toEqual([
       'account.debited.v1',
@@ -626,7 +627,7 @@ describe('the AHORRO commission a debit charges alongside itself (T-27)', () => 
     // condition now, not a floor `debit` re-enforces.
     seed(repository, { balanceMinor: 2_800, accountType: 'AHORRO' });
 
-    await new DebitAccountUseCase(dependencies).execute(command, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(command, CLIENT, 'key-1');
 
     expect(publisher.typesPublished()).toEqual([
       'account.debited.v1',
@@ -688,7 +689,7 @@ describe('compensating, which is criterion 5', () => {
     const { repository, publisher, dependencies } = fixture();
     seed(repository, { balanceMinor: 10_000 });
 
-    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'debit-key');
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, CLIENT, 'debit-key');
 
     const useCase = new CompensateDebitUseCase(dependencies);
     await useCase.execute(compensation, 'compensation-key');
@@ -710,7 +711,7 @@ describe('compensating, which is criterion 5', () => {
     const { repository, dependencies } = fixture();
     seed(repository, { balanceMinor: 10_000 });
 
-    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'debit-key');
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, CLIENT, 'debit-key');
     await new CompensateDebitUseCase(dependencies).execute(compensation, 'compensation-key');
 
     expect(repository.operations.find((o) => o.type === 'DEBIT')?.status).toBe('COMPENSATED');
@@ -749,7 +750,7 @@ describe('compensating, which is criterion 5', () => {
     const { repository, dependencies } = fixture();
     seed(repository, { balanceMinor: 20_000, accountType: 'AHORRO' });
 
-    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'debit-key');
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, CLIENT, 'debit-key');
 
     // Amount 2,500 + the Q3.00 (300) commission left the account.
     expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(17_200);
@@ -923,7 +924,7 @@ describe('reporting each movement to the activity monitor (T-42)', () => {
     const { repository, activity, dependencies } = fixture();
     seed(repository, { balanceMinor: 10_000, accountType: 'AHORRO' });
 
-    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, CLIENT, 'key-1');
 
     expect(activity.movements).toHaveLength(1);
     expect(activity.movements[0]).toMatchObject({
@@ -937,9 +938,10 @@ describe('reporting each movement to the activity monitor (T-42)', () => {
     const { repository, activity, dependencies } = fixture();
     seed(repository, { balanceMinor: 1_000 });
 
-    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, CLIENT, 'key-1');
     await new DebitAccountUseCase(dependencies).execute(
       { ...debitCommand, accountId: OTHER_ACCOUNT },
+      CLIENT,
       'key-2',
     );
 
@@ -951,9 +953,9 @@ describe('reporting each movement to the activity monitor (T-42)', () => {
     seed(repository, { balanceMinor: 10_000 });
 
     const useCase = new DebitAccountUseCase(dependencies);
-    await useCase.execute(debitCommand, 'key-1');
-    await useCase.execute(debitCommand, 'key-1');
-    await useCase.execute(debitCommand, 'key-1');
+    await useCase.execute(debitCommand, CLIENT, 'key-1');
+    await useCase.execute(debitCommand, CLIENT, 'key-1');
+    await useCase.execute(debitCommand, CLIENT, 'key-1');
 
     expect(activity.movements).toHaveLength(1);
   });
@@ -978,7 +980,7 @@ describe('reporting each movement to the activity monitor (T-42)', () => {
   it('reports a compensation as its own kind of movement, once however often it is delivered', async () => {
     const { repository, activity, dependencies } = fixture();
     seed(repository, { balanceMinor: 10_000 });
-    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'debit-key');
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, CLIENT, 'debit-key');
 
     const useCase = new CompensateDebitUseCase(dependencies);
     const compensation = { ...debitCommand, triggeredBy: 'PAYMENT_DECLINED' as const };

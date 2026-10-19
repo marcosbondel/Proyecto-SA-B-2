@@ -17,9 +17,17 @@ export const GATEWAY_EXCHANGES = [EXCHANGES.commands, EXCHANGES.events, EXCHANGE
  * arrives with T-06, and until then a failed connection must not stop the
  * process from reporting its own liveness.
  */
-export function createMessageBroker(rabbitmqUrl: string): MessageBroker {
+export function createMessageBroker(rabbitmqUrl: string, replyTimeoutMs?: number): MessageBroker {
   return new MessageBroker({
     url: rabbitmqUrl,
+    // A publish that the broker has not confirmed must give up **before** the
+    // caller's reply ceiling, so a flapping connection ends as
+    // BROKER_UNAVAILABLE ("nothing was accepted") and not as REPLY_TIMEOUT
+    // ("it may have been"). The library default equals the ceiling, which is
+    // exactly the tie that lost on 2026-10-19.
+    ...(replyTimeoutMs === undefined
+      ? {}
+      : { publishTimeoutMs: Math.max(250, Math.floor(replyTimeoutMs * 0.6)) }),
     exchanges: GATEWAY_EXCHANGES,
     errorExchange: EXCHANGES.errors,
   });

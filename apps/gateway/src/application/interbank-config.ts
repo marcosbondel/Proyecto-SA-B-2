@@ -16,3 +16,11 @@ export const INTERBANK_PARTNER_BANK_CODE = Symbol('InterbankPartnerBankCode');
  * (B7). El techo es el del contrato (Q10 000,00).
  */
 export const INTERBANK_MAX_AMOUNT_MINOR = Symbol('InterbankMaxAmountMinor');
+
+/**
+ * El secreto con el que se derivan los identificadores de un envío a partir de
+ * la clave de idempotencia (D7b). Sale del mismo secreto de sesión que ya
+ * comparten las réplicas, para que un reintento que cae en otra réplica derive
+ * el mismo valor.
+ */
+export const INTERBANK_ID_SECRET = Symbol('InterbankIdSecret');

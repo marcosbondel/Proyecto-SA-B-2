@@ -35,7 +35,7 @@ TF_DIR="${REPO_ROOT}/infra/terraform/gcp"
 
 PROJECT="${GCP_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${GCP_REGION:-us-central1}"
-ZONE="${GCP_ZONE:-us-central1-a}"
+ZONE="${GCP_ZONE:-us-central1-c}"
 ARTIFACT_REPO="${ARTIFACT_REPO:-bank-images}"
 
 dry_run=false

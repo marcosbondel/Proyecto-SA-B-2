@@ -93,7 +93,7 @@ Edita `terraform.tfvars` colocando el ID de tu proyecto y las credenciales desea
 ```hcl
 project_id          = "tu-proyecto-gcp-id"
 region              = "us-central1"
-zone                = "us-central1-a"
+zone                = "us-central1-c"
 network_name        = "bank-usac-vpc"
 gke_machine_type    = "e2-standard-2"
 gke_node_count      = 3

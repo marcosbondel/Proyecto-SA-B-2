@@ -8,6 +8,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule, GATEWAY_RUNTIME } from './app.module';
 import type { GatewayRuntime } from './app.module';
 import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environment';
+import { installUnhandledRejectionGuard } from './infrastructure/process-guard';
 
 /**
  * The environment is validated before Nest boots, so a missing variable fails
@@ -18,6 +19,9 @@ async function bootstrap(): Promise<void> {
   loadDotEnvFile();
   const environment = loadEnvironment();
   const logger = new JsonLogger({ service: 'gateway' });
+
+  // One stray promise must not end the public entry point (see the module).
+  installUnhandledRejectionGuard(logger);
 
   // Nest's own lines — and every `new Logger(...)` in the filter and the
   // controllers — through the same JSON as everything else (T-48).

@@ -181,7 +181,16 @@ class RepositorioEnMemoria implements InterbankSendRepository {
     );
   }
 
-  public async claimUnreconciled(olderThan: Date): Promise<readonly InterbankSend[]> {
+  /** El reloj con que se pidió el último reclamo de la reconciliación (T-60). */
+  public relojDelReclamo: Date | null = null;
+
+  public async claimUnreconciled(
+    olderThan: Date,
+    _limit: number,
+    now: Date,
+  ): Promise<readonly InterbankSend[]> {
+    this.relojDelReclamo = now;
+
     return [...this.filas.values()].filter(
       (f) =>
         // Sin `TIMEOUT`: desde TD-095 no es un veredicto.
@@ -499,6 +508,18 @@ describe('pedir el depósito', () => {
     await m.caso.requested(comando());
 
     expect(m.repositorio.filas.size).toBe(1);
+  });
+
+  it('un comando reentregado no vuelve a entregar al banco pareja (T-60)', async () => {
+    const m = montar();
+    m.responder(false);
+
+    await m.caso.requested(comando());
+    await m.caso.requested(comando());
+    await m.caso.requested(comando());
+
+    // La fila nace arrendada a quien la entrega; el reintento es del barrido.
+    expect(m.entregas).toEqual([TRANSFER]);
   });
 
   it('ignora un pago que no es interbancario', async () => {
@@ -1554,5 +1575,58 @@ describe('lo que impide hablar el contrato se declina antes de la red (B1, B7)',
     });
 
     expect(m.entregas).toEqual([]);
+  });
+});
+
+describe('los reclamos del barrido (T-60)', () => {
+  it('un barrido sin nada que hacer no reclama nada, que es lo que deja espaciar el siguiente', async () => {
+    const m = montar();
+
+    expect(await m.caso.sweep()).toEqual({ expired: 0, resent: 0, resolved: 0, claimed: 0 });
+  });
+
+  it('una entrega que se reintenta cuenta como trabajo aunque vuelva a fallar', async () => {
+    const m = montar();
+    m.responder(false);
+    await m.caso.requested(comando());
+
+    const barrido = await m.caso.sweep();
+
+    expect(barrido.claimed).toBe(1);
+    expect(barrido.resent).toBe(1);
+    expect(m.repositorio.filas.get(TRANSFER)?.state).toBe('PENDING');
+  });
+
+  it('un paso del protocolo de TIMEOUT que pregunta y no cierra nada también cuenta', async () => {
+    const m = montar();
+    await m.caso.requested(comando());
+    m.avanzar(180_001);
+
+    const barrido = await m.caso.sweep();
+
+    // Venció (1) y entró en su protocolo en la misma pasada (1): `resolved` es 0
+    // porque preguntar no cierra el depósito, y aun así hubo trabajo.
+    expect(barrido.resolved).toBe(0);
+    expect(barrido.claimed).toBe(2);
+  });
+
+  it('la reconciliación reclama con el reloj del caso de uso y no con el de la base', async () => {
+    const m = montar();
+    m.avanzar(5_000);
+
+    await m.caso.reconcile();
+
+    expect(m.repositorio.relojDelReclamo).toEqual(new Date('2026-01-01T00:00:05.000Z'));
+  });
+
+  it('un comando reentregado no vuelve a anunciar el alta: lo anunció quien la dio', async () => {
+    const m = montar();
+
+    await m.caso.requested(comando());
+    const anunciados = m.directo.length;
+    await m.caso.requested(comando());
+
+    expect(anunciados).toBeGreaterThan(0);
+    expect(m.directo).toHaveLength(anunciados);
   });
 });

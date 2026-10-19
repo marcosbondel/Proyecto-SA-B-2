@@ -27,6 +27,35 @@ describe('payment-service environment', () => {
     expect(() => loadEnvironment(malformed)).toThrow(/PORT/);
   });
 
+  describe('the sweepers\' idle backoff (T-60)', () => {
+    it('polls every 500 ms while there is work and backs off to 2 s while there is none', () => {
+      const environment = loadEnvironment(complete);
+
+      expect(environment.PAYMENT_RETRY_SWEEP_MS).toBe(500);
+      expect(environment.PAYMENT_RETRY_SWEEP_IDLE_MAX_MS).toBe(2_000);
+    });
+
+    it('lets an operator move the ceiling, or set it equal to the floor to turn the backoff off', () => {
+      const environment = loadEnvironment({
+        ...complete,
+        PAYMENT_RETRY_SWEEP_MS: '500',
+        PAYMENT_RETRY_SWEEP_IDLE_MAX_MS: '500',
+      });
+
+      expect(environment.PAYMENT_RETRY_SWEEP_IDLE_MAX_MS).toBe(environment.PAYMENT_RETRY_SWEEP_MS);
+    });
+
+    it.each([
+      ['a ceiling under 100 ms', { PAYMENT_RETRY_SWEEP_IDLE_MAX_MS: '99' }],
+      ['a ceiling that is not whole', { PAYMENT_RETRY_SWEEP_IDLE_MAX_MS: '2.5' }],
+      ['a ceiling past ten minutes', { PAYMENT_RETRY_SWEEP_IDLE_MAX_MS: '600001' }],
+    ])('refuses %s at boot, naming the variable', (_label, extra) => {
+      expect(() => loadEnvironment({ ...complete, ...extra })).toThrow(
+        /PAYMENT_RETRY_SWEEP_IDLE_MAX_MS/,
+      );
+    });
+  });
+
   describe('the simulated provider (T-44)', () => {
     it('defaults to a provider that never fails and never waits, as before', () => {
       expect(simulationDefaults(loadEnvironment(complete))).toEqual({

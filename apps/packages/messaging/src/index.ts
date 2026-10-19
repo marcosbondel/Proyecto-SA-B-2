@@ -1,3 +1,6 @@
+export type { AdaptiveTickerOptions } from './adaptive-ticker';
+export { AdaptiveTicker } from './adaptive-ticker';
+
 export type {
   Binding,
   BrokerOptions,

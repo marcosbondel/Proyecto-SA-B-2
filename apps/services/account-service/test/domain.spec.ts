@@ -4,6 +4,7 @@ import {
   credit,
   creditInterbank,
   debit,
+  mayDebit,
   openAccount,
   openingDepositRefusal,
   openingRefusal,
@@ -401,5 +402,21 @@ describe('the AHORRO minimum opening deposit (T-27)', () => {
 
   it('still opens at Q0.00 when no deposit is given, as before T-27', () => {
     expect(account().balanceMinor).toBe(0);
+  });
+});
+
+describe('who may order a debit from an account (D-06, CDU003.1; T-60)', () => {
+  const OWNER = '9f1c8b2a-4d63-4e57-8a90-1b2c3d4e5f60';
+  const STRANGER = '1e2d3c4b-5a69-4f78-9012-3456789abcde';
+  const STAFF = 'a0b1c2d3-e4f5-4061-8273-8495a6b7c8d9';
+
+  it.each([
+    ['the owner, as a CLIENTE', { customerId: OWNER, role: 'CLIENTE' as const }, true],
+    ['another CLIENTE', { customerId: STRANGER, role: 'CLIENTE' as const }, false],
+    ['a teller at the window', { customerId: STAFF, role: 'CAJERO_RECEPTOR' as const }, true],
+    ['an administrator', { customerId: STAFF, role: 'ADMINISTRADOR' as const }, true],
+    ['no one at all', null, false],
+  ])('%s', (_who, actor, expected) => {
+    expect(mayDebit(actor, account({ customerId: OWNER }))).toBe(expected);
   });
 });
