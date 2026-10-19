@@ -31,6 +31,7 @@ import { InterbankController } from './interfaces/interbank.controller';
 import { InterbankV1Controller } from './interfaces/interbank-v1.controller';
 import {
   INTERBANK_BANK_CODE,
+  INTERBANK_ID_SECRET,
   INTERBANK_MAX_AMOUNT_MINOR,
   INTERBANK_PARTNER_BANK_CODE,
 } from './interfaces/interbank-v1.tokens';
@@ -161,6 +162,7 @@ export class AppModule implements NestModule {
         { provide: INTERBANK_BANK_CODE, useValue: environment.INTERBANK_BANK_CODE },
         { provide: INTERBANK_PARTNER_BANK_CODE, useValue: environment.INTERBANK_PARTNER_BANK_CODE },
         { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: environment.INTERBANK_MAX_AMOUNT_MINOR },
+        { provide: INTERBANK_ID_SECRET, useValue: environment.JWT_SECRET },
         InterbankV1UseCase,
         InterbankSendUseCase,
 
