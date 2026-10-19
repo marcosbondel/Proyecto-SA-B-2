@@ -28,15 +28,19 @@ imagePullPolicy: IfNotPresent
 #   payment, notification  — yes. They consume shared durable queues, so the
 #                            broker round-robins work across replicas, which is
 #                            the intended behaviour.
-#   account                — yes, since the sweep lease. It also runs the
-#                            inactive-account deactivation job on an interval
-#                            (services.account.deactivation), which used to run
-#                            N times with N replicas because nothing elected a
-#                            single runner. `PostgresSweepLease` now takes a
-#                            `pg_try_advisory_lock` before each sweep, so the
-#                            replica that gets it sweeps and the others skip
-#                            their turn. The lock is held by a session, so a pod
-#                            that dies mid-sweep releases it by disconnecting.
+#   account                — CAPPED AT ONE REPLICA, on purpose (T-60, D6b). It
+#                            also runs the inactive-account deactivation job on
+#                            an interval (services.account.deactivation), which
+#                            used to run N times with N replicas because nothing
+#                            elected a single runner. `PostgresSweepLease` now
+#                            takes a `pg_try_advisory_lock` before each sweep,
+#                            so the code is safe past one replica — but the
+#                            project's rule (CLAUDE.md) is still one, and in
+#                            production the HPA took it to four under load. The
+#                            cap lives in `services.account.autoscaling` below
+#                            (HPA kept, `maxReplicas: 1`, so the chart still has
+#                            its seven HPAs). Lifting it is one line there, and
+#                            should come with a decision to retire the rule.
 replicaCount: 1
 resources:
   requests:
@@ -255,10 +259,22 @@ services:
     image:
       repository: bank-usac/account-service
       tag: dev # always --set at install time — see the note above `services:`
-    # El HPA global (80% de CPU, 1-5 replicas) aplica tambien aqui: el barrido
-    # de cuentas inactivas se serializa con un cerrojo consultivo de PostgreSQL
-    # (`PostgresSweepLease`), asi que varias replicas no lo ejecutan varias
-    # veces.
+    # Una sola replica (T-60, D6b). El HPA global (1-5) NO aplica aqui: este
+    # bloque lo sustituye entero (`<componente>.autoscaling | default
+    # .Values.autoscaling` en templates/account/hpa.yaml), y `maxReplicas: 1`
+    # deja el HPA presente —los siete siguen existiendo— pero sin margen para
+    # crecer. Razon: este servicio ademas corre el barrido de cuentas inactivas
+    # por intervalo, y la regla del proyecto es que no escale. Hoy el barrido ya
+    # es seguro con varias replicas (`PostgresSweepLease`, un cerrojo consultivo
+    # de PostgreSQL), asi que levantar el tope es cambiar `maxReplicas` aqui;
+    # no lo subas sin decidir tambien retirar la regla. Con `replicaCount` del
+    # Deployment en 1 y min == max == 1, ni el HPA ni un `helm upgrade` mueven
+    # la cifra.
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 1
+      targetCPUUtilizationPercentage: 80
     deactivation:
       enabled: "true"
       intervalMs: "86400000"
