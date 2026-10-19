@@ -309,7 +309,7 @@
     {
       "id": 22,
       "type": "stat",
-      "title": "Error budget · SLO-28 Banco pareja",
+      "title": "Error budget · SLO-28 Banco pareja (enviados y recibidos)",
       "datasource": {
         "type": "prometheus",
         "uid": "bank-prometheus"
@@ -353,7 +353,7 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value_and_name"
       },
       "targets": [
         {
@@ -363,9 +363,21 @@
           },
           "expr": "slo:interbank_accepted:budget_remaining7d{environment=\"$environment\"}",
           "refId": "A",
+          "instant": true,
+          "legendFormat": "recibidos"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "bank-prometheus"
+          },
+          "expr": "slo:interbank_sent_accepted:budget_remaining7d{environment=\"$environment\"}",
+          "legendFormat": "enviados",
+          "refId": "B",
           "instant": true
         }
-      ]
+      ],
+      "description": "Presupuesto de error de 7 días del SLO-28 en las dos direcciones: «recibidos» son los depósitos que el banco pareja nos manda; «enviados» son los envíos nuestros hacia el banco pareja. Cada serie es independiente: el panel está sano solo si las dos lo están. Detalle por dirección en el dashboard 08."
     },
     {
       "id": 23,
