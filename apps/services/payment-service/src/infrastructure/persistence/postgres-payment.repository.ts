@@ -14,6 +14,7 @@ import type {
 import { minorUnitsFromNumeric, numericFromMinorUnits, quetzales } from '../../domain/money';
 import type { Payment, PaymentAttempt } from '../../domain/payment';
 import type { SimulationSettings } from '../../domain/simulation';
+import { PAYMENT_LEASE_MS } from './claim-lease';
 
 /** The one row of `payment_simulation_settings`. */
 interface SimulationRow {
@@ -101,9 +102,11 @@ const COLUMNS = `payment_id, transaction_id, amount, status, attempt, error_type
  */
 export class PostgresPaymentRepository implements PaymentRepository {
   readonly #pool: Pool;
+  readonly #leaseMs: number;
 
-  constructor(pool: Pool) {
+  constructor(pool: Pool, leaseMs: number = PAYMENT_LEASE_MS) {
     this.#pool = pool;
+    this.#leaseMs = leaseMs;
   }
 
   public async stats(): Promise<{
@@ -164,8 +167,8 @@ export class PostgresPaymentRepository implements PaymentRepository {
       inserted = await this.#pool.query<PaymentRow>(
         `INSERT INTO payments (payment_id, transaction_id, amount, status, scenario,
                                origin_correlation_id, next_attempt_at, created_at, updated_at,
-                               trace_context)
-         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $7, $8)
+                               trace_context, claimed_until)
+         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $7, $8, $9)
          ON CONFLICT (payment_id) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
@@ -178,6 +181,12 @@ export class PostgresPaymentRepository implements PaymentRepository {
           payment.createdAt,
           // The Saga's trace, so the retry sweep can rejoin it (T-48).
           currentTraceparent(),
+          /*
+           * Nace arrendado: quien lo abre hace el primer intento en línea, y el
+           * barrido —que ve un `PENDING` con `next_attempt_at` ya vencido—
+           * competiría con él. `attempt` suelta el arrendamiento al terminar.
+           */
+          new Date(payment.createdAt.getTime() + this.#leaseMs),
         ],
       );
     } catch (error) {
@@ -258,7 +267,10 @@ export class PostgresPaymentRepository implements PaymentRepository {
                  * already debited. One more parameter is cheaper than one more
                  * cast to get wrong.
                  */
-                decided_at         = $9
+                decided_at         = $9,
+                -- The attempt is over and its next due time is written above:
+                -- release the sweeper's lease so that time is honoured at once.
+                claimed_until      = NULL
           WHERE payment_id = $1
         RETURNING ${COLUMNS}`,
         [
@@ -463,23 +475,39 @@ export class PostgresPaymentRepository implements PaymentRepository {
   }
 
   /**
-   * `FOR UPDATE SKIP LOCKED` is what makes more than one replica safe.
+   * Claims the payments the ladder owes, and **leases** them in the same
+   * statement (T-60).
    *
-   * Without it two sweepers read the same due payments and race into the lock
-   * in `attempt`; one wins and the other blocks for the length of a provider
-   * call before discovering it was superseded. With it, the second sweeper
-   * simply picks different rows.
+   * This used to be a bare `SELECT … FOR UPDATE SKIP LOCKED` through the pool.
+   * Outside a transaction the row lock is gone the instant the `SELECT`
+   * returns, so two replicas (the HPA scales this service) read the same due
+   * payments, both asked the provider, and one then lost the race into the lock
+   * in `attempt`. Money was never at risk — `attempt` checks the attempt number
+   * against the row — but every duplicate claim was a wasted provider call.
+   *
+   * `SKIP LOCKED` in the sub-select splits the rows between claims running at
+   * the same moment; `claimed_until` keeps them split afterwards, until
+   * `attempt` finishes and clears it or the lease lapses because the pod died.
    */
   public async due(now: Date, limit: number): Promise<readonly Payment[]> {
     const found = await this.#pool.query<PaymentRow>(
-      `SELECT ${COLUMNS} FROM payments
-        WHERE status = 'PENDING'
-          AND next_attempt_at IS NOT NULL
-          AND next_attempt_at <= $1
-        ORDER BY next_attempt_at
-        LIMIT $2
-        FOR UPDATE SKIP LOCKED`,
-      [now, limit],
+      `WITH claimed AS (
+         UPDATE payments
+            SET claimed_until = $1::timestamptz + ($3::double precision * interval '1 millisecond')
+          WHERE payment_id IN (
+            SELECT payment_id FROM payments
+             WHERE status = 'PENDING'
+               AND next_attempt_at IS NOT NULL
+               AND next_attempt_at <= $1
+               AND (claimed_until IS NULL OR claimed_until <= $1)
+             ORDER BY next_attempt_at
+             FOR UPDATE SKIP LOCKED
+             LIMIT $2
+          )
+          RETURNING ${COLUMNS}
+       )
+       SELECT ${COLUMNS} FROM claimed ORDER BY next_attempt_at`,
+      [now, limit, this.#leaseMs],
     );
 
     return found.rows.map(paymentOf);

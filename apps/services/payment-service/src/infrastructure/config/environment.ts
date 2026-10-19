@@ -81,6 +81,27 @@ export class PaymentServiceEnvironment {
   public PAYMENT_RETRY_SWEEP_MS!: number;
 
   /**
+   * How slowly the sweepers may poll **while there is nothing to do** (T-60).
+   *
+   * `PAYMENT_RETRY_SWEEP_MS` is the interval while there is work, and the floor
+   * the loop returns to the moment a tick finds some or a delivery arrives. When
+   * a tick finds nothing the delay doubles up to this ceiling, so an idle pod
+   * stops spending CPU (and database transactions) on empty sweeps — at 500 ms
+   * and no backoff an idle replica sat above its 50 m request and held the
+   * HorizontalPodAutoscaler at its maximum with no traffic.
+   *
+   * It is also the **worst lateness** of anything the clock makes due while the
+   * pod is idle and nothing woke it: a retry rung, a deposit's expiry, a lease
+   * that lapsed. On the default 1 s / 5 s / 30 s ladder 2 s keeps every rung
+   * within its own order of magnitude, and a retry still never fires *early*.
+   * Set it equal to `PAYMENT_RETRY_SWEEP_MS` to turn the backoff off.
+   */
+  @IsInt()
+  @Min(100)
+  @Max(600_000)
+  public PAYMENT_RETRY_SWEEP_IDLE_MAX_MS!: number;
+
+  /**
    * How the simulated provider behaves until an administrator changes it
    * (Fase 3, T-44): the share of attempts that fail, the share that time out,
    * and how long an answer takes. The ConfigMap supplies them; an override made
@@ -240,6 +261,7 @@ export function loadEnvironment(
     RABBITMQ_URL: source.RABBITMQ_URL,
     PAYMENT_RETRY_DELAYS_MS: source.PAYMENT_RETRY_DELAYS_MS ?? '1000,5000,30000',
     PAYMENT_RETRY_SWEEP_MS: toInteger(source.PAYMENT_RETRY_SWEEP_MS) ?? 500,
+    PAYMENT_RETRY_SWEEP_IDLE_MAX_MS: toInteger(source.PAYMENT_RETRY_SWEEP_IDLE_MAX_MS) ?? 2_000,
     PAYMENT_SIM_FAILURE_RATE: toNumber(source.PAYMENT_SIM_FAILURE_RATE) ?? 0,
     PAYMENT_SIM_TIMEOUT_RATE: toNumber(source.PAYMENT_SIM_TIMEOUT_RATE) ?? 0,
     PAYMENT_SIM_LATENCY_MS: toInteger(source.PAYMENT_SIM_LATENCY_MS) ?? 0,

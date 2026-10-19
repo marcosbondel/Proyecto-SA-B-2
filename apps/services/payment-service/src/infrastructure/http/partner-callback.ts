@@ -111,6 +111,15 @@ class PartnerHttp {
   }
 }
 
+/**
+ * El tiempo límite de cada llamada HTTP al banco pareja. Exportados porque el
+ * arrendamiento de los reclamos (`claim-lease.ts`) se dimensiona **a partir de
+ * ellos** —un lote de 20 en serie, con el otro banco caído del todo, tarda 20
+ * veces el tiempo límite— y un test comprueba que sigue alcanzando.
+ */
+export const PARTNER_CALLBACK_TIMEOUT_MS = 3_000;
+export const PARTNER_SEND_TIMEOUT_MS = 5_000;
+
 /** Hacia dónde responde este banco cuando RECIBE un depósito (T-46, T-60). */
 export class HttpPartnerCallback implements PartnerCallback {
   readonly #http: PartnerHttp;
@@ -122,7 +131,7 @@ export class HttpPartnerCallback implements PartnerCallback {
     readonly bankCode: string,
     /** El único banco al que sabemos contestar: el de `INTERBANK_PARTNER_BASE_URL`. */
     readonly partnerBankCode: string,
-    timeoutMs = 3_000,
+    timeoutMs = PARTNER_CALLBACK_TIMEOUT_MS,
   ) {
     this.#http = new PartnerHttp(baseUrl, apiKey, timeoutMs);
   }
@@ -184,7 +193,7 @@ export class HttpPartnerBankClient implements PartnerBankClient {
     apiKey: string,
     /** Nuestro código de banco: el `originBankCode` de lo que mandamos. */
     readonly originBankCode: string,
-    timeoutMs = 5_000,
+    timeoutMs = PARTNER_SEND_TIMEOUT_MS,
   ) {
     this.#http = new PartnerHttp(baseUrl, apiKey, timeoutMs);
   }

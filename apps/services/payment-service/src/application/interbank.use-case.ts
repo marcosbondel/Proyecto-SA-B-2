@@ -226,12 +226,16 @@ export class InterbankUseCase {
    * Seguro porque cada paso es idempotente y está respaldado por una columna: lo
    * que no se hizo en esta vuelta se vuelve a encontrar en la siguiente.
    */
-  async sweep(limit = 20): Promise<void> {
+  async sweep(limit = 20): Promise<number> {
     const now = this.deps.clock.now();
+    let found = 0;
 
-    for (const deposit of await this.#step('claimActions', () =>
+    const acciones = await this.#step('claimActions', () =>
       this.deps.repository.claimActions(now, limit),
-    )) {
+    );
+    found += acciones.length;
+
+    for (const deposit of acciones) {
       await this.#run(
         'sendAction',
         () =>
@@ -245,34 +249,45 @@ export class InterbankUseCase {
       );
     }
 
-    await this.#run('publishResults', () =>
+    found += await this.#count('publishResults', () =>
       this.deps.repository.publishResults((event) => this.deps.messenger.publishStored(event), limit),
     );
-    await this.#run('publishConflictResults', () =>
+    found += await this.#count('publishConflictResults', () =>
       this.deps.repository.publishConflictResults(
         (event) => this.deps.messenger.publishStored(event),
         limit,
       ),
     );
 
-    for (const deposit of await this.#step('claimCallbacks', () =>
-      this.deps.repository.claimCallbacks(now, limit),
-    )) {
+    // Con el reloj de **ahora** y no el `now` del principio: el arrendamiento
+    // cuenta desde el reclamo, y tras procesar hasta 20 acciones y callbacks (de
+    // hasta 3 s cada uno) el `now` de arriba ya sería un minuto viejo (T-60).
+    const callbacks = await this.#step('claimCallbacks', () =>
+      this.deps.repository.claimCallbacks(this.deps.clock.now(), limit),
+    );
+    found += callbacks.length;
+
+    for (const deposit of callbacks) {
       await this.#deliverCallback(
         deposit,
         'payment.interbank.callback',
         async () => await this.deps.repository.markCallbackDelivered(deposit.depositId, this.deps.clock.now()),
+        async () => await this.deps.repository.releaseCallbackClaim(deposit.depositId),
       );
     }
 
-    for (const { messageId, deposit } of await this.#step('claimConflictCallbacks', () =>
-      this.deps.repository.claimConflictCallbacks(now, limit),
-    )) {
+    const conflictos = await this.#step('claimConflictCallbacks', () =>
+      this.deps.repository.claimConflictCallbacks(this.deps.clock.now(), limit),
+    );
+    found += conflictos.length;
+
+    for (const { messageId, deposit } of conflictos) {
       await this.#deliverCallback(
         deposit,
         'payment.interbank.conflict.callback',
         async () =>
           await this.deps.repository.markConflictCallbackDelivered(messageId, this.deps.clock.now()),
+        async () => await this.deps.repository.releaseConflictCallbackClaim(messageId),
       );
     }
 
@@ -291,6 +306,10 @@ export class InterbankUseCase {
         error: `El callback de ${deposit.externalTransferId} no se entregó en 24 horas y se abandona.`,
       });
     }
+
+    // Cuánto encontró, no cuánto salió bien: el planificador sólo necesita saber
+    // si hubo trabajo para no espaciar la siguiente vuelta (T-60).
+    return found + abandonados.length;
   }
 
   /** Un paso del barrido que devuelve filas: si lanza, se registra y no hay filas. */
@@ -305,6 +324,17 @@ export class InterbankUseCase {
       this.#failed(step, correlationId, error);
 
       return [];
+    }
+  }
+
+  /** Un paso del barrido que devuelve cuántas filas movió: si lanza, se registra y son cero. */
+  async #count(step: string, work: () => Promise<number>): Promise<number> {
+    try {
+      return await work();
+    } catch (error) {
+      this.#failed(step, 'sweep', error);
+
+      return 0;
     }
   }
 
@@ -333,6 +363,7 @@ export class InterbankUseCase {
     deposit: InterbankDeposit,
     spanName: string,
     markDelivered: () => Promise<void>,
+    release: () => Promise<void>,
   ): Promise<void> {
     try {
       await this.deps.trace.continue(deposit.traceContext, spanName, deposit.correlationId, () =>
@@ -350,6 +381,9 @@ export class InterbankUseCase {
         detail: error instanceof Error ? error.message : String(error),
       });
       // La fila ya tiene su próxima hora. Un barrido posterior lo reintenta.
+      // Se suelta el arrendamiento para que esa hora se respete; si soltarlo
+      // falla, caduca solo y el reintento sólo llega más tarde.
+      await release().catch(() => undefined);
     }
   }
 

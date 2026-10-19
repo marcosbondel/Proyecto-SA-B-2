@@ -272,6 +272,8 @@ suite('interbank send persistence', () => {
       send: nuevo(),
       now: new Date(now.getTime() + 60_000),
     });
+    // Nacen arrendados a quien los entrega en línea; aquí esa entrega ya terminó.
+    await pool.query('UPDATE interbank_sends SET claimed_until = NULL');
 
     const reclamados = await repository.claimSendable(now, 10);
 
@@ -414,7 +416,7 @@ suite('interbank send persistence', () => {
       expect((await pool.query('SELECT 1 FROM outbox_messages')).rowCount).toBe(1);
 
       // Y no se reconcilia: no hay nada que reemitir.
-      expect(await repository.claimUnreconciled(new Date(now.getTime() + 600_000), 10)).toEqual(
+      expect(await repository.claimUnreconciled(new Date(now.getTime() + 600_000), 10, now)).toEqual(
         [],
       );
     });
@@ -495,6 +497,7 @@ suite('interbank send persistence', () => {
                 verdict_enqueued_at = NULL,
                 reason = $4,
                 next_attempt_at = NULL,
+                claimed_until = NULL,
                 -- Los dos casts, por lo mismo que lleva advance: un parametro
                 -- que asigna a una columna y aparece en un CASE a la vez deja a
                 -- PostgreSQL sin tipo que deducir. Hizo falta en los dos, y el
@@ -509,7 +512,7 @@ suite('interbank send persistence', () => {
       const abierto = await repository.open({ send: nuevo(), now });
       await comoAntesDeTD093(abierto.send.interbankTransferId, 'REJECTED', 300_000);
 
-      const perdidos = await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10);
+      const perdidos = await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10, now);
 
       expect(perdidos.map((p) => p.interbankTransferId)).toEqual([
         abierto.send.interbankTransferId,
@@ -524,7 +527,7 @@ suite('interbank send persistence', () => {
         [abierto.send.interbankTransferId, now],
       );
 
-      expect(await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10)).toEqual(
+      expect(await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10, now)).toEqual(
         [],
       );
     });
@@ -534,7 +537,7 @@ suite('interbank send persistence', () => {
       const compensado = await repository.open({ send: nuevo(), now });
       await comoAntesDeTD093(compensado.send.interbankTransferId, 'REVERSED', 300_000);
 
-      const perdidos = await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10);
+      const perdidos = await repository.claimUnreconciled(new Date(now.getTime() - 120_000), 10, now);
 
       expect(perdidos).toEqual([]);
       expect((await repository.find(esperando.send.interbankTransferId))?.state).toBe('PENDING');
