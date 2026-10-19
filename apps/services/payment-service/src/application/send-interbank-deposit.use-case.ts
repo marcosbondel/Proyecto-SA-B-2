@@ -49,7 +49,13 @@ const RESOLVE_BACKOFF_CAP_MS = 60_000;
  * no tiene prisa, pero tampoco se reintenta para siempre en silencio.
  */
 const REVERSAL_MAX_ATTEMPTS = 120;
-const REVERSAL_POLL_MS = 30_000;
+/**
+ * Cada cuánto se consulta un reverso en curso. Poco, a propósito: el depósito de
+ * devolución que el pareja manda vence a los 180 s, y mientras el reverso no se
+ * resuelve ese depósito está retenido (QA 13c). Treinta segundos eran la cuarta
+ * parte del plazo; cinco son una consulta barata.
+ */
+const REVERSAL_POLL_MS = 5_000;
 const REVERSAL_BACKOFF_CAP_MS = 300_000;
 import type {
   InterbankSend,

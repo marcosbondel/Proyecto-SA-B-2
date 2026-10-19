@@ -797,6 +797,44 @@ export const MIGRATIONS: readonly Migration[] = [
            FROM interbank_sends WHERE reversed_at IS NOT NULL`,
     ],
   },
+  /**
+   * El reembolso de un reverso no es un depósito para el cliente (T-60, QA 13c).
+   *
+   * Cuando el banco pareja acredita tarde y se le pide el reverso, devuelve el
+   * dinero con un `POST /transfers` dirigido a la cuenta origen del envío — la
+   * del cliente, que ya recibió su compensación. Acreditarlo ahí es pagarle dos
+   * veces. Estas columnas permiten reconocerlo y desviarlo:
+   *
+   * - **`hold_reversal_id`** (depósito): el depósito se aceptó pero se *retiene*
+   *   porque podría ser el reembolso de ese reverso; el barrido no lo manda a
+   *   Account hasta que el reverso se resuelva.
+   * - **`credit_account_ref`** (depósito): a qué cuenta se acredita en lugar de
+   *   la que dice `destination_account_id`. `destination_account_id` no se toca
+   *   a propósito: es lo que se compara para reconocer una repetición idéntica
+   *   (si cambiara, la repetición saldría como `409`).
+   * - **`refund_of_reversal_id`** (depósito): de qué reverso es reembolso.
+   * - **`refund_settled_at` / `refund_inbound_id`** (envío): que el reembolso ya
+   *   llegó y a qué depósito entrante corresponde; un reverso se liquida una vez.
+   */
+  {
+    name: '017_interbank_refund_settlement',
+    statements: [
+      `ALTER TABLE interbank_deposits ADD COLUMN IF NOT EXISTS credit_account_ref VARCHAR(64)`,
+      `ALTER TABLE interbank_deposits ADD COLUMN IF NOT EXISTS hold_reversal_id UUID`,
+      `ALTER TABLE interbank_deposits ADD COLUMN IF NOT EXISTS refund_of_reversal_id UUID`,
+      `CREATE INDEX IF NOT EXISTS interbank_deposit_held_idx
+         ON interbank_deposits (hold_reversal_id) WHERE hold_reversal_id IS NOT NULL`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS refund_settled_at TIMESTAMPTZ`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS refund_inbound_id VARCHAR(128)`,
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_refund_coherent`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_refund_coherent
+         CHECK ((refund_settled_at IS NULL) = (refund_inbound_id IS NULL)
+                AND (refund_settled_at IS NULL OR reversal_id IS NOT NULL))`,
+      /* Un reverso se liquida con un solo depósito entrante. */
+      `CREATE UNIQUE INDEX IF NOT EXISTS interbank_sends_refund_once
+         ON interbank_sends (refund_inbound_id) WHERE refund_inbound_id IS NOT NULL`,
+    ],
+  },
 ];
 
 /**

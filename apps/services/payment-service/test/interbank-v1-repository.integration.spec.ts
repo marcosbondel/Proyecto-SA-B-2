@@ -56,6 +56,7 @@ suite('el contrato interbancario, en la base', () => {
         },
       ),
       rejection: null,
+      refund: null,
       ...input,
     });
   }
