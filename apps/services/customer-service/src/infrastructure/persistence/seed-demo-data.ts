@@ -72,7 +72,14 @@ const USERS: readonly SeedUser[] = [
 ];
 
 /**
- * Seeds the demo users, returning their emails for the boot log.
+ * Seeds the demo users, returning the emails of the ones it **created**.
+ *
+ * Creates what is missing and nothing else (T-60, QA 20). It used to be an
+ * UPSERT that reset `password_hash`, `status`, `kyc_status`, `identity_status`
+ * and `role` on every pod start, so a demo user who changed their password, was
+ * deactivated or had their KYC rejected was silently put back the next time a
+ * replica booted. A boot script must not undo what the system did afterwards.
+ * Existing users are not even hashed for: the scrypt work is skipped.
  *
  * `identity_status = VALIDATED` and `status = ACTIVE` with a verified timestamp
  * (constraint C-4: ACTIVE iff verified), so each can sign in immediately.
@@ -84,30 +91,28 @@ export async function seedDemoUsers(
   hasher: PasswordHasher,
   defaultPassword: string,
 ): Promise<readonly string[]> {
+  const created: string[] = [];
+
   for (const user of USERS) {
+    const existing = await pool.query('SELECT 1 FROM customers WHERE customer_id = $1', [user.id]);
+
+    if (existing.rowCount === 1) continue;
+
     const passwordHash = await hasher.hash(user.password ?? defaultPassword);
 
-    await pool.query(
+    const result = await pool.query(
       `INSERT INTO customers
          (customer_id, full_name, document_number, email, birth_date, address,
           username, identity_status, kyc_status, role, status, password_hash, email_verified_at)
        VALUES ($1, $2, $3, $4, '1990-01-01', 'Zona 1, Guatemala',
                $5, 'VALIDATED', 'VERIFIED', $6, 'ACTIVE', $7, now())
-       ON CONFLICT (customer_id) DO UPDATE SET
-         full_name         = EXCLUDED.full_name,
-         email             = EXCLUDED.email,
-         username          = EXCLUDED.username,
-         password_hash     = EXCLUDED.password_hash,
-         status            = 'ACTIVE',
-         identity_status   = 'VALIDATED',
-         kyc_status        = 'VERIFIED',
-         email_verified_at = now(),
-         role              = EXCLUDED.role,
-         updated_at        = now()`,
+       ON CONFLICT (customer_id) DO NOTHING`,
       [user.id, user.fullName, user.document, user.email, user.username, user.role, passwordHash],
     );
+
+    if (result.rowCount === 1) created.push(user.email);
   }
 
-  return USERS.map((user) => user.email);
+  return created;
 }
 

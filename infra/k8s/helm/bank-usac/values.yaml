@@ -374,6 +374,16 @@ gateway:
   # templates/NOTES.txt), so its origin is localhost:<forwarded web port>.
   corsAllowedOrigins: "http://localhost:3010"
 
+# Datos de demostracion: los dos clientes, sus cuatro cuentas con saldo, y los
+# usuarios `admin` y `cajero`. "true" es el valor para la demostracion y para
+# kind, que es lo que habia antes de que fuera un valor. En un despliegue que
+# atienda a gente de verdad, "false": las contrasenas de demostracion son
+# publicas. Con "true" el arranque solo CREA lo que falta (INSERT ... ON CONFLICT
+# DO NOTHING): jamas sobrescribe un saldo ni un usuario existente, de modo que un
+# pod nuevo del HPA no mueve dinero ni deshace un cambio de contrasena.
+demo:
+  seedData: "true"
+
 # Contrato interbancario v1 (T-56 / T-60). Las dos API keys viven en `secrets:`;
 # aqui solo hay configuracion publica del acuerdo de integracion.
 interbank:
