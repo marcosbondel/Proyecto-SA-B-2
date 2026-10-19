@@ -22,6 +22,7 @@ interface DepositRow {
   external_transfer_id: string;
   origin_bank_code: string;
   destination_account_id: string;
+  credit_account_ref: string | null;
   amount_minor: string;
   currency: string;
   partner_expires_at: Date | null;
@@ -29,7 +30,8 @@ interface DepositRow {
 
 const COLUMNS = `deposit_id, stage, rejection_reason, origin_envelope, callback_attempts,
   trace_context, created_at, decided_at, correlation_id, external_transfer_id,
-  origin_bank_code, destination_account_id, amount_minor, currency, partner_expires_at`;
+  origin_bank_code, destination_account_id, credit_account_ref, amount_minor, currency,
+  partner_expires_at`;
 
 /** ¿Lo guardado en `origin_envelope` es de verdad un sobre del broker? */
 function isEnvelope(value: unknown): value is MessageEnvelope<unknown> {
@@ -78,7 +80,13 @@ function fromRow(row: DepositRow): InterbankDeposit {
     correlationId: row.correlation_id,
     externalTransferId: row.external_transfer_id,
     originBankCode: row.origin_bank_code,
-    accountRef: row.destination_account_id,
+    /*
+     * La cuenta a la que se acredita **de verdad**: la de liquidación cuando el
+     * depósito resultó ser el reembolso de un reverso (QA 13c), la que nombró el
+     * otro banco en cualquier otro caso. Lo que se comprueba contra la respuesta
+     * de Account es esta, no la que dice el contrato.
+     */
+    accountRef: row.credit_account_ref ?? row.destination_account_id,
     amount: { amountMinor: Number(row.amount_minor), currency: row.currency },
     callbackAttempts: row.callback_attempts,
     traceContext: row.trace_context,
