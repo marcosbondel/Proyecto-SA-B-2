@@ -37,13 +37,18 @@ tempo:
   persistence:
     enabled: false
   tempo:
+    # El limite de memoria es el MISMO que en la nube (1Gi). Con 512Mi Tempo
+    # murio por OOMKilled en kind justo al recibir la rafaga de spans de un
+    # `helm upgrade` del banco (2026-10-18, T-60): sin persistencia, el bloque
+    # en curso vive en memoria. Medir en local con un Tempo mas debil que el de
+    # produccion da incidentes que en produccion no existen.
     resources:
       requests:
         cpu: 50m
         memory: 192Mi
       limits:
         cpu: 500m
-        memory: 512Mi
+        memory: 1Gi
 
 prometheus:
   server:
