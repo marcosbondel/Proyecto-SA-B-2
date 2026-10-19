@@ -233,6 +233,22 @@ add_image services.notificationAudit notification-audit-service
 add_image gateway                    gateway
 add_image web                        web
 
+# El banco pareja simulado (T-60). Encendido solo donde se pide
+# (`PARTNER_MOCK_ENABLED=true`, que cd.yml pone en prod): `release.yml` publica
+# su imagen con la etiqueta de la version, pero el build de `dev` no la
+# construye. Sin `INTERBANK_PARTNER_BASE_URL`, el chart apunta el envio al mock
+# de ESTE release; con ella (el banco pareja real), el mock queda disponible
+# solo para inyectar fallos.
+declare -a INTERBANK_ARGS=()
+if [ "${PARTNER_MOCK_ENABLED:-false}" = "true" ]; then
+  INTERBANK_ARGS+=(--set "partnerMock.enabled=true")
+  add_image partnerMock partner-bank-mock
+  IMAGE_ARGS+=(--set-string "partnerMock.image.tag=${IMAGE_TAG}")
+fi
+if [ -n "${INTERBANK_PARTNER_BASE_URL:-}" ]; then
+  INTERBANK_ARGS+=(--set-string "interbank.partnerBaseUrl=${INTERBANK_PARTNER_BASE_URL}")
+fi
+
 if [ ${#SIN_TOCAR[@]} -gt 0 ]; then
   echo "Sin cambios, conservan su etiqueta: ${SIN_TOCAR[*]}"
 fi
@@ -385,6 +401,7 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   ${ALERT_ARGS[@]+"${ALERT_ARGS[@]}"} \
   "${INFRA_ARGS[@]}" \
   "${IMAGE_ARGS[@]}" \
+  ${INTERBANK_ARGS[@]+"${INTERBANK_ARGS[@]}"} \
   --wait \
   ${HELM_WAIT_DEBUG:+--debug} \
   --timeout "${HELM_TIMEOUT:-10m}"
