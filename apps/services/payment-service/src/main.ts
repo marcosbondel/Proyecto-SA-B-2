@@ -13,7 +13,7 @@ import {
   validateMessage,
 } from '@bank/contracts';
 import type { MessageEnvelope, QueueDescriptor } from '@bank/contracts';
-import { MessageBroker } from '@bank/messaging';
+import { AdaptiveTicker, MessageBroker } from '@bank/messaging';
 import { continueTrace, currentTraceparent, nestLoggerFor } from '@bank/observability';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
@@ -101,6 +101,21 @@ const OUTBOX_RELAY_INTERVAL_MS = ((): number => {
   const raw = Number(process.env.OUTBOX_RELAY_MS);
 
   return Number.isFinite(raw) && raw > 0 ? raw : 200;
+})();
+
+/**
+ * How slowly the outbox relay may poll while the outbox is empty (T-60).
+ *
+ * `OUTBOX_RELAY_MS` is the floor and this is the ceiling of the idle backoff.
+ * The relay is woken by the writers -- every handled delivery and every sweep
+ * that found work calls `wake()` -- so a terminal event written by this process
+ * still goes out within the floor; the ceiling only bounds how late a row left
+ * by a replica that died is found. Set equal to `OUTBOX_RELAY_MS` to disable.
+ */
+const OUTBOX_RELAY_IDLE_MAX_MS = ((): number => {
+  const raw = Number(process.env.OUTBOX_RELAY_IDLE_MAX_MS);
+
+  return Number.isFinite(raw) && raw > 0 ? raw : 2_000;
 })();
 
 /**
@@ -345,6 +360,17 @@ async function bootstrap(): Promise<void> {
     ]);
   };
 
+  /**
+   * The loops that idle-backoff (T-60), woken whenever this process may just
+   * have made work for them. Filled in below, once they exist.
+   */
+  const wakers: (() => void)[] = [];
+  const wakeLoops = (): void => {
+    for (const wake of wakers) {
+      wake();
+    }
+  };
+
   const onDelivery = async (envelope: MessageEnvelope<unknown>): Promise<void> => {
     const startedAt = Date.now();
 
@@ -386,6 +412,16 @@ async function bootstrap(): Promise<void> {
       });
 
       throw error;
+    } finally {
+      /*
+       * Un mensaje manejado puede haber abierto un pago, un depósito o una fila
+       * del outbox, y los barridos espaciados por la inactividad no lo saben:
+       * se les avisa para que lo busquen dentro del suelo (500 ms / 200 ms), no
+       * del techo (2 s). Es lo que hace que el espaciado no le cueste latencia
+       * a una petición que llega a un pod tranquilo. Cuando el trabajo lo hace
+       * otra réplica, esa réplica avisa a los suyos.
+       */
+      wakeLoops();
     }
   };
 
@@ -397,6 +433,13 @@ async function bootstrap(): Promise<void> {
    * that will ever come back for them.
    */
   const sweepOnce = async (): Promise<number> => {
+    /*
+     * Cuánto encontró este barrido, de todo tipo: es lo que le dice al
+     * planificador si espaciar o no la siguiente vuelta (T-60). Una vuelta que
+     * encuentra algo vuelve al suelo; una que no encuentra nada, se espacia.
+     */
+    let found = 0;
+
     /**
      * Lo primero del barrido, antes de la escalera de pagos (T-47).
      *
@@ -427,6 +470,8 @@ async function bootstrap(): Promise<void> {
     try {
       const vencidos = await interbankV1Sweeper.sweepExpired(SWEEP_BATCH);
 
+      found += vencidos;
+
       if (vencidos > 0) {
         logger.warn('barrido del contrato interbancario', {
           outcome: `${vencidos} depositos vencidos, rechazados con EXPIRED`,
@@ -447,6 +492,8 @@ async function bootstrap(): Promise<void> {
     try {
       const retenidos = await interbankV1Sweeper.resolveHeldRefunds(SWEEP_BATCH);
 
+      found += retenidos;
+
       if (retenidos > 0) {
         logger.warn('depositos interbancarios retenidos resueltos', {
           outcome: `${retenidos} resueltos`,
@@ -461,6 +508,8 @@ async function bootstrap(): Promise<void> {
     if (interbankSend !== null) {
       try {
         const interbankSwept = await interbankSend.sweep(SWEEP_BATCH);
+
+        found += interbankSwept.claimed;
 
         if (interbankSwept.expired > 0 || interbankSwept.resent > 0) {
           // `outcome` y no dos campos nuevos: el tipo del logger es la lista de
@@ -494,6 +543,8 @@ async function bootstrap(): Promise<void> {
       try {
         const reconciliados = await interbankSend.reconcile(SWEEP_BATCH);
 
+        found += reconciliados;
+
         if (reconciliados > 0) {
           logger.warn('veredictos interbancarios reconciliados', {
             outcome: `${reconciliados} recuperados del outbox`,
@@ -507,7 +558,8 @@ async function bootstrap(): Promise<void> {
     }
 
     const due = await repository.due(clock.now(), SWEEP_BATCH);
-    let attempted = 0;
+
+    found += due.length;
 
     for (const payment of due) {
       /**
@@ -521,8 +573,8 @@ async function bootstrap(): Promise<void> {
        * would be unreachable from the correlation everyone else is watching.
        * Failing loudly and skipping is the safer choice — the payment stays
        * `PENDING` and due, so it is retried, and this same branch logged
-       * again, on every sweep until a human repairs the row, instead of
-       * silently forking the audit trail.
+       * again, each time its claim lease lapses, until a human repairs the
+       * row, instead of silently forking the audit trail.
        */
       if (payment.originCorrelationId === null) {
         logger.error('payment has no origin correlation; refusing to invent one', {
@@ -546,7 +598,6 @@ async function bootstrap(): Promise<void> {
           },
           () => processPayment.retry(payment, publisherFactory.forRetry(correlationId)),
         );
-        attempted += 1;
       } catch (error) {
         logger.error('retry attempt failed', {
           paymentId: payment.paymentId,
@@ -556,12 +607,24 @@ async function bootstrap(): Promise<void> {
       }
     }
 
-    return attempted;
+    return found;
   };
 
   const scheduler = new RetryScheduler({
-    job: { execute: sweepOnce },
+    job: {
+      execute: async () => {
+        const worked = await sweepOnce();
+
+        // Un barrido que encontró trabajo pudo haber escrito en el outbox.
+        if (worked > 0) {
+          outboxRelay.wake();
+        }
+
+        return worked;
+      },
+    },
     intervalMs: environment.PAYMENT_RETRY_SWEEP_MS,
+    idleMaxMs: environment.PAYMENT_RETRY_SWEEP_IDLE_MAX_MS,
     logger,
   });
 
@@ -575,6 +638,7 @@ async function bootstrap(): Promise<void> {
     repository,
     broker,
     intervalMs: OUTBOX_RELAY_INTERVAL_MS,
+    idleMaxMs: OUTBOX_RELAY_IDLE_MAX_MS,
     logger,
   });
 
@@ -584,21 +648,37 @@ async function bootstrap(): Promise<void> {
    * not yet attached can take no work.
    */
   let consuming = false;
-  let interbankTimer: ReturnType<typeof setInterval> | null = null;
-  let interbankSweeping = false;
-  const sweepInterbank = async (): Promise<void> => {
-    if (interbankSweeping) return;
-    interbankSweeping = true;
-    try {
-      await interbank.sweep();
-    } catch (error) {
+  /*
+   * El barrido de los depósitos que este banco RECIBE. Misma regla que el de los
+   * reintentos (T-60): suelo `PAYMENT_RETRY_SWEEP_MS` mientras haya trabajo o
+   * acabe de llegar un mensaje, y techo `PAYMENT_RETRY_SWEEP_IDLE_MAX_MS` cuando
+   * no hay nada. Los plazos del contrato que mira (180 s de vencimiento, las
+   * esperas crecientes de los callbacks desde 2 s) toleran de sobra los 2 s.
+   */
+  const interbankLoop = new AdaptiveTicker({
+    minMs: environment.PAYMENT_RETRY_SWEEP_MS,
+    maxMs: environment.PAYMENT_RETRY_SWEEP_IDLE_MAX_MS,
+    tick: async () => {
+      const worked = await interbank.sweep();
+
+      if (worked > 0) {
+        outboxRelay.wake();
+      }
+
+      return worked;
+    },
+    onError: (error) => {
       logger.error('interbank sweep failed', {
         error: error instanceof Error ? error.message : String(error),
       });
-    } finally {
-      interbankSweeping = false;
-    }
-  };
+    },
+  });
+
+  wakers.push(
+    () => scheduler.wake(),
+    () => interbankLoop.wake(),
+    () => outboxRelay.wake(),
+  );
 
   const attach = async (): Promise<void> => {
     for (;;) {
@@ -638,16 +718,16 @@ async function bootstrap(): Promise<void> {
 
         scheduler.start();
         logger.info('retry sweeper started', {
-          outcome: `every ${String(environment.PAYMENT_RETRY_SWEEP_MS)} ms, ladder ${
+          outcome: `every ${String(environment.PAYMENT_RETRY_SWEEP_MS)} ms (idle up to ${String(environment.PAYMENT_RETRY_SWEEP_IDLE_MAX_MS)} ms), ladder ${
             delays.length === 0 ? 'none' : delays.join('/')
           } ms`,
         });
 
         outboxRelay.start();
         logger.info('outbox relay started', {
-          outcome: `every ${String(OUTBOX_RELAY_INTERVAL_MS)} ms`,
+          outcome: `every ${String(OUTBOX_RELAY_INTERVAL_MS)} ms (idle up to ${String(OUTBOX_RELAY_IDLE_MAX_MS)} ms)`,
         });
-        interbankTimer = setInterval(() => void sweepInterbank(), 500);
+        interbankLoop.start();
 
         return;
       } catch (error) {
@@ -679,7 +759,7 @@ async function bootstrap(): Promise<void> {
   void attach();
 
   const shutdown = async (): Promise<void> => {
-    if (interbankTimer !== null) clearInterval(interbankTimer);
+    interbankLoop.stop();
     scheduler.stop();
     outboxRelay.stop();
     await application.close();
