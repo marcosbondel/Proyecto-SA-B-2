@@ -115,8 +115,33 @@ spec:
       # El volumen llega a nombre de root; la imagen corre RabbitMQ como el
       # usuario `rabbitmq` (uid 999). `fsGroup` le da escritura sin cambiar el
       # usuario del contenedor.
+      #
+      # `OnRootMismatch` y no el `Always` por defecto: con `Always` el kubelet
+      # recorre el volumen en cada arranque y le añade permiso de grupo a todo,
+      # incluido `.erlang.cookie`, y RabbitMQ se niega a arrancar si su cookie no
+      # es exclusiva del dueño ("must be accessible by owner only"). El primer
+      # arranque funcionaba y cualquier reinicio dejaba el broker en
+      # CrashLoopBackOff: tumbó producción el 2026-10-19 al probar una caída del
+      # broker.
       securityContext:
         fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      # Y por si el volumen ya trae la cookie con permiso de grupo (un disco
+      # creado con la versión anterior de este chart), se le devuelven los
+      # permisos antes de arrancar. Corre como el dueño de la cookie.
+      initContainers:
+        - name: permisos-de-la-cookie
+          image: "rabbitmq:3.13-management"
+          command:
+            - sh
+            - -c
+            - 'if [ -f /var/lib/rabbitmq/.erlang.cookie ]; then chmod 400 /var/lib/rabbitmq/.erlang.cookie; fi'
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
       {{- end }}
       volumes:
         - name: plugins
