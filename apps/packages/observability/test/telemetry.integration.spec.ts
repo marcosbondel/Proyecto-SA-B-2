@@ -22,6 +22,8 @@ import { join } from 'node:path';
 jest.setTimeout(60_000);
 
 const PACKAGE_ROOT = join(__dirname, '..');
+/** The secret the fixture's `/verify-email` request carries in its query string. */
+const SECRET_TOKEN = 'SECRET-TOKEN-123';
 const FIXTURE = join(__dirname, 'fixtures', 'instrumented-process.js');
 
 interface OtlpValue {
@@ -39,7 +41,11 @@ interface OtlpSpan {
   readonly name: string;
   readonly kind: number;
   readonly attributes: readonly OtlpAttribute[];
-  readonly status?: { readonly code?: number };
+  readonly status?: { readonly code?: number; readonly message?: string };
+  readonly events?: readonly {
+    readonly name: string;
+    readonly attributes?: readonly OtlpAttribute[];
+  }[];
 }
 interface Received {
   readonly path: string;
@@ -52,6 +58,8 @@ interface Run {
   readonly logs: readonly Record<string, unknown>[];
   readonly sentTraceId: string;
   readonly sentParentId: string;
+  /** The `traceparent` headers the fixture's own `/echo` received on its outbound call. */
+  readonly echoedTraceparents: readonly string[];
 }
 
 /** The fixture runs the compiled package, so the package is compiled first — always, from source. */
@@ -100,17 +108,28 @@ async function startReceiver(): Promise<{ server: Server; port: number; received
 }
 
 function get(port: number, path: string, headers: Record<string, string> = {}): Promise<number> {
+  return getBody(port, path, headers).then((reply) => reply.status);
+}
+
+function getBody(
+  port: number,
+  path: string,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const outgoing = httpRequest({ host: '127.0.0.1', port, path, headers }, (response) => {
-      response.resume();
-      response.on('end', () => resolve(response.statusCode ?? 0));
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () =>
+        resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }),
+      );
     });
     outgoing.on('error', reject);
     outgoing.end();
   });
 }
 
-/** Spawns the child with `env`, drives it through the four routes, waits for it to flush and exit. */
+/** Spawns the child with `env`, drives it through its routes, waits for it to flush and exit. */
 async function runChild(
   env: Record<string, string>,
   receiver: { received: Received[] },
@@ -151,6 +170,8 @@ async function runChild(
   await get(port, '/work', { traceparent: `00-${sentTraceId}-${sentParentId}-01` });
   await get(port, '/health');
   await get(port, '/fail');
+  await get(port, `/verify-email?token=${SECRET_TOKEN}`);
+  const outbound = await getBody(port, '/outbound');
   await get(port, '/shutdown');
 
   const code = await exited;
@@ -163,7 +184,13 @@ async function runChild(
     .filter((line) => line.startsWith('{'))
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 
-  return { received: [...receiver.received], logs, sentTraceId, sentParentId };
+  return {
+    received: [...receiver.received],
+    logs,
+    sentTraceId,
+    sentParentId,
+    echoedTraceparents: JSON.parse(outbound.body) as string[],
+  };
 }
 
 function spansOf(run: Run): OtlpSpan[] {
@@ -263,6 +290,96 @@ describe('a process with the SDK and an OTLP endpoint', () => {
     expect(serverSpan(run, '/health')).toBeUndefined();
   });
 
+  /**
+   * §8.3 "Datos sensibles expuestos": the activation link is
+   * `verify-email?token=…`, and what leaves the process is judged on the wire,
+   * as OTLP/JSON, not on a helper's return value.
+   */
+  it('never exports a query-string secret: not in url.query, url.full, the exception event or the status', () => {
+    const everything = JSON.stringify(spansOf(run));
+
+    expect(everything).not.toContain(SECRET_TOKEN);
+    expect(everything).not.toContain('OUTBOUND-SECRET-456');
+    expect(everything).not.toContain('a.person@example.com');
+  });
+
+  it('still records the request, with the secret replaced rather than the attribute removed', () => {
+    const server = spansOf(run).find(
+      (span) => span.kind === 2 && String(attribute(span, 'url.path')) === '/verify-email',
+    );
+    const nest = spansOf(run).find((span) => span.name === 'fixture.nest');
+
+    expect(attribute(server, 'url.query')).toBe('token=REDACTED');
+    expect(attribute(nest, 'url.full')).toBe('/verify-email?token=REDACTED');
+  });
+
+  it('masks what a failing handler’s exception event and status quote, and keeps the event', () => {
+    const nest = spansOf(run).find((span) => span.name === 'fixture.nest');
+    const exception = nest?.events?.find((event) => event.name === 'exception');
+    const message = exception?.attributes?.find((item) => item.key === 'exception.message')?.value
+      .stringValue;
+
+    expect(exception).toBeDefined();
+    expect(message).toBe('cannot verify token=REDACTED for [REDACTED:email]');
+    expect(nest?.status?.message).toBe('cannot verify token=REDACTED for [REDACTED:email]');
+    expect(nest?.status?.code).toBe(2);
+  });
+
+  it('does not stack-trace a secret either: exception.stacktrace is masked too', () => {
+    const nest = spansOf(run).find((span) => span.name === 'fixture.nest');
+    const stack = nest?.events
+      ?.find((event) => event.name === 'exception')
+      ?.attributes?.find((item) => item.key === 'exception.stacktrace')?.value.stringValue;
+
+    expect(stack).toBeDefined();
+    expect(stack).not.toContain(SECRET_TOKEN);
+    expect(stack).not.toContain('a.person@example.com');
+  });
+
+  it('leaves an identifier that is not a secret exactly as written (nothing is over-redacted)', () => {
+    const child = spansOf(run).find((span) => span.name === 'fixture.child');
+
+    expect(attribute(child, 'bank.transfer.id')).toBe('7f2b1c42-0000-4000-8000-000000000001');
+  });
+
+  it('keeps the route and method of the activation request readable in the trace', () => {
+    const server = spansOf(run).find(
+      (span) => span.kind === 2 && String(attribute(span, 'url.path')) === '/verify-email',
+    );
+
+    expect(attribute(server, 'http.request.method')).toBe('GET');
+    expect(attribute(server, 'http.response.status_code')).toBe(200);
+  });
+
+  it('redacts the query of the outbound CLIENT span as well as its full url', () => {
+    const client = spansOf(run).find(
+      (span) => span.kind === 3 && String(attribute(span, 'url.path')) === '/echo',
+    );
+
+    expect(attribute(client, 'url.query')).toBe('?token=REDACTED');
+  });
+
+  it('records an outbound fetch as a CLIENT span whose url carries no secret', () => {
+    const client = spansOf(run).find(
+      (span) => span.kind === 3 && String(attribute(span, 'url.path')) === '/echo',
+    );
+
+    expect(client).toBeDefined();
+    expect(attribute(client, 'http.request.method')).toBe('GET');
+    expect(attribute(client, 'http.response.status_code')).toBe(200);
+    expect(String(attribute(client, 'url.full'))).toContain('token=REDACTED');
+  });
+
+  it('puts exactly ONE traceparent on an outbound fetch that set its own, and it names the CLIENT span', () => {
+    const client = spansOf(run).find(
+      (span) => span.kind === 3 && String(attribute(span, 'url.path')) === '/echo',
+    );
+
+    expect(run.echoedTraceparents).toHaveLength(1);
+    expect(run.echoedTraceparents[0]).toContain(hex(client?.spanId) ?? 'missing');
+    expect(run.echoedTraceparents[0]).not.toContain('b7ad6b7169203331');
+  });
+
   it('continues the trace named by an incoming traceparent header', () => {
     const span = serverSpan(run, '/work');
 
@@ -339,9 +456,7 @@ describe('a process with the SDK and an OTLP endpoint', () => {
    * sufijos y nadie lo notó porque ninguna prueba miraba el nombre.
    */
   it('exports the bank histogram with the unit that will name its Prometheus series', () => {
-    const histograma = bankMetrics(run).find(
-      (metric) => metric.name === 'bank.transfer.duration',
-    );
+    const histograma = bankMetrics(run).find((metric) => metric.name === 'bank.transfer.duration');
 
     expect(histograma).toBeDefined();
     expect(histograma?.unit).toBe('s');

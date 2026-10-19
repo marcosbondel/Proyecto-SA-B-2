@@ -710,6 +710,131 @@ export const MIGRATIONS: readonly Migration[] = [
            AND verdict_enqueued_at IS NULL`,
     ],
   },
+  /**
+   * Lo que el contrato v1 y el protocolo completo de TIMEOUT piden del depósito
+   * enviado (T-60).
+   *
+   * - **`origin_account`**: el `originAccount` del `TransferRequest`. Nulo en las
+   *   filas anteriores: no se puede inventar, y un depósito sin ella no se envía.
+   * - **`customer_id`**: quién lo pidió, extraído de la identidad del sobre que
+   *   ya se guardaba. Es lo que permite que un cliente vea *sus* depósitos y no
+   *   los de otro (B10) sin que Payment lea la tabla de nadie.
+   * - **Contadores de la consulta y de la cancelación**: «consulta … con
+   *   reintentos» necesita saber cuántos van.
+   * - **El reverso** (paso 5): su identificador —uno por depósito, determinista—,
+   *   su estado y su calendario, en columnas y no en un temporizador, como todo
+   *   lo demás de este servicio.
+   * - **El historial de estados**: una fila por cambio, escrita en la misma
+   *   transacción que el cambio. `decided_at` solo recuerda la *primera*
+   *   decisión, así que el historial no se puede reconstruir de las columnas; se
+   *   siembra con lo que sí se sabe para las filas que ya existen.
+   */
+  {
+    name: '016_interbank_sends_t60',
+    statements: [
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS origin_account VARCHAR(34)`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS customer_id UUID`,
+      `UPDATE interbank_sends
+          SET customer_id = (origin_envelope #>> '{identity,customerId}')::uuid
+        WHERE customer_id IS NULL
+          AND (origin_envelope #>> '{identity,customerId}') ~*
+              '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+      `CREATE INDEX IF NOT EXISTS interbank_sends_customer_idx
+         ON interbank_sends (customer_id, created_at DESC)`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS probe_attempts INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS cancel_attempts INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS reversal_id UUID`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS reversal_state VARCHAR(12)`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS reversal_attempts INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS reversal_next_at TIMESTAMPTZ`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS reversal_requested_at TIMESTAMPTZ`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS reversal_refund_transfer_id UUID`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS reversal_message VARCHAR(200)`,
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_reversal_known`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_reversal_known
+         CHECK (reversal_state IS NULL
+                OR reversal_state IN ('PENDING','PROCESSING','COMPLETED','FAILED'))`,
+      /* Un reverso tiene identificador y estado, o ninguno de los dos. */
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_reversal_coherent`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_reversal_coherent
+         CHECK ((reversal_id IS NULL) = (reversal_state IS NULL))`,
+      /*
+       * Sólo se pide el reverso de un depósito que ya se liberó: pedírselo al
+       * banco pareja por uno que seguimos teniendo como suyo sería pedir que
+       * devuelvan dinero que nunca perdimos.
+       */
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_reversal_after_release`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_reversal_after_release
+         CHECK (reversal_id IS NULL OR state IN ('REJECTED','REVERSED'))`,
+      `CREATE INDEX IF NOT EXISTS interbank_sends_reversal_due_idx
+         ON interbank_sends (reversal_next_at)
+         WHERE reversal_state IN ('PENDING','PROCESSING')`,
+
+      `CREATE TABLE IF NOT EXISTS interbank_send_history (
+         history_id BIGSERIAL PRIMARY KEY,
+         -- Sin FOREIGN KEY a propósito: es un registro que se escribe junto al
+         -- cambio de estado, y una referencia impediría vaciar \`interbank_sends\`
+         -- (TRUNCATE) sin arrastrar esta tabla, como hacen las suites de este servicio.
+         interbank_transfer_id VARCHAR(128) NOT NULL,
+         state VARCHAR(12) NOT NULL
+           CHECK (state IN ('PENDING','SENT','ACCEPTED','REJECTED','TIMEOUT','REVERSED')),
+         reason VARCHAR(64),
+         at TIMESTAMPTZ NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS interbank_send_history_idx
+         ON interbank_send_history (interbank_transfer_id, history_id)`,
+      /* Lo que se sabe de las filas anteriores: el alta, el acuse y el estado actual. */
+      `INSERT INTO interbank_send_history (interbank_transfer_id, state, reason, at)
+         SELECT interbank_transfer_id, 'PENDING', NULL, created_at FROM interbank_sends`,
+      `INSERT INTO interbank_send_history (interbank_transfer_id, state, reason, at)
+         SELECT interbank_transfer_id, 'SENT', NULL, sent_at
+           FROM interbank_sends WHERE sent_at IS NOT NULL`,
+      `INSERT INTO interbank_send_history (interbank_transfer_id, state, reason, at)
+         SELECT interbank_transfer_id, state, reason, decided_at
+           FROM interbank_sends WHERE decided_at IS NOT NULL AND state <> 'REVERSED'`,
+      `INSERT INTO interbank_send_history (interbank_transfer_id, state, reason, at)
+         SELECT interbank_transfer_id, 'REVERSED', reason, reversed_at
+           FROM interbank_sends WHERE reversed_at IS NOT NULL`,
+    ],
+  },
+  /**
+   * El reembolso de un reverso no es un depósito para el cliente (T-60, QA 13c).
+   *
+   * Cuando el banco pareja acredita tarde y se le pide el reverso, devuelve el
+   * dinero con un `POST /transfers` dirigido a la cuenta origen del envío — la
+   * del cliente, que ya recibió su compensación. Acreditarlo ahí es pagarle dos
+   * veces. Estas columnas permiten reconocerlo y desviarlo:
+   *
+   * - **`hold_reversal_id`** (depósito): el depósito se aceptó pero se *retiene*
+   *   porque podría ser el reembolso de ese reverso; el barrido no lo manda a
+   *   Account hasta que el reverso se resuelva.
+   * - **`credit_account_ref`** (depósito): a qué cuenta se acredita en lugar de
+   *   la que dice `destination_account_id`. `destination_account_id` no se toca
+   *   a propósito: es lo que se compara para reconocer una repetición idéntica
+   *   (si cambiara, la repetición saldría como `409`).
+   * - **`refund_of_reversal_id`** (depósito): de qué reverso es reembolso.
+   * - **`refund_settled_at` / `refund_inbound_id`** (envío): que el reembolso ya
+   *   llegó y a qué depósito entrante corresponde; un reverso se liquida una vez.
+   */
+  {
+    name: '017_interbank_refund_settlement',
+    statements: [
+      `ALTER TABLE interbank_deposits ADD COLUMN IF NOT EXISTS credit_account_ref VARCHAR(64)`,
+      `ALTER TABLE interbank_deposits ADD COLUMN IF NOT EXISTS hold_reversal_id UUID`,
+      `ALTER TABLE interbank_deposits ADD COLUMN IF NOT EXISTS refund_of_reversal_id UUID`,
+      `CREATE INDEX IF NOT EXISTS interbank_deposit_held_idx
+         ON interbank_deposits (hold_reversal_id) WHERE hold_reversal_id IS NOT NULL`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS refund_settled_at TIMESTAMPTZ`,
+      `ALTER TABLE interbank_sends ADD COLUMN IF NOT EXISTS refund_inbound_id VARCHAR(128)`,
+      `ALTER TABLE interbank_sends DROP CONSTRAINT IF EXISTS interbank_sends_refund_coherent`,
+      `ALTER TABLE interbank_sends ADD CONSTRAINT interbank_sends_refund_coherent
+         CHECK ((refund_settled_at IS NULL) = (refund_inbound_id IS NULL)
+                AND (refund_settled_at IS NULL OR reversal_id IS NOT NULL))`,
+      /* Un reverso se liquida con un solo depósito entrante. */
+      `CREATE UNIQUE INDEX IF NOT EXISTS interbank_sends_refund_once
+         ON interbank_sends (refund_inbound_id) WHERE refund_inbound_id IS NOT NULL`,
+    ],
+  },
 ];
 
 /**

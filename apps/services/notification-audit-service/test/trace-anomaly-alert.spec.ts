@@ -15,6 +15,7 @@ import { RecordEventUseCase } from '../src/application/record-event.use-case';
 import { classify, classifyAlerts } from '../src/domain/classification';
 import {
   OPERATORS_RECIPIENT,
+  alertInstancesIn,
   notificationFor,
   subjectCustomerIdFrom,
 } from '../src/domain/notification';
@@ -44,7 +45,10 @@ const OTHER_CORRELATION = '1c0b2d3e-5f6a-4b7c-8d9e-0f1a2b3c4d5e';
 const ACCOUNT = '5a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d';
 const CUSTOMER = '3f2a1c04-9c2e-4a71-b8f5-2d6e7c0a1b93';
 
-const ADMIN: Identity = { customerId: 'a1c2e3f4-4d7b-4f0e-9c1e-0242ac120099', role: 'ADMINISTRADOR' };
+const ADMIN: Identity = {
+  customerId: 'a1c2e3f4-4d7b-4f0e-9c1e-0242ac120099',
+  role: 'ADMINISTRADOR',
+};
 const TELLER: Identity = { customerId: CUSTOMER, role: 'CAJERO_RECEPTOR' };
 
 /**
@@ -119,16 +123,17 @@ function harness() {
   const repository = new InMemoryAuditRepository();
   const sender = new RecordingSender();
   const publisher = new RecordingPublisher();
+  const clock = new FixedClock();
   const record = new RecordEventUseCase({
     repository,
     sender,
-    clock: new FixedClock(),
+    clock,
     ids: new CountingIds(),
   });
   const handlerFor = (consumer: string, traceIdOf: () => string | null = activeTraceId) =>
     new RecordEventHandler(record, consumer, new StructuredLogger('test', () => {}), traceIdOf);
 
-  return { repository, sender, publisher, handlerFor };
+  return { repository, sender, publisher, handlerFor, clock };
 }
 
 const completed = (correlationId: string): MessageEnvelope<unknown> =>
@@ -154,7 +159,9 @@ describe('the trace id of an audit event', () => {
   it('is the one of the span the message was handled under', async () => {
     const { repository, handlerFor } = harness();
 
-    const { traceId } = await inNewTrace(() => handlerFor('audit.transaction').handle(completed(CORRELATION)));
+    const { traceId } = await inNewTrace(() =>
+      handlerFor('audit.transaction').handle(completed(CORRELATION)),
+    );
 
     expect(traceId).toMatch(/^[0-9a-f]{32}$/);
     expect(repository.events[0]?.traceId).toBe(traceId);
@@ -305,7 +312,9 @@ describe('the trace id of an audit event', () => {
       const reply = world.publisher.last?.payload as { events: { traceId?: string }[] };
 
       expect(reply.events[0]?.traceId).toBe(world.first.traceId);
-      expect(auditQueryRepliedV1.schema.safeParse(world.publisher.last?.payload).success).toBe(true);
+      expect(auditQueryRepliedV1.schema.safeParse(world.publisher.last?.payload).success).toBe(
+        true,
+      );
     });
   });
 });
@@ -332,9 +341,9 @@ const anomaly = (payload: Record<string, unknown> = ANOMALY, correlationId = COR
 
 describe('account.anomaly.detected.v1 becomes a WARNING notification (§4.1, Account Service)', () => {
   it('is classified WARNING, as the assignment names it', () => {
-    expect(classify({ messageType: 'account.anomaly.detected.v1', processingStatus: 'PROCESSED' })).toBe(
-      'WARNING',
-    );
+    expect(
+      classify({ messageType: 'account.anomaly.detected.v1', processingStatus: 'PROCESSED' }),
+    ).toBe('WARNING');
     expect(notificationFor('account.anomaly.detected.v1', ANOMALY)?.severity).toBe('WARNING');
   });
 
@@ -421,7 +430,9 @@ describe('account.anomaly.detected.v1 becomes a WARNING notification (§4.1, Acc
   });
 
   it('does not send any other event to the operators for lacking a customer', () => {
-    expect(notificationFor('account.deactivated.v1', { accountId: ACCOUNT })?.audience).toBeUndefined();
+    expect(
+      notificationFor('account.deactivated.v1', { accountId: ACCOUNT })?.audience,
+    ).toBeUndefined();
   });
 
   it('tells the holder once when the producer announces the same window twice', async () => {
@@ -501,11 +512,7 @@ describe('an SLO alert from the webhook is recorded and notified (§4.1, Notific
       ['a critical alert that has resolved', [{ ...ALERT, status: 'resolved' }], 'INFO'],
       [
         'a batch, which is as serious as its worst alert',
-        [
-          { ...ALERT, status: 'resolved' },
-          { ...ALERT, severity: 'warning' },
-          ALERT,
-        ],
+        [{ ...ALERT, status: 'resolved' }, { ...ALERT, severity: 'warning' }, ALERT],
         'ERROR',
       ],
     ])('%s is %s', (_label, alerts, expected) => {
@@ -551,7 +558,9 @@ describe('an SLO alert from the webhook is recorded and notified (§4.1, Notific
   it('is notified once for the whole batch, with the severity of the audit row', async () => {
     const { repository, sender, handlerFor } = harness();
 
-    await handlerFor('audit.alert').handle(alertEnvelope([ALERT, { ...ALERT, alertName: 'Other' }]));
+    await handlerFor('audit.alert').handle(
+      alertEnvelope([ALERT, { ...ALERT, alertName: 'Other' }]),
+    );
 
     expect(repository.notifications).toHaveLength(1);
     expect(repository.notifications[0]).toMatchObject({
@@ -603,7 +612,8 @@ describe('an SLO alert from the webhook is recorded and notified (§4.1, Notific
       'Alerta de SLO activa: GatewayAvailabilityBurnRate',
     );
     expect(
-      notificationFor('alert.slo.received.v1', { alerts: [{ ...ALERT, status: 'resolved' }] })?.subject,
+      notificationFor('alert.slo.received.v1', { alerts: [{ ...ALERT, status: 'resolved' }] })
+        ?.subject,
     ).toBe('Alerta de SLO resuelta: GatewayAvailabilityBurnRate');
   });
 
@@ -627,14 +637,73 @@ describe('an SLO alert from the webhook is recorded and notified (§4.1, Notific
     expect(sender.sent).toHaveLength(1);
   });
 
-  it('records every repetition Grafana sends while an alert stays active', async () => {
-    const { repository, handlerFor } = harness();
+  /**
+   * TD-083. Grafana re-sends a firing alert every `repeat_interval` (4 h) and
+   * every `group_interval` (1 m) while it lasts. Every delivery is evidence and
+   * stays in the trail; the operators are told once.
+   */
+  it('records every repetition Grafana sends while an alert stays active, and notifies once', async () => {
+    const { repository, sender, handlerFor } = harness();
 
     await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
     await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
 
-    expect(repository.events).toHaveLength(2);
-    expect(repository.notifications).toHaveLength(2);
+    expect(repository.events).toHaveLength(3);
+    expect(repository.notifications).toHaveLength(1);
+    expect(sender.sent).toHaveLength(1);
+  });
+
+  it('notifies again for the RESOLVED of that alert, once, and again for a new FIRING after it', async () => {
+    const { repository, sender, handlerFor } = harness();
+    const resolved = { ...ALERT, status: 'resolved' };
+
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
+    await handlerFor('audit.alert').handle(alertEnvelope([resolved]));
+    await handlerFor('audit.alert').handle(alertEnvelope([resolved]));
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
+
+    expect(repository.events).toHaveLength(5);
+    expect(sender.sent).toHaveLength(3);
+    expect(repository.notifications.map((notification) => notification.subject)).toEqual([
+      'Alerta de SLO activa: GatewayAvailabilityBurnRate',
+      'Alerta de SLO resuelta: GatewayAvailabilityBurnRate',
+      'Alerta de SLO activa: GatewayAvailabilityBurnRate',
+    ]);
+  });
+
+  it('notifies a still-active alert again once the repeat window has passed', async () => {
+    const { repository, sender, handlerFor, clock } = harness();
+
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
+    clock.advance(repository.alertRepeatWindowMs - 1);
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
+    clock.advance(1);
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
+
+    expect(sender.sent).toHaveLength(2);
+  });
+
+  it('keeps two alerts apart by fingerprint, and notifies a batch that brings a new one', async () => {
+    const { sender, handlerFor } = harness();
+    const other = { ...ALERT, alertName: 'Other', fingerprint: 'deadbeef00000001' };
+
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT]));
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT, other]));
+    await handlerFor('audit.alert').handle(alertEnvelope([ALERT, other]));
+
+    expect(sender.sent).toHaveLength(2);
+  });
+
+  it('falls back to the alert name when Grafana sent no fingerprint', async () => {
+    const { sender, handlerFor } = harness();
+    const { fingerprint: _omitted, ...anonymous } = ALERT;
+
+    await handlerFor('audit.alert').handle(alertEnvelope([anonymous]));
+    await handlerFor('audit.alert').handle(alertEnvelope([anonymous]));
+
+    expect(sender.sent).toHaveLength(1);
   });
 
   it('records and does not notify an alert that fails its own contract', async () => {
@@ -642,7 +711,10 @@ describe('an SLO alert from the webhook is recorded and notified (§4.1, Notific
 
     await handlerFor('audit.alert').handle(alertEnvelope([]));
 
-    expect(repository.events[0]).toMatchObject({ processingStatus: 'INVALID', severity: 'WARNING' });
+    expect(repository.events[0]).toMatchObject({
+      processingStatus: 'INVALID',
+      severity: 'WARNING',
+    });
     expect(repository.notifications).toHaveLength(0);
     expect(sender.sent).toHaveLength(0);
   });
@@ -656,5 +728,45 @@ describe('an SLO alert from the webhook is recorded and notified (§4.1, Notific
     expect(repository.notifications.every((notification) => notification.customerId === null)).toBe(
       true,
     );
+  });
+});
+
+const ALERT_OF = (overrides: Record<string, unknown> = {}) => ({
+  alertName: 'GatewayAvailabilityBurnRate',
+  status: 'firing',
+  severity: 'critical',
+  startsAt: '2026-10-18T10:00:00.000Z',
+  fingerprint: 'c0ffee1234567890',
+  ...overrides,
+});
+
+describe('the alert instances the repeat guard counts (TD-083)', () => {
+  it('uses the fingerprint, else the name, once per status', () => {
+    expect(
+      alertInstancesIn({
+        alerts: [
+          ALERT_OF(),
+          ALERT_OF(),
+          ALERT_OF({ status: 'resolved' }),
+          ALERT_OF({ fingerprint: undefined, alertName: 'NoFingerprint' }),
+        ],
+      }),
+    ).toEqual([
+      { key: 'fp:c0ffee1234567890', status: 'firing' },
+      { key: 'fp:c0ffee1234567890', status: 'resolved' },
+      { key: 'name:NoFingerprint', status: 'firing' },
+    ]);
+  });
+
+  it('skips a status the contract does not know, and a payload that is not one', () => {
+    expect(alertInstancesIn({ alerts: [ALERT_OF({ status: 'pending' })] })).toEqual([]);
+    expect(alertInstancesIn(null)).toEqual([]);
+    expect(alertInstancesIn({ alerts: 'nope' })).toEqual([]);
+  });
+
+  it('truncates a key to what the column holds', () => {
+    const [instance] = alertInstancesIn({ alerts: [ALERT_OF({ fingerprint: 'f'.repeat(500) })] });
+
+    expect(instance?.key.length).toBe(200);
   });
 });

@@ -48,6 +48,8 @@ export function searchDestinations(query: string, role: Role | null): readonly S
     { label: 'Cuenta', to: `/cuentas/${identifier}` },
     { label: 'Cliente', to: `/clientes/${identifier}` },
     { label: 'Transferencia', to: `/transferencias/${identifier}` },
+    // T-60: el identificador de un depósito al otro banco es otro UUID v4.
+    { label: 'Depósito a otro banco', to: `/transferencias/interbancarias/${identifier}` },
     { label: 'Pago', to: `/pagos/${identifier}` },
   ];
 

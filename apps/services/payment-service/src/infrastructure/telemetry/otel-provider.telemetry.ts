@@ -55,9 +55,10 @@ export const DURATION_BUCKETS_S = [0.005, 0.025, 0.1, 0.25, 0.5, 1, 2, 3, 5, 10,
  * labelled by `result` (`success`, `failure`, `timeout`), so the external
  * failure rate is `sum(calls{result!="success"}) / sum(calls)` — one metric
  * rather than a rate that has to be kept consistent with its own denominator.
- * The only other label is `source` (`scenario` or `configuration`), so a
- * dashboard can tell the failures somebody scripted from the ones the
- * administrator's dial produced. Both are closed sets.
+ * The only other label is `source` (`scenario`, `configuration` or `runtime`),
+ * so a dashboard can tell the failures somebody scripted, the ones the
+ * ConfigMap's rates produced and the ones an administrator injected while the
+ * system was running. All closed sets.
  *
  * **The payment and transaction ids are log fields and span attributes, never
  * metric labels.** The per-payment story is told by the log, joined on the

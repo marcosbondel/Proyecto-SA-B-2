@@ -1,4 +1,9 @@
+import { maskQueryParams } from '@bank/observability';
+
 import type { DeliveryLog, NotificationSender } from '../../application/ports';
+
+/** What replaces the token in a link logged with revealing off. */
+const MASKED_VALUE = '***';
 
 /**
  * The delivery channel, simulated — which the assignment asks for outright
@@ -72,24 +77,30 @@ export class SimulatedNotificationAdapter implements NotificationSender {
       outcome: 'SENT' as const,
       /**
        * The one place a clear token — an activation link or a password-reset
-       * one — is written down, and it is closed in production.
+       * one — can be written down, and it is closed unless asked for.
        *
        * `customer.activation.requested.v1` says the token "must never be logged
-       * or echoed", and outside a developer's machine this obeys that: the
-       * field is absent, the audit trail redacts it, and no row anywhere stores
-       * it. What is left in development is the behaviour of every local mail
-       * catcher — MailHog, Mailpit, Rails' `letter_opener` — for the same
-       * reason they exist: the alternative is that nobody can create an account
-       * on their own machine.
+       * or echoed". With `revealLinks` off — the chart's default, and the only
+       * value that is acceptable anywhere a stranger can read the log (Loki is
+       * one) — the line still names the link, so an operator can see *that* an
+       * activation was sent and to which screen, but the token is masked:
+       * `/activar?token=***`. Dropping the field instead would have made the
+       * line useless for the support question "did the email go out?".
        *
-       * Before T-20 the token was readable because nothing consumed the audit
-       * queue and it sat in RabbitMQ's management UI. Now this service drains
-       * that queue, so without this line the local sign-up loop closes
-       * completely. Recorded as TD-043.
+       * With it on, outside production, the full link is written: the
+       * behaviour of every local mail catcher — MailHog, Mailpit, Rails'
+       * `letter_opener` — for the same reason they exist: the alternative is
+       * that nobody can create an account on their own machine. Recorded as
+       * TD-043. T-60 reverted the chart's default to off (§8.3, "Datos
+       * sensibles expuestos"); the kind values file turns it back on.
        */
-      ...(this.#revealLinks && notification.link !== undefined
-        ? { deliveryLink: notification.link }
-        : {}),
+      ...(notification.link === undefined
+        ? {}
+        : {
+            deliveryLink: this.#revealLinks
+              ? notification.link
+              : maskQueryParams(notification.link, MASKED_VALUE),
+          }),
     };
 
     if (notification.severity === 'ERROR') {

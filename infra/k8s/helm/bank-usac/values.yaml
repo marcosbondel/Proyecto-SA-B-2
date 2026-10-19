@@ -306,13 +306,19 @@ services:
     image:
       repository: bank-usac/notification-audit-service
       tag: dev # always --set at install time — see the note above `services:`
-    # On here, as in docker-compose.images.yml, because this chart's job is
-    # to demonstrate the assignment's own flow (register, activate, sign
-    # in) against a real cluster. Set to "false" for anything reachable by
-    # someone who is not the demo operator — with it false, nobody can
-    # complete a sign-up unless NOTIFICATION_CHANNEL is also switched to a
-    # real channel (docs/operations/CONTAINERS.md, docs/operations/EMAIL_RESEND.md).
-    revealActivationLinks: "true"
+    # OFF by default (T-60, §8.3 "Datos sensibles expuestos"). On, the simulated
+    # channel writes the complete activation / password-reset link into the
+    # pod's log, and the log agent ships it to Loki, where everyone with
+    # Grafana can read a working account-takeover URL. Off, the line still
+    # names the link but with the token masked (`/activar?token=***`).
+    #
+    # The local kind deployment turns it on in infra/k8s/kind/local.values.yaml
+    # (and install.sh does for any kind context), because there the log IS the
+    # mailbox: with it off nobody can complete a sign-up unless
+    # NOTIFICATION_CHANNEL is a real channel (docs/operations/CONTAINERS.md,
+    # docs/operations/EMAIL_RESEND.md). Never set it to "true" for a cluster
+    # that a stranger can reach.
+    revealActivationLinks: "false"
     notificationChannel: simulated
     # The Resend channel's non-sensitive half, read only when
     # notificationChannel is "resend". The API key is the sensitive half and
@@ -368,17 +374,18 @@ gateway:
   # templates/NOTES.txt), so its origin is localhost:<forwarded web port>.
   corsAllowedOrigins: "http://localhost:3010"
 
-# T-46: provisional incoming interbank contract. An empty partner token keeps
-# the route closed.
-#
-# `callbackUrl` is where Payment answers the partner bank with the result. The
-# default is the Compose address, which only resolves on a laptop; in a cluster
-# it has to be a Service name. There is **no conditional default** that points
-# it at the mock when the mock is enabled, on purpose: a URL that changes
-# meaning depending on another flag is how a release ends up calling the wrong
-# bank. The local overrides file sets it explicitly
-# (`infra/k8s/kind/local.values.yaml`), and so does the integration agreement
-# for the real partner.
+# Datos de demostracion: los dos clientes, sus cuatro cuentas con saldo, y los
+# usuarios `admin` y `cajero`. "true" es el valor para la demostracion y para
+# kind, que es lo que habia antes de que fuera un valor. En un despliegue que
+# atienda a gente de verdad, "false": las contrasenas de demostracion son
+# publicas. Con "true" el arranque solo CREA lo que falta (INSERT ... ON CONFLICT
+# DO NOTHING): jamas sobrescribe un saldo ni un usuario existente, de modo que un
+# pod nuevo del HPA no mueve dinero ni deshace un cambio de contrasena.
+demo:
+  seedData: "true"
+
+# Contrato interbancario v1 (T-56 / T-60). Las dos API keys viven en `secrets:`;
+# aqui solo hay configuracion publica del acuerdo de integracion.
 interbank:
   # `BANK02` sale del contrato oficial, no de una elección: `BankCode` es
   # `^BANK[0-9]{2}$` y somos el grupo 2. `BANK_USAC` no cumplía el patrón, así
@@ -386,21 +393,27 @@ interbank:
   bankCode: BANK02
   partnerBankCode: BANK99
   # Q10 000,00 en centavos: el máximo por operación que fija el contrato, no una
-  # cifra nuestra. Si se supera, el rechazo es `AMOUNT_LIMIT_EXCEEDED`.
+  # cifra nuestra. Un solo limite para recibir y para enviar; si se supera, el
+  # rechazo es `AMOUNT_LIMIT_EXCEEDED`. Gateway y Payment lo leen de la misma
+  # clave del ConfigMap, y no se puede subir por encima del techo del contrato.
   maxAmountMinor: "1000000"
-  callbackUrl: "http://127.0.0.1:3021/callbacks/interbank"
-  # Where this bank SENDS the deposits it originates — the partner's intake, not
-  # its own. Empty means "this deployment does not send deposits", which is the
-  # right default while no partner is assigned: the `interbank` block of a
-  # payment is ignored and the money never leaves. Turning it on is one value,
-  # and the local overrides file points it at the mock's Service.
+  # Base de la API del banco pareja, **con** el sufijo `/interbank/v1`, a donde
+  # ESTE banco envia los depositos que origina. La URL del callback ya no se
+  # configura: payment-service la deriva. Vacio significa "este despliegue no
+  # envia depositos", que es lo correcto mientras no haya pareja asignada: el
+  # bloque `interbank` de un pago se ignora y el dinero no sale. Activarlo es un
+  # solo valor; el fichero de overrides local lo apunta al Service del mock.
   #
-  # T-51 found this the hard way: with `sendUrl` absent from the chart, 240
-  # interbank transfers completed as ordinary transfers into the settlement
-  # account and payment-service logged `envio interbancario desactivado`. The
-  # route answered 202 the whole time. A deployment can be wrong in a way no
-  # request is.
-  sendUrl: ""
+  # T-51 lo aprendio por las malas: sin esta clave en el chart, 240 transferencias
+  # interbancarias terminaron como transferencias ordinarias hacia la cuenta de
+  # liquidacion y payment-service registro `envio interbancario desactivado`. La
+  # ruta respondia 202 todo el tiempo. Un despliegue puede estar mal sin que
+  # ninguna peticion lo diga.
+  #
+  # No hay un valor por defecto condicionado a `partnerMock.enabled`, a
+  # proposito: una URL que cambia de sentido segun otra bandera es como un
+  # release acaba llamando al banco equivocado.
+  partnerBaseUrl: ""
   # OBSOLETA desde TD-095, y se sigue publicando a proposito.
   #
   # Decia "cuanto espera un deposito el callback del banco pareja antes de
@@ -436,10 +449,18 @@ interbank:
 # and the mock works — no rebuild, no code change. The runbook is
 # docs/operations/runbooks/partner-bank.md.
 #
-# The three `callback*` knobs are the fault injection T-51's mandatory scenario
-# needs: a rejection, a timeout and a slow answer. Changing them changes the
-# Deployment's own env, so the pod restarts by itself — no ConfigMap checksum
-# needed, because nothing else reads them.
+# Since T-60 (B8) the mock speaks the OFFICIAL v1 contract in both roles
+# (apps/partner-bank-mock/server.mjs documents every variable and route). The
+# keys come from the Secret this chart already renders: the mock REQUIRES our
+# `interbankApiKeyOutbound` (it is the key we send it) and SENDS our
+# `interbankApiKeyInbound` (it is the key the Gateway expects from BANK99).
+#
+# The `callback*` knobs are the fault injection T-51's mandatory scenario needs.
+# They are only the INITIAL state: with `adminToken` set they change at run time
+# with `PUT /admin/config` — no restart, which is what made T-51's first
+# measurement unreliable (`rollout status` said done while the old pod served).
+# Changing them here still changes the Deployment's env, so the pod restarts by
+# itself; nothing else reads them.
 partnerMock:
   enabled: false
   component: partner-bank-mock
@@ -449,21 +470,45 @@ partnerMock:
     tag: dev # always --set at install time, like the other components
     pullPolicy: IfNotPresent
   port: 3021
-  # Which Gateway the mock sends deposits to. In-cluster Service name.
+  # Which Gateway the mock talks to (its callbacks and the deposits it
+  # originates), WITHOUT the /interbank/v1 prefix: the mock appends it. Empty
+  # means the Gateway Service of this same release.
   gatewayUrl: ''
-  # ACCEPT · REJECT · TIMEOUT · SLOW
+  # Token of the mock's /admin/* API (mode switch, emitter). Empty disables the
+  # admin API. Rendered into its own Secret; set it with --set-string or a
+  # values file, never commit a real one. test/load/scenario.sh reads it from
+  # inside the pod, so nobody has to carry it around.
+  adminToken: ''
+  # ACCEPT · REJECT · TIMEOUT · SLOW · UNAVAILABLE
   callbackMode: ACCEPT
   callbackDelayMs: "1000"
-  # How many of the first callbacks fail before succeeding, to exercise the
-  # retry whose due time is a column rather than a timer.
+  # SLOW: delay before the callback.
+  callbackSlowMs: "10000"
+  # Delay of the 202 itself (a slow receiver). 0 = immediate.
+  callbackAckDelayMs: "0"
+  # One of the seven contract reasons, for REJECT.
+  callbackRejectReason: ACCOUNT_NOT_FOUND
+  # PROCESSING · NOT_FOUND · UNREACHABLE — how GET /transfers/{id} and cancel
+  # answer for a deposit that has no outcome yet (TIMEOUT mode).
+  callbackStatusBehavior: PROCESSING
+  # How many of the first operations of each target fail before succeeding, to
+  # exercise the retries (ours and the mock's). Targets: result (our callback to
+  # the mock), transfer, status, callback (the mock's own callback attempts).
   callbackFailCount: "0"
+  callbackFailTargets: result
+  # Random failure, in percent, over the same targets.
+  callbackFailureRate: "0"
+  # false = credit even after expiresAt, to test the late ACCEPTED / reversal path.
+  callbackHonorExpiry: "true"
+  # COMPLETE · FAIL · STALL — what POST /reversals does.
+  callbackReversal: COMPLETE
   resources:
     requests:
       cpu: 10m
-      memory: 32Mi
+      memory: 48Mi
     limits:
-      cpu: 100m
-      memory: 64Mi
+      cpu: 200m
+      memory: 128Mi
 
 # ---------------------------------------------------------------------------
 # web — the Nuxt frontend. NUXT_PUBLIC_API_BASE_URL is resolved by the
@@ -477,6 +522,13 @@ web:
     repository: bank-usac/web
     tag: dev # always --set at install time — see the note above `services:`
   apiBaseUrl: "http://localhost:3000"
+  # Optional (T-60). The address of Grafana *as a person's browser reaches it*,
+  # like apiBaseUrl above — never an in-cluster Service name. When set, a trace
+  # id shown on screen becomes a link to Grafana Explore on Tempo; empty (the
+  # default) leaves it as copyable text. Grafana is a ClusterIP Service here, so
+  # a cloud deployment has no address to put in it until one is exposed; the kind
+  # cluster sets it to the `pnpm obs:forward` port in kind/local.values.yaml.
+  grafanaUrl: ""
 
 # ---------------------------------------------------------------------------
 # Secrets. Every leaf defaults to "" and templates/secret.yaml wraps each in
@@ -503,8 +555,9 @@ secrets:
   # cualquiera adivina.
   interbankApiKeyInbound: ""
   interbankApiKeyOutbound: ""
-  # Optional until an interbank partner is configured. Both Gateway and
-  # Payment receive the same value from this Secret.
+  # Solo para las rutas heredadas del Gateway con Bearer
+  # (/api/interbank/deposits y /callbacks), apagadas por defecto: vacio las
+  # mantiene cerradas. payment-service ya NO lo recibe; usa la API key de salida.
   interbankPartnerToken: ""
   rabbitmq:
     user: bank_app # the app account provisioned by infra/docker/scripts/init-rabbitmq.sh

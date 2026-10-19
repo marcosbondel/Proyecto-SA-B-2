@@ -35,11 +35,11 @@
           "uid": "bank-prometheus"
         },
         "enable": true,
-        "expr": "changes(kube_deployment_metadata_generation{namespace=~\"$environment\"}[2m]) > 0",
+        "expr": "max by (namespace, replicaset) (time() - kube_replicaset_created{namespace=~\"$namespace\"} < 180)",
         "iconColor": "light-blue",
         "name": "Despliegues",
-        "titleFormat": "Despliegue de {{deployment}}",
-        "textFormat": "namespace {{namespace}}",
+        "titleFormat": "Despliegue: ReplicaSet nuevo {{replicaset}}",
+        "textFormat": "namespace {{namespace}} · sólo un rollout crea un ReplicaSet; un escalado del HPA no",
         "step": "2m"
       },
       {
@@ -81,6 +81,28 @@
           "refId": "env"
         },
         "refresh": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "bank-prometheus"
+        },
+        "definition": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+        "description": "El namespace del entorno elegido, leído de la regla sli:namespace_environment:info. En la nube es el mismo nombre (dev, prod); en kind el entorno local vive en bank-usac.",
+        "hide": 2,
+        "includeAll": false,
+        "label": "Namespace",
+        "name": "namespace",
+        "query": {
+          "query": "label_values(sli:namespace_environment:info{environment=\"$environment\"}, namespace)",
+          "refId": "namespace"
+        },
+        "refresh": 2,
         "type": "query"
       }
     ]
@@ -153,7 +175,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(kube_deployment_status_replicas_available{namespace=~\"$environment\"})",
+          "expr": "sum(kube_deployment_status_replicas_available{namespace=~\"$namespace\"})",
           "refId": "A",
           "instant": true
         }
@@ -212,7 +234,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(kube_deployment_status_replicas_unavailable{namespace=~\"$environment\"})",
+          "expr": "sum(kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\"})",
           "refId": "A",
           "instant": true
         }
@@ -266,7 +288,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$environment\", container!=\"\"}[5m]))",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\"}[5m]))",
           "refId": "A",
           "instant": true
         }
@@ -320,7 +342,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$environment\", container!=\"\"})",
+          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\"})",
           "refId": "A",
           "instant": true
         }
@@ -371,7 +393,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=~\"$environment\"}",
+          "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=~\"$namespace\"}",
           "legendFormat": "actuales · {{horizontalpodautoscaler}}",
           "refId": "A"
         },
@@ -380,7 +402,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "kube_horizontalpodautoscaler_status_desired_replicas{namespace=~\"$environment\"}",
+          "expr": "kube_horizontalpodautoscaler_status_desired_replicas{namespace=~\"$namespace\"}",
           "legendFormat": "deseadas · {{horizontalpodautoscaler}}",
           "refId": "B"
         },
@@ -389,7 +411,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "kube_horizontalpodautoscaler_spec_max_replicas{namespace=~\"$environment\"}",
+          "expr": "kube_horizontalpodautoscaler_spec_max_replicas{namespace=~\"$namespace\"}",
           "legendFormat": "máximo · {{horizontalpodautoscaler}}",
           "refId": "C"
         }
@@ -441,7 +463,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=~\"$environment\", container!=\"\"}[5m]))",
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\"}[5m]))",
           "legendFormat": "{{pod}}",
           "refId": "A"
         }
@@ -492,7 +514,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=~\"$environment\", container!=\"\"})",
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\"})",
           "legendFormat": "{{pod}}",
           "refId": "A"
         }
@@ -543,7 +565,7 @@
             "type": "prometheus",
             "uid": "bank-prometheus"
           },
-          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$environment\"}[1h]))",
+          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[1h]))",
           "legendFormat": "{{pod}}",
           "refId": "A"
         }

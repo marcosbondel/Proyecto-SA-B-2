@@ -56,7 +56,8 @@ export interface OpenAccountRequest extends CommandContext {
 export interface SetAccountStatusRequest extends CommandContext {
   readonly accountId: string;
   readonly status: 'ACTIVE' | 'INACTIVE';
-  readonly reason: string;
+  /** Obligatorio al desactivar; al activar puede faltar. */
+  readonly reason?: string;
 }
 
 export interface TransferRequest extends CommandContext {
@@ -83,6 +84,8 @@ export interface TransferRequest extends CommandContext {
   readonly interbank?: {
     readonly bankCode: string;
     readonly account: string;
+    /** La cuenta de este banco de la que sale el dinero (`02-NNNNNNNNN`), que el contrato exige. */
+    readonly originAccount: string;
     readonly interbankTransferId: string;
     readonly idempotencyKey: string;
   };
@@ -185,7 +188,7 @@ export class CommandsUseCase {
       {
         accountId: request.accountId,
         status: request.status,
-        reason: request.reason,
+        ...(request.reason === undefined ? {} : { reason: request.reason }),
       },
       request,
     );

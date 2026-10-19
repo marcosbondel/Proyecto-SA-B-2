@@ -1,5 +1,6 @@
 # web — the Nuxt frontend. Env matches docs/operations/CONTAINERS.md's web
-# row: no required variables, NUXT_PUBLIC_API_BASE_URL optional.
+# row: no required variables, NUXT_PUBLIC_API_BASE_URL and
+# NUXT_PUBLIC_GRAFANA_URL optional.
 # NITRO_HOST/NITRO_PORT are baked into the image at build time (they select
 # which interface the Nitro preset binds, not a deployment), so they are
 # deliberately not set here.
@@ -69,6 +70,12 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: NUXT_PUBLIC_API_BASE_URL
+            # Optional (T-60): where a trace id on screen links to. Empty = text.
+            - name: NUXT_PUBLIC_GRAFANA_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-config
+                  key: NUXT_PUBLIC_GRAFANA_URL
           # web's /ready deliberately does not probe the gateway (it checks
           # only that NUXT_PUBLIC_API_BASE_URL is a well-formed origin) —
           # see docs/operations/CONTAINERS.md, "The frontend's readiness

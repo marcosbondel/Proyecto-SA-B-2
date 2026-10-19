@@ -35,9 +35,12 @@
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
     "eslint": "catalog:",
     "jest": "catalog:",
     "ts-jest": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "yaml": "catalog:"
   }
 }

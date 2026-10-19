@@ -63,6 +63,9 @@ catalogs:
     '@opentelemetry/instrumentation-pg':
       specifier: 0.75.0
       version: 0.75.0
+    '@opentelemetry/instrumentation-undici':
+      specifier: 0.33.0
+      version: 0.33.0
     '@opentelemetry/resources':
       specifier: 2.12.0
       version: 2.12.0
@@ -102,6 +105,12 @@ catalogs:
     '@vue/test-utils':
       specifier: 2.5.1
       version: 2.5.1
+    ajv:
+      specifier: 8.20.0
+      version: 8.20.0
+    ajv-formats:
+      specifier: 3.0.1
+      version: 3.0.1
     amqp-connection-manager:
       specifier: 5.0.0
       version: 5.0.0
@@ -329,6 +338,9 @@ importers:
       '@bank/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@bank/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
@@ -402,6 +414,9 @@ importers:
       '@opentelemetry/instrumentation-pg':
         specifier: 'catalog:'
         version: 0.75.0(@opentelemetry/api@1.9.1)(supports-color@10.2.2)
+      '@opentelemetry/instrumentation-undici':
+        specifier: 'catalog:'
+        version: 0.33.0(@opentelemetry/api@1.9.1)(supports-color@10.2.2)
       '@opentelemetry/resources':
         specifier: 'catalog:'
         version: 2.12.0(@opentelemetry/api@1.9.1)
@@ -463,15 +478,15 @@ importers:
 
   apps/partner-bank-mock:
     devDependencies:
-      '@bank/contracts':
-        specifier: workspace:*
-        version: link:../packages/contracts
       '@bank/tooling':
         specifier: workspace:*
         version: link:../packages/tooling
       eslint:
         specifier: 'catalog:'
         version: 10.8.1(jiti@2.7.0)(supports-color@10.2.2)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
 
   apps/services/account-service:
     dependencies:
@@ -767,6 +782,12 @@ importers:
       '@types/pg':
         specifier: 'catalog:'
         version: 8.23.1
+      ajv:
+        specifier: 'catalog:'
+        version: 8.20.0
+      ajv-formats:
+        specifier: 'catalog:'
+        version: 3.0.1(ajv@8.20.0)
       eslint:
         specifier: 'catalog:'
         version: 10.8.1(jiti@2.7.0)(supports-color@10.2.2)
@@ -779,6 +800,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
 
   apps/services/transaction-service:
     dependencies:
@@ -2304,6 +2328,12 @@ packages:
     engines: {node: ^18.19.0 || >=20.6.0}
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
+
+  '@opentelemetry/instrumentation-undici@0.33.0':
+    resolution: {integrity: sha512-eR4Y9kApgnKmiIoygMtyfABTL4bwAUlt00/Nxkkr5FSC28kcM6MxzTp5mNw+KD1XcVt6dBj3Sz5aoekbTqY9GQ==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': ^1.7.0
 
   '@opentelemetry/instrumentation@0.223.0':
     resolution: {integrity: sha512-tttBo88TbwK1zpsH6VeJoxLQopxOjW3cnrP50fsQJRZftkSKDDwjolXXBvow2jy0LKXlNRkDQh0NT6yI/q+BEQ==}
@@ -10520,6 +10550,15 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@opentelemetry/instrumentation-undici@0.33.0(@opentelemetry/api@1.9.1)(supports-color@10.2.2)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.12.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/instrumentation': 0.223.0(@opentelemetry/api@1.9.1)(supports-color@10.2.2)
+      '@opentelemetry/semantic-conventions': 1.43.0
+    transitivePeerDependencies:
+      - supports-color
+
   '@opentelemetry/instrumentation@0.223.0(@opentelemetry/api@1.9.1)(supports-color@10.2.2)':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -12032,6 +12071,10 @@ snapshots:
   ajv-formats@3.0.1(ajv@8.18.0):
     optionalDependencies:
       ajv: 8.18.0
+
+  ajv-formats@3.0.1(ajv@8.20.0):
+    optionalDependencies:
+      ajv: 8.20.0
 
   ajv-keywords@3.5.2(ajv@6.15.0):
     dependencies:

@@ -215,10 +215,17 @@ if [[ "$skip_discover" != "true" && "$dry_run" != "true" && "$print_only" != "tr
   "$DISCOVER"
 fi
 
+# `--force-conflicts`: Helm 4 aplica del lado del servidor, y un
+# `kubectl set image` o `kubectl set env` de una prueba anterior (los escenarios
+# de carga cambian el mock asi) deja al gestor `kubectl-set` como dueno del
+# campo. El siguiente upgrade fallaba entero con "conflict with kubectl-set
+# … .containers[name=app].image" en cinco Deployments. En este cluster local el
+# chart es la unica fuente de verdad, asi que gana el chart.
 set -- \
   upgrade --install "$RELEASE" "$CHART" \
   --kube-context "$KUBE_CONTEXT" \
-  --namespace "$NAMESPACE" --create-namespace
+  --namespace "$NAMESPACE" --create-namespace \
+  --force-conflicts
 
 [[ -f "$GENERATED" ]] && set -- "$@" -f "$GENERATED"
 
@@ -262,6 +269,21 @@ set -- "$@" \
 # comes in through port-forward.sh regardless. ClusterIP keeps the local
 # install, and the evidence captured from it, exactly as it was.
 set -- "$@" --set-string "gateway.serviceType=ClusterIP"
+
+# The activation link in the notification service's log. The chart's default is
+# "false" since T-60 (the log reaches Loki in the cloud, and a complete link is
+# an account-takeover URL), but on kind the log is the only mailbox there is:
+# `pnpm k8s:install` without `--values` would otherwise leave nobody able to
+# sign up. Only for a kind context; --allow-remote-context gets the chart's own
+# default, and `-f local.values.yaml` says the same thing for `local:up`.
+# A values file that names the key keeps its say (`--set` would override it).
+reveal_decided=false
+for valores in ${extra_values[@]+"${extra_values[@]}"}; do
+  grep -q 'revealActivationLinks' "$valores" && reveal_decided=true
+done
+if [[ "$allow_remote" != "true" && "$reveal_decided" != "true" ]]; then
+  set -- "$@" --set-string "services.notificationAudit.revealActivationLinks=true"
+fi
 
 # The seven image tags. Not optional — see the note above `services:` in values.yaml.
 #

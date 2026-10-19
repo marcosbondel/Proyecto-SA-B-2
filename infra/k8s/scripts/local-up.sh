@@ -25,9 +25,9 @@
 # quede en la bitacora, y ensayar los tres escenarios de fallo de T-51 —
 # incluido el del banco pareja, inyectado con el mock propio.
 #
-# LO QUE NO PRUEBA, y conviene no confundir: el HPA (kind no trae
-# metrics-server), el error budget de 7 dias (la retencion local es de 2 h) y la
-# IP publica del Gateway. Eso es T-54 contra GCP.
+# LO QUE NO PRUEBA, y conviene no confundir: el error budget de 7 dias (la
+# retencion local es de 2 h) y la IP publica del Gateway. Eso es contra GCP.
+# El HPA SI se puede ver: el paso 2b instala metrics-server, que kind no trae.
 #
 # NADA DE ESTO TOCA LA NUBE. Las sobrescrituras locales viven en dos archivos
 # bajo infra/k8s/kind/ y los dos scripts de instalacion se niegan a trabajar
@@ -82,6 +82,9 @@ if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
 else
   pnpm k8s:cluster
 fi
+
+paso "2b. metrics-server, para que los HPA midan CPU"
+"${SCRIPT_DIR}/install-metrics-server.sh"
 
 if [[ "$skip_build" != "true" ]]; then
   paso "3. Imagenes"

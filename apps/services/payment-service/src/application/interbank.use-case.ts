@@ -14,8 +14,9 @@ import type {
 
 import { validateIncoming } from '../domain/interbank';
 import {
+  accountReferenceOf,
+  answersAbout,
   applyInterbankReceipt,
-  couldBeOurAccount,
   IllegalInterbankReceiptTransition,
 } from '../domain/interbank-receipt';
 import type { InterbankReceiptEvent, InterbankReceiptRejection } from '../domain/interbank-receipt';
@@ -33,6 +34,9 @@ import type {
  * alias para no cambiar las firmas de medio archivo.
  */
 type Reason = InterbankReceiptRejection;
+
+/** «Un máximo de 24 horas» de reintentos del callback, que fija el contrato. */
+const CALLBACK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** A persisted incoming deposit; every external effect is driven from a database row. */
 export class InterbankUseCase {
@@ -61,14 +65,14 @@ export class InterbankUseCase {
     const payload = envelope.payload as PaymentInterbankReceiveV1;
     /*
      * Dos rechazos antes de molestar a Account, y el segundo es de T-56: una
-     * referencia de cuenta que no puede ser un UUID de este banco no se le
+     * referencia que no puede ser ni un UUID ni un número de cuenta no se le
      * pregunta a nadie — sería un viaje por el broker para que contestara lo
      * que ya se sabe. Lo que sí hace es entrar, registrarse y **contestarse**,
      * que es la diferencia entre interoperar y devolver un `400`.
      */
     const reason: Reason | null =
       validateIncoming(payload, this.deps) ??
-      (couldBeOurAccount(payload.accountId) ? null : 'ACCOUNT_NOT_FOUND');
+      (accountReferenceOf(payload.accountId) === null ? 'ACCOUNT_NOT_FOUND' : null);
     const result = reason === null ? null : this.#result(envelope, payload.depositId, reason);
     const opened = await this.deps.repository.open({
       origin: envelope as MessageEnvelope<PaymentInterbankReceiveV1>,
@@ -111,11 +115,20 @@ export class InterbankUseCase {
     answer: AccountInterbankEligibilityRepliedV1,
   ): Promise<void> {
     const found = await this.deps.repository.find(answer.depositId);
-    if (found?.stage !== 'ELIGIBILITY' || found.origin.payload.accountId !== answer.accountId)
-      return;
+    if (found?.stage !== 'ELIGIBILITY' || !answersAbout(found.accountRef, answer)) return;
+    /*
+     * Un depósito cuya elegibilidad se contesta **después de `expiresAt`** no
+     * ordena el crédito: se rechaza con `EXPIRED`. Es el otro lado de B4 — el
+     * vencimiento ya no puede alcanzar a un depósito en `CREDIT`, así que la
+     * puerta que impide acreditar tarde tiene que estar antes de entrar.
+     */
+    const vencido = found.expiresAt !== null && found.expiresAt <= this.deps.clock.now();
     const paso = this.#transition(
       found.stage,
-      { kind: 'ELIGIBILITY_ANSWERED', rejection: answer.eligible ? null : answer.reason },
+      {
+        kind: 'ELIGIBILITY_ANSWERED',
+        rejection: answer.eligible ? (vencido ? 'EXPIRED' : null) : answer.reason,
+      },
       found.origin.correlationId,
     );
     if (paso === null) return;
@@ -143,7 +156,7 @@ export class InterbankUseCase {
     answer: AccountInterbankCreditedV1,
   ): Promise<void> {
     const found = await this.deps.repository.find(answer.depositId);
-    if (found?.stage !== 'CREDIT' || found.origin.payload.accountId !== answer.accountId) return;
+    if (found?.stage !== 'CREDIT' || !answersAbout(found.accountRef, answer)) return;
     const paso = this.#transition(
       found.stage,
       { kind: 'CREDITED' },
@@ -174,7 +187,7 @@ export class InterbankUseCase {
     answer: AccountInterbankCreditRejectedV1,
   ): Promise<void> {
     const found = await this.deps.repository.find(answer.depositId);
-    if (found?.stage !== 'CREDIT' || found.origin.payload.accountId !== answer.accountId) return;
+    if (found?.stage !== 'CREDIT' || !answersAbout(found.accountRef, answer)) return;
     const paso = this.#transition(
       found.stage,
       { kind: 'CREDIT_REFUSED', rejection: answer.reason },
@@ -200,69 +213,143 @@ export class InterbankUseCase {
       );
   }
 
-  /** Called by a lease guarded sweeper; commands and callbacks can be retried safely. */
+  /**
+   * La vuelta del barrido: acciones pendientes, resultados, callbacks.
+   *
+   * **Cada paso, y cada depósito dentro de un paso, falla por su cuenta** (B3).
+   * Antes un solo depósito que lanzaba —el `payload` inexistente de una fila del
+   * contrato oficial— cortaba la vuelta entera con una excepción que el
+   * llamador sólo registraba: los resultados y los callbacks de todos los demás
+   * depósitos esperaban a que la fila mala se arreglara sola, que no ocurría
+   * nunca. Ahora la fila mala se registra con su correlación y la vuelta sigue.
+   *
+   * Seguro porque cada paso es idempotente y está respaldado por una columna: lo
+   * que no se hizo en esta vuelta se vuelve a encontrar en la siguiente.
+   */
   async sweep(limit = 20): Promise<void> {
     const now = this.deps.clock.now();
-    for (const deposit of await this.deps.repository.claimActions(now, limit)) {
-      await this.deps.trace.continue(
-        deposit.traceContext,
-        'payment.interbank.action',
-        deposit.origin.correlationId,
-        () => this.#sendAction(deposit),
+
+    for (const deposit of await this.#step('claimActions', () =>
+      this.deps.repository.claimActions(now, limit),
+    )) {
+      await this.#run(
+        'sendAction',
+        () =>
+          this.deps.trace.continue(
+            deposit.traceContext,
+            'payment.interbank.action',
+            deposit.correlationId,
+            () => this.#sendAction(deposit),
+          ),
+        deposit.correlationId,
       );
     }
-    await this.deps.repository.publishResults(
-      (event) => this.deps.messenger.publishStored(event),
-      limit,
+
+    await this.#run('publishResults', () =>
+      this.deps.repository.publishResults((event) => this.deps.messenger.publishStored(event), limit),
     );
-    await this.deps.repository.publishConflictResults(
-      (event) => this.deps.messenger.publishStored(event),
-      limit,
+    await this.#run('publishConflictResults', () =>
+      this.deps.repository.publishConflictResults(
+        (event) => this.deps.messenger.publishStored(event),
+        limit,
+      ),
     );
-    for (const deposit of await this.deps.repository.claimCallbacks(now, limit)) {
-      try {
-        await this.deps.trace.continue(
-          deposit.traceContext,
-          'payment.interbank.callback',
-          deposit.origin.correlationId,
-          () => this.deps.callback.deliver(deposit),
-        );
-        await this.deps.repository.markCallbackDelivered(deposit.depositId, this.deps.clock.now());
-        this.deps.telemetry.callbackAttempt({
-          correlationId: deposit.origin.correlationId,
-          result: 'delivered',
-        });
-      } catch {
-        this.deps.telemetry.callbackAttempt({
-          correlationId: deposit.origin.correlationId,
-          result: 'failed',
-        });
-        // The row already has its next due time. A later sweep retries it.
-      }
-    }
-    for (const { messageId, deposit } of await this.deps.repository.claimConflictCallbacks(
-      now,
-      limit,
+
+    for (const deposit of await this.#step('claimCallbacks', () =>
+      this.deps.repository.claimCallbacks(now, limit),
     )) {
-      try {
-        await this.deps.trace.continue(
-          deposit.traceContext,
-          'payment.interbank.conflict.callback',
-          deposit.origin.correlationId,
-          () => this.deps.callback.deliver(deposit),
-        );
-        await this.deps.repository.markConflictCallbackDelivered(messageId, this.deps.clock.now());
-        this.deps.telemetry.callbackAttempt({
-          correlationId: deposit.origin.correlationId,
-          result: 'delivered',
-        });
-      } catch {
-        this.deps.telemetry.callbackAttempt({
-          correlationId: deposit.origin.correlationId,
-          result: 'failed',
-        });
-        // The database schedules another delivery.
-      }
+      await this.#deliverCallback(
+        deposit,
+        'payment.interbank.callback',
+        async () => await this.deps.repository.markCallbackDelivered(deposit.depositId, this.deps.clock.now()),
+      );
+    }
+
+    for (const { messageId, deposit } of await this.#step('claimConflictCallbacks', () =>
+      this.deps.repository.claimConflictCallbacks(now, limit),
+    )) {
+      await this.#deliverCallback(
+        deposit,
+        'payment.interbank.conflict.callback',
+        async () =>
+          await this.deps.repository.markConflictCallbackDelivered(messageId, this.deps.clock.now()),
+      );
+    }
+
+    /*
+     * Pasadas 24 horas desde la decisión, el contrato libera al receptor de
+     * seguir insistiendo con el callback. Abandonarlo es una decisión que se
+     * deja a la vista, en ERROR, porque significa que un emisor nunca se enteró.
+     */
+    const abandonados = await this.#step('abandonStaleCallbacks', () =>
+      this.deps.repository.abandonStaleCallbacks(this.deps.clock.now(), CALLBACK_MAX_AGE_MS),
+    );
+    for (const deposit of abandonados) {
+      this.deps.telemetry.sweepFailed({
+        step: 'callbackAbandoned',
+        correlationId: deposit.correlationId,
+        error: `El callback de ${deposit.externalTransferId} no se entregó en 24 horas y se abandona.`,
+      });
+    }
+  }
+
+  /** Un paso del barrido que devuelve filas: si lanza, se registra y no hay filas. */
+  async #step<T>(
+    step: string,
+    work: () => Promise<readonly T[]>,
+    correlationId = 'sweep',
+  ): Promise<readonly T[]> {
+    try {
+      return await work();
+    } catch (error) {
+      this.#failed(step, correlationId, error);
+
+      return [];
+    }
+  }
+
+  /** Un paso del barrido cuyo resultado no importa: si lanza, se registra. */
+  async #run(
+    step: string,
+    work: () => Promise<unknown>,
+    correlationId = 'sweep',
+  ): Promise<void> {
+    try {
+      await work();
+    } catch (error) {
+      this.#failed(step, correlationId, error);
+    }
+  }
+
+  #failed(step: string, correlationId: string, error: unknown): void {
+    this.deps.telemetry.sweepFailed({
+      step,
+      correlationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  async #deliverCallback(
+    deposit: InterbankDeposit,
+    spanName: string,
+    markDelivered: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await this.deps.trace.continue(deposit.traceContext, spanName, deposit.correlationId, () =>
+        this.deps.callback.deliver(deposit),
+      );
+      await markDelivered();
+      this.deps.telemetry.callbackAttempt({
+        correlationId: deposit.correlationId,
+        result: 'delivered',
+      });
+    } catch (error) {
+      this.deps.telemetry.callbackAttempt({
+        correlationId: deposit.correlationId,
+        result: 'failed',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      // La fila ya tiene su próxima hora. Un barrido posterior lo reintenta.
     }
   }
 
@@ -321,17 +408,27 @@ export class InterbankUseCase {
   }
 
   async #sendAction(deposit: InterbankDeposit): Promise<void> {
-    const payload = deposit.origin.payload;
+    /*
+     * Todo sale de las columnas del depósito y no del sobre (B3). La cuenta se
+     * nombra a Account por lo que ella entiende: el UUID del camino provisional
+     * o el número `02-…` del contrato.
+     */
+    const reference = accountReferenceOf(deposit.accountRef);
+
+    if (reference === null) {
+      throw new Error(`La cuenta "${deposit.accountRef}" no puede ser de ninguna cuenta de este banco.`);
+    }
+
     if (deposit.stage === 'ELIGIBILITY') {
       await this.deps.messenger.command(deposit.origin, accountInterbankEligibilityQueryV1.name, {
         depositId: deposit.depositId,
-        accountId: payload.accountId,
+        ...reference,
       });
     } else if (deposit.stage === 'CREDIT') {
       await this.deps.messenger.command(deposit.origin, accountInterbankCreditRequestedV1.name, {
         depositId: deposit.depositId,
-        accountId: payload.accountId,
-        amount: payload.amount,
+        ...reference,
+        amount: deposit.amount,
       });
     }
   }

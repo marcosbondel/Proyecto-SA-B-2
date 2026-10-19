@@ -123,3 +123,12 @@ backend.hcl
 # a la evidencia, que es donde alguien los va a leer; el archivo crudo es de una
 # corrida concreta en una máquina concreta y no se versiona.
 tmp/load/
+
+# Los worktrees que crean los agentes al trabajar en paralelo (`isolation:
+# worktree`). Son checkouts completos del repositorio con su propio
+# `node_modules`: versionarlos duplicaria el repo dentro de si mismo.
+.claude/worktrees/
+
+# Bitacoras de validacion y verificacion local de T-60. Lo que importa de ellas
+# pasa a la evidencia de docs/qa/; el log crudo es de una maquina y una corrida.
+tmp/t60/

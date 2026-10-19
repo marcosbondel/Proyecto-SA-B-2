@@ -125,6 +125,127 @@ describe('incoming interbank deposits', () => {
   });
 });
 
+describe('incoming interbank deposits named by the contract account number (B3)', () => {
+  /*
+   * The official contract names accounts by `02-NNNNNNNNN`, because a UUID with
+   * hyphens is 36 characters and the contract allows 34. Account used to look
+   * every reference up as a UUID, so an inbound v1 deposit was never credited.
+   */
+  it('answers eligibility by number and reports the account it resolved', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository);
+
+    await new InterbankAccountUseCase(dependencies).eligibility({
+      depositId: TRANSACTION,
+      accountNumber: account.accountNumber,
+    });
+
+    expect(publisher.replies[0]).toMatchObject({
+      messageType: 'account.interbank.eligibility.replied.v1',
+      payload: {
+        eligible: true,
+        reason: null,
+        accountId: ACCOUNT,
+        accountNumber: account.accountNumber,
+      },
+    });
+  });
+
+  it('says ACCOUNT_NOT_FOUND for a number nobody has, echoing what was asked', async () => {
+    const { publisher, dependencies } = fixture();
+
+    await new InterbankAccountUseCase(dependencies).eligibility({
+      depositId: TRANSACTION,
+      accountNumber: '02-999999999',
+    });
+
+    expect(publisher.replies[0]).toMatchObject({
+      payload: { eligible: false, reason: 'ACCOUNT_NOT_FOUND', accountNumber: '02-999999999' },
+    });
+  });
+
+  it('says ACCOUNT_INACTIVE for an inactive one', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository, { status: 'INACTIVE' });
+
+    await new InterbankAccountUseCase(dependencies).eligibility({
+      depositId: TRANSACTION,
+      accountNumber: account.accountNumber,
+    });
+
+    expect(publisher.replies[0]).toMatchObject({
+      payload: { eligible: false, reason: 'ACCOUNT_INACTIVE' },
+    });
+  });
+
+  it('credits by number exactly once and publishes the resolved account', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository);
+    const useCase = new InterbankAccountUseCase(dependencies);
+    const command = {
+      depositId: TRANSACTION,
+      accountNumber: account.accountNumber,
+      amount: quetzales(15000),
+    };
+
+    await useCase.credit(command);
+    await useCase.credit(command);
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(15000);
+    expect(publisher.events).toHaveLength(2);
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.interbank.credited.v1',
+      payload: { depositId: TRANSACTION, accountId: ACCOUNT, accountNumber: account.accountNumber },
+    });
+    // The redelivery answers the same thing, and moves no money.
+    expect(publisher.events[1]).toMatchObject({ payload: { accountId: ACCOUNT } });
+  });
+
+  it('rejects a credit to a number nobody has, without creating money', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository);
+
+    await new InterbankAccountUseCase(dependencies).credit({
+      depositId: TRANSACTION,
+      accountNumber: '02-999999999',
+      amount: quetzales(15000),
+    });
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.interbank.credit.rejected.v1',
+      payload: { reason: 'ACCOUNT_NOT_FOUND', accountNumber: '02-999999999' },
+    });
+  });
+
+  it('refuses an inactive account by number without moving money', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository, { status: 'INACTIVE' });
+
+    await new InterbankAccountUseCase(dependencies).credit({
+      depositId: TRANSACTION,
+      accountNumber: account.accountNumber,
+      amount: quetzales(15000),
+    });
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+    expect(publisher.events[0]).toMatchObject({
+      payload: { reason: 'ACCOUNT_INACTIVE' },
+    });
+  });
+
+  it('GetBalance publishes the contract account number', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository);
+
+    await new GetBalanceUseCase(dependencies).execute({ accountId: ACCOUNT }, CLIENT);
+
+    expect(publisher.replies[0]).toMatchObject({
+      payload: { outcome: 'FOUND', accountNumber: account.accountNumber },
+    });
+  });
+});
+
 describe('opening an account', () => {
   const payload = { accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'MONETARIA' as const };
 
@@ -657,6 +778,23 @@ describe('an administrator changing the status by hand', () => {
     expect(repository.accounts.get(ACCOUNT)?.status).toBe('INACTIVE');
     expect(publisher.events[0]).toMatchObject({
       messageType: 'account.deactivated.v1',
+      payload: { cause: 'ADMINISTRATOR' },
+    });
+  });
+
+  it('reactivates with no reason and announces it (QA 21)', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { status: 'INACTIVE' });
+
+    await new SetAccountStatusUseCase(dependencies).execute(
+      { accountId: ACCOUNT, status: 'ACTIVE' },
+      ADMIN,
+      'key-react',
+    );
+
+    expect(repository.accounts.get(ACCOUNT)?.status).toBe('ACTIVE');
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.reactivated.v1',
       payload: { cause: 'ADMINISTRATOR' },
     });
   });
