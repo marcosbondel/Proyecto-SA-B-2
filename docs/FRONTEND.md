@@ -200,6 +200,8 @@ reviewer can go from a prototype code to a file without guessing.
 | `T-04`, `T-04b` | The history | `/transferencias` |
 | `T-05`, `T-05b` | The Saga monitor | `/transferencias/monitor` |
 | — | **Depósito a otro banco** (T-47) | `/transferencias/interbancaria` |
+| — | Los depósitos enviados a otro banco, con su filtro de seis estados (T-60, TD-090) | `/transferencias/interbancarias` |
+| — | Un depósito a otro banco: estado, motivo, historial y reverso (T-60, TD-090) | `/transferencias/interbancarias/[id]` |
 | `G-01`, `G-01b` | Nuevo pago | `/pagos/nuevo` |
 | `G-02a`–`G-02d` | One payment's state | `/pagos/[id]` |
 | `G-03`, `G-03b` | The payment history | `/pagos` |

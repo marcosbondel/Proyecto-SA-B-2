@@ -512,6 +512,13 @@ web:
     repository: bank-usac/web
     tag: dev # always --set at install time — see the note above `services:`
   apiBaseUrl: "http://localhost:3000"
+  # Optional (T-60). The address of Grafana *as a person's browser reaches it*,
+  # like apiBaseUrl above — never an in-cluster Service name. When set, a trace
+  # id shown on screen becomes a link to Grafana Explore on Tempo; empty (the
+  # default) leaves it as copyable text. Grafana is a ClusterIP Service here, so
+  # a cloud deployment has no address to put in it until one is exposed; the kind
+  # cluster sets it to the `pnpm obs:forward` port in kind/local.values.yaml.
+  grafanaUrl: ""
 
 # ---------------------------------------------------------------------------
 # Secrets. Every leaf defaults to "" and templates/secret.yaml wraps each in
