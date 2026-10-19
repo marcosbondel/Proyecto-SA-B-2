@@ -644,7 +644,11 @@ cerrar_forwards() { [ -n "$FORWARDS" ] && kill $FORWARDS 2>/dev/null || true; }
 trap cerrar_forwards EXIT
 for par in "prometheus-server ${P_PROM}:80" "loki ${P_LOKI}:3100" "tempo ${P_TEMPO}:3200" "grafana ${P_GRAFANA}:80"; do
   set -- $par
-  k port-forward -n "$NS" "svc/$1" "$2" >/dev/null 2>&1 &
+  # `kubectl` directo y no la funcion `k`: una funcion con `&` corre en una
+  # subshell, `$!` es el PID de esa subshell y matarla deja vivo al kubectl
+  # hijo. Asi quedaban cuatro port-forwards ocupando los puertos tras cada
+  # corrida, y la siguiente consultaba sin saberlo el stack equivocado.
+  kubectl --context "$CTX" port-forward -n "$NS" "svc/$1" "$2" >/dev/null 2>&1 &
   FORWARDS="$FORWARDS $!"
 done
 sleep 5
