@@ -213,7 +213,7 @@ jobs:
             # Una suite que se salta sola sigue contando como verde. Sin esto,
             # este paso pasaria igual si las variables no hubieran llegado a
             # Jest, y TD-069 quedaria cerrado solo en apariencia.
-            if echo "$output" | grep -qE "Test Suites:.*skipped"; then
+            if grep -qE "Test Suites:.*skipped" <<<"$output"; then
               echo "::error::$1 salto suites pese a haber PostgreSQL disponible."
               return 1
             fi
@@ -240,7 +240,7 @@ jobs:
             || { echo "$gateway_output"; echo "::endgroup::"; exit 1; }
           echo "$gateway_output"
           echo "::endgroup::"
-          if echo "$gateway_output" | grep -qE "Test Suites:.*skipped"; then
+          if grep -qE "Test Suites:.*skipped" <<<"$gateway_output"; then
             echo "::error::gateway salto suites pese a haber RabbitMQ disponible."
             exit 1
           fi
@@ -387,7 +387,12 @@ jobs:
             --set external.postgresPayment.dockerNetwork.host=10.0.0.6 \
             --set external.postgresNotificationAudit.dockerNetwork.host=10.0.0.7 \
             --set gateway.loadBalancerIP=203.0.113.10 \
-            | grep -q 'loadBalancerIP: "203.0.113.10"'
+            > /tmp/bank-usac-lb.yaml
+          # A un archivo y no a `| grep -q`: `grep -q` sale en la primera
+          # coincidencia, Helm sigue escribiendo, recibe SIGPIPE y `pipefail`
+          # convierte eso en un fallo (exit 141) que depende de cuanto mide el
+          # render. Paso a fallar en T-60, cuando el chart crecio.
+          grep -q 'loadBalancerIP: "203.0.113.10"' /tmp/bank-usac-lb.yaml
 
           # Que rotar una credencial ruede los pods (TD-089). Un pod no vuelve a
           # leer un Secret: sin el hash en el `podTemplate`, una rotacion deja

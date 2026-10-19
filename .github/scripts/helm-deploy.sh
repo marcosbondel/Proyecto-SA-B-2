@@ -154,7 +154,7 @@ if [ -n "${ALERT_WEBHOOK_TOKEN:-}" ]; then
     echo "::error::ALERT_WEBHOOK_TOKEN tiene ${#ALERT_WEBHOOK_TOKEN} caracteres. El Gateway exige al menos 32 y no arrancaria."
     exit 1
   fi
-  if printf '%s\n' "${HELM_SECRETS:-}" | grep -q '^[[:space:]]*secrets\.alertWebhookToken='; then
+  if grep -q '^[[:space:]]*secrets\.alertWebhookToken=' <<<"${HELM_SECRETS:-}"; then
     echo "::warning::HELM_SECRETS todavia trae secrets.alertWebhookToken; se ignora en favor del secreto ALERT_WEBHOOK_TOKEN. Conviene quitar esa linea para que haya una sola fuente."
   fi
   ALERT_ARGS+=(--set-string "secrets.alertWebhookToken=${ALERT_WEBHOOK_TOKEN}")
