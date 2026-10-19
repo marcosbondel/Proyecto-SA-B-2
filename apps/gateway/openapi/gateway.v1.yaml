@@ -822,7 +822,9 @@ paths:
         compensa si lo rechaza o no contesta. El 202 significa que la transferencia se aceptó, no
         que el otro banco la acreditó — eso llega por callback y se consulta en `GET
         /api/interbank/transfers/{interbankTransferId}`. El identificador interbancario y la clave
-        de idempotencia los genera el Gateway. Se rechaza con 400, sin debitar, una moneda distinta
+        de idempotencia los genera el Gateway, derivados de la `Idempotency-Key` de la petición:
+        reintentar con la misma clave devuelve los mismos identificadores. Sólo un CLIENTE puede
+        enviar, y sólo desde una cuenta propia. Se rechaza con 400, sin debitar, una moneda distinta
         de GTQ, un banco que no es el pareja configurado y un monto por encima del límite por
         operación."
       operationId: InterbankController_send
@@ -856,6 +858,8 @@ paths:
                     format: uuid
         "400":
           description: Solicitud malformada o fuera de los límites.
+        "403":
+          description: Sólo un CLIENTE puede enviar un depósito interbancario, desde sus cuentas.
       security:
         - session: []
       summary: Envía un depósito al banco pareja

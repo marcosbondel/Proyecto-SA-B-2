@@ -153,6 +153,26 @@ external:
 # Pendiente (no es para la vispera de una entrega): copiarla al Artifact
 # Registry propio con etiqueta versionada, para no depender de que Chainguard
 # conserve este digest en su nivel gratuito.
+# RabbitMQ dentro del namespace (`rabbitmq.inCluster=true`, que llega desde los
+# secrets del despliegue y vale para dev y para prod). `inCluster` no se declara
+# aqui a proposito: su ausencia es "usa el broker de la VM", y declararlo falso
+# no cambia nada salvo hacer que `--set` parezca opcional.
+#
+# `persistence` (TD-082, D5): un PersistentVolumeClaim para /var/lib/rabbitmq.
+# Sin el, el broker pierde sus colas en cada reemplazo del pod. Se apaga con
+# `rabbitmq.persistence.enabled=false` (vuelve al comportamiento anterior, sin
+# volumen). Al activarlo por primera vez sobre un release que ya corria, el pod
+# se recrea con un broker VACIO: lo que estuviera en cola en ese momento se
+# pierde una vez, asi que conviene hacerlo con el sistema en reposo. Lo que
+# sigue sin existir es un barrido de Sagas detenidas: una transferencia que
+# quedo en PENDING antes de este cambio seguira en PENDING.
+rabbitmq:
+  persistence:
+    enabled: true
+    size: 2Gi
+    # Vacio = la clase por defecto del cluster.
+    storageClassName: ""
+
 minio:
   image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
 
