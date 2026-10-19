@@ -17,7 +17,8 @@ conflicts with either, the repository wins.
 
 A pnpm workspace with all code under `apps/`: Gateway and the Nuxt frontend at
 the top level, the five domain services under `apps/services/`, and
-`@bank/contracts`, `@bank/messaging`, `@bank/tooling` under `apps/packages/`.
+`@bank/contracts`, `@bank/messaging`, `@bank/observability`, `@bank/tooling` under
+`apps/packages/`.
 Seven applications, all of them building, linting and testing. The Gateway
 carries twenty-five paths, JWT authentication, D-06 role authorization,
 request/reply with a five-second ceiling, seven error codes and a versioned

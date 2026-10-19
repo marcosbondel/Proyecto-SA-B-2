@@ -20,6 +20,9 @@ import type {
 } from '../../src/application/ports';
 import { GatewayError } from '../../src/application/errors/gateway-error';
 import type { ReplyKind } from '../../src/application/errors/gateway-error';
+import { AlertWebhookUseCase } from '../../src/application/routes/alert-webhook.use-case';
+import { InterbankCallbackUseCase } from '../../src/application/routes/interbank-callback.use-case';
+import { InterbankReceiveUseCase } from '../../src/application/routes/interbank-receive.use-case';
 import { CommandsUseCase } from '../../src/application/routes/commands.use-case';
 import { ChangePasswordUseCase } from '../../src/application/routes/change-password.use-case';
 import { DepositUseCase } from '../../src/application/routes/deposit.use-case';
@@ -33,9 +36,24 @@ import { RegisterCustomerUseCase } from '../../src/application/routes/register-c
 import { VerifyEmailUseCase } from '../../src/application/routes/verify-email.use-case';
 import { SessionTokenService } from '../../src/infrastructure/auth/jwt.service';
 import { GatewayExceptionFilter } from '../../src/interfaces/filters/gateway-exception.filter';
+import { ALERT_WEBHOOK_TOKEN } from '../../src/interfaces/guards/alert-token.guard';
+import { INTERBANK_PARTNER_TOKEN } from '../../src/interfaces/guards/interbank-token.guard';
+import { InterbankV1UseCase } from '../../src/application/routes/interbank-v1.use-case';
+import {
+  INTERBANK_API_KEYS,
+  InterbankApiKeyGuard,
+} from '../../src/interfaces/guards/interbank-api-key.guard';
+import {
+  INTERBANK_BANK_CODE,
+  INTERBANK_MAX_AMOUNT_MINOR,
+  INTERBANK_PARTNER_BANK_CODE,
+} from '../../src/interfaces/interbank-v1.tokens';
+import { InterbankSendUseCase } from '../../src/application/routes/interbank-send.use-case';
 import { JwtGuard, SESSION_VERIFIER } from '../../src/interfaces/guards/jwt.guard';
 import { RolesGuard } from '../../src/interfaces/guards/roles.guard';
 import { BROKER_HEALTH } from '../../src/interfaces/health.controller';
+import { accessLogMiddleware } from '../../src/interfaces/middleware/access-log.middleware';
+import type { AccessLog } from '../../src/interfaces/middleware/access-log.middleware';
 import { CorrelationMiddleware } from '../../src/interfaces/middleware/correlation.middleware';
 import { validationExceptionFactory } from '../../src/interfaces/validation';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
@@ -176,6 +194,16 @@ export class FakeObjectStorage implements ObjectStoragePort {
 
 export const TEST_SECRET = 'a-test-secret-of-at-least-32-chars!!';
 
+/** The SLO webhook's shared secret in every harness (T-45). */
+export const TEST_ALERT_TOKEN = 'an-alert-webhook-token-of-32-chars!!';
+export const TEST_INTERBANK_TOKEN = 'an-interbank-partner-token-of-32-chars!!';
+/** La API key del contrato oficial (`X-Api-Key`), que identifica al banco (T-56). */
+export const TEST_INTERBANK_API_KEY = 'an-interbank-api-key-of-32-characters!!';
+export const TEST_PARTNER_BANK_CODE = 'BANK99';
+export const TEST_OWN_BANK_CODE = 'BANK02';
+/** El límite por operación del contrato: Q10 000,00 (T-60). */
+export const TEST_MAX_AMOUNT_MINOR = 1_000_000;
+
 export interface Harness {
   readonly app: INestApplication;
   readonly publisher: RecordingPublisher;
@@ -188,6 +216,7 @@ export interface Harness {
 export async function buildHarness(
   controllers: readonly unknown[],
   providers: readonly unknown[] = [],
+  options: { readonly accessLog?: AccessLog } = {},
 ): Promise<Harness> {
   const publisher = new RecordingPublisher();
   const replier = new ScriptedReplier();
@@ -208,6 +237,9 @@ export async function buildHarness(
        * dependency would otherwise break every suite that had not listed it,
        * with a DI error that says nothing about the actual change.
        */
+      AlertWebhookUseCase,
+      InterbankReceiveUseCase,
+      InterbankCallbackUseCase,
       ChangePasswordUseCase,
       DepositUseCase,
       DashboardUseCase,
@@ -224,6 +256,18 @@ export async function buildHarness(
       { provide: OBJECT_STORAGE, useValue: storage },
       { provide: SESSION_VERIFIER, useValue: tokens },
       { provide: SESSION_SIGNER, useValue: tokens },
+      { provide: ALERT_WEBHOOK_TOKEN, useValue: TEST_ALERT_TOKEN },
+      { provide: INTERBANK_PARTNER_TOKEN, useValue: TEST_INTERBANK_TOKEN },
+      InterbankV1UseCase,
+      InterbankApiKeyGuard,
+      {
+        provide: INTERBANK_API_KEYS,
+        useValue: { [TEST_PARTNER_BANK_CODE]: TEST_INTERBANK_API_KEY },
+      },
+      { provide: INTERBANK_BANK_CODE, useValue: TEST_OWN_BANK_CODE },
+      { provide: INTERBANK_PARTNER_BANK_CODE, useValue: TEST_PARTNER_BANK_CODE },
+      { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: TEST_MAX_AMOUNT_MINOR },
+      InterbankSendUseCase,
       { provide: BROKER_HEALTH, useValue: { isConnected: () => brokerUp.value } },
       { provide: APP_GUARD, useClass: JwtGuard },
       { provide: APP_GUARD, useClass: RolesGuard },
@@ -246,6 +290,10 @@ export async function buildHarness(
   // no `configure`, so it is attached here to keep the request shape identical.
   const correlation = new CorrelationMiddleware();
   app.use(correlation.use.bind(correlation));
+  // And the access log, only for the specs that ask to read it.
+  if (options.accessLog !== undefined) {
+    app.use(accessLogMiddleware(options.accessLog));
+  }
   await app.init();
 
   return { app, publisher, replier, storage, tokens, brokerUp };

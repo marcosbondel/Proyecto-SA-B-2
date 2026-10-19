@@ -9,6 +9,7 @@ import {
   transactionFailedV1,
 } from '@bank/contracts';
 
+import { phaseStatusOf } from '../domain/phase-status';
 import { applyEvent } from '../domain/transaction';
 import type { SagaEvent, Transaction, Transition } from '../domain/transaction';
 import type {
@@ -20,6 +21,7 @@ import type {
   OutboundMessage,
   OutboxMessage,
   TransactionRepository,
+  TransferTelemetry,
 } from './ports';
 
 /**
@@ -46,17 +48,20 @@ export class AdvanceSagaUseCase {
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
   readonly #ids: IdGenerator;
+  readonly #telemetry: TransferTelemetry;
 
   constructor(dependencies: {
     readonly repository: TransactionRepository;
     readonly publisher: EventPublisher;
     readonly clock: Clock;
     readonly ids: IdGenerator;
+    readonly telemetry: TransferTelemetry;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
     this.#ids = dependencies.ids;
+    this.#telemetry = dependencies.telemetry;
   }
 
   /**
@@ -95,6 +100,28 @@ export class AdvanceSagaUseCase {
       outbound: (transaction, transition) => this.#effectsOf(transaction, transition),
       now,
     });
+
+    /**
+     * Reported only for a transition that applied, and only after it committed.
+     * A duplicate, an unknown transaction and an illegal event are not steps of
+     * the Saga, so none of them becomes a span or moves a counter — which is also
+     * what keeps a redelivery from being counted twice. The state machine is not
+     * consulted again and nothing here can change what it decided.
+     */
+    if (outcome.kind === 'APPLIED') {
+      this.#telemetry.step({
+        transactionId: input.transactionId,
+        correlationId: outcome.transaction.correlationId,
+        event: input.event.kind,
+        from: outcome.transition.from,
+        to: outcome.transition.status,
+        phase: phaseStatusOf(outcome.transition.status),
+        command: outcome.transition.command,
+        failureReason: outcome.transition.failureReason,
+        completedAt: outcome.transaction.completedAt,
+        observation: outcome.observation,
+      });
+    }
 
     return outcome;
   }
@@ -191,6 +218,14 @@ export class AdvanceSagaUseCase {
           ...(transaction.paymentScenario === null
             ? {}
             : { scenario: transaction.paymentScenario }),
+          /*
+           * El destino interbancario, copiado tal cual (T-47). Es lo que le
+           * dice a Payment que a este pago no lo decide el proveedor simulado
+           * sino el banco pareja — y que su respuesta llegará por callback, no
+           * al momento. Este servicio no lo interpreta: ni lo valida ni decide
+           * nada con él, igual que con el escenario.
+           */
+          ...(transaction.interbank === null ? {} : { interbank: transaction.interbank }),
         };
         const message = { messageType: paymentRequestedV1.name, payload };
 

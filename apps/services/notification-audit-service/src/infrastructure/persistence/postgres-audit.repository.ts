@@ -4,6 +4,7 @@ import { redactPayload } from '../../domain/redaction';
 import type { AuditEvent, AuditProcessingStatus } from '../../domain/audit-event';
 import type { EventSeverity } from '../../domain/classification';
 import type {
+  AlertInstance,
   Notification,
   NotificationIntent,
   NotificationStatus,
@@ -32,11 +33,22 @@ import type {
  * the raw payload and hiding it at read time would mean the unredacted copy
  * exists on disk — and the copy on disk is the one that ends up in a backup.
  */
+/** `repeat_interval` of the Grafana notification policy: 4 h (T-50). */
+export const DEFAULT_ALERT_REPEAT_WINDOW_MS = 4 * 60 * 60 * 1000;
+
 export class PostgresAuditRepository implements AuditRepository {
   readonly #pool: Pool;
+  readonly #alertWindowMs: number;
 
-  constructor(pool: Pool) {
+  /**
+   * `alertRepeatWindowMs` is how long an alert instance that was already told
+   * in a given state stays quiet (TD-083): the same four hours as Grafana's own
+   * `repeat_interval`, so a repetition inside it is a repetition and one after
+   * it is a reminder.
+   */
+  constructor(pool: Pool, options: { readonly alertRepeatWindowMs?: number } = {}) {
     this.#pool = pool;
+    this.#alertWindowMs = options.alertRepeatWindowMs ?? DEFAULT_ALERT_REPEAT_WINDOW_MS;
   }
 
   public async record(input: {
@@ -73,8 +85,9 @@ export class PostgresAuditRepository implements AuditRepository {
       const inserted = await client.query(
         `INSERT INTO audit_events
            (event_id, message_type, message_version, producer, occurred_at, received_at,
-            correlation_id, causation_id, payload, processing_status, consumer, severity)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11, $12)
+            correlation_id, causation_id, payload, processing_status, consumer, severity,
+            trace_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::JSONB, $10, $11, $12, $13)
          ON CONFLICT (event_id, consumer) DO NOTHING`,
         [
           event.eventId,
@@ -89,6 +102,7 @@ export class PostgresAuditRepository implements AuditRepository {
           event.processingStatus,
           event.consumer,
           event.severity,
+          event.traceId,
         ],
       );
 
@@ -97,18 +111,38 @@ export class PostgresAuditRepository implements AuditRepository {
         return { kind: 'DUPLICATE' };
       }
 
+      /*
+       * TD-083: an SLO alert that every instance of the webhook already told
+       * the operators about, in this same state, inside the window, is
+       * recorded above and not notified. Claimed here, in this transaction and
+       * before the notification row, so a rollback releases the claim.
+       */
+      if (
+        notification !== null &&
+        notification.intent.repeatGuard !== undefined &&
+        !(await this.#claimAlerts(client, notification.intent.repeatGuard, now))
+      ) {
+        return { kind: 'RECORDED', notified: false };
+      }
+
       if (notification !== null) {
         /*
          * `DO NOTHING` here too, against the partial unique index on
          * (caused_by, type). Redundant while the insert above is the gate, and
          * kept because the guarantee should survive a future handler that
          * forgets why the order matters.
+         *
+         * T-45 gives it a second job: `dedupe_key` makes two *different* events
+         * about the same thing one notification (an anomaly announced twice).
+         * That loss is silent and legitimate, so the answer is read from the
+         * row count — a notification that was not written must not be sent.
          */
-        await client.query(
+        const written = await client.query(
           `INSERT INTO notifications
              (notification_id, type, channel, recipient, reference_id, subject,
-              status, correlation_id, caused_by, created_at, processed_at, customer_id, severity)
-           VALUES ($1, $2, 'EMAIL', $3, $4, $5, 'PENDING', $6, $7, $8, NULL, $9, $10)
+              status, correlation_id, caused_by, created_at, processed_at, customer_id, severity,
+              dedupe_key)
+           VALUES ($1, $2, 'EMAIL', $3, $4, $5, 'PENDING', $6, $7, $8, NULL, $9, $10, $11)
            ON CONFLICT DO NOTHING`,
           [
             notification.notificationId,
@@ -121,8 +155,13 @@ export class PostgresAuditRepository implements AuditRepository {
             now,
             notification.customerId,
             notification.intent.severity,
+            notification.intent.dedupeKey ?? null,
           ],
         );
+
+        if (written.rowCount === 0) {
+          return { kind: 'RECORDED', notified: false };
+        }
       }
 
       return {
@@ -131,6 +170,51 @@ export class PostgresAuditRepository implements AuditRepository {
         ...(notification === null ? {} : { notificationId: notification.notificationId }),
       };
     });
+  }
+
+  /**
+   * Claims every `(alert instance, status)` of a webhook and says whether at
+   * least one was **new** — never told, or last told longer ago than the window.
+   *
+   * One statement per pair: `INSERT … ON CONFLICT DO UPDATE … WHERE` takes the
+   * row lock, so two replicas processing repeats of the same alert serialise
+   * and exactly one of them gets a row back. A claimed pair also removes its
+   * opposite, which is what lets a FIRING after a RESOLVED notify again even
+   * though the earlier FIRING is still inside the window.
+   *
+   * Every pair is claimed, not only until the first success: stopping early
+   * would leave the others unclaimed and re-notify on the next repeat.
+   */
+  async #claimAlerts(
+    client: PoolClient,
+    guard: readonly AlertInstance[],
+    now: Date,
+  ): Promise<boolean> {
+    const staleBefore = new Date(now.getTime() - this.#alertWindowMs);
+    let anyNew = false;
+
+    for (const { key, status } of guard) {
+      const claimed = await client.query(
+        `INSERT INTO slo_alert_notifications (alert_key, status, notified_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (alert_key, status) DO UPDATE
+           SET notified_at = EXCLUDED.notified_at
+           WHERE slo_alert_notifications.notified_at <= $4
+         RETURNING alert_key`,
+        [key, status, now, staleBefore],
+      );
+
+      if ((claimed.rowCount ?? 0) > 0) {
+        anyNew = true;
+
+        await client.query(
+          `DELETE FROM slo_alert_notifications WHERE alert_key = $1 AND status <> $2`,
+          [key, status],
+        );
+      }
+    }
+
+    return anyNew;
   }
 
   /** The only `UPDATE` in this service, and it touches no trail row. */
@@ -310,7 +394,8 @@ export class PostgresAuditRepository implements AuditRepository {
   public async trailFor(correlationId: string): Promise<readonly AuditEvent[]> {
     const result = await this.#pool.query<AuditRow>(
       `SELECT event_id, message_type, message_version, producer, occurred_at, received_at,
-              correlation_id, causation_id, payload, processing_status, consumer, severity
+              correlation_id, causation_id, payload, processing_status, consumer, severity,
+              trace_id
          FROM audit_events
         WHERE correlation_id = $1
         ORDER BY occurred_at, event_id`,
@@ -324,29 +409,49 @@ export class PostgresAuditRepository implements AuditRepository {
     readonly limit: number;
     readonly offset: number;
     readonly severity?: string;
+    readonly correlationId?: string;
+    readonly traceId?: string;
+    readonly service?: string;
   }): Promise<{ readonly events: readonly AuditEvent[]; readonly total: number }> {
-    const where = input.severity === undefined ? '' : 'WHERE severity = $3';
-    const parameters =
-      input.severity === undefined
-        ? [input.limit, input.offset]
-        : [input.limit, input.offset, input.severity];
+    /*
+     * The four filters §4.1 names, every one a bound parameter — a filter value
+     * is never part of the SQL text — and every one optional. `service` is the
+     * producer; `severity` is the stored classification, so a row written
+     * before T-30 matches none of the levels, which is the honest answer.
+     */
+    const conditions: string[] = [];
+    const filters: string[] = [];
+
+    for (const [column, value] of [
+      ['severity', input.severity],
+      ['correlation_id', input.correlationId],
+      ['trace_id', input.traceId],
+      ['producer', input.service],
+    ] as const) {
+      if (value !== undefined) {
+        filters.push(value);
+        conditions.push(`${column} = $${String(filters.length)}`);
+      }
+    }
+
+    const where = conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')}`;
+    const page = filters.length;
 
     const [eventsResult, countResult] = await Promise.all([
       this.#pool.query<AuditRow>(
         `SELECT event_id, message_type, message_version, producer, occurred_at, received_at,
-                correlation_id, causation_id, payload, processing_status, consumer, severity
+                correlation_id, causation_id, payload, processing_status, consumer, severity,
+                trace_id
            FROM audit_events
            ${where}
           ORDER BY occurred_at DESC, event_id DESC
-          LIMIT $1 OFFSET $2`,
-        parameters,
+          LIMIT $${String(page + 1)} OFFSET $${String(page + 2)}`,
+        [...filters, input.limit, input.offset],
       ),
-      input.severity === undefined
-        ? this.#pool.query<{ total: string }>(`SELECT COUNT(*)::TEXT AS total FROM audit_events`)
-        : this.#pool.query<{ total: string }>(
-            `SELECT COUNT(*)::TEXT AS total FROM audit_events WHERE severity = $1`,
-            [input.severity],
-          ),
+      this.#pool.query<{ total: string }>(
+        `SELECT COUNT(*)::TEXT AS total FROM audit_events ${where}`,
+        filters,
+      ),
     ]);
 
     return {
@@ -467,6 +572,7 @@ interface AuditRow {
   readonly processing_status: AuditProcessingStatus;
   readonly consumer: string;
   readonly severity: EventSeverity | null;
+  readonly trace_id: string | null;
 }
 
 interface NotificationRow {
@@ -500,6 +606,7 @@ function auditEventFrom(row: AuditRow): AuditEvent {
     processingStatus: row.processing_status,
     consumer: row.consumer,
     severity: row.severity,
+    traceId: row.trace_id,
   };
 }
 
@@ -532,4 +639,3 @@ interface InboxRow {
   read_at: Date | null;
   severity: EventSeverity | null;
 }
-

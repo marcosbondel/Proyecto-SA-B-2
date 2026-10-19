@@ -6,7 +6,13 @@ import { catalogByName, destinationFor, validateMessage } from '@bank/contracts'
 import { ROUTE_MESSAGES } from '../src/openapi/route-messages';
 import type { RouteMessages } from '../src/openapi/route-messages';
 import { ACCOUNT_ID, ROUTE_REQUESTS, SOURCE_ACCOUNT, TARGET_ACCOUNT } from './support/route-fixtures';
-import { bearerFor, buildBrokerHarness, closeBrokerHarness, waitFor } from './support/broker-harness';
+import {
+  bearerFor,
+  buildBrokerHarness,
+  closeBrokerHarness,
+  fire,
+  waitFor,
+} from './support/broker-harness';
 import type { BrokerHarness } from './support/broker-harness';
 import { ServiceDouble } from './support/service-double';
 
@@ -87,12 +93,50 @@ describeBroker('publishing onto the real broker', () => {
       }
       const { exchange, routingKey } = destinationFor(contract);
 
-      const response = await builder(harness);
+      /*
+       * El envío interbancario pregunta primero a Account el número de la cuenta
+       * origen (T-60): sin quien conteste, la petición se queda esperando y nunca
+       * publica la Saga que esta prueba busca. Account se dobla aquí con una
+       * respuesta, como lo haría el servicio.
+       */
+      const contestar = routeKey === 'POST /api/interbank/transfers';
+      const desde = Date.now() - 50;
+      const pending = fire(builder(harness));
+      if (contestar) {
+        const consulta = await double.waitForEnvelope(
+          (envelope) =>
+            envelope.messageType === 'account.balance.query.v1' &&
+            (envelope.payload as { accountId?: string }).accountId === SOURCE_ACCOUNT &&
+            Date.parse(envelope.occurredAt) >= desde,
+          5_000,
+        );
+        await double.reply(
+          consulta.envelope!,
+          'account.balance.replied.v1',
+          {
+            outcome: 'FOUND',
+            accountId: SOURCE_ACCOUNT,
+            accountNumber: '02-000000052',
+            balance: { amountMinor: 10_000_000, currency: 'GTQ' },
+            status: 'ACTIVE',
+            lastActivityAt: null,
+          },
+          { producer: 'account-service' },
+        );
+      }
+      const response = await pending;
       const correlationHeader = response.headers['x-correlation-id'] as string | undefined;
       expect(correlationHeader).toBeDefined();
 
+      /*
+       * Por correlación **y** por tipo: una ruta puede hacer una pregunta antes
+       * de su mensaje (el envío interbancario pregunta a Account el número de la
+       * cuenta origen, T-60), y las dos comparten la correlación de la petición.
+       */
       const captured = await double.waitForEnvelope(
-        (envelope) => envelope.correlationId === correlationHeader,
+        (envelope) =>
+          envelope.correlationId === correlationHeader &&
+          envelope.messageType === messages.publishes,
         5_000,
       );
 

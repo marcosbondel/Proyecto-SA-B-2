@@ -1,16 +1,82 @@
 import {
   paymentListQueryV1,
+  accountDebitCompensatedV1,
+  paymentInterbankCallbackReceivedV1,
+  paymentInterbankReceiveV1,
+  type PaymentInterbankCallbackReceivedV1,
+  type PaymentInterbankV1ResultReceivedV1,
+  accountInterbankEligibilityRepliedV1,
+  accountInterbankCreditedV1,
+  accountInterbankCreditRejectedV1,
   paymentRequestedV1,
+  paymentSimulationQueryV1,
+  paymentSimulationUpdateV1,
   paymentStatsQueryV1,
   paymentStatusQueryV1,
+  paymentInterbankV1CancelQueryV1,
+  paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendQueryV1,
+  paymentInterbankV1ResultReceivedV1,
+  paymentInterbankV1ReversalQueryV1,
+  paymentInterbankV1ReversalRequestedV1,
+  paymentInterbankV1StatusQueryV1,
+  paymentInterbankV1TransferQueryV1,
 } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 
 import type { EventPublisher } from '../application/ports';
+import type { SimulationUseCase } from '../application/manage-simulation.use-case';
 import type { ProcessPaymentUseCase } from '../application/process-payment.use-case';
+import type { InterbankUseCase } from '../application/interbank.use-case';
+import type { InterbankV1UseCase } from '../application/interbank-v1.use-case';
 import type { GetPaymentStatsUseCase } from '../application/get-payment-stats.use-case';
+import type { QueryInterbankSendsUseCase } from '../application/query-interbank-sends.use-case';
 import type { QueryPaymentUseCase } from '../application/query-payment.use-case';
+import type { SendInterbankDepositUseCase } from '../application/send-interbank-deposit.use-case';
 import type { InboundMessageHandler } from './inbound-message.handler';
+
+export class InterbankReceiveHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankReceiveV1.name;
+  constructor(readonly useCase: InterbankUseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    paymentInterbankReceiveV1.schema.parse(envelope.payload);
+    await this.useCase.receive(envelope);
+  }
+}
+
+export class InterbankEligibilityReplyHandler implements InboundMessageHandler {
+  readonly messageType = accountInterbankEligibilityRepliedV1.name;
+  constructor(readonly useCase: InterbankUseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.eligibility(
+      envelope,
+      accountInterbankEligibilityRepliedV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+export class InterbankCreditedHandler implements InboundMessageHandler {
+  readonly messageType = accountInterbankCreditedV1.name;
+  constructor(readonly useCase: InterbankUseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.credited(
+      envelope,
+      accountInterbankCreditedV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+export class InterbankCreditRejectedHandler implements InboundMessageHandler {
+  readonly messageType = accountInterbankCreditRejectedV1.name;
+  constructor(readonly useCase: InterbankUseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.creditRejected(
+      envelope,
+      accountInterbankCreditRejectedV1.schema.parse(envelope.payload),
+    );
+  }
+}
 
 /**
  * The three messages this service claims, each parsed against its own contract
@@ -30,14 +96,42 @@ export class ProcessPaymentHandler implements InboundMessageHandler {
 
   readonly #useCase: ProcessPaymentUseCase;
   readonly #publisher: EventPublisher;
+  readonly #interbank: SendInterbankDepositUseCase | null;
 
-  constructor(useCase: ProcessPaymentUseCase, publisher: EventPublisher) {
+  constructor(
+    useCase: ProcessPaymentUseCase,
+    publisher: EventPublisher,
+    interbank: SendInterbankDepositUseCase | null = null,
+  ) {
     this.#useCase = useCase;
     this.#publisher = publisher;
+    this.#interbank = interbank;
   }
 
   public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
     const command = paymentRequestedV1.schema.parse(envelope.payload);
+
+    /**
+     * La bifurcación del pago (T-47): si el comando trae el bloque
+     * `interbank`, a quien hay que pedirle el dinero es al banco pareja y no al
+     * proveedor simulado.
+     *
+     * Aquí y no en el caso de uso de pagos, porque aquí es donde el mensaje se
+     * entiende: `process-payment.use-case.ts` decide con una escalera de
+     * reintentos y un proveedor que contesta al momento, y un depósito
+     * interbancario no tiene ni lo uno ni lo otro — tiene un acuse, una espera
+     * y un vencimiento. Meter las dos cosas en el mismo caso de uso habría
+     * sido una condición dentro de la función que decide si se compensa un
+     * débito, que es el último sitio del sistema donde conviene una rama.
+     *
+     * Un despliegue sin el interbancario configurado (`#interbank` nulo) paga
+     * como siempre: el bloque se ignora y el pago va al proveedor simulado. Es
+     * deliberado — un banco sin banco pareja sigue siendo un banco.
+     */
+    if (command.interbank !== undefined && this.#interbank !== null) {
+      await this.#interbank.requested(envelope as MessageEnvelope<typeof command>);
+      return;
+    }
 
     await this.#useCase.open(
       {
@@ -111,5 +205,244 @@ export class PaymentStatusHandler implements InboundMessageHandler {
     const query = paymentStatusQueryV1.schema.parse(envelope.payload);
 
     await this.#useCase.status(query.paymentId, this.#publisher);
+  }
+}
+
+/**
+ * `payment.simulation.update.v1` — an administrator changing how the simulated
+ * provider misbehaves, without a redeploy (T-44).
+ *
+ * The envelope's identity goes to the use case, which refuses anybody who is
+ * not an administrator: the Gateway checks the role too, but this service is
+ * reachable by the broker and does not trust its caller.
+ */
+export class SimulationUpdateHandler implements InboundMessageHandler {
+  public readonly messageType = paymentSimulationUpdateV1.name;
+
+  readonly #useCase: SimulationUseCase;
+  readonly #publisher: EventPublisher;
+
+  constructor(useCase: SimulationUseCase, publisher: EventPublisher) {
+    this.#useCase = useCase;
+    this.#publisher = publisher;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const command = paymentSimulationUpdateV1.schema.parse(envelope.payload);
+
+    await this.#useCase.update({
+      command,
+      identity: envelope.identity,
+      correlationId: envelope.correlationId,
+      publisher: this.#publisher,
+    });
+  }
+}
+
+/** `payment.simulation.query.v1` — how the provider is set up right now. */
+export class SimulationQueryHandler implements InboundMessageHandler {
+  public readonly messageType = paymentSimulationQueryV1.name;
+
+  readonly #useCase: SimulationUseCase;
+  readonly #publisher: EventPublisher;
+
+  constructor(useCase: SimulationUseCase, publisher: EventPublisher) {
+    this.#useCase = useCase;
+    this.#publisher = publisher;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    paymentSimulationQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.query(this.#publisher);
+  }
+}
+
+/**
+ * `payment.interbank.callback.received.v1` — la decisión del banco pareja sobre
+ * un depósito que este banco envió (T-47).
+ *
+ * Entra por el Gateway, que es el único que habla con fuera, y llega aquí como
+ * comando porque dice «registra esta decisión» y el único que puede es este
+ * servicio.
+ */
+export class InterbankCallbackHandler implements InboundMessageHandler {
+  public readonly messageType = paymentInterbankCallbackReceivedV1.name;
+
+  readonly #useCase: SendInterbankDepositUseCase;
+
+  constructor(useCase: SendInterbankDepositUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    // Se valida el cuerpo y se pasa la envolvente entera: el caso de uso
+    // necesita la correlación y la identidad, no sólo el payload.
+    paymentInterbankCallbackReceivedV1.schema.parse(envelope.payload);
+
+    await this.#useCase.callback(envelope as MessageEnvelope<PaymentInterbankCallbackReceivedV1>);
+  }
+}
+
+/**
+ * `account.debit.compensated.v1` — el dinero volvió a la cuenta origen (T-47).
+ *
+ * Este servicio escucha un evento de la Saga que no le concierne en general, y
+ * por un motivo concreto: es el único que puede escribir `REVERSED`, que es la
+ * constancia de que la devolución **ocurrió** y no sólo se ordenó. Sin esto,
+ * «rechazado» y «rechazado y devuelto» serían el mismo estado — la diferencia
+ * que §8.3 penaliza con un 50 %.
+ *
+ * Los eventos de transferencias que no son interbancarias se descartan sin
+ * ruido: el caso de uso busca por `transactionId` y no encuentra fila.
+ */
+export class InterbankCompensatedHandler implements InboundMessageHandler {
+  public readonly messageType = accountDebitCompensatedV1.name;
+
+  readonly #useCase: SendInterbankDepositUseCase;
+
+  constructor(useCase: SendInterbankDepositUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const event = accountDebitCompensatedV1.schema.parse(envelope.payload);
+
+    await this.#useCase.compensated(event.transactionId);
+  }
+}
+
+/**
+ * Los seis manejadores de las operaciones del contrato oficial (T-56).
+ *
+ * Uno por mensaje, como el resto de este archivo, y todos igual de delgados:
+ * validan contra el contrato y delegan. Lo que distingue a estos de los de
+ * arriba es que **cuatro contestan**: el Gateway no puede traducir `202`, `200`
+ * y `409` sin saber qué había, así que son `request/reply` y la respuesta la
+ * publica el caso de uso.
+ */
+export class InterbankV1TransferHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1TransferQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.transfer(
+      paymentInterbankV1TransferQueryV1.schema.parse(envelope.payload),
+      envelope,
+    );
+  }
+}
+
+export class InterbankV1StatusHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1StatusQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.status(paymentInterbankV1StatusQueryV1.schema.parse(envelope.payload));
+  }
+}
+
+export class InterbankV1CancelHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1CancelQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.cancel(paymentInterbankV1CancelQueryV1.schema.parse(envelope.payload));
+  }
+}
+
+export class InterbankV1ReversalRequestHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1ReversalRequestedV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.requestReversal(
+      paymentInterbankV1ReversalRequestedV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+export class InterbankV1ReversalQueryHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1ReversalQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.reversalStatus(
+      paymentInterbankV1ReversalQueryV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+export class InterbankV1ReconciliationHandler implements InboundMessageHandler {
+  readonly messageType = paymentInterbankV1ReconciliationQueryV1.name;
+  constructor(readonly useCase: InterbankV1UseCase) {}
+  async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    await this.useCase.reconciliation(
+      paymentInterbankV1ReconciliationQueryV1.schema.parse(envelope.payload),
+    );
+  }
+}
+
+/**
+ * `payment.interbank.v1.result.received.v1` — el callback **oficial** del banco
+ * pareja sobre un depósito que este banco envió (T-60, B2).
+ *
+ * El Gateway lo publicaba desde T-56 y ningún manejador lo consumía: el
+ * `ACCEPTED` del banco pareja se tiraba al suelo. Delgado como los demás —
+ * valida contra el contrato y delega—; que un duplicado, un tardío o un
+ * desordenado no mueva dinero dos veces lo decide la máquina de estados.
+ */
+export class InterbankV1ResultHandler implements InboundMessageHandler {
+  public readonly messageType = paymentInterbankV1ResultReceivedV1.name;
+
+  readonly #useCase: SendInterbankDepositUseCase;
+
+  constructor(useCase: SendInterbankDepositUseCase) {
+    this.#useCase = useCase;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    paymentInterbankV1ResultReceivedV1.schema.parse(envelope.payload);
+
+    await this.#useCase.v1Result(
+      envelope as MessageEnvelope<PaymentInterbankV1ResultReceivedV1>,
+    );
+  }
+}
+
+/**
+ * `payment.interbank.send.query.v1` — un depósito enviado, con su historial
+ * (T-60, B10). Quién puede verlo lo decide el caso de uso desde la identidad del
+ * sobre.
+ */
+export class InterbankSendQueryHandler implements InboundMessageHandler {
+  public readonly messageType = paymentInterbankSendQueryV1.name;
+
+  readonly #useCase: QueryInterbankSendsUseCase;
+  readonly #publisher: EventPublisher;
+
+  constructor(useCase: QueryInterbankSendsUseCase, publisher: EventPublisher) {
+    this.#useCase = useCase;
+    this.#publisher = publisher;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const query = paymentInterbankSendQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.one(query.interbankTransferId, envelope.identity, this.#publisher);
+  }
+}
+
+/** `payment.interbank.send.list.query.v1` — los depósitos enviados que quien pregunta puede ver. */
+export class InterbankSendListHandler implements InboundMessageHandler {
+  public readonly messageType = paymentInterbankSendListQueryV1.name;
+
+  readonly #useCase: QueryInterbankSendsUseCase;
+  readonly #publisher: EventPublisher;
+
+  constructor(useCase: QueryInterbankSendsUseCase, publisher: EventPublisher) {
+    this.#useCase = useCase;
+    this.#publisher = publisher;
+  }
+
+  public async handle(envelope: MessageEnvelope<unknown>): Promise<void> {
+    const query = paymentInterbankSendListQueryV1.schema.parse(envelope.payload);
+
+    await this.#useCase.list(query, envelope.identity, this.#publisher);
   }
 }

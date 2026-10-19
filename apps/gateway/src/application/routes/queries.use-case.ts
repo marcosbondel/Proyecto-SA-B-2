@@ -25,8 +25,15 @@ import {
   notificationInboxRepliedV1,
   notificationListQueryV1,
   notificationListRepliedV1,
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendListRepliedV1,
+  paymentInterbankSendQueryV1,
+  paymentInterbankSendRepliedV1,
   paymentListQueryV1,
   paymentListRepliedV1,
+  paymentSimulationQueryV1,
+  paymentSimulationRepliedV1,
+  paymentSimulationUpdateV1,
   paymentStatusQueryV1,
   paymentStatusRepliedV1,
   transactionListQueryV1,
@@ -34,9 +41,10 @@ import {
   transactionStatusRepliedV1,
   transactionStatusRequestedV1,
 } from '@bank/contracts';
-import type { Identity } from '@bank/contracts';
+import type { Identity, PaymentSimulationUpdateV1, Producer } from '@bank/contracts';
 
 import { GatewayError } from '../errors/gateway-error';
+import type { ReplyKind } from '../errors/gateway-error';
 import {
   MESSAGE_PUBLISHER,
   REPLY_WAITER,
@@ -56,6 +64,20 @@ export interface AccountListFilter {
   readonly customerId?: string;
   readonly status?: 'ACTIVE' | 'INACTIVE';
   readonly accountType?: 'MONETARIA' | 'AHORRO';
+}
+
+/**
+ * What the recent-events listing may be narrowed by (T-45): the four filters §4.1
+ * names — correlation, trace, service and level — all optional and combined
+ * with AND. `service` is the producer of the event.
+ */
+export interface AuditEventsFilter {
+  readonly page: number;
+  readonly limit: number;
+  readonly severity?: 'INFO' | 'WARNING' | 'ERROR';
+  readonly correlationId?: string;
+  readonly traceId?: string;
+  readonly service?: Producer;
 }
 
 /** What a notifications listing may be narrowed by. None of these is a permission. */
@@ -110,6 +132,78 @@ export class QueriesUseCase {
   ) {
     this.#publisher = publisher;
     this.#replies = replies;
+  }
+
+  /**
+   * El número de cuenta del contrato interbancario (`02-NNNNNNNNN`) de una
+   * cuenta, preguntado a Account por el broker (T-60, B1).
+   *
+   * El contrato exige `originAccount` en el `TransferRequest` y el Gateway no
+   * tiene otra forma de saberlo: lo guarda Account, y leer su tabla está
+   * prohibido. La pregunta pasa por la visibilidad de Account —un cliente sólo
+   * ve sus cuentas—, así que no se puede enviar un depósito «desde» la cuenta de
+   * otro ni descubrir su número.
+   */
+  public async accountNumberOf(accountId: string, context: QueryContext): Promise<string> {
+    const raw = await this.#ask(accountBalanceQueryV1.name, { accountId }, context);
+    const parsed = accountBalanceRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    if (parsed.data.outcome === 'NOT_FOUND') {
+      throw GatewayError.businessRejection(parsed.data.reason, 'La cuenta de origen no existe.');
+    }
+
+    if (parsed.data.accountNumber === undefined) {
+      // Un Account anterior a T-60: sin número no hay depósito que enviar.
+      throw GatewayError.internal('La cuenta de origen no tiene número interbancario.');
+    }
+
+    return parsed.data.accountNumber;
+  }
+
+  /**
+   * Un depósito enviado al banco pareja, con sus seis estados y su historial
+   * (T-60, B10). Quién puede verlo lo decide Payment desde la identidad del
+   * sobre; uno ajeno se contesta igual que uno inexistente.
+   */
+  public async interbankSend(
+    interbankTransferId: string,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentInterbankSendQueryV1.name, { interbankTransferId }, context);
+    const parsed = paymentInterbankSendRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    if (parsed.data.outcome === 'NOT_FOUND') {
+      throw GatewayError.notFound('No hay un depósito interbancario con ese identificador.');
+    }
+
+    return {
+      send: parsed.data.send,
+      history: parsed.data.history,
+      correlationId: context.correlationId,
+    };
+  }
+
+  /** Los depósitos enviados que quien pregunta puede ver, del más reciente al más antiguo. */
+  public async interbankSends(
+    filter: { readonly state?: string; readonly limit?: number },
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentInterbankSendListQueryV1.name, filter, context);
+    const parsed = paymentInterbankSendListRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
   }
 
   public async balanceOf(
@@ -374,6 +468,46 @@ export class QueriesUseCase {
   }
 
   /**
+   * How the simulated provider is set up right now (T-44).
+   *
+   * Staff-only at the controller; the owning service answers it for anybody who
+   * reaches it, because nothing in the answer is a secret.
+   */
+  public async paymentSimulation(context: QueryContext): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentSimulationQueryV1.name, {}, context);
+    const parsed = paymentSimulationRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
+   * Changes how the simulated provider misbehaves, while the system runs.
+   *
+   * Asked as a command and answered with the simulation now in force, so the
+   * reply is its own confirmation. A timeout here uses the **command** wording,
+   * "no confirmation, the operation was NOT cancelled": the change may well
+   * have landed, and telling an administrator otherwise would have them apply
+   * it twice.
+   */
+  public async updatePaymentSimulation(
+    command: PaymentSimulationUpdateV1,
+    context: QueryContext,
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.#ask(paymentSimulationUpdateV1.name, command, context, 'command');
+    const parsed = paymentSimulationRepliedV1.schema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw GatewayError.internal();
+    }
+
+    return { ...parsed.data, correlationId: context.correlationId };
+  }
+
+  /**
    * One payment, with the rungs of its retry ladder.
    *
    * The reply carries no code for absence, so the gateway supplies the nearest
@@ -428,7 +562,7 @@ export class QueriesUseCase {
    * The paginated list of recent audit events across flows. ADMINISTRADOR only.
    */
   public async auditEventsList(
-    params: { page: number; limit: number; severity?: 'INFO' | 'WARNING' | 'ERROR' },
+    params: AuditEventsFilter,
     context: QueryContext,
   ): Promise<Record<string, unknown>> {
     const raw = await this.#ask(auditEventsListQueryV1.name, params, context);
@@ -471,12 +605,17 @@ export class QueriesUseCase {
    * A shared generic here would have to widen the return type, and the widening
    * is exactly what lets an unparsed shape slip through to a browser.
    */
-  async #ask(messageType: string, payload: unknown, context: QueryContext): Promise<unknown> {
+  async #ask(
+    messageType: string,
+    payload: unknown,
+    context: QueryContext,
+    kind: ReplyKind = 'read',
+  ): Promise<unknown> {
     const reply = await askAndWait(
       this.#publisher,
       this.#replies,
       envelopeForRequest(payload, messageType, context.actor, context.correlationId),
-      'read',
+      kind,
     );
 
     return reply.payload;

@@ -33,9 +33,44 @@ export interface InboundRecord {
    * and simply carries its answer through to storage.
    */
   readonly severity: EventSeverity;
+  /**
+   * The W3C trace id the message was handled under (T-45): the technical trace,
+   * where `correlationId` is the business flow. `null` when no SDK recorded one —
+   * before T-48 registers it, or for a row written before this column existed —
+   * and never a placeholder: an id of zeros would look like data and join
+   * unrelated events.
+   */
+  readonly traceId: string | null;
 }
 
 /** What a notifications listing may be narrowed by. None of these is a permission. */
+/**
+ * What one delivery to the audit trail came to, for the service's own telemetry
+ * (T-45). Everything here is a closed set or an identifier that belongs on a span
+ * and in a log and never on a metric label.
+ */
+export interface AuditObservation {
+  readonly messageType: string;
+  readonly severity: EventSeverity;
+  readonly processingStatus: AuditProcessingStatus;
+  /** `DUPLICATE` is a redelivery the trail refused: counted, never a second event. */
+  readonly outcome: 'RECORDED' | 'DUPLICATE';
+  /**
+   * What became of the notification: `SENT` or `FAILED` by the channel,
+   * `SUPPRESSED` when a different event had already told the same thing, `NONE`
+   * when the event calls for no notification at all.
+   */
+  readonly notification: 'SENT' | 'FAILED' | 'SUPPRESSED' | 'NONE';
+  readonly correlationId: string;
+  /** The alerts of an SLO webhook, by state and severity; empty for anything else. */
+  readonly alerts?: readonly { readonly status: string; readonly severity: string }[];
+}
+
+/** The audit trail reporting on itself. Never throws into the recording. */
+export interface AuditTelemetry {
+  recorded(observation: AuditObservation): void;
+}
+
 export interface NotificationFilter {
   readonly correlationId?: string;
   readonly status?: NotificationStatus;
@@ -159,6 +194,11 @@ export interface AuditRepository {
     readonly limit: number;
     readonly offset: number;
     readonly severity?: EventSeverity;
+    /** The four filters of §4.1, all optional and combined with AND (T-45). */
+    readonly correlationId?: string;
+    readonly traceId?: string;
+    /** The producer that published the event. */
+    readonly service?: string;
   }): Promise<{
     readonly events: readonly AuditEvent[];
     readonly total: number;

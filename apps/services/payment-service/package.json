@@ -2,7 +2,7 @@
   "name": "payment-service",
   "version": "0.0.0",
   "private": true,
-  "description": "Bank USAC payment-service — Payment orders, references and settlement status.",
+  "description": "Bank USAC payment-service \u2014 Payment orders, references and settlement status.",
   "license": "MIT",
   "scripts": {
     "build": "nest build",
@@ -15,9 +15,11 @@
   "dependencies": {
     "@bank/contracts": "workspace:*",
     "@bank/messaging": "workspace:*",
+    "@bank/observability": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
+    "@opentelemetry/api": "catalog:",
     "class-transformer": "catalog:",
     "class-validator": "catalog:",
     "pg": "catalog:",
@@ -28,12 +30,17 @@
     "@bank/tooling": "workspace:*",
     "@nestjs/cli": "catalog:",
     "@nestjs/testing": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
     "eslint": "catalog:",
     "jest": "catalog:",
     "ts-jest": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "yaml": "catalog:"
   }
 }

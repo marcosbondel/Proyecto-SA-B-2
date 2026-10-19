@@ -2,7 +2,7 @@ import { accountCommissionChargedV1, accountDebitRejectedV1, accountDebitedV1 } 
 import type { AccountDebitRequestedV1, FailureCode } from '@bank/contracts';
 
 import { DomainRejection, debit } from '../domain/account';
-import type { AccountRepository, Clock, EventPublisher } from './ports';
+import type { AccountActivity, AccountRepository, Clock, EventPublisher } from './ports';
 
 /**
  * Step 2 of the Saga: take the money out of the source account.
@@ -23,15 +23,18 @@ export class DebitAccountUseCase {
   readonly #repository: AccountRepository;
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
+  readonly #activity: AccountActivity;
 
   constructor(dependencies: {
     readonly repository: AccountRepository;
     readonly publisher: EventPublisher;
     readonly clock: Clock;
+    readonly activity: AccountActivity;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
+    this.#activity = dependencies.activity;
   }
 
   public async execute(payload: AccountDebitRequestedV1, idempotencyKey: string): Promise<void> {
@@ -87,6 +90,14 @@ export class DebitAccountUseCase {
           },
         });
       }
+
+      // After the movement has committed and been announced — never inside the
+      // row lock — and it cannot throw (T-42).
+      await this.#activity.afterMovement({
+        account: applied.account,
+        type: 'DEBIT',
+        transactionId: payload.transactionId,
+      });
     } catch (error) {
       if (!(error instanceof DomainRejection)) {
         throw error;

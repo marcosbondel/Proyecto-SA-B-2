@@ -1,4 +1,22 @@
 import {
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendListRepliedV1,
+  paymentInterbankSendQueryV1,
+  paymentInterbankSendRepliedV1,
+  paymentInterbankV1CancelQueryV1,
+  paymentInterbankV1CancelRepliedV1,
+  paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankV1ReconciliationRepliedV1,
+  paymentInterbankV1ResultReceivedV1,
+  paymentInterbankV1ReversalQueryV1,
+  paymentInterbankV1ReversalRepliedV1,
+  paymentInterbankV1ReversalRequestedV1,
+  paymentInterbankV1StatusQueryV1,
+  paymentInterbankV1StatusRepliedV1,
+  paymentInterbankV1TransferQueryV1,
+  paymentInterbankV1TransferRepliedV1,
+} from '@bank/contracts';
+import {
   accountBalanceQueryV1,
   accountBalanceRepliedV1,
   accountBillersQueryV1,
@@ -18,6 +36,9 @@ import {
   accountOperationsQueryV1,
   accountOperationsRepliedV1,
   accountSetStatusV1,
+  alertSloReceivedV1,
+  paymentInterbankCallbackReceivedV1,
+  paymentInterbankReceiveV1,
   auditQueryRepliedV1,
   auditQueryRequestedV1,
   auditEventsListQueryV1,
@@ -48,6 +69,9 @@ import {
   customerVerifyEmailV1,
   paymentListQueryV1,
   paymentListRepliedV1,
+  paymentSimulationQueryV1,
+  paymentSimulationRepliedV1,
+  paymentSimulationUpdateV1,
   paymentStatusQueryV1,
   notificationInboxQueryV1,
   notificationInboxRepliedV1,
@@ -187,6 +211,14 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     publishes: paymentListQueryV1.name,
     awaits: [paymentListRepliedV1.name],
   },
+  'GET /api/payments/simulation': {
+    publishes: paymentSimulationQueryV1.name,
+    awaits: [paymentSimulationRepliedV1.name],
+  },
+  'PUT /api/payments/simulation': {
+    publishes: paymentSimulationUpdateV1.name,
+    awaits: [paymentSimulationRepliedV1.name],
+  },
   'GET /api/payments/{paymentId}': {
     publishes: paymentStatusQueryV1.name,
     awaits: [paymentStatusRepliedV1.name],
@@ -195,6 +227,38 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
     publishes: auditQueryRequestedV1.name,
     awaits: [auditQueryRepliedV1.name],
   },
+  // T-45: the webhook Grafana calls, with no session. It answers `202` and awaits nothing.
+  'POST /api/alerts/slo': {
+    publishes: alertSloReceivedV1.name,
+  },
+  'POST /api/interbank/deposits': {
+    publishes: paymentInterbankReceiveV1.name,
+  },
+  /*
+   * Las dos de T-47. El envío publica `transfer.requested.v1` —el MISMO mensaje
+   * que una transferencia interna, porque es una transferencia interna con el
+   * destino en la cuenta de liquidación— y de ahí que no haya un comando propio
+   * para enviar depósitos. El callback publica la decisión del banco pareja
+   * para que Payment la registre.
+   */
+  'POST /api/interbank/transfers': {
+    publishes: transferRequestedV1.name,
+  },
+  'POST /api/interbank/callbacks': {
+    publishes: paymentInterbankCallbackReceivedV1.name,
+  },
+  /*
+   * Las dos de T-60 (B10): los depósitos enviados, con sus seis estados. Son
+   * lecturas de Payment, por el broker.
+   */
+  'GET /api/interbank/transfers': {
+    publishes: paymentInterbankSendListQueryV1.name,
+    awaits: [paymentInterbankSendListRepliedV1.name],
+  },
+  'GET /api/interbank/transfers/{interbankTransferId}': {
+    publishes: paymentInterbankSendQueryV1.name,
+    awaits: [paymentInterbankSendRepliedV1.name],
+  },
   'GET /api/audit/recent': {
     publishes: auditEventsListQueryV1.name,
     awaits: [auditEventsListRepliedV1.name],
@@ -202,5 +266,44 @@ export const ROUTE_MESSAGES: Readonly<Record<string, RouteMessages>> = {
   'GET /api/audit/notifications': {
     publishes: notificationListQueryV1.name,
     awaits: [notificationListRepliedV1.name],
+  },
+  /*
+   * Las seis del **contrato interbancario oficial** que publican algo (T-56).
+   * `GET /interbank/v1/health` no está porque no publica: se contesta en el
+   * borde, y es lo único de este controlador que el Gateway decide solo.
+   *
+   * Estar aquí es lo que las mete en `publish-routing.integration.spec.ts`, que
+   * publica contra un broker **real** y comprueba el exchange y la routing key
+   * de cada una. No es un detalle de cobertura: las siete rutas se desplegaron
+   * devolviendo `500` porque sus doce contratos no estaban en el catálogo, y el
+   * arnés del Gateway dobla el publicador — a un doble el catálogo le da igual.
+   * Esta suite es la que lo habría visto.
+   */
+  'POST /interbank/v1/transfers': {
+    publishes: paymentInterbankV1TransferQueryV1.name,
+    awaits: [paymentInterbankV1TransferRepliedV1.name],
+  },
+  'GET /interbank/v1/transfers/{interbankTransferId}': {
+    publishes: paymentInterbankV1StatusQueryV1.name,
+    awaits: [paymentInterbankV1StatusRepliedV1.name],
+  },
+  'POST /interbank/v1/transfers/{interbankTransferId}/cancel': {
+    publishes: paymentInterbankV1CancelQueryV1.name,
+    awaits: [paymentInterbankV1CancelRepliedV1.name],
+  },
+  'POST /interbank/v1/transfers/{interbankTransferId}/result': {
+    publishes: paymentInterbankV1ResultReceivedV1.name,
+  },
+  'POST /interbank/v1/reversals': {
+    publishes: paymentInterbankV1ReversalRequestedV1.name,
+    awaits: [paymentInterbankV1ReversalRepliedV1.name],
+  },
+  'GET /interbank/v1/reversals/{reversalId}': {
+    publishes: paymentInterbankV1ReversalQueryV1.name,
+    awaits: [paymentInterbankV1ReversalRepliedV1.name],
+  },
+  'GET /interbank/v1/reconciliation': {
+    publishes: paymentInterbankV1ReconciliationQueryV1.name,
+    awaits: [paymentInterbankV1ReconciliationRepliedV1.name],
   },
 };

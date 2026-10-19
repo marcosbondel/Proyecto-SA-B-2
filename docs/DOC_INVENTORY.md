@@ -66,6 +66,8 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/operations/CLOUD.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/operations/DEPLOYMENT.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/operations/EMAIL_RESEND.md` | project | Marcos Bonifasi | current | 2026-08-30 |
+| `docs/operations/INTERBANK.md` | project | Marcos Bonifasi | current | 2026-10-12 |
+| `docs/operations/INTERBANK-AGREEMENT.md` | project | Marcos Bonifasi | current | 2026-10-16 |
 | `docs/architecture/deployment.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `infra/k8s/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `infra/terraform/gcp/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
@@ -75,6 +77,9 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/adr/ADR-014-cloud-provider.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/ADR-015-ci-cd-platform.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/ADR-016-cloud-infrastructure.md` | project | Marcos Bonifasi | current | 2026-09-26 |
+| `docs/architecture/adr/ADR-017-account-anomaly-reports-not-blocks.md` | project | David Barrios | current | 2026-10-04 |
+| `docs/architecture/adr/ADR-018-observability-stack.md` | project | Enner Mendizabal | current | 2026-10-13 |
+| `docs/architecture/adr/ADR-019-payment-http-egress.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/architecture/README.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/decision-matrix.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/architecture/adr/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
@@ -90,6 +95,7 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/adr/ADR-010-authentication.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/architecture/adr/ADR-011-diagramming-toolchain.md` | project | Marcos Bonifasi | current | 2026-08-15 |
 | `docs/references/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
+| `docs/references/interbank-contract-v1.openapi.yaml` | reference | el curso (auxiliar) | current | 2026-10-16 |
 | `apps/web/README.md` | project | Marcos Bonifasi | current | 2026-08-11 |
 | `docs/README.md` | project | Marcos Bonifasi | current | 2026-09-26 |
 | `docs/dda.md` | project | Enner Mendizabal | current | 2026-09-26 |
@@ -105,6 +111,18 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/architecture/diagrams/er/README.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/generated/db-schema.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/sre/sli-slo-sla.md` | project | Marcos Bonifasi | current | 2026-09-20 |
+| `docs/sre/telemetry-catalog.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/README.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/sre/postmortems/README.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/sre/postmortems/2026-10-15-latido-amqp.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/sre/postmortems/2026-10-15-banco-pareja.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/sre/postmortems/2026-10-15-pod-eliminado.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/sre/postmortems/2026-10-15-proveedor-de-pagos.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/operations/runbooks/gateway-availability-burn.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/transfer-latency.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/dead-letter.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/consumer-lag.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/operations/runbooks/partner-bank.md` | project | Marcos Bonifasi | current | 2026-10-14 |
 | `docs/manual/recorrido-visual.md` | project | Enner Mendizabal | current | 2026-09-03 |
 | `docs/qa/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |
 | `docs/qa/pyramid.md` | generated | — | current | 2026-09-25 |
@@ -116,6 +134,20 @@ tool looks for it; those are covered by the directory rules below.
 | `docs/qa/backend/T-29-payment-provider-evidence.md` | project | David Barrios | current | 2026-09-11 |
 | `docs/qa/backend/T-30-event-classification-evidence.md` | project | Marcos Bonifasi | current | 2026-09-12 |
 | `docs/qa/backend/T-31-integration-evidence.md` | project | Marcos Bonifasi | current | 2026-09-12 |
+| `docs/qa/backend/T-41-customer-lifecycle-telemetry-evidence.md` | project | Enner Mendizabal | current | 2026-10-04 |
+| `docs/qa/backend/T-42-account-activity-monitoring-evidence.md` | project | David Barrios | current | 2026-10-04 |
+| `docs/qa/backend/T-43-transfer-performance-telemetry-evidence.md` | project | Marcos Bonifasi | current | 2026-10-04 |
+| `docs/qa/backend/T-44-payment-failure-simulation-evidence.md` | project | Enner Mendizabal | current | 2026-10-05 |
+| `docs/qa/backend/T-45-audit-traceability-evidence.md` | project | David Barrios | current | 2026-10-05 |
+| `docs/qa/backend/T-48-observability-package-evidence.md` | project | Marcos Bonifasi | current | 2026-10-11 |
+| `docs/qa/backend/T-58-telemetry-catalog-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/qa/backend/T-51-load-and-failures-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/qa/backend/T-46-interbank-receipt-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/qa/backend/T-49-observability-stack-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/qa/backend/T-56-interbank-reconciliation-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
+| `docs/qa/backend/T-50-dashboards-alerts-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/qa/backend/T-57-local-stack-evidence.md` | project | Marcos Bonifasi | current | 2026-10-14 |
+| `docs/qa/backend/T-47-interbank-send-evidence.md` | project | Marcos Bonifasi | current | 2026-10-15 |
 | `docs/process/implementations.md` | project | David Barrios | current | 2026-09-12 |
 | `docs/images/kubernetes/README.md` | project | Marcos Bonifasi | current | 2026-09-03 |
 | `context/README.md` | project | Marcos Bonifasi | current | 2026-09-09 |

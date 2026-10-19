@@ -1,4 +1,5 @@
 import type { MessageEnvelope } from '@bank/contracts';
+import { currentTraceparent } from '@bank/observability';
 import type { Pool, PoolClient } from 'pg';
 
 import type {
@@ -8,9 +9,30 @@ import type {
   OutboxMessage,
   PaymentFilter,
   PaymentRepository,
+  StoredSimulation,
 } from '../../application/ports';
 import { minorUnitsFromNumeric, numericFromMinorUnits, quetzales } from '../../domain/money';
 import type { Payment, PaymentAttempt } from '../../domain/payment';
+import type { SimulationSettings } from '../../domain/simulation';
+
+/** The one row of `payment_simulation_settings`. */
+interface SimulationRow {
+  failure_rate_percent: number;
+  timeout_rate_percent: number;
+  latency_ms: number;
+  updated_at: Date;
+}
+
+function simulationOf(row: SimulationRow): StoredSimulation {
+  return {
+    settings: {
+      failureRatePercent: row.failure_rate_percent,
+      timeoutRatePercent: row.timeout_rate_percent,
+      latencyMs: row.latency_ms,
+    },
+    updatedAt: row.updated_at,
+  };
+}
 
 /** One row of `payments`, as `pg` hands it over. */
 interface PaymentRow {
@@ -45,6 +67,7 @@ interface OutboxRow {
   routing_key: string;
   /** JSONB, parsed by the driver back into the envelope it was stored as. */
   envelope: MessageEnvelope<unknown>;
+  trace_context: string | null;
 }
 
 /** Whether a thrown error is a PostgreSQL unique violation on a named constraint. */
@@ -140,8 +163,9 @@ export class PostgresPaymentRepository implements PaymentRepository {
     try {
       inserted = await this.#pool.query<PaymentRow>(
         `INSERT INTO payments (payment_id, transaction_id, amount, status, scenario,
-                               origin_correlation_id, next_attempt_at, created_at, updated_at)
-         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $7)
+                               origin_correlation_id, next_attempt_at, created_at, updated_at,
+                               trace_context)
+         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $7, $8)
          ON CONFLICT (payment_id) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
@@ -152,6 +176,8 @@ export class PostgresPaymentRepository implements PaymentRepository {
           payment.originCorrelationId,
           payment.nextAttemptAt,
           payment.createdAt,
+          // The Saga's trace, so the retry sweep can rejoin it (T-48).
+          currentTraceparent(),
         ],
       );
     } catch (error) {
@@ -275,13 +301,16 @@ export class PostgresPaymentRepository implements PaymentRepository {
       if (input.outbound !== undefined) {
         for (const message of input.outbound(recorded, input.expectedAttempt)) {
           await client.query(
-            `INSERT INTO outbox_messages (payment_id, exchange, routing_key, envelope)
-             VALUES ($1, $2, $3, $4::JSONB)`,
+            `INSERT INTO outbox_messages (payment_id, exchange, routing_key, envelope,
+                                         trace_context)
+             VALUES ($1, $2, $3, $4::JSONB, $5)`,
             [
               input.paymentId,
               message.exchange,
               message.routingKey,
               JSON.stringify(message.envelope),
+              // The attempt's trace, so the relay publishes inside it (T-48).
+              currentTraceparent(),
             ],
           );
         }
@@ -311,7 +340,7 @@ export class PostgresPaymentRepository implements PaymentRepository {
        * an `attempt.failed` never overtakes the terminal event that followed it.
        */
       const pending = await client.query<OutboxRow>(
-        `SELECT id, exchange, routing_key, envelope
+        `SELECT id, exchange, routing_key, envelope, trace_context
            FROM outbox_messages
           WHERE dispatch_status = 'PENDING'
           ORDER BY id
@@ -333,6 +362,7 @@ export class PostgresPaymentRepository implements PaymentRepository {
           exchange: row.exchange,
           routingKey: row.routing_key,
           envelope: row.envelope,
+          traceparent: row.trace_context,
         });
 
         await client.query(
@@ -353,6 +383,20 @@ export class PostgresPaymentRepository implements PaymentRepository {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * The trace the payment was opened in, for the retry sweep to rejoin (T-48).
+   * Not on the port: only the composition root uses it, to wrap a retry, and
+   * nothing in the application decides anything from a trace.
+   */
+  public async traceContextOf(paymentId: string): Promise<string | null> {
+    const found = await this.#pool.query<{ trace_context: string | null }>(
+      'SELECT trace_context FROM payments WHERE payment_id = $1',
+      [paymentId],
+    );
+
+    return found.rows[0]?.trace_context ?? null;
   }
 
   public async findById(paymentId: string): Promise<Payment | null> {
@@ -439,6 +483,38 @@ export class PostgresPaymentRepository implements PaymentRepository {
     );
 
     return found.rows.map(paymentOf);
+  }
+
+  public async loadSimulation(): Promise<StoredSimulation | null> {
+    const found = await this.#pool.query<SimulationRow>(
+      `SELECT failure_rate_percent, timeout_rate_percent, latency_ms, updated_at
+         FROM payment_simulation_settings
+        WHERE id = 1`,
+    );
+    const row = found.rows[0];
+
+    return row === undefined ? null : simulationOf(row);
+  }
+
+  public async saveSimulation(settings: SimulationSettings, now: Date): Promise<StoredSimulation> {
+    const saved = await this.#pool.query<SimulationRow>(
+      `INSERT INTO payment_simulation_settings
+         (id, failure_rate_percent, timeout_rate_percent, latency_ms, updated_at)
+       VALUES (1, $1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE
+         SET failure_rate_percent = EXCLUDED.failure_rate_percent,
+             timeout_rate_percent = EXCLUDED.timeout_rate_percent,
+             latency_ms           = EXCLUDED.latency_ms,
+             updated_at           = EXCLUDED.updated_at
+       RETURNING failure_rate_percent, timeout_rate_percent, latency_ms, updated_at`,
+      [settings.failureRatePercent, settings.timeoutRatePercent, settings.latencyMs, now],
+    );
+
+    return simulationOf(saved.rows[0]!);
+  }
+
+  public async clearSimulation(): Promise<void> {
+    await this.#pool.query('DELETE FROM payment_simulation_settings WHERE id = 1');
   }
 
   public async isReachable(): Promise<boolean> {

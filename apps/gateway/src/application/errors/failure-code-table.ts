@@ -83,7 +83,9 @@ export const FAILURE_CODE_STATUS: Readonly<Record<FailureCode, number>> = {
 };
 
 /** The status for each failure type that is not a business rejection. */
-export const ERROR_TYPE_STATUS: Readonly<Record<Exclude<GatewayErrorType, 'BUSINESS_REJECTION'>, number>> = {
+export const ERROR_TYPE_STATUS: Readonly<
+  Record<Exclude<GatewayErrorType, 'BUSINESS_REJECTION'>, number>
+> = {
   VALIDATION_ERROR: 400,
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
@@ -92,6 +94,13 @@ export const ERROR_TYPE_STATUS: Readonly<Record<Exclude<GatewayErrorType, 'BUSIN
   // The request was never accepted, so nothing happened.
   BROKER_UNAVAILABLE: 503,
   INTERNAL_ERROR: 500,
+  // Los tres del contrato interbancario oficial (T-56).
+  NOT_FOUND: 404,
+  IDEMPOTENCY_CONFLICT: 409,
+  // Sintácticamente correcto y fuera de plazo, que no es lo mismo que mal
+  // construido: un 400 mandaría al otro banco a revisar su código en vez de
+  // su reloj.
+  EXPIRED: 422,
 };
 
 /** The status a failure should be reported with. */

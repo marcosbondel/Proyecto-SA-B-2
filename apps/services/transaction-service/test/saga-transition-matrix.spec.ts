@@ -23,6 +23,7 @@ import {
   FixedClock,
   InMemoryTransactionRepository,
   RecordingPublisher,
+  RecordingTransferTelemetry,
   SequentialIds,
 } from './support/in-memory';
 
@@ -61,6 +62,8 @@ function seed(
     targetAccount: TARGET,
     amount: quetzales(10_000),
     status: 'PENDING',
+    // Una transferencia interna: el dinero no sale de este banco (T-47).
+    interbank: null,
     correlationId: CORRELATION,
     idempotencyKey: 'seed-key',
     customerId: CUSTOMER,
@@ -83,8 +86,9 @@ function world() {
   const publisher = new RecordingPublisher();
   const clock = new FixedClock(NOW);
   const ids = new SequentialIds();
-  const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids });
-  const attempts = new RecordPaymentAttemptUseCase({ repository });
+  const telemetry = new RecordingTransferTelemetry();
+  const saga = new AdvanceSagaUseCase({ repository, publisher, clock, ids, telemetry });
+  const attempts = new RecordPaymentAttemptUseCase({ repository, telemetry });
 
   return { repository, publisher, clock, ids, saga, attempts };
 }
@@ -371,10 +375,12 @@ describe('the saga transition matrix (AdvanceSagaUseCase)', () => {
       const first = await attempts.execute(attemptPayload({ attempt: 2 }), {
         messageId,
         messageType: 'payment.attempt.failed.v1',
+        correlationId: 'corr-attempt',
       });
       const second = await attempts.execute(attemptPayload({ attempt: 2 }), {
         messageId,
         messageType: 'payment.attempt.failed.v1',
+        correlationId: 'corr-attempt',
       });
 
       expect(first.kind).toBe('RECORDED');

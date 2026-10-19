@@ -102,6 +102,37 @@ describe('gateway environment', () => {
   });
 
   /**
+   * T-45's webhook secret is optional on purpose — a Gateway without one still
+   * serves everything else, and the webhook refuses every call — but a secret
+   * that *is* set must be one worth having.
+   */
+  describe('ALERT_WEBHOOK_TOKEN', () => {
+    it('is absent by default, which is what makes the webhook refuse everybody', () => {
+      expect(loadEnvironment(complete).ALERT_WEBHOOK_TOKEN).toBeUndefined();
+    });
+
+    it('treats an empty value — an unset Secret reaching the container — as absent', () => {
+      expect(
+        loadEnvironment({ ...complete, ALERT_WEBHOOK_TOKEN: '' }).ALERT_WEBHOOK_TOKEN,
+      ).toBeUndefined();
+    });
+
+    it('is kept when it is as long as the session secret', () => {
+      const token = 't'.repeat(32);
+
+      expect(loadEnvironment({ ...complete, ALERT_WEBHOOK_TOKEN: token }).ALERT_WEBHOOK_TOKEN).toBe(
+        token,
+      );
+    });
+
+    it('refuses to boot on one too short to survive a guess, naming it', () => {
+      expect(() => loadEnvironment({ ...complete, ALERT_WEBHOOK_TOKEN: 'short' })).toThrow(
+        /ALERT_WEBHOOK_TOKEN/,
+      );
+    });
+  });
+
+  /**
    * The gateway has no database and declares no credentials for one
    * (constitution II and V). Its absence is a deliverable of this ticket, so
    * it is asserted rather than assumed.

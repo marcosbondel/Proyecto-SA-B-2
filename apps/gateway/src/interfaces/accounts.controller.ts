@@ -216,7 +216,8 @@ export class AccountsController {
     summary: 'Activa o desactiva una cuenta',
     description:
       'ADMINISTRADOR, CAJERO_RECEPTOR y CLIENTE (para sus propias cuentas). Devuelve 202: el cambio todavía no ocurrió. ' +
-      'El motivo es obligatorio porque es el único registro de por qué se hizo.',
+      'El motivo es obligatorio al desactivar porque es el único registro de por qué se hizo; ' +
+      'al activar es opcional.',
   })
   @Roles('ADMINISTRADOR', 'CAJERO_RECEPTOR', 'CLIENTE')
   @Post(':accountId/status')
@@ -233,7 +234,7 @@ export class AccountsController {
     return await this.#commands.setAccountStatus({
       accountId,
       status: body.status,
-      reason: body.reason,
+      ...(body.reason === undefined ? {} : { reason: body.reason }),
       actor: actorOf(request),
       correlationId: request.correlationId,
       idempotencyKey: request.idempotencyKey,

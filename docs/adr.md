@@ -26,6 +26,8 @@
     - [ADR-014: Proveedor de Nube](#adr-014-proveedor-de-nube)
     - [ADR-015: Plataforma de CI/CD](#adr-015-plataforma-de-cicd)
     - [ADR-016: Topología de Infraestructura en la Nube](#adr-016-topología-de-infraestructura-en-la-nube)
+    - [ADR-017: Una Anomalía de Cuenta se Reporta, no se Bloquea](#adr-017-una-anomalía-de-cuenta-se-reporta-no-se-bloquea)
+    - [ADR-018: El Stack de Observabilidad y sus Subcharts Versionados](#adr-018-el-stack-de-observabilidad-y-sus-subcharts-versionados)
   - [4. Decisiones de Dominio y Reglas de Negocio (D-01 a D-06)](#4-decisiones-de-dominio-y-reglas-de-negocio-d-01-a-d-06)
     - [D-01: Modelado Unificado de Usuarios y Personal Bancario](#d-01-modelado-unificado-de-usuarios-y-personal-bancario)
     - [D-02: Clasificación de Cuentas (Monetarias vs. Ahorro)](#d-02-clasificación-de-cuentas-monetarias-vs-ahorro)
@@ -65,6 +67,8 @@ Este documento unifica y traduce al español todas las decisiones distribuidas e
 | **ADR-014** | Proveedor de Nube (Fase II) | **Google Cloud Platform** (GKE, Compute Engine, Cloud Run, Artifact Registry) | AWS (EKS factura el plano de control por hora) / Azure (Container Apps no es el servicio que nombra el enunciado) | El enunciado nombra Cloud Run como ejemplo aceptado; GKE incluye el HPA en el plano de control. |
 | **ADR-015** | Plataforma de CI/CD (Fase II) | **GitHub Actions**, cuatro workflows (`ci`, `changes`, `release`, `cd`) | GitLab CI (exigiría espejar el repositorio entregable) / Cloud Build (los triggers viven fuera del repositorio) / Jenkins | Las tres fases obligatorias son tres jobs y, por tanto, tres checks: «no se omitió ninguna etapa» se ve, no se afirma. |
 | **ADR-016** | Topología de Infraestructura (Fase II) | **Terraform**: VPC con dos subredes, 5 VMs Compute Engine sin IP pública, GKE zonal, Cloud Run, **y el mismo chart de Helm que en kind** | Cloud SQL (prohibido por §4.2) / GKE Autopilot / dos clústeres, uno por entorno | Reproducibilidad en un comando y paridad total entre el clúster local y el de la nube. |
+| **ADR-017** | Anomalía de Cuenta (Fase III) | **Reportar, no bloquear**: ventana deslizante de M minutos, conteo desde la base de datos, un evento por ventana y cuenta | Bloquear la cuenta / cubetas fijas / conteo en memoria | Una regla mal calibrada cuesta un panel ruidoso y no un cliente bloqueado |
+| **ADR-018** | Stack de Observabilidad (Fase III) | **Collector + Prometheus + Tempo + Loki + Grafana** en un chart propio, con los subcharts versionados en `charts/`, un solo stack para `dev` y `prod` y Grafana sin IP pública | ELK (no cabe en tres nodos) / Jaeger (interfaz y almacén duplicados) / `kube-prometheus-stack` (operador y dashboards que la rúbrica llamaría decorativos) / subcharts por referencia | La cuota da ocho instancias y ya se usan ocho: el stack cabe en los nodos que hay o no cabe. Versionar los `.tgz` cuesta 372 KB y quita tres repositorios de terceros del camino de un despliegue |
 
 > **ADR-011 está superada por ADR-013.** La fila de ADR-011 en esta matriz describe ya la
 > decisión vigente (fuentes de texto versionadas); el registro canónico de por qué Lucid dejó
@@ -456,6 +460,41 @@ dice, para que nadie las lea como decisiones tomadas después de los hechos.
 
 ---
 
+### ADR-017: Una Anomalía de Cuenta se Reporta, no se Bloquea
+
+* **Título:** Reportar la alta frecuencia de operaciones sin bloquear la cuenta, contarla desde la
+  base de datos y emitirla una sola vez por ventana.
+* **Contexto:** El enunciado de la Fase III (§4.1, Account Service) hace obligatorio *detectar*
+  más de N operaciones sobre una cuenta en M minutos y emitir `AccountAnomalyDetected`, y deja
+  como opcional el bloqueo, pidiendo justificarlo en la documentación. El registro canónico, con
+  la discusión completa, es
+  [ADR-017](architecture/adr/ADR-017-account-anomaly-reports-not-blocks.md).
+* **Decisión:**
+  1. **La cuenta no se bloquea.** La anomalía se registra (`account_anomalies`), se publica
+     (`account.anomaly.detected.v1`) y se notifica como `WARNING` (T-45).
+  2. **N y M vienen del ConfigMap** (10 y 5 por defecto). «Más de N» es la operación N + 1; la
+     ventana es deslizante (los M minutos previos a la operación) y, tras una anomalía, la misma
+     cuenta calla durante M minutos: una ráfaga de treinta es un solo evento. Cuentan solo débitos
+     y créditos; comisiones y compensaciones no.
+  3. **El conteo es de la base de datos**, bajo un cerrojo consultivo por cuenta y **fuera** del
+     cerrojo de la fila de saldo, después de que el movimiento se confirmó. La anomalía se escribe
+     antes de publicarse, con un arrendamiento (`claimed_at`) sobre el derecho a publicarla.
+* **Alternativas Descartadas:**
+  * *Bloquear la cuenta:* los falsos positivos son rutina (un cajero con varios depósitos, un
+    cliente pagando varios servicios), choca con la invariante A-3 (un crédito reactiva una cuenta
+    inactiva), cae en medio de una Saga y no existe un estado al que bloquear — `INACTIVE` ya
+    significa «dormida».
+  * *Cubetas fijas de reloj:* una ráfaga de diez que cruza el borde sería cinco y cinco.
+  * *Contar en memoria por réplica:* depende de cuántas réplicas hay y olvida todo al reiniciar.
+  * *Publicar en cada operación sobre el límite:* veinte eventos para una ráfaga entierran el que
+    importa.
+* **Consecuencias:** Una regla mal calibrada cuesta un panel ruidoso y no un cliente bloqueado, y
+  el monitor puede fallar sin hacer fallar un débito. **Nada detiene automáticamente un patrón
+  abusivo:** una persona debe leer el `WARNING` y actuar, y el personal ya puede cambiar el
+  estado de la cuenta.
+
+---
+
 ## 4. Decisiones de Dominio y Reglas de Negocio (D-01 a D-06)
 
 ---
@@ -495,3 +534,49 @@ dice, para que nadie las lea como decisiones tomadas después de los hechos.
 2. **Resiliencia Transaccional sin Acoplamiento:** La combinación de **RabbitMQ**, **PostgreSQL con bloqueos pesimistas** y el patrón **Saga Coreografiada** proporciona un sistema capaz de manejar transferencias bancarias de alta concurrencia con consistencia contable matemática.
 3. **Seguridad y Privacidad por Diseño:** El aislamiento perimetral mediante JWT, la redacción previa a la inserción en auditoría, el hashing con `scrypt` y el almacenamiento de fotos en MinIO aseguran el cumplimiento riguroso de las directivas de seguridad bancaria.
 4. **Trazabilidad y Mantenibilidad:** La adopción de Clean Architecture y la diagramación en código garantizan que el sistema sea comprensible, auditable y fácilmente extensible para futuras fases de evolución institucional.
+
+---
+
+### ADR-018: El Stack de Observabilidad y sus Subcharts Versionados
+
+* **Título:** Desplegar Collector, Prometheus, Tempo, Loki y Grafana con un chart de Helm propio
+  cuyos subcharts están commiteados, uno solo para los dos entornos, y sin IP pública para
+  Grafana.
+* **Contexto:** El código ya está instrumentado (T-41 a T-45 y T-48) y no se ve: sin
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, el SDK registra y descarta. El enunciado de la Fase III deja
+  elegir entre dos pilas completas (§4.3: ELK **o** Loki, Jaeger **o** Tempo) y penaliza aparte
+  **cómo** se despliegan: un 25 % si el stack se instala a mano (§8.3). Tres restricciones
+  acotan la respuesta: la cuota de la región da `INSTANCES = 8` y el sistema ya usa ocho, queda
+  **una** IP pública libre, y los logs no pueden dejar de estar centralizados (otro 25 %). El
+  registro canónico es
+  [ADR-018](architecture/adr/ADR-018-observability-stack.md).
+* **Decisión:**
+  1. **Loki, no ELK.** Un Elasticsearch de un nodo no cabe junto a Prometheus, Tempo y las
+     dieciocho cargas de `dev` y `prod`. Y Loki 3.x guarda **metadatos estructurados**, que es
+     lo que hace consultable `traceId` y `correlationId` sin crear una serie por transferencia.
+  2. **Tempo, no Jaeger.** Con los tres datasources en Grafana, la correlación log ↔ traza ↔
+     métrica es configuración (`derivedFields`, `tracesToLogsV2`, exemplars) y no trabajo.
+  3. **Un chart paraguas con los `.tgz` commiteados** (372 KB). El despliegue no depende de que
+     los repositorios de terceros respondan, así que no se ejecuta `helm dependency build` en
+     ningún workflow; `infra/k8s/scripts/check-chart-deps.sh` comprueba sin red que
+     `Chart.yaml`, `Chart.lock` y `charts/` concuerden.
+  4. **Dos Collectors**: un Deployment que recibe OTLP y un DaemonSet que lee los ficheros de
+     log del nodo. Las aplicaciones **no** exportan logs por red: los escriben en stdout, porque
+     el log que más importa es el del fallo y es justo cuando el almacén puede estar en apuros.
+  5. **Un solo stack para los dos entornos**, separados por `deployment.environment`, y
+     desplegado **sólo desde `main`**: si `develop` pudiera actualizarlo, un commit de
+     desarrollo cambiaría el monitoreo de producción.
+  6. **Las etiquetas son una lista cerrada**, en las métricas (`transform/metric_labels`) y en
+     los logs (`otlp_config` de Loki). La conversión automática del Collector habría subido
+     `k8s.pod.name` y multiplicado las series por el número de pods que han existido.
+  7. **Retención de 7 días** y **Grafana en `ClusterIP`**: la última IP de la cuota es el margen
+     de la entrada del banco, no una consola sin TLS.
+* **Consecuencias:**
+  * *Positivo:* 820 m de CPU y 3 008 MiB de memoria en requests — caben en los tres nodos y
+     dejan ~2,8 vCPU para que el HPA escale en las pruebas de T-51. T-50 tiene dónde poner
+     dashboards y reglas sin tocar el chart.
+  * *Negativo:* el chart de Tempo abre seis puertos que no usamos y no deja quitarlos
+     (**TD-087**), y nada limita quién habla con los almacenes dentro del clúster
+     (**TD-088**) — para que una `NetworkPolicy` se aplique en GKE hace falta Dataplane V2, que
+     es un cambio del clúster.
+* **Registro canónico:** [`architecture/adr/ADR-018-observability-stack.md`](architecture/adr/ADR-018-observability-stack.md)

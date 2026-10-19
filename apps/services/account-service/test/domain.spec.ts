@@ -2,11 +2,13 @@ import {
   DomainRejection,
   compensate,
   credit,
+  creditInterbank,
   debit,
   openAccount,
   openingDepositRefusal,
   openingRefusal,
 } from '../src/domain/account';
+import type { Account } from '../src/domain/account';
 import {
   DEFAULT_CRITERIA,
   inactivityThreshold,
@@ -16,13 +18,19 @@ import { minorUnitsFromNumeric, numericFromMinorUnits, quetzales } from '../src/
 
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
-const account = (overrides: Partial<ReturnType<typeof openAccount>> = {}) => ({
+/**
+ * `openAccount` devuelve una cuenta **sin número**, porque el número lo asigna
+ * la secuencia de la base al insertar (T-56). Las pruebas que necesitan una
+ * cuenta *persistida* se lo añaden aquí.
+ */
+const account = (overrides: Partial<Account> = {}): Account => ({
   ...openAccount({
     accountId: '3a7d9e14-6b25-4f83-9c01-8e5a2d7b4f60',
     customerId: '9f1c8b2a-4d63-4e57-8a90-1b2c3d4e5f60',
     accountType: 'MONETARIA' as const,
     now: NOW,
   }),
+  accountNumber: '02-000000001',
   ...overrides,
 });
 
@@ -102,7 +110,9 @@ describe('debiting', () => {
   });
 
   it('allows a debit that empties the account exactly — no floor once it is open (T-27)', () => {
-    expect(debit(account({ balanceMinor: 2_500 }), quetzales(2_500), NOW).account.balanceMinor).toBe(0);
+    expect(
+      debit(account({ balanceMinor: 2_500 }), quetzales(2_500), NOW).account.balanceMinor,
+    ).toBe(0);
   });
 
   it('refuses one centavo more than the balance, and says why', () => {
@@ -155,6 +165,14 @@ describe('crediting', () => {
 
   it('does not claim to have reactivated an account that was already active', () => {
     expect(credit(account({ balanceMinor: 0 }), quetzales(500), NOW).reactivated).toBe(false);
+  });
+});
+
+describe('an incoming interbank credit', () => {
+  it('refuses an inactive destination instead of reactivating it', () => {
+    expect(() =>
+      creditInterbank(account({ balanceMinor: 1_000, status: 'INACTIVE' }), quetzales(500), NOW),
+    ).toThrow(expect.objectContaining({ code: 'ACCOUNT_INACTIVE' }));
   });
 });
 
@@ -264,9 +282,9 @@ describe('the automatic deactivation, at its four boundaries', () => {
   });
 
   it('leaves an already inactive account alone, so the job is idempotent', () => {
-    expect(
-      shouldDeactivate({ ...candidate(0, SIX_MONTHS_AGO), status: 'INACTIVE' }, NOW),
-    ).toBe(false);
+    expect(shouldDeactivate({ ...candidate(0, SIX_MONTHS_AGO), status: 'INACTIVE' }, NOW)).toBe(
+      false,
+    );
   });
 
   it('falls back to the opening date for an account that never moved', () => {
@@ -302,13 +320,14 @@ describe('the automatic deactivation, at its four boundaries', () => {
  * floor on either type once open.
  */
 describe('account type rules (T-27): the AHORRO commission', () => {
-  const ahorro = (overrides: Partial<ReturnType<typeof openAccount>> = {}) => ({
+  const ahorro = (overrides: Partial<Account> = {}): Account => ({
     ...openAccount({
       accountId: '3a7d9e14-6b25-4f83-9c01-8e5a2d7b4f60',
       customerId: '9f1c8b2a-4d63-4e57-8a90-1b2c3d4e5f60',
       accountType: 'AHORRO' as const,
       now: NOW,
     }),
+    accountNumber: '02-000000002',
     ...overrides,
   });
 
@@ -339,7 +358,9 @@ describe('account type rules (T-27): the AHORRO commission', () => {
 
   it('never charges a commission on credit or compensation, only on debit', () => {
     expect(credit(ahorro({ balanceMinor: 0 }), quetzales(500), NOW).commission).toBeNull();
-    expect(compensate(ahorro({ balanceMinor: 0 }), quetzales(500), null, NOW).commission).toBeNull();
+    expect(
+      compensate(ahorro({ balanceMinor: 0 }), quetzales(500), null, NOW).commission,
+    ).toBeNull();
   });
 });
 

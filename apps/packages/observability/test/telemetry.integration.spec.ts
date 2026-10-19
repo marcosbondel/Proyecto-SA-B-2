@@ -1,0 +1,542 @@
+import { execFileSync, spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { createServer, request as httpRequest } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
+
+/**
+ * The SDK as it runs in an image: a **separate Node process** that registers it
+ * first, serves HTTP, and exports over OTLP/HTTP to whatever
+ * `OTEL_EXPORTER_OTLP_ENDPOINT` names. This test is that endpoint — a stand-in
+ * for the Collector of T-49 — and reads the child's stdout the way the
+ * collection agent will.
+ *
+ * Integration by the repository's rule: it crosses a real process boundary
+ * (`node test/fixtures/instrumented-process.js`), and what it checks is only
+ * observable from outside one — what actually leaves the process, and in what
+ * shape. Nothing here needs a service from Docker, so it never skips.
+ */
+
+jest.setTimeout(60_000);
+
+const PACKAGE_ROOT = join(__dirname, '..');
+/** The secret the fixture's `/verify-email` request carries in its query string. */
+const SECRET_TOKEN = 'SECRET-TOKEN-123';
+const FIXTURE = join(__dirname, 'fixtures', 'instrumented-process.js');
+
+interface OtlpValue {
+  readonly stringValue?: string;
+  readonly intValue?: string | number;
+}
+interface OtlpAttribute {
+  readonly key: string;
+  readonly value: OtlpValue;
+}
+interface OtlpSpan {
+  readonly traceId: string;
+  readonly spanId: string;
+  readonly parentSpanId?: string;
+  readonly name: string;
+  readonly kind: number;
+  readonly attributes: readonly OtlpAttribute[];
+  readonly status?: { readonly code?: number; readonly message?: string };
+  readonly events?: readonly {
+    readonly name: string;
+    readonly attributes?: readonly OtlpAttribute[];
+  }[];
+}
+interface Received {
+  readonly path: string;
+  readonly body: Record<string, unknown>;
+}
+
+/** What one run of the child produced, seen from outside. */
+interface Run {
+  readonly received: readonly Received[];
+  readonly logs: readonly Record<string, unknown>[];
+  readonly sentTraceId: string;
+  readonly sentParentId: string;
+  /** The `traceparent` headers the fixture's own `/echo` received on its outbound call. */
+  readonly echoedTraceparents: readonly string[];
+}
+
+/** The fixture runs the compiled package, so the package is compiled first — always, from source. */
+beforeAll(() => {
+  execFileSync(
+    process.execPath,
+    [require.resolve('typescript/bin/tsc'), '-p', 'tsconfig.build.json'],
+    {
+      cwd: PACKAGE_ROOT,
+      stdio: 'inherit',
+    },
+  );
+});
+
+interface OtlpMetric {
+  readonly name: string;
+  readonly unit?: string;
+  readonly histogram?: { readonly dataPoints: { readonly attributes: OtlpAttribute[] }[] };
+}
+
+/** Las métricas que llegaron al receptor, aplanadas. */
+function bankMetrics(run: Run): readonly OtlpMetric[] {
+  return run.received
+    .filter((item) => item.path === '/v1/metrics')
+    .flatMap((item) => item.body.resourceMetrics as { scopeMetrics: { metrics: OtlpMetric[] }[] }[])
+    .flatMap((resource) => resource.scopeMetrics)
+    .flatMap((scope) => scope.metrics);
+}
+
+/** A minimal OTLP/HTTP receiver: records every JSON body posted to it. */
+async function startReceiver(): Promise<{ server: Server; port: number; received: Received[] }> {
+  const received: Received[] = [];
+  const server = createServer((request: IncomingMessage, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => {
+      const text = Buffer.concat(chunks).toString('utf8');
+      received.push({ path: request.url ?? '', body: JSON.parse(text) as Record<string, unknown> });
+      response.writeHead(200, { 'content-type': 'application/json' }).end('{}');
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  return { server, port: (server.address() as AddressInfo).port, received };
+}
+
+function get(port: number, path: string, headers: Record<string, string> = {}): Promise<number> {
+  return getBody(port, path, headers).then((reply) => reply.status);
+}
+
+function getBody(
+  port: number,
+  path: string,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const outgoing = httpRequest({ host: '127.0.0.1', port, path, headers }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () =>
+        resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }),
+      );
+    });
+    outgoing.on('error', reject);
+    outgoing.end();
+  });
+}
+
+/** Spawns the child with `env`, drives it through its routes, waits for it to flush and exit. */
+async function runChild(
+  env: Record<string, string>,
+  receiver: { received: Received[] },
+): Promise<Run> {
+  const child: ChildProcessWithoutNullStreams = spawn(process.execPath, [FIXTURE], {
+    cwd: PACKAGE_ROOT,
+    env: { PATH: process.env.PATH ?? '', ...env },
+  });
+
+  let stdout = '';
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString('utf8');
+  });
+  let stderr = '';
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString('utf8');
+  });
+
+  const exited = new Promise<number | null>((resolve) => child.on('exit', resolve));
+
+  const port = await new Promise<number>((resolve, reject) => {
+    const timer = setInterval(() => {
+      const match = /READY (\d+)/.exec(stdout);
+      if (match !== null) {
+        clearInterval(timer);
+        resolve(Number(match[1]));
+      }
+    }, 20);
+    void exited.then(() => {
+      clearInterval(timer);
+      reject(new Error(`fixture exited before it was ready:\n${stderr}`));
+    });
+  });
+
+  const sentTraceId = randomBytes(16).toString('hex');
+  const sentParentId = randomBytes(8).toString('hex');
+
+  await get(port, '/work', { traceparent: `00-${sentTraceId}-${sentParentId}-01` });
+  await get(port, '/health');
+  await get(port, '/fail');
+  await get(port, `/verify-email?token=${SECRET_TOKEN}`);
+  const outbound = await getBody(port, '/outbound');
+  await get(port, '/shutdown');
+
+  const code = await exited;
+  if (code !== 0) {
+    throw new Error(`fixture exited with ${String(code)}:\n${stderr}`);
+  }
+
+  const logs = stdout
+    .split('\n')
+    .filter((line) => line.startsWith('{'))
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+  return {
+    received: [...receiver.received],
+    logs,
+    sentTraceId,
+    sentParentId,
+    echoedTraceparents: JSON.parse(outbound.body) as string[],
+  };
+}
+
+function spansOf(run: Run): OtlpSpan[] {
+  return run.received
+    .filter((item) => item.path === '/v1/traces')
+    .flatMap((item) => item.body.resourceSpans as { scopeSpans: { spans: OtlpSpan[] }[] }[])
+    .flatMap((resource) => resource.scopeSpans)
+    .flatMap((scope) => scope.spans);
+}
+
+function resourceAttributes(run: Run): Record<string, string> {
+  const first = run.received.find((item) => item.path === '/v1/traces');
+  const resource = (
+    first?.body.resourceSpans as { resource: { attributes: OtlpAttribute[] } }[]
+  )[0];
+
+  return Object.fromEntries(
+    (resource?.resource.attributes ?? []).map((attribute) => [
+      attribute.key,
+      attribute.value.stringValue ?? '',
+    ]),
+  );
+}
+
+function attribute(span: OtlpSpan | undefined, key: string): string | number | undefined {
+  const value = span?.attributes.find((item) => item.key === key)?.value;
+
+  return value?.stringValue ?? (value?.intValue === undefined ? undefined : Number(value.intValue));
+}
+
+/** OTLP/JSON encodes span ids as hex; some exporters emit base64. Normalise to hex. */
+function hex(id: string | undefined): string | undefined {
+  if (id === undefined || /^[0-9a-f]+$/.test(id)) {
+    return id;
+  }
+
+  return Buffer.from(id, 'base64').toString('hex');
+}
+
+function serverSpan(run: Run, route: string): OtlpSpan | undefined {
+  return spansOf(run).find(
+    (span) => span.kind === 2 && String(attribute(span, 'url.path') ?? '') === route,
+  );
+}
+
+describe('a process with the SDK and an OTLP endpoint', () => {
+  let run: Run;
+  let receiver: Awaited<ReturnType<typeof startReceiver>>;
+
+  beforeAll(async () => {
+    receiver = await startReceiver();
+    run = await runChild(
+      {
+        OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${String(receiver.port)}`,
+        OTEL_METRIC_EXPORT_INTERVAL: '60000',
+        SERVICE_VERSION: '9.9.9-integration',
+        DEPLOYMENT_ENVIRONMENT: 'dev',
+        HOSTNAME: 'fixture-pod-1',
+      },
+      receiver,
+    );
+  });
+
+  afterAll(async () => {
+    await new Promise((resolve) => receiver.server.close(resolve));
+  });
+
+  it('exports its spans over OTLP/HTTP to the configured endpoint', () => {
+    expect(spansOf(run).length).toBeGreaterThan(0);
+  });
+
+  it('names itself with service.name, service.version and the deployment environment', () => {
+    expect(resourceAttributes(run)).toMatchObject({
+      'service.name': 'fixture-service',
+      'service.version': '9.9.9-integration',
+      'deployment.environment.name': 'dev',
+      'deployment.environment': 'dev',
+      'service.instance.id': 'fixture-pod-1',
+    });
+  });
+
+  it('records an incoming request as a SERVER span with the stable HTTP conventions', () => {
+    const span = serverSpan(run, '/work');
+
+    expect(attribute(span, 'http.request.method')).toBe('GET');
+    expect(attribute(span, 'http.response.status_code')).toBe(200);
+  });
+
+  it('marks a 5xx response as an error on its span', () => {
+    const span = serverSpan(run, '/fail');
+
+    expect(attribute(span, 'http.response.status_code')).toBe(500);
+    expect(span?.status?.code).toBe(2);
+  });
+
+  it('does not trace the kubelet probes', () => {
+    expect(serverSpan(run, '/health')).toBeUndefined();
+  });
+
+  /**
+   * §8.3 "Datos sensibles expuestos": the activation link is
+   * `verify-email?token=…`, and what leaves the process is judged on the wire,
+   * as OTLP/JSON, not on a helper's return value.
+   */
+  it('never exports a query-string secret: not in url.query, url.full, the exception event or the status', () => {
+    const everything = JSON.stringify(spansOf(run));
+
+    expect(everything).not.toContain(SECRET_TOKEN);
+    expect(everything).not.toContain('OUTBOUND-SECRET-456');
+    expect(everything).not.toContain('a.person@example.com');
+  });
+
+  it('still records the request, with the secret replaced rather than the attribute removed', () => {
+    const server = spansOf(run).find(
+      (span) => span.kind === 2 && String(attribute(span, 'url.path')) === '/verify-email',
+    );
+    const nest = spansOf(run).find((span) => span.name === 'fixture.nest');
+
+    expect(attribute(server, 'url.query')).toBe('token=REDACTED');
+    expect(attribute(nest, 'url.full')).toBe('/verify-email?token=REDACTED');
+  });
+
+  it('masks what a failing handler’s exception event and status quote, and keeps the event', () => {
+    const nest = spansOf(run).find((span) => span.name === 'fixture.nest');
+    const exception = nest?.events?.find((event) => event.name === 'exception');
+    const message = exception?.attributes?.find((item) => item.key === 'exception.message')?.value
+      .stringValue;
+
+    expect(exception).toBeDefined();
+    expect(message).toBe('cannot verify token=REDACTED for [REDACTED:email]');
+    expect(nest?.status?.message).toBe('cannot verify token=REDACTED for [REDACTED:email]');
+    expect(nest?.status?.code).toBe(2);
+  });
+
+  it('does not stack-trace a secret either: exception.stacktrace is masked too', () => {
+    const nest = spansOf(run).find((span) => span.name === 'fixture.nest');
+    const stack = nest?.events
+      ?.find((event) => event.name === 'exception')
+      ?.attributes?.find((item) => item.key === 'exception.stacktrace')?.value.stringValue;
+
+    expect(stack).toBeDefined();
+    expect(stack).not.toContain(SECRET_TOKEN);
+    expect(stack).not.toContain('a.person@example.com');
+  });
+
+  it('leaves an identifier that is not a secret exactly as written (nothing is over-redacted)', () => {
+    const child = spansOf(run).find((span) => span.name === 'fixture.child');
+
+    expect(attribute(child, 'bank.transfer.id')).toBe('7f2b1c42-0000-4000-8000-000000000001');
+  });
+
+  it('keeps the route and method of the activation request readable in the trace', () => {
+    const server = spansOf(run).find(
+      (span) => span.kind === 2 && String(attribute(span, 'url.path')) === '/verify-email',
+    );
+
+    expect(attribute(server, 'http.request.method')).toBe('GET');
+    expect(attribute(server, 'http.response.status_code')).toBe(200);
+  });
+
+  it('redacts the query of the outbound CLIENT span as well as its full url', () => {
+    const client = spansOf(run).find(
+      (span) => span.kind === 3 && String(attribute(span, 'url.path')) === '/echo',
+    );
+
+    expect(attribute(client, 'url.query')).toBe('?token=REDACTED');
+  });
+
+  it('records an outbound fetch as a CLIENT span whose url carries no secret', () => {
+    const client = spansOf(run).find(
+      (span) => span.kind === 3 && String(attribute(span, 'url.path')) === '/echo',
+    );
+
+    expect(client).toBeDefined();
+    expect(attribute(client, 'http.request.method')).toBe('GET');
+    expect(attribute(client, 'http.response.status_code')).toBe(200);
+    expect(String(attribute(client, 'url.full'))).toContain('token=REDACTED');
+  });
+
+  it('puts exactly ONE traceparent on an outbound fetch that set its own, and it names the CLIENT span', () => {
+    const client = spansOf(run).find(
+      (span) => span.kind === 3 && String(attribute(span, 'url.path')) === '/echo',
+    );
+
+    expect(run.echoedTraceparents).toHaveLength(1);
+    expect(run.echoedTraceparents[0]).toContain(hex(client?.spanId) ?? 'missing');
+    expect(run.echoedTraceparents[0]).not.toContain('b7ad6b7169203331');
+  });
+
+  it('continues the trace named by an incoming traceparent header', () => {
+    const span = serverSpan(run, '/work');
+
+    expect(hex(span?.traceId)).toBe(run.sentTraceId);
+    expect(hex(span?.parentSpanId)).toBe(run.sentParentId);
+  });
+
+  it('keeps a span opened inside the handler in the same trace, as a child of the server span', () => {
+    const server = serverSpan(run, '/work');
+    const child = spansOf(run).find((span) => span.name === 'fixture.child');
+
+    expect(hex(child?.traceId)).toBe(run.sentTraceId);
+    expect(hex(child?.parentSpanId)).toBe(hex(server?.spanId));
+  });
+
+  it('writes the log line of that handler with the same traceId and the child span’s id', () => {
+    const line = run.logs.find((entry) => entry.message === 'work done');
+    const child = spansOf(run).find((span) => span.name === 'fixture.child');
+
+    expect(line).toMatchObject({
+      traceId: run.sentTraceId,
+      spanId: hex(child?.spanId),
+      correlationId: 'corr-fixture',
+    });
+  });
+
+  it('stamps that log line with serviceName, environment and version', () => {
+    const line = run.logs.find((entry) => entry.message === 'work done');
+
+    expect(line).toMatchObject({
+      serviceName: 'fixture-service',
+      environment: 'dev',
+      version: '9.9.9-integration',
+      level: 'info',
+    });
+  });
+
+  it('exports metrics, including the HTTP server duration histogram by status code', () => {
+    const metrics = run.received
+      .filter((item) => item.path === '/v1/metrics')
+      .flatMap(
+        (item) =>
+          item.body.resourceMetrics as {
+            scopeMetrics: {
+              metrics: {
+                name: string;
+                histogram?: { dataPoints: { attributes: OtlpAttribute[] }[] };
+              }[];
+            }[];
+          }[],
+      )
+      .flatMap((resource) => resource.scopeMetrics)
+      .flatMap((scope) => scope.metrics);
+    const duration = metrics.find((metric) => metric.name === 'http.server.request.duration');
+    const statuses = (duration?.histogram?.dataPoints ?? []).map((point) =>
+      Number(
+        point.attributes.find((item) => item.key === 'http.response.status_code')?.value.intValue,
+      ),
+    );
+
+    expect(statuses).toEqual(expect.arrayContaining([200, 500]));
+  });
+
+  /**
+   * La unidad, vista en el cable.
+   *
+   * No es un detalle cosmético: el exportador del Collector compone el nombre
+   * de la serie de Prometheus a partir del campo `unit`, así que
+   * `bank.transfer.duration` con `unit: "s"` se convierte en
+   * `bank_transfer_duration_seconds`. Si la unidad se pierde por el camino, la
+   * serie se llama distinto y **todas** las consultas de
+   * `docs/sre/sli-slo-sla.md` y de los dashboards de T-50 dejan de devolver
+   * datos, sin un solo error. Pasó: el exportador estuvo configurado sin
+   * sufijos y nadie lo notó porque ninguna prueba miraba el nombre.
+   */
+  it('exports the bank histogram with the unit that will name its Prometheus series', () => {
+    const histograma = bankMetrics(run).find((metric) => metric.name === 'bank.transfer.duration');
+
+    expect(histograma).toBeDefined();
+    expect(histograma?.unit).toBe('s');
+    expect(histograma?.histogram?.dataPoints.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * La regla de cardinalidad del catálogo, comprobada donde no se puede
+   * discutir: en lo que sale del proceso.
+   *
+   * `metric-cardinality.spec.ts` lee el código y por eso puede equivocarse al
+   * leerlo. Esto mira el datapoint que viajó por OTLP: la etiqueta `result`
+   * está, y el `bank.transfer.id` que el mismo handler puso **en el span** no
+   * aparece en ninguna métrica.
+   */
+  it('keeps identifiers out of the metrics plane, on the wire', () => {
+    const puntos = bankMetrics(run)
+      .filter((metric) => metric.name.startsWith('bank.'))
+      .flatMap((metric) => metric.histogram?.dataPoints ?? []);
+    const claves = [...new Set(puntos.flatMap((point) => point.attributes.map((a) => a.key)))];
+
+    expect(claves).toEqual(['result']);
+
+    const spans = run.received
+      .filter((item) => item.path === '/v1/traces')
+      .flatMap((item) => item.body.resourceSpans as { scopeSpans: { spans: OtlpSpan[] }[] }[])
+      .flatMap((resource) => resource.scopeSpans)
+      .flatMap((scope) => scope.spans);
+    const conIdentificador = spans.filter((span) =>
+      span.attributes.some((a) => a.key === 'bank.transfer.id'),
+    );
+
+    // El identificador existe: está donde debe estar, que es la traza.
+    expect(conIdentificador.length).toBeGreaterThan(0);
+  });
+});
+
+describe('a process with the SDK but no endpoint (a laptop, CI)', () => {
+  it('exports nothing, yet still writes the traceId on its log lines', async () => {
+    const receiver = await startReceiver();
+
+    try {
+      const run = await runChild({}, receiver);
+      const line = run.logs.find((entry) => entry.message === 'work done');
+
+      expect(run.received).toHaveLength(0);
+      expect(line?.traceId).toBe(run.sentTraceId);
+    } finally {
+      await new Promise((resolve) => receiver.server.close(resolve));
+    }
+  });
+});
+
+describe('a process with OTEL_SDK_DISABLED=true', () => {
+  let run: Run;
+
+  beforeAll(async () => {
+    const receiver = await startReceiver();
+
+    try {
+      run = await runChild(
+        {
+          OTEL_SDK_DISABLED: 'true',
+          OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${String(receiver.port)}`,
+        },
+        receiver,
+      );
+    } finally {
+      await new Promise((resolve) => receiver.server.close(resolve));
+    }
+  });
+
+  it('exports nothing even though an endpoint is configured', () => {
+    expect(run.received).toHaveLength(0);
+  });
+
+  it('writes log lines without a traceId — there is no trace to name', () => {
+    const line = run.logs.find((entry) => entry.message === 'work done');
+
+    expect(line).toBeDefined();
+    expect(line).not.toHaveProperty('traceId');
+  });
+});

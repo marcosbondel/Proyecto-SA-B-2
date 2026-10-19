@@ -43,6 +43,8 @@ export type EventOutcome =
       readonly kind: 'APPLIED';
       readonly transaction: Transaction;
       readonly transition: Transition;
+      /** What the telemetry needs that the state machine does not: when it began, and its trace. */
+      readonly observation: TransferObservation;
     }
   /** Seen before, by `messageId`. No second transition, no second refund (T-5). */
   | { readonly kind: 'DUPLICATE' }
@@ -67,7 +69,7 @@ export type EventOutcome =
  * and the Saga's status is never touched.
  */
 export type PaymentAttemptOutcome =
-  | { readonly kind: 'RECORDED' }
+  | { readonly kind: 'RECORDED'; readonly observation: TransferObservation }
   /** Seen before, by `messageId`. No second row for the same rung (T-5). */
   | { readonly kind: 'DUPLICATE' }
   /** An attempt for a transaction this service has no row for. Not an error. */
@@ -126,6 +128,19 @@ export interface TransactionRepository {
   start(input: {
     readonly transaction: Transaction;
     readonly outbound?: (transaction: Transaction) => OutboxMessage;
+    /**
+     * When `transfer.requested.v1` was emitted (its envelope's `occurredAt`):
+     * the start of the transfer's latency, which is what SLI-3 measures from.
+     * Defaults to `createdAt`, which excludes the time the message waited in the
+     * broker.
+     */
+    readonly requestedAt?: Date;
+    /**
+     * The W3C `traceparent` of the span that opened this transfer's trace (T-43),
+     * stored with the row so every later step — a different message, possibly on
+     * a different pod — joins the same trace. `null` while no SDK is registered.
+     */
+    readonly traceContext?: string | null;
   }): Promise<StartOutcome>;
 
   /**
@@ -299,6 +314,11 @@ export interface OutboxMessage {
   readonly exchange: string;
   readonly routingKey: string;
   readonly envelope: MessageEnvelope<unknown>;
+  /**
+   * The W3C `traceparent` active when the row was written, or `null` (T-48).
+   * Set by the repository, read by the relay; the use cases never touch it.
+   */
+  readonly traceparent?: string | null;
 }
 
 /**
@@ -356,4 +376,78 @@ export interface Clock {
  */
 export interface IdGenerator {
   next(): string;
+}
+
+/**
+ * What the telemetry needs to know about a transfer beyond its state (T-43).
+ *
+ * Kept out of `Transaction` on purpose: the state machine decides transitions
+ * and has no use for either field, and a domain type that grew a trace context
+ * would be a domain that knew about its own observation.
+ */
+export interface TransferObservation {
+  /** The start of the latency: when `transfer.requested.v1` was emitted. */
+  readonly requestedAt: Date;
+  /** The `traceparent` the transfer's steps join, or `null` (no SDK, or an older row). */
+  readonly traceContext: string | null;
+}
+
+/** The Fase 2 vocabulary the assignment names, as a projection of the six real states. */
+export type TransferPhase = 'PENDING' | 'APPROVED' | 'FAILED';
+
+/** One Saga transition that was applied, as the telemetry sees it. */
+export interface TransferStep {
+  readonly transactionId: string;
+  readonly correlationId: string;
+  /** The domain's own name for the event, never the wire message name. */
+  readonly event: string;
+  readonly from: Transaction['status'];
+  readonly to: Transaction['status'];
+  readonly phase: TransferPhase;
+  readonly command: Transition['command'];
+  readonly failureReason: Transaction['failureReason'];
+  readonly completedAt: Date | null;
+  readonly observation: TransferObservation;
+}
+
+/**
+ * The span opened for a transfer request, before the row exists, so its context
+ * can be stored in the same insert. It ends as either of two facts: the transfer
+ * was accepted, or the request was a retry of one that already exists.
+ */
+export interface TransferRoot {
+  /** What to store with the row; `null` while no tracing SDK is registered. */
+  readonly traceparent: string | null;
+
+  accepted(event: { readonly transactionId: string; readonly correlationId: string }): void;
+
+  /** The idempotency key was already there: this delivery created nothing. */
+  duplicate(): void;
+}
+
+/**
+ * What a transfer reports about itself: spans, two metrics and log lines.
+ *
+ * The use cases name the fact; the adapter decides how it is shown. Everything
+ * is emitted **after** the transition has committed and **never throws** — the
+ * money has moved by then, and a failure of the monitoring must not turn a
+ * correct transition into a retried message.
+ *
+ * The transaction id is a log field and a span attribute, **never** a metric
+ * label: one time series per transfer is the failure the metrics are built to
+ * avoid.
+ */
+export interface TransferTelemetry {
+  openTransfer(): TransferRoot;
+
+  step(step: TransferStep): void;
+
+  paymentAttempt(attempt: {
+    readonly transactionId: string;
+    readonly correlationId: string;
+    readonly attempt: number;
+    readonly errorType: string;
+    readonly willRetry: boolean;
+    readonly observation: TransferObservation;
+  }): void;
 }

@@ -109,6 +109,22 @@ describe('which state the alert draws', () => {
     }
   });
 
+  /**
+   * T-60: the interbank routes answer a missing deposit with `NOT_FOUND`, which
+   * used to fold into `INTERNAL_ERROR` — "an unexpected error occurred" for
+   * "that deposit does not exist". It is recognised now, so a screen can tell
+   * the two apart, and the alert draws it as the refusal it is.
+   */
+  test('recognises NOT_FOUND, keeps its sentence, and draws it as a refusal', () => {
+    const error = normaliseError({
+      data: { type: 'NOT_FOUND', message: 'No hay un depósito con ese identificador.', correlationId: 'c' },
+    });
+
+    assert.equal(error.type, 'NOT_FOUND');
+    assert.equal(error.message, 'No hay un depósito con ese identificador.');
+    assert.equal(asyncStateFor(error), 'BUSINESS_REJECTION');
+  });
+
   test('never asks the alert to draw a session failure', () => {
     // UNAUTHENTICATED alone is the session boundary: `useGatewayApi`
     // intercepts it and ends the session before any screen sees it, so

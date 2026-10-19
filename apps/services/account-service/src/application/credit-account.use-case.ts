@@ -2,7 +2,7 @@ import { accountCreditRejectedV1, accountCreditedV1, accountReactivatedV1 } from
 import type { AccountCreditRequestedV1, FailureCode } from '@bank/contracts';
 
 import { DomainRejection, credit } from '../domain/account';
-import type { AccountRepository, Clock, EventPublisher } from './ports';
+import type { AccountActivity, AccountRepository, Clock, EventPublisher } from './ports';
 
 /**
  * Step 6 of the Saga: put the money into the destination account.
@@ -18,15 +18,18 @@ export class CreditAccountUseCase {
   readonly #repository: AccountRepository;
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
+  readonly #activity: AccountActivity;
 
   constructor(dependencies: {
     readonly repository: AccountRepository;
     readonly publisher: EventPublisher;
     readonly clock: Clock;
+    readonly activity: AccountActivity;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
+    this.#activity = dependencies.activity;
   }
 
   public async execute(payload: AccountCreditRequestedV1, idempotencyKey: string): Promise<void> {
@@ -82,6 +85,12 @@ export class CreditAccountUseCase {
           },
         });
       }
+
+      await this.#activity.afterMovement({
+        account: applied.account,
+        type: 'CREDIT',
+        transactionId: payload.transactionId,
+      });
     } catch (error) {
       if (!(error instanceof DomainRejection)) {
         throw error;

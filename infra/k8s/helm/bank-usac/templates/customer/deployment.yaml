@@ -19,6 +19,26 @@ spec:
       {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # **Un pod no vuelve a leer un ConfigMap ni un Secret**: los lee una vez
+        # al arrancar. Sin estos dos hashes, dar de alta o rotar una credencial
+        # deja el proceso corriendo con el valor anterior y el despliegue sale
+        # verde (TD-089).
+        #
+        # El sintoma no es un error, es un rechazo CORRECTO de un valor
+        # equivocado, que es mucho mas dificil de diagnosticar. Visto el
+        # 2026-10-14: con el token interbancario recien anadido al Secret, el
+        # Gateway respondia `401 UNAUTHENTICATED` con un `correlationId` y
+        # ninguna pista, porque seguia usando el token vacio que leyo al
+        # arrancar.
+        #
+        # Si, un cambio de Secret rueda los siete. Es la decision tomada en
+        # TD-089 y es la correcta: una rotacion que no rueda los pods es una
+        # rotacion que no ocurrio, y el modo de fallo es silencioso. Rodar siete
+        # pods es un despliegue normal con sus sondas; perder una rotacion es un
+        # servicio usando una credencial revocada sin que nada lo diga.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         {{- include "bank-usac.componentSelectorLabels" $ctx | nindent 8 }}
     spec:
@@ -42,6 +62,7 @@ spec:
                 configMapKeyRef:
                   name: {{ include "bank-usac.fullname" . }}-config
                   key: NODE_ENV
+            {{- include "bank-usac.telemetryEnv" (dict "root" $ "tag" .Values.services.customer.image.tag) | nindent 12 }}
             - name: PORT
               value: {{ .Values.services.customer.port | quote }}
             - name: DATABASE_URL

@@ -1,6 +1,7 @@
 import type { AccountOperationStatus, AccountOperationType, Money } from '@bank/contracts';
 
-import type { Account } from '../domain/account';
+import type { Account, NewAccount } from '../domain/account';
+import type { ActivityRule } from '../domain/activity-policy';
 import type { DeactivationCriteria } from '../domain/deactivation-policy';
 
 /**
@@ -79,11 +80,20 @@ export interface AccountRepository {
    * same one and must not become a second account.
    */
   openAccount(input: {
-    readonly account: Account;
+    /** Sin número: lo asigna la base al insertar (T-56). */
+    readonly account: NewAccount;
     readonly idempotency: ProcessedMessage;
   }): Promise<{ readonly account: Account; readonly created: boolean }>;
 
   findById(accountId: string): Promise<Account | null>;
+
+  /**
+   * La cuenta con ese número del contrato interbancario (`02-NNNNNNNNN`), o
+   * `null`. Un depósito del banco pareja nombra la cuenta así y no por su UUID
+   * (T-60, B3): un UUID con guiones no cabe en los 34 caracteres que el contrato
+   * admite.
+   */
+  findByNumber(accountNumber: string): Promise<Account | null>;
 
   list(filter: AccountFilter): Promise<readonly Account[]>;
 
@@ -111,7 +121,10 @@ export interface AccountRepository {
      * it up from the `account_operations` row the debit wrote, inside the same
      * lock, and hands it here so the domain can fold it into what comes back.
      */
-    readonly decide: (account: Account, commissionToReverse: Money | null) => {
+    readonly decide: (
+      account: Account,
+      commissionToReverse: Money | null,
+    ) => {
       readonly account: Account;
       readonly amount: Money;
       readonly balanceAfter: Money;
@@ -166,6 +179,30 @@ export interface AccountRepository {
     readonly runId: string;
   }): Promise<readonly Account[]>;
 
+  /**
+   * Decides, inside the database, whether `account` has just crossed the limit
+   * — and if so, writes the anomaly down before anybody announces it (T-42).
+   *
+   * The window is counted **from `account_operations`**, never from memory, so
+   * the answer is the same whichever replica asks and however many there are.
+   * The whole decision runs under a per-account advisory lock that is *not* the
+   * row lock `applyMovement` holds: detection happens after that transaction
+   * has committed, and must never make a balance movement wait.
+   *
+   * Returns `null` when there is nothing to announce: the account is under the
+   * limit, or an anomaly already covers this window. Otherwise it returns the
+   * anomaly to publish — the new one (`firstTime`), or one an earlier attempt
+   * recorded and never managed to publish, once its claim has gone stale.
+   */
+  claimAnomaly(input: {
+    readonly account: Pick<Account, 'accountId' | 'customerId' | 'accountType'>;
+    readonly rule: ActivityRule;
+    readonly now: Date;
+  }): Promise<AnomalyClaim | null>;
+
+  /** Records that the anomaly reached the broker, so nobody publishes it again. */
+  markAnomalyPublished(anomalyId: string, now: Date): Promise<void>;
+
   /** What this message produced the first time, or `null` if it is new. */
   findProcessed(idempotencyKey: string, messageType: string): Promise<ProcessedMessage | null>;
 
@@ -197,4 +234,65 @@ export interface EventPublisher {
 /** Injected so a test can decide what "now" is. */
 export interface Clock {
   now(): Date;
+}
+
+/** An anomaly as it is written down, and as the event is built from it. */
+export interface AnomalyRecord {
+  readonly anomalyId: string;
+  readonly accountId: string;
+  readonly customerId: string;
+  readonly accountType: Account['accountType'];
+  readonly operationCount: number;
+  readonly threshold: number;
+  readonly windowMinutes: number;
+  readonly windowStart: Date;
+  readonly detectedAt: Date;
+}
+
+/** What `claimAnomaly` hands back: the anomaly, and whether this call created it. */
+export interface AnomalyClaim {
+  readonly anomaly: AnomalyRecord;
+  /** `false` when an earlier attempt recorded it and its publication never completed. */
+  readonly firstTime: boolean;
+}
+
+/** A balance movement that has already committed, as the monitor sees it. */
+export interface ObservedMovement {
+  readonly account: Pick<Account, 'accountId' | 'customerId' | 'accountType'>;
+  readonly type: 'DEBIT' | 'CREDIT' | 'COMPENSATION';
+  readonly transactionId: string | null;
+}
+
+/**
+ * What a use case calls once a movement has committed and been announced.
+ *
+ * It **never throws**. The movement is a fact by then, the Saga has its reply,
+ * and a failure of the monitoring must not turn a successful debit into a
+ * retried message.
+ */
+export interface AccountActivity {
+  afterMovement(movement: ObservedMovement): Promise<void>;
+}
+
+/**
+ * What the activity monitor reports about itself: counters, a span and log
+ * lines. The account id is a log field and a span attribute, **never** a metric
+ * label — one time series per account is the failure the metrics are built to
+ * avoid.
+ */
+export interface ActivityTelemetry {
+  operation(event: {
+    readonly accountId: string;
+    readonly accountType: Account['accountType'];
+    readonly operation: 'debit' | 'credit' | 'compensation';
+    readonly transactionId: string | null;
+  }): void;
+
+  anomaly(event: AnomalyRecord & { readonly republished: boolean }): void;
+
+  failed(event: {
+    readonly accountId: string;
+    readonly stage: 'detection' | 'publication';
+    readonly reason: string;
+  }): void;
 }

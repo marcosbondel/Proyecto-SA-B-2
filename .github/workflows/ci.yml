@@ -213,7 +213,7 @@ jobs:
             # Una suite que se salta sola sigue contando como verde. Sin esto,
             # este paso pasaria igual si las variables no hubieran llegado a
             # Jest, y TD-069 quedaria cerrado solo en apariencia.
-            if echo "$output" | grep -qE "Test Suites:.*skipped"; then
+            if grep -qE "Test Suites:.*skipped" <<<"$output"; then
               echo "::error::$1 salto suites pese a haber PostgreSQL disponible."
               return 1
             fi
@@ -240,7 +240,7 @@ jobs:
             || { echo "$gateway_output"; echo "::endgroup::"; exit 1; }
           echo "$gateway_output"
           echo "::endgroup::"
-          if echo "$gateway_output" | grep -qE "Test Suites:.*skipped"; then
+          if grep -qE "Test Suites:.*skipped" <<<"$gateway_output"; then
             echo "::error::gateway salto suites pese a haber RabbitMQ disponible."
             exit 1
           fi
@@ -339,3 +339,104 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # Los dos charts de Helm no se validaban en ningun sitio: `pnpm lint`
+      # mira TypeScript, y `pnpm format:check` esta fuera del pipeline porque
+      # Prettier no sabe leer las plantillas Go. Un chart que CI no renderiza
+      # se rompe en el despliegue, y el de observabilidad ES el despliegue del
+      # stack, que §8.3 cobra al 25 % si hay que hacerlo a mano.
+      #
+      # `lint` solo no basta: pasa sobre un chart cuyo `values.yaml` nombra una
+      # clave que ningun subchart conoce. Lo que lo detecta es el render.
+      - name: 'Charts de Helm (lint y render)'
+        run: |
+          set -euo pipefail
+
+          echo "== bank-usac =="
+          helm lint infra/k8s/helm/bank-usac
+          helm template bank-usac infra/k8s/helm/bank-usac \
+            --set secrets.jwtSecret=ci --set secrets.rabbitmq.password=ci \
+            --set secrets.objectStorage.accessKey=ci --set secrets.objectStorage.secretKey=ci \
+            --set secrets.databases.customer.password=ci \
+            --set secrets.databases.account.password=ci \
+            --set secrets.databases.transaction.password=ci \
+            --set secrets.databases.payment.password=ci \
+            --set secrets.databases.notificationAudit.password=ci \
+            --set rabbitmq.inCluster=true --set minio.inCluster=true \
+            --set external.postgresCustomer.dockerNetwork.host=10.0.0.3 \
+            --set external.postgresAccount.dockerNetwork.host=10.0.0.4 \
+            --set external.postgresTransaction.dockerNetwork.host=10.0.0.5 \
+            --set external.postgresPayment.dockerNetwork.host=10.0.0.6 \
+            --set external.postgresNotificationAudit.dockerNetwork.host=10.0.0.7 \
+            > /dev/null
+
+          # Y con la entrada publica tal como la despliega produccion, que es
+          # la combinacion que TD-080 dejo sin cubrir durante tres semanas.
+          helm template bank-usac infra/k8s/helm/bank-usac \
+            --set secrets.jwtSecret=ci --set secrets.rabbitmq.password=ci \
+            --set secrets.objectStorage.accessKey=ci --set secrets.objectStorage.secretKey=ci \
+            --set secrets.databases.customer.password=ci \
+            --set secrets.databases.account.password=ci \
+            --set secrets.databases.transaction.password=ci \
+            --set secrets.databases.payment.password=ci \
+            --set secrets.databases.notificationAudit.password=ci \
+            --set rabbitmq.inCluster=true --set minio.inCluster=true \
+            --set external.postgresCustomer.dockerNetwork.host=10.0.0.3 \
+            --set external.postgresAccount.dockerNetwork.host=10.0.0.4 \
+            --set external.postgresTransaction.dockerNetwork.host=10.0.0.5 \
+            --set external.postgresPayment.dockerNetwork.host=10.0.0.6 \
+            --set external.postgresNotificationAudit.dockerNetwork.host=10.0.0.7 \
+            --set gateway.loadBalancerIP=203.0.113.10 \
+            > /tmp/bank-usac-lb.yaml
+          # A un archivo y no a `| grep -q`: `grep -q` sale en la primera
+          # coincidencia, Helm sigue escribiendo, recibe SIGPIPE y `pipefail`
+          # convierte eso en un fallo (exit 141) que depende de cuanto mide el
+          # render. Paso a fallar en T-60, cuando el chart crecio.
+          grep -q 'loadBalancerIP: "203.0.113.10"' /tmp/bank-usac-lb.yaml
+
+          # Que rotar una credencial ruede los pods (TD-089). Un pod no vuelve a
+          # leer un Secret: sin el hash en el `podTemplate`, una rotacion deja
+          # los procesos con el valor anterior y el despliegue sale verde. El
+          # script comprueba las dos mitades — que la anotacion este, y que el
+          # hash SE MUEVA de verdad al cambiar la credencial, porque una
+          # anotacion que apunta a la plantilla equivocada pasa cualquier grep.
+          ./infra/k8s/scripts/check-secret-rollout.sh infra/k8s/helm/bank-usac
+
+          echo "== bank-observability =="
+          # Los subcharts estan versionados en `charts/`, asi que NO se ejecuta
+          # ningun `helm dependency build`: ese comando refresca el indice de
+          # los repositorios por red, que es justo lo que versionarlos
+          # pretendia evitar. Lo que si hace falta es comprobar que lo
+          # versionado concuerde con lo declarado — `helm lint` y
+          # `helm template` renderizan felizmente con el .tgz viejo.
+          ./infra/k8s/scripts/check-chart-deps.sh infra/k8s/helm/bank-observability
+
+          # Las NetworkPolicy de T-54 contra los pods que los subcharts
+          # realmente despliegan. Un `podSelector` que no coincide con nada no
+          # es un error de Helm: con el `default-deny` del archivo es el
+          # componente incomunicado, y las etiquetas las eligen los subcharts,
+          # no nosotros. Se renderizan con `enabled=true` porque en un
+          # despliegue normal están apagadas.
+          ./infra/k8s/scripts/check-network-policies.sh infra/k8s/helm/bank-observability
+
+          helm lint infra/k8s/helm/bank-observability
+          helm template bank-observability infra/k8s/helm/bank-observability \
+            --namespace observability > /tmp/obs.yaml
+
+          # Las cuatro cosas que, si se rompen, dejan el stack verde y ciego.
+          grep -q 'otlp_http/loki' /tmp/obs.yaml   # los logs salen hacia Loki
+          grep -q 'otlp_grpc/tempo' /tmp/obs.yaml  # las trazas salen hacia Tempo
+          grep -q 'transform/parse_bank_json' /tmp/obs.yaml  # el JSON del logger se parsea
+          grep -q 'matcherType: label' /tmp/obs.yaml         # el salto de un log a su traza
+          grep -q 'transform/redact_spans' /tmp/obs.yaml     # los tokens no llegan a Tempo (T-60)
+          grep -q 'transform/redact_logs' /tmp/obs.yaml      # ni a Loki
+
+          # Los nueve dashboards, las reglas y las alertas citan lo que existe
+          # (T-60): selectores de Loki sobre etiquetas indexadas, métricas del
+          # catálogo, valores de etiqueta como los emite el código, runbooks en
+          # disco, ningún `$` que Grafana vaya a expandir, y la sintaxis de
+          # cada consulta PromQL con el promtool de la versión del subchart.
+          # Lo que NO puede ver sin un stack —que cada consulta devuelva datos—
+          # lo ejecuta `pnpm obs:kind`.
+          python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y -qq python3-yaml
+          PROMTOOL_DOCKER=1 ./infra/k8s/scripts/check-dashboards.sh

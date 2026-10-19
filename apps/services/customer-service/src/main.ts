@@ -1,8 +1,11 @@
+// First, before anything else: see `instrumentation.ts` for why the order matters.
+import { otel } from './instrumentation';
 import 'reflect-metadata';
 
 import { EXCHANGES, QUEUES, validateMessage } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
+import { nestLoggerFor } from '@bank/observability';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
@@ -33,6 +36,7 @@ import {
   RandomActivationTokenFactory,
   ScryptPasswordHasher,
 } from './infrastructure/security/scrypt-password-hasher';
+import { OtelLifecycleTelemetry } from './infrastructure/telemetry/otel-lifecycle.telemetry';
 import { S3IdentityDocumentReader } from './infrastructure/storage/s3-identity-document.reader';
 import { S3IdentityDocumentStager } from './infrastructure/storage/s3-identity-document.stager';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
@@ -135,6 +139,7 @@ async function bootstrap(): Promise<void> {
   const tokens = new RandomActivationTokenFactory();
   const clock = { now: (): Date => new Date() };
   const publisherFactory = new BrokerEventPublisher(broker);
+  const lifecycleTelemetry = new OtelLifecycleTelemetry(logger);
 
   /**
    * A router per delivery, because the publisher is bound to the message it is
@@ -144,10 +149,19 @@ async function bootstrap(): Promise<void> {
    */
   const routerFor = (envelope: MessageEnvelope<unknown>): InboundMessageRouter => {
     const publisher = publisherFactory.forCause(envelope);
+    const telemetry = lifecycleTelemetry.forCorrelation(envelope.correlationId);
 
     return new InboundMessageRouter([
       new RegisterCustomerHandler(
-        new RegisterCustomerUseCase({ repository, publisher, hasher, tokens, documents, clock }),
+        new RegisterCustomerUseCase({
+          repository,
+          publisher,
+          hasher,
+          tokens,
+          documents,
+          clock,
+          telemetry,
+        }),
       ),
       new UpdateCustomerHandler(new UpdateCustomerUseCase({ repository, publisher, clock })),
       new GetCustomerHandler(new GetCustomerUseCase({ repository, publisher })),
@@ -163,9 +177,11 @@ async function bootstrap(): Promise<void> {
         new GetCustomerListUseCase({ repository, publisher }),
       ),
       new SetIdentityVerdictHandler(
-        new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens }),
+        new SetIdentityVerdictUseCase({ repository, publisher, clock, tokens, telemetry }),
       ),
-      new SetKycStatusHandler(new SetKycStatusUseCase({ repository, publisher, clock })),
+      new SetKycStatusHandler(
+        new SetKycStatusUseCase({ repository, publisher, clock, telemetry }),
+      ),
       new CheckKycHandler(new CheckKycUseCase({ repository, publisher })),
       new AuthenticateCustomerHandler(
         new AuthenticateCustomerUseCase({ repository, publisher, hasher, tokens, clock }),
@@ -183,7 +199,7 @@ async function bootstrap(): Promise<void> {
         new ConfirmPasswordResetUseCase({ repository, publisher, hasher, tokens, clock }),
       ),
       new ValidateIdentityHandler(
-        new ValidateIdentityUseCase({ repository, publisher, documents, clock }),
+        new ValidateIdentityUseCase({ repository, publisher, documents, clock, telemetry }),
       ),
     ]);
   };
@@ -270,7 +286,9 @@ async function bootstrap(): Promise<void> {
          */
         if (environment.SEED_DEMO_DATA) {
           const seeded = await seedDemoUsers(pool, hasher, environment.SEED_PASSWORD);
-          logger.info('demo users seeded', { outcome: seeded.join(', ') });
+          logger.info('demo users seeded', {
+            outcome: seeded.length === 0 ? 'already present, nothing touched' : seeded.join(', '),
+          });
         }
 
         await broker.start();
@@ -310,6 +328,7 @@ async function bootstrap(): Promise<void> {
       isDatabaseReachable: async () => await repository.isReachable(),
       isConsuming: () => consuming,
     }),
+    { logger: nestLoggerFor(logger) },
   );
 
   await application.listen(environment.PORT);
@@ -323,6 +342,8 @@ async function bootstrap(): Promise<void> {
     await application.close();
     await broker.stop();
     await pool.end();
+    // Last: flushes the spans and metrics the shutdown itself produced.
+    await otel.shutdown();
   };
 
   process.on('SIGTERM', () => void shutdown());
@@ -330,6 +351,10 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // JSON like every other line: the one that explains a crash is the one the
+  // collection agent most needs to parse.
+  new StructuredLogger().error('boot failed', {
+    error: error instanceof Error ? error.message : String(error),
+  });
   process.exit(1);
 });

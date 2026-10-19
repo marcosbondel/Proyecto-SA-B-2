@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { money, uuidV4 } from '../../schemas/primitives';
 import { defineContract } from '../contract';
+import { interbankDestination } from '../interbank/outgoing.v1';
 
 /**
  * How the payment step should be made to end, for demonstration only.
@@ -56,6 +57,20 @@ export const transferRequestedV1 = defineContract({
       amount: money,
       customerId: uuidV4.optional(),
       paymentScenario: paymentScenario.optional(),
+
+      /**
+       * A dónde va de verdad el dinero, cuando el destino está en otro banco
+       * (T-47, §4.1 — Integración interbancaria).
+       *
+       * Opcional y aditivo, la tercera vez que este contrato crece así. Cuando
+       * viene, `targetAccount` es la **cuenta de liquidación interbancaria** de
+       * este banco —una cuenta propia que representa lo que se le debe al otro—
+       * y este bloque dice a qué banco y a qué cuenta de allá corresponde. La
+       * Saga no distingue: debita, pide el pago, acredita y compensa igual. Lo
+       * único que cambia es que el pago se le pide al banco pareja por HTTP y
+       * que su respuesta llega por callback, no al momento.
+       */
+      interbank: interbankDestination.optional(),
 
       /**
        * What the payment is *for*, when the target is a biller's collection

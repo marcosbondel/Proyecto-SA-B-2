@@ -338,7 +338,7 @@ Desarrollado en Vue 3 y Nuxt con Server-Side Rendering y empaquetado en contened
 Cada microservicio gestiona su propio esquema relacional independiente en PostgreSQL 18:
 
 ### 6.1 Base de Datos `customer`
-* `customers`: `(customer_id PK, username UNIQUE, email UNIQUE, identity_document, kyc_status, created_at)`
+* `customers`: `(customer_id PK, username UNIQUE, email UNIQUE, identity_document, kyc_status, created_at, creation_trace)` — `creation_trace` es el `traceparent` W3C del span de creación (T-41), nulo si no había SDK de trazas
 * `identity_documents`: `(document_id PK, customer_id FK, object_key, photo_sha256, verified_at)`
 * `email_activation_tokens`: `(token_hash PK, customer_id FK, expires_at, used_at)`
 * `processed_messages`: `(idempotency_key, message_type PK, processed_at)`
@@ -348,18 +348,21 @@ Cada microservicio gestiona su propio esquema relacional independiente en Postgr
 * `account_operations`: `(operation_id PK, account_id FK, type, amount_minor, balance_after_minor, transaction_id, created_at)`
 * `biller_accounts`: `(biller_id PK, biller_name, account_id FK)`
 * `deactivation_runs`: `(run_id PK, executed_at, deactivated_count)`
+* `account_anomalies`: `(anomaly_id PK, account_id FK, rule, operation_count, threshold, window_minutes, window_start, detected_at, claimed_at, published_at)` — las anomalías de alta frecuencia (T-42); se escribe antes de publicar y `published_at` nulo significa «detectada, aún sin anunciar»
 
 ### 6.3 Base de Datos `transaction`
-* `transactions`: `(transaction_id PK, source_account, target_account, amount_minor, status, failure_reason, created_at)`
+* `transactions`: `(transaction_id PK, source_account, target_account, amount_minor, status, failure_reason, created_at, requested_at, trace_context)` — `requested_at` es el `occurredAt` de `transfer.requested.v1` (el inicio de la latencia, SLI-3) y `trace_context` el `traceparent` W3C de la raíz de la traza de la transferencia (T-43); ambos nulos en las filas anteriores a la migración 010
 * `transaction_events`: `(event_id PK, transaction_id FK, event_type, payload, occurred_at)`
 * `transaction_transitions`: `(transition_id PK, transaction_id FK, from_status, to_status, created_at)`
 
 ### 6.4 Base de Datos `payment`
 * `payments`: `(payment_id PK, transaction_id UNIQUE, status, attempt_count, max_attempts, next_due_at)`
 * `payment_attempts`: `(attempt_id PK, payment_id FK, attempt_number, status, failure_reason, simulated_latency_ms, created_at)`
+* `payment_simulation_settings`: `(id PK CHECK (id = 1), failure_rate_percent, timeout_rate_percent, latency_ms, updated_at)` — a lo sumo una fila (T-44): el cambio en caliente de la simulación del proveedor, que leen todas las réplicas en cada intento; sin fila rigen los valores del ConfigMap (`PAYMENT_SIM_*`) y un reset la borra
 
 ### 6.5 Base de Datos `notification_audit`
-* `audit_events`: `(event_id, consumer PK, event_type, correlation_id, severity, sanitized_payload, recorded_at)`
+* `audit_events`: `(event_id, consumer PK, event_type, correlation_id, trace_id, severity, sanitized_payload, recorded_at)` — `trace_id` (T-45) es el trace-id W3C bajo el que se manejó el mensaje; `NULL` si ningún SDK registró una traza, y nunca un valor de relleno. Se consulta por `correlation_id`, `trace_id`, `producer` (servicio) y `severity` (nivel), combinables, con `GET /api/audit/recent`.
+* `notifications.dedupe_key` (T-45): identidad de una notificación cuando dos eventos distintos dicen lo mismo (una anomalía republicada por Account Service); índice único parcial, de modo que el segundo se registra en la auditoría pero no vuelve a notificar.
 * `notifications_inbox`: `(notification_id PK, customer_id, title, message, channel, delivered_at)`
 
 ---

@@ -283,6 +283,52 @@ export const MIGRATIONS: readonly Migration[] = [
                 OR payment_scenario IN ('APPROVE','REJECT','TRANSIENT_FAILURE','TIMEOUT'))`,
     ],
   },
+  {
+    /*
+     * T-43: what the telemetry needs that the state machine does not.
+     *
+     * `requested_at` is the `occurredAt` of `transfer.requested.v1` — the start
+     * SLI-3 measures the Saga's duration from — and differs from `created_at`
+     * by however long the message waited in the broker. `trace_context` is the
+     * W3C `traceparent` of the span that opened the transfer's trace, so that a
+     * step arriving as a different message, possibly on a different pod, joins
+     * the same trace. Both nullable: a row from before this migration has
+     * neither, and the telemetry falls back to `created_at` and to no link.
+     */
+    name: '010_transactions_observability',
+    statements: [
+      `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ`,
+      `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`,
+    ],
+  },
+  {
+    /*
+     * T-48: the W3C `traceparent` active when an outbox row was written. The
+     * relay publishes each command inside it, so the hop from this service to
+     * the next is a continuation of the Saga's trace rather than the start of a
+     * new one opened by the relay's timer. Nullable: `NULL` means no SDK was
+     * recording when the row was written, and the relay publishes as before.
+     */
+    name: '011_outbox_trace_context',
+    statements: [`ALTER TABLE outbox_messages ADD COLUMN IF NOT EXISTS trace_context VARCHAR(80)`],
+  },
+  {
+    /*
+     * El destino real de un depósito interbancario (T-47).
+     *
+     * JSONB y no cuatro columnas, por la misma razón que `reference` es una
+     * cadena opaca: **este servicio no lo interpreta**. Lo recibe de
+     * `transfer.requested.v1`, lo guarda y lo copia tal cual en
+     * `payment.requested.v1`, donde Payment —el único que habla con el banco
+     * pareja— sí lo entiende. Validar aquí su forma sería un orquestador
+     * opinando sobre un contrato ajeno, y rechazaría un destino válido el día
+     * que el otro banco cambie el suyo.
+     *
+     * `NULL` para una transferencia interna, que son casi todas.
+     */
+    name: '012_transactions_interbank',
+    statements: [`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS interbank JSONB`],
+  },
 ];
 
 /** Applies whatever has not been applied yet. Safe to run on every boot. */

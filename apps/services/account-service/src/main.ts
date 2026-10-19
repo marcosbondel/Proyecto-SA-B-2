@@ -1,14 +1,19 @@
+// First, before anything else: see `instrumentation.ts` for why the order matters.
+import { otel } from './instrumentation';
 import 'reflect-metadata';
 
 import { EXCHANGES, QUEUES, validateMessage } from '@bank/contracts';
 import type { MessageEnvelope } from '@bank/contracts';
 import { MessageBroker } from '@bank/messaging';
+import { nestLoggerFor } from '@bank/observability';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 
+import { ActivityMonitor } from './application/activity-monitor';
 import { CompensateDebitUseCase } from './application/compensate-debit.use-case';
 import { CreateAccountUseCase } from './application/create-account.use-case';
 import { CreditAccountUseCase } from './application/credit-account.use-case';
+import { InterbankAccountUseCase } from './application/interbank-account.use-case';
 import { DepositUseCase } from './application/deposit.use-case';
 import { GetAccountStatsUseCase } from './application/get-account-stats.use-case';
 import { ListBillersUseCase } from './application/list-billers.use-case';
@@ -23,16 +28,20 @@ import { loadDotEnvFile, loadEnvironment } from './infrastructure/config/environ
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { migrate } from './infrastructure/persistence/migrations';
 import { seedBillerAccounts } from './infrastructure/persistence/seed-billers';
+import { seedSettlementAccount } from './infrastructure/persistence/seed-settlement';
 import { seedDemoAccounts } from './infrastructure/persistence/seed-demo-data';
 import { PostgresAccountRepository } from './infrastructure/persistence/postgres-account.repository';
 import { PostgresSweepLease } from './infrastructure/persistence/postgres-sweep-lease';
 import { DeactivationScheduler } from './infrastructure/scheduler/deactivation.scheduler';
+import { OtelActivityTelemetry } from './infrastructure/telemetry/otel-activity.telemetry';
 import { InboundMessageRouter } from './interfaces/inbound-message.handler';
 import { StructuredLogger } from './interfaces/logging';
 import {
   CompensateDebitHandler,
   CreateAccountHandler,
   CreditAccountHandler,
+  InterbankEligibilityHandler,
+  InterbankCreditHandler,
   DepositHandler,
   GetAccountStatsHandler,
   ListBillersHandler,
@@ -102,6 +111,11 @@ async function bootstrap(): Promise<void> {
 
   const clock = { now: (): Date => new Date() };
   const publisherFactory = new BrokerEventPublisher(broker);
+  const activityTelemetry = new OtelActivityTelemetry(logger);
+  const activityRule = {
+    maxOperations: environment.ANOMALY_MAX_OPERATIONS,
+    windowMinutes: environment.ANOMALY_WINDOW_MINUTES,
+  };
 
   /**
    * A router per delivery, because the publisher is bound to the message it is
@@ -112,17 +126,38 @@ async function bootstrap(): Promise<void> {
   const routerFor = (envelope: MessageEnvelope<unknown>): InboundMessageRouter => {
     const publisher = publisherFactory.forCause(envelope);
 
+    /**
+     * Per delivery, like the publisher: the monitor reports with the
+     * correlation id of the command that caused the movement, and a shared
+     * instance would hand one request's id to another under any concurrency.
+     */
+    const activity = new ActivityMonitor({
+      repository,
+      publisher,
+      clock,
+      telemetry: activityTelemetry.forCorrelation(envelope.correlationId),
+      rule: activityRule,
+    });
+
     return new InboundMessageRouter([
       new CreateAccountHandler(new CreateAccountUseCase({ repository, publisher, clock })),
       new GetBalanceHandler(new GetBalanceUseCase({ repository, publisher })),
       new ListAccountsHandler(new ListAccountsUseCase({ repository, publisher })),
       new GetOperationsHandler(new GetOperationsUseCase({ repository, publisher })),
-      new DebitAccountHandler(new DebitAccountUseCase({ repository, publisher, clock })),
-      new CreditAccountHandler(new CreditAccountUseCase({ repository, publisher, clock })),
-      new DepositHandler(new DepositUseCase({ repository, publisher, clock })),
+      new DebitAccountHandler(new DebitAccountUseCase({ repository, publisher, clock, activity })),
+      new CreditAccountHandler(
+        new CreditAccountUseCase({ repository, publisher, clock, activity }),
+      ),
+      new InterbankEligibilityHandler(
+        new InterbankAccountUseCase({ repository, publisher, clock }),
+      ),
+      new InterbankCreditHandler(new InterbankAccountUseCase({ repository, publisher, clock })),
+      new DepositHandler(new DepositUseCase({ repository, publisher, clock, activity })),
       new ListBillersHandler(new ListBillersUseCase({ repository, publisher })),
       new GetAccountStatsHandler(new GetAccountStatsUseCase({ repository, publisher })),
-      new CompensateDebitHandler(new CompensateDebitUseCase({ repository, publisher, clock })),
+      new CompensateDebitHandler(
+        new CompensateDebitUseCase({ repository, publisher, clock, activity }),
+      ),
       new SetAccountStatusHandler(new SetAccountStatusUseCase({ repository, publisher, clock })),
     ]);
   };
@@ -235,12 +270,17 @@ async function bootstrap(): Promise<void> {
          * empty dropdown in the one environment where it matters.
          */
         const billers = await seedBillerAccounts(pool);
+        // La cuenta donde entra lo que sale hacia el banco pareja (T-47).
+        const settlement = await seedSettlementAccount(pool);
         logger.info('biller accounts ready', { outcome: billers.join(', ') });
+        logger.info('interbank settlement account ready', { outcome: settlement });
 
         /** The demo client's accounts, gated and idempotent — see `seedDemoAccounts`. */
         if (environment.SEED_DEMO_DATA) {
           const seeded = await seedDemoAccounts(pool);
-          logger.info('demo accounts seeded', { outcome: seeded.join(', ') });
+          logger.info('demo accounts seeded', {
+            outcome: seeded.length === 0 ? 'already present, nothing touched' : seeded.join(', '),
+          });
         }
 
         await broker.start();
@@ -289,6 +329,7 @@ async function bootstrap(): Promise<void> {
       isDatabaseReachable: async () => await repository.isReachable(),
       isConsuming: () => consuming,
     }),
+    { logger: nestLoggerFor(logger) },
   );
 
   await application.listen(environment.PORT);
@@ -303,6 +344,8 @@ async function bootstrap(): Promise<void> {
     await application.close();
     await broker.stop();
     await pool.end();
+    // Last: flushes the spans and metrics the shutdown itself produced.
+    await otel.shutdown();
   };
 
   process.on('SIGTERM', () => void shutdown());
@@ -310,6 +353,10 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // JSON like every other line: the one that explains a crash is the one the
+  // collection agent most needs to parse.
+  new StructuredLogger().error('boot failed', {
+    error: error instanceof Error ? error.message : String(error),
+  });
   process.exit(1);
 });

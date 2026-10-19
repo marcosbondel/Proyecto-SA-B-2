@@ -52,14 +52,14 @@ describe('topic pattern matching', () => {
 
 describe('queues', () => {
   /**
-   * Ten and not seven: `notification-audit-service` owns five of them, because
+   * Eleven and not seven: `notification-audit-service` owns six of them, because
    * T-20 split the single `audit.all` into one queue per event family plus the
-   * query queue. A queue per *consumer* was never the rule — a queue never
+   * query queue, and T-45 gave the SLO alerts a queue of their own. A queue per *consumer* was never the rule — a queue never
    * shared between two consumers is, and the test below is the one that
    * enforces it.
    */
   it('gives every logical consumer at least one queue of its own', () => {
-    expect(QUEUES).toHaveLength(10);
+    expect(QUEUES).toHaveLength(12);
 
     expect(new Set(QUEUES.map((queue) => queue.owner)).size).toBe(5);
   });
@@ -75,6 +75,20 @@ describe('queues', () => {
 
   it('routes every command and event to at least one queue', () => {
     expect(unroutedContracts()).toEqual([]);
+  });
+
+  it('routes incoming interbank replies and verdicts to Payment durably', () => {
+    const destinations = {
+      'account.interbank.eligibility.replied.v1': ['payment.interbank'],
+      'account.interbank.credited.v1': ['audit.account', 'payment.interbank'],
+      'account.interbank.credit.rejected.v1': ['audit.account', 'payment.interbank'],
+    } as const;
+
+    for (const [name, expected] of Object.entries(destinations)) {
+      const contract = catalog.find((candidate) => candidate.name === name)!;
+
+      expect([...queuesFor(contract)].sort()).toEqual([...expected].sort());
+    }
   });
 
   it('gives every command exactly one receiving queue', () => {
@@ -95,7 +109,7 @@ describe('queues', () => {
    * Asserting the destinations rather than the patterns is what makes an
    * accidental re-merge a failing test.
    */
-  it('files each event family on its own audit queue, and never on another family\'s', () => {
+  it("files each event family on its own audit queue, and never on another family's", () => {
     const expected: Record<string, string> = {
       'customer.registered.v1': 'audit.customer',
       'account.debited.v1': 'audit.account',
@@ -113,7 +127,11 @@ describe('queues', () => {
 
   /** The two questions share the query queue and touch no event queue. */
   it('keeps the queries off every event queue', () => {
-    for (const name of ['audit.query.requested.v1', 'notification.list.query.v1', 'audit.events.list.query.v1']) {
+    for (const name of [
+      'audit.query.requested.v1',
+      'notification.list.query.v1',
+      'audit.events.list.query.v1',
+    ]) {
       const contract = catalog.find((c) => c.name === name)!;
 
       expect([...queuesFor(contract)]).toEqual(['audit.query']);

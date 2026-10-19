@@ -1,12 +1,7 @@
 import { z } from 'zod';
 
-import {
-  accountStatus,
-  accountType,
-  isoTimestamp,
-  money,
-  uuidV4,
-} from '../../schemas/primitives';
+import { accountStatus, accountType, isoTimestamp, money, uuidV4 } from '../../schemas/primitives';
+import { interbankAccountRef } from '../interbank/incoming.v1';
 import { defineContract } from '../contract';
 
 /**
@@ -30,6 +25,15 @@ export const accountListRepliedV1 = defineContract({
     accounts: z.array(
       z.object({
         accountId: uuidV4,
+        /**
+         * El número con el que **otro banco** identifica esta cuenta (T-56).
+         *
+         * Viaja en la lista porque es el dato que un cliente le dicta a quien le
+         * va a depositar desde otro banco: un UUID no se dicta por teléfono, y
+         * además **no cabe** en el `AccountNumber` del contrato interbancario
+         * (36 caracteres contra 34).
+         */
+        accountNumber: interbankAccountRef,
         customerId: uuidV4,
         accountType,
         balance: money,

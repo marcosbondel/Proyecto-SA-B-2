@@ -31,7 +31,7 @@ function namesFromDomainCatalogue(): string[] {
 
 describe('the catalogue as a whole', () => {
   it('contracts every message, and exactly the number the spec fixed', () => {
-    expect(catalog).toHaveLength(103);
+    expect(catalog).toHaveLength(134);
   });
 
   it('gives every message a version suffix, so it can be routed by version', () => {
@@ -77,11 +77,17 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
     expect(missing).toEqual([]);
   });
 
-  it('adds exactly the fifty-six messages recorded as an extension, and no others', () => {
+  it('adds exactly the ninety-five messages recorded as an extension, and no others', () => {
     const known = new Set(domainNames.map((name) => `${name}.v1`));
     const added = catalog.map((c) => c.name).filter((name) => !known.has(name));
 
     expect(added.sort()).toEqual([
+      /*
+       * Added by T-42 (Fase 3, §4.1 — Account Service). A signal that an account
+       * was used more often than the configured limit allows. It reports and
+       * does not block, and is published at most once per account per window.
+       */
+      'account.anomaly.detected.v1',
       'account.balance.replied.v1',
       /*
        * The two that make the prototype's `G-01` "pago de servicios" possible.
@@ -116,6 +122,11 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
       'account.deposit.rejected.v1',
       'account.deposit.v1',
       'account.deposited.v1',
+      'account.interbank.credit.rejected.v1',
+      'account.interbank.credit.requested.v1',
+      'account.interbank.credited.v1',
+      'account.interbank.eligibility.query.v1',
+      'account.interbank.eligibility.replied.v1',
       'account.list.query.v1',
       'account.list.replied.v1',
       'account.open.rejected.v1',
@@ -130,6 +141,12 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        */
       'account.stats.query.v1',
       'account.stats.replied.v1',
+      /*
+       * Added by T-45 (Fase 3, §4.1 — Notification & Audit Service). What the
+       * monitoring stack says about an SLO reaches the audit trail and the
+       * operators through the Gateway's webhook, as a command.
+       */
+      'alert.slo.received.v1',
       'audit.events.list.query.v1',
       'audit.events.list.replied.v1',
       'audit.query.replied.v1',
@@ -256,8 +273,62 @@ describe('coherence with the domain catalogue that T-02 closed', () => {
        * but nobody outside could look one up.
        */
       'payment.attempt.failed.v1',
+      'payment.interbank.accepted.v1',
+      /*
+       * Los dos que T-47 añade para el depósito SALIENTE, frente a los tres de
+       * T-46 que son del entrante. La decisión del banco pareja llega por
+       * callback —un comando, porque dice «registra esto», y el único que
+       * puede es Payment— y cada cambio de estado se publica para la auditoría,
+       * que es lo que §4.1 pide cuando exige «logs de cada cambio de estado del
+       * depósito» en las dos direcciones.
+       */
+      'payment.interbank.callback.received.v1',
+      'payment.interbank.receive.v1',
+      'payment.interbank.rejected.v1',
+      /*
+       * Las cuatro de T-60 (B10): consultar y listar los depósitos enviados, con
+       * sus seis estados, para que la pantalla muestre el depósito y no sólo la
+       * Saga que lo contiene.
+       */
+      'payment.interbank.send.list.query.v1',
+      'payment.interbank.send.list.replied.v1',
+      'payment.interbank.send.query.v1',
+      'payment.interbank.send.replied.v1',
+      'payment.interbank.sent.v1',
+      /*
+       * Los doce del **contrato interbancario oficial** (T-56), seis preguntas y
+       * seis respuestas. Son más que los dos del flujo provisional porque el
+       * contrato tiene siete operaciones y cuatro de ellas necesitan una
+       * respuesta: el Gateway no puede traducir `202`, `200` y `409` sin saber
+       * qué había, ni devolver un estado que no ha preguntado.
+       *
+       * Llevan `v1` en el nombre del mensaje —`payment.interbank.v1.…`— y no es
+       * la versión del mensaje sino **la del contrato ajeno**. Si el curso
+       * publica una v2, estos doce siguen existiendo y aparecen doce más: dos
+       * bancos no migran de contrato el mismo día.
+       */
+      'payment.interbank.v1.cancel.query.v1',
+      'payment.interbank.v1.cancel.replied.v1',
+      'payment.interbank.v1.reconciliation.query.v1',
+      'payment.interbank.v1.reconciliation.replied.v1',
+      'payment.interbank.v1.result.received.v1',
+      'payment.interbank.v1.reversal.query.v1',
+      'payment.interbank.v1.reversal.replied.v1',
+      'payment.interbank.v1.reversal.requested.v1',
+      'payment.interbank.v1.status.query.v1',
+      'payment.interbank.v1.status.replied.v1',
+      'payment.interbank.v1.transfer.query.v1',
+      'payment.interbank.v1.transfer.replied.v1',
       'payment.list.query.v1',
       'payment.list.replied.v1',
+      /*
+       * Added by T-44 (Fase 3, §4.1 — Payment Service). The administrator's way to
+       * change how the simulated provider misbehaves without a redeploy: one
+       * command to set it, one to read it, and the reply both of them share.
+       */
+      'payment.simulation.query.v1',
+      'payment.simulation.replied.v1',
+      'payment.simulation.update.v1',
       'payment.stats.query.v1',
       'payment.stats.replied.v1',
       'payment.status.query.v1',

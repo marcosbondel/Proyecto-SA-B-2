@@ -1,0 +1,165 @@
+# Sobrescrituras del stack de observabilidad para kind.
+#
+# El chart está dimensionado para GKE: tres nodos, discos persistentes y siete
+# días de retención. En kind todo eso cabe mal y no hace falta — lo que se
+# valida en local es comportamiento, no capacidad.
+#
+# Se usa con `pnpm k8s:obs` (que se niega a correr contra un contexto que no sea
+# kind). La nube sigue leyendo el `values.yaml` del chart, intacto.
+
+# Volúmenes sólo donde un reinicio perdería lo que se está mirando: Loki y
+# Tempo (este último desde T-60, tras perder todas las trazas en cada OOMKill).
+# Prometheus y Grafana siguen sin disco: sus series se recalculan y sus
+# dashboards vienen del chart. `install-observability.sh --down` borra los PVC,
+# que `helm uninstall` no borra nunca.
+loki:
+  loki:
+    commonConfig:
+      replication_factor: 1
+  singleBinary:
+    # Loki SI necesita volumen, a diferencia de Tempo y Prometheus, que con
+    # `persistence: false` caen a un `emptyDir`. Su chart no hace eso: no monta
+    # nada, y como la raiz del contenedor es de solo lectura, el proceso muere
+    # con `mkdir /var/loki: read-only file system` en bucle. Medido levantando
+    # el stack, no leyendo el chart.
+    #
+    # 2 GiB y no 10: aqui la retencion es de horas. `install-observability.sh
+    # --down` borra el PVC, que es lo que `helm uninstall` no hace nunca.
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 192Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+tempo:
+  # CON disco desde T-60, y por lo mismo que Loki. Sin volumen, Tempo escribe
+  # su WAL y sus bloques en un `emptyDir`, y un `OOMKilled` —seis en una hora
+  # de carga, medido— se llevaba TODAS las trazas: la que se acababa de ver en
+  # Grafana devolvía 404 al minuto siguiente. kind trae la StorageClass
+  # `standard` (local-path), así que el PVC no cuesta nada aquí; el script de
+  # `--down` lo borra con el resto.
+  #
+  # 5 GiB y 24 h: la carga de `test/load/` produce del orden de 1-2 MB/s de
+  # trazas mientras corre, y una tarde de pruebas cabe de sobra.
+  persistence:
+    enabled: true
+    size: 5Gi
+  tempo:
+    retention: 24h
+    # El limite de memoria es el MISMO que en la nube (1Gi). Con 512Mi Tempo
+    # murio por OOMKilled en kind justo al recibir la rafaga de spans de un
+    # `helm upgrade` del banco (2026-10-18, T-60): sin persistencia, el bloque
+    # en curso vive en memoria. Medir en local con un Tempo mas debil que el de
+    # produccion da incidentes que en produccion no existen.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 192Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+prometheus:
+  # El broker de kind vive en Docker, FUERA del clúster, y no en `dev` ni en
+  # `prod`: los jobs `rabbitmq` del chart apuntan a `rabbitmq.{dev,prod}.svc`,
+  # que aquí no existen, y el consumer lag salía vacío (T-60). Este job raspa el
+  # mismo plugin `rabbitmq_prometheus` a través del Service `rabbitmq-metrics`
+  # que el chart del banco publica en `dockerNetwork`
+  # (`infra/k8s/helm/bank-usac/templates/external/rabbitmq.yaml`), con
+  # `environment: local`, que es como el banco se llama aquí.
+  #
+  # `extraScrapeConfigs` es UNA cadena, no una lista que se fusione: definirla
+  # aquí reemplaza la del chart. Por eso se repite el job del Collector, que es
+  # el que importa — sin él ninguna métrica de las aplicaciones llegaría a un
+  # panel. Si cambia en `values.yaml`, cambia aquí también.
+  extraScrapeConfigs: |
+    - job_name: otel-gateway
+      scrape_interval: 15s
+      static_configs:
+        - targets: ['otel-gateway:8889']
+
+    - job_name: rabbitmq-local
+      scrape_interval: 30s
+      metrics_path: /metrics
+      static_configs:
+        - targets: ['rabbitmq-metrics.bank-usac.svc.cluster.local:15692']
+          labels:
+            environment: local
+
+    - job_name: rabbitmq-local-detailed
+      scrape_interval: 30s
+      metrics_path: /metrics/detailed
+      params:
+        family: [queue_coarse_metrics]
+      static_configs:
+        - targets: ['rabbitmq-metrics.bank-usac.svc.cluster.local:15692']
+          labels:
+            environment: local
+  server:
+    persistentVolume:
+      enabled: false
+    # Una hora basta para ver una regla calcular y una alerta dispararse. El
+    # error budget de 7 días no se puede medir en una laptop, y fingir que sí
+    # sería peor que decirlo.
+    retention: 2h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 384Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+grafana:
+  # La política de alertas de kind: TODO al Gateway local (T-60).
+  #
+  # La del chart enruta `environment=dev` a dev, `environment=local` a local y
+  # el resto a producción, que es lo correcto en la nube: una alerta del propio
+  # stack (`PodRestarting` de un pod de `observability`, por ejemplo) es de
+  # operaciones, y operaciones mira producción. En kind ese receptor apunta a
+  # `bank-usac-gateway.prod`, que no existe, así que esas alertas se veían en
+  # Grafana y nunca llegaban a la bitácora. Aquí sólo hay un banco y un
+  # Gateway, y la política lo dice. Es una lista: definirla reemplaza la del
+  # chart entera, por eso se repite completa.
+  alerting:
+    policies.yaml:
+      apiVersion: 1
+      policies:
+        - orgId: 1
+          receiver: bank-audit-local
+          group_by: [alertname, environment]
+          group_wait: 30s
+          group_interval: 1m
+          repeat_interval: 4h
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+otlpGateway:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+logAgent:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi

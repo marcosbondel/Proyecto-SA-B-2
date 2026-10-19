@@ -10,6 +10,7 @@ import {
   FixedClock,
   InMemoryCustomerRepository,
   PredictableTokens,
+  RecordingLifecycleTelemetry,
   RecordingPublisher,
   StubDocumentReader,
 } from './support/in-memory';
@@ -72,6 +73,7 @@ async function build() {
     tokens,
     documents: new StubDocumentReader(PHOTO_BYTES),
     clock,
+    telemetry: new RecordingLifecycleTelemetry(),
   });
 
   await register.execute(REGISTER, 'register-key');

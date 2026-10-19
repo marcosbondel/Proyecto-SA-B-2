@@ -57,6 +57,7 @@ import { accountCreditRejectedV1 } from './account/account.credit.rejected.v1';
 import { accountCreditRequestedV1 } from './account/account.credit.requested.v1';
 import { accountBillersQueryV1 } from './account/account.billers.query.v1';
 import { accountBillersRepliedV1 } from './account/account.billers.replied.v1';
+import { accountAnomalyDetectedV1 } from './account/account.anomaly.detected.v1';
 import { accountCommissionChargedV1 } from './account/account.commission.charged.v1';
 import { accountDepositV1 } from './account/account.deposit.v1';
 import { accountDepositedV1 } from './account/account.deposited.v1';
@@ -92,6 +93,9 @@ import { paymentListRepliedV1 } from './payment/payment.list.replied.v1';
 import { paymentRequestedV1 } from './payment/payment.requested.v1';
 import { paymentStatusQueryV1 } from './payment/payment.status.query.v1';
 import { paymentStatusRepliedV1 } from './payment/payment.status.replied.v1';
+import { paymentSimulationQueryV1 } from './payment/payment.simulation.query.v1';
+import { paymentSimulationRepliedV1 } from './payment/payment.simulation.replied.v1';
+import { paymentSimulationUpdateV1 } from './payment/payment.simulation.update.v1';
 import { paymentSucceededV1 } from './payment/payment.succeeded.v1';
 import { notificationInboxQueryV1 } from './notification/notification.inbox.query.v1';
 import { notificationInboxRepliedV1 } from './notification/notification.inbox.replied.v1';
@@ -103,9 +107,49 @@ import { auditQueryRepliedV1 } from './audit/audit.query.replied.v1';
 import { auditQueryRequestedV1 } from './audit/audit.query.requested.v1';
 import { auditEventsListQueryV1 } from './audit/audit.events.list.query.v1';
 import { auditEventsListRepliedV1 } from './audit/audit.events.list.replied.v1';
+import { alertSloReceivedV1 } from './alert/alert.slo.received.v1';
+import {
+  paymentInterbankReceiveV1,
+  accountInterbankEligibilityQueryV1,
+  accountInterbankEligibilityRepliedV1,
+  accountInterbankCreditRequestedV1,
+  accountInterbankCreditedV1,
+  accountInterbankCreditRejectedV1,
+  paymentInterbankAcceptedV1,
+  paymentInterbankRejectedV1,
+} from './interbank/incoming.v1';
+import {
+  paymentInterbankCallbackReceivedV1,
+  paymentInterbankSentV1,
+} from './interbank/outgoing.v1';
+import {
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendListRepliedV1,
+  paymentInterbankSendQueryV1,
+  paymentInterbankSendRepliedV1,
+} from './interbank/send-views.v1';
+import {
+  paymentInterbankV1CancelQueryV1,
+  paymentInterbankV1CancelRepliedV1,
+  paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankV1ReconciliationRepliedV1,
+  paymentInterbankV1ResultReceivedV1,
+  paymentInterbankV1ReversalQueryV1,
+  paymentInterbankV1ReversalRepliedV1,
+  paymentInterbankV1ReversalRequestedV1,
+  paymentInterbankV1StatusQueryV1,
+  paymentInterbankV1StatusRepliedV1,
+  paymentInterbankV1TransferQueryV1,
+  paymentInterbankV1TransferRepliedV1,
+} from './interbank/v1-messages';
 
 export type { Category, MessageContract } from './contract';
 export { defineContract } from './contract';
+export * from './interbank/incoming.v1';
+export * from './interbank/outgoing.v1';
+export * from './interbank/v1';
+export * from './interbank/v1-messages';
+export * from './interbank/send-views.v1';
 
 export * from './customer/customer.activation.requested.v1';
 export * from './customer/customer.authenticate.replied.v1';
@@ -164,6 +208,7 @@ export * from './audit/audit.stats.query.v1';
 export * from './audit/audit.stats.replied.v1';
 export * from './account/account.billers.query.v1';
 export * from './account/account.billers.replied.v1';
+export * from './account/account.anomaly.detected.v1';
 export * from './account/account.commission.charged.v1';
 export * from './account/account.credited.v1';
 export * from './account/account.deposit.rejected.v1';
@@ -200,6 +245,9 @@ export * from './payment/payment.list.replied.v1';
 export * from './payment/payment.status.query.v1';
 export * from './payment/payment.status.replied.v1';
 export * from './payment/payment.requested.v1';
+export * from './payment/payment.simulation.query.v1';
+export * from './payment/payment.simulation.replied.v1';
+export * from './payment/payment.simulation.update.v1';
 export * from './payment/payment.succeeded.v1';
 export * from './notification/notification-view';
 export * from './notification/notification.inbox.query.v1';
@@ -212,6 +260,7 @@ export * from './audit/audit.query.replied.v1';
 export * from './audit/audit.query.requested.v1';
 export * from './audit/audit.events.list.query.v1';
 export * from './audit/audit.events.list.replied.v1';
+export * from './alert/alert.slo.received.v1';
 
 /**
  * Every message the system can put on the broker.
@@ -279,6 +328,7 @@ export const catalog: readonly MessageContract[] = [
   auditStatsRepliedV1,
   accountBillersQueryV1,
   accountBillersRepliedV1,
+  accountAnomalyDetectedV1,
   accountCommissionChargedV1,
   accountDepositV1,
   accountDepositedV1,
@@ -313,6 +363,9 @@ export const catalog: readonly MessageContract[] = [
   paymentRequestedV1,
   paymentStatusQueryV1,
   paymentStatusRepliedV1,
+  paymentSimulationQueryV1,
+  paymentSimulationRepliedV1,
+  paymentSimulationUpdateV1,
   paymentSucceededV1,
   notificationInboxQueryV1,
   notificationInboxRepliedV1,
@@ -324,6 +377,42 @@ export const catalog: readonly MessageContract[] = [
   auditQueryRequestedV1,
   auditEventsListQueryV1,
   auditEventsListRepliedV1,
+  alertSloReceivedV1,
+  paymentInterbankReceiveV1,
+  accountInterbankEligibilityQueryV1,
+  accountInterbankEligibilityRepliedV1,
+  accountInterbankCreditRequestedV1,
+  accountInterbankCreditedV1,
+  accountInterbankCreditRejectedV1,
+  paymentInterbankAcceptedV1,
+  paymentInterbankRejectedV1,
+  paymentInterbankCallbackReceivedV1,
+  paymentInterbankSentV1,
+  /*
+   * Los seis del contrato oficial (T-56). Sin esta lista el Gateway responde
+   * `500`: `catalogByName.get(...)` no encuentra el contrato y
+   * `BrokerPublisherAdapter` lo trata como lo que es, un desacuerdo entre el
+   * catálogo y las rutas. El comentario de ese archivo lo llama «inalcanzable
+   * desde una ruta, que siempre nombra un contrato que importó» — y lo era,
+   * hasta que un contrato importado no estuvo en el catálogo.
+   */
+  paymentInterbankV1TransferQueryV1,
+  paymentInterbankV1TransferRepliedV1,
+  /* Las cuatro de T-60 (B10): consultar los depósitos enviados. */
+  paymentInterbankSendQueryV1,
+  paymentInterbankSendRepliedV1,
+  paymentInterbankSendListQueryV1,
+  paymentInterbankSendListRepliedV1,
+  paymentInterbankV1StatusQueryV1,
+  paymentInterbankV1StatusRepliedV1,
+  paymentInterbankV1CancelQueryV1,
+  paymentInterbankV1CancelRepliedV1,
+  paymentInterbankV1ResultReceivedV1,
+  paymentInterbankV1ReversalRequestedV1,
+  paymentInterbankV1ReversalQueryV1,
+  paymentInterbankV1ReversalRepliedV1,
+  paymentInterbankV1ReconciliationQueryV1,
+  paymentInterbankV1ReconciliationRepliedV1,
 ];
 
 /**
@@ -353,4 +442,3 @@ export function contractFor(messageType: string): MessageContract | undefined {
   }
   return catalogByName.get(messageType);
 }
-

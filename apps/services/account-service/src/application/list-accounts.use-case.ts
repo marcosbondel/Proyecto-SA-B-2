@@ -35,6 +35,7 @@ export class ListAccountsUseCase {
       payload: {
         accounts: accounts.map((account) => ({
           accountId: account.accountId,
+          accountNumber: account.accountNumber,
           customerId: account.customerId,
           accountType: account.accountType,
           balance: quetzales(account.balanceMinor),

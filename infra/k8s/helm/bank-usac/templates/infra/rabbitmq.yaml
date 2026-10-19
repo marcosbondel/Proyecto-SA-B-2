@@ -1,4 +1,23 @@
 {{- if and .Values.rabbitmq .Values.rabbitmq.inCluster }}
+# El consumer lag del broker es un SLI obligatorio de la Fase 3 (§4.1,
+# "Métricas (SLI base)"). RabbitMQ lo publica él mismo —
+# `rabbitmq_queue_messages_ready` por cola — con el plugin `rabbitmq_prometheus`,
+# que viene en la distribución pero NO habilitado. Se habilita con este fichero
+# en vez de con un exportador aparte: un pod menos, una versión menos que
+# seguir, y las métricas vienen del broker y no de alguien que le pregunta.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-plugins
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "bank-usac.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: rabbitmq
+data:
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_prometheus].
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,7 +40,13 @@ spec:
         app.kubernetes.io/name: {{ include "bank-usac.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: rabbitmq
+      annotations:
+        checksum/plugins: {{ printf "[rabbitmq_management,rabbitmq_prometheus]." | sha256sum }}
     spec:
+      volumes:
+        - name: plugins
+          configMap:
+            name: rabbitmq-plugins
       containers:
         - name: rabbitmq
           image: "rabbitmq:3.13-management"
@@ -30,6 +55,16 @@ spec:
               containerPort: 5672
             - name: management
               containerPort: 15672
+            - name: metrics
+              containerPort: 15692
+          volumeMounts:
+            # RabbitMQ lee la lista de plugins de este fichero al arrancar. Se
+            # monta por `subPath` porque el directorio lleva además la
+            # configuración que la imagen genera, y un montaje de directorio la
+            # taparía.
+            - name: plugins
+              mountPath: /etc/rabbitmq/enabled_plugins
+              subPath: enabled_plugins
           env:
             - name: RABBITMQ_DEFAULT_USER
               value: {{ .Values.secrets.rabbitmq.user | default "bank_app" | quote }}
@@ -68,4 +103,7 @@ spec:
     - name: management
       port: 15672
       targetPort: management
+    - name: metrics
+      port: 15692
+      targetPort: metrics
 {{- end }}

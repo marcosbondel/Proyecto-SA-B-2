@@ -148,9 +148,21 @@ useHead({ title: 'Transferencias · bonking' });
           }}
         </p>
       </div>
-      <div class="flex gap-3">
+      <div class="flex flex-wrap gap-3">
         <UButton v-if="isStaff" to="/transferencias/monitor" variant="outline" color="neutral">
           Monitoreo
+        </UButton>
+        <!--
+          El depósito a otro banco (T-47) entra por aquí y no por una sección
+          propia: es una transferencia, y su historial y su seguimiento son
+          estos mismos. Secundario frente a «Nueva transferencia» porque es lo
+          que menos gente hace.
+        -->
+        <UButton to="/transferencias/interbancarias" variant="outline" color="neutral">
+          {{ isStaff ? 'Depósitos a otros bancos' : 'Mis depósitos a otro banco' }}
+        </UButton>
+        <UButton to="/transferencias/interbancaria" variant="outline" color="neutral">
+          A otro banco
         </UButton>
         <UButton to="/transferencias/nueva" color="primary" size="lg">Nueva transferencia</UButton>
       </div>

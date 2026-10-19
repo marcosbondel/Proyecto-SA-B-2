@@ -100,6 +100,7 @@ messages, nothing that reveals whether an account or an email exists.
 | `account.set-status.v1` | command | gateway | account-service |
 | `account.deactivated.v1` | event | account-service | notification-audit-service |
 | `account.reactivated.v1` | event | account-service | notification-audit-service |
+| `account.anomaly.detected.v1` | event | account-service | notification-audit-service |
 | `account.deposit.v1` | command | gateway | account-service |
 | `account.deposited.v1` | event | account-service | notification-audit-service |
 | `account.deposit.rejected.v1` | event | account-service | notification-audit-service |
@@ -134,6 +135,7 @@ messages, nothing that reveals whether an account or an email exists.
 | `audit.query.replied.v1` | reply | notification-audit-service | gateway |
 | `audit.events.list.query.v1` | command | gateway | notification-audit-service |
 | `audit.events.list.replied.v1` | reply | notification-audit-service | gateway |
+| `alert.slo.received.v1` | command | gateway | notification-audit-service |
 | `notification.list.query.v1` | command | gateway | notification-audit-service |
 | `notification.list.replied.v1` | reply | notification-audit-service | gateway |
 | `notification.inbox.query.v1` | command | gateway | notification-audit-service |
@@ -148,6 +150,9 @@ messages, nothing that reveals whether an account or an email exists.
 | `transaction.stats.replied.v1` | reply | transaction-service | gateway |
 | `payment.stats.query.v1` | command | gateway | payment-service |
 | `payment.stats.replied.v1` | reply | payment-service | gateway |
+| `payment.simulation.query.v1` | command | gateway | payment-service |
+| `payment.simulation.update.v1` | command | gateway | payment-service |
+| `payment.simulation.replied.v1` | reply | payment-service | gateway |
 | `audit.stats.query.v1` | command | gateway | notification-audit-service |
 | `audit.stats.replied.v1` | reply | notification-audit-service | gateway |
 
@@ -1210,6 +1215,41 @@ compares that field against the amount its own Saga asked to move (`account.debi
 and a payload that silently grew by a fee it never asked about would break that equality. The
 commission is a fact about Account Service's own account-type rule, not about the transfer, so it
 travels as a separate statement.
+
+### `account.anomaly.detected.v1`
+
+| | |
+| --- | --- |
+| **Category** | event |
+| **Producer** | account-service |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.events` |
+| **Routing key** | `account.anomaly.detected.v1` |
+| **Contract** | [`account.anomaly.detected.v1.ts`](../../apps/packages/contracts/src/events/account/account.anomaly.detected.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `accountId` | UUID v4 | yes |
+| `customerId` | UUID v4 | no |
+| `accountType` | `MONETARIA` \| `AHORRO` | yes |
+| `rule` | `HIGH_FREQUENCY` | yes |
+| `operationCount` | integer, > 0 | yes |
+| `threshold` | integer, > 0 | yes |
+| `windowMinutes` | integer, > 0 | yes |
+| `windowStart` | ISO-8601 timestamp | yes |
+| `detectedAt` | ISO-8601 timestamp | yes |
+
+**Preconditions.** More than `threshold` debits and credits were applied to one account inside a
+sliding window of `windowMinutes` minutes (ten operations in five minutes by default; both are
+configuration, and both travel in the event so a consumer can say which rule fired). Counted from
+the database, never from memory, so the answer does not depend on how many replicas are running.
+
+**Effects.** Audited, and Notification & Audit raises a `WARNING` notification (T-45). **The
+account is not blocked**: the event reports and nothing else. After publishing, the producer stays
+silent about that account for the same `windowMinutes`, so a burst is one event rather than one
+per operation beyond the limit.
+
+**On error.** Retry, then dead-letter. Carries no balance, document, name or address.
 
 
 ---
@@ -2431,6 +2471,38 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 
 **On error.** On timeout the Gateway stops waiting.
 
+### `alert.slo.received.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | notification-audit-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `alert.slo.received.v1` |
+| **Contract** | [`alert.slo.received.v1.ts`](../../apps/packages/contracts/src/events/alert/alert.slo.received.v1.ts) |
+
+An SLO alert from the monitoring stack, as `POST /api/alerts/slo` mapped it (T-45). A command and not an event: the Gateway publishes intentions, and this one says "record this alert and tell the operators". It is answered by nothing — the webhook replies `202` as soon as the broker has it.
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `source` | `grafana` | yes |
+| `alerts` | array of 1–50 object | yes |
+| `alerts[].alertName` | string, 1–200 | yes |
+| `alerts[].status` | `firing` \| `resolved` | yes |
+| `alerts[].severity` | `critical` \| `warning` \| `info` | yes |
+| `alerts[].summary` | string, ≤ 500 | no |
+| `alerts[].runbookUrl` | string, ≤ 500 | no |
+| `alerts[].slo` | string, ≤ 100 | no |
+| `alerts[].startsAt` | ISO-8601 UTC | yes |
+| `alerts[].fingerprint` | string, ≤ 100 | no |
+
+**Preconditions.** Reaches the Gateway authenticated with the shared secret `ALERT_WEBHOOK_TOKEN`, not a session; the Gateway refuses every caller when none is configured. It forwards what the alert *said* — name, state, severity, summary, runbook, SLO — and none of the labels, URLs or annotations Grafana adds.
+
+**Effects.** Notification & Audit records it in the audit trail as an event of the `gateway`, classified by what it says (a firing critical alert is `ERROR`, a firing warning `WARNING`, anything resolved or informational `INFO`), and writes one operator notification for the whole batch.
+
+**On error.** An alert that fails its own contract is recorded `INVALID` and notifies nobody. A redelivery is recorded once.
+
 ### `audit.events.list.query.v1`
 
 | | |
@@ -2447,10 +2519,13 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `limit` | integer, 1–100 (default 10) | no |
 | `page` | integer ≥ 1 (default 1) | no |
 | `severity` | `INFO` \| `WARNING` \| `ERROR` | no |
+| `correlationId` | UUID v4 | no |
+| `traceId` | W3C trace-id, 32 lowercase hex digits, not all zeros | no |
+| `service` | a producer: `gateway`, `customer-service`, `account-service`, `transaction-service`, `payment-service` or `notification-audit-service` | no |
 
 **Preconditions.** Restricted to `ADMINISTRADOR`.
 
-**Effects.** Paginated raw audit events query across all event families, optionally narrowed by severity (T-30).
+**Effects.** Paginated raw audit events query across all event families, narrowed by the four filters §4.1 names — correlation, trace, service and level (`severity`; T-30, T-45). Every filter is optional and they combine with AND; a filter left off is a parameter left out.
 
 **On error.** On timeout the Gateway stops waiting.
 
@@ -2473,6 +2548,8 @@ The two optional fields were added by T-20 and are additive — a reply that omi
 | `events[].producer` | string | yes |
 | `events[].occurredAt` | ISO-8601 UTC | yes |
 | `events[].correlationId` | UUID v4 | yes |
+| `events[].traceId` | W3C trace-id | no — absent when no SDK recorded a trace for the event (T-45) |
+| `events[].causationId` | UUID v4 | no |
 | `events[].processingStatus` | string | yes |
 | `events[].consumer` | string | yes |
 | `events[].payload` | object, redacted | yes |
@@ -2788,6 +2865,66 @@ The payload is an empty object.
 | `retrying` | integer ≥ 0 | yes |
 
 `retrying` — payments that have failed at least once and are still due another attempt — is what makes the retry ladder visible from outside this service, and it is the operational number here: `failedToday` is history, `retrying` is a thing that is happening. Not scoped to today.
+
+### `payment.simulation.query.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | payment-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `payment.simulation.query.v1` |
+| **Contract** | [`payment.simulation.query.v1.ts`](../../apps/packages/contracts/src/events/payment/payment.simulation.query.v1.ts) |
+
+The payload is an empty object. There is one simulation per bank, so there is nothing to select. Staff only, enforced at the Gateway (`GET /api/payments/simulation`).
+
+### `payment.simulation.update.v1`
+
+| | |
+| --- | --- |
+| **Category** | command |
+| **Producer** | gateway |
+| **Consumers** | payment-service |
+| **Exchange** | `bank.commands` |
+| **Routing key** | `payment.simulation.update.v1` |
+| **Contract** | [`payment.simulation.update.v1.ts`](../../apps/packages/contracts/src/events/payment/payment.simulation.update.v1.ts) |
+
+Either all three parameters, or `reset`; never a mixture and never a partial set.
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `failureRatePercent` | number, 0–100 | yes |
+| `timeoutRatePercent` | number, 0–100 | yes |
+| `latencyMs` | integer, 0–30 000 | yes |
+| `reset` | `true` (instead of the three above) | no |
+
+**Preconditions.** `failureRatePercent + timeoutRatePercent ≤ 100`: a failure and a timeout are two ways one attempt can go wrong, so together they cannot exceed every attempt. A partial set is refused by the schema rather than merged, so no reply has to describe a refusal.
+
+**Effects.** Payment Service stores the values in its own database, in one row that every replica reads on every attempt, so a change holds everywhere at once and survives a restart. `reset` deletes that row and the ConfigMap's values (`PAYMENT_SIM_FAILURE_RATE`, `PAYMENT_SIM_TIMEOUT_RATE`, `PAYMENT_SIM_LATENCY_MS`) apply again. The simulation only applies to a payment whose transfer named no `scenario`; an explicit `scenario` stays deterministic.
+
+**On error.** Retry, then dead-letter. Answered with `payment.simulation.replied.v1`.
+
+### `payment.simulation.replied.v1`
+
+| | |
+| --- | --- |
+| **Category** | reply |
+| **Producer** | payment-service |
+| **Consumers** | gateway |
+| **Exchange** | `bank.replies` |
+| **Routing key** | `payment.simulation.replied.v1` |
+| **Contract** | [`payment.simulation.replied.v1.ts`](../../apps/packages/contracts/src/events/payment/payment.simulation.replied.v1.ts) |
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `failureRatePercent` | number, 0–100 | yes |
+| `timeoutRatePercent` | number, 0–100 | yes |
+| `latencyMs` | integer, 0–30 000 | yes |
+| `source` | `DEFAULTS` \| `RUNTIME` | yes |
+| `updatedAt` | ISO-8601 timestamp or `null` | yes |
+
+The answer to both the query and the update, so an update's reply is also its confirmation. `source` says whether the ConfigMap's values or an administrator's override are in force.
 
 ### `audit.stats.query.v1`
 

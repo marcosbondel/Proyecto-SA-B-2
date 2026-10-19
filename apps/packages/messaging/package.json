@@ -24,11 +24,17 @@
   },
   "dependencies": {
     "@bank/contracts": "workspace:*",
+    "@bank/observability": "workspace:*",
+    "@opentelemetry/api": "catalog:",
     "amqp-connection-manager": "catalog:",
     "amqplib": "catalog:"
   },
   "devDependencies": {
     "@bank/tooling": "workspace:*",
+    "@opentelemetry/core": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
+    "@opentelemetry/sdk-trace-node": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
     "eslint": "catalog:",

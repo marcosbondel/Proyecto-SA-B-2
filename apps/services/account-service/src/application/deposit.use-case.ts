@@ -6,7 +6,7 @@ import {
 import type { AccountDepositV1, FailureCode, Identity } from '@bank/contracts';
 
 import { DomainRejection, credit } from '../domain/account';
-import type { AccountRepository, Clock, EventPublisher } from './ports';
+import type { AccountActivity, AccountRepository, Clock, EventPublisher } from './ports';
 
 const MESSAGE_TYPE = 'account.deposit.v1';
 
@@ -33,15 +33,18 @@ export class DepositUseCase {
   readonly #repository: AccountRepository;
   readonly #publisher: EventPublisher;
   readonly #clock: Clock;
+  readonly #activity: AccountActivity;
 
   constructor(dependencies: {
     readonly repository: AccountRepository;
     readonly publisher: EventPublisher;
     readonly clock: Clock;
+    readonly activity: AccountActivity;
   }) {
     this.#repository = dependencies.repository;
     this.#publisher = dependencies.publisher;
     this.#clock = dependencies.clock;
+    this.#activity = dependencies.activity;
   }
 
   public async execute(
@@ -104,6 +107,13 @@ export class DepositUseCase {
           },
         });
       }
+
+      // A deposit enters the account as a credit, so it counts like one (T-42).
+      await this.#activity.afterMovement({
+        account: applied.account,
+        type: 'CREDIT',
+        transactionId: null,
+      });
     } catch (error) {
       if (!(error instanceof DomainRejection)) {
         throw error;

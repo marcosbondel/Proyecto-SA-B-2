@@ -49,6 +49,14 @@ x-app: &app
 x-rabbitmq-url: &rabbitmq-url
   RABBITMQ_URL: amqp://${RABBITMQ_APP_USER:-bank_app}:${RABBITMQ_APP_PASSWORD:-changeme}@rabbitmq:5672
 
+# Telemetry (T-48), for the five services and the Gateway. The version is the
+# tag of the image actually running, so a log line names the build it came
+# from. With no OTEL_EXPORTER_OTLP_ENDPOINT the SDK records and exports nothing.
+x-telemetry: &telemetry
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-local}
+  SERVICE_VERSION: ${BANK_IMAGE_TAG:-dev}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
 x-object-storage: &object-storage
   OBJECT_STORAGE_ENDPOINT: http://minio:9000
   OBJECT_STORAGE_ACCESS_KEY: ${MINIO_APP_USER}
@@ -103,7 +111,7 @@ services:
       dockerfile: apps/services/customer-service/Dockerfile
     container_name: customer-service
     environment:
-      <<: [*rabbitmq-url, *object-storage]
+      <<: [*rabbitmq-url, *object-storage, *telemetry]
       NODE_ENV: production
       PORT: 3001
       DATABASE_URL: postgresql://${CUSTOMER_POSTGRES_USER}:${CUSTOMER_POSTGRES_PASSWORD}@postgres-customer:5432/${CUSTOMER_POSTGRES_DB}
@@ -143,7 +151,7 @@ services:
       dockerfile: apps/services/account-service/Dockerfile
     container_name: account-service
     environment:
-      <<: *rabbitmq-url
+      <<: [*rabbitmq-url, *telemetry]
       NODE_ENV: production
       PORT: 3002
       DATABASE_URL: postgresql://${ACCOUNT_POSTGRES_USER}:${ACCOUNT_POSTGRES_PASSWORD}@postgres-account:5432/${ACCOUNT_POSTGRES_DB}
@@ -154,6 +162,10 @@ services:
       DEACTIVATION_INTERVAL_MS: ${DEACTIVATION_INTERVAL_MS:-86400000}
       INACTIVITY_MONTHS: ${INACTIVITY_MONTHS:-6}
       INACTIVITY_MIN_BALANCE_MINOR: ${INACTIVITY_MIN_BALANCE_MINOR:-5000}
+      # T-42: more than N debits and credits on one account in M minutes is an
+      # anomaly. The assignment suggests ten in five; lower them to see one.
+      ANOMALY_MAX_OPERATIONS: ${ANOMALY_MAX_OPERATIONS:-10}
+      ANOMALY_WINDOW_MINUTES: ${ANOMALY_WINDOW_MINUTES:-5}
       # Matches customer-service: two accounts for the demo client when
       # SEED_DEMO_DATA=true. On by default here for the reason given there.
       # Idempotent.
@@ -179,7 +191,7 @@ services:
       dockerfile: apps/services/transaction-service/Dockerfile
     container_name: transaction-service
     environment:
-      <<: *rabbitmq-url
+      <<: [*rabbitmq-url, *telemetry]
       NODE_ENV: production
       PORT: 3003
       DATABASE_URL: postgresql://${TRANSACTION_POSTGRES_USER}:${TRANSACTION_POSTGRES_PASSWORD}@postgres-transaction:5432/${TRANSACTION_POSTGRES_DB}
@@ -208,7 +220,7 @@ services:
       dockerfile: apps/services/payment-service/Dockerfile
     container_name: payment-service
     environment:
-      <<: *rabbitmq-url
+      <<: [*rabbitmq-url, *telemetry]
       NODE_ENV: production
       PORT: 3004
       DATABASE_URL: postgresql://${PAYMENT_POSTGRES_USER}:${PAYMENT_POSTGRES_PASSWORD}@postgres-payment:5432/${PAYMENT_POSTGRES_DB}
@@ -218,6 +230,24 @@ services:
       # they understood at the second rung. Shortened here and nowhere else.
       PAYMENT_RETRY_DELAYS_MS: ${PAYMENT_RETRY_DELAYS_MS:-1000,2000,3000}
       PAYMENT_RETRY_SWEEP_MS: ${PAYMENT_RETRY_SWEEP_MS:-500}
+      # T-44: how the simulated provider behaves until an administrator changes it
+      # with PUT /api/payments/simulation. Zeroes are the behaviour before the
+      # ticket: nothing fails by chance and nothing is slow.
+      PAYMENT_SIM_FAILURE_RATE: ${PAYMENT_SIM_FAILURE_RATE:-0}
+      PAYMENT_SIM_TIMEOUT_RATE: ${PAYMENT_SIM_TIMEOUT_RATE:-0}
+      PAYMENT_SIM_LATENCY_MS: ${PAYMENT_SIM_LATENCY_MS:-0}
+      INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK02}
+      INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-BANK99}
+      INTERBANK_MAX_AMOUNT_MINOR: ${INTERBANK_MAX_AMOUNT_MINOR:-1000000}
+      # Base de la API v1 del banco pareja, con el sufijo `/interbank/v1`; la URL
+      # del callback ya no se configura, se deriva. Vacío apaga el envío
+      # interbancario — y apagarlo sin querer es cómo una transferencia
+      # interbancaria termina siendo una transferencia interna a la cuenta de
+      # liquidación, con 202 y todo (T-51).
+      INTERBANK_PARTNER_BASE_URL: ${INTERBANK_PARTNER_BASE_URL:-http://partner-bank-mock:3021/interbank/v1}
+      # La X-Api-Key que mandamos a la pareja. Valor de desarrollo, el mismo que
+      # exige el mock del banco pareja.
+      INTERBANK_API_KEY_OUTBOUND: ${INTERBANK_API_KEY_OUTBOUND:-dev-interbank-outbound-key-not-a-secret-0123456789}
     depends_on:
       postgres-payment:
         condition: service_healthy
@@ -231,6 +261,41 @@ services:
       <<: *ready-probe
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3004/ready']
 
+  partner-bank-mock:
+    image: bank-usac/partner-bank-mock:${BANK_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/partner-bank-mock/Dockerfile
+    profiles: ['interbank']
+    command: ['node', 'server.mjs']
+    environment:
+      PARTNER_MOCK_PORT: 3021
+      # La URL de NUESTRO Gateway, sin el prefijo: el mock agrega `/interbank/v1`.
+      PARTNER_GATEWAY_URL: http://gateway:3000
+      # Su código y el nuestro (contrato v1: `BankCode` es `^BANK[0-9]{2}$`).
+      PARTNER_MOCK_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-BANK99}
+      INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK02}
+      # Las dos llaves del contrato, de los MISMOS valores de .env que usa
+      # nuestro banco: el mock exige la que nosotros mandamos (OUTBOUND) y manda
+      # la que el Gateway espera de BANK99 (INBOUND).
+      PARTNER_MOCK_API_KEY: ${INTERBANK_API_KEY_OUTBOUND:-}
+      PARTNER_MOCK_CALLBACK_API_KEY: ${INTERBANK_API_KEY_INBOUND:-}
+      # La API `/admin/*` (cambio de modo en caliente, depósitos que origina el
+      # mock). Vacío la deshabilita.
+      PARTNER_MOCK_ADMIN_TOKEN: ${PARTNER_MOCK_ADMIN_TOKEN:-}
+      # La inyección de fallos: el estado inicial. En caliente: PUT /admin/config.
+      PARTNER_CALLBACK_MODE: ${PARTNER_CALLBACK_MODE:-ACCEPT}
+      PARTNER_CALLBACK_DELAY_MS: ${PARTNER_CALLBACK_DELAY_MS:-1000}
+      PARTNER_CALLBACK_SLOW_MS: ${PARTNER_CALLBACK_SLOW_MS:-10000}
+      PARTNER_CALLBACK_REJECT_REASON: ${PARTNER_CALLBACK_REJECT_REASON:-ACCOUNT_NOT_FOUND}
+      PARTNER_CALLBACK_FAIL_COUNT: ${PARTNER_CALLBACK_FAIL_COUNT:-0}
+      PARTNER_CALLBACK_FAIL_TARGETS: ${PARTNER_CALLBACK_FAIL_TARGETS:-result}
+    ports:
+      - '3021:3021'
+    depends_on:
+      gateway:
+        condition: service_healthy
+
   notification-audit-service:
     <<: *app
     image: bank-usac/notification-audit-service:${BANK_IMAGE_TAG:-dev}
@@ -239,7 +304,7 @@ services:
       dockerfile: apps/services/notification-audit-service/Dockerfile
     container_name: notification-audit-service
     environment:
-      <<: *rabbitmq-url
+      <<: [*rabbitmq-url, *telemetry]
       NODE_ENV: production
       PORT: 3005
       DATABASE_URL: postgresql://${NOTIFICATION_AUDIT_POSTGRES_USER}:${NOTIFICATION_AUDIT_POSTGRES_PASSWORD}@postgres-notification-audit:5432/${NOTIFICATION_AUDIT_POSTGRES_DB}
@@ -290,7 +355,7 @@ services:
       dockerfile: apps/gateway/Dockerfile
     container_name: gateway
     environment:
-      <<: [*rabbitmq-url, *object-storage]
+      <<: [*rabbitmq-url, *object-storage, *telemetry]
       NODE_ENV: production
       PORT: 3000
       # A development-only default, long enough to satisfy the 32-character
@@ -298,6 +363,19 @@ services:
       # let this value reach anything but a laptop.
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-not-for-any-deployed-environment}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
+      # The SLO webhook's shared secret (T-45), 32 characters or more. Empty by
+      # default on purpose: with none the webhook refuses everybody.
+      ALERT_WEBHOOK_TOKEN: ${ALERT_WEBHOOK_TOKEN:-}
+      INTERBANK_PARTNER_TOKEN: ${INTERBANK_PARTNER_TOKEN:-}
+      # La API key del contrato oficial (T-56), distinta del token de T-46. El
+      # valor por defecto es de desarrollo, evidente y de mas de 32 caracteres,
+      # para que el flujo local funcione sin configurar nada; el mock del banco
+      # pareja usa la misma. Nunca llega a nada que no sea una laptop.
+      INTERBANK_API_KEY_INBOUND: ${INTERBANK_API_KEY_INBOUND:-dev-interbank-inbound-key-not-a-secret-0123456789}
+      INTERBANK_BANK_CODE: ${INTERBANK_BANK_CODE:-BANK02}
+      INTERBANK_PARTNER_BANK_CODE: ${INTERBANK_PARTNER_BANK_CODE:-BANK99}
+      # Un solo limite por operacion (Q10 000,00), el mismo que lee payment-service.
+      INTERBANK_MAX_AMOUNT_MINOR: ${INTERBANK_MAX_AMOUNT_MINOR:-1000000}
       # Fixed rather than random, so the reply queue survives a restart instead
       # of leaving an orphan behind on every reload.
       GATEWAY_INSTANCE_ID: gateway-images
@@ -357,3 +435,28 @@ services:
     healthcheck:
       <<: *ready-probe
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3010/ready']
+
+  # ---------------------------------------------------------------- jaeger
+
+  # A trace receiver for this laptop, and nothing more (T-48). It exists so the
+  # claim "one transfer is one trace across the Gateway, the broker and the five
+  # services" can be checked against the images before the cluster's stack of
+  # T-49 exists — `scripts/trace-images.sh` asks it exactly that question.
+  #
+  # Behind a profile, so `up -d` without `--profile telemetry` starts the same
+  # stack as before. In-memory storage: a restart forgets every trace, which is
+  # right for a check and wrong for anything else. The cluster uses Tempo
+  # (T-49), not this.
+  #
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 \
+  #     docker compose -f infra/docker/docker-compose.images.yml --profile telemetry up -d
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    container_name: jaeger
+    profiles: ['telemetry']
+    restart: unless-stopped
+    networks:
+      - bank-usac-local
+    ports:
+      # The UI and the query API, on the loopback only.
+      - '127.0.0.1:${BANK_JAEGER_PORT:-16686}:16686'

@@ -41,6 +41,29 @@ stored, never travels, and this component has nothing to hide. A drawer that
 received the real payload and hid fields in CSS would be a leak with a
 stylesheet over it. Recorded as TD-039.
 
+### What T-45 added: the trace of every operation, and the audit filters
+
+Every screen that starts an operation already showed its correlation id through
+`SharedCorrelationIdBadge`. T-45 makes the same badge show the **trace** that
+operation ran under, without a screen being told about it: `useGatewayApi`
+remembers the `X-Trace-Id` of every response — a refusal's too — in a bounded
+ledger keyed by the correlation id (`lib/trace.ts`, `composables/useTraces.ts`),
+and the badge looks its own correlation up. A header that is empty, all zeros or
+otherwise not a W3C trace id is discarded rather than shown, because somebody
+would search for it. **While no OpenTelemetry SDK is registered in the Gateway
+(T-48) there is no header, no ledger entry and no second line**: the badge is what
+it always was.
+
+`/auditoria` gains the four filters §4.1 names — correlation, trace, service and
+level — over the paginated recent-events listing. A malformed identifier is
+explained beside its field and not searched (the Gateway would answer `400`); an
+empty box is a filter left off and is not sent; a trace pasted in capitals is
+lowercased. "No event matches" and "the audit service did not answer" are
+different messages. The trace column shows eight characters, with the whole id in
+the tooltip and in the detail panel, because thirty-two would make that one column
+wider than the screen. The operator-facing alert and the customer's anomaly warning
+have names in the trail and the inbox (`lib/audit.ts`).
+
 ### What T-20 did not build from the Claude Design prototype
 
 Módulo 5 draws four screens. `N-02` is a **global** event list with a free-text
@@ -176,6 +199,9 @@ reviewer can go from a prototype code to a file without guessing.
 | `T-03a`–`T-03d` | Tracking, in its four states | `/transferencias/[id]` |
 | `T-04`, `T-04b` | The history | `/transferencias` |
 | `T-05`, `T-05b` | The Saga monitor | `/transferencias/monitor` |
+| — | **Depósito a otro banco** (T-47) | `/transferencias/interbancaria` |
+| — | Los depósitos enviados a otro banco, con su filtro de seis estados (T-60, TD-090) | `/transferencias/interbancarias` |
+| — | Un depósito a otro banco: estado, motivo, historial y reverso (T-60, TD-090) | `/transferencias/interbancarias/[id]` |
 | `G-01`, `G-01b` | Nuevo pago | `/pagos/nuevo` |
 | `G-02a`–`G-02d` | One payment's state | `/pagos/[id]` |
 | `G-03`, `G-03b` | The payment history | `/pagos` |

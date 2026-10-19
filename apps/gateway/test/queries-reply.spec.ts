@@ -103,6 +103,9 @@ describe('the five queries that wait for an answer', () => {
   describe('a list of accounts', () => {
     const row = {
       accountId: ACCOUNT,
+      // El número que viaja a otro banco (T-56): un UUID no cabe en el
+      // `AccountNumber` del contrato interbancario.
+      accountNumber: '02-000000001',
       customerId: ACTOR,
       accountType: 'MONETARIA' as const,
       balance: { amountMinor: 125_000, currency: 'GTQ' },
@@ -313,8 +316,20 @@ describe('the five queries that wait for an answer', () => {
         createdAt: '2026-08-19T14:32:08.100Z',
         updatedAt: '2026-08-19T14:32:09.100Z',
         transitions: [
-          { from: null, to: 'PENDING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.100Z' },
-          { from: 'PENDING', to: 'DEBITING', event: 'transfer.requested.v1', reason: null, occurredAt: '2026-08-19T14:32:08.200Z' },
+          {
+            from: null,
+            to: 'PENDING',
+            event: 'transfer.requested.v1',
+            reason: null,
+            occurredAt: '2026-08-19T14:32:08.100Z',
+          },
+          {
+            from: 'PENDING',
+            to: 'DEBITING',
+            event: 'transfer.requested.v1',
+            reason: null,
+            occurredAt: '2026-08-19T14:32:08.200Z',
+          },
         ],
       });
 
@@ -463,6 +478,100 @@ describe('the five queries that wait for an answer', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.field).toBe('severity');
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+  });
+
+  describe('recent audit events, by correlation, trace, service and level (§4.1, T-45)', () => {
+    const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
+    const EMPTY = { events: [], total: 0, page: 1, limit: 10 };
+
+    it('passes all four filters through to the query, combined', async () => {
+      harness.replier.answerWith(auditEventsListRepliedV1.name, EMPTY);
+
+      const response = await request(app.getHttpServer())
+        .get(
+          `/api/audit/recent?severity=ERROR&correlationId=${TRACE}&traceId=${TRACE_ID}&service=payment-service`,
+        )
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(200);
+      expect(harness.publisher.published[0]?.payload).toEqual({
+        page: 1,
+        limit: 10,
+        severity: 'ERROR',
+        correlationId: TRACE,
+        traceId: TRACE_ID,
+        service: 'payment-service',
+      });
+    });
+
+    it('sends no filter the caller did not ask for', async () => {
+      harness.replier.answerWith(auditEventsListRepliedV1.name, EMPTY);
+
+      await request(app.getHttpServer()).get('/api/audit/recent').set('Authorization', admin);
+
+      expect(harness.publisher.published[0]?.payload).toEqual({ page: 1, limit: 10 });
+    });
+
+    it('returns the trace id the service recorded with each event', async () => {
+      harness.replier.answerWith(auditEventsListRepliedV1.name, {
+        events: [
+          {
+            eventId: TRANSACTION,
+            messageType: 'payment.failed.v1',
+            producer: 'payment-service',
+            occurredAt: '2026-10-05T18:00:00.000Z',
+            correlationId: TRACE,
+            traceId: TRACE_ID,
+            processingStatus: 'PROCESSED',
+            consumer: 'audit.payment',
+            payload: {},
+            severity: 'ERROR',
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 10,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/audit/recent?traceId=${TRACE_ID}`)
+        .set('Authorization', admin);
+
+      expect(response.body.events[0].traceId).toBe(TRACE_ID);
+    });
+
+    it.each([
+      ['correlationId', 'correlationId=not-a-uuid'],
+      ['traceId', 'traceId=not-a-trace'],
+      ['traceId', `traceId=${'0'.repeat(32)}`],
+      ['traceId', `traceId=${TRACE_ID.toUpperCase()}`],
+      ['traceId', `traceId=${TRACE_ID}0`],
+      ['service', 'service=the-other-bank'],
+      ['service', "service=' OR '1'='1"],
+    ])('refuses a malformed %s (%s) with 400, without asking anyone', async (field, query) => {
+      const response = await request(app.getHttpServer())
+        .get(`/api/audit/recent?${query}`)
+        .set('Authorization', admin);
+
+      expect(response.status).toBe(400);
+      expect(response.body.field).toBe(field);
+      expect(harness.publisher.published).toHaveLength(0);
+    });
+
+    it('still refuses anybody who is not an administrator, filters or not', async () => {
+      const customer = `Bearer ${harness.tokens.sign({
+        customerId: '3f2a1c04-9c2e-4a71-b8f5-2d6e7c0a1b93',
+        username: 'cliente',
+        role: 'CLIENTE',
+      })}`;
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/audit/recent?traceId=${TRACE_ID}`)
+        .set('Authorization', customer);
+
+      expect(response.status).toBe(403);
       expect(harness.publisher.published).toHaveLength(0);
     });
   });

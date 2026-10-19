@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { V1_MAX_AMOUNT_MINOR } from '@bank/contracts';
 import { DEFAULT_REPLY_TIMEOUT_MS } from '@bank/messaging';
 
 import { plainToInstance } from 'class-transformer';
@@ -9,8 +10,10 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   IsUrl,
+  Matches,
   Max,
   Min,
   MinLength,
@@ -128,6 +131,65 @@ export class GatewayEnvironment {
   @IsString()
   @IsNotEmpty()
   public CORS_ALLOWED_ORIGINS!: string;
+
+  /**
+   * The shared secret the SLO webhook demands (T-45). Optional on purpose: a
+   * Gateway without one still serves everything else, and the webhook refuses
+   * every call rather than opening — see `AlertTokenGuard`. In a cluster it
+   * comes from a Secret; it must be as long as the session secret, because a
+   * short one is brute-forceable from outside the cluster.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(32)
+  public ALERT_WEBHOOK_TOKEN?: string;
+
+  /** Shared with the one configured partner bank; absent means ingress is closed. */
+  @IsOptional()
+  @IsString()
+  @MinLength(32)
+  public INTERBANK_PARTNER_TOKEN?: string;
+
+  /**
+   * La API key que **exigimos** a quien nos llama por `/interbank/v1` (T-56).
+   *
+   * Es la del contrato oficial (`X-Api-Key`) y es distinta del
+   * `INTERBANK_PARTNER_TOKEN` de T-46, que era un `Bearer` compartido para las
+   * rutas de `/api/`. Conviven porque las rutas viejas siguen sirviendo al
+   * frontend; lo que no conviven es su significado: ésta **identifica** al banco
+   * que llama, y de eso dependen dos reglas del contrato que un token
+   * compartido no puede cumplir.
+   *
+   * Ausente significa que la entrada del contrato está cerrada, y el guardián
+   * responde `401` a todo el mundo. Es preferible a arrancar con una clave vacía
+   * que cualquiera adivina.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(32)
+  public INTERBANK_API_KEY_INBOUND?: string;
+
+  /** Nuestro código de banco. `GET /interbank/v1/health` lo publica. */
+  @IsString()
+  @Matches(/^BANK[0-9]{2}$/, { message: 'INTERBANK_BANK_CODE debe cumplir ^BANK[0-9]{2}$' })
+  public INTERBANK_BANK_CODE!: string;
+
+  /** El código del banco pareja, al que corresponde la API key de entrada. */
+  @IsString()
+  @Matches(/^BANK[0-9]{2}$/, { message: 'INTERBANK_PARTNER_BANK_CODE debe cumplir ^BANK[0-9]{2}$' })
+  public INTERBANK_PARTNER_BANK_CODE!: string;
+
+  /**
+   * El límite por operación, en centavos: **el mismo** que aplica Payment al
+   * recibir y al enviar (T-60, B7). El Gateway lo lee para rechazar un envío
+   * por encima del límite en el borde, antes de debitar nada; Payment lo vuelve
+   * a aplicar por si algo llegó por otro camino. El techo es el del contrato
+   * (`10000.00`): la variable sólo puede bajarlo.
+   */
+  @IsInt()
+  @Min(1)
+  @Max(V1_MAX_AMOUNT_MINOR)
+  public INTERBANK_MAX_AMOUNT_MINOR!: number;
 }
 
 /**
@@ -163,6 +225,16 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Gatewa
     // development working without every operator setting it, the same way
     // GATEWAY_INSTANCE_ID and REPLY_TIMEOUT_MS carry theirs.
     CORS_ALLOWED_ORIGINS: source.CORS_ALLOWED_ORIGINS ?? 'http://localhost:3010',
+    // An empty string is how an unset Secret reaches a container: absent, not a token.
+    ALERT_WEBHOOK_TOKEN: source.ALERT_WEBHOOK_TOKEN === '' ? undefined : source.ALERT_WEBHOOK_TOKEN,
+    INTERBANK_PARTNER_TOKEN:
+      source.INTERBANK_PARTNER_TOKEN === '' ? undefined : source.INTERBANK_PARTNER_TOKEN,
+    INTERBANK_API_KEY_INBOUND:
+      source.INTERBANK_API_KEY_INBOUND === '' ? undefined : source.INTERBANK_API_KEY_INBOUND,
+    INTERBANK_BANK_CODE: source.INTERBANK_BANK_CODE ?? 'BANK02',
+    INTERBANK_PARTNER_BANK_CODE: source.INTERBANK_PARTNER_BANK_CODE ?? 'BANK99',
+    INTERBANK_MAX_AMOUNT_MINOR:
+      toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

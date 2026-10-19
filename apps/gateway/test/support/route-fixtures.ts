@@ -3,13 +3,20 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { Role } from '@bank/contracts';
 
-import { bearerFor } from './broker-harness';
+import {
+  TEST_ALERT_WEBHOOK_TOKEN,
+  TEST_INTERBANK_API_KEY,
+  TEST_INTERBANK_PARTNER_TOKEN,
+  TEST_OWN_BANK_CODE,
+  TEST_PARTNER_BANK_CODE,
+  bearerFor,
+} from './broker-harness';
 import type { BrokerHarness } from './broker-harness';
 
 /**
  * One valid HTTP request per entry of `ROUTE_MESSAGES`
  * (`apps/gateway/src/openapi/route-messages.ts`), shared by every suite in
- * this directory that needs to drive all twenty-five paths against a real
+ * this directory that needs to drive every path against a real
  * broker.
  *
  * Kept in one place because `publish-routing.integration.spec.ts` and
@@ -159,13 +166,109 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
     request(h.app.getHttpServer())
       .post(`/api/accounts/${ACCOUNT_ID}/deposit`)
       .set('Authorization', auth(h, 'CAJERO_RECEPTOR'))
-      .send({ amount: { amountMinor: 10_000, currency: 'GTQ' }, description: 'Depósito en ventanilla' }),
+      .send({
+        amount: { amountMinor: 10_000, currency: 'GTQ' },
+        description: 'Depósito en ventanilla',
+      }),
 
   'POST /api/accounts/{accountId}/status': (h) =>
     request(h.app.getHttpServer())
       .post(`/api/accounts/${ACCOUNT_ID}/status`)
       .set('Authorization', auth(h, 'ADMINISTRADOR'))
       .send({ status: 'INACTIVE', reason: 'Solicitud del titular' }),
+
+  'POST /api/interbank/deposits': (h) => {
+    const interbankTransferId = randomUUID();
+    return request(h.app.getHttpServer())
+      .post('/api/interbank/deposits')
+      .set('Authorization', `Bearer ${TEST_INTERBANK_PARTNER_TOKEN}`)
+      .send({
+        interbankTransferId,
+        idempotencyKey: interbankTransferId,
+        originBankCode: 'BANK99',
+        destinationBankCode: 'BANK02',
+        accountId: ACCOUNT_ID,
+        amount: { amountMinor: 10_000, currency: 'GTQ' },
+        // Obligatorio desde T-56: §4.1 lo pide entre los datos mínimos del
+        // mensaje. Esta suite sólo corre contra el broker real, así que es CI
+        // quien la ve — y por eso el fixture se olvida fácil.
+        timestamp: '2026-10-15T12:00:00.000Z',
+      });
+  },
+
+  /*
+   * Las siete del contrato oficial (T-56). La API key y el banco que identifica
+   * salen del arnés; el cuerpo es el del contrato, con los dos sellos de tiempo
+   * calculados al vuelo porque `expiresAt` tiene que estar en el futuro —un
+   * literal fijo haría que esta suite empezara a fallar el día que caduque.
+   */
+  'POST /interbank/v1/transfers': (h) => {
+    const interbankTransferId = randomUUID();
+    const ahora = new Date();
+
+    return request(h.app.getHttpServer())
+      .post('/interbank/v1/transfers')
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY)
+      .set('Idempotency-Key', interbankTransferId)
+      .send({
+        interbankTransferId,
+        originBankCode: TEST_PARTNER_BANK_CODE,
+        destinationBankCode: TEST_OWN_BANK_CODE,
+        originAccount: '99-000000123',
+        destinationAccount: '02-000000052',
+        amount: '150.00',
+        currency: 'GTQ',
+        createdAt: ahora.toISOString(),
+        expiresAt: new Date(ahora.getTime() + 180_000).toISOString(),
+      });
+  },
+
+  'GET /interbank/v1/transfers/{interbankTransferId}': (h) =>
+    request(h.app.getHttpServer())
+      .get(`/interbank/v1/transfers/${randomUUID()}`)
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY),
+
+  'POST /interbank/v1/transfers/{interbankTransferId}/cancel': (h) =>
+    request(h.app.getHttpServer())
+      .post(`/interbank/v1/transfers/${randomUUID()}/cancel`)
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY)
+      .send({ originBankCode: TEST_PARTNER_BANK_CODE, reason: 'TIMEOUT' }),
+
+  'POST /interbank/v1/transfers/{interbankTransferId}/result': (h) => {
+    const interbankTransferId = randomUUID();
+
+    return request(h.app.getHttpServer())
+      .post(`/interbank/v1/transfers/${interbankTransferId}/result`)
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY)
+      .send({
+        interbankTransferId,
+        destinationBankCode: TEST_PARTNER_BANK_CODE,
+        status: 'ACCEPTED',
+        processedAt: new Date().toISOString(),
+      });
+  },
+
+  'POST /interbank/v1/reversals': (h) =>
+    request(h.app.getHttpServer())
+      .post('/interbank/v1/reversals')
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY)
+      .send({
+        reversalId: randomUUID(),
+        originalTransferId: randomUUID(),
+        originBankCode: TEST_PARTNER_BANK_CODE,
+        amount: '150.00',
+        currency: 'GTQ',
+      }),
+
+  'GET /interbank/v1/reversals/{reversalId}': (h) =>
+    request(h.app.getHttpServer())
+      .get(`/interbank/v1/reversals/${randomUUID()}`)
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY),
+
+  'GET /interbank/v1/reconciliation': (h) =>
+    request(h.app.getHttpServer())
+      .get('/interbank/v1/reconciliation?date=2026-10-20')
+      .set('X-Api-Key', TEST_INTERBANK_API_KEY),
 
   'GET /api/notifications': (h) =>
     request(h.app.getHttpServer())
@@ -180,6 +283,45 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
 
   'GET /api/transfers': (h) =>
     request(h.app.getHttpServer()).get('/api/transfers').set('Authorization', auth(h, 'CLIENTE')),
+
+  /*
+   * Las dos de T-47. La de envío va con sesión de CLIENTE, como cualquier
+   * transferencia; la del callback va con el token del banco pareja, como la de
+   * entrada de T-46. Ninguna nombra la cuenta de liquidación ni el
+   * `interbankTransferId`: los mina el Gateway, y que estos cuerpos no los
+   * lleven es parte de lo que la suite comprueba.
+   */
+  'POST /api/interbank/transfers': (h) =>
+    request(h.app.getHttpServer())
+      .post('/api/interbank/transfers')
+      .set('Authorization', auth(h, 'CLIENTE'))
+      .send({
+        sourceAccount: SOURCE_ACCOUNT,
+        destinationBankCode: 'BANK99',
+        destinationAccount: '99-000004567',
+        amount: { amountMinor: 125_000, currency: 'GTQ' },
+      }),
+
+  // Las dos de T-60 (B10): lecturas de los depósitos enviados.
+  'GET /api/interbank/transfers': (h) =>
+    request(h.app.getHttpServer())
+      .get('/api/interbank/transfers')
+      .set('Authorization', auth(h, 'CLIENTE')),
+
+  'GET /api/interbank/transfers/{interbankTransferId}': (h) =>
+    request(h.app.getHttpServer())
+      .get(`/api/interbank/transfers/${randomUUID()}`)
+      .set('Authorization', auth(h, 'CLIENTE')),
+
+  'POST /api/interbank/callbacks': (h) =>
+    request(h.app.getHttpServer())
+      .post('/api/interbank/callbacks')
+      .set('Authorization', `Bearer ${TEST_INTERBANK_PARTNER_TOKEN}`)
+      .send({
+        interbankTransferId: randomUUID(),
+        status: 'ACCEPTED',
+        receivedAt: '2026-10-15T12:00:00.000Z',
+      }),
 
   'POST /api/transfers': (h) =>
     request(h.app.getHttpServer())
@@ -201,6 +343,23 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
       .get('/api/payments')
       .set('Authorization', auth(h, 'ADMINISTRADOR')),
 
+  'GET /api/payments/simulation': (h) =>
+    request(h.app.getHttpServer())
+      .get('/api/payments/simulation')
+      .set('Authorization', auth(h, 'ADMINISTRADOR')),
+
+  // A reset, and not a set of rates. The integration suites that use this table
+  // publish the request to a REAL broker, and on a machine where the stack is
+  // running (or starts later, because `payment.commands` is durable) the real
+  // Payment Service applies it. A reset only returns the simulation to the
+  // ConfigMap's values, so the worst a stray run can do is clear an override;
+  // 30 % of failures left behind silently turns every later transfer flaky.
+  'PUT /api/payments/simulation': (h) =>
+    request(h.app.getHttpServer())
+      .put('/api/payments/simulation')
+      .set('Authorization', auth(h, 'ADMINISTRADOR'))
+      .send({ reset: true }),
+
   'GET /api/payments/{paymentId}': (h) =>
     request(h.app.getHttpServer())
       .get(`/api/payments/${PAYMENT_ID}`)
@@ -210,6 +369,27 @@ export const ROUTE_REQUESTS: Readonly<Record<string, RouteRequestBuilder>> = {
     request(h.app.getHttpServer())
       .get(`/api/audit?correlationId=${randomUUID()}`)
       .set('Authorization', auth(h, 'ADMINISTRADOR')),
+
+  /*
+   * Published for real, and the Notification & Audit Service of a live stack
+   * records it: a *resolved, informational* alert, so what it leaves in the
+   * operators' console is a line that says nothing is wrong.
+   */
+  'POST /api/alerts/slo': (h) =>
+    request(h.app.getHttpServer())
+      .post('/api/alerts/slo')
+      .set('Authorization', `Bearer ${TEST_ALERT_WEBHOOK_TOKEN}`)
+      .send({
+        status: 'resolved',
+        alerts: [
+          {
+            status: 'resolved',
+            labels: { alertname: 'RouteFixtureProbe', severity: 'info' },
+            annotations: { summary: 'Sonda de las pruebas de rutas: no es una alerta real.' },
+            startsAt: '2026-10-05T18:00:00Z',
+          },
+        ],
+      }),
 
   'GET /api/audit/recent': (h) =>
     request(h.app.getHttpServer())

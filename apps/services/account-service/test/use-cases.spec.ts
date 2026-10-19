@@ -1,15 +1,21 @@
 import { CompensateDebitUseCase } from '../src/application/compensate-debit.use-case';
 import { CreateAccountUseCase } from '../src/application/create-account.use-case';
 import { CreditAccountUseCase } from '../src/application/credit-account.use-case';
+import { InterbankAccountUseCase } from '../src/application/interbank-account.use-case';
 import { DeactivateInactiveAccountsUseCase } from '../src/application/deactivate-inactive-accounts.use-case';
 import { DebitAccountUseCase } from '../src/application/debit-account.use-case';
 import { GetBalanceUseCase } from '../src/application/get-balance.use-case';
 import { GetOperationsUseCase } from '../src/application/get-operations.use-case';
 import { ListAccountsUseCase } from '../src/application/list-accounts.use-case';
 import { SetAccountStatusUseCase } from '../src/application/set-account-status.use-case';
-import { openAccount } from '../src/domain/account';
 import { quetzales } from '../src/domain/money';
-import { FixedClock, InMemoryAccountRepository, RecordingPublisher } from './support/in-memory';
+import {
+  FixedClock,
+  InMemoryAccountRepository,
+  RecordingActivity,
+  RecordingPublisher,
+  cuentaPersistida,
+} from './support/in-memory';
 
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
@@ -20,15 +26,28 @@ const OTHER_CUSTOMER = '1e2d3c4b-5a69-4f78-9012-3456789abcde';
 const TRANSACTION = '7c9f1a30-2b48-4d56-9e01-2f3a4b5c6d70';
 
 const CLIENT = { customerId: CUSTOMER, role: 'CLIENTE' as const };
-const TELLER = { customerId: 'a0b1c2d3-e4f5-4061-8273-8495a6b7c8d9', role: 'CAJERO_RECEPTOR' as const };
-const ADMIN = { customerId: 'b1c2d3e4-f506-4172-8384-95a6b7c8d9e0', role: 'ADMINISTRADOR' as const };
+const TELLER = {
+  customerId: 'a0b1c2d3-e4f5-4061-8273-8495a6b7c8d9',
+  role: 'CAJERO_RECEPTOR' as const,
+};
+const ADMIN = {
+  customerId: 'b1c2d3e4-f506-4172-8384-95a6b7c8d9e0',
+  role: 'ADMINISTRADOR' as const,
+};
 
 function fixture() {
   const repository = new InMemoryAccountRepository();
   const publisher = new RecordingPublisher();
   const clock = new FixedClock(NOW);
+  const activity = new RecordingActivity();
 
-  return { repository, publisher, clock, dependencies: { repository, publisher, clock } };
+  return {
+    repository,
+    publisher,
+    clock,
+    activity,
+    dependencies: { repository, publisher, clock, activity },
+  };
 }
 
 function seed(
@@ -42,7 +61,7 @@ function seed(
   } = {},
 ) {
   const account = {
-    ...openAccount({
+    ...cuentaPersistida({
       accountId: overrides.accountId ?? ACCOUNT,
       customerId: overrides.customerId ?? CUSTOMER,
       accountType: overrides.accountType ?? ('MONETARIA' as const),
@@ -56,6 +75,176 @@ function seed(
 
   return account;
 }
+
+describe('incoming interbank deposits', () => {
+  const query = { depositId: TRANSACTION, accountId: ACCOUNT };
+  const command = { ...query, amount: quetzales(12500) };
+
+  it('answers eligibility without changing the account', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository);
+    const useCase = new InterbankAccountUseCase(dependencies);
+
+    await useCase.eligibility(query);
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+    expect(publisher.replies).toMatchObject([
+      {
+        messageType: 'account.interbank.eligibility.replied.v1',
+        payload: { eligible: true, reason: null },
+      },
+    ]);
+  });
+
+  it('credits once and republishes the same verdict on redelivery', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository);
+    const useCase = new InterbankAccountUseCase(dependencies);
+
+    await useCase.credit(command);
+    await useCase.credit(command);
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(12500);
+    expect(publisher.typesPublished()).toEqual([
+      'account.interbank.credited.v1',
+      'account.interbank.credited.v1',
+    ]);
+  });
+
+  it('refuses an account deactivated after eligibility without moving money', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { status: 'INACTIVE' });
+
+    await new InterbankAccountUseCase(dependencies).credit(command);
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.interbank.credit.rejected.v1',
+      payload: { reason: 'ACCOUNT_INACTIVE' },
+    });
+  });
+});
+
+describe('incoming interbank deposits named by the contract account number (B3)', () => {
+  /*
+   * The official contract names accounts by `02-NNNNNNNNN`, because a UUID with
+   * hyphens is 36 characters and the contract allows 34. Account used to look
+   * every reference up as a UUID, so an inbound v1 deposit was never credited.
+   */
+  it('answers eligibility by number and reports the account it resolved', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository);
+
+    await new InterbankAccountUseCase(dependencies).eligibility({
+      depositId: TRANSACTION,
+      accountNumber: account.accountNumber,
+    });
+
+    expect(publisher.replies[0]).toMatchObject({
+      messageType: 'account.interbank.eligibility.replied.v1',
+      payload: {
+        eligible: true,
+        reason: null,
+        accountId: ACCOUNT,
+        accountNumber: account.accountNumber,
+      },
+    });
+  });
+
+  it('says ACCOUNT_NOT_FOUND for a number nobody has, echoing what was asked', async () => {
+    const { publisher, dependencies } = fixture();
+
+    await new InterbankAccountUseCase(dependencies).eligibility({
+      depositId: TRANSACTION,
+      accountNumber: '02-999999999',
+    });
+
+    expect(publisher.replies[0]).toMatchObject({
+      payload: { eligible: false, reason: 'ACCOUNT_NOT_FOUND', accountNumber: '02-999999999' },
+    });
+  });
+
+  it('says ACCOUNT_INACTIVE for an inactive one', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository, { status: 'INACTIVE' });
+
+    await new InterbankAccountUseCase(dependencies).eligibility({
+      depositId: TRANSACTION,
+      accountNumber: account.accountNumber,
+    });
+
+    expect(publisher.replies[0]).toMatchObject({
+      payload: { eligible: false, reason: 'ACCOUNT_INACTIVE' },
+    });
+  });
+
+  it('credits by number exactly once and publishes the resolved account', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository);
+    const useCase = new InterbankAccountUseCase(dependencies);
+    const command = {
+      depositId: TRANSACTION,
+      accountNumber: account.accountNumber,
+      amount: quetzales(15000),
+    };
+
+    await useCase.credit(command);
+    await useCase.credit(command);
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(15000);
+    expect(publisher.events).toHaveLength(2);
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.interbank.credited.v1',
+      payload: { depositId: TRANSACTION, accountId: ACCOUNT, accountNumber: account.accountNumber },
+    });
+    // The redelivery answers the same thing, and moves no money.
+    expect(publisher.events[1]).toMatchObject({ payload: { accountId: ACCOUNT } });
+  });
+
+  it('rejects a credit to a number nobody has, without creating money', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository);
+
+    await new InterbankAccountUseCase(dependencies).credit({
+      depositId: TRANSACTION,
+      accountNumber: '02-999999999',
+      amount: quetzales(15000),
+    });
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.interbank.credit.rejected.v1',
+      payload: { reason: 'ACCOUNT_NOT_FOUND', accountNumber: '02-999999999' },
+    });
+  });
+
+  it('refuses an inactive account by number without moving money', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository, { status: 'INACTIVE' });
+
+    await new InterbankAccountUseCase(dependencies).credit({
+      depositId: TRANSACTION,
+      accountNumber: account.accountNumber,
+      amount: quetzales(15000),
+    });
+
+    expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(0);
+    expect(publisher.events[0]).toMatchObject({
+      payload: { reason: 'ACCOUNT_INACTIVE' },
+    });
+  });
+
+  it('GetBalance publishes the contract account number', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    const account = seed(repository);
+
+    await new GetBalanceUseCase(dependencies).execute({ accountId: ACCOUNT }, CLIENT);
+
+    expect(publisher.replies[0]).toMatchObject({
+      payload: { outcome: 'FOUND', accountNumber: account.accountNumber },
+    });
+  });
+});
 
 describe('opening an account', () => {
   const payload = { accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'MONETARIA' as const };
@@ -127,7 +316,11 @@ describe('opening an account', () => {
 
   /** T-27: AHORRO's minimum opening deposit — a condition of opening, checked once. */
   describe('the AHORRO minimum opening deposit', () => {
-    const ahorroPayload = { accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'AHORRO' as const };
+    const ahorroPayload = {
+      accountId: ACCOUNT,
+      customerId: CUSTOMER,
+      accountType: 'AHORRO' as const,
+    };
 
     it('refuses to open an AHORRO account below the Q100.00 minimum, and creates nothing', async () => {
       const { repository, publisher, dependencies } = fixture();
@@ -565,9 +758,9 @@ describe('compensating, which is criterion 5', () => {
 
     // Back to the exact balance before the transfer.
     expect(repository.accounts.get(ACCOUNT)?.balanceMinor).toBe(20_000);
-    expect(
-      repository.operations.find((operation) => operation.type === 'COMMISSION')?.status,
-    ).toBe('COMPENSATED');
+    expect(repository.operations.find((operation) => operation.type === 'COMMISSION')?.status).toBe(
+      'COMPENSATED',
+    );
   });
 });
 
@@ -585,6 +778,23 @@ describe('an administrator changing the status by hand', () => {
     expect(repository.accounts.get(ACCOUNT)?.status).toBe('INACTIVE');
     expect(publisher.events[0]).toMatchObject({
       messageType: 'account.deactivated.v1',
+      payload: { cause: 'ADMINISTRATOR' },
+    });
+  });
+
+  it('reactivates with no reason and announces it (QA 21)', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { status: 'INACTIVE' });
+
+    await new SetAccountStatusUseCase(dependencies).execute(
+      { accountId: ACCOUNT, status: 'ACTIVE' },
+      ADMIN,
+      'key-react',
+    );
+
+    expect(repository.accounts.get(ACCOUNT)?.status).toBe('ACTIVE');
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.reactivated.v1',
       payload: { cause: 'ADMINISTRATOR' },
     });
   });
@@ -628,7 +838,7 @@ describe('an administrator changing the status by hand', () => {
     });
   });
 
-  it('ignores a customer trying to change someone else\'s account', async () => {
+  it("ignores a customer trying to change someone else's account", async () => {
     const { repository, publisher, dependencies } = fixture();
     seed(repository, { customerId: 'different-customer-id' });
 
@@ -703,5 +913,91 @@ describe('the automatic deactivation, as a use case', () => {
     await useCase.execute('run-2');
 
     expect(publisher.events).toHaveLength(1);
+  });
+});
+
+describe('reporting each movement to the activity monitor (T-42)', () => {
+  const debitCommand = { transactionId: TRANSACTION, accountId: ACCOUNT, amount: quetzales(2_500) };
+
+  it('reports an applied debit, with the account and the transfer it belongs to', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 10_000, accountType: 'AHORRO' });
+
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+
+    expect(activity.movements).toHaveLength(1);
+    expect(activity.movements[0]).toMatchObject({
+      type: 'DEBIT',
+      transactionId: TRANSACTION,
+      account: { accountId: ACCOUNT, customerId: CUSTOMER, accountType: 'AHORRO' },
+    });
+  });
+
+  it('does not report a debit that was refused: nothing moved', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 1_000 });
+
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+    await new DebitAccountUseCase(dependencies).execute(
+      { ...debitCommand, accountId: OTHER_ACCOUNT },
+      'key-2',
+    );
+
+    expect(activity.movements).toEqual([]);
+  });
+
+  it('does not report a redelivered debit twice: the movement happened once', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 10_000 });
+
+    const useCase = new DebitAccountUseCase(dependencies);
+    await useCase.execute(debitCommand, 'key-1');
+    await useCase.execute(debitCommand, 'key-1');
+    await useCase.execute(debitCommand, 'key-1');
+
+    expect(activity.movements).toHaveLength(1);
+  });
+
+  it('reports an applied credit', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 1_000 });
+
+    await new CreditAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+
+    expect(activity.movements).toMatchObject([{ type: 'CREDIT', transactionId: TRANSACTION }]);
+  });
+
+  it('does not report a credit to an account that does not exist', async () => {
+    const { activity, dependencies } = fixture();
+
+    await new CreditAccountUseCase(dependencies).execute(debitCommand, 'key-1');
+
+    expect(activity.movements).toEqual([]);
+  });
+
+  it('reports a compensation as its own kind of movement, once however often it is delivered', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 10_000 });
+    await new DebitAccountUseCase(dependencies).execute(debitCommand, 'debit-key');
+
+    const useCase = new CompensateDebitUseCase(dependencies);
+    const compensation = { ...debitCommand, triggeredBy: 'PAYMENT_DECLINED' as const };
+    await useCase.execute(compensation, 'compensation-key');
+    await useCase.execute(compensation, 'compensation-key');
+
+    expect(activity.movements.map((movement) => movement.type)).toEqual(['DEBIT', 'COMPENSATION']);
+  });
+
+  it('does not report a status change or the automatic deactivation: no balance moved', async () => {
+    const { repository, activity, dependencies } = fixture();
+    seed(repository, { balanceMinor: 10_000 });
+
+    await new SetAccountStatusUseCase(dependencies).execute(
+      { accountId: ACCOUNT, status: 'INACTIVE', reason: 'a reason' },
+      { customerId: CUSTOMER, role: 'ADMINISTRADOR' },
+      'key-1',
+    );
+
+    expect(activity.movements).toEqual([]);
   });
 });
