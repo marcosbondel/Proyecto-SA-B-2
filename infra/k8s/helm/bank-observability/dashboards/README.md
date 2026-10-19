@@ -39,6 +39,11 @@ la observabilidad que §4.1 pide a Notification & Audit.
 
 - **Una variable `$environment`** en todos, enlazada a `label_values(environment)`.
   Un panel que suma `dev` y `prod` no es el panel de ninguno de los dos.
+- **Y una oculta, `$namespace`**, para lo que se filtra por namespace (pods,
+  réplicas, HPA, la anotación de despliegues). Sale de la regla
+  `sli:namespace_environment:info`: en la nube el namespace se llama como el
+  entorno, pero en kind el entorno `local` vive en `bank-usac`, y
+  `namespace=~"$environment"` dejaba esos paneles vacíos en local.
 - **Las consultas leen reglas grabadas** (`slo:…`, `sli:…`), no expresiones
   crudas. El SLI se define una vez, en `values.yaml`, y el panel, la alerta y el
   error budget leen la misma serie.

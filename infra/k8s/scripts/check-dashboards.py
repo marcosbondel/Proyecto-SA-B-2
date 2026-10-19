@@ -211,9 +211,16 @@ def consultas_de_enlaces(values):
 # Sustitución de variables de Grafana
 # --------------------------------------------------------------------------
 
+# El namespace del entorno, como lo resuelve la variable oculta `$namespace`
+# de los dashboards. `vivo()` lo pregunta a Prometheus; sin eso, es el entorno,
+# que es lo cierto en la nube.
+NAMESPACE = {}
+
+
 def sustituir(expr, entorno):
     valores = {
         'environment': entorno,
+        'namespace': NAMESPACE.get(entorno, entorno),
         'service': '.+',
         'level': '.+',
         'correlationId': '.+',
@@ -483,6 +490,33 @@ def estatico(raiz, chart, values, dashboards, emitir):
     if not malas:
         ok('los nueve marcan ReplicaSets nuevos (sólo un rollout los crea)')
 
+    print('\n== 10. Ninguna regla puede producir NaN sin tráfico')
+    # El defecto que dejó en NaN todos los presupuestos menos uno (T-60): un
+    # cociente 0/0 en una ventana sin tráfico, promediado con `avg_over_time`
+    # a lo largo de la semana. Dos formas de volver a escribirlo, y las dos se
+    # rechazan aquí:
+    #   - `avg_over_time(...)` sobre una serie que es un cociente;
+    #   - una división cuyo denominador no es un número y no se filtra con
+    #     `> 0`: sin tráfico da NaN en vez de no dar nada.
+    malas = 0
+    for r in grabadas.values():
+        expr = RE_CADENA.sub('""', r['expr'])
+        for m in re.finditer(r'avg_over_time\(\s*([A-Za-z_:][A-Za-z0-9_:]*)', expr):
+            if 'ratio' in m.group(1) or m.group(1) in grabadas and ' / ' in grabadas[m.group(1)]['expr']:
+                fallo(f'regla {r["record"]}: avg_over_time({m.group(1)}) — un solo 0/0 en la ventana deja '
+                      f'el resultado en NaN; calcula la proporción con increase() de los contadores')
+                malas += 1
+        for m in re.finditer(r'/', expr):
+            resto = expr[m.end():].lstrip()
+            if re.match(r'[\d.]', resto):
+                continue
+            if not re.search(r'>\s*0\b', resto):
+                fallo(f'regla {r["record"]}: divide por una serie sin filtrar «> 0»; sin tráfico da NaN')
+                malas += 1
+                break
+    if not malas:
+        ok('todo denominador es una constante o se filtra con «> 0», y nada promedia cocientes')
+
     if emitir:
         reglas = []
         for i, c in enumerate(x for x in todas if x.tipo == 'prometheus' and x.clase != 'variable'):
@@ -525,8 +559,13 @@ def ejecutar(c, args):
     expr = sustituir(c.expr, args.environment)
     if c.tipo == 'prometheus':
         m = re.fullmatch(r'\s*label_values\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*', expr)
-        if m:
-            code, body = http_json(q(args.prometheus, f'/api/v1/label/{m.group(1)}/values'))
+        m2 = re.fullmatch(r'\s*label_values\(\s*(.+?)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*', expr)
+        if m or m2:
+            if m:
+                url = q(args.prometheus, f'/api/v1/label/{m.group(1)}/values')
+            else:
+                url = q(args.prometheus, f'/api/v1/label/{m2.group(2)}/values', **{'match[]': m2.group(1)})
+            code, body = http_json(url)
             if code != 200:
                 return 'error', f'HTTP {code}: {body[:200]}'
             datos = json.loads(body).get('data') or []
@@ -569,6 +608,12 @@ def ejecutar(c, args):
 
 
 def vivo(values, dashboards, todas, args):
+    code, body = http_json(q(args.prometheus, '/api/v1/label/namespace/values',
+                             **{'match[]': f'sli:namespace_environment:info{{environment="{args.environment}"}}'}))
+    resueltos = (json.loads(body).get('data') or []) if code == 200 else []
+    if resueltos:
+        NAMESPACE[args.environment] = resueltos[0]
+    print(f'\n   $environment = {args.environment}, $namespace = {NAMESPACE.get(args.environment, args.environment)}')
     print('\n== 10-11. Cada consulta de los dashboards devuelve datos; cada alerta se deja ejecutar')
     pendientes = [c for c in todas if c.clase != 'enlace']
     if args.skip:
