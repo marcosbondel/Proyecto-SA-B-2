@@ -4,6 +4,8 @@ import type { MessageEnvelope, V1TransferRequest } from '@bank/contracts';
 import { InterbankV1UseCase } from '../src/application/interbank-v1.use-case';
 import type { InterbankMessenger } from '../src/application/interbank.ports';
 import type {
+  ExpectedRefundRow,
+  HeldRefundRow,
   InterbankV1Repository,
   V1DepositRow,
   V1Reversal,
@@ -50,6 +52,7 @@ function sobre(): MessageEnvelope<unknown> {
 function fila(overrides: Partial<V1DepositRow> = {}): V1DepositRow {
   return {
     depositId: '11111111-1111-4111-8111-111111111111',
+    heldForReversal: null,
     stage: 'ELIGIBILITY',
     origin: sobre(),
     interbankTransferId: ID,
@@ -72,7 +75,16 @@ class RepositorioDoble implements InterbankV1Repository {
   public constanciasDeDesconocido: string[] = [];
   public admision: 'ACCEPTED_FOR_PROCESSING' | 'DUPLICATE' | 'CONFLICT' = 'ACCEPTED_FOR_PROCESSING';
   public cancelaGana = true;
-  public admitidos: { rejection: { reason: string } | null; depositId: string }[] = [];
+  public admitidos: {
+    rejection: { reason: string } | null;
+    depositId: string;
+    refund: { decision: string; creditAccountRef: string } | null;
+  }[] = [];
+  public esperado: ExpectedRefundRow | null = null;
+  public retenidos: HeldRefundRow[] = [];
+  public liquidados: string[] = [];
+  public liberados: string[] = [];
+  public liquidaGana = true;
   public resultadosDeCierre: (MessageEnvelope<unknown> | null)[] = [];
 
   async admit(input: {
@@ -81,13 +93,18 @@ class RepositorioDoble implements InterbankV1Repository {
     callerBankCode: string;
     origin: MessageEnvelope<unknown>;
     rejection: { reason: string; result: MessageEnvelope<unknown> } | null;
+    refund: { decision: string; creditAccountRef: string } | null;
     now: Date;
   }): Promise<
     | { admission: 'ACCEPTED_FOR_PROCESSING'; depositId: string }
     | { admission: 'DUPLICATE'; row: V1DepositRow }
     | { admission: 'CONFLICT' }
   > {
-    this.admitidos.push({ rejection: input.rejection, depositId: input.depositId });
+    this.admitidos.push({
+      rejection: input.rejection,
+      depositId: input.depositId,
+      refund: input.refund,
+    });
 
     if (this.admision === 'DUPLICATE') {
       return {
@@ -98,6 +115,27 @@ class RepositorioDoble implements InterbankV1Repository {
     if (this.admision === 'CONFLICT') return { admission: 'CONFLICT' };
 
     return { admission: 'ACCEPTED_FOR_PROCESSING', depositId: input.depositId };
+  }
+
+  async findExpectedRefund(): Promise<ExpectedRefundRow | null> {
+    return this.esperado;
+  }
+
+  async claimHeldRefunds(): Promise<readonly HeldRefundRow[]> {
+    return this.retenidos;
+  }
+
+  async settleHeld(input: { depositId: string }): Promise<boolean> {
+    if (!this.liquidaGana) return false;
+    this.liquidados.push(input.depositId);
+
+    return true;
+  }
+
+  async releaseHeld(input: { depositId: string }): Promise<boolean> {
+    this.liberados.push(input.depositId);
+
+    return true;
   }
 
   async findForBank(id: string, bank: string): Promise<V1DepositRow | null> {
@@ -778,6 +816,128 @@ describe('la cancelación y el crédito ya ordenado (B4)', () => {
     expect(repository.resultadosDeCierre[0]).toMatchObject({
       messageType: 'payment.interbank.rejected.v1',
       payload: { reason: 'CANCELLED' },
+    });
+  });
+});
+
+describe('el reembolso de un reverso no llega al cliente (QA 13c)', () => {
+  const REVERSO = '00000000-0000-4000-8000-0000000000aa';
+  const ENVIO = '00000000-0000-4000-8000-0000000000bb';
+  const LIQUIDACION = 'c0000000-0000-4000-8000-00000000000a';
+
+  async function entra(repository: RepositorioDoble): Promise<void> {
+    const { useCase } = construir(repository);
+
+    await useCase.transfer(
+      { transfer: deposito(), callerBankCode: 'BANK99', receivedAt: AHORA.toISOString() },
+      sobre(),
+    );
+  }
+
+  it('con el reverso en curso retiene el depósito en vez de acreditarlo', async () => {
+    const repository = new RepositorioDoble();
+    repository.esperado = { sendId: ENVIO, reversalId: REVERSO, state: 'PROCESSING', refundTransferId: null };
+
+    await entra(repository);
+
+    expect(repository.admitidos[0]?.refund).toMatchObject({ decision: 'HOLD' });
+  });
+
+  it('con el reverso COMPLETED que lo nombra, lo manda a la cuenta de liquidación', async () => {
+    const repository = new RepositorioDoble();
+    repository.esperado = { sendId: ENVIO, reversalId: REVERSO, state: 'COMPLETED', refundTransferId: ID };
+
+    await entra(repository);
+
+    expect(repository.admitidos[0]?.refund).toMatchObject({
+      decision: 'SETTLE',
+      creditAccountRef: LIQUIDACION,
+    });
+  });
+
+  it('con el reverso COMPLETED que nombra a otro, es un depósito normal', async () => {
+    const repository = new RepositorioDoble();
+    repository.esperado = {
+      sendId: ENVIO,
+      reversalId: REVERSO,
+      state: 'COMPLETED',
+      refundTransferId: '00000000-0000-4000-8000-0000000000cc',
+    };
+
+    await entra(repository);
+
+    expect(repository.admitidos[0]?.refund).toBeNull();
+  });
+
+  it('un depósito rechazado al entrar no se trata como reembolso', async () => {
+    const repository = new RepositorioDoble();
+    repository.esperado = { sendId: ENVIO, reversalId: REVERSO, state: 'PROCESSING', refundTransferId: null };
+    const { useCase } = construir(repository);
+
+    await useCase.transfer(
+      {
+        transfer: deposito({ destinationBankCode: 'BANK07' }),
+        callerBankCode: 'BANK99',
+        receivedAt: AHORA.toISOString(),
+      },
+      sobre(),
+    );
+
+    expect(repository.admitidos[0]?.refund).toBeNull();
+    expect(repository.admitidos[0]?.rejection).not.toBeNull();
+  });
+
+  describe('resolver los retenidos', () => {
+    const retenido = (state: 'PROCESSING' | 'COMPLETED' | 'FAILED', refundTransferId: string | null): HeldRefundRow => ({
+      depositId: 'dep-1',
+      interbankTransferId: ID,
+      reversalId: REVERSO,
+      sendId: ENVIO,
+      traceContext: null,
+      correlationId: '00000000-0000-4000-8000-0000000000dd',
+      reversal: { sendId: ENVIO, reversalId: REVERSO, state, refundTransferId },
+    });
+
+    it('mientras el reverso sigue en curso, espera', async () => {
+      const repository = new RepositorioDoble();
+      repository.retenidos = [retenido('PROCESSING', null)];
+
+      expect(await construir(repository).useCase.resolveHeldRefunds()).toBe(0);
+      expect(repository.liquidados).toEqual([]);
+      expect(repository.liberados).toEqual([]);
+    });
+
+    it('si el reverso nombra este depósito, lo liquida', async () => {
+      const repository = new RepositorioDoble();
+      repository.retenidos = [retenido('COMPLETED', ID)];
+
+      expect(await construir(repository).useCase.resolveHeldRefunds()).toBe(1);
+      expect(repository.liquidados).toEqual(['dep-1']);
+      expect(repository.liberados).toEqual([]);
+    });
+
+    it.each([
+      ['nombra a otro', retenido('COMPLETED', '00000000-0000-4000-8000-0000000000cc')],
+      ['falló', retenido('FAILED', null)],
+    ])('si el reverso %s, lo libera al cliente', async (_caso, fila) => {
+      const repository = new RepositorioDoble();
+      repository.retenidos = [fila];
+
+      expect(await construir(repository).useCase.resolveHeldRefunds()).toBe(1);
+      expect(repository.liquidados).toEqual([]);
+      expect(repository.liberados).toEqual(['dep-1']);
+    });
+
+    it('si otro depósito ya liquidó el reverso, éste se libera como normal y se registra', async () => {
+      const repository = new RepositorioDoble();
+      repository.retenidos = [retenido('COMPLETED', null)];
+      repository.liquidaGana = false;
+      const { useCase, registro } = construir(repository);
+
+      await useCase.resolveHeldRefunds();
+
+      expect(repository.liberados).toEqual(['dep-1']);
+      expect(registro.some((r) => r.nivel === 'error')).toBe(true);
     });
   });
 });
