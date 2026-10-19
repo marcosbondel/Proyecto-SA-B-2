@@ -70,6 +70,21 @@ const OUTBOX_RELAY_INTERVAL_MS = ((): number => {
 })();
 
 /**
+ * How slowly the outbox relay may poll while the outbox is empty (T-60).
+ *
+ * `OUTBOX_RELAY_MS` is the floor and this is the ceiling of the idle backoff.
+ * Every handled delivery calls `outboxRelay.wake()`, so a command this process
+ * wrote in a handler still leaves within the floor -- the Saga's hops are not
+ * slower for it. The ceiling only bounds how late a row left behind by a
+ * replica that died is found. Set equal to `OUTBOX_RELAY_MS` to disable.
+ */
+const OUTBOX_RELAY_IDLE_MAX_MS = ((): number => {
+  const raw = Number(process.env.OUTBOX_RELAY_IDLE_MAX_MS);
+
+  return Number.isFinite(raw) && raw > 0 ? raw : 2_000;
+})();
+
+/**
  * Composition: the one place allowed to see every layer at once.
  *
  * Everything above this file is wired through ports, which is what lets the use
@@ -132,6 +147,7 @@ async function bootstrap(): Promise<void> {
     repository,
     broker,
     intervalMs: OUTBOX_RELAY_INTERVAL_MS,
+    idleMaxMs: OUTBOX_RELAY_IDLE_MAX_MS,
     logger,
   });
 
@@ -191,6 +207,10 @@ async function bootstrap(): Promise<void> {
           });
 
           throw error;
+        } finally {
+          // The handler may have written commands or events to the outbox:
+          // tell the idle-backed-off relay so they leave within its floor.
+          outboxRelay.wake();
         }
       });
     }

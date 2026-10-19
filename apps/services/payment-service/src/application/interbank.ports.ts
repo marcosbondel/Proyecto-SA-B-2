@@ -72,6 +72,14 @@ export interface InterbankRepository {
     limit: number,
   ): Promise<number>;
   claimCallbacks(now: Date, limit: number): Promise<readonly InterbankDeposit[]>;
+  /**
+   * Suelta el arrendamiento de un callback cuyo intento terminó sin entregarse.
+   *
+   * El reclamo ya dejó escrita la próxima hora (la espera creciente); el
+   * arrendamiento sólo cubre el intento mismo, y soltarlo es lo que deja que esa
+   * hora se respete en vez de esperar a que caduque (T-60).
+   */
+  releaseCallbackClaim(depositId: string): Promise<void>;
   markCallbackDelivered(depositId: string, now: Date): Promise<void>;
   publishConflictResults(
     deliver: (envelope: MessageEnvelope<unknown>) => Promise<void>,
@@ -82,6 +90,7 @@ export interface InterbankRepository {
     limit: number,
   ): Promise<readonly { readonly messageId: string; readonly deposit: InterbankDeposit }[]>;
   markConflictCallbackDelivered(messageId: string, now: Date): Promise<void>;
+  releaseConflictCallbackClaim(messageId: string): Promise<void>;
   /**
    * Deja de reintentar los callbacks que llevan más de `maxAgeMs` decididos.
    *

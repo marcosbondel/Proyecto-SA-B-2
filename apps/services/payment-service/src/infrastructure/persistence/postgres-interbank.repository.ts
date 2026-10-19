@@ -8,6 +8,7 @@ import type {
   InterbankRepository,
   InterbankStage,
 } from '../../application/interbank.ports';
+import { CALLBACK_LEASE_MS } from './claim-lease';
 
 interface DepositRow {
   deposit_id: string;
@@ -96,9 +97,28 @@ function fromRow(row: DepositRow): InterbankDeposit {
   };
 }
 
-/** The durable inbox and callback schedule for deposits from partner banks. */
+/**
+ * The durable inbox and callback schedule for deposits from partner banks.
+ *
+ * Every `claim*` here was already one statement (`UPDATE … WHERE id IN (SELECT
+ * … FOR UPDATE SKIP LOCKED) RETURNING`), so two claims never took the same row
+ * *at the same instant*. What they lacked was a lease long enough to outlive the
+ * batch: `claimCallbacks` pushes `callback_due_at` by the backoff (2 s the
+ * first time) while delivering twenty callbacks takes up to twenty times the
+ * 3 s HTTP timeout, so a second replica claiming 2 s later re-delivered the
+ * rows the first was still working through (T-60).
+ *
+ * The callback claims therefore also set `claimed_until`, and the use case
+ * releases it as soon as the delivery attempt is over — success or failure —
+ * so the backoff stays the retry schedule and the lease only covers the
+ * attempt itself. `claimActions` is left as it was: its work is publishing a
+ * command to the broker, which finishes long inside its 5 s push.
+ */
 export class PostgresInterbankRepository implements InterbankRepository {
-  constructor(readonly pool: Pool) {}
+  constructor(
+    readonly pool: Pool,
+    readonly leaseMs: number = CALLBACK_LEASE_MS,
+  ) {}
 
   async open(input: {
     origin: MessageEnvelope<PaymentInterbankReceiveV1>;
@@ -308,16 +328,25 @@ export class PostgresInterbankRepository implements InterbankRepository {
     const rows = await this.pool.query<DepositRow>(
       `UPDATE interbank_deposits SET callback_attempts = callback_attempts + 1,
            callback_due_at = $1::timestamptz +
-             (LEAST(900, POWER(2, LEAST(callback_attempts, 9) + 1)::integer) * interval '1 second')
+             (LEAST(900, POWER(2, LEAST(callback_attempts, 9) + 1)::integer) * interval '1 second'),
+           claimed_until = $1::timestamptz + ($3::double precision * interval '1 millisecond')
         WHERE deposit_id IN (
           SELECT deposit_id FROM interbank_deposits
            WHERE callback_due_at <= $1 AND callback_delivered_at IS NULL
              AND stage IN ('ACCEPTED','REJECTED')
+             AND (claimed_until IS NULL OR claimed_until <= $1)
            ORDER BY callback_due_at FOR UPDATE SKIP LOCKED LIMIT $2
         ) RETURNING ${COLUMNS}`,
-      [now, limit],
+      [now, limit, this.leaseMs],
     );
     return rows.rows.map(fromRow);
+  }
+
+  async releaseCallbackClaim(depositId: string): Promise<void> {
+    await this.pool.query(
+      'UPDATE interbank_deposits SET claimed_until = NULL WHERE deposit_id = $1',
+      [depositId],
+    );
   }
 
   async abandonStaleCallbacks(now: Date, maxAgeMs: number): Promise<readonly InterbankDeposit[]> {
@@ -334,7 +363,8 @@ export class PostgresInterbankRepository implements InterbankRepository {
 
   async markCallbackDelivered(depositId: string, now: Date): Promise<void> {
     await this.pool.query(
-      `UPDATE interbank_deposits SET callback_delivered_at = $2, callback_due_at = NULL
+      `UPDATE interbank_deposits
+          SET callback_delivered_at = $2, callback_due_at = NULL, claimed_until = NULL
         WHERE deposit_id = $1 AND callback_delivered_at IS NULL`,
       [depositId, now],
     );
@@ -392,13 +422,15 @@ export class PostgresInterbankRepository implements InterbankRepository {
     }>(
       `UPDATE interbank_conflicts SET callback_attempts = callback_attempts + 1,
            callback_due_at = $1::timestamptz +
-             (LEAST(900, POWER(2, LEAST(callback_attempts, 9) + 1)::integer) * interval '1 second')
+             (LEAST(900, POWER(2, LEAST(callback_attempts, 9) + 1)::integer) * interval '1 second'),
+           claimed_until = $1::timestamptz + ($3::double precision * interval '1 millisecond')
         WHERE message_id IN (
           SELECT message_id FROM interbank_conflicts
            WHERE callback_due_at <= $1 AND callback_delivered_at IS NULL
+             AND (claimed_until IS NULL OR claimed_until <= $1)
            ORDER BY callback_due_at FOR UPDATE SKIP LOCKED LIMIT $2
         ) RETURNING message_id, origin_envelope, callback_attempts, trace_context, created_at`,
-      [now, limit],
+      [now, limit, this.leaseMs],
     );
     return rows.rows.map((row) => {
       const payload = row.origin_envelope.payload;
@@ -427,9 +459,15 @@ export class PostgresInterbankRepository implements InterbankRepository {
 
   async markConflictCallbackDelivered(messageId: string, now: Date): Promise<void> {
     await this.pool.query(
-      `UPDATE interbank_conflicts SET callback_delivered_at = $2
+      `UPDATE interbank_conflicts SET callback_delivered_at = $2, claimed_until = NULL
         WHERE message_id = $1 AND callback_delivered_at IS NULL`,
       [messageId, now],
     );
+  }
+
+  async releaseConflictCallbackClaim(messageId: string): Promise<void> {
+    await this.pool.query('UPDATE interbank_conflicts SET claimed_until = NULL WHERE message_id = $1', [
+      messageId,
+    ]);
   }
 }

@@ -241,6 +241,33 @@ describe('OutboxRelay', () => {
     expect(repository.callCount).toBe(callsBeforeStop);
   });
 
+  it('polls an empty outbox less and less often, and wake() brings it back to the floor (T-60)', async () => {
+    jest.useFakeTimers();
+    const repository = new FakeOutboxRepository();
+    const { broker } = fakeBroker();
+    const relay = new OutboxRelay({
+      repository: repository as unknown as TransactionRepository,
+      broker,
+      intervalMs: 200,
+      idleMaxMs: 2_000,
+      logger: fakeLogger(),
+    });
+
+    relay.start();
+    await jest.advanceTimersByTimeAsync(3_000);
+    // 200, 600, 1_400, 3_000: four sweeps in three seconds instead of fifteen.
+    expect(repository.callCount).toBe(4);
+
+    // A handler wrote a command and woke the relay: it leaves within the floor
+    // instead of waiting out the 2 s ceiling.
+    repository.enqueue(outboxMessage('payment.requested.v1'));
+    relay.wake();
+    await jest.advanceTimersByTimeAsync(200);
+
+    expect(repository.dispatched('payment.requested.v1')).toBe(true);
+    relay.stop();
+  });
+
   it('stop() before start() is a harmless no-op', () => {
     const repository = new FakeOutboxRepository();
     const { broker } = fakeBroker();
