@@ -37,7 +37,10 @@ export interface LogFields {
   readonly errorType?: string;
   /** Always `true` for a provider failure: there is no real provider in this system. */
   readonly simulated?: boolean;
-  /** `scenario` when the transfer scripted the answer, `configuration` when the rates did. */
+  /**
+   * `scenario` when the transfer scripted the answer, `configuration` when the
+   * ConfigMap's rates did, `runtime` when an administrator's override did (T-60).
+   */
   readonly source?: string;
   readonly latencyMs?: number;
   readonly failureRatePercent?: number;
