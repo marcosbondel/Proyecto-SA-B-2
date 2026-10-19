@@ -1,5 +1,6 @@
 import { context, propagation, ROOT_CONTEXT, SpanStatusCode, trace } from '@opentelemetry/api';
-import type { Attributes } from '@opentelemetry/api';
+import type { Attributes, AttributeValue, Span } from '@opentelemetry/api';
+import { getRPCMetadata } from '@opentelemetry/core';
 
 import { maskedException } from './redaction';
 
@@ -79,4 +80,36 @@ export async function continueTrace<T>(
       }
     }),
   );
+}
+
+/**
+ * The root HTTP SERVER span of the request being served, or the active span
+ * when there is none.
+ *
+ * `trace.getActiveSpan()` inside a NestJS or Express middleware is **not** that
+ * span: the Express and NestJS instrumentations open their own spans (kind
+ * INTERNAL) under it, and those are what is active by then. The server span is
+ * the one a person opens first in Tempo, and `HttpInstrumentation` keeps it in
+ * the context's RPC metadata precisely so code deeper in the stack can reach it.
+ * With no HTTP instrumentation (a test, a process that serves nothing) there is
+ * no metadata and the active span is the best answer there is.
+ */
+export function serverSpan(): Span | undefined {
+  return getRPCMetadata(context.active())?.span ?? trace.getActiveSpan();
+}
+
+/**
+ * Sets an attribute on the root HTTP SERVER span **and** on the active span, so
+ * a query by the attribute finds the request at its root and also at the
+ * framework span that handled it. A no-op with no SDK.
+ */
+export function setRequestAttribute(key: string, value: AttributeValue): void {
+  const root = serverSpan();
+  const active = trace.getActiveSpan();
+
+  root?.setAttribute(key, value);
+
+  if (active !== undefined && active !== root) {
+    active.setAttribute(key, value);
+  }
 }
