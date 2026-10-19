@@ -44,7 +44,7 @@ name: CD
 #                            en ese caso, usar WIF.
 #   var    GCP_PROJECT_ID    id del proyecto de GCP
 #   var    GKE_CLUSTER       nombre del cluster  (terraform: bank-usac-vpc-gke)
-#   var    GKE_ZONE          zona del cluster    (terraform: us-central1-a)
+#   var    GKE_ZONE          zona del cluster    (terraform: us-central1-c)
 #   var    ARTIFACT_REPO     repositorio de Artifact Registry (ej. bank-images)
 #   var    GATEWAY_PUBLIC_URL  la direccion del Gateway tal como la alcanza el
 #                            navegador (terraform: gateway_public_url)
@@ -176,7 +176,7 @@ jobs:
               printf '-  `%s`\n' "${missing[@]}"
               echo ""
               echo "Los valores del cluster estan en \`infra/terraform/gcp/\`:"
-              echo "cluster \`bank-usac-vpc-gke\`, zona \`us-central1-a\`."
+              echo "cluster \`bank-usac-vpc-gke\`, zona \`us-central1-c\`."
               echo ""
               echo "Si tu organizacion prohibe crear llaves de cuenta de servicio,"
               echo "usa Workload Identity Federation: ver \`docs/operations/CI.md\`."

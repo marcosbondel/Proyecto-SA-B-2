@@ -63,8 +63,12 @@ resource "google_cloud_run_v2_service" "web" {
   # pipeline como una desviación y devolvería el frontend a `var.web_image` —
   # que por defecto es el contenedor `hello` de Google. Terraform crea el
   # servicio; el pipeline decide qué versión sirve.
+  #
+  # `client` y `client_version` los escribe `gcloud run deploy` del pipeline
+  # (cd.yml) en cada despliegue; sin ignorarlos, cada `terraform plan` posterior
+  # muestra un cambio in-place que no significa nada.
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [template[0].containers[0].image, client, client_version]
   }
 }
 
