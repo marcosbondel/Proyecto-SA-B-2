@@ -1,3 +1,5 @@
+import { AdaptiveTicker } from '@bank/messaging';
+
 /**
  * Comes back for the attempts the ladder owes, and gets out of the way.
  *
@@ -14,8 +16,15 @@
  * to express time in the one service whose time-handling is the thing under
  * test.
  *
- * Three properties worth stating:
+ * Four properties worth stating:
  *
+ * - **It backs off while idle** (T-60). A pod with nothing due polled every
+ *   500 ms forever, which on a 50 m CPU request was enough to hold the
+ *   autoscaler at its maximum with no traffic. The interval is now the *floor*:
+ *   a sweep that finds nothing doubles the wait up to `idleMaxMs`, a sweep that
+ *   finds something (or a `wake()` from a delivery that may have created work)
+ *   returns to the floor. The cost is lateness — anything the clock alone makes
+ *   due is found up to `idleMaxMs` late, never early. See `AdaptiveTicker`.
  * - **It never overlaps itself.** A sweep that outlives its interval would
  *   otherwise have a second start on top of it. The row lock would still stop a
  *   double charge, but only after both had asked the provider.
@@ -27,7 +36,10 @@
  *   on its own.
  */
 export interface RetryJob {
-  /** Attempts every payment currently due. Returns how many it attempted. */
+  /**
+   * Does whatever is due. Returns how much work it found — `0` means idle,
+   * which is what lets the scheduler back off.
+   */
   execute(): Promise<number>;
 }
 
@@ -38,46 +50,48 @@ export interface SchedulerLog {
 
 export class RetryScheduler {
   readonly #job: RetryJob;
-  readonly #intervalMs: number;
   readonly #logger: SchedulerLog;
-  #timer: ReturnType<typeof setInterval> | null = null;
+  readonly #ticker: AdaptiveTicker;
   #running = false;
 
   constructor(dependencies: {
     readonly job: RetryJob;
+    /** The floor: the wait while there is work, and after a `wake()`. */
     readonly intervalMs: number;
+    /** The ceiling of the idle backoff. Defaults to the floor, i.e. no backoff. */
+    readonly idleMaxMs?: number;
     readonly logger: SchedulerLog;
   }) {
     this.#job = dependencies.job;
-    this.#intervalMs = dependencies.intervalMs;
     this.#logger = dependencies.logger;
+    this.#ticker = new AdaptiveTicker({
+      minMs: dependencies.intervalMs,
+      maxMs: dependencies.idleMaxMs ?? dependencies.intervalMs,
+      tick: async () => await this.runOnce(),
+    });
   }
 
+  /** The unref'd timers do not keep the process alive: a service told to stop does not linger. */
   public start(): void {
-    if (this.#timer !== null) {
-      return;
-    }
-
-    this.#timer = setInterval(() => void this.runOnce(), this.#intervalMs);
-
-    /**
-     * Does not keep the process alive on its own. Without this a service told
-     * to shut down would linger until the next tick.
-     */
-    this.#timer.unref();
+    this.#ticker.start();
   }
 
   public stop(): void {
-    if (this.#timer !== null) {
-      clearInterval(this.#timer);
-      this.#timer = null;
-    }
+    this.#ticker.stop();
   }
 
-  /** Exposed so a test — or an operator — can trigger a sweep without waiting. */
-  public async runOnce(): Promise<void> {
+  /** Something in this process may have made work: look for it soon. */
+  public wake(): void {
+    this.#ticker.wake();
+  }
+
+  /**
+   * Exposed so a test — or an operator — can trigger a sweep without waiting.
+   * Returns how much work it found.
+   */
+  public async runOnce(): Promise<number> {
     if (this.#running) {
-      return;
+      return 0;
     }
 
     this.#running = true;
@@ -92,13 +106,17 @@ export class RetryScheduler {
        */
       if (attempted > 0) {
         this.#logger.info('retry sweep finished', {
-          outcome: `${String(attempted)} attempted`,
+          outcome: `${String(attempted)} worked`,
         });
       }
+
+      return attempted;
     } catch (error) {
       this.#logger.error('retry sweep failed', {
         error: error instanceof Error ? error.message : String(error),
       });
+
+      return 0;
     } finally {
       this.#running = false;
     }

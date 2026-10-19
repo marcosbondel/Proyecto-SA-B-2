@@ -1,4 +1,4 @@
-import type { MessageBroker } from '@bank/messaging';
+import { AdaptiveTicker, type MessageBroker } from '@bank/messaging';
 import { withTraceparent } from '@bank/observability';
 
 import type { OutboxMessage, TransactionRepository } from '../../application/ports';
@@ -26,6 +26,16 @@ import type { OutboxMessage, TransactionRepository } from '../../application/por
  *   tries again, which is exactly what durability here means.
  * - **It gets out of the way on shutdown.** The timer is `unref`'d, so a service
  *   told to stop does not linger until the next tick.
+ *
+ * And, since T-60, a fourth: **it backs off while idle and is woken by the
+ * writers.** At a fixed 200 ms an idle replica ran `BEGIN`/`SELECT`/`COMMIT`
+ * five times a second for nothing. The interval is now the floor; an empty
+ * sweep doubles the wait up to `idleMaxMs`, and `wake()` -- called when a
+ * delivery was handled, i.e. whenever *this process* may have written an outbox
+ * row -- returns the next sweep to the floor. The Saga loses nothing for a
+ * request landing on a quiet pod, because the handler that writes the command
+ * wakes the relay as it returns; only a row left by a replica that died is
+ * found up to `idleMaxMs` late.
  */
 export interface OutboxLog {
   info(message: string, fields?: Record<string, unknown>): void;
@@ -38,46 +48,52 @@ const DEFAULT_BATCH_SIZE = 100;
 export class OutboxRelay {
   readonly #repository: TransactionRepository;
   readonly #broker: MessageBroker;
-  readonly #intervalMs: number;
   readonly #batchSize: number;
   readonly #logger: OutboxLog;
-  #timer: ReturnType<typeof setInterval> | null = null;
+  readonly #ticker: AdaptiveTicker;
   #running = false;
 
   constructor(dependencies: {
     readonly repository: TransactionRepository;
     readonly broker: MessageBroker;
+    /** The floor: the wait while there is work, and after a `wake()`. */
     readonly intervalMs: number;
+    /** The ceiling of the idle backoff. Defaults to the floor, i.e. no backoff. */
+    readonly idleMaxMs?: number;
     readonly logger: OutboxLog;
     readonly batchSize?: number;
   }) {
     this.#repository = dependencies.repository;
     this.#broker = dependencies.broker;
-    this.#intervalMs = dependencies.intervalMs;
     this.#logger = dependencies.logger;
     this.#batchSize = dependencies.batchSize ?? DEFAULT_BATCH_SIZE;
+    this.#ticker = new AdaptiveTicker({
+      minMs: dependencies.intervalMs,
+      maxMs: dependencies.idleMaxMs ?? dependencies.intervalMs,
+      tick: async () => await this.runOnce(),
+    });
   }
 
   public start(): void {
-    if (this.#timer !== null) {
-      return;
-    }
-
-    this.#timer = setInterval(() => void this.runOnce(), this.#intervalMs);
-    this.#timer.unref();
+    this.#ticker.start();
   }
 
   public stop(): void {
-    if (this.#timer !== null) {
-      clearInterval(this.#timer);
-      this.#timer = null;
-    }
+    this.#ticker.stop();
   }
 
-  /** Exposed so a test — or an operator — can drain the outbox without waiting. */
-  public async runOnce(): Promise<void> {
+  /** This process may have just written an outbox row: sweep soon. */
+  public wake(): void {
+    this.#ticker.wake();
+  }
+
+  /**
+   * Exposed so a test — or an operator — can drain the outbox without waiting.
+   * Returns how many rows it published.
+   */
+  public async runOnce(): Promise<number> {
     if (this.#running) {
-      return;
+      return 0;
     }
 
     this.#running = true;
@@ -103,10 +119,14 @@ export class OutboxRelay {
           outcome: `${String(dispatched)} published`,
         });
       }
+
+      return dispatched;
     } catch (error) {
       this.#logger.error('outbox relay sweep failed', {
         error: error instanceof Error ? error.message : String(error),
       });
+
+      return 0;
     } finally {
       this.#running = false;
     }

@@ -289,7 +289,38 @@ services:
     # docker-compose.images.yml this chart does not shorten it for a demo —
     # shorten it explicitly with --set if a live walkthrough needs to.
     retryDelaysMs: "1000,5000,30000"
+    # The sweeper's floor: how often it polls while there is work, and how soon
+    # after a delivery that may have created some.
     retrySweepMs: "500"
+    # Its ceiling while there is none (T-60) is NOT a chart value on purpose:
+    # `PAYMENT_RETRY_SWEEP_IDLE_MAX_MS` defaults to 2000 in the service, and every
+    # key added to the ConfigMap changes the `checksum/config` annotation that
+    # all seven Deployments carry, i.e. rolls the whole release for a tunable
+    # nobody needs to touch. To change it in an emergency:
+    # `kubectl set env deploy/bank-usac-payment-service PAYMENT_RETRY_SWEEP_IDLE_MAX_MS=500`
+    # (equal to `retrySweepMs` turns the idle backoff off).
+    # T-60: a realistic CPU request for this service, and the reason it differs
+    # from the chart-wide default (50m).
+    #
+    # At 50m, an idle replica sat on the autoscaler's 80 % threshold (40m): its
+    # sweepers polled every 200-500 ms for ever (~25 database transactions a
+    # second, 35-50m of CPU on GKE), so the HPA held payment-service at its
+    # maximum of 5 replicas with no traffic at all -- 5 x 50m = 250m requested per
+    # namespace, doing nothing. With the idle backoff an idle replica measures
+    # ~4m locally (12m before) and an estimated 10-17m on an e2-standard-2.
+    #
+    # 100m puts that idle load at ~15 % of the request, far under the 80 %
+    # target, and scales out at 80m -- real traffic, not the pod's own heartbeat.
+    # The cost is +50m per replica; at the replica count the system actually
+    # needs (1) that is +50m per namespace, against the 150m it gives back by no
+    # longer sitting at 5. Limits are the chart default: a burst still gets 250m.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
     # T-44: como se porta el proveedor simulado mientras nadie lo cambie. Los tres
     # valores son los de antes de la ficha: ningun fallo, ninguna espera. Un
     # administrador los cambia en caliente con `PUT /api/payments/simulation`
