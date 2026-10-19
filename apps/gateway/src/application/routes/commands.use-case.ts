@@ -56,7 +56,8 @@ export interface OpenAccountRequest extends CommandContext {
 export interface SetAccountStatusRequest extends CommandContext {
   readonly accountId: string;
   readonly status: 'ACTIVE' | 'INACTIVE';
-  readonly reason: string;
+  /** Obligatorio al desactivar; al activar puede faltar. */
+  readonly reason?: string;
 }
 
 export interface TransferRequest extends CommandContext {
@@ -187,7 +188,7 @@ export class CommandsUseCase {
       {
         accountId: request.accountId,
         status: request.status,
-        reason: request.reason,
+        ...(request.reason === undefined ? {} : { reason: request.reason }),
       },
       request,
     );
