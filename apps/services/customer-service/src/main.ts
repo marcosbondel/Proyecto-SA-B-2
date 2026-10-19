@@ -286,7 +286,9 @@ async function bootstrap(): Promise<void> {
          */
         if (environment.SEED_DEMO_DATA) {
           const seeded = await seedDemoUsers(pool, hasher, environment.SEED_PASSWORD);
-          logger.info('demo users seeded', { outcome: seeded.join(', ') });
+          logger.info('demo users seeded', {
+            outcome: seeded.length === 0 ? 'already present, nothing touched' : seeded.join(', '),
+          });
         }
 
         await broker.start();

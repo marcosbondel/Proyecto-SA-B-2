@@ -48,7 +48,11 @@ export async function seedBillerAccounts(pool: Pool): Promise<readonly string[]>
        ON CONFLICT (account_id) DO UPDATE
          SET biller_code = EXCLUDED.biller_code,
              biller_name = EXCLUDED.biller_name,
-             status = 'ACTIVE'`,
+             status = 'ACTIVE'
+       -- Sólo si algo del catálogo cambió: arrancar una réplica no escribe filas
+       -- que no necesitan cambio, y nunca toca el saldo (T-60, QA 20).
+       WHERE (accounts.biller_code, accounts.biller_name, accounts.status)
+             IS DISTINCT FROM (EXCLUDED.biller_code, EXCLUDED.biller_name, 'ACTIVE')`,
       [biller.id, BILLER_CUSTOMER_ID, biller.code, biller.name],
     );
   }

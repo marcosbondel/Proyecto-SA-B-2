@@ -137,7 +137,8 @@ export class ProcessPaymentUseCase {
      * provider" would become a slow database. Only a payment whose transfer
      * scripted nothing is left to the dice.
      */
-    const simulation = await this.#roll(payment);
+    const rolled = await this.#roll(payment);
+    const simulation = rolled?.simulation ?? null;
     const waitedMs = await this.#wait(payment, simulation);
     const now = this.#clock.now();
 
@@ -179,18 +180,28 @@ export class ProcessPaymentUseCase {
     // to whoever got there first, and counting it twice would put the same
     // call in the failure rate twice.
     if (recorded.kind === 'RECORDED' && outcome !== null) {
-      this.#report(recorded.payment, recorded.attempt, outcome, waitedMs);
+      this.#report(recorded.payment, recorded.attempt, outcome, waitedMs, rolled?.source ?? null);
     }
   }
 
-  async #roll(payment: Payment): Promise<Simulation | null> {
+  /**
+   * The dice and where the settings behind them came from, so the call can be
+   * reported under the right `source`.
+   */
+  async #roll(payment: Payment): Promise<{
+    readonly simulation: Simulation;
+    readonly source: 'CONFIGURATION' | 'RUNTIME';
+  } | null> {
     if (payment.scenario !== null || this.#simulation === null || this.#random === null) {
       return null;
     }
 
-    const { settings } = await this.#simulation.current();
+    const { settings, source } = await this.#simulation.current();
 
-    return { settings, roll: this.#random.next() };
+    return {
+      simulation: { settings, roll: this.#random.next() },
+      source: source === 'RUNTIME' ? 'RUNTIME' : 'CONFIGURATION',
+    };
   }
 
   /** Waits out the simulated latency, and returns how long that took. */
@@ -209,7 +220,13 @@ export class ProcessPaymentUseCase {
   }
 
   /** Telemetry is told after the commit and never makes a settled attempt fail. */
-  #report(payment: Payment, attempt: number, outcome: AttemptOutcome, latencyMs: number): void {
+  #report(
+    payment: Payment,
+    attempt: number,
+    outcome: AttemptOutcome,
+    latencyMs: number,
+    rolledFrom: 'CONFIGURATION' | 'RUNTIME' | null,
+  ): void {
     if (this.#telemetry === null) {
       return;
     }
@@ -223,7 +240,7 @@ export class ProcessPaymentUseCase {
         result: outcome.providerResult,
         errorType: outcome.kind === 'SUCCEEDED' ? null : outcome.errorType,
         willRetry: outcome.kind === 'RETRY',
-        source: payment.scenario === null ? 'CONFIGURATION' : 'SCENARIO',
+        source: payment.scenario === null ? (rolledFrom ?? 'CONFIGURATION') : 'SCENARIO',
         latencyMs,
       });
     } catch {

@@ -385,6 +385,43 @@ describe('what the provider reports about its calls', () => {
     ]);
   });
 
+  it('says RUNTIME, not CONFIGURATION, while an administrator’s override is in force (QA 20)', async () => {
+    const { payments, publisher, telemetry, simulation, rolls } = build();
+    rolls.push(0.5, 0.5, 0.5);
+
+    await payments.open(ORDER, publisher);
+    await simulation.update({
+      command: { failureRatePercent: 100, timeoutRatePercent: 0, latencyMs: 0 },
+      identity: ADMIN,
+      correlationId: CORRELATION,
+      publisher,
+    });
+    await payments.open({ ...ORDER, paymentId: '99999999-9999-4999-8999-999999999999' }, publisher);
+    await simulation.update({ command: { reset: true }, identity: ADMIN, correlationId: CORRELATION, publisher });
+    await payments.open({ ...ORDER, paymentId: '88888888-8888-4888-8888-888888888888' }, publisher);
+
+    // Before the override: the ConfigMap's. During it: the administrator's. After the reset: the ConfigMap's again.
+    expect(telemetry.calls.map((call) => call.source)).toEqual([
+      'CONFIGURATION',
+      'RUNTIME',
+      'CONFIGURATION',
+    ]);
+  });
+
+  it('a scripted scenario stays the scenario’s even while an override is in force', async () => {
+    const { payments, publisher, telemetry, simulation } = build();
+
+    await simulation.update({
+      command: { failureRatePercent: 100, timeoutRatePercent: 0, latencyMs: 0 },
+      identity: ADMIN,
+      correlationId: CORRELATION,
+      publisher,
+    });
+    await payments.open({ ...ORDER, scenario: 'APPROVE' }, publisher);
+
+    expect(telemetry.calls[0]).toMatchObject({ source: 'SCENARIO' });
+  });
+
   it('marks a scripted answer as the scenario’s', async () => {
     const { payments, publisher, telemetry } = build();
 

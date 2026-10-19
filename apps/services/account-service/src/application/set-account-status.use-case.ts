@@ -103,7 +103,8 @@ export class SetAccountStatusUseCase {
               balanceAtDeactivation: quetzales(account.balanceMinor),
               lastActivityAt: account.lastActivityAt?.toISOString() ?? null,
               deactivatedAt: now,
-              reason: payload.reason,
+              // Siempre presente al desactivar: el contrato lo exige.
+              reason: payload.reason ?? null,
             },
           }
         : {

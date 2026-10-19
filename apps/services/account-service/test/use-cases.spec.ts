@@ -782,6 +782,23 @@ describe('an administrator changing the status by hand', () => {
     });
   });
 
+  it('reactivates with no reason and announces it (QA 21)', async () => {
+    const { repository, publisher, dependencies } = fixture();
+    seed(repository, { status: 'INACTIVE' });
+
+    await new SetAccountStatusUseCase(dependencies).execute(
+      { accountId: ACCOUNT, status: 'ACTIVE' },
+      ADMIN,
+      'key-react',
+    );
+
+    expect(repository.accounts.get(ACCOUNT)?.status).toBe('ACTIVE');
+    expect(publisher.events[0]).toMatchObject({
+      messageType: 'account.reactivated.v1',
+      payload: { cause: 'ADMINISTRATOR' },
+    });
+  });
+
   /**
    * The Gateway's guard already refuses everyone else, and this repeats the
    * check because that guard protects an HTTP route while this message could
