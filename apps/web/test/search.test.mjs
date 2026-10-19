@@ -36,10 +36,10 @@ describe('what counts as an identifier', () => {
 });
 
 describe('where an identifier could take you', () => {
-  test('an administrator is offered all four screens', () => {
+  test('an administrator is offered all five screens', () => {
     assert.deepEqual(
       searchDestinations(ACCOUNT, 'ADMINISTRADOR').map((destination) => destination.label),
-      ['Cuenta', 'Cliente', 'Transferencia', 'Pago'],
+      ['Cuenta', 'Cliente', 'Transferencia', 'Depósito a otro banco', 'Pago'],
     );
   });
 
@@ -48,11 +48,26 @@ describe('where an identifier could take you', () => {
    * the service-payment product landed: paying a bill is what a client does,
    * and the staff-only part is the monitor screen inside the module.
    */
-  test('a client is offered the same four', () => {
+  test('a client is offered the same five', () => {
     assert.deepEqual(
       searchDestinations(ACCOUNT, 'CLIENTE').map((destination) => destination.label),
-      ['Cuenta', 'Cliente', 'Transferencia', 'Pago'],
+      ['Cuenta', 'Cliente', 'Transferencia', 'Depósito a otro banco', 'Pago'],
     );
+  });
+
+  /**
+   * T-60: the identifier of a deposit to the other bank is a UUID like any
+   * other, so the box offers its screen — to every role, because the screen is
+   * scoped row by row by Payment and not by role.
+   */
+  test('an identifier can be a deposit to the other bank, for every role', () => {
+    for (const role of ['CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR']) {
+      const deposito = searchDestinations(ACCOUNT, role).find(
+        (destination) => destination.label === 'Depósito a otro banco',
+      );
+
+      assert.equal(deposito?.to, `/transferencias/interbancarias/${ACCOUNT}`, role);
+    }
   });
 
   test('every destination carries the identifier that was typed', () => {
