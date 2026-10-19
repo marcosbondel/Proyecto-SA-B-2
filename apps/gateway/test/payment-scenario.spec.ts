@@ -27,7 +27,10 @@ describe('paymentScenario', () => {
   beforeEach(async () => {
     harness = await buildHarness([TransfersController]);
     app = harness.app;
-    auth = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'CLIENTE' })}`;
+    // Staff, on purpose: a CLIENTE's transfer is preceded by a read that asks
+    // Account whether the source is theirs (T-60, `transfer-ownership.spec.ts`),
+    // and this file is about the field the command carries.
+    auth = `Bearer ${harness.tokens.sign({ customerId: ACTOR, username: 'ana', role: 'CAJERO_RECEPTOR' })}`;
   });
 
   afterEach(async () => {

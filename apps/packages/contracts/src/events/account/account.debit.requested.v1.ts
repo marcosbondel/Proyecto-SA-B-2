@@ -10,6 +10,13 @@ import { defineContract } from '../contract';
  * idempotent. The consumer recognises a redelivery through the envelope's
  * `idempotencyKey`; `transactionId` is what ties the movement to the Saga it
  * belongs to, so a compensation can find it later.
+ *
+ * **Whose debit it is travels in the envelope's `identity`, not in this
+ * payload** (T-60). Transaction Service builds the command as a follow-up of the
+ * request, so it carries the identity of whoever ordered the transfer, and
+ * Account refuses a `CLIENTE` whose `customerId` is not the account's owner —
+ * under the same row lock that moves the balance. A debit with `identity: null`
+ * is refused: nobody ordered it.
  */
 export const accountDebitRequestedV1 = defineContract({
   name: 'account.debit.requested.v1',
