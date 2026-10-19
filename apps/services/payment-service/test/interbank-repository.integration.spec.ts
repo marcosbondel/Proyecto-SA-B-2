@@ -112,6 +112,8 @@ suite('interbank deposit persistence', () => {
 
     expect((await repository.claimCallbacks(now, 20)).map((d) => d.stage)).toEqual(['ACCEPTED']);
     expect(await repository.claimCallbacks(now, 20)).toHaveLength(0);
+    // La entrega falló: se suelta el arrendamiento y la espera creciente manda.
+    await repository.releaseCallbackClaim(origin.payload.depositId);
     expect(await repository.claimCallbacks(new Date(now.getTime() + 2_000), 20)).toHaveLength(1);
     await repository.markCallbackDelivered(origin.payload.depositId, now);
     expect(await repository.claimCallbacks(new Date(now.getTime() + 60_000), 20)).toHaveLength(0);

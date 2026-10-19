@@ -257,6 +257,17 @@ export class SendInterbankDepositUseCase {
       now,
     });
 
+    if (opened.kind === 'DUPLICATE') {
+      /*
+       * Una reentrega del comando **no entrega otra vez** (T-60). La fila nace
+       * arrendada a quien la dio de alta: o ese todavía la está entregando, o
+       * murió y el barrido la recoge cuando caduque el arrendamiento. Entregar
+       * aquí repetía el POST al banco pareja, con el barrido y otras réplicas
+       * haciendo lo mismo sobre la misma fila.
+       */
+      return;
+    }
+
     if (opened.kind === 'CREATED') {
       /*
        * Éste sí se publica directamente, y la asimetría con `#apply` es
@@ -383,12 +394,23 @@ export class SendInterbankDepositUseCase {
     readonly expired: number;
     readonly resent: number;
     readonly resolved: number;
+    /**
+     * Cuántas filas reclamó en total, hechas o no: es lo que le dice al
+     * planificador si hubo trabajo (T-60). `expired + resent + resolved` no
+     * sirve para eso, porque un paso del protocolo de TIMEOUT que pregunta o
+     * cancela es trabajo y no cierra nada.
+     */
+    readonly claimed: number;
   }> {
     const now = this.#clock();
     let expired = 0;
     let resent = 0;
+    let claimed = 0;
 
-    for (const send of await this.#repository.claimExpired(now, limit)) {
+    const vencidos = await this.#repository.claimExpired(now, limit);
+    claimed += vencidos.length;
+
+    for (const send of vencidos) {
       const done = await this.#guarded('expire', send, () =>
         this.#traced(send, 'payment.interbank.expire', () =>
           this.#apply(send, { kind: 'EXPIRED' }),
@@ -397,7 +419,10 @@ export class SendInterbankDepositUseCase {
       if (done) expired += 1;
     }
 
-    for (const send of await this.#repository.claimSendable(this.#clock(), limit)) {
+    const reenviables = await this.#repository.claimSendable(this.#clock(), limit);
+    claimed += reenviables.length;
+
+    for (const send of reenviables) {
       const done = await this.#guarded('resend', send, () =>
         this.#traced(send, 'payment.interbank.resend', () => this.#deliver(send)),
       );
@@ -411,11 +436,12 @@ export class SendInterbankDepositUseCase {
      * depósito que acaba de vencer entra en su protocolo en el mismo barrido en
      * vez de esperar al siguiente.
      */
-    const resolved = await this.#resolveTimedOut(limit);
+    const timedOut = await this.#resolveTimedOut(limit);
 
-    await this.#processReversals(limit);
+    claimed += timedOut.claimed;
+    claimed += await this.#processReversals(limit);
 
-    return { expired, resent, resolved };
+    return { expired, resent, resolved: timedOut.resolved, claimed };
   }
 
   /** Corre un paso de un depósito; si lanza, lo registra y deja seguir con los demás. */
@@ -452,10 +478,11 @@ export class SendInterbankDepositUseCase {
    * Eso es el ticket entero: hasta ocho minutos de saldo retenido en el peor
    * caso, a cambio de no devolver dinero que el otro banco ya entregó.
    */
-  async #resolveTimedOut(limit: number): Promise<number> {
+  async #resolveTimedOut(limit: number): Promise<{ resolved: number; claimed: number }> {
     let resolved = 0;
+    const pendientes = await this.#repository.claimAwaitingResolution(this.#clock(), limit);
 
-    for (const send of await this.#repository.claimAwaitingResolution(this.#clock(), limit)) {
+    for (const send of pendientes) {
       await this.#guarded('resolve', send, () =>
         this.#traced(send, 'payment.interbank.resolve', async () => {
           if (await this.#resolveOne(send)) resolved += 1;
@@ -463,7 +490,7 @@ export class SendInterbankDepositUseCase {
       );
     }
 
-    return resolved;
+    return { resolved, claimed: pendientes.length };
   }
 
   /** Un paso para un depósito; `true` cuando lo cerró. */
@@ -589,12 +616,16 @@ export class SendInterbankDepositUseCase {
    * depósito entra como cualquier otro por `POST /transfers`; lo que este
    * servicio deja escrito es que la devolución se pidió y en qué quedó.
    */
-  async #processReversals(limit: number): Promise<void> {
-    for (const send of await this.#repository.claimReversals(this.#clock(), limit)) {
+  async #processReversals(limit: number): Promise<number> {
+    const reversos = await this.#repository.claimReversals(this.#clock(), limit);
+
+    for (const send of reversos) {
       await this.#guarded('reversal', send, () =>
         this.#traced(send, 'payment.interbank.reversal', () => this.#reverseOne(send)),
       );
     }
+
+    return reversos.length;
   }
 
   async #reverseOne(send: InterbankSend): Promise<void> {
@@ -874,10 +905,11 @@ export class SendInterbankDepositUseCase {
    * haya recuperado solo.
    */
   public async reconcile(limit = 20): Promise<number> {
-    const olderThan = new Date(this.#clock().getTime() - RECONCILE_GRACE_MS);
+    const claimedAt = this.#clock();
+    const olderThan = new Date(claimedAt.getTime() - RECONCILE_GRACE_MS);
     let recovered = 0;
 
-    for (const send of await this.#repository.claimUnreconciled(olderThan, limit)) {
+    for (const send of await this.#repository.claimUnreconciled(olderThan, limit, claimedAt)) {
       const settlement = settlementOf(send.state);
 
       if (settlement === null) {
