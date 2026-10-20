@@ -18,6 +18,8 @@ export {
   withTraceparent,
 } from './trace-context';
 
+export { labelValues, seedCounter, seriesOf } from './metric-seed';
+
 export type { OutboundRequest } from './outbound-headers';
 export { dropManualTraceHeaders } from './outbound-headers';
 

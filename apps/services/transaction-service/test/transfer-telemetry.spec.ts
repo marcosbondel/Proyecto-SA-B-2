@@ -1,11 +1,12 @@
 import { metrics, trace } from '@opentelemetry/api';
 import {
   AggregationTemporality,
+  DataPointType,
   InMemoryMetricExporter,
   MeterProvider,
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
-import type { HistogramMetricData, SumMetricData } from '@opentelemetry/sdk-metrics';
+import type { HistogramMetricData, MetricData, SumMetricData } from '@opentelemetry/sdk-metrics';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -163,13 +164,31 @@ async function compensatedTransfer(w: ReturnType<typeof world>): Promise<void> {
   await w.deliver({ kind: 'DEBIT_COMPENSATED' }, 3);
 }
 
-async function collected() {
+/** Every metric exported since the last reset, including the series seeded at 0. */
+async function allCollected() {
   await meterProvider.forceFlush();
 
   return metricExporter
     .getMetrics()
     .flatMap((resource) => resource.scopeMetrics)
     .flatMap((scope) => scope.metrics);
+}
+
+/**
+ * What *happened*: the series seeded at 0 at boot are filtered out, so a test
+ * about one transfer does not depend on whether it happens to be the first to
+ * build the adapter (the seeding has its own describe at the end).
+ */
+async function collected(): Promise<MetricData[]> {
+  return (await allCollected()).flatMap((metric): MetricData[] => {
+    if (metric.dataPointType !== DataPointType.SUM) {
+      return [metric];
+    }
+
+    const dataPoints = metric.dataPoints.filter((point) => point.value !== 0);
+
+    return dataPoints.length === 0 ? [] : [{ ...metric, dataPoints } as MetricData];
+  });
 }
 
 /** The labels of every data point, without the time each one covers. */
@@ -181,8 +200,7 @@ const sumOf = (all: Awaited<ReturnType<typeof collected>>, name: string) =>
 
 const histogramOf = (all: Awaited<ReturnType<typeof collected>>) =>
   all.find((metric) => metric.descriptor.name === DURATION_HISTOGRAM) as
-    | HistogramMetricData
-    | undefined;
+    HistogramMetricData | undefined;
 
 const names = () => spans.getFinishedSpans().map((span) => span.name);
 const byName = (name: string): ReadableSpan =>
@@ -233,7 +251,9 @@ describe('opening the transfer', () => {
 
     const roots = spans.getFinishedSpans().filter((span) => span.name === ROOT_SPAN);
     expect(roots).toHaveLength(2);
-    expect(roots.filter((span) => span.attributes['bank.transfer.duplicate'] === true)).toHaveLength(1);
+    expect(
+      roots.filter((span) => span.attributes['bank.transfer.duplicate'] === true),
+    ).toHaveLength(1);
     expect(sumOf(await collected(), STARTED_COUNTER)?.dataPoints[0]?.value).toBe(1);
   });
 });
@@ -585,7 +605,8 @@ describe('the rungs of the payment retry ladder', () => {
 });
 
 describe('the log', () => {
-  const parsed = (lines: string[]) => lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+  const parsed = (lines: string[]) =>
+    lines.map((line) => JSON.parse(line) as Record<string, unknown>);
 
   it('has a line for each transition with the transfer id, the states and the span', async () => {
     const w = world();
@@ -645,7 +666,9 @@ describe('the log', () => {
       expect(everything).not.toContain(secret);
     }
 
-    expect(everything).not.toMatch(/amountMinor|15000|credential|password|token|eyJ[\w-]+\.[\w-]+\.[\w-]+/i);
+    expect(everything).not.toMatch(
+      /amountMinor|15000|credential|password|token|eyJ[\w-]+\.[\w-]+\.[\w-]+/i,
+    );
   });
 
   it('does not mistake the time of a data point for an amount', () => {
@@ -679,5 +702,83 @@ describe('a telemetry that fails never fails the transition', () => {
 
     expect(outcome.kind).toBe('APPLIED');
     expect((await w.repository.findById(TRANSACTION))?.status).toBe('DEBITING');
+  });
+});
+
+describe('the counters exist at zero from boot', () => {
+  // A series OpenTelemetry creates on its first `add()` is born at 1, and
+  // Prometheus' `increase()` cannot see the first increment of a series that
+  // had no earlier sample. Seeded at 0 when the process starts, it can.
+  //
+  // Each test gets a provider of its own - the seeding happens once per meter
+  // provider, which is once per process in production - and a cumulative
+  // exporter, which is what Prometheus scrapes.
+  let exporter: InMemoryMetricExporter;
+  let provider: MeterProvider;
+
+  beforeEach(() => {
+    exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    provider = new MeterProvider({
+      readers: [new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 3_600_000 })],
+    });
+    metrics.disable();
+    metrics.setGlobalMeterProvider(provider);
+  });
+
+  afterAll(() => {
+    metrics.disable();
+    metrics.setGlobalMeterProvider(meterProvider);
+  });
+
+  async function series(name: string): Promise<Record<string, number>> {
+    exporter.reset();
+    await provider.forceFlush();
+
+    const metric = exporter
+      .getMetrics()
+      .flatMap((resource) => resource.scopeMetrics)
+      .flatMap((scope) => scope.metrics)
+      .find((m) => m.descriptor.name === name) as SumMetricData | undefined;
+
+    return Object.fromEntries(
+      (metric?.dataPoints ?? []).map((point) => [JSON.stringify(point.attributes), point.value]),
+    );
+  }
+
+  const logger = () => ({ info: (): void => undefined, error: (): void => undefined });
+
+  it('exports the started counter and every final result and reason at 0', async () => {
+    new OtelTransferTelemetry(logger());
+
+    expect(await series(STARTED_COUNTER)).toEqual({ '{}': 0 });
+    expect(await series(FINISHED_COUNTER)).toEqual({
+      '{"result":"completed","reason":"NONE"}': 0,
+      '{"result":"failed","reason":"KYC_NOT_VERIFIED"}': 0,
+      '{"result":"failed","reason":"INSUFFICIENT_FUNDS"}': 0,
+      '{"result":"failed","reason":"ACCOUNT_INACTIVE"}': 0,
+      '{"result":"failed","reason":"ACCOUNT_NOT_FOUND"}': 0,
+      '{"result":"failed","reason":"INVALID_AMOUNT_PRECISION"}': 0,
+      '{"result":"compensated","reason":"PAYMENT_DECLINED"}': 0,
+      '{"result":"compensated","reason":"PAYMENT_RETRIES_EXHAUSTED"}': 0,
+      '{"result":"compensated","reason":"ACCOUNT_NOT_FOUND"}': 0,
+      '{"result":"compensated","reason":"INVALID_AMOUNT_PRECISION"}': 0,
+    });
+  });
+
+  it('seeds once per process, and the first real transfer lands on the seeded series', async () => {
+    const w = world();
+    const seeded = await series(FINISHED_COUNTER);
+
+    // Another adapter must neither reseed nor reset what the first one counted.
+    new OtelTransferTelemetry(logger());
+    new OtelTransferTelemetry(logger());
+    await completedTransfer(w);
+
+    expect(Object.keys(seeded)).toHaveLength(10);
+    expect(await series(STARTED_COUNTER)).toEqual({ '{}': 1 });
+    expect(await series(FINISHED_COUNTER)).toMatchObject({
+      '{"result":"completed","reason":"NONE"}': 1,
+      '{"result":"failed","reason":"INSUFFICIENT_FUNDS"}': 0,
+    });
   });
 });
