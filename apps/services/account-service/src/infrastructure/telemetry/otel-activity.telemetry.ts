@@ -1,7 +1,9 @@
+import { labelValues, seedCounter, seriesOf } from '@bank/observability';
 import { isSpanContextValid, metrics, trace } from '@opentelemetry/api';
 import type { Counter, Span, Tracer } from '@opentelemetry/api';
 
 import type { ActivityTelemetry, AnomalyRecord } from '../../application/ports';
+import type { AccountType } from '../../domain/account';
 
 /** The slice of the logger this adapter uses, so it need not import `interfaces/`. */
 export interface ActivityLog {
@@ -52,6 +54,24 @@ export const ANOMALIES_COUNTER = 'bank.account.anomalies';
 export const ANOMALY_SPAN = 'account.activity anomaly';
 
 /**
+ * The closed label sets, typed over the unions the code emits from:
+ * `satisfies Record<Union, true>` makes the compiler refuse a set that misses a
+ * member, so a value added to the union cannot be forgotten by the seed that
+ * pre-creates the series at zero (a series born at its first increment is
+ * invisible to Prometheus' `increase()`).
+ *
+ * The values are spelled exactly as `operation()` and `anomaly()` label them:
+ * the account type in upper case (`MONETARIA`, `AHORRO`), the operation in lower.
+ */
+const ACCOUNT_TYPES = { MONETARIA: true, AHORRO: true } satisfies Record<AccountType, true>;
+const OPERATIONS = { debit: true, credit: true, compensation: true } satisfies Record<
+  Parameters<ActivityTelemetry['operation']>[0]['operation'],
+  true
+>;
+/** The only rule there is; `anomaly()` labels every anomaly with it. */
+const ANOMALY_RULES = { HIGH_FREQUENCY: true };
+
+/**
  * Account activity as OpenTelemetry sees it (Fase 3, T-42).
  *
  * Instrumented against `@opentelemetry/api` only: with no SDK registered the
@@ -87,6 +107,16 @@ export class OtelActivityTelemetry implements ActivityTelemetry {
       unit: '{anomaly}',
       description: 'High-frequency anomalies detected on accounts, by account type.',
     });
+    seedCounter(
+      this.#operations,
+      OPERATIONS_COUNTER,
+      seriesOf({ account_type: labelValues(ACCOUNT_TYPES), operation: labelValues(OPERATIONS) }),
+    );
+    seedCounter(
+      this.#anomalies,
+      ANOMALIES_COUNTER,
+      seriesOf({ account_type: labelValues(ACCOUNT_TYPES), rule: labelValues(ANOMALY_RULES) }),
+    );
     this.#log = log;
     this.#correlationId = correlationId;
   }
@@ -136,18 +166,15 @@ export class OtelActivityTelemetry implements ActivityTelemetry {
       this.#anomalies.add(1, { account_type: event.accountType, rule: 'HIGH_FREQUENCY' });
     }
 
-    this.#log.warn(
-      event.republished ? 'account anomaly republished' : 'account anomaly detected',
-      {
-        correlationId: this.#correlationId,
-        accountId: event.accountId,
-        operationCount: event.operationCount,
-        threshold: event.threshold,
-        windowMinutes: event.windowMinutes,
-        republished: event.republished,
-        ...traceFields(span),
-      },
-    );
+    this.#log.warn(event.republished ? 'account anomaly republished' : 'account anomaly detected', {
+      correlationId: this.#correlationId,
+      accountId: event.accountId,
+      operationCount: event.operationCount,
+      threshold: event.threshold,
+      windowMinutes: event.windowMinutes,
+      republished: event.republished,
+      ...traceFields(span),
+    });
   }
 
   public failed(event: {

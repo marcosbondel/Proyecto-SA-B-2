@@ -1,3 +1,4 @@
+import { labelValues, seedCounter, seriesOf } from '@bank/observability';
 import { isSpanContextValid, metrics, trace } from '@opentelemetry/api';
 import type { Counter, Histogram, Span, Tracer } from '@opentelemetry/api';
 
@@ -42,6 +43,29 @@ export const SIMULATED_FAILURE_EVENT = 'simulated_failure';
  * OpenTelemetry buckets stop at ten seconds and would put a 30 s answer in the
  * overflow bucket, making the p95 unreadable.
  */
+/**
+ * The closed label sets of the two counters, typed over the unions the code
+ * emits from: `satisfies Record<Union, true>` makes the compiler refuse a set
+ * that misses a member, so a value added to the union cannot be forgotten by the
+ * seed that pre-creates the series at zero (a series born at its first
+ * increment is invisible to Prometheus' `increase()`).
+ *
+ * The values are spelled as `providerCall()` and `simulationChanged()` label
+ * them: lower case.
+ */
+const PROVIDER_RESULTS = { success: true, failure: true, timeout: true } satisfies Record<
+  Lowercase<ProviderCall['result']>,
+  true
+>;
+const PROVIDER_SOURCES = { scenario: true, configuration: true, runtime: true } satisfies Record<
+  Lowercase<ProviderCall['source']>,
+  true
+>;
+const SIMULATION_ACTIONS = { update: true, reset: true, denied: true } satisfies Record<
+  Lowercase<Parameters<ProviderTelemetry['simulationChanged']>[0]['action']>,
+  true
+>;
+
 export const DURATION_BUCKETS_S = [0.005, 0.025, 0.1, 0.25, 0.5, 1, 2, 3, 5, 10, 20, 30];
 
 /**
@@ -92,6 +116,19 @@ export class OtelProviderTelemetry implements ProviderTelemetry {
       unit: '{change}',
       description: 'Changes to the provider simulation made at run time, by action.',
     });
+    seedCounter(
+      this.#calls,
+      CALLS_COUNTER,
+      seriesOf({
+        result: labelValues(PROVIDER_RESULTS),
+        source: labelValues(PROVIDER_SOURCES),
+      }),
+    );
+    seedCounter(
+      this.#changes,
+      CHANGES_COUNTER,
+      seriesOf({ action: labelValues(SIMULATION_ACTIONS) }),
+    );
     this.#log = log;
   }
 
