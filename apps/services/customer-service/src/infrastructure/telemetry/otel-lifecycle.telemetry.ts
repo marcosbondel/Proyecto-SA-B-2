@@ -1,3 +1,4 @@
+import { labelValues, seedCounter, seriesOf } from '@bank/observability';
 import { context, isSpanContextValid, metrics, trace } from '@opentelemetry/api';
 import type {
   Attributes,
@@ -15,6 +16,7 @@ import type {
   LifecyclePath,
   LifecycleTelemetry,
   LifecycleTransition,
+  RegistrationRefusal,
 } from '../../application/ports';
 
 /** The slice of the logger this adapter uses, so it need not import `interfaces/`. */
@@ -39,6 +41,29 @@ export const SPAN_NAME = 'customer.lifecycle';
 export const DECISIONS_COUNTER = 'bank.customer.kyc.decisions';
 export const TIME_TO_DECISION_HISTOGRAM = 'bank.customer.kyc.time_to_decision';
 export const REFUSALS_COUNTER = 'bank.customer.registration.refusals';
+
+/**
+ * The closed label sets of the two low-volume counters, each typed over the
+ * union the code emits from. `satisfies Record<Union, true>` makes the compiler
+ * refuse a set that misses a member, so a value added to the union cannot be
+ * forgotten by the seed that pre-creates its series at zero.
+ *
+ * `result` is the transition's lower-case name and `path` the lifecycle path,
+ * exactly as `record()` labels them; the refusal reasons are the registration
+ * refusal codes as `refused()` labels them. A decision is only ever `verified`
+ * or `rejected` - `created` is a span, not a decision.
+ */
+const DECISION_RESULTS = { verified: true, rejected: true } satisfies Record<
+  Exclude<LifecycleTransition, 'created'>,
+  true
+>;
+const DECISION_PATHS = { counter: true, review: true } satisfies Record<LifecyclePath, true>;
+const REFUSAL_REASONS = {
+  DOCUMENT_ALREADY_REGISTERED: true,
+  EMAIL_ALREADY_REGISTERED: true,
+  INVALID_BIRTH_DATE: true,
+  ROLE_NOT_ELIGIBLE: true,
+} satisfies Record<RegistrationRefusal, true>;
 
 /**
  * Seconds from creation to a KYC decision, from "at the counter" to "the
@@ -144,6 +169,18 @@ export class OtelLifecycleTelemetry implements LifecycleTelemetry {
       unit: '{registration}',
       description: 'Registrations turned away before a customer existed, by reason.',
     });
+    // A KYC decision or a refusal is rare: a series born at its first increment
+    // is invisible to `increase()`, so every series exists at 0 from boot.
+    seedCounter(
+      this.#decisions,
+      DECISIONS_COUNTER,
+      seriesOf({ result: labelValues(DECISION_RESULTS), path: labelValues(DECISION_PATHS) }),
+    );
+    seedCounter(
+      this.#refusals,
+      REFUSALS_COUNTER,
+      seriesOf({ reason: labelValues(REFUSAL_REASONS) }),
+    );
     this.#timeToDecision = meter.createHistogram(TIME_TO_DECISION_HISTOGRAM, {
       unit: 's',
       description: 'Time from a customer being created to a KYC decision.',

@@ -98,7 +98,12 @@ async function collected(name: string) {
     .filter((metric) => metric.descriptor.name === name)
     .flatMap((metric) => (metric as SumMetricData).dataPoints);
 
-  return points.map((point) => ({ attributes: point.attributes, value: point.value }));
+  // What *happened*: the series seeded at 0 at boot are not counted, so a test
+  // about one event does not depend on being the first to build the adapter
+  // (the seeding has its own describe at the end).
+  return points
+    .filter((point) => point.value !== 0)
+    .map((point) => ({ attributes: point.attributes, value: point.value }));
 }
 
 const anomaly = (overrides: Record<string, unknown> = {}): MessageEnvelope<unknown> =>
@@ -295,7 +300,9 @@ describe('the SLO alerts', () => {
     );
 
     const counted = (await collected(ALERTS_COUNTER))
-      .map((p) => `${String(p.attributes.status)}/${String(p.attributes.severity)}=${String(p.value)}`)
+      .map(
+        (p) => `${String(p.attributes.status)}/${String(p.attributes.severity)}=${String(p.value)}`,
+      )
       .sort();
 
     expect(counted).toEqual(['firing/critical=1', 'firing/warning=1', 'resolved/critical=2']);
@@ -337,5 +344,110 @@ describe('the family of a message', () => {
   it('is `other` for anything nobody anticipated, so a stray name cannot mint a time series', () => {
     expect(familyOf('unicorn.appeared.v1')).toBe('other');
     expect(familyOf('')).toBe('other');
+  });
+});
+
+describe('the counters exist at zero from boot', () => {
+  // A series OpenTelemetry creates on its first `add()` is born at 1, and
+  // Prometheus' `increase()` cannot see the first increment of a series that
+  // had no earlier sample. Seeded at 0 when the process starts, it can.
+  //
+  // Each test gets a provider of its own - the seeding happens once per meter
+  // provider, which is once per process in production - and a cumulative
+  // exporter, which is what Prometheus scrapes.
+  let exporter: InMemoryMetricExporter;
+  let provider: MeterProvider;
+
+  beforeEach(() => {
+    exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    provider = new MeterProvider({
+      readers: [new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 3_600_000 })],
+    });
+    metrics.disable();
+    metrics.setGlobalMeterProvider(provider);
+  });
+
+  afterAll(() => {
+    metrics.disable();
+    metrics.setGlobalMeterProvider(meterProvider);
+  });
+
+  async function series(name: string): Promise<Record<string, number>> {
+    exporter.reset();
+    await provider.forceFlush();
+
+    const metric = exporter
+      .getMetrics()
+      .flatMap((resource) => resource.scopeMetrics)
+      .flatMap((scope) => scope.metrics)
+      .find((m) => m.descriptor.name === name) as SumMetricData | undefined;
+
+    return Object.fromEntries(
+      (metric?.dataPoints ?? []).map((point) => [JSON.stringify(point.attributes), point.value]),
+    );
+  }
+
+  it('exports every alert state and severity at 0 right after the adapter is built', async () => {
+    new OtelAuditTelemetry();
+
+    expect(await series(ALERTS_COUNTER)).toEqual({
+      '{"status":"firing","severity":"critical"}': 0,
+      '{"status":"firing","severity":"warning"}': 0,
+      '{"status":"firing","severity":"info"}': 0,
+      '{"status":"resolved","severity":"critical"}': 0,
+      '{"status":"resolved","severity":"warning"}': 0,
+      '{"status":"resolved","severity":"info"}': 0,
+    });
+  });
+
+  it('exports every notification severity and result at 0', async () => {
+    new OtelAuditTelemetry();
+
+    const seeded = await series(NOTIFICATIONS_COUNTER);
+
+    expect(Object.keys(seeded)).toHaveLength(9);
+    expect(seeded['{"severity":"ERROR","result":"failed"}']).toBe(0);
+    expect(seeded['{"severity":"INFO","result":"sent"}']).toBe(0);
+    expect(Object.values(seeded).every((value) => value === 0)).toBe(true);
+  });
+
+  it('exports every family, severity, outcome and processing status of the events at 0', async () => {
+    new OtelAuditTelemetry();
+
+    const seeded = await series(EVENTS_COUNTER);
+
+    // six families (five and `other`) x three severities x two outcomes x three statuses
+    expect(Object.keys(seeded)).toHaveLength(6 * 3 * 2 * 3);
+    expect(Object.values(seeded).every((value) => value === 0)).toBe(true);
+    expect(
+      seeded['{"family":"other","severity":"WARNING","outcome":"recorded","processing":"invalid"}'],
+    ).toBe(0);
+  });
+
+  it('seeds once per process, and the first real event lands on the seeded series', async () => {
+    const telemetry = new OtelAuditTelemetry();
+
+    telemetry.recorded({
+      messageType: 'account.anomaly.detected.v1',
+      severity: 'WARNING',
+      processingStatus: 'PROCESSED',
+      outcome: 'RECORDED',
+      notification: 'SENT',
+      correlationId: CORRELATION,
+      alerts: [{ status: 'firing', severity: 'critical' }],
+    });
+    // A second adapter must neither reseed nor reset what the first one counted.
+    new OtelAuditTelemetry();
+
+    const events = await series(EVENTS_COUNTER);
+
+    expect(
+      events[
+        '{"family":"account","severity":"WARNING","outcome":"recorded","processing":"processed"}'
+      ],
+    ).toBe(1);
+    expect(Object.keys(events)).toHaveLength(6 * 3 * 2 * 3);
+    expect((await series(ALERTS_COUNTER))['{"status":"firing","severity":"critical"}']).toBe(1);
+    expect((await series(NOTIFICATIONS_COUNTER))['{"severity":"WARNING","result":"sent"}']).toBe(1);
   });
 });
