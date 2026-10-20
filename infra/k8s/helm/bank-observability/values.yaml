@@ -13,9 +13,9 @@
 #   INSTANCES        = 8, y el sistema ya usa 8 (5 VMs + 3 nodos). NO hay un
 #                      cuarto nodo, así que todo lo de aquí tiene que caber en
 #                      los tres que existen. De ahí las requests explícitas.
-#   IN_USE_ADDRESSES = 4, y el sistema usa 3. La que queda es el margen de la
-#                      entrada del banco: **Grafana no se expone por un
-#                      LoadBalancer**, se alcanza por `kubectl port-forward`.
+#   IN_USE_ADDRESSES = 4, y el sistema usa 3 (NAT y los Gateways de prod y
+#                      dev). La cuarta es de **Grafana**, que desde el
+#                      2026-10-20 se expone por un LoadBalancer (ver §6).
 #
 # Retención: 7 días en los tres almacenes, que es lo que el enunciado sugiere
 # (§4.2, Consideraciones de costo) y lo que cubre la ventana de una prueba de
@@ -1432,16 +1432,23 @@ loki:
 # ---------------------------------------------------------------------------
 # 6. Grafana
 #
-# Sin LoadBalancer: queda una sola IP pública libre en la cuota y es el margen
-# de la entrada del banco. Se entra con
-#   kubectl port-forward -n <ns> svc/grafana 3000:80
+# Con LoadBalancer, por decisión del equipo (2026-10-20): quien califica tiene
+# que poder abrir los dashboards, Explore (logs y trazas) y las alertas desde un
+# navegador, y con `kubectl port-forward` haría falta acceso al proyecto de GCP.
+# Toma la última IP libre de la cuota `IN_USE_ADDRESSES` (4).
+#
+# Lo que se acepta al hacerlo: Grafana queda en Internet por HTTP, protegido por
+# el usuario `admin` y su contraseña (`GRAFANA_ADMIN_PASSWORD`, >= 16
+# caracteres). Prometheus, Tempo y Loki siguen internos: no tienen
+# autenticación y se consultan a través de Grafana. En kind el Service vuelve a
+# ClusterIP (infra/k8s/kind/observability.values.yaml).
 # ---------------------------------------------------------------------------
 grafana:
   enabled: true
   fullnameOverride: grafana
 
   service:
-    type: ClusterIP
+    type: LoadBalancer
     port: 80
 
   resources:
