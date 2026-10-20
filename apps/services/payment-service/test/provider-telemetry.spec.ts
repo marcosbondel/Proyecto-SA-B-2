@@ -41,14 +41,20 @@ const NOW = new Date('2026-10-05T12:00:00.000Z');
 const PAYMENT_ID = '11111111-1111-4111-8111-111111111111';
 const TRANSACTION_ID = '22222222-2222-4222-8222-222222222222';
 const CORRELATION = '33333333-3333-4333-8333-333333333333';
-const ADMIN = { customerId: '77777777-7777-4777-8777-777777777701', role: 'ADMINISTRADOR' as const };
+const ADMIN = {
+  customerId: '77777777-7777-4777-8777-777777777701',
+  role: 'ADMINISTRADOR' as const,
+};
 const NOTHING: SimulationSettings = { failureRatePercent: 0, timeoutRatePercent: 0, latencyMs: 0 };
 
 const spans = new InMemorySpanExporter();
 const metricExporter = new InMemoryMetricExporter(AggregationTemporality.DELTA);
 const meterProvider = new MeterProvider({
   readers: [
-    new PeriodicExportingMetricReader({ exporter: metricExporter, exportIntervalMillis: 3_600_000 }),
+    new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+      exportIntervalMillis: 3_600_000,
+    }),
   ],
 });
 
@@ -72,12 +78,18 @@ beforeEach(() => {
 async function pointsOf(name: string): Promise<readonly DataPoint<unknown>[]> {
   await meterProvider.forceFlush();
 
-  return metricExporter
-    .getMetrics()
-    .flatMap((resource) => resource.scopeMetrics)
-    .flatMap((scope) => scope.metrics)
-    .filter((metric) => metric.descriptor.name === name)
-    .flatMap((metric): readonly DataPoint<unknown>[] => metric.dataPoints);
+  return (
+    metricExporter
+      .getMetrics()
+      .flatMap((resource) => resource.scopeMetrics)
+      .flatMap((scope) => scope.metrics)
+      .filter((metric) => metric.descriptor.name === name)
+      .flatMap((metric): readonly DataPoint<unknown>[] => metric.dataPoints)
+      // What *happened*: the series seeded at 0 at boot are not counted, so a test
+      // about one call does not depend on being the first to build the adapter
+      // (the seeding has its own describe at the end).
+      .filter((point) => point.value !== 0)
+  );
 }
 
 function build(defaults: SimulationSettings, rolls: number[] = []) {
@@ -121,14 +133,19 @@ const labelsOf = (points: readonly { attributes: Record<string, unknown> }[]): s
 
 describe('the calls counter, which is the failure rate', () => {
   it('counts each call under the result the provider gave', async () => {
-    const { payments, publisher } = build({ ...NOTHING, failureRatePercent: 50, timeoutRatePercent: 25 }, [0.9, 0.3, 0.1]);
+    const { payments, publisher } = build(
+      { ...NOTHING, failureRatePercent: 50, timeoutRatePercent: 25 },
+      [0.9, 0.3, 0.1],
+    );
 
     await payments.open(ORDER, publisher);
     await payments.open({ ...ORDER, paymentId: '99999999-9999-4999-8999-999999999991' }, publisher);
     await payments.open({ ...ORDER, paymentId: '99999999-9999-4999-8999-999999999992' }, publisher);
 
     const points = (await pointsOf(CALLS_COUNTER)) as SumMetricData['dataPoints'];
-    const byResult = Object.fromEntries(points.map((point) => [String(point.attributes.result), point.value]));
+    const byResult = Object.fromEntries(
+      points.map((point) => [String(point.attributes.result), point.value]),
+    );
 
     // rolls: 0.9 succeeds, 0.3 fails (25–75 %), 0.1 times out (< 25 %).
     expect(byResult).toEqual({ success: 1, failure: 1, timeout: 1 });
@@ -138,7 +155,10 @@ describe('the calls counter, which is the failure rate', () => {
     const { payments, publisher } = build({ ...NOTHING, failureRatePercent: 100 });
 
     await payments.open(ORDER, publisher);
-    await payments.open({ ...ORDER, paymentId: '99999999-9999-4999-8999-999999999991', scenario: 'REJECT' }, publisher);
+    await payments.open(
+      { ...ORDER, paymentId: '99999999-9999-4999-8999-999999999991', scenario: 'REJECT' },
+      publisher,
+    );
 
     const points = (await pointsOf(CALLS_COUNTER)) as SumMetricData['dataPoints'];
 
@@ -242,16 +262,24 @@ describe('the span of a provider call', () => {
     await failing.payments.open(ORDER, failing.publisher);
 
     const timing = build({ ...NOTHING, timeoutRatePercent: 100 });
-    await timing.payments.open({ ...ORDER, paymentId: '99999999-9999-4999-8999-999999999991' }, timing.publisher);
+    await timing.payments.open(
+      { ...ORDER, paymentId: '99999999-9999-4999-8999-999999999991' },
+      timing.publisher,
+    );
 
     const fine = build(NOTHING);
-    await fine.payments.open({ ...ORDER, paymentId: '99999999-9999-4999-8999-999999999992' }, fine.publisher);
+    await fine.payments.open(
+      { ...ORDER, paymentId: '99999999-9999-4999-8999-999999999992' },
+      fine.publisher,
+    );
 
     const [failure, timeout, success] = spans.getFinishedSpans();
 
     expect(failure!.events.map((event) => event.name)).toEqual([SIMULATED_FAILURE_EVENT]);
     expect(timeout!.events.map((event) => event.name)).toEqual([SIMULATED_FAILURE_EVENT]);
-    expect(timeout!.events[0]!.attributes).toMatchObject({ 'bank.payment.provider.result': 'timeout' });
+    expect(timeout!.events[0]!.attributes).toMatchObject({
+      'bank.payment.provider.result': 'timeout',
+    });
     expect(success!.events).toEqual([]);
   });
 
@@ -264,8 +292,12 @@ describe('the span of a provider call', () => {
       await payments.retry((await repository.findById(PAYMENT_ID))!, publisher);
     }
 
-    const attempts = spans.getFinishedSpans().map((span) => span.attributes['bank.payment.attempt']);
-    const retries = spans.getFinishedSpans().map((span) => span.attributes['bank.payment.will_retry']);
+    const attempts = spans
+      .getFinishedSpans()
+      .map((span) => span.attributes['bank.payment.attempt']);
+    const retries = spans
+      .getFinishedSpans()
+      .map((span) => span.attributes['bank.payment.will_retry']);
 
     expect(attempts).toEqual([1, 2, 3, 4]);
     expect(retries).toEqual([true, true, true, false]);
@@ -381,7 +413,12 @@ describe('changing the simulation', () => {
       correlationId: CORRELATION,
       publisher,
     });
-    await simulation.update({ command: { reset: true }, identity: ADMIN, correlationId: CORRELATION, publisher });
+    await simulation.update({
+      command: { reset: true },
+      identity: ADMIN,
+      correlationId: CORRELATION,
+      publisher,
+    });
 
     const points = (await pointsOf(CHANGES_COUNTER)) as SumMetricData['dataPoints'];
 
@@ -396,5 +433,102 @@ describe('changing the simulation', () => {
       timeoutRatePercent: 10,
       latencyMs: 300,
     });
+  });
+});
+
+describe('the counters exist at zero from boot', () => {
+  // A series OpenTelemetry creates on its first `add()` is born at 1, and
+  // Prometheus' `increase()` cannot see the first increment of a series that
+  // had no earlier sample. Seeded at 0 when the process starts, it can.
+  //
+  // Each test gets a provider of its own - the seeding happens once per meter
+  // provider, which is once per process in production - and a cumulative
+  // exporter, which is what Prometheus scrapes.
+  let seedExporter: InMemoryMetricExporter;
+  let seedProvider: MeterProvider;
+
+  beforeEach(() => {
+    seedExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    seedProvider = new MeterProvider({
+      readers: [
+        new PeriodicExportingMetricReader({
+          exporter: seedExporter,
+          exportIntervalMillis: 3_600_000,
+        }),
+      ],
+    });
+    metrics.disable();
+    metrics.setGlobalMeterProvider(seedProvider);
+  });
+
+  afterAll(() => {
+    metrics.disable();
+    metrics.setGlobalMeterProvider(meterProvider);
+  });
+
+  async function series(name: string): Promise<Record<string, number>> {
+    seedExporter.reset();
+    await seedProvider.forceFlush();
+
+    const metric = seedExporter
+      .getMetrics()
+      .flatMap((resource) => resource.scopeMetrics)
+      .flatMap((scope) => scope.metrics)
+      .find((m) => m.descriptor.name === name) as SumMetricData | undefined;
+
+    return Object.fromEntries(
+      (metric?.dataPoints ?? []).map((point) => [JSON.stringify(point.attributes), point.value]),
+    );
+  }
+
+  const logger = () => new StructuredLogger('payment-service', () => undefined);
+
+  it('exports every result and source of the provider calls at 0', async () => {
+    new OtelProviderTelemetry(logger());
+
+    expect(await series(CALLS_COUNTER)).toEqual({
+      '{"result":"success","source":"scenario"}': 0,
+      '{"result":"success","source":"configuration"}': 0,
+      '{"result":"success","source":"runtime"}': 0,
+      '{"result":"failure","source":"scenario"}': 0,
+      '{"result":"failure","source":"configuration"}': 0,
+      '{"result":"failure","source":"runtime"}': 0,
+      '{"result":"timeout","source":"scenario"}': 0,
+      '{"result":"timeout","source":"configuration"}': 0,
+      '{"result":"timeout","source":"runtime"}': 0,
+    });
+  });
+
+  it('exports every simulation change action at 0', async () => {
+    new OtelProviderTelemetry(logger());
+
+    expect(await series(CHANGES_COUNTER)).toEqual({
+      '{"action":"update"}': 0,
+      '{"action":"reset"}': 0,
+      '{"action":"denied"}': 0,
+    });
+  });
+
+  it('seeds once per process, and the first real call lands on the seeded series', async () => {
+    const telemetry = new OtelProviderTelemetry(logger());
+
+    telemetry.providerCall({
+      paymentId: PAYMENT_ID,
+      transactionId: TRANSACTION_ID,
+      correlationId: CORRELATION,
+      attempt: 1,
+      result: 'FAILURE',
+      errorType: 'TRANSIENT',
+      willRetry: true,
+      source: 'RUNTIME',
+      latencyMs: 10,
+    });
+    // A second adapter must neither reseed nor reset what the first one counted.
+    new OtelProviderTelemetry(logger());
+
+    const counted = await series(CALLS_COUNTER);
+
+    expect(counted['{"result":"failure","source":"runtime"}']).toBe(1);
+    expect(Object.keys(counted)).toHaveLength(9);
   });
 });

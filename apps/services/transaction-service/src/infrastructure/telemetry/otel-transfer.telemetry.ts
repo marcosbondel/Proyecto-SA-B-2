@@ -1,3 +1,4 @@
+import { labelValues, seedCounter, seriesOf } from '@bank/observability';
 import { context, isSpanContextValid, metrics, trace } from '@opentelemetry/api';
 import type { Attributes, Context, Counter, Histogram, Span, Tracer } from '@opentelemetry/api';
 
@@ -7,6 +8,12 @@ import type {
   TransferStep,
   TransferTelemetry,
 } from '../../application/ports';
+import type {
+  CreditRejection,
+  DebitRejection,
+  KycRejection,
+  PaymentRejection,
+} from '../../domain/transaction';
 
 /** The slice of the logger this adapter uses, so it need not import `interfaces/`. */
 export interface TransferLog {
@@ -28,7 +35,11 @@ export interface TransferLog {
   ): void;
   error(
     message: string,
-    fields: { readonly correlationId?: string; readonly transactionId?: string; readonly error?: string },
+    fields: {
+      readonly correlationId?: string;
+      readonly transactionId?: string;
+      readonly error?: string;
+    },
   ): void;
 }
 
@@ -42,6 +53,52 @@ export const PAYMENT_ATTEMPT_SPAN = 'saga.payment attempt';
 export const DURATION_HISTOGRAM = 'bank.transfer.duration';
 export const FINISHED_COUNTER = 'bank.transfer.finished';
 export const STARTED_COUNTER = 'bank.transfer.started';
+
+/**
+ * The series of `bank.transfer.finished` that can exist, seeded at 0 at boot: a
+ * series born at its first increment is invisible to Prometheus' `increase()`,
+ * and a demo that finishes one transfer would read zero.
+ *
+ * Each group is the reasons the state machine can close a transfer with, typed
+ * over the domain's own unions (`satisfies Record<Union, true>` refuses a set
+ * that misses a member). `result` is the final state in lower case and `reason`
+ * is the failure code, `NONE` for a transfer that completed:
+ *
+ * - `failed`: refused before any money moved - the KYC gate, or the debit;
+ * - `compensated`: the payment failed or the credit was refused, and the debit
+ *   was returned;
+ * - `completed`: no reason.
+ *
+ * The request-time refusals (`SAME_ACCOUNT_TRANSFER`, ...) never reach here:
+ * they are answered before a transfer exists, so they finish nothing.
+ */
+const KYC_REASONS = { KYC_NOT_VERIFIED: true } satisfies Record<KycRejection, true>;
+const DEBIT_REASONS = {
+  INSUFFICIENT_FUNDS: true,
+  ACCOUNT_INACTIVE: true,
+  ACCOUNT_NOT_FOUND: true,
+  INVALID_AMOUNT_PRECISION: true,
+} satisfies Record<DebitRejection, true>;
+const CREDIT_REASONS = {
+  ACCOUNT_NOT_FOUND: true,
+  INVALID_AMOUNT_PRECISION: true,
+} satisfies Record<CreditRejection, true>;
+const PAYMENT_REASONS = {
+  PAYMENT_DECLINED: true,
+  PAYMENT_RETRIES_EXHAUSTED: true,
+} satisfies Record<PaymentRejection, true>;
+
+const FINISHED_SERIES = [
+  ...seriesOf({ result: ['completed'], reason: ['NONE'] }),
+  ...seriesOf({
+    result: ['failed'],
+    reason: [...new Set([...labelValues(KYC_REASONS), ...labelValues(DEBIT_REASONS)])],
+  }),
+  ...seriesOf({
+    result: ['compensated'],
+    reason: [...new Set([...labelValues(PAYMENT_REASONS), ...labelValues(CREDIT_REASONS)])],
+  }),
+];
 
 /**
  * Seconds from `transfer.requested` to a final state. Dense around five, because
@@ -134,6 +191,8 @@ export class OtelTransferTelemetry implements TransferTelemetry {
       unit: '{transfer}',
       description: 'Transfers that reached a final state, by result and reason.',
     });
+    seedCounter(this.#started, STARTED_COUNTER, seriesOf({}));
+    seedCounter(this.#finished, FINISHED_COUNTER, FINISHED_SERIES);
     this.#duration = meter.createHistogram(DURATION_HISTOGRAM, {
       unit: 's',
       description: 'Time from transfer.requested to a final state.',
@@ -260,7 +319,9 @@ export class OtelTransferTelemetry implements TransferTelemetry {
       'bank.transfer.phase_status': step.phase,
       'bank.transfer.duration_ms': durationMs,
       'bank.correlation_id': step.correlationId,
-      ...(step.failureReason === null ? {} : { 'bank.transfer.failure_reason': step.failureReason }),
+      ...(step.failureReason === null
+        ? {}
+        : { 'bank.transfer.failure_reason': step.failureReason }),
     });
     // The Fase 2 phases, as the assignment names them, at the moments they were reached.
     span.addEvent('PENDING', { 'bank.transfer.status': 'PENDING' }, requestedAt);
@@ -290,7 +351,9 @@ export class OtelTransferTelemetry implements TransferTelemetry {
       'bank.transfer.status': step.to,
       'bank.transfer.phase_status': step.phase,
       ...(step.command === null ? {} : { 'bank.saga.command': step.command }),
-      ...(step.failureReason === null ? {} : { 'bank.transfer.failure_reason': step.failureReason }),
+      ...(step.failureReason === null
+        ? {}
+        : { 'bank.transfer.failure_reason': step.failureReason }),
       'bank.correlation_id': step.correlationId,
     };
   }

@@ -9,7 +9,7 @@ import {
   MeterProvider,
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
-import type { HistogramMetricData, SumMetricData } from '@opentelemetry/sdk-metrics';
+import type { HistogramMetricData, MetricData, SumMetricData } from '@opentelemetry/sdk-metrics';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -132,13 +132,31 @@ function build(photo: Buffer | null = PHOTO_BYTES) {
   };
 }
 
-async function flushedMetrics() {
+/** Every metric exported since the last reset, including the series seeded at 0. */
+async function allMetrics() {
   await meterProvider.forceFlush();
 
   return metricExporter
     .getMetrics()
     .flatMap((resource) => resource.scopeMetrics)
     .flatMap((scope) => scope.metrics);
+}
+
+/**
+ * What *happened*: the series seeded at 0 at boot are filtered out, so a test
+ * about one decision does not depend on whether it happens to be the first to
+ * build the adapter (the seeding is exercised by its own describe below).
+ */
+async function flushedMetrics(): Promise<MetricData[]> {
+  return (await allMetrics()).flatMap((metric): MetricData[] => {
+    if (metric.dataPointType !== DataPointType.SUM) {
+      return [metric];
+    }
+
+    const dataPoints = metric.dataPoints.filter((point) => point.value !== 0);
+
+    return dataPoints.length === 0 ? [] : [{ ...metric, dataPoints } as MetricData];
+  });
 }
 
 function spanNames(): string[] {
@@ -623,5 +641,99 @@ describe('what never appears', () => {
         expect(JSON.stringify(point.attributes)).not.toContain(CORRELATION_ID);
       }
     }
+  });
+});
+
+describe('the counters exist at zero from boot', () => {
+  // A series OpenTelemetry creates on its first `add()` is born at 1, and
+  // Prometheus' `increase()` cannot see the first increment of a series that
+  // had no earlier sample. Seeded at 0 when the process starts, it can.
+  //
+  // Each test gets a provider of its own - the seeding happens once per meter
+  // provider, which is once per process in production - and a cumulative
+  // exporter, which is what Prometheus scrapes.
+  let exporter: InMemoryMetricExporter;
+  let provider: MeterProvider;
+
+  beforeEach(() => {
+    exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    provider = new MeterProvider({
+      readers: [new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 3_600_000 })],
+    });
+    metrics.disable();
+    metrics.setGlobalMeterProvider(provider);
+  });
+
+  afterAll(() => {
+    metrics.disable();
+    metrics.setGlobalMeterProvider(meterProvider);
+  });
+
+  async function series(name: string): Promise<Record<string, number>> {
+    exporter.reset();
+    await provider.forceFlush();
+
+    const metric = exporter
+      .getMetrics()
+      .flatMap((resource) => resource.scopeMetrics)
+      .flatMap((scope) => scope.metrics)
+      .find((m) => m.descriptor.name === name) as SumMetricData | undefined;
+
+    return Object.fromEntries(
+      (metric?.dataPoints ?? []).map((point) => [JSON.stringify(point.attributes), point.value]),
+    );
+  }
+
+  const logger = () => new StructuredLogger('customer-service', () => undefined);
+
+  it('exports every KYC decision series at 0 right after the adapter is built', async () => {
+    new OtelLifecycleTelemetry(logger());
+
+    expect(await series(DECISIONS_COUNTER)).toEqual({
+      '{"result":"verified","path":"counter"}': 0,
+      '{"result":"verified","path":"review"}': 0,
+      '{"result":"rejected","path":"counter"}': 0,
+      '{"result":"rejected","path":"review"}': 0,
+    });
+  });
+
+  it('exports every registration refusal series at 0', async () => {
+    new OtelLifecycleTelemetry(logger());
+
+    expect(await series(REFUSALS_COUNTER)).toEqual({
+      '{"reason":"DOCUMENT_ALREADY_REGISTERED"}': 0,
+      '{"reason":"EMAIL_ALREADY_REGISTERED"}': 0,
+      '{"reason":"INVALID_BIRTH_DATE"}': 0,
+      '{"reason":"ROLE_NOT_ELIGIBLE"}': 0,
+    });
+  });
+
+  it('seeds once per process, however many deliveries build an adapter', async () => {
+    const base = new OtelLifecycleTelemetry(logger());
+    const seeded = await series(DECISIONS_COUNTER);
+
+    // `forCorrelation` builds a new adapter for each delivery.
+    base.forCorrelation('c0ffee00-1111-4222-8333-444455556666');
+    base.forCorrelation('c0ffee00-1111-4222-8333-444455556667');
+
+    expect(await series(DECISIONS_COUNTER)).toEqual(seeded);
+  });
+
+  it('lets the first real decision land on the series that was seeded', async () => {
+    const context = build();
+
+    await context.register.execute(REGISTER, 'key-seed-1');
+    await context.setKycStatus.execute(
+      { customerId: REGISTER.customerId, status: 'VERIFIED' },
+      STAFF,
+      'key-seed-2',
+    );
+
+    expect(await series(DECISIONS_COUNTER)).toEqual({
+      '{"result":"verified","path":"counter"}': 0,
+      '{"result":"verified","path":"review"}': 1,
+      '{"result":"rejected","path":"counter"}': 0,
+      '{"result":"rejected","path":"review"}': 0,
+    });
   });
 });
