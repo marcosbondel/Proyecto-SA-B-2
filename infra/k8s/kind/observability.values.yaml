@@ -116,6 +116,10 @@ prometheus:
         memory: 1Gi
 
 grafana:
+  # En kind no hay balanceador: un Service LoadBalancer se queda en <pending> y
+  # `helm --wait` esperaría para siempre. Aquí se entra por `pnpm obs:forward`.
+  service:
+    type: ClusterIP
   # La política de alertas de kind: TODO al Gateway local (T-60).
   #
   # La del chart enruta `environment=dev` a dev, `environment=local` a local y
