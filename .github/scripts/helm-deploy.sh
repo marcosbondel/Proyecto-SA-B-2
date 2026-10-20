@@ -163,6 +163,37 @@ else
   echo "::warning::Sin ALERT_WEBHOOK_TOKEN: el Gateway usa lo que traiga HELM_SECRETS. Si no coincide con el Secret grafana-alert-webhook, las alertas de Grafana reciben 401 y no llegan a la bitacora."
 fi
 
+# El correo real de activacion (Resend). Sin esto el chart queda en `simulated`:
+# el servicio registra el envio y no manda nada, y como en la nube el enlace de
+# activacion sale enmascarado en el log (REVEAL_ACTIVATION_LINKS=false), un
+# cliente nuevo no tiene forma de activarse. Hasta el 2026-10-20 solo los
+# compose locales leian Resend (de infra/docker/.env); la nube nunca lo recibio.
+#
+# NOTIFICATION_CHANNEL=resend exige los tres valores: la clave (secreto), el
+# remitente en un dominio verificado y el origen publico del frontend para que
+# el enlace del correo sea absoluto. Faltando uno, se falla aqui con su nombre
+# en vez de dejar que el chart lo diga en un render.
+declare -a MAIL_ARGS=()
+if [ "${NOTIFICATION_CHANNEL:-simulated}" = "resend" ]; then
+  faltan=()
+  [ -n "${RESEND_API_KEY:-}" ] || faltan+=("secreto RESEND_API_KEY")
+  [ -n "${EMAIL_FROM:-}" ] || faltan+=("variable EMAIL_FROM")
+  [ -n "${APP_BASE_URL:-}" ] || faltan+=("variable WEB_PUBLIC_URL (APP_BASE_URL)")
+  if [ ${#faltan[@]} -gt 0 ]; then
+    echo "::error::NOTIFICATION_CHANNEL=resend pero faltan: ${faltan[*]}."
+    exit 1
+  fi
+  MAIL_ARGS+=(
+    --set-string "services.notificationAudit.notificationChannel=resend"
+    --set-string "secrets.resendApiKey=${RESEND_API_KEY}"
+    --set-string "services.notificationAudit.resend.emailFrom=${EMAIL_FROM}"
+    --set-string "services.notificationAudit.resend.appBaseUrl=${APP_BASE_URL%/}"
+  )
+  echo "Correo de activacion: Resend, remitente ${EMAIL_FROM}, enlaces a ${APP_BASE_URL%/}."
+else
+  echo "Correo de activacion: canal simulado (no se envia nada)."
+fi
+
 read_set_lines "${INFRA_ADDRESSES:-}"
 declare -a INFRA_ARGS=("${SET_LINES[@]}")
 
@@ -399,6 +430,7 @@ helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
   ${WEB_PUBLIC_URL:+--set-string "gateway.corsAllowedOrigins=${WEB_PUBLIC_URL}"} \
   "${SECRET_ARGS[@]}" \
   ${ALERT_ARGS[@]+"${ALERT_ARGS[@]}"} \
+  ${MAIL_ARGS[@]+"${MAIL_ARGS[@]}"} \
   "${INFRA_ARGS[@]}" \
   "${IMAGE_ARGS[@]}" \
   ${INTERBANK_ARGS[@]+"${INTERBANK_ARGS[@]}"} \
