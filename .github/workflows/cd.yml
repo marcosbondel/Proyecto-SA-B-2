@@ -666,6 +666,15 @@ jobs:
           # solo para inyectar fallos (enunciado §4.1: los fallos se inyectan
           # con el mock propio, nunca alterando el sistema del otro grupo).
           PARTNER_MOCK_ENABLED: ${{ vars.PARTNER_MOCK_ENABLED || 'true' }}
+          # El correo real de activacion (Resend). `simulated` si no se define:
+          # registra el envio sin mandar nada. Con `resend` hacen falta el
+          # secreto RESEND_API_KEY y la variable EMAIL_FROM; el enlace apunta al
+          # frontend publico (WEB_PUBLIC_URL). Solo produccion: el frontend de
+          # dev no es publico, asi que un enlace a el no sirve de nada.
+          NOTIFICATION_CHANNEL: ${{ vars.NOTIFICATION_CHANNEL || 'simulated' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          APP_BASE_URL: ${{ vars.WEB_PUBLIC_URL }}
           INTERBANK_PARTNER_BASE_URL: ${{ vars.INTERBANK_PARTNER_BASE_URL }}
           # Mide la disponibilidad mientras el rolling update ocurre. El chart
           # declara `maxUnavailable: 0`; esto es lo que lo demuestra.
