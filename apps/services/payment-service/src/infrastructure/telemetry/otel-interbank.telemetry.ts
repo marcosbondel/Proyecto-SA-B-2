@@ -1,3 +1,4 @@
+import { labelValues, seedCounter, seriesOf } from '@bank/observability';
 import { metrics, trace } from '@opentelemetry/api';
 import type { Counter, Histogram, Tracer } from '@opentelemetry/api';
 
@@ -13,6 +14,30 @@ export const DEPOSITS_COUNTER = 'bank.interbank.deposits';
 export const DURATION_HISTOGRAM = 'bank.interbank.deposit.duration';
 export const CALLBACKS_COUNTER = 'bank.interbank.callbacks';
 export const STATE_EVENT = 'bank.interbank.state_changed';
+
+/**
+ * Los conjuntos cerrados de las etiquetas `result`, tipados sobre las uniones
+ * de las que el código emite: `satisfies Record<Union, true>` hace que el
+ * compilador rechace un conjunto al que le falte un miembro, de modo que un
+ * valor nuevo no se olvida en la siembra que crea las series a cero (una serie
+ * que nace con su primer incremento es invisible para `increase()` de
+ * Prometheus, y una demo con un solo depósito leería cero).
+ *
+ * Se escriben como las etiquetan `stateChanged()` y `callbackAttempt()`: en
+ * minúsculas.
+ */
+const DEPOSIT_RESULTS = { accepted: true, rejected: true } satisfies Record<
+  Lowercase<'ACCEPTED' | 'REJECTED'>,
+  true
+>;
+const CALLBACK_RESULTS = { delivered: true, failed: true } satisfies Record<
+  Parameters<InterbankTelemetry['callbackAttempt']>[0]['result'],
+  true
+>;
+const SENT_RESULTS = { accepted: true, rejected: true, timeout: true } satisfies Record<
+  NonNullable<ReturnType<typeof sentMetricResult>>,
+  true
+>;
 
 type LogFields = {
   readonly correlationId: string;
@@ -58,6 +83,16 @@ export class OtelInterbankTelemetry implements InterbankTelemetry {
       unit: '{attempt}',
       description: 'Outbound partner callbacks by delivery result.',
     });
+    seedCounter(
+      this.#deposits,
+      DEPOSITS_COUNTER,
+      seriesOf({ result: labelValues(DEPOSIT_RESULTS) }),
+    );
+    seedCounter(
+      this.#callbacks,
+      CALLBACKS_COUNTER,
+      seriesOf({ result: labelValues(CALLBACK_RESULTS) }),
+    );
   }
 
   stateChanged(change: Parameters<InterbankTelemetry['stateChanged']>[0]): void {
@@ -164,6 +199,7 @@ export class OtelInterbankSendTelemetry implements InterbankSendTelemetry {
       unit: '{deposit}',
       description: 'Deposits sent to the partner bank, by final result.',
     });
+    seedCounter(this.#sent, SENT_COUNTER, seriesOf({ result: labelValues(SENT_RESULTS) }));
     this.#confirmation = meter.createHistogram(CONFIRMATION_HISTOGRAM, {
       unit: 's',
       description: 'Time from requesting a deposit to the partner bank deciding it.',

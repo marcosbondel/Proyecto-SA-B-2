@@ -239,6 +239,10 @@ export function classifyAlerts(payload: unknown): EventSeverity {
   return worstOf(alertSummaries(payload));
 }
 
+/** The closed sets of an alert's state and severity, as the metric labels spell them. */
+export type AlertStatus = 'firing' | 'resolved';
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+
 /**
  * The state and severity of each alert in a webhook payload, **only the ones that
  * say something this service knows how to count**: a state outside
@@ -248,10 +252,7 @@ export function classifyAlerts(payload: unknown): EventSeverity {
  */
 export function alertSummaries(
   payload: unknown,
-): readonly {
-  readonly status: 'firing' | 'resolved';
-  readonly severity: 'critical' | 'warning' | 'info';
-}[] {
+): readonly { readonly status: AlertStatus; readonly severity: AlertSeverity }[] {
   const alerts =
     typeof payload === 'object' && payload !== null
       ? (payload as { alerts?: unknown }).alerts
