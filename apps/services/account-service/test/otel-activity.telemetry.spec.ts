@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { metrics, trace } from '@opentelemetry/api';
 import {
   AggregationTemporality,
+  DataPointType,
   InMemoryMetricExporter,
   MeterProvider,
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
-import type { SumMetricData } from '@opentelemetry/sdk-metrics';
+import type { MetricData, SumMetricData } from '@opentelemetry/sdk-metrics';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -113,13 +114,31 @@ function build(accountType: 'MONETARIA' | 'AHORRO' = 'MONETARIA', balanceMinor =
   return { lines, accountId, repository, publisher, clock, dependencies, debit };
 }
 
-async function collected() {
+/** Every metric exported since the last reset, including the series seeded at 0. */
+async function allCollected() {
   await meterProvider.forceFlush();
 
   return metricExporter
     .getMetrics()
     .flatMap((resource) => resource.scopeMetrics)
     .flatMap((scope) => scope.metrics);
+}
+
+/**
+ * What *happened*: the series seeded at 0 at boot are filtered out, so a test
+ * about one movement does not depend on whether it happens to be the first to
+ * build the adapter (the seeding has its own describe at the end).
+ */
+async function collected(): Promise<MetricData[]> {
+  return (await allCollected()).flatMap((metric): MetricData[] => {
+    if (metric.dataPointType !== DataPointType.SUM) {
+      return [metric];
+    }
+
+    const dataPoints = metric.dataPoints.filter((point) => point.value !== 0);
+
+    return dataPoints.length === 0 ? [] : [{ ...metric, dataPoints } as MetricData];
+  });
 }
 
 function counter(all: Awaited<ReturnType<typeof collected>>, name: string): SumMetricData {
@@ -293,5 +312,110 @@ describe('what never appears', () => {
     expect(everything).not.toMatch(/balanceMinor|balanceAfter|amountMinor/i);
     expect(everything).not.toContain('7654321');
     expect(everything).not.toMatch(/password|credential|token|secret|eyJ[\w-]+\.[\w-]+\.[\w-]+/i);
+  });
+});
+
+describe('the counters exist at zero from boot', () => {
+  // A series OpenTelemetry creates on its first `add()` is born at 1, and
+  // Prometheus' `increase()` cannot see the first increment of a series that
+  // had no earlier sample. Seeded at 0 when the process starts, it can.
+  //
+  // Each test gets a provider of its own - the seeding happens once per meter
+  // provider, which is once per process in production - and a cumulative
+  // exporter, which is what Prometheus scrapes.
+  let exporter: InMemoryMetricExporter;
+  let provider: MeterProvider;
+
+  beforeEach(() => {
+    exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    provider = new MeterProvider({
+      readers: [new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 3_600_000 })],
+    });
+    metrics.disable();
+    metrics.setGlobalMeterProvider(provider);
+  });
+
+  afterAll(() => {
+    metrics.disable();
+    metrics.setGlobalMeterProvider(meterProvider);
+  });
+
+  async function series(name: string): Promise<Record<string, number>> {
+    exporter.reset();
+    await provider.forceFlush();
+
+    const metric = exporter
+      .getMetrics()
+      .flatMap((resource) => resource.scopeMetrics)
+      .flatMap((scope) => scope.metrics)
+      .find((m) => m.descriptor.name === name) as SumMetricData | undefined;
+
+    return Object.fromEntries(
+      (metric?.dataPoints ?? []).map((point) => [JSON.stringify(point.attributes), point.value]),
+    );
+  }
+
+  const logger = () => new StructuredLogger('account-service', () => undefined);
+
+  it('exports every account type and operation at 0 right after the adapter is built', async () => {
+    new OtelActivityTelemetry(logger());
+
+    expect(await series(OPERATIONS_COUNTER)).toEqual({
+      '{"account_type":"MONETARIA","operation":"debit"}': 0,
+      '{"account_type":"MONETARIA","operation":"credit"}': 0,
+      '{"account_type":"MONETARIA","operation":"compensation"}': 0,
+      '{"account_type":"AHORRO","operation":"debit"}': 0,
+      '{"account_type":"AHORRO","operation":"credit"}': 0,
+      '{"account_type":"AHORRO","operation":"compensation"}': 0,
+    });
+  });
+
+  it('exports every anomaly series at 0, so the first anomaly of a demo is visible', async () => {
+    new OtelActivityTelemetry(logger());
+
+    expect(await series(ANOMALIES_COUNTER)).toEqual({
+      '{"account_type":"MONETARIA","rule":"HIGH_FREQUENCY"}': 0,
+      '{"account_type":"AHORRO","rule":"HIGH_FREQUENCY"}': 0,
+    });
+  });
+
+  it('seeds once per process, however many deliveries build an adapter', async () => {
+    const base = new OtelActivityTelemetry(logger());
+
+    // The first movement is counted before the per-delivery adapters are built.
+    base.operation({
+      accountId: randomUUID(),
+      accountType: 'AHORRO',
+      operation: 'debit',
+      transactionId: null,
+    });
+    const before = await series(OPERATIONS_COUNTER);
+
+    base.forCorrelation('c0ffee00-1111-4222-8333-444455556666');
+    base.forCorrelation('c0ffee00-1111-4222-8333-444455556667');
+
+    // A second seeding would be harmless to a cumulative sum, but it must not happen.
+    expect(await series(OPERATIONS_COUNTER)).toEqual(before);
+    expect(before['{"account_type":"AHORRO","operation":"debit"}']).toBe(1);
+  });
+
+  it('lets the first real movement land on the series that was seeded', async () => {
+    const base = new OtelActivityTelemetry(logger());
+
+    base.operation({
+      accountId: randomUUID(),
+      accountType: 'AHORRO',
+      operation: 'compensation',
+      transactionId: null,
+    });
+
+    expect(await series(OPERATIONS_COUNTER)).toEqual({
+      '{"account_type":"MONETARIA","operation":"debit"}': 0,
+      '{"account_type":"MONETARIA","operation":"credit"}': 0,
+      '{"account_type":"MONETARIA","operation":"compensation"}': 0,
+      '{"account_type":"AHORRO","operation":"debit"}': 0,
+      '{"account_type":"AHORRO","operation":"credit"}': 0,
+      '{"account_type":"AHORRO","operation":"compensation"}': 1,
+    });
   });
 });
