@@ -141,6 +141,24 @@ describe('headers', () => {
     expect(response.headers.get('x-correlation-id')).toBe('corr-traced');
   });
 
+  /**
+   * Cloud Run's front end stamps a `traceparent` on every request, sampled or
+   * not by its own rules. Forwarded, the Gateway inherited "do not sample" and
+   * showed the screen a trace id Tempo never received.
+   */
+  it('does not forward the trace context of whoever called the proxy', async () => {
+    const response = await fetch(new URL('/api/echo', main.baseUrl), {
+      headers: {
+        traceparent: '00-081f9218dd1bbd8b0002740d2163bd9b-1111222233334444-00',
+        tracestate: 'gcp=abc',
+      },
+    });
+    const body = (await response.json()) as { headers: Record<string, string | undefined> };
+
+    expect(body.headers.traceparent).toBeUndefined();
+    expect(body.headers.tracestate).toBeUndefined();
+  });
+
   it('preserves Content-Type from the client to the upstream', async () => {
     const response = await fetch(new URL('/api/echo', main.baseUrl), {
       method: 'POST',
