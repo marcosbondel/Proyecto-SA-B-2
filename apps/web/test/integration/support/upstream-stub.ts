@@ -121,6 +121,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       authorization: req.headers.authorization,
       'x-correlation-id': req.headers['x-correlation-id'],
       'content-type': req.headers['content-type'],
+      traceparent: req.headers.traceparent,
+      tracestate: req.headers.tracestate,
     },
     bodySha256: sha256,
     bodyLength: body.length,
