@@ -130,7 +130,9 @@ export class CommandsUseCase {
   }
 
   /** A teller's manual identity verdict. Authorisation is the owning service's. */
-  public async setIdentityVerdict(request: SetIdentityVerdictRequest): Promise<AcceptedCommand> {
+  public async setIdentityVerdict(
+    request: SetIdentityVerdictRequest,
+  ): Promise<AcceptedCommand> {
     await this.#publish(
       customerSetIdentityVerdictV1,
       { customerId: request.customerId, verdict: request.verdict },
@@ -239,10 +241,7 @@ export class CommandsUseCase {
    * gateway, before it can die somewhere the caller cannot see.
    */
   async #publish(
-    contract: {
-      readonly name: string;
-      readonly schema: { safeParse: (value: unknown) => unknown };
-    },
+    contract: { readonly name: string; readonly schema: { safeParse: (value: unknown) => unknown } },
     payload: unknown,
     context: CommandContext,
   ): Promise<void> {

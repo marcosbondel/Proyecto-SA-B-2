@@ -113,7 +113,10 @@ export class InterbankSendUseCase {
     return { ...accepted, interbankTransferId };
   }
 
-  #validate(input: { readonly destinationBankCode: string; readonly amount: Money }): void {
+  #validate(input: {
+    readonly destinationBankCode: string;
+    readonly amount: Money;
+  }): void {
     if (input.destinationBankCode === this.ownBankCode) {
       throw GatewayError.validation(
         'No se puede enviar un depósito interbancario al propio banco; use una transferencia.',

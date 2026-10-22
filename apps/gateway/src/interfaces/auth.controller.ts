@@ -5,7 +5,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { LoginUseCase } from '../application/routes/login.use-case';
 import type { LoginResult } from '../application/routes/login.use-case';
 import { PasswordResetUseCase } from '../application/routes/password-reset.use-case';
-import type { AcceptedReset, CompletedReset } from '../application/routes/password-reset.use-case';
+import type {
+  AcceptedReset,
+  CompletedReset,
+} from '../application/routes/password-reset.use-case';
 import { LoginDto } from './dto/login.dto';
 import { ConfirmPasswordResetDto, RequestPasswordResetDto } from './dto/password-reset.dto';
 import { validated } from './validation';

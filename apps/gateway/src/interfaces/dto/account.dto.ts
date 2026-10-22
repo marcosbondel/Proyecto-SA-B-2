@@ -17,9 +17,7 @@ const ACCOUNT_TYPES = ['MONETARIA', 'AHORRO'] as const;
 const ACCOUNT_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
 
 export class OpenAccountDto {
-  @IsIn(ACCOUNT_TYPES, {
-    message: `El tipo de cuenta debe ser uno de: ${ACCOUNT_TYPES.join(', ')}.`,
-  })
+  @IsIn(ACCOUNT_TYPES, { message: `El tipo de cuenta debe ser uno de: ${ACCOUNT_TYPES.join(', ')}.` })
   public accountType!: (typeof ACCOUNT_TYPES)[number];
 
   /**
@@ -66,9 +64,7 @@ export class ListAccountsQueryDto {
   public status?: (typeof ACCOUNT_STATUSES)[number];
 
   @IsOptional()
-  @IsIn(ACCOUNT_TYPES, {
-    message: `El tipo de cuenta debe ser uno de: ${ACCOUNT_TYPES.join(', ')}.`,
-  })
+  @IsIn(ACCOUNT_TYPES, { message: `El tipo de cuenta debe ser uno de: ${ACCOUNT_TYPES.join(', ')}.` })
   public accountType?: (typeof ACCOUNT_TYPES)[number];
 }
 
