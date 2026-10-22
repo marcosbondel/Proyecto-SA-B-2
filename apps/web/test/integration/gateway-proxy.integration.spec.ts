@@ -177,6 +177,67 @@ describe('headers', () => {
   });
 });
 
+/**
+ * `server/routes/interbank/[...slug].ts`: the HTTPS entry a partner bank calls.
+ * Same target as `/api`, but the partner's trace id must survive the hop.
+ */
+describe('the interbank proxy', () => {
+  type Echo = { url: string; headers: Record<string, string | undefined> };
+
+  it('keeps the /interbank/v1 path and the query string', async () => {
+    const response = await fetch(new URL('/interbank/v1/echo?date=2026-10-22', main.baseUrl));
+    const body = (await response.json()) as Echo;
+
+    expect(body.url).toBe('/interbank/v1/echo?date=2026-10-22');
+  });
+
+  it('forwards the API key and the Idempotency-Key', async () => {
+    const response = await fetch(new URL('/interbank/v1/echo', main.baseUrl), {
+      method: 'POST',
+      headers: { 'x-api-key': 'partner-key', 'idempotency-key': 'idem-1' },
+      body: '{}',
+    });
+    const body = (await response.json()) as Echo;
+
+    expect(body.headers['x-api-key']).toBe('partner-key');
+    expect(body.headers['idempotency-key']).toBe('idem-1');
+  });
+
+  it.each([200, 202, 401, 404, 409, 422])('relays %i unchanged', async (code) => {
+    const response = await fetch(new URL(`/interbank/v1/status/${String(code)}`, main.baseUrl));
+
+    expect(response.status).toBe(code);
+  });
+
+  it("keeps the caller's trace id and forces it sampled", async () => {
+    const response = await fetch(new URL('/interbank/v1/echo', main.baseUrl), {
+      headers: {
+        traceparent: '00-1234567890abcdef1234567890abcdef-1111222233334444-00',
+        tracestate: 'gcp=abc',
+      },
+    });
+    const body = (await response.json()) as Echo;
+
+    expect(body.headers.traceparent).toBe('00-1234567890abcdef1234567890abcdef-1111222233334444-01');
+    expect(body.headers.tracestate).toBeUndefined();
+  });
+
+  it('drops a malformed traceparent instead of forwarding it', async () => {
+    const response = await fetch(new URL('/interbank/v1/echo', main.baseUrl), {
+      headers: { traceparent: 'not-a-trace' },
+    });
+    const body = (await response.json()) as Echo;
+
+    expect(body.headers.traceparent).toBeUndefined();
+  });
+
+  it('answers 503 when no Gateway is configured', async () => {
+    const response = await fetch(new URL('/interbank/v1/health', noConfig.baseUrl));
+
+    expect(response.status).toBe(503);
+  });
+});
+
 describe('status passthrough', () => {
   it.each([200, 202, 401, 403, 404, 422, 500])('relays upstream status %d unchanged', async (code) => {
     const response = await fetch(new URL(`/api/status/${String(code)}`, main.baseUrl));
