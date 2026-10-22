@@ -243,7 +243,8 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Gatewa
     INTERBANK_PARTNERS: source.INTERBANK_PARTNERS === '' ? undefined : source.INTERBANK_PARTNERS,
     INTERBANK_BANK_CODE: source.INTERBANK_BANK_CODE ?? 'BANK02',
     INTERBANK_PARTNER_BANK_CODE: source.INTERBANK_PARTNER_BANK_CODE ?? 'BANK99',
-    INTERBANK_MAX_AMOUNT_MINOR: toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
+    INTERBANK_MAX_AMOUNT_MINOR:
+      toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

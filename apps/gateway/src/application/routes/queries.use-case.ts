@@ -97,8 +97,7 @@ export interface NotificationListFilter {
 export interface TransferListFilter {
   readonly customerId?: string;
   readonly accountId?: string;
-  readonly status?:
-    'PENDING' | 'DEBITING' | 'PAYMENT_PENDING' | 'COMPLETED' | 'FAILED' | 'COMPENSATED';
+  readonly status?: 'PENDING' | 'DEBITING' | 'PAYMENT_PENDING' | 'COMPLETED' | 'FAILED' | 'COMPENSATED';
   /** Fase 2's vocabulary (T-28) — a separate filter from `status`, see the DTO. */
   readonly phaseStatus?: 'PENDING' | 'APPROVED' | 'FAILED';
   readonly from?: string;

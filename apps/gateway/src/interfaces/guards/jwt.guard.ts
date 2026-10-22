@@ -1,4 +1,4 @@
-import type { CanActivate, ExecutionContext } from '@nestjs/common';
+import type { CanActivate, ExecutionContext} from '@nestjs/common';
 import { Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Identity } from '@bank/contracts';

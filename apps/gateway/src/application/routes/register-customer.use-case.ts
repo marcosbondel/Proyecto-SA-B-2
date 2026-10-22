@@ -172,7 +172,9 @@ export class RegisterCustomerUseCase {
    * A registration without a photo is legitimate — the contract makes the
    * reference nullable — and identity validation happens separately.
    */
-  async #storePhoto(photo: RegisterCustomerRequest['photo']): Promise<PhotoReference | null> {
+  async #storePhoto(
+    photo: RegisterCustomerRequest['photo'],
+  ): Promise<PhotoReference | null> {
     if (photo === undefined) {
       return null;
     }

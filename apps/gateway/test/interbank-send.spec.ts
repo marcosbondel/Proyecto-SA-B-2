@@ -271,10 +271,7 @@ describe('enviar un depósito al banco pareja', () => {
 
   describe('lo que se rechaza en el borde, antes de debitar nada (B7)', () => {
     it('un monto por encima del límite del contrato', async () => {
-      const response = await enviar({
-        ...BODY,
-        amount: { amountMinor: 1_000_001, currency: 'GTQ' },
-      });
+      const response = await enviar({ ...BODY, amount: { amountMinor: 1_000_001, currency: 'GTQ' } });
 
       expect(response.status).toBe(400);
       expect(response.body.message ?? response.body.error?.message).toContain('10000.00');
@@ -284,10 +281,7 @@ describe('enviar un depósito al banco pareja', () => {
     it('el límite exacto sí pasa', async () => {
       harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
 
-      const response = await enviar({
-        ...BODY,
-        amount: { amountMinor: 1_000_000, currency: 'GTQ' },
-      });
+      const response = await enviar({ ...BODY, amount: { amountMinor: 1_000_000, currency: 'GTQ' } });
 
       expect(response.status).toBe(202);
     });
@@ -315,10 +309,7 @@ describe('enviar un depósito al banco pareja', () => {
 
     it.each([
       ['un código de banco fuera del patrón del contrato', { destinationBankCode: 'BANK_99' }],
-      [
-        'un número de cuenta con caracteres que el contrato no admite',
-        { destinationAccount: 'cuenta con espacios' },
-      ],
+      ['un número de cuenta con caracteres que el contrato no admite', { destinationAccount: 'cuenta con espacios' }],
       ['un número de cuenta de más de 34 caracteres', { destinationAccount: 'a'.repeat(35) }],
       ['una cuenta origen que no es un UUID', { sourceAccount: '02-000000052' }],
     ])('%s', async (_nombre, cambio) => {

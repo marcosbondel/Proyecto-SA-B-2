@@ -36,15 +36,15 @@ export class AlertsController {
   @ApiBearerAuth('alertWebhook')
   @ApiResponse({ status: 202, description: 'Alertas aceptadas y publicadas en el broker.' })
   @ApiResponse({ status: 400, description: 'El cuerpo no trae alertas utilizables.' })
-  @ApiResponse({
-    status: 401,
-    description: 'Falta el secreto, es incorrecto o el Gateway no tiene uno configurado.',
-  })
+  @ApiResponse({ status: 401, description: 'Falta el secreto, es incorrecto o el Gateway no tiene uno configurado.' })
   @Public()
   @UseGuards(AlertTokenGuard)
   @Post('slo')
   @HttpCode(202)
-  public async slo(@Body() body: unknown, @Req() request: GatewayRequest): Promise<ReceivedAlerts> {
+  public async slo(
+    @Body() body: unknown,
+    @Req() request: GatewayRequest,
+  ): Promise<ReceivedAlerts> {
     return await this.#alerts.receive(body, request.correlationId);
   }
 }
