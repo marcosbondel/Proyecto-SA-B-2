@@ -47,6 +47,9 @@ export interface LogFields {
   readonly timeoutRatePercent?: number;
   readonly traceId?: string;
   readonly spanId?: string;
+  /** A partner bank's code, and the registered ones at start-up (T-60). Codes, never keys. */
+  readonly bankCode?: string;
+  readonly partnerBankCodes?: string;
 }
 
 /**

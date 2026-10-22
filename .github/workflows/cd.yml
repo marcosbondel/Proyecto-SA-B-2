@@ -61,6 +61,9 @@ name: CD
 #                            Collector que no sea el del cluster. Por defecto se
 #                            usa el que instala el job `deploy-observability`:
 #                            http://otel-gateway.observability.svc.cluster.local:4318
+#   secret INTERBANK_PARTNERS  opcional, solo produccion — los bancos pareja
+#                            reales, un arreglo JSON (bankCode, baseUrl,
+#                            apiKeyOutbound, apiKeyInbound). Se suman al mock
 #   secret HELM_SECRETS      valores `--set` de secrets.* que pide el chart,
 #                            uno por linea (ver infra/k8s/scripts/install.sh)
 #   secret INFRA_ADDRESSES   direcciones de la infraestructura fuera del
@@ -676,6 +679,9 @@ jobs:
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
           APP_BASE_URL: ${{ vars.WEB_PUBLIC_URL }}
           INTERBANK_PARTNER_BASE_URL: ${{ vars.INTERBANK_PARTNER_BASE_URL }}
+          # Los bancos pareja reales, ademas del mock (T-60): un arreglo JSON
+          # con codigo, URL y las dos claves de cada uno. Ver helm-deploy.sh.
+          INTERBANK_PARTNERS: ${{ secrets.INTERBANK_PARTNERS }}
           # Mide la disponibilidad mientras el rolling update ocurre. El chart
           # declara `maxUnavailable: 0`; esto es lo que lo demuestra.
           ZERO_DOWNTIME_PROBE_URL: ${{ vars.GATEWAY_PUBLIC_URL }}/health
