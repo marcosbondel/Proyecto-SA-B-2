@@ -11,6 +11,9 @@ export const INTERBANK_BANK_CODE = Symbol('InterbankBankCode');
 /** El código del banco pareja configurado, al que este banco sabe enviar. */
 export const INTERBANK_PARTNER_BANK_CODE = Symbol('InterbankPartnerBankCode');
 
+/** Every bank a deposit may be sent to: the legacy partner plus `INTERBANK_PARTNERS` (T-60). */
+export const INTERBANK_PARTNER_BANK_CODES = Symbol('InterbankPartnerBankCodes');
+
 /**
  * El límite por operación, en centavos: uno solo para recibir y para enviar
  * (B7). El techo es el del contrato (Q10 000,00).

@@ -108,6 +108,12 @@ spec:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: INTERBANK_API_KEY_INBOUND
                   optional: true
+            - name: INTERBANK_PARTNERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: INTERBANK_PARTNERS
+                  optional: true
             # Solo para las rutas heredadas con Bearer, apagadas por defecto.
             - name: INTERBANK_PARTNER_TOKEN
               valueFrom:

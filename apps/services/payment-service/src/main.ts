@@ -12,6 +12,7 @@ import {
   V1_TRANSFER_TTL_MS,
   validateMessage,
 } from '@bank/contracts';
+import { parseInterbankPartners } from '@bank/contracts';
 import type { MessageEnvelope, QueueDescriptor } from '@bank/contracts';
 import { AdaptiveTicker, MessageBroker } from '@bank/messaging';
 import { continueTrace, currentTraceparent, nestLoggerFor } from '@bank/observability';
@@ -36,6 +37,11 @@ import {
 import { BrokerEventPublisher } from './infrastructure/messaging/broker-event.publisher';
 import { BrokerInterbankMessenger } from './infrastructure/messaging/broker-interbank.messenger';
 import { HttpPartnerBankClient, HttpPartnerCallback } from './infrastructure/http/partner-callback';
+import {
+  RoutingPartnerBankClient,
+  RoutingPartnerCallback,
+  partnerRegistry,
+} from './infrastructure/http/partner-routing';
 import { migrate } from './infrastructure/persistence/migrations';
 import { PostgresPaymentRepository } from './infrastructure/persistence/postgres-payment.repository';
 import { PostgresInterbankRepository } from './infrastructure/persistence/postgres-interbank.repository';
@@ -174,14 +180,38 @@ async function bootstrap(): Promise<void> {
   const ids = { next: (): string => randomUUID() };
   const publisherFactory = new BrokerEventPublisher(broker);
   const interbankMessenger = new BrokerInterbankMessenger(broker);
+
+  /*
+   * Los bancos a los que este servicio sabe llamar (T-60): el de
+   * `INTERBANK_PARTNER_BASE_URL` y los de `INTERBANK_PARTNERS`. Un cliente y un
+   * callback por banco; el envío, el sondeo, la cancelación, el reverso y el
+   * resultado eligen el suyo por código.
+   */
+  const partners = partnerRegistry({
+    ownBankCode: environment.INTERBANK_BANK_CODE,
+    legacy: {
+      bankCode: environment.INTERBANK_PARTNER_BANK_CODE,
+      baseUrl: environment.INTERBANK_PARTNER_BASE_URL,
+      apiKeyOutbound: environment.INTERBANK_API_KEY_OUTBOUND,
+    },
+    partners: parseInterbankPartners(environment.INTERBANK_PARTNERS),
+  });
+  const partnerEntries = [...partners.entries()];
   const interbank = new InterbankUseCase({
     repository: interbankRepository,
     messenger: interbankMessenger,
-    callback: new HttpPartnerCallback(
-      environment.INTERBANK_PARTNER_BASE_URL,
-      environment.INTERBANK_API_KEY_OUTBOUND,
-      environment.INTERBANK_BANK_CODE,
-      environment.INTERBANK_PARTNER_BANK_CODE,
+    callback: new RoutingPartnerCallback(
+      new Map(
+        partnerEntries.map(([code, partner]) => [
+          code,
+          new HttpPartnerCallback(
+            partner.baseUrl,
+            partner.apiKeyOutbound,
+            environment.INTERBANK_BANK_CODE,
+            code,
+          ),
+        ]),
+      ),
     ),
     bankCode: environment.INTERBANK_BANK_CODE,
     partnerBankCode: environment.INTERBANK_PARTNER_BANK_CODE,
@@ -205,14 +235,21 @@ async function bootstrap(): Promise<void> {
    * depósito fallando contra `http://`.
    */
   const interbankSend =
-    environment.INTERBANK_PARTNER_BASE_URL.length === 0
+    partners.size === 0
       ? null
       : new SendInterbankDepositUseCase({
           repository: interbankSendRepository,
-          partner: new HttpPartnerBankClient(
-            environment.INTERBANK_PARTNER_BASE_URL,
-            environment.INTERBANK_API_KEY_OUTBOUND,
-            environment.INTERBANK_BANK_CODE,
+          partner: new RoutingPartnerBankClient(
+            new Map(
+              partnerEntries.map(([code, partner]) => [
+                code,
+                new HttpPartnerBankClient(
+                  partner.baseUrl,
+                  partner.apiKeyOutbound,
+                  environment.INTERBANK_BANK_CODE,
+                ),
+              ]),
+            ),
           ),
           messenger: interbankMessenger,
           telemetry: new OtelInterbankSendTelemetry(logger),
@@ -244,15 +281,24 @@ async function bootstrap(): Promise<void> {
         });
 
   if (interbankSend === null) {
-    logger.info('envio interbancario desactivado: falta INTERBANK_PARTNER_BASE_URL', {});
-  } else if (environment.INTERBANK_API_KEY_OUTBOUND.length === 0) {
+    logger.info('envio interbancario desactivado: ningun banco pareja registrado', {});
+  } else {
+    logger.info('bancos pareja registrados', {
+      partnerBankCodes: partnerEntries.map(([code]) => code).join(','),
+    });
+  }
+  for (const [code, partner] of partnerEntries) {
     /*
      * Con la URL y sin la llave, el envío arranca y **no puede autenticarse**:
      * cada depósito se quedaría PENDING hasta vencer y acabaría liberado sin
      * verificar. Es una configuración incompleta, y se grita al arrancar en vez
      * de descubrirla ocho minutos después en la primera transferencia.
      */
-    logger.error('INTERBANK_API_KEY_OUTBOUND vacia: los depositos no podran enviarse', {});
+    if (partner.apiKeyOutbound.length === 0) {
+      logger.error('banco pareja sin API key de salida: no podra recibir depositos ni resultados', {
+        bankCode: code,
+      });
+    }
   }
 
   const telemetry = new OtelProviderTelemetry(logger);

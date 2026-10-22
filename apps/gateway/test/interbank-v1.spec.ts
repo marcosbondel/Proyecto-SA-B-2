@@ -10,7 +10,12 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
 import { InterbankV1Controller } from '../src/interfaces/interbank-v1.controller';
-import { TEST_INTERBANK_API_KEY, TEST_OWN_BANK_CODE, buildHarness } from './support/harness';
+import {
+  TEST_INTERBANK_API_KEY,
+  TEST_OWN_BANK_CODE,
+  TEST_SECOND_INTERBANK_API_KEY,
+  buildHarness,
+} from './support/harness';
 import type { Harness } from './support/harness';
 
 /**
@@ -144,6 +149,27 @@ describe('el contrato interbancario oficial', () => {
       expect(harness.publisher.published[0]?.payload).toMatchObject({
         callerBankCode: 'BANK99',
         transfer: { originBankCode: 'BANK07' },
+      });
+    });
+
+    it('identifica a cada banco del registro por su propia clave (T-60)', async () => {
+      harness.replier.answerWith(paymentInterbankV1TransferRepliedV1.name, {
+        interbankTransferId: ID,
+        admission: 'ACCEPTED_FOR_PROCESSING',
+        status: null,
+        reasonCode: null,
+        updatedAt: AHORA.toISOString(),
+      });
+
+      const response = await conClave()
+        .set('X-Api-Key', TEST_SECOND_INTERBANK_API_KEY)
+        .set('Idempotency-Key', ID)
+        .send({ ...DEPOSITO, originBankCode: 'BANK16' });
+
+      expect(response.status).toBe(202);
+      expect(harness.publisher.published[0]?.payload).toMatchObject({
+        callerBankCode: 'BANK16',
+        transfer: { originBankCode: 'BANK16' },
       });
     });
 
