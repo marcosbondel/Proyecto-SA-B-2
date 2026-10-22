@@ -78,7 +78,10 @@ export class InterbankController {
               required: ['amountMinor', 'currency'],
               additionalProperties: false,
               properties: {
-                amountMinor: { type: 'integer', description: 'Centavos. El formato de este banco.' },
+                amountMinor: {
+                  type: 'integer',
+                  description: 'Centavos. El formato de este banco.',
+                },
                 currency: { type: 'string', pattern: '^[A-Z]{3}$' },
               },
             },

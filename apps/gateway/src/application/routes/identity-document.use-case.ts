@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { customerIdentityDocumentQueryV1, customerIdentityDocumentRepliedV1 } from '@bank/contracts';
+import {
+  customerIdentityDocumentQueryV1,
+  customerIdentityDocumentRepliedV1,
+} from '@bank/contracts';
 import type { Identity } from '@bank/contracts';
 
 import { GatewayError } from '../errors/gateway-error';
@@ -54,7 +57,10 @@ export class IdentityDocumentUseCase {
     this.#storage = storage;
   }
 
-  public async fetch(customerId: string, context: IdentityDocumentContext): Promise<IdentityDocument> {
+  public async fetch(
+    customerId: string,
+    context: IdentityDocumentContext,
+  ): Promise<IdentityDocument> {
     const reply = await askAndWait(
       this.#publisher,
       this.#replies,

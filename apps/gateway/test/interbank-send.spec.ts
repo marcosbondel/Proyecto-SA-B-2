@@ -228,6 +228,21 @@ describe('enviar un depósito al banco pareja', () => {
     });
   });
 
+  it('envía a cualquier banco del registro, no sólo al primero (T-60)', async () => {
+    harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
+
+    const response = await enviar({
+      ...BODY,
+      destinationBankCode: 'BANK16',
+      destinationAccount: '8a7d5a9894e94aed8b21b94054ffc1ea',
+    });
+
+    expect(response.status).toBe(202);
+    expect(harness.publisher.published[1]!.payload).toMatchObject({
+      interbank: { bankCode: 'BANK16', account: '8a7d5a9894e94aed8b21b94054ffc1ea' },
+    });
+  });
+
   it('si Account no ve la cuenta, no se envía nada', async () => {
     harness.replier.answerWith(accountBalanceRepliedV1.name, {
       outcome: 'NOT_FOUND',
@@ -256,7 +271,10 @@ describe('enviar un depósito al banco pareja', () => {
 
   describe('lo que se rechaza en el borde, antes de debitar nada (B7)', () => {
     it('un monto por encima del límite del contrato', async () => {
-      const response = await enviar({ ...BODY, amount: { amountMinor: 1_000_001, currency: 'GTQ' } });
+      const response = await enviar({
+        ...BODY,
+        amount: { amountMinor: 1_000_001, currency: 'GTQ' },
+      });
 
       expect(response.status).toBe(400);
       expect(response.body.message ?? response.body.error?.message).toContain('10000.00');
@@ -266,7 +284,10 @@ describe('enviar un depósito al banco pareja', () => {
     it('el límite exacto sí pasa', async () => {
       harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
 
-      const response = await enviar({ ...BODY, amount: { amountMinor: 1_000_000, currency: 'GTQ' } });
+      const response = await enviar({
+        ...BODY,
+        amount: { amountMinor: 1_000_000, currency: 'GTQ' },
+      });
 
       expect(response.status).toBe(202);
     });
@@ -285,7 +306,7 @@ describe('enviar un depósito al banco pareja', () => {
       expect(harness.publisher.published).toEqual([]);
     });
 
-    it('un banco que no es el pareja configurado', async () => {
+    it('un banco que no está en el registro', async () => {
       const response = await enviar({ ...BODY, destinationBankCode: 'BANK07' });
 
       expect(response.status).toBe(400);
@@ -294,7 +315,10 @@ describe('enviar un depósito al banco pareja', () => {
 
     it.each([
       ['un código de banco fuera del patrón del contrato', { destinationBankCode: 'BANK_99' }],
-      ['un número de cuenta con caracteres que el contrato no admite', { destinationAccount: 'cuenta con espacios' }],
+      [
+        'un número de cuenta con caracteres que el contrato no admite',
+        { destinationAccount: 'cuenta con espacios' },
+      ],
       ['un número de cuenta de más de 34 caracteres', { destinationAccount: 'a'.repeat(35) }],
       ['una cuenta origen que no es un UUID', { sourceAccount: '02-000000052' }],
     ])('%s', async (_nombre, cambio) => {

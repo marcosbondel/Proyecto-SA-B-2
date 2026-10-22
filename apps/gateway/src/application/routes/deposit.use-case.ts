@@ -1,11 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  accountDepositRejectedV1,
-  accountDepositV1,
-  accountDepositedV1,
-} from '@bank/contracts';
+import { accountDepositRejectedV1, accountDepositV1, accountDepositedV1 } from '@bank/contracts';
 import type { Identity, Money } from '@bank/contracts';
 
 import { GatewayError } from '../errors/gateway-error';
@@ -87,13 +83,9 @@ export class DepositUseCase {
     const answer = await askAndWait(
       this.#publisher,
       this.#replies,
-      envelopeForRequest(
-        parsed.data,
-        accountDepositV1.name,
-        input.actor,
-        input.correlationId,
-        { idempotencyKey: input.idempotencyKey },
-      ),
+      envelopeForRequest(parsed.data, accountDepositV1.name, input.actor, input.correlationId, {
+        idempotencyKey: input.idempotencyKey,
+      }),
     );
 
     if (answer.messageType === accountDepositedV1.name) {
