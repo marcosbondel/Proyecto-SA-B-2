@@ -8,4 +8,5 @@ export {
   INTERBANK_ID_SECRET,
   INTERBANK_MAX_AMOUNT_MINOR,
   INTERBANK_PARTNER_BANK_CODE,
+  INTERBANK_PARTNER_BANK_CODES,
 } from '../application/interbank-config';

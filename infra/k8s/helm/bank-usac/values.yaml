@@ -606,6 +606,11 @@ secrets:
   # cualquiera adivina.
   interbankApiKeyInbound: ""
   interbankApiKeyOutbound: ""
+  # Los bancos pareja registrados (T-60): un arreglo JSON, uno por banco, con
+  # `bankCode`, `baseUrl`, `apiKeyOutbound` (la que nos emitieron) y
+  # `apiKeyInbound` (la que les emitimos; una distinta por banco). Se suman al de
+  # `interbank.partnerBankCode`. Tampoco va aquí: llega por `--set-file`.
+  interbankPartners: ""
   # Solo para las rutas heredadas del Gateway con Bearer
   # (/api/interbank/deposits y /callbacks), apagadas por defecto: vacio las
   # mantiene cerradas. payment-service ya NO lo recibe; usa la API key de salida.

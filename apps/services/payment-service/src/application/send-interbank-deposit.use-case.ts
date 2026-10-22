@@ -637,7 +637,7 @@ export class SendInterbankDepositUseCase {
     const answer =
       reversal.state === 'PENDING'
         ? await this.#partner.requestReversal(send, reversal.reversalId)
-        : await this.#partner.reversalStatus(reversal.reversalId);
+        : await this.#partner.reversalStatus(reversal.reversalId, send);
     const fields = {
       correlationId: send.correlationId,
       interbankTransferId: send.interbankTransferId,

@@ -98,6 +98,12 @@ spec:
                   name: {{ include "bank-usac.fullname" . }}-secrets
                   key: INTERBANK_API_KEY_OUTBOUND
                   optional: true
+            - name: INTERBANK_PARTNERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bank-usac.fullname" . }}-secrets
+                  key: INTERBANK_PARTNERS
+                  optional: true
             {{- range $key := list "INTERBANK_BANK_CODE" "INTERBANK_PARTNER_BANK_CODE" "INTERBANK_PARTNER_BASE_URL" "INTERBANK_MAX_AMOUNT_MINOR" "INTERBANK_CONFIRMATION_TIMEOUT_MS" "INTERBANK_RESOLVE_RETRY_MS" }}
             - name: {{ $key }}
               valueFrom:

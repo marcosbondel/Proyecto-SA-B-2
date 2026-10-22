@@ -7,7 +7,7 @@ import {
   INTERBANK_BANK_CODE,
   INTERBANK_ID_SECRET,
   INTERBANK_MAX_AMOUNT_MINOR,
-  INTERBANK_PARTNER_BANK_CODE,
+  INTERBANK_PARTNER_BANK_CODES,
 } from '../interbank-config';
 import { GatewayError } from '../errors/gateway-error';
 import { CommandsUseCase } from './commands.use-case';
@@ -40,7 +40,7 @@ export class InterbankSendUseCase {
     @Inject(CommandsUseCase) readonly commands: CommandsUseCase,
     @Inject(QueriesUseCase) readonly queries: QueriesUseCase,
     @Inject(INTERBANK_BANK_CODE) readonly ownBankCode: string,
-    @Inject(INTERBANK_PARTNER_BANK_CODE) readonly partnerBankCode: string,
+    @Inject(INTERBANK_PARTNER_BANK_CODES) readonly partnerBankCodes: readonly string[],
     @Inject(INTERBANK_MAX_AMOUNT_MINOR) readonly maxAmountMinor: number,
     @Inject(INTERBANK_ID_SECRET) readonly idSecret: string,
   ) {}
@@ -124,7 +124,9 @@ export class InterbankSendUseCase {
       );
     }
 
-    if (input.destinationBankCode !== this.partnerBankCode) {
+    // Cualquier banco del registro (T-60): el de la configuración original y
+    // los de `INTERBANK_PARTNERS`. Uno fuera de él no tiene a dónde ir.
+    if (!this.partnerBankCodes.includes(input.destinationBankCode)) {
       throw GatewayError.validation(
         `El banco ${input.destinationBankCode} no está habilitado para depósitos interbancarios.`,
         'destinationBankCode',
