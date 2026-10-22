@@ -1,4 +1,5 @@
-import { resolveGatewayTarget, sampledTraceparent } from '../../utils/gateway-target';
+import { resolveGatewayTarget } from '../../utils/gateway-target';
+import { sampledTraceparent } from '../../utils/trace-context';
 
 /**
  * HTTPS entry for the interbank contract v1 (`/interbank/v1/*`).

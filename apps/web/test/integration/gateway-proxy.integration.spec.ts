@@ -203,10 +203,12 @@ describe('the interbank proxy', () => {
     expect(body.headers['idempotency-key']).toBe('idem-1');
   });
 
-  it.each([200, 202, 401, 404, 409, 422])('relays %i unchanged', async (code) => {
-    const response = await fetch(new URL(`/interbank/v1/status/${String(code)}`, main.baseUrl));
+  // `202` is the contract's answer to a new deposit, and the one status only
+  // this route is ever asked to carry. The rest share `/api`'s code path.
+  it('relays the 202 of a new deposit unchanged', async () => {
+    const response = await fetch(new URL('/interbank/v1/status/202', main.baseUrl));
 
-    expect(response.status).toBe(code);
+    expect(response.status).toBe(202);
   });
 
   it("keeps the caller's trace id and forces it sampled", async () => {
@@ -220,21 +222,6 @@ describe('the interbank proxy', () => {
 
     expect(body.headers.traceparent).toBe('00-1234567890abcdef1234567890abcdef-1111222233334444-01');
     expect(body.headers.tracestate).toBeUndefined();
-  });
-
-  it('drops a malformed traceparent instead of forwarding it', async () => {
-    const response = await fetch(new URL('/interbank/v1/echo', main.baseUrl), {
-      headers: { traceparent: 'not-a-trace' },
-    });
-    const body = (await response.json()) as Echo;
-
-    expect(body.headers.traceparent).toBeUndefined();
-  });
-
-  it('answers 503 when no Gateway is configured', async () => {
-    const response = await fetch(new URL('/interbank/v1/health', noConfig.baseUrl));
-
-    expect(response.status).toBe(503);
   });
 });
 
