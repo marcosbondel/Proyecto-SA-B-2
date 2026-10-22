@@ -61,6 +61,14 @@ name: CD
 #                            Collector que no sea el del cluster. Por defecto se
 #                            usa el que instala el job `deploy-observability`:
 #                            http://otel-gateway.observability.svc.cluster.local:4318
+#   var    INTERBANK_PARTNER_BASE_URL   opcional, solo produccion — la URL
+#                            base `/interbank/v1` del banco pareja. Sin ella, el
+#                            mock de este release
+#   var    INTERBANK_PARTNER_BANK_CODE  opcional, solo produccion — su codigo
+#                            (`BANKnn`). Sin ella, `BANK99` (el mock)
+#   secret INTERBANK_API_KEY_OUTBOUND   opcional, solo produccion — la clave
+#                            que el banco pareja nos emitio. Gana sobre la de
+#                            HELM_SECRETS
 #   secret HELM_SECRETS      valores `--set` de secrets.* que pide el chart,
 #                            uno por linea (ver infra/k8s/scripts/install.sh)
 #   secret INFRA_ADDRESSES   direcciones de la infraestructura fuera del
@@ -676,6 +684,10 @@ jobs:
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
           APP_BASE_URL: ${{ vars.WEB_PUBLIC_URL }}
           INTERBANK_PARTNER_BASE_URL: ${{ vars.INTERBANK_PARTNER_BASE_URL }}
+          # Los otros dos datos del banco pareja: su codigo y la clave que le
+          # enviamos. Sin ellos se conserva el mock (BANK99) y lo de HELM_SECRETS.
+          INTERBANK_PARTNER_BANK_CODE: ${{ vars.INTERBANK_PARTNER_BANK_CODE }}
+          INTERBANK_API_KEY_OUTBOUND: ${{ secrets.INTERBANK_API_KEY_OUTBOUND }}
           # Mide la disponibilidad mientras el rolling update ocurre. El chart
           # declara `maxUnavailable: 0`; esto es lo que lo demuestra.
           ZERO_DOWNTIME_PROBE_URL: ${{ vars.GATEWAY_PUBLIC_URL }}/health
