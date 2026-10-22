@@ -280,6 +280,27 @@ if [ -n "${INTERBANK_PARTNER_BASE_URL:-}" ]; then
   INTERBANK_ARGS+=(--set-string "interbank.partnerBaseUrl=${INTERBANK_PARTNER_BASE_URL}")
 fi
 
+# Los bancos pareja registrados (T-60): un arreglo JSON en el secreto
+# INTERBANK_PARTNERS. Se suman al mock (o al de INTERBANK_PARTNER_BASE_URL), asi
+# que pueden convivir varios, y cambiar de banco pareja el dia de la
+# calificacion es editar este secreto y redesplegar, sin tocar codigo.
+#
+# Va por `--set-file` y no por `--set-string`: el JSON lleva comas, y `--set`
+# las lee como separadores de valores. Se valida aqui que sea un arreglo JSON;
+# lo demas (codigos, URLs, claves) lo valida cada servicio al arrancar y se
+# niega a hacerlo con un registro malo.
+if [ -n "${INTERBANK_PARTNERS:-}" ]; then
+  if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$INTERBANK_PARTNERS"; then
+    echo "::error::INTERBANK_PARTNERS no es un arreglo JSON. Ver infra/k8s/helm/bank-usac/values.yaml (secrets.interbankPartners)."
+    exit 1
+  fi
+  PARTNERS_FILE="$(mktemp)"
+  trap 'rm -f "$PARTNERS_FILE"' EXIT
+  printf '%s' "$INTERBANK_PARTNERS" >"$PARTNERS_FILE"
+  INTERBANK_ARGS+=(--set-file "secrets.interbankPartners=${PARTNERS_FILE}")
+  echo "Bancos pareja registrados: $(jq -r '[.[].bankCode] | join(", ")' <<<"$INTERBANK_PARTNERS") (secreto INTERBANK_PARTNERS)."
+fi
+
 if [ ${#SIN_TOCAR[@]} -gt 0 ]; then
   echo "Sin cambios, conservan su etiqueta: ${SIN_TOCAR[*]}"
 fi

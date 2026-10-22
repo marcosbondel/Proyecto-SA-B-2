@@ -98,7 +98,9 @@ export class DashboardUseCase {
    * dashboard, and the correlation id in the response is what an operator
    * actually follows when a tile is blank.
    */
-  async #section<TSchema extends { safeParse: (value: unknown) => { success: boolean; data?: unknown } }>(
+  async #section<
+    TSchema extends { safeParse: (value: unknown) => { success: boolean; data?: unknown } },
+  >(
     messageType: string,
     reply: { readonly name: string; readonly schema: TSchema },
     input: { readonly actor: Identity; readonly correlationId: string },

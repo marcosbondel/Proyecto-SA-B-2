@@ -252,9 +252,7 @@ export class CustomersController {
   @ApiBearerAuth('session')
   @Roles('CAJERO_RECEPTOR', 'ADMINISTRADOR')
   @Get('pending-validation')
-  public async pendingValidation(
-    @Req() request: GatewayRequest,
-  ): Promise<Record<string, unknown>> {
+  public async pendingValidation(@Req() request: GatewayRequest): Promise<Record<string, unknown>> {
     return await this.#queries.pendingValidation({
       actor: actorOf(request),
       correlationId: request.correlationId,

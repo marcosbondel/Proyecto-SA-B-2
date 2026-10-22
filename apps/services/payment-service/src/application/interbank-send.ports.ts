@@ -334,8 +334,11 @@ export interface PartnerBankClient {
   /** `POST /reversals` — pedir la devolución de un depósito acreditado tarde (paso 5). */
   requestReversal(send: InterbankSend, reversalId: string): Promise<PartnerReversal>;
 
-  /** `GET /reversals/{id}` — en qué quedó el reverso pedido. */
-  reversalStatus(reversalId: string): Promise<PartnerReversal>;
+  /**
+   * `GET /reversals/{id}` — en qué quedó el reverso pedido. Lleva el envío
+   * para saber a QUÉ banco preguntar cuando hay varios registrados (T-60).
+   */
+  reversalStatus(reversalId: string, send?: InterbankSend): Promise<PartnerReversal>;
 }
 
 /** Lo que este caso de uso publica, con la causa que lo originó. */

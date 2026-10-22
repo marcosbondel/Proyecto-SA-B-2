@@ -169,6 +169,15 @@ export class GatewayEnvironment {
   @MinLength(32)
   public INTERBANK_API_KEY_INBOUND?: string;
 
+  /**
+   * Los bancos pareja registrados, como JSON (T-60): ver
+   * `parseInterbankPartners` en `@bank/contracts`. Se suma al de
+   * `INTERBANK_PARTNER_BANK_CODE`; ausente, sólo queda ése.
+   */
+  @IsOptional()
+  @IsString()
+  public INTERBANK_PARTNERS?: string;
+
   /** Nuestro código de banco. `GET /interbank/v1/health` lo publica. */
   @IsString()
   @Matches(/^BANK[0-9]{2}$/, { message: 'INTERBANK_BANK_CODE debe cumplir ^BANK[0-9]{2}$' })
@@ -231,10 +240,10 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Gatewa
       source.INTERBANK_PARTNER_TOKEN === '' ? undefined : source.INTERBANK_PARTNER_TOKEN,
     INTERBANK_API_KEY_INBOUND:
       source.INTERBANK_API_KEY_INBOUND === '' ? undefined : source.INTERBANK_API_KEY_INBOUND,
+    INTERBANK_PARTNERS: source.INTERBANK_PARTNERS === '' ? undefined : source.INTERBANK_PARTNERS,
     INTERBANK_BANK_CODE: source.INTERBANK_BANK_CODE ?? 'BANK02',
     INTERBANK_PARTNER_BANK_CODE: source.INTERBANK_PARTNER_BANK_CODE ?? 'BANK99',
-    INTERBANK_MAX_AMOUNT_MINOR:
-      toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
+    INTERBANK_MAX_AMOUNT_MINOR: toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
   });
 
   const errors = validateSync(candidate, { skipMissingProperties: false, whitelist: true });

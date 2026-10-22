@@ -58,7 +58,8 @@ export class NotificationsController {
      * worse answer than the default one.
      */
     const parsed = limit === undefined ? undefined : Number.parseInt(limit, 10);
-    const bounded = parsed !== undefined && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+    const bounded =
+      parsed !== undefined && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 
     return await this.#queries.inbox(bounded, {
       actor: actorOf(request),

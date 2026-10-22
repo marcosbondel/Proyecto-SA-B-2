@@ -8,6 +8,7 @@ import {
   IsInt,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
   Max,
   Min,
@@ -177,6 +178,15 @@ export class PaymentServiceEnvironment {
   public INTERBANK_API_KEY_OUTBOUND!: string;
 
   /**
+   * Los bancos pareja registrados, como JSON (T-60): ver
+   * `parseInterbankPartners` en `@bank/contracts`. Se suman al de
+   * `INTERBANK_PARTNER_BASE_URL`; ausente, sólo queda ése.
+   */
+  @IsOptional()
+  @IsString()
+  public INTERBANK_PARTNERS?: string;
+
+  /**
    * Cuánto se espera la confirmación del banco pareja antes de rendirse y
    * compensar.
    *
@@ -271,6 +281,7 @@ export function loadEnvironment(
       toInteger(source.INTERBANK_MAX_AMOUNT_MINOR) ?? V1_MAX_AMOUNT_MINOR,
     INTERBANK_PARTNER_BASE_URL: (source.INTERBANK_PARTNER_BASE_URL ?? '').replace(/\/+$/, ''),
     INTERBANK_API_KEY_OUTBOUND: source.INTERBANK_API_KEY_OUTBOUND ?? '',
+    INTERBANK_PARTNERS: source.INTERBANK_PARTNERS === '' ? undefined : source.INTERBANK_PARTNERS,
     INTERBANK_CONFIRMATION_TIMEOUT_MS:
       toInteger(source.INTERBANK_CONFIRMATION_TIMEOUT_MS) ?? 30_000,
     INTERBANK_RESOLVE_RETRY_MS: toInteger(source.INTERBANK_RESOLVE_RETRY_MS) ?? 5_000,
