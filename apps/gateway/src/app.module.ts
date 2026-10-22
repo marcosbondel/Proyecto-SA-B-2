@@ -1,3 +1,4 @@
+import { parseInterbankPartners } from '@bank/contracts';
 import { JsonLogger } from '@bank/observability';
 import type { DynamicModule, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module, ValidationPipe } from '@nestjs/common';
@@ -34,7 +35,9 @@ import {
   INTERBANK_ID_SECRET,
   INTERBANK_MAX_AMOUNT_MINOR,
   INTERBANK_PARTNER_BANK_CODE,
+  INTERBANK_PARTNER_BANK_CODES,
 } from './interfaces/interbank-v1.tokens';
+import { interbankRegistry } from './application/interbank-partners';
 import { InterbankSendUseCase } from './application/routes/interbank-send.use-case';
 import {
   INTERBANK_API_KEYS,
@@ -89,6 +92,12 @@ export const GATEWAY_RUNTIME = Symbol('GatewayRuntime');
 @Module({})
 export class AppModule implements NestModule {
   public static forRoot(environment: GatewayEnvironment): DynamicModule {
+    const registry = interbankRegistry({
+      ownBankCode: environment.INTERBANK_BANK_CODE,
+      legacyBankCode: environment.INTERBANK_PARTNER_BANK_CODE,
+      legacyInboundKey: environment.INTERBANK_API_KEY_INBOUND,
+      partners: parseInterbankPartners(environment.INTERBANK_PARTNERS),
+    });
     const broker = createMessageBroker(environment.RABBITMQ_URL, environment.REPLY_TIMEOUT_MS);
     const replyQueue = new ReplyQueueAdapter(
       broker,
@@ -143,24 +152,16 @@ export class AppModule implements NestModule {
         { provide: INTERBANK_PARTNER_TOKEN, useValue: environment.INTERBANK_PARTNER_TOKEN ?? null },
         InterbankTokenGuard,
         /*
-         * El mapa de API keys del contrato oficial: **una por banco pareja**.
-         * Hoy es una, la de `INTERBANK_PARTNER_BANK_CODE`; la forma admite más
-         * sin cambiar el guardián, porque la clave es lo que identifica a quien
-         * llama y con dos parejas una clave compartida no distingue.
+         * El mapa de API keys del contrato oficial: **una por banco pareja**,
+         * porque la clave es lo que identifica a quien llama. Sale del registro
+         * (`INTERBANK_PARTNER_BANK_CODE` más `INTERBANK_PARTNERS`), igual que la
+         * lista de bancos a los que se puede enviar.
          */
-        {
-          provide: INTERBANK_API_KEYS,
-          useValue:
-            environment.INTERBANK_API_KEY_INBOUND === undefined ||
-            environment.INTERBANK_API_KEY_INBOUND.length === 0
-              ? {}
-              : {
-                  [environment.INTERBANK_PARTNER_BANK_CODE]: environment.INTERBANK_API_KEY_INBOUND,
-                },
-        },
+        { provide: INTERBANK_API_KEYS, useValue: registry.apiKeys },
         InterbankApiKeyGuard,
         { provide: INTERBANK_BANK_CODE, useValue: environment.INTERBANK_BANK_CODE },
         { provide: INTERBANK_PARTNER_BANK_CODE, useValue: environment.INTERBANK_PARTNER_BANK_CODE },
+        { provide: INTERBANK_PARTNER_BANK_CODES, useValue: registry.partnerCodes },
         { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: environment.INTERBANK_MAX_AMOUNT_MINOR },
         { provide: INTERBANK_ID_SECRET, useValue: environment.JWT_SECRET },
         InterbankV1UseCase,

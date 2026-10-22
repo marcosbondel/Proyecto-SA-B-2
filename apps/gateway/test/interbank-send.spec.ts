@@ -228,6 +228,21 @@ describe('enviar un depósito al banco pareja', () => {
     });
   });
 
+  it('envía a cualquier banco del registro, no sólo al primero (T-60)', async () => {
+    harness.replier.answerWith(accountBalanceRepliedV1.name, SALDO);
+
+    const response = await enviar({
+      ...BODY,
+      destinationBankCode: 'BANK16',
+      destinationAccount: '8a7d5a9894e94aed8b21b94054ffc1ea',
+    });
+
+    expect(response.status).toBe(202);
+    expect(harness.publisher.published[1]!.payload).toMatchObject({
+      interbank: { bankCode: 'BANK16', account: '8a7d5a9894e94aed8b21b94054ffc1ea' },
+    });
+  });
+
   it('si Account no ve la cuenta, no se envía nada', async () => {
     harness.replier.answerWith(accountBalanceRepliedV1.name, {
       outcome: 'NOT_FOUND',
@@ -285,7 +300,7 @@ describe('enviar un depósito al banco pareja', () => {
       expect(harness.publisher.published).toEqual([]);
     });
 
-    it('un banco que no es el pareja configurado', async () => {
+    it('un banco que no está en el registro', async () => {
       const response = await enviar({ ...BODY, destinationBankCode: 'BANK07' });
 
       expect(response.status).toBe(400);
