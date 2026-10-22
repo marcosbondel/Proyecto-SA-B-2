@@ -280,6 +280,29 @@ if [ -n "${INTERBANK_PARTNER_BASE_URL:-}" ]; then
   INTERBANK_ARGS+=(--set-string "interbank.partnerBaseUrl=${INTERBANK_PARTNER_BASE_URL}")
 fi
 
+# El codigo del banco pareja y la clave que le enviamos (T-60). Los dos van
+# juntos con la URL: un banco pareja real es los tres a la vez. El codigo vivia
+# fijo en `values.yaml` (`BANK99`, el del mock) y la clave dentro de
+# HELM_SECRETS, asi que cambiar de pareja exigia un PR y reescribir un secreto
+# entero que nadie puede leer. El Gateway amarra la clave de ENTRADA a este
+# codigo: con el codigo equivocado, los depositos del banco pareja autentican
+# bien y salen REJECTED (visto con BANK13 el 2026-10-22).
+if [ -n "${INTERBANK_PARTNER_BANK_CODE:-}" ]; then
+  if ! [[ "$INTERBANK_PARTNER_BANK_CODE" =~ ^BANK[0-9]{2}$ ]]; then
+    echo "::error::INTERBANK_PARTNER_BANK_CODE='${INTERBANK_PARTNER_BANK_CODE}' no cumple ^BANK[0-9]{2}$. El Gateway no arrancaria."
+    exit 1
+  fi
+  INTERBANK_ARGS+=(--set-string "interbank.partnerBankCode=${INTERBANK_PARTNER_BANK_CODE}")
+  echo "Banco pareja: ${INTERBANK_PARTNER_BANK_CODE} (variable INTERBANK_PARTNER_BANK_CODE)."
+fi
+if [ -n "${INTERBANK_API_KEY_OUTBOUND:-}" ]; then
+  if grep -q '^[[:space:]]*secrets\.interbankApiKeyOutbound=' <<<"${HELM_SECRETS:-}"; then
+    echo "::warning::HELM_SECRETS todavia trae secrets.interbankApiKeyOutbound; se ignora en favor del secreto INTERBANK_API_KEY_OUTBOUND."
+  fi
+  INTERBANK_ARGS+=(--set-string "secrets.interbankApiKeyOutbound=${INTERBANK_API_KEY_OUTBOUND}")
+  echo "Clave hacia el banco pareja: desde el secreto INTERBANK_API_KEY_OUTBOUND."
+fi
+
 if [ ${#SIN_TOCAR[@]} -gt 0 ]; then
   echo "Sin cambios, conservan su etiqueta: ${SIN_TOCAR[*]}"
 fi
