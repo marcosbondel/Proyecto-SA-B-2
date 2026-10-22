@@ -177,6 +177,54 @@ describe('headers', () => {
   });
 });
 
+/**
+ * `server/routes/interbank/[...slug].ts`: the HTTPS entry a partner bank calls.
+ * Same target as `/api`, but the partner's trace id must survive the hop.
+ */
+describe('the interbank proxy', () => {
+  type Echo = { url: string; headers: Record<string, string | undefined> };
+
+  it('keeps the /interbank/v1 path and the query string', async () => {
+    const response = await fetch(new URL('/interbank/v1/echo?date=2026-10-22', main.baseUrl));
+    const body = (await response.json()) as Echo;
+
+    expect(body.url).toBe('/interbank/v1/echo?date=2026-10-22');
+  });
+
+  it('forwards the API key and the Idempotency-Key', async () => {
+    const response = await fetch(new URL('/interbank/v1/echo', main.baseUrl), {
+      method: 'POST',
+      headers: { 'x-api-key': 'partner-key', 'idempotency-key': 'idem-1' },
+      body: '{}',
+    });
+    const body = (await response.json()) as Echo;
+
+    expect(body.headers['x-api-key']).toBe('partner-key');
+    expect(body.headers['idempotency-key']).toBe('idem-1');
+  });
+
+  // `202` is the contract's answer to a new deposit, and the one status only
+  // this route is ever asked to carry. The rest share `/api`'s code path.
+  it('relays the 202 of a new deposit unchanged', async () => {
+    const response = await fetch(new URL('/interbank/v1/status/202', main.baseUrl));
+
+    expect(response.status).toBe(202);
+  });
+
+  it("keeps the caller's trace id and forces it sampled", async () => {
+    const response = await fetch(new URL('/interbank/v1/echo', main.baseUrl), {
+      headers: {
+        traceparent: '00-1234567890abcdef1234567890abcdef-1111222233334444-00',
+        tracestate: 'gcp=abc',
+      },
+    });
+    const body = (await response.json()) as Echo;
+
+    expect(body.headers.traceparent).toBe('00-1234567890abcdef1234567890abcdef-1111222233334444-01');
+    expect(body.headers.tracestate).toBeUndefined();
+  });
+});
+
 describe('status passthrough', () => {
   it.each([200, 202, 401, 403, 404, 422, 500])('relays upstream status %d unchanged', async (code) => {
     const response = await fetch(new URL(`/api/status/${String(code)}`, main.baseUrl));
