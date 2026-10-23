@@ -48,12 +48,50 @@
     }
   },
   {
+    "messageId": "cdbf55fb-86e1-4479-b09e-33e7105e9851",
+    "messageType": "customer.kyc.check.requested.v1",
+    "messageVersion": 1,
+    "producer": "transaction-service",
+    "correlationId": "bf13f871-62ad-43f4-a26b-428112345a6b",
+    "causationId": "8188020f-cd9f-4e24-b349-d330009985a4",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-10-22T04:21:55.929Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "customerId": "55555555-5555-4555-8555-555555555555"
+    }
+  },
+  {
+    "messageId": "6ede070c-03ba-40db-81a1-b6b1ec2e2047",
+    "messageType": "customer.kyc.checked.v1",
+    "messageVersion": 1,
+    "producer": "customer-service",
+    "correlationId": "bf13f871-62ad-43f4-a26b-428112345a6b",
+    "causationId": "cdbf55fb-86e1-4479-b09e-33e7105e9851",
+    "idempotencyKey": "transfer-2026-08-19-4471",
+    "occurredAt": "2026-10-22T04:21:55.929Z",
+    "identity": {
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "role": "CLIENTE"
+    },
+    "payload": {
+      "transactionId": "33333333-3333-4333-8333-333333333333",
+      "customerId": "55555555-5555-4555-8555-555555555555",
+      "kycStatus": "VERIFIED",
+      "allowed": true
+    }
+  },
+  {
     "messageId": "81597a63-56f5-4d89-85a5-6714b67a262c",
     "messageType": "account.debit.requested.v1",
     "messageVersion": 1,
     "producer": "transaction-service",
     "correlationId": "bf13f871-62ad-43f4-a26b-428112345a6b",
-    "causationId": "8188020f-cd9f-4e24-b349-d330009985a4",
+    "causationId": "6ede070c-03ba-40db-81a1-b6b1ec2e2047",
     "idempotencyKey": "transfer-2026-08-19-4471",
     "occurredAt": "2026-10-22T04:21:55.930Z",
     "identity": {
