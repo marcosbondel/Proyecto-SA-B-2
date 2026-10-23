@@ -1,0 +1,79 @@
+@startuml 09-secuencia-envio-interbancario
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam dpi 180
+skinparam maxMessageSize 190
+skinparam ParticipantBorderColor #1168BD
+skinparam ParticipantBackgroundColor #EAF2FF
+skinparam QueueBorderColor #C11926
+skinparam QueueBackgroundColor #FFF0F0
+skinparam noteBackgroundColor #FFF8DC
+skinparam noteBorderColor #D6B656
+autonumber
+title UML - Envío interbancario v1 - Fase III\n202 + callback / TIMEOUT no devuelve por sí solo
+actor Cliente as U
+participant "Gateway\nJWT / Idempotency-Key" as G
+queue "RabbitMQ\ntraceparent + correlationId" as B
+participant Transaction as T
+participant "Account\ncuenta de liquidación" as A
+participant "Payment\nPostgreSQL / outbox / leases" as P
+participant "Banco externo\nContrato OpenAPI v1" as X
+U -> G : POST /api/interbank/transfers
+G ->> B : transfer.requested.v1 / datos interbancarios
+G --> U : 202 / transactionId + interbankTransferId + correlationId\nCabecera X-Trace-Id
+B ->> T : KYC -> débito origen
+T ->> B : account.debit.requested.v1
+B ->> A : Aplicar débito
+A ->> B : account.debited.v1
+B ->> T : PAYMENT_PENDING
+T ->> B : payment.requested.v1
+B ->> P : Crear envío PENDING / idempotencia
+P -> X : POST /interbank/v1/transfers\nX-Api-Key + Idempotency-Key + traceparent\namount string GTQ / expiresAt = createdAt + 180 s
+X --> P : 202 / PROCESSING
+P -> P : SENT / guardar plazos y contexto
+alt callback ACCEPTED
+  X -> G : POST /interbank/v1/transfers/{id}/result
+  G ->> B : payment.interbank.v1.result.received.v1
+  B ->> P : Confirmar una vez / ACCEPTED
+  P ->> B : payment.succeeded.v1
+  B ->> T : Crédito a liquidación vía Account
+  T ->> B : account.credit.requested.v1
+  B ->> A : Liquidar monto / confirmar COMPLETED
+else callback REJECTED
+  X -> G : resultado REJECTED / reason
+  G ->> B : resultado validado v1
+  B ->> P : REJECTED / payment.failed.v1
+  P ->> B : Fallo terminal
+  B ->> T : Compensar débito origen
+else vence expiresAt sin resultado
+  P -> P : TIMEOUT / conservar reserva
+  loop consulta con backoff y lease persistida
+    P -> X : GET /interbank/v1/transfers/{id}
+    X --> P : estado o indisponibilidad
+  end
+  opt PROCESSING o no encontrado
+    P -> X : POST /interbank/v1/transfers/{id}/cancel
+    X --> P : CANCELLED / ALREADY_ACCEPTED / estado
+  end
+  alt ACCEPTED confirmado
+    P ->> B : payment.succeeded.v1 / liquidación
+  else rechazo o cancelación confirmados
+    P ->> B : payment.failed.v1 / compensación
+  else sin veredicto hasta expiresAt + 300 s
+    P ->> B : Liberar según protocolo / compensación
+    P -> P : RELEASED_NO_ANSWER / log ERROR\nalerta InterbankReserveReleasedUnverified
+  end
+end
+opt aceptación tardía después de liberar
+  P -> X : POST /interbank/v1/reversals\nreversalId idempotente
+  X --> P : Estado del reverso
+  P -> P : Seguir devolución sin acreditar dos veces
+end
+note over A,P
+  Débito/reserva y devolución los decide Account por AMQP.
+  Payment nunca lee un saldo ni llama HTTP a otro servicio interno.
+  Repeticiones y callbacks fuera de orden no duplican dinero.
+end note
+
+@enduml

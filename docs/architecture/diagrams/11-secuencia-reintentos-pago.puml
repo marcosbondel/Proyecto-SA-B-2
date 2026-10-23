@@ -1,0 +1,57 @@
+@startuml 11-secuencia-reintentos-pago
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam dpi 180
+skinparam maxMessageSize 190
+skinparam ParticipantBorderColor #1168BD
+skinparam ParticipantBackgroundColor #EAF2FF
+skinparam QueueBorderColor #C11926
+skinparam QueueBackgroundColor #FFF0F0
+skinparam noteBackgroundColor #FFF8DC
+skinparam noteBorderColor #D6B656
+autonumber
+title UML - Pago simulado / escalera persistida - Fase III
+queue "RabbitMQ / AMQP" as B
+participant "Payment\nNestJS / caso de uso" as P
+database "Payment DB\nPostgreSQL" as D
+participant "Proveedor simulado\nfunción pura + simulación runtime" as V
+participant "Transaction\nSaga" as T
+participant "Account\ncompensación" as A
+B ->> P : payment.requested.v1 / traceparent
+P -> D : BEGIN / SELECT FOR UPDATE\ncrear pago e intento 1
+loop mientras PENDING: inicial y hasta 3 reintentos
+  P -> V : Decidir SUCCESS / FAILURE / TIMEOUT
+  V --> P : Veredicto y clasificación
+  alt éxito
+    P -> D : COMMIT pago SUCCEEDED + outbox
+    P ->> B : payment.succeeded.v1 (relay)
+  else fallo transitorio y quedan peldaños
+    P -> D : COMMIT intento + next_attempt_at\ndemora siguiente: 1 s / 5 s / 30 s
+    P ->> B : payment.attempt.failed.v1\nwillRetry=true / nextAttemptAt
+    B ->> T : Registrar intento / sigue PAYMENT_PENDING
+    ... vence next_attempt_at ...
+    P -> D : Barrido de vencidos\nFOR UPDATE SKIP LOCKED / claim
+  else definitivo o escalera agotada
+    P -> D : COMMIT FAILED + outbox terminal
+    P ->> B : payment.attempt.failed.v1 / willRetry=false
+    P ->> B : payment.failed.v1\nPAYMENT_RETRIES_EXHAUSTED si agotó
+  end
+end
+alt pago SUCCEEDED
+  B ->> T : Éxito terminal / continúa Saga hacia crédito
+else pago FAILED
+B ->> T : Fallo terminal / decidir compensación
+T ->> B : account.debit.compensation.requested.v1
+B ->> A : Devolver monto y comisión una vez
+A ->> B : account.debit.compensated.v1
+B ->> T : COMPENSATED
+end
+note over P,D
+  Reiniciar el pod no elimina el plazo persistido.
+  Reentrega y sweeper no pueden ejecutar el mismo intento dos veces.
+  Simulación admin: GET/PUT /api/payments/simulation.
+  failureRatePercent + timeoutRatePercent + latencyMs obligatorios en PUT.
+end note
+
+@enduml

@@ -1,77 +1,90 @@
 @startuml 01-arquitectura-general
-
-title Bank USAC – Arquitectura general
-
-left to right direction
 skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam dpi 180
+skinparam rectangleBorderThickness 3
+skinparam databaseBorderThickness 3
+skinparam ArrowColor #60666F
 skinparam defaultTextAlignment center
-skinparam ArrowColor #555555
-skinparam ArrowThickness 1.2
-
-skinparam rectangle {
-    BackgroundColor #FFFFFF
-    BorderColor #333333
-    FontColor #222222
+skinparam linetype polyline
+skinparam nodesep 45
+skinparam ranksep 65
+skinparam nodeBackgroundColor #F7F7F7
+skinparam nodeBorderColor #7A7F87
+skinparam rectangleBackgroundColor #FFFFFF
+skinparam rectangleBorderColor #1168BD
+skinparam databaseBackgroundColor #EDF3F8
+skinparam databaseBorderColor #336791
+skinparam noteBackgroundColor #FFF8DE
+skinparam noteBorderColor #D6B656
+title Bank USAC - Arquitectura general - Fase III\nEstado contrastado con GKE el 2026-10-21
+top to bottom direction
+actor "Cliente / Cajero / Administrador" as user
+actor "Operador / SRE" as sre
+rectangle "Google Cloud Platform / Terraform + Helm" #F8FBFF;line:6AAEFF {
+  node "Cloud Run" {
+  artifact "Frontend\nNuxt 4 / Vue 3 / Nitro\nHTTPS :443 / SSR" as web
 }
-skinparam database {
-    BackgroundColor #E7F7EA
-    BorderColor #2E8B45
-    FontColor #0B3D19
+  rectangle "Aplicaciones / GKE us-central1-c / dev y prod" #F4FBF3;line:55C35B {
+    rectangle "API Gateway\nNestJS / Node.js 24\nHTTP :3000 / JWT / roles" as gateway #EDF5FF;line:6AAEFF
+    queue "RabbitMQ\nAMQP 0-9-1 :5672\nPVC por entorno" as broker #FFF0F0;line:C11926
+    rectangle "Customer\nKYC / ciclo de vida" as customer #F0D5FF;line:D97CFF
+    rectangle "Account\nSaldo / liquidación\nanomalía N/M" as account #ABF1EC;line:00BEB2
+    rectangle "Transaction\nSaga / outbox / historial" as txn #C6F2C4;line:55C35B
+    rectangle "Payment\nReintentos / simulación\ninterbancario v1" as payment #FFD5D6;line:FF6D74
+    rectangle "Notification & Audit\nAuditoría / alertas / correo" as audit #DFDCFF;line:9789FF
+    database "MinIO\nS3 :9000" as minio
+  }
+  rectangle "Datos / Compute Engine - fuera de GKE" #FFF9F9;line:FF6D74 {
+    database "Customer DB\nPostgreSQL :5432" as dbCustomer #F0D5FF;line:D97CFF
+    database "Account DB\nPostgreSQL :5432" as dbAccount #ABF1EC;line:00BEB2
+    database "Transaction DB\nPostgreSQL :5432" as dbTransaction #C6F2C4;line:55C35B
+    database "Payment DB\nPostgreSQL :5432" as dbPayment #FFD5D6;line:FF6D74
+    database "Notification DB\nPostgreSQL :5432" as dbAudit #DFDCFF;line:9789FF
+  }
+  rectangle "Observabilidad / namespace observability" #F7F4FF;line:9789FF {
+    rectangle "otel-gateway\nCollector / OTLP :4317,:4318" as collector
+    rectangle "otel-log-agent\nDaemonSet / stdout JSON / filelog" as agent
+    rectangle "Prometheus\nMétricas / PromQL" as prom
+    rectangle "Tempo\nTrazas / TraceQL" as tempo
+    rectangle "Loki\nLogs / LogQL" as loki
+    rectangle "Grafana\n9 dashboards / 16 alertas" as grafana
+  }
 }
-skinparam actor {
-    BackgroundColor #FFFFFF
-    BorderColor #555555
-    FontColor #333333
-}
-
-actor "Cliente / Cajero /\nAdministrador" as users
-rectangle "Servicio de correo" as email #F2F2F2
-rectangle "Proveedor de pagos" as provider #F2F2F2
-
-rectangle "Límite del clúster – kind" as cluster #EAF2FF {
-    rectangle "Frontend" as frontend #DCEBFF
-    rectangle "API Gateway" as gateway #FFE8CC
-
-    rectangle "Microservicios" as micro {
-        rectangle "Customer Service" as customer #DCEBFF
-        rectangle "Account Service" as account #DCEBFF
-        rectangle "Transaction Service" as transaction #DCEBFF
-        rectangle "Payment Service" as payment #DCEBFF
-        rectangle "Notification & Audit Service" as notification #DCEBFF
-    }
-}
-
-rectangle "Infraestructura externa (fuera del clúster)" as external #FFF7E6 {
-    rectangle "Broker de mensajería" as broker #FFE8CC
-    database "Almacenamiento de objetos" as minio
-
-    rectangle "Datos" as datos {
-        database "Datos de Customer" as customerDb
-        database "Datos de Account" as accountDb
-        database "Datos de Transaction" as transactionDb
-        database "Datos de Payment" as paymentDb
-        database "Datos de Notification & Audit" as notificationDb
-    }
-}
-
-users --> frontend
-frontend --> gateway : Síncrono
-gateway <--> broker : Asíncrono
-broker <--> customer : Asíncrono
-broker <--> account : Asíncrono
-broker <--> transaction : Asíncrono
-broker <--> payment : Asíncrono
-broker <--> notification : Asíncrono
-
-customer --> customerDb
-account --> accountDb
-transaction --> transactionDb
-payment --> paymentDb
-notification --> notificationDb
-
-gateway --> minio : Síncrono
-customer --> minio : Síncrono
-notification --> email
-payment --> provider
+cloud "Banco externo / mock BANK99\nHTTP 202 + callback / X-Api-Key" as external
+cloud "Resend\nAPI HTTPS" as resend
+user --> web : HTTPS
+web --> gateway : proxy Nitro / HTTP REST
+gateway <--> broker : comandos / respuestas\ncorrelationId + traceparent
+broker <--> customer
+broker <--> account
+broker <--> txn
+broker <--> payment
+broker <--> audit
+customer --> dbCustomer : sólo su BD
+account --> dbAccount : sólo su BD
+txn --> dbTransaction : sólo su BD
+payment --> dbPayment : sólo su BD
+audit --> dbAudit : sólo su BD
+gateway --> minio : S3 upload
+customer --> minio : S3 digest
+payment --> external : contrato v1 / traceparent
+external --> gateway : /interbank/v1/*
+audit --> resend : correo permitido por evento
+gateway ..> collector : trazas y métricas\n6 componentes NestJS
+collector --> tempo : OTLP
+prom --> collector : scrape :8889
+agent --> loki : OTLP HTTP
+grafana --> prom
+grafana --> tempo
+grafana --> loki
+grafana --> gateway : POST /api/alerts/slo
+sre --> grafana : HTTP :80 / sesión
+note bottom of agent
+  Logs desde /var/log/pods, fuera del broker.
+  Métricas web: Prometheus scrape /metrics.
+  Despliegue: Terraform + Helm desde GitHub Actions.
+end note
 
 @enduml
