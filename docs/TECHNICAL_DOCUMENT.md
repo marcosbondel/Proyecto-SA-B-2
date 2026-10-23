@@ -47,7 +47,7 @@ pendientes de §15.
 | :--- | :--- | :---: |
 | **Documento técnico completo** | Este documento ([`docs/TECHNICAL_DOCUMENT.md`](TECHNICAL_DOCUMENT.md)) + [`docs/architecture.md`](architecture.md). El índice de toda la documentación es [`docs/README.md`](README.md) | **Completo** |
 | **Caso de negocio, requisitos y trazabilidad** | [`docs/dda.md`](dda.md) — stakeholders, RF/RNF, escenarios de calidad y las matrices que atan cada requisito a su caso de uso | **Completo** |
-| **Diagramas arquitectónicos** | [`docs/architecture/diagrams/`](architecture/diagrams/) (fuentes `.puml`, `.dsl`, `.dbml` y diagramas sólo en `.png`); [ADR-024](architecture/adr/ADR-024-native-lucid-and-png-delivery.md) exige edición nativa Lucid para casos de uso/despliegue | **Revisión gráfica en curso; ER pendiente del solicitante** |
+| **Diagramas arquitectónicos** | [`docs/architecture/diagrams/`](architecture/diagrams/) (fuentes `.puml`, `.dsl`, `.dbml` y diagramas sólo en `.png`); [ADR-024](architecture/adr/ADR-024-native-lucid-and-png-delivery.md) exige edición nativa Lucid para casos de uso/despliegue | **Completo** |
 | **Definición de SLI, SLO y SLA** | [`docs/sre/sli-slo-sla.md`](sre/sli-slo-sla.md) (indicadores, objetivos, ventanas, presupuesto y exclusiones; §5.3 concentra la medición de Fase III); las preocupaciones de diseño que responden, en [`docs/RELIABILITY.md`](RELIABILITY.md) | **Completo** |
 | **Casos de uso detallados** | [`docs/domain/use-cases.md`](domain/use-cases.md) y jerarquía UML en [`docs/architecture/diagrams/cdu/`](architecture/diagrams/cdu/README.md) | **Completo** |
 | **Decisiones arquitectónicas (ADRs)** | [`docs/adr.md`](adr.md) y los registros formales en [`docs/architecture/adr/`](architecture/adr/README.md), de los cuales [ADR-014](architecture/adr/ADR-014-cloud-provider.md), [ADR-015](architecture/adr/ADR-015-ci-cd-platform.md) y [ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md) son los de la Fase II | **Completo** |
@@ -802,7 +802,7 @@ según [CLOUD](operations/CLOUD.md), sin alterar ADR históricos.
 Los diagramas documentales se entregan sólo en PNG. Casos de uso y despliegue
 pasan a edición nativa en Lucid; sus PUML conservan el contenido para cotejo.
 C4 mantiene DSL/CLI y las secuencias mantienen PUML. Los cinco ER quedan como
-DBML, pendientes de exportación por el solicitante. La política vigente está
+DBML y sus cinco exportaciones PNG quedan incorporadas y enlazadas. La política vigente está
 en [ADR-024](architecture/adr/ADR-024-native-lucid-and-png-delivery.md), que
 sustituye la política gráfica de ADR-022. Las alternativas históricas del
 editor siguen separadas. La [auditoría T-61](qa/T-61-documentation-audit.md)
