@@ -150,12 +150,24 @@ Cada diagrama tiene su fuente PlantUML versionada y el PNG que se entrega.
 | CDU005.3 | Consultar la bitácora de auditoría | [`.puml`](notification-audit/flujos/CDU005.3-consultar-auditoria.puml) | [`.png`](notification-audit/flujos/CDU005.3-consultar-auditoria.png) |
 | CDU005.4 | Bandeja propia por rol y consola de entregas sólo administrador | [`.puml`](notification-audit/flujos/CDU005.4-consultar-notificaciones.puml) | [`.png`](notification-audit/flujos/CDU005.4-consultar-notificaciones.png) |
 
+### CDU-F3 — Casos de uso de Fase III (Interbancario, Anomalías, Simulación y Observabilidad)
+
+| CDU | Caso de uso | Fuente | Render |
+| --- | --- | --- | --- |
+| CDU-F3 | **Diagrama de casos de uso de Fase III** | [`.puml`](fase3/fase3-casos-de-uso.puml) | [`.png`](fase3/fase3-casos-de-uso.png) |
+| CDU-F3.1 | Enviar depósito interbancario | [`.puml`](fase3/flujos/CDU-F3.1-enviar-deposito-interbancario.puml) | [`.png`](fase3/flujos/CDU-F3.1-enviar-deposito-interbancario.png) |
+| CDU-F3.2 | Recibir depósito interbancario | [`.puml`](fase3/flujos/CDU-F3.2-recibir-deposito-interbancario.puml) | [`.png`](fase3/flujos/CDU-F3.2-recibir-deposito-interbancario.png) |
+| CDU-F3.3 | Conciliación diaria y liquidación de reversos | [`.puml`](fase3/flujos/CDU-F3.3-conciliar-interbancario.puml) | [`.png`](fase3/flujos/CDU-F3.3-conciliar-interbancario.png) |
+| CDU-F3.4 | Detección y reporte de anomalías N/M | [`.puml`](fase3/flujos/CDU-F3.4-reportar-anomalia-nm.puml) | [`.png`](fase3/flujos/CDU-F3.4-reportar-anomalia-nm.png) |
+| CDU-F3.5 | Configuración de simulación de pagos en caliente | [`.puml`](fase3/flujos/CDU-F3.5-configurar-simulacion-pagos.puml) | [`.png`](fase3/flujos/CDU-F3.5-configurar-simulacion-pagos.png) |
+| CDU-F3.6 | Diagnóstico SRE con dashboards, trazas y alertas SLO | [`.puml`](fase3/flujos/CDU-F3.6-diagnostico-observabilidad-sre.puml) | [`.png`](fase3/flujos/CDU-F3.6-diagnostico-observabilidad-sre.png) |
+
 ## Revisión Fase III — T-61
 
-Las 31 fuentes y sus PNG se revisaron manteniendo su estilo azul: depósito
+Las 37 fuentes y sus PNG se revisaron manteniendo su estilo azul: depósito
 Ahorro Q100, comisión Q3 por débito, dedup de auditoría por consumidor,
 registro INVALID y redacción antes de insertar, canales reales/simulados y
 monitor Payment sólo para personal. Las etiquetas de mensajes llevan `.v1`.
 La nota tecnológica identifica la implementación sin sustituir el flujo de
-negocio. Las extensiones interbancarias, anomalía y SRE se complementan en
-[el diagrama13](../13-casos-uso-fase3.png) y [casos actuales](../../../domain/use-cases.md).
+negocio. Las extensiones interbancarias, anomalía y SRE se encuentran integradas
+con sus flujos en [CDU-F3](fase3/fase3-casos-de-uso.png) y [casos actuales](../../../domain/use-cases.md).

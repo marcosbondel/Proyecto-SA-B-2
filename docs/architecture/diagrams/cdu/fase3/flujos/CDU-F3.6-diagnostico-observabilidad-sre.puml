@@ -1,0 +1,52 @@
+@startuml CDU-F3.6-diagnostico-observabilidad-sre
+title CDU-F3.6 - Diagnóstico SRE con dashboards, trazas y alertas SLO
+
+skinparam shadowing false
+skinparam dpi 180
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Prometheus / Alertmanager|
+start
+:Evaluar reglas de alertas SLO (multi-window multi-burn rate);
+if (¿Violación de SLO detectada (ej. TransferLatencyBreach o GatewayAvailabilityFastBurn)?) then (Sí)
+    :Disparar alerta con severidad warning/critical y enlace al runbook;
+    :Notificar vía Webhook / canal operativo;
+else (No)
+    :Continuar monitoreo continuo de métricas;
+    stop
+endif
+
+|Operador SRE|
+:Recibir notificación y abrir el runbook correspondiente en docs/operations/runbooks/;
+:Ingresar a Grafana con sesión de operador (puerto 80 / LoadBalancer);
+:Abrir el dashboard indicado en el runbook (ej. 02-slo-error-budget.json o 01-metricas-clave-sli.json);
+|Grafana|
+:Consultar Prometheus mediante PromQL y graficar ratios de error / latencia p95/p99;
+|Operador SRE|
+:Identificar pico de latencia o degradación de servicio;
+:Hacer clic en el enlace de inspección profunda de trazas (Grafana Tempo);
+|Grafana Tempo|
+:Ejecutar consulta TraceQL filtrando por service.name y duración > umbral;
+:Renderizar el árbol de spans (waterfall) de la Saga coreografiada;
+|Operador SRE|
+:Localizar el span con error o demora anormal (ej. saga.payment attempt o broker consume);
+:Copiar el traceId o correlationId correspondiente;
+:Saltar a la pestaña de Grafana Loki vinculada a la traza;
+|Grafana Loki|
+:Ejecutar consulta LogQL filtrando por {service=...} |= traceId;
+:Mostrar los logs JSON estructurados con timestamp, nivel y failureReason;
+|Operador SRE|
+:Determinar causa raíz exacta del incidente;
+:Ejecutar acciones de remediación documentadas en el runbook (escalar réplicas HPA, reiniciar pod, etc.);
+:Confirmar en Grafana que el burn rate del error budget regresa a la normalidad;
+stop
+legend bottom
+  Stack de observabilidad: OpenTelemetry Collector, Prometheus, Tempo, Loki y Grafana.
+  Trazabilidad: Correlación unificada mediante W3C traceparent y correlationId en logs y métricas.
+  SRE: 16 reglas de alerta, 9 dashboards versionados y 7 runbooks operativos paso a paso.
+endlegend
+@enduml
