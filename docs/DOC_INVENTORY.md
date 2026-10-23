@@ -120,6 +120,7 @@ The primary component owners remain those in [OWNERSHIP](OWNERSHIP.md). A prior 
 | `docs/manual-tecnico.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/manual-usuario.md` | project | Marcos Bonifasi | current | 2026-10-22 |
 | `docs/manual/README.md` | project | Marcos Bonifasi | current | 2026-10-22 |
+| `docs/manual/recorrido-fase3.md` | project | Marcos Bonifasi | current | 2026-10-22 |
 | `docs/operations/CI.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/operations/CLOUD.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/operations/CONTAINERS.md` | project | Marcos Bonifasi | current | 2026-10-21 |
