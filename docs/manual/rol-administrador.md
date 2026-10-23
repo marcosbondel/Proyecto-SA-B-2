@@ -1,257 +1,114 @@
 # Manual del Administrador
 
-Esta guía es para quien **supervisa la operación** de Bank USAC: da de alta al
-personal, administra el estado de las cuentas y es la única persona que puede
-reconstruir qué pasó con una operación.
+Guía revisada para Fase III el 21 de octubre de 2026. El
+[manual general](../manual-usuario.md) contiene la operación común a los roles.
 
-Los conceptos que se repiten en todas las pantallas están en el
-[manual general](README.md#3-cómo-leer-lo-que-el-sistema-te-responde).
+## 1. Inicio y alta de personal
 
-## Lo que puedes hacer
+El tablero resume las respuestas de cinco servicios. Una sección **Sin dato**
+no es cero ni prueba ausencia de actividad. Las transferencias en proceso pueden
+ser de días anteriores; el contador de pagos reintentando es trabajo pendiente.
 
-| Módulo | Qué puedes hacer |
+El módulo **Usuarios** usa las rutas de Clientes. En **Nuevo cliente**, puedes
+elegir Cliente, Cajero receptor o Administrador. El registro público solo crea
+Clientes; el primer Administrador requiere preparación técnica externa.
+
+El alta presencial por personal verifica la identidad y activa al usuario.
+Comprueba su ficha y conserva los identificadores del registro.
+
+## 2. Cuentas y seguimiento
+
+Tienes las operaciones de ventanilla y Gestión de cuentas: filtros por estado y
+tipo, búsqueda en filas cargadas y cambios de estado con motivo. El Cajero
+también tiene gestión; el Cliente puede cambiar sus propias cuentas desde el
+detalle.
+
+El nombre de titular procede de una composición del Gateway. Si aparece un
+identificador, puede faltar la respuesta de nombres; confirma la ficha antes de
+diagnosticar un dato perdido.
+
+El monitoreo de Saga y el de pagos tienen alcances distintos: una aprobación del
+proveedor no demuestra por sí sola el crédito final. Comprueba transferencia,
+movimientos y, si es interbancaria, el detalle de depósito y reverso.
+
+## 3. Auditoría general y por operación
+
+Abre `/auditoria`. La tabla global pagina **diez eventos** y permite combinar:
+
+| Campo | Regla |
 | --- | --- |
-| **Inicio** | El tablero del sistema: clientes, cuentas activas, transferencias y pagos del día, estados de las operaciones y **alertas operativas**. |
-| **Clientes** | Registrar personas con **cualquier rol**, incluidos cajeros y administradores. |
-| **Cuentas** | Todo lo del cajero, más **Gestión de cuentas**: ver todas las cuentas del sistema con el nombre de su titular, y activarlas o desactivarlas. |
-| **Transferencias** | Enviar, consultar, ver el **monitoreo de la Saga** y saltar desde una transferencia a su rastro de auditoría. |
-| **Pagos** | Pagar servicios y vigilar los pagos y sus reintentos. |
-| **Auditoría** | Reconstruir el rastro completo de una operación y revisar la consola de notificaciones. |
+| Código de seguimiento | UUID versión 4. |
+| Traza | 32 caracteres hexadecimales; mayúsculas se normalizan. |
+| Servicio | Productor del evento. |
+| Nivel | INFO, WARNING o ERROR. |
 
-### Cómo leer el tablero
+Las condiciones se combinan con AND. Un campo vacío no filtra; los menús
+consultan al cambiar y los identificadores con **Buscar**. **Limpiar filtros**
+restaura la lista. Un identificador inválido se explica junto al campo.
 
-Cada número lo cuenta el servicio dueño de sus propias filas; el sistema
-pregunta a los cinco a la vez y dibuja lo que cada uno respondió.
+La traza se abrevia en la tabla; el valor completo está en el tooltip y el
+detalle. Un guion significa ausencia de traza registrada. Los eventos previos a
+la clasificación pueden no tener severidad.
 
-Un recuadro que dice **«Sin dato»** no es un cero: significa que ese servicio no
-alcanzó a responder. Un cero ahí sería un número equivocado en la pantalla que
-más se mira justo cuando algo va mal.
+**Ver rastro** o la consulta superior por correlación abre el flujo de una
+operación, con conteos y filtros locales de productor y tipo. Ese rastro puede
+compartirse mediante la ruta con `?correlationId=…`, respetando los permisos.
+**Detalle** abre causalidad, metadatos, payload ya redactado y traza.
 
-Dos cifras **no son de hoy**, a propósito:
+El contenido se redacta antes de persistir. No es una ocultación del navegador.
+La auditoría no es un libro contable y no reemplaza saldos y movimientos.
 
-- **En proceso** cuenta todas las transferencias en vuelo, empezaran cuando
-  empezaran. Una atascada desde ayer preocupa más que una de esta mañana: el
-  dinero ya salió de una cuenta y todavía no llegó a la otra.
-- **Pagos reintentando** son los que fallaron al menos una vez y tienen otro
-  intento pendiente. No requieren reproceso manual — la escalera de reintentos
-  corre sola.
+Distingue **ningún evento coincide** de **no se pudo consultar**. Un flujo
+recién aceptado puede no haberse registrado todavía; una respuesta vacía no
+demuestra que nunca existió.
 
-Las **alertas operativas** salen de esos mismos números, ordenadas por lo que
-cuesta ignorarlas: primero el dinero en vuelo, después las compensaciones del
-día (el cliente ya vio dos movimientos en su estado de cuenta), y al final los
-mensajes que la auditoría no pudo interpretar — no se perdió nada, falta
-explicarlos.
+## 4. Notificaciones
 
-Eres el único rol que ve **Auditoría**, y el único que puede **cambiar el estado
-de una cuenta**. También eres el único que puede confirmar en pantalla cómo
-terminó un registro o una apertura de cuenta: las demás sesiones se quedan en
-«solicitud aceptada».
+Tu bandeja personal `/notificaciones` tiene leído/no leído. La consola
+`/auditoria/notificaciones` muestra entregas de todo el sistema y filtra por
+correlación y estado: PENDING, SENT o FAILED. Son conceptos distintos.
 
-Tu menú lateral tiene seis entradas: **Inicio**, **Clientes**, **Cuentas**,
-**Transferencias**, **Pagos** y **Auditoría**.
+Con Resend configurado, activación, recuperación, rechazo de identidad y cambio
+de contraseña pueden entregarse a una dirección real. Los demás avisos usan
+canal simulado. Una entrega fallida queda registrada; no hay un reintento
+automático de correo en este adaptador y no revierte una transferencia.
 
----
+## 5. Pasar de una operación a Grafana
 
-## 1. Dar de alta al personal del banco
+Copia el código de seguimiento y la traza de una operación. Si
+`NUXT_PUBLIC_GRAFANA_URL` está configurada, el badge o detalle abre la traza
+en **Grafana → Explore → Tempo**. Grafana exige autenticación independiente;
+el rol Administrador del banco no concede ese acceso.
 
-Menú **Clientes** → **Nuevo cliente**.
+El punto de acceso cloud comunicado por el equipo es
+[Grafana](http://35.255.103.13). Obtén la contraseña mediante el canal del equipo;
+nunca la incorpores al manual ni a capturas. Consulta los
+[runbooks](../operations/runbooks/README.md) para métricas, logs y trazas.
 
-Es el mismo asistente de tres pasos que usa el cajero, y en el primer paso está
-el campo **Rol**. Ahí eliges si la persona será **Cliente**, **Cajero receptor**
-o **Administrador**.
+Una traza ausente en Tempo puede deberse a la ventana, retención, muestreo o
+problemas de exportación. Registra lo observado; no declares pérdida de una
+operación solo porque no aparece una traza.
 
-**Solo un administrador puede crear cajeros y administradores.** El registro
-público siempre crea un Cliente, y el sistema lo impone: si no fuera así,
-cualquiera podría nombrarse administrador a sí mismo.
+## 6. Simulación administrativa y escalamiento
 
-El alta funciona igual que cualquier otra: la persona recibe un enlace de
-activación y no podrá iniciar sesión hasta abrirlo. Dale su **customerId** antes
-de que termine el trámite.
+Los parámetros globales del proveedor se consultan con
+`GET /api/payments/simulation` y se sustituyen con `PUT`, solo con sesión de
+Administrador. No hay editor de esos tres parámetros en el frontend.
+El [manual técnico](../manual-tecnico.md#simulación-administrativa-de-pagos)
+define cuerpo completo, validación, persistencia y reset.
 
-> **El primer administrador no se crea desde aquí.** Como hace falta una sesión
-> de administrador para crear otro, el primero lo prepara el equipo técnico al
-> instalar el sistema.
+Las pruebas de rechazo, timeout y carga deben usarse en `dev` con aislamiento
+confirmado, conservando y restaurando la configuración inicial. No modifiques la
+simulación de producción para obtener una captura.
 
-## 2. Gestión de cuentas
+Escala una liberación interbancaria sin verificación del banco externo aunque el
+detalle ya indique Devuelto. Entrega IDs, estado e historial al responsable de
+reconciliación. Para cualquier incidente registra hora, entorno, versión,
+identificadores y evidencia, sin datos sensibles.
 
-Menú **Cuentas** → botón **Gestión de cuentas**.
+Volver al [índice de manuales](README.md).
 
-Es la vista de todas las cuentas del sistema, no solo las tuyas.
+## Capturas actuales de Fase III
 
-### Lo que muestra
-
-| Columna | Qué contiene |
-| --- | --- |
-| Número | El identificador de la cuenta. |
-| Titular | El **nombre del titular**, con su identificador debajo en letra pequeña. |
-| Tipo | Monetaria o Ahorro. |
-| Estado | Activa o Inactiva. |
-| Última actividad | Cuándo se movió por última vez, o `—` si nunca. |
-| Saldo | El saldo actual. |
-
-> La columna **Titular** muestra el nombre porque esta pantalla pregunta a dos
-> servicios: el de cuentas da las cuentas y el de clientes da los nombres. Son
-> dos servicios separados a propósito y ninguno lee la base del otro, así que si
-> el de clientes no alcanza a responder, la columna cae al identificador. Un
-> identificador donde esperabas un nombre no es un error de datos: es esa
-> segunda consulta que no llegó.
-
-### Filtros
-
-- **Búsqueda libre** por número de cuenta o titular — filtra lo que ya está en
-  pantalla.
-- **Estado** (Todos / Activa / Inactiva) y **Tipo** (Todos / Monetaria /
-  Ahorro) — vuelven a preguntar al banco.
-
-### El aviso de desactivación automática
-
-Cuando hay cuentas activas con saldo menor a **Q 50.00**, aparece un aviso
-arriba con cuántas son. Un proceso automático desactiva las cuentas que llevan
-**seis meses sin movimientos con saldo menor a Q 50.00**. Las que aparecen en el
-aviso ya cumplen la condición de saldo; se desactivarán cuando cumplan también
-la de tiempo.
-
-### Desactivar o reactivar una cuenta
-
-1. Pulsa **Desactivar** o **Reactivar** en la fila de la cuenta.
-2. Se abre un panel debajo de la tabla con el identificador de la cuenta y un
-   campo **Motivo**.
-3. **El motivo es obligatorio.** Es el único registro de por qué se hizo el
-   cambio: no hay un proceso automático detrás del cual deducirlo. Escribe algo
-   que le sirva a quien lea esto en seis meses.
-4. **Confirmar**.
-
-El cambio **no es inmediato**. La pantalla dirá que la solicitud fue aceptada y
-recargará la lista. Si el estado todavía no cambió, actualiza en unos segundos:
-la lista dice la verdad cuando el cambio aterriza.
-
-Recuerda que una cuenta inactiva **se reactiva sola** si recibe una
-transferencia; no siempre hace falta intervenir.
-
-## 3. Auditoría: reconstruir qué pasó
-
-Menú **Auditoría**.
-
-Esta es la herramienta que nadie más tiene. Se consulta por **identificador de
-correlación**: el código que acompaña a cada operación por todos los servicios
-del banco, y que aparece al pie de las pantallas y en cada aviso de error.
-
-### Cómo consultar
-
-1. Pega el identificador de correlación en el campo.
-2. Pulsa **Consultar**.
-
-El identificador queda en la dirección de la página, así que puedes **compartir
-el enlace** con el resultado ya cargado. Desde el detalle de una transferencia,
-el botón **Ver auditoría** te trae aquí con el identificador ya puesto.
-
-### Cómo leer el resultado
-
-Arriba está el resumen: cuántos **eventos**, cuántos **servicios**
-participaron y cuánto **duró** la operación de punta a punta. Si algún mensaje
-no pudo leerse, aparece un contador rojo.
-
-La tabla tiene una fila por evento, en orden:
-
-| Columna | Qué muestra |
-| --- | --- |
-| Momento | Cuándo ocurrió. |
-| Tipo de evento | Qué pasó. Se colorea: rojo para fallos y compensaciones, verde para lo que se completó. Debajo indica qué evento lo causó. |
-| Servicio origen | Qué servicio lo publicó. |
-| eventId | El identificador del evento. |
-| Registro | Si quedó **Registrado**, **Inválido** o con **Error**. |
-
-Los filtros por **servicio** y por **tipo de evento** trabajan sobre lo que ya
-está en pantalla.
-
-El botón **Detalle** abre un panel lateral con el contenido completo del evento
-y qué lo causó.
-
-> **Lo que la auditoría no guarda.** Los montos, los documentos y los correos
-> aparecen como `[redactado]`. El servicio de auditoría guarda los contenidos ya
-> ocultos: nunca almacena el original. Esos datos viven en la base del servicio
-> que los posee. Es una decisión de privacidad, no una limitación técnica: es la
-> única base de datos que escucha todos los eventos del banco, y por eso es la
-> que menos debe guardar.
-
-### Cuando no aparece nada
-
-La pantalla lo dice sin adivinar: puede significar que la operación nunca
-existió, que **todavía está en curso**, o que el servicio de auditoría estaba
-caído cuando ocurrió. Si la operación es reciente, espera unos segundos y vuelve
-a consultar.
-
-### Cuando la consulta no responde
-
-Si ves *«No pudimos confirmar el resultado»*, el banco publicó la pregunta y
-nadie contestó en cinco segundos. Lo más probable es que el servicio de
-auditoría no esté corriendo. No significa que la operación haya fallado.
-
-## 4. Consola de notificaciones
-
-Menú **Auditoría** → botón **Consola de notificaciones**.
-
-Lista los avisos que el sistema generó, con su **estado real de entrega**:
-
-| Estado | Qué significa |
-| --- | --- |
-| **Pendiente** | Se creó y todavía no se ha entregado. |
-| **Enviada** | El canal la dio por entregada. |
-| **No enviada** | El canal no pudo entregarla. **No se reintenta.** |
-
-Se filtra por estado, y un aviso rojo aparece cuando alguna falló.
-
-Si llegas aquí desde el rastro de una operación, la consola se abre acotada a
-esa correlación y puedes volver al flujo completo o quitar el filtro con **Ver
-todas**.
-
-> **De este sistema no sale ningún correo: los envíos son simulados.** Por eso
-> una notificación fallida no se reintenta — no hay un servidor de correo que
-> pueda estar temporalmente caído. Y por eso una notificación fallida **no
-> afecta la operación bancaria**: el dinero se movió igual.
-
-Esta consola es una herramienta de supervisión, no una bandeja de entrada: no
-hay estado de leído ni forma de marcar avisos.
-
-## 5. Lo que sí puedes confirmar y los demás no
-
-Cuando un cliente o un cajero registra a alguien, actualiza una ficha o abre una
-cuenta, la pantalla se queda en *«solicitud aceptada»* y no puede decirles cómo
-terminó. La tuya sí: tu sesión consulta el rastro de auditoría y confirma el
-desenlace.
-
-Por eso, cuando alguien te reporte un problema, **lo primero que hay que pedirle
-es el identificador de correlación**. Con él, esta es la única pantalla del
-sistema que puede decir exactamente qué ocurrió.
-
----
-
-## Problemas comunes
-
-**Desactivé una cuenta y sigue apareciendo activa.**
-El cambio es asíncrono. Actualiza la lista en unos segundos.
-
-**La auditoría no devuelve nada para una operación que acabo de ver.**
-Espera unos segundos y vuelve a consultar: puede que el evento aún no se haya
-registrado.
-
-**La auditoría responde «No pudimos confirmar el resultado».**
-El servicio de auditoría probablemente no está corriendo. Es el fallo esperado
-en ese caso.
-
-**Necesito filtrar la auditoría por fecha.**
-No se puede. La auditoría se consulta por identificador de correlación; no hay
-navegación general ni filtro de fechas.
-
-**Necesito saber el nombre del titular de una cuenta.**
-La gestión de cuentas lo muestra en la columna *Titular*. Si en esa fila aparece
-un identificador en vez de un nombre, copia ese identificador y abre la ficha
-desde *Clientes → Abrir una ficha*: ahí están los datos completos del cliente.
-
-**Necesito crear otro administrador.**
-Desde *Clientes → Nuevo cliente*, eligiendo el rol **Administrador** en el
-primer paso.
-
----
-
-Volver al [manual general](README.md).
+El [recorrido del despliegue real](recorrido-fase3.md) complementa los pasos anteriores
+con interbancario, auditoría/trazas, pagos, notificaciones y ventanilla.

@@ -1,0 +1,27 @@
+Scope: all 13 workspace projects
+[EPERM] EPERM: operation not permitted, symlink 'C:\Users\Enner\Desktop\Proyecto-SA-B-2' -> 'C:\Users\Enner\AppData\Local\Packages\sandbox.{987a7c6b-dc30-4e0a-b4ea-297b44f1c8dc}\AC\pnpm\store\v11\projects\c5b89370ac38e89819e6c4e30c3b36c7'
+
+pnpm: EPERM: operation not permitted, symlink 'C:\Users\Enner\Desktop\Proyecto-SA-B-2' -> 'C:\Users\Enner\AppData\Local\Packages\sandbox.{987a7c6b-dc30-4e0a-b4ea-297b44f1c8dc}\AC\pnpm\store\v11\projects\c5b89370ac38e89819e6c4e30c3b36c7'
+    at async Object.symlink (node:internal/fs/promises:1059:10)
+    at async createSymlinkAsync (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:51013:13)
+    at async forceSymlink (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:50933:7)
+    at async registerProject (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:184446:3)
+    at async getContext (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:185166:5)
+    at async mutateModules (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:217116:13)
+    at async recursive (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:223878:151)
+    at async recursiveInstallThenUpdateWorkspaceState (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:225103:27)
+    at async Object.handler5 (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:225946:3)
+    at async file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:328619:19
+[ERROR] Command failed with exit code 4294963248: "C:\Users\Enner\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe" "C:\Users\Enner\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\node_modules\pnpm\bin\pnpm.mjs" install
+
+pnpm: Command failed with exit code 4294963248: "C:\Users\Enner\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe" "C:\Users\Enner\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\node_modules\pnpm\bin\pnpm.mjs" install
+    at getFinalError (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:89986:14)
+    at makeError (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:92293:21)
+    at getSyncResult (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:94137:10)
+    at spawnSubprocessSync (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:94097:14)
+    at execaCoreSync (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:94027:23)
+    at callBoundExeca (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:96555:23)
+    at boundExeca (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:96532:49)
+    at sync2 (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:96691:10)
+    at runPnpmCli (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:276904:5)
+    at runDepsStatusCheck (file:///C:/Users/Enner/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/dist/pnpm.mjs:278122:7)

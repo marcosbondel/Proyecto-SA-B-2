@@ -1,0 +1,62 @@
+[
+  {
+    "Namespace": "dev",
+    "Service": "customer",
+    "Database": "customer_dev",
+    "Host": "postgres-customer"
+  },
+  {
+    "Namespace": "dev",
+    "Service": "account",
+    "Database": "account_dev",
+    "Host": "postgres-account"
+  },
+  {
+    "Namespace": "dev",
+    "Service": "transaction",
+    "Database": "transaction_dev",
+    "Host": "postgres-transaction"
+  },
+  {
+    "Namespace": "dev",
+    "Service": "payment",
+    "Database": "payment_dev",
+    "Host": "postgres-payment"
+  },
+  {
+    "Namespace": "dev",
+    "Service": "notification-audit",
+    "Database": "notification_audit_dev",
+    "Host": "postgres-notification-audit"
+  },
+  {
+    "Namespace": "prod",
+    "Service": "customer",
+    "Database": "customer",
+    "Host": "postgres-customer"
+  },
+  {
+    "Namespace": "prod",
+    "Service": "account",
+    "Database": "account",
+    "Host": "postgres-account"
+  },
+  {
+    "Namespace": "prod",
+    "Service": "transaction",
+    "Database": "transaction",
+    "Host": "postgres-transaction"
+  },
+  {
+    "Namespace": "prod",
+    "Service": "payment",
+    "Database": "payment",
+    "Host": "postgres-payment"
+  },
+  {
+    "Namespace": "prod",
+    "Service": "notification-audit",
+    "Database": "notification_audit",
+    "Host": "postgres-notification-audit"
+  }
+]

@@ -1,4 +1,19 @@
-# Manual de Usuario — Bank USAC
+# Recorrido visual histórico — Bank USAC
+
+> **Contexto de evidencia, revisado el 21 de octubre de 2026 (T-61).** Las
+> capturas y los datos de los 78 pasos de este documento corresponden a la
+> ejecución local anterior; se conservan como registro histórico. Sus saldos,
+> identidades, direcciones, mensajes y estados no describen necesariamente el
+> despliegue actual de producción. Las credenciales de demostración de abajo
+> pertenecen a ese contexto local.
+>
+> Los procedimientos vigentes están en el [manual de usuario](../manual-usuario.md).
+> La [guía de validación de Fase III](../qa/guia-validacion-manual-fase3.md)
+> distingue inspección de código, pruebas de navegador y capturas nuevas.
+> En particular, hoy existen fotografía protegida de identidad, cuatro filtros
+> globales de auditoría, trazas enlazables e historial/detalle interbancario.
+> TIMEOUT interbancario conserva la reserva mientras se reconcilia; una traza
+> de consulta no debe atribuirse a la operación original.
 
 Bienvenido al manual de usuario de **Bank USAC**. Esta guía detalla la operación de la plataforma bancaria web para cada uno de los tres roles del sistema: **Cliente**, **Cajero Receptor** y **Administrador**.
 
