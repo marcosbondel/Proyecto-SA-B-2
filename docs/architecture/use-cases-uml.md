@@ -150,11 +150,19 @@ Fuentes: [PlantUML (`01-primera-descomposicion.puml`)](diagrams/cdu/01-primera-d
 
 ## Extensiones Fase III
 
-![Casos adicionales](diagrams/13-casos-uso-fase3.png)
+![Casos adicionales](diagrams/cdu/fase3/fase3-casos-de-uso.png)
 
-[Fuente](diagrams/13-casos-uso-fase3.puml). Complementa la jerarquía CDU
-histórica con depósitos v1, notificaciones, simulación administrativa,
-anomalías N/M y observabilidad. Los permisos efectivos están en
-[actores](../domain/actors.md); el acceso SRE a Grafana es independiente del
-JWT bancario. Los flujos detallados actuales son los de
-[casos de uso](../domain/use-cases.md).
+Fuentes: [PlantUML](diagrams/cdu/fase3/fase3-casos-de-uso.puml) y [directorio de casos CDU-F3](diagrams/cdu/fase3/). Complementa la jerarquía CDU histórica con depósitos v1, notificaciones, simulación administrativa, anomalías N/M y observabilidad.
+
+### Diagramas de flujo de actividad (Fase III)
+
+| Identificador | Caso de uso | Diagrama de flujo |
+| :--- | :--- | :--- |
+| **CDU-F3.1** | Enviar depósito interbancario | [`.puml`](diagrams/cdu/fase3/flujos/CDU-F3.1-enviar-deposito-interbancario.puml) \| [`.png`](diagrams/cdu/fase3/flujos/CDU-F3.1-enviar-deposito-interbancario.png) |
+| **CDU-F3.2** | Recibir depósito interbancario | [`.puml`](diagrams/cdu/fase3/flujos/CDU-F3.2-recibir-deposito-interbancario.puml) \| [`.png`](diagrams/cdu/fase3/flujos/CDU-F3.2-recibir-deposito-interbancario.png) |
+| **CDU-F3.3** | Conciliación diaria y liquidación de reversos | [`.puml`](diagrams/cdu/fase3/flujos/CDU-F3.3-conciliar-interbancario.puml) \| [`.png`](diagrams/cdu/fase3/flujos/CDU-F3.3-conciliar-interbancario.png) |
+| **CDU-F3.4** | Detección y reporte de anomalías N/M | [`.puml`](diagrams/cdu/fase3/flujos/CDU-F3.4-reportar-anomalia-nm.puml) \| [`.png`](diagrams/cdu/fase3/flujos/CDU-F3.4-reportar-anomalia-nm.png) |
+| **CDU-F3.5** | Configuración de simulación de pagos en caliente | [`.puml`](diagrams/cdu/fase3/flujos/CDU-F3.5-configurar-simulacion-pagos.puml) \| [`.png`](diagrams/cdu/fase3/flujos/CDU-F3.5-configurar-simulacion-pagos.png) |
+| **CDU-F3.6** | Diagnóstico SRE con dashboards, trazas y alertas SLO | [`.puml`](diagrams/cdu/fase3/flujos/CDU-F3.6-diagnostico-observabilidad-sre.puml) \| [`.png`](diagrams/cdu/fase3/flujos/CDU-F3.6-diagnostico-observabilidad-sre.png) |
+
+Los permisos efectivos están en [actores](../domain/actors.md); el acceso SRE a Grafana es independiente del JWT bancario. Los flujos de dominio están en [casos de uso](../domain/use-cases.md).

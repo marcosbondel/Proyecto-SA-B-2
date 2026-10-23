@@ -1,0 +1,51 @@
+@startuml CDU-F3.5-configurar-simulacion-pagos
+title CDU-F3.5 - Configuración de simulación de pagos en caliente
+
+skinparam shadowing false
+skinparam dpi 180
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Administrador|
+start
+:Definir parámetros de simulación (failureRatePercent, timeoutRatePercent, latencyMs);
+:Enviar petición PUT /api/payment/simulation con token administrativo;
+|API Gateway|
+:Autenticar JWT y verificar rol ADMIN;
+:Validar esquema JSON del payload;
+:Reenviar comando payment.simulation.update.v1 a Payment Service;
+|Payment Service|
+:Verificar restricciones de negocio SQL;
+if (¿Tasas válidas (0 <= tasa <= 100 y suma <= 100%) y latencia (0 <= ms <= 30000)?) then (Sí)
+    :Actualizar registro único (id = 1) en payment_simulation_settings;
+    :Registrar timestamp de actualización updated_at;
+    :Publicar evento payment.simulation.updated.v1;
+    |Notification & Audit|
+    :Registrar cambio de configuración de simulación en bitácora de auditoría;
+    |API Gateway|
+    :Responder HTTP 200 OK con la configuración aplicada;
+    |Administrador|
+    :Confirmar parámetros activos en pantalla de administración;
+else (No)
+    |Payment Service|
+    :Rechazar configuración con error de validación;
+    |API Gateway|
+    :Responder HTTP 400 Bad Request con mensaje de error descriptivo;
+    |Administrador|
+    :Corregir valores ingresados;
+    stop
+endif
+
+|Payment Service|
+:En ejecuciones posteriores de pagos, aplicar tasas y retardos configurados;
+stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Propósito: Pruebas de resiliencia, verificación de SLOs y disparo de alertas en caliente.
+  Persistencia: PostgreSQL 18.4 exclusivo de Payment Service (tabla payment_simulation_settings).
+  Aislamiento: API administrativa protegida por roles JWT; sin formulario público en cliente.
+endlegend
+@enduml

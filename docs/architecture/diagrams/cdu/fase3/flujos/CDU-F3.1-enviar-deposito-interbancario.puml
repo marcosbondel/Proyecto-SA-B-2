@@ -1,0 +1,69 @@
+@startuml CDU-F3.1-enviar-deposito-interbancario
+title CDU-F3.1 - Enviar depósito interbancario
+
+skinparam shadowing false
+skinparam dpi 180
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Cliente / Web|
+start
+:Ingresar cuenta origen, banco destino, cuenta destino, monto y concepto;
+:Confirmar transferencia interbancaria (POST /api/interbank/transfers);
+|API Gateway|
+:Autenticar JWT y validar rol CLIENTE;
+:Validar esquema JSON y generar correlationId;
+:Publicar comando interbank.transfer.requested.v1;
+|Payment Service|
+:Registrar solicitud en interbank_sends (estado PENDING);
+:Generar interbank_transfer_id e idempotency_key;
+:Solicitar reserva y débito de fondos a Account Service;
+|Account Service|
+:Bloquear cuenta origen (SELECT ... FOR UPDATE);
+if (¿Saldo disponible suficiente?) then (Sí)
+    :Debitar saldo y retener monto en reserva;
+    :Registrar movimiento con tipo TRANSFER_INTERBANK_DEBIT;
+    :Responder reserva exitosa a Payment Service;
+else (No)
+    :Responder saldo insuficiente (rechazo);
+    |Payment Service|
+    :Marcar interbank_sends en estado REJECTED;
+    |API Gateway|
+    :Retornar HTTP 422 Unprocessable Entity al cliente;
+    stop
+endif
+|Payment Service|
+:Enviar POST /interbank/v1/deposits al banco pareja con X-Api-Key y traceparent;
+if (¿Respuesta HTTP 202 ACCEPTED?) then (Sí)
+    :Actualizar estado a SENT;
+    :Esperar callback asíncrono o vencimiento de confirmation_due_at;
+    if (¿Callback ACCEPTED recibido antes del timeout?) then (Sí)
+        :Actualizar estado terminal ACCEPTED en interbank_sends;
+        :Confirmar liquidación definitiva de la reserva en Account;
+        :Publicar evento interbank.transfer.completed.v1;
+    else (Callback REJECTED o Fallo definitivo)
+        :Actualizar estado REJECTED;
+        :Solicitar compensación/reverso a Account Service;
+        |Account Service|
+        :Acreditar monto retenido de vuelta a la cuenta origen;
+        |Payment Service|
+        :Publicar evento interbank.transfer.failed.v1;
+    endif
+else (Fallo HTTP o Timeout de conexión)
+    :Registrar estado TIMEOUT en interbank_sends;
+    :Mantener reserva de fondos sin compensar prematuramente;
+    :Programar para conciliación y consulta periódica;
+endif
+|API Gateway|
+:Notificar resultado o aceptación al cliente;
+stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Protocolo externo: OpenAPI 3.0.3 / HTTP 202 + callback asíncrono.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; W3C traceparent propagado.
+  Persistencia: PostgreSQL 18.4 exclusivo por servicio; reserva atómica en Account.
+endlegend
+@enduml
