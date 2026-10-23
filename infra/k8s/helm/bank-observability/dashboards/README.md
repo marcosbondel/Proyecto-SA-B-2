@@ -6,8 +6,8 @@ Grafana los carga al arrancar y en caliente.
 
 | Archivo | Dashboard | Qué responde |
 | --- | --- | --- |
-| `00-estado-del-sistema.json` | Estado del sistema | ¿está bien el banco ahora mismo? Los cuatro SLO, el throughput que les da sentido y los 5xx |
-| `01-metricas-clave-sli.json` | Métricas clave (SLI) | latencias en percentiles, throughput por cola, el proveedor externo, KYC y cuentas |
+| `00-estado-del-sistema.json` | Estado del sistema | ¿está bien el banco ahora mismo? los grupos SLO operativos, el throughput que les da sentido y los 5xx |
+| `01-metricas-clave-sli.json` | Métricas clave (SLI) | latencias en percentiles, throughput por cola, el proveedor simulado, KYC y cuentas |
 | `02-slo-error-budget.json` | SLO y error budget | ¿cuánto margen queda y a qué velocidad se gasta? |
 | `03-errores-en-tiempo-real.json` | Errores en tiempo real | qué está fallando, de la métrica a la línea de log |
 | `04-flujo-de-trazas.json` | Flujo de trazas | la Saga completa, con sus compensaciones, en una traza |
@@ -16,8 +16,9 @@ Grafana los carga al arrancar y en caliente.
 | `07-logs.json` | Logs | búsqueda por `correlationId` y `traceId`, con salto a la traza |
 | `08-banco-pareja.json` | Banco pareja | la dependencia externa y si reaccionamos bien a sus fallos |
 
-Los ocho primeros son los que §4.1 enumera como obligatorios; el de logs sale de
-la observabilidad que §4.1 pide a Notification & Audit.
+Las nueve vistas cubren estado, métricas, SLO, errores, trazas, colas,
+plataforma, logs y dependencia interbancaria. Su correspondencia con §4.1 no
+implica que cada panel tenga tráfico en toda ventana.
 
 ## Editarlos
 
@@ -59,7 +60,31 @@ la observabilidad que §4.1 pide a Notification & Audit.
   `correlationId`, `traceId`, `environment`) es metadato estructurado y va
   después de un `|`. Un selector `{environment="prod"}` no da error: no
   encuentra nada.
-- **Los valores de etiqueta se escriben como los emite el código**: `result`,
-  `outcome`, `operation`… en minúsculas (`failed`, no `FAILED`).
+- **Los valores se escriben como los emite cada instrumento**: resultados
+  de Saga/proveedor en minúsculas (`failed`); tipos de cuenta `AHORRO`/`MONETARIA`
+  y severidad de evento `INFO`/`WARNING`/`ERROR` en mayúsculas. La severidad
+  de alerta Grafana es `critical`/`warning`/`info`. Ver catálogo.
 - El nombre del servicio se filtra por `service_name`, nunca por `job`: el
   Collector renombra el suyo a `exported_job`.
+
+## Evidencia de las nueve vistas
+
+Las capturas de GKE, sus filtros y ventanas están en
+[el informe cloud](../../../../../docs/qa/backend/T-60-cloud-evidence.md).
+No sustituir `No data` por cero: varias vistas dependen de tráfico en la
+ventana. La comparación local/cloud (retención, PVC y acceso) se documenta en
+[despliegue](../../../../../docs/architecture/deployment.md).
+
+## Interpretación de ventanas y cobertura
+
+Hay **71 recording rules** y **16 alertas** en los values actuales. El budget
+cloud usa siete días desde incrementos de contadores, no el promedio de ratios.
+Una serie nueva con `[7d]` sólo aporta su historia existente. Sin tráfico,
+“No data” no es cumplimiento; los targets y la exportación se revisan aparte.
+
+El proxy de duración Saga incluye todos los cierres y omite pendientes; los
+comandos HTTP usan el bucket conservador 2.5 s por faltar 3 s. El p95 saliente
+interbancario excluye timeouts y el contador no duplica una aceptación tardía
+ya contada como timeout. Las limitaciones están en
+[SLO §5.3](../../../../../docs/sre/sli-slo-sla.md#53-los-slo-que-la-fase-3-mide-con-datos-reales-t-58).
+No modificar consultas o umbrales sólo para que una captura salga verde.

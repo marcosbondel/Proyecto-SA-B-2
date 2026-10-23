@@ -1,16 +1,21 @@
 # infra/k8s
 
-Local Kubernetes deployment artifacts for the Bank USAC system.
+Kubernetes deployment artifacts for local kind and cloud GKE, Bank USAC.
 
-This directory contains **only** cluster-level deployment configuration. All
-databases, the RabbitMQ broker, and the MinIO object store run outside the
-cluster in `infra/docker/` because the constitution requires persistence and
-messaging infrastructure to be external (principle III).
+The PostgreSQL engines stay **outside Kubernetes**, as constitution principle
+III requires. The local kind procedure also keeps RabbitMQ and MinIO in
+Compose; cloud GKE runs them inside each application namespace. The database
+constraint does not require every persistence/messaging component to be external.
+
+Two charts are versioned here: **`helm/bank-usac`** for the seven bank
+applications and optional mock/infra, and **`helm/bank-observability`** for
+Collector, agent, Prometheus, Tempo, Loki and Grafana. Terraform provisions the
+GKE substrate under `infra/terraform/gcp/`; Helm releases the workloads.
 
 The mechanism is fixed by
 [ADR-007](../../docs/architecture/adr/ADR-007-local-orchestration.md): a
 [kind](https://kind.sigs.k8s.io/) cluster whose nodes share the Compose
-stack's Docker network, and one Helm chart, `helm/bank-usac`, released with
+stack's Docker network. Its bank chart, `helm/bank-usac`, is released with
 `helm upgrade --install` rather than raw `kubectl apply -f`.
 
 ```
@@ -61,7 +66,7 @@ pnpm k8s:install    # discovers the external IPs, then helm upgrade --install
 ```
 
 `pnpm k8s:install` wraps the real invocation, which needs seven `image.tag`
-flags and nine `--set secrets.*` values that `templates/secret.yaml` marks
+flags and the secret values that `templates/secret.yaml` conditionally marks
 `required` — it reads them from `infra/docker/.env` so the same credentials
 serve Compose and the cluster. `infra/k8s/scripts/install.sh --help` prints the
 underlying `helm upgrade --install` if you want to run it by hand.
@@ -86,3 +91,26 @@ every pod at the wrong role — which is exactly why rendering is not enough.
 `pnpm k8s:evidence` re-captures the cluster's state into
 `specs/008-audit-remediation/evidence/`; the evidence is a script rather than a
 paste so it can be re-run rather than trusted.
+
+## Revisión documental T-61 — 2026-10-21
+
+La vista consolidada y las diferencias entre local y cloud están en
+[el índice de arquitectura](../../docs/architecture/README.md).
+Para esta revisión no se ejecutó Terraform apply ni se cambió infraestructura
+persistente. GKE observado: `us-central1-c`, tres nodos, prod v1.3.6; bases
+dev con sufijo `_dev`. La evidencia y sus límites están en
+[T-60 cloud](../../docs/qa/backend/T-60-cloud-evidence.md).
+
+## Phase III operations
+
+`pnpm local:up` also installs the observability chart and local partner mock;
+`pnpm k8s:obs` installs observability separately. Kind overrides differ from
+cloud: ClusterIP access, Prometheus 2 h without PVC, Tempo 24 h with 5 GiB PVC,
+Loki 2 GiB PVC and Grafana without PVC. These values are not the cloud retention
+of seven days. See [DEPLOYMENT](../../docs/operations/DEPLOYMENT.md).
+
+The [dated GKE inventory](../../docs/qa/load/2026-10-21-gke-observability-inventory.txt)
+shows public Grafana LoadBalancer, three log agents and the four Bound store/UI
+PVCs. Dataplane V2 is active, but no NetworkPolicies were applied at inspection;
+chart templates alone do not restrict traffic. See
+[ADR-023](../../docs/architecture/adr/ADR-023-observability-evolution.md).

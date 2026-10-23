@@ -132,3 +132,5 @@ tmp/load/
 # Bitacoras de validacion y verificacion local de T-60. Lo que importa de ellas
 # pasa a la evidencia de docs/qa/; el log crudo es de una maquina y una corrida.
 tmp/t60/
+tmp/t61*/
+

@@ -6,8 +6,9 @@ process from a ready one. Built by **T-21**; the values here are the values
 
 The assignment requires Docker (§4.3), a Dockerfile per microservice and gateway
 with local validation (§6, paso 10), and "todos los servicios correctamente
-dockerizados" (§8.1). Databases and the broker stay **outside** the cluster
-(§8.1, constitution III), so nothing here builds one into an image.
+dockerizados" (§8.1). The database-outside-cluster constraint concerns
+PostgreSQL. Local kind keeps broker and MinIO in Compose; GKE runs them inside
+each namespace using upstream images, separate from the seven bank images.
 
 ## The seven images
 
@@ -37,9 +38,11 @@ constitution V), and a published 3001-3005 would be five ways around the one
 door the design has.
 
 T-46 añade una imagen **auxiliar** `apps/partner-bank-mock/Dockerfile`, fuera
-de las siete imágenes de entrega y del chart. El perfil opcional `interbank`
+de las siete aplicaciones bancarias. El chart permite desplegarla opcionalmente
+y se observó en prod v1.3.6; en dev no está desplegada. El perfil opcional `interbank`
 de Compose la inicia en el puerto local 3021 para simular otro banco; expone
-`GET /health` y recibe transferencias y callbacks con el token compartido.
+`GET /health`; el contrato v1 usa `X-Api-Key` y el mock tiene una API de
+administración separada. No intercambiarla con el Bearer de rutas heredadas.
 Véase [INTERBANK.md](INTERBANK.md) para sus modos de fallo.
 
 ### Variables each image requires at run time
@@ -55,10 +58,10 @@ serve Compose, kind and a demonstration alike.
 | `customer-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` `OBJECT_STORAGE_ENDPOINT` `OBJECT_STORAGE_ACCESS_KEY` `OBJECT_STORAGE_SECRET_KEY` `OBJECT_STORAGE_BUCKET` `OBJECT_STORAGE_REGION` | `SEED_DEMO_DATA` `SEED_PASSWORD` |
 | `account-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `DEACTIVATION_ENABLED` `DEACTIVATION_INTERVAL_MS` `INACTIVITY_MONTHS` `INACTIVITY_MIN_BALANCE_MINOR` `ANOMALY_MAX_OPERATIONS` `ANOMALY_WINDOW_MINUTES` `SEED_DEMO_DATA` |
 | `transaction-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | — |
-| `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` `PAYMENT_SIM_FAILURE_RATE` `PAYMENT_SIM_TIMEOUT_RATE` `PAYMENT_SIM_LATENCY_MS` `INTERBANK_PARTNER_TOKEN` `INTERBANK_BANK_CODE` `INTERBANK_PARTNER_BANK_CODE` `INTERBANK_MAX_AMOUNT_MINOR` `INTERBANK_CALLBACK_URL` (T-46) `INTERBANK_SEND_URL` `INTERBANK_CONFIRMATION_TIMEOUT_MS` (T-47; see [INTERBANK.md](INTERBANK.md)) |
+| `payment-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `PAYMENT_RETRY_DELAYS_MS` `PAYMENT_RETRY_SWEEP_MS` `PAYMENT_RETRY_SWEEP_IDLE_MAX_MS` `PAYMENT_SIM_FAILURE_RATE` `PAYMENT_SIM_TIMEOUT_RATE` `PAYMENT_SIM_LATENCY_MS` `INTERBANK_BANK_CODE` `INTERBANK_PARTNER_BANK_CODE` `INTERBANK_MAX_AMOUNT_MINOR` `INTERBANK_PARTNER_BASE_URL` `INTERBANK_API_KEY_OUTBOUND` `INTERBANK_RESOLVE_RETRY_MS` `INTERBANK_CONFIRMATION_TIMEOUT_MS` (obsolete, validated but unused; see [INTERBANK.md](INTERBANK.md)) |
 | `notification-audit-service` | `NODE_ENV` `PORT` `DATABASE_URL` `RABBITMQ_URL` | `REVEAL_ACTIVATION_LINKS` `NOTIFICATION_CHANNEL` `RESEND_API_KEY`¹ `EMAIL_FROM`¹ `APP_BASE_URL`¹ `RESEND_API_URL` |
-| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) `ALERT_WEBHOOK_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/alerts/slo` refuses every caller) `INTERBANK_PARTNER_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/interbank/deposits` refuses every caller) |
-| `web` | — | `NUXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:3000`) |
+| `gateway` | `NODE_ENV` `PORT` `RABBITMQ_URL` `JWT_SECRET` `JWT_EXPIRES_IN` `OBJECT_STORAGE_*` | `GATEWAY_INSTANCE_ID` `REPLY_TIMEOUT_MS` `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3010`) `ALERT_WEBHOOK_TOKEN` (≥ 32 characters; **a Secret**; without it `POST /api/alerts/slo` refuses every caller) `INTERBANK_PARTNER_TOKEN` (legacy Bearer routes) `INTERBANK_API_KEY_INBOUND` (official v1; ≥ 32 characters) `INTERBANK_BANK_CODE` `INTERBANK_PARTNER_BANK_CODE` `INTERBANK_MAX_AMOUNT_MINOR` |
+| `web` | — | `NUXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:3000`) `NUXT_PUBLIC_GRAFANA_URL` (optional trace link origin) |
 
 The Gateway has **no** `DATABASE_URL` and no way to acquire one: it holds no
 business data (constitution II and V).
@@ -69,12 +72,12 @@ The five services and the Gateway register the OpenTelemetry SDK through
 `@bank/observability` before anything else loads (`src/instrumentation.ts`), and
 read the same six variables. **All of them are optional**: with none set, a
 container behaves as before T-48, except that its log lines now carry a
-`traceId`. `web` is not instrumented and reads none of them.
+`traceId`. `web` does not load this shared SDK; its Nitro Prometheus integration is a separate surface.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Where spans and metrics go, over OTLP/HTTP (`/v1/traces`, `/v1/metrics` are appended). **Empty means record and drop**: the SDK is still registered, so `traceparent` still crosses the broker and every log line still names its trace, but nothing leaves the process and nothing retries a collector that is not there. The chart sets it to the Collector of T-49. |
-| `DEPLOYMENT_ENVIRONMENT` | `local` | `deployment.environment(.name)` on every span and metric, `environment` on every log line. `helm-deploy.sh` sets it to the namespace, `dev` or `prod`, so the two never mix in one Grafana. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Where spans and metrics go, over OTLP/HTTP (`/v1/traces`, `/v1/metrics` are appended). **Empty means record and drop**: the SDK is still registered, so `traceparent` still crosses the broker and log lines with an active valid span can name its trace, but nothing leaves the process and nothing retries a collector that is not there. The chart sets it to the Collector of T-49. |
+| `DEPLOYMENT_ENVIRONMENT` | `local` | `deployment.environment(.name)` on every span and metric, `environment` on every log line. `helm-deploy.sh` sets it to the namespace, `dev` or `prod`, so queries can select one environment; a panel without that filter can still mix them. |
 | `SERVICE_VERSION` | `dev` | `service.version` and the log line's `version`. The chart sets it to the tag of the image the Deployment runs — the same value as its `image:` — so it cannot drift from the code. The images Compose sets it to `BANK_IMAGE_TAG`. |
 | `OTEL_SDK_DISABLED` | `false` | `true` registers nothing at all: no spans, no metrics, no `traceId` in the logs. The standard switch, and the escape hatch if instrumentation is ever the suspect. |
 | `OTEL_METRIC_EXPORT_INTERVAL` | `15000` | Milliseconds between metric pushes. |
@@ -106,15 +109,17 @@ in the room already understands.
 `REVEAL_ACTIVATION_LINKS` writes working account-activation URLs into a
 container's log. It defaults to **closed** in production and open elsewhere, and
 it is a flag of its own rather than a reading of `NODE_ENV` because these are
-the production images: with it closed the activation link exists nowhere — it is
-redacted in the audit trail and hashed in the customer's own table — so nobody
-can complete a sign-up. `docker-compose.images.yml` turns it on for the
+the production images: with the simulated channel and link revelation closed, no real mailbox
+receives an activation link. For normal delivery configure Resend; the audit
+trail remains redacted and Customer stores the token digest. `docker-compose.images.yml` turns it on for the
 demonstration; anything a stranger can reach must not.
 
-`SEED_DEMO_DATA` inserts, at boot and right after the migrations, three
-ready-to-use users — one per role, `admin@bankusac.gt`, `cajero@bankusac.gt` and
-`cliente@bankusac.gt`, all sharing `SEED_PASSWORD` (default `BankUsac#2026`) —
-and, in `account-service`, two accounts for the client with one funded. It is
+`SEED_DEMO_DATA` inserts, at boot and right after the migrations, four
+ready-to-use users — administrator, teller and two customers. `SEED_PASSWORD`
+(default `BankUsac#2026`) supplies staff credentials; the two demo clients
+currently declare their own fixed demo password in the seed. The documented
+admin/teller/client users all use that default in a standard demo —
+and, in `account-service`, the demo accounts for the two clients. It is
 **off by default in code**, and on in both `docker-compose.dev.yml` and the
 images stack. It is the standard way to bootstrap a first administrator, which
 anonymous registration can no longer create — and that is also why
@@ -122,21 +127,22 @@ anonymous registration can no longer create — and that is also why
 deposit window instead of writing to the database, a deposit needs a
 `CAJERO_RECEPTOR`, and the Gateway will not mint one for a caller who is not
 already an administrator. The seeded users do not pollute the run, which
-registers its own customer and asserts only against the accounts it opens. Idempotent: fixed ids and an UPSERT, so a restart refreshes the same
-rows. Each service seeds only its own database against the shared demo client
+registers its own customer and asserts only against the accounts it opens. Idempotent: fixed ids and `INSERT ... ON CONFLICT DO NOTHING`; a restart
+creates what is missing and does not reset a changed password, KYC or balance. Each service seeds only its own database against the shared demo client
 id — neither reads the other's table (constitution II).
 
 `NOTIFICATION_CHANNEL` selects how notifications are delivered. It defaults to
 `simulated` — a log line and no mail, which is what the assignment asks for
 (§4.1) and what `pnpm images:flow` reads to finish a sign-up. Set it to `resend`
-to send the **real activation email** through [Resend](https://resend.com); ¹the
+to send eligible **real emails** through [Resend](https://resend.com); ¹the
 three marked variables become required in that mode: `RESEND_API_KEY`,
 `EMAIL_FROM` (a verified sender such as `bonking <no-reply@mail.tudominio.com>`)
 and `APP_BASE_URL` (the frontend origin, so the emailed link is absolute).
 `RESEND_API_URL` defaults to `https://api.resend.com/emails` and exists only so
-a test can point elsewhere. Only the activation email carries a real address, so
-only it is delivered for real; every other notification has no real inbox by
-design and stays simulated. With `resend` on, set `REVEAL_ACTIVATION_LINKS` to
+a test can point elsewhere. The domain permits real addresses on activation, password-reset issued,
+identity rejection and password-changed events; `deliverableEmailFrom` selects
+those four when `payload.email` exists. Other notifications use the simulated
+fallback. A configured channel is not evidence of successful mail delivery. With `resend` on, set `REVEAL_ACTIVATION_LINKS` to
 `false`: the link belongs in the recipient's inbox, not in a log. The full
 Resend + Route 53 setup is in
 [docs/operations/EMAIL_RESEND.md](EMAIL_RESEND.md).
@@ -254,9 +260,10 @@ is also a label, so `docker inspect` answers it without trusting the tag either.
 A dirty working tree is refused rather than tagged with a commit it does not
 match; `--allow-dirty` appends `-dirty` and says so.
 
-No registry. The assignment's cluster is a local kind (§6, paso 11), so an image
-reaches it with `kind load docker-image` and never needs a push, a login or a
-credential.
+**Local kind:** `kind load docker-image` avoids a registry. **Cloud:** release
+publishes versioned images to Artifact Registry and CD deploys `v*` in prod or
+`dev-<sha>` in dev. The observed bank version is v1.3.6 (2026-10-21); tags alone
+do not prove image immutability unless registry policy/digests enforce it.
 
 **T-22 reads these two values per service:**
 
@@ -327,7 +334,8 @@ dependency, and then the three properties the design turns on:
 - readiness refuses with `503` in the same state;
 - a missing variable **does** kill the boot, naming every offending variable.
 
-Last run, on the seven images at commit `9c13929`, against the T-06 stack:
+Historical smoke result at commit `9c13929`, against the T-06 stack (not a
+fresh run of the T-61 branch):
 **63 passed, 0 failed**.
 
 ## What the flow proves
@@ -349,8 +357,18 @@ compensation is a fact about the money rather than a status somebody wrote down.
 That is §6 paso 12 — "validar escenarios de fallo, no solo casos exitosos" —
 executed against the artefacts rather than described.
 
-**One step is seeded, and it is labelled where it happens.** The source account
-is given a starting balance with SQL, because nothing in this system can put
-money into an account: a credit only ever happens as step 3 of a transfer Saga,
-and cash deposit is not modelled at all (TD-018). Activation is **not** seeded
-any more — see TD-044, closed by T-21.
+**Funding uses the API.** `flow-images.sh` logs in as the seeded teller and
+posts to `/api/accounts/{id}/deposit`, with an idempotency key. It does not
+fund the source by SQL. The flow also proves rejection before KYC with no
+money movement. Activation is completed through the simulated delivery link;
+it is not marked verified by writing the database directly.
+
+## Telemetría y estado observado — Fase III
+
+Los seis procesos NestJS usan `@bank/observability`: SDK OpenTelemetry,
+contexto W3C HTTP/AMQP, exportación OTLP y logs JSON. Web usa instrumentación
+de Nitro y `/metrics`. Los secretos siguen llegando en runtime; no dibujar
+claves ni copiar `.env` en evidencia. Ver [catálogo](../sre/telemetry-catalog.md).
+GKE prod sirve siete imágenes bancarias v1.3.6. RabbitMQ observado es
+`3.13-management` con PVC 2Gi, distinto del objetivo local/CI `4.3.4`.
+El inventario de [cloud](CLOUD.md) distingue declaración y ejecución.

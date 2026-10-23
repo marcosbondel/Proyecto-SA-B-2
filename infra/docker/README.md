@@ -2,25 +2,34 @@
 
 The local development stack: one PostgreSQL container per service, one
 RabbitMQ broker, and one MinIO object-store buffer, run with Docker Compose.
-Database engines, the broker, and object storage live here rather than in
-Kubernetes because the constitution puts them outside the cluster
-(principle III).
+The local kind procedure connects to this external infrastructure. Constitution
+principle III requires **databases** outside Kubernetes; the cloud chart runs
+RabbitMQ and MinIO in-cluster. Do not project this Compose layout onto GKE.
 
 ## Versions this ticket pins
+
+These are **Compose declarations**, not verified support statements as of this
+review. GKE has a different RabbitMQ image (`3.13-management`); see TD-097.
 
 Fixed so that later tickets do not have to re-litigate them. PostgreSQL and
 RabbitMQ were checked for support and known vulnerabilities on 2026-08-12 —
 see [research.md](../../specs/002-monorepo-dev-base/research.md). MinIO was
 pinned at design time for T-06.
 
-| Image | Version | Support |
+| Image | Version declared by Compose | Scope of this review |
 | --- | --- | --- |
-| `postgres` | 18.4 | Community support until 2030-11-14 |
-| `rabbitmq` | 4.3.4-management | Community until 2026-11-30, commercial until 2028-04 |
-| `minio/minio` | RELEASE.2024-11-07T00-52-20Z | Stable release channel |
+| `postgres` | 18.4 | Configuration inspected; no new CVE/support audit |
+| `rabbitmq` | 4.3.4-management | Matches CI; GKE currently differs |
+| `minio/minio` | RELEASE.2024-11-07T00-52-20Z | Historical local tag; GKE uses a Chainguard digest |
 
-RabbitMQ **must not** be 4.2.x: community support for that series ended on
-2026-07-31. A Compose file written with `rabbitmq:4.2` is in debt on day one.
+The cloud MinIO digest is recorded in the dated GKE inventories. This review
+does not claim that the old local image can still be downloaded from its public
+registry or that an image tag proves the absence of vulnerabilities.
+
+The pinned versions and the 2026-08-12 research are historical decisions.
+Before a version change, verify current upstream support, upgrade path and
+security advisories; changing an image tag without a persistent-data upgrade
+test is not a completed migration.
 
 ## What belongs here
 
@@ -48,9 +57,9 @@ RabbitMQ **must not** be 4.2.x: community support for that series ended on
   place. See [`rabbitmq/rabbitmq.conf`](rabbitmq/rabbitmq.conf).
 
   The administrator is the one account this cannot re-set: the image creates it
-  only on a **fresh** volume. Changing `RABBITMQ_DEFAULT_PASS` against an
-  existing `rabbitmq-data` needs the volume recreated, and `rabbitmq-init` says
-  so rather than failing quietly.
+  only on a **fresh** volume. Changing `RABBITMQ_DEFAULT_PASS` against an existing `rabbitmq-data` does
+  not rotate that user. Coordinate a broker-user password change and clients;
+  recreating the volume is destructive and is not a safe routine rotation.
 - No delayed-message plugin is needed. The retry backoff is built from queues
   with `x-message-ttl` that dead-letter back to the queue that failed, which the
   pinned `rabbitmq:4.3.4-management` image supports as it ships.
@@ -76,7 +85,7 @@ in named volumes filled by the one-shot `deps` service, and the watchers poll
 the mount so an edit in the editor rebuilds inside the container. The image
 they share is [`dev/Dockerfile`](dev/Dockerfile) — Node and pnpm, nothing else.
 
-The host's `node_modules` are never touched. They were resolved for macOS and
+The host's `node_modules` are never touched. They may target Windows/macOS while
 the containers are Linux, which is exactly why every one of them is shadowed by
 a volume; `pnpm install` on the host and `pnpm dev` here coexist on one clone.
 
@@ -152,6 +161,16 @@ already up rather than starting a second copy of every database.
 
 Executable evidence for T-06 is saved under
 [`specs/006-local-dev-infra/evidence/`](../../specs/006-local-dev-infra/evidence/).
-T-21's evidence is the two scripts themselves: `smoke-images.sh` is the ticket's
+T-21 provides the two verification scripts: `smoke-images.sh` is the ticket's
 "smoke test por contenedor" and `flow-images.sh` its "registro del flujo completo
-ejecutado en contenedores", both re-runnable rather than pasted.
+ejecutado en contenedores", both re-runnable. A script is a method; an execution claim still requires
+version, time and its captured output.
+
+## Revisión documental T-61 — 2026-10-21
+
+La vista consolidada y las diferencias entre local y cloud están en
+[el índice de arquitectura](../../docs/architecture/README.md).
+Para esta revisión no se ejecutó Terraform apply ni se cambió infraestructura
+persistente. GKE observado: `us-central1-c`, tres nodos, prod v1.3.6; bases
+dev con sufijo `_dev`. La evidencia y sus límites están en
+[T-60 cloud](../../docs/qa/backend/T-60-cloud-evidence.md).
