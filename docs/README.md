@@ -80,7 +80,7 @@ el proyecto y quien opera el harness no tengan que filtrarse mutuamente.
 
 | Documento | Qué responde |
 | --- | --- |
-| [manual/](manual/README.md) | El manual de usuario: la guía general, una por rol y el recorrido visual histórico de 78 pasos y el [recorrido Fase III con capturas reales](manual/recorrido-fase3.md). |
+| [manual-usuario.md](manual-usuario.md) / [manual/](manual/README.md) | El manual de usuario unificado: la guía general, una por rol (Cliente, Cajero, Administrador, SRE), el recorrido visual de Fase III con capturas reales y el recorrido práctico de 78 pasos. |
 | [qa/](qa/README.md) | La evidencia de pruebas: guía de happy path y casos de error, informe de validación y las capturas que producen las suites. |
 | [qa/backend/](qa/backend/) | Un documento de evidencia por ticket, con **salida real de comandos** y no descripciones. Los de la integración interbancaria son [T-46](qa/backend/T-46-interbank-receipt-evidence.md) (la recepción) y [T-47](qa/backend/T-47-interbank-send-evidence.md) (el envío); el del stack de observabilidad es [T-49](qa/backend/T-49-observability-stack-evidence.md); el de la reconciliación del mensaje con el enunciado es [T-56](qa/backend/T-56-interbank-reconciliation-evidence.md); el de la carga y los escenarios de fallo es [T-51](qa/backend/T-51-load-and-failures-evidence.md). |
 | [process/implementations.md](process/implementations.md) | Guía de pruebas de Fase 2 para quien no implementó los tickets: qué pedía cada uno, cómo se cubrió, y los pasos concretos en la web — con lo que no tiene superficie visible dicho de frente. |

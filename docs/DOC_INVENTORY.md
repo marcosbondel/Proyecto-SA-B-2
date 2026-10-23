@@ -118,13 +118,8 @@ The primary component owners remain those in [OWNERSHIP](OWNERSHIP.md). A prior 
 | `docs/images/fase3/README.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/images/kubernetes/README.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/manual-tecnico.md` | project | Marcos Bonifasi | current | 2026-10-21 |
-| `docs/manual-usuario.md` | project | Marcos Bonifasi | current | 2026-10-21 |
-| `docs/manual/README.md` | project | Marcos Bonifasi | current | 2026-10-21 |
-| `docs/manual/recorrido-fase3.md` | project | Marcos Bonifasi | current | 2026-10-21 |
-| `docs/manual/recorrido-visual.md` | project | Enner Mendizabal | current | 2026-10-21 |
-| `docs/manual/rol-administrador.md` | project | Marcos Bonifasi | current | 2026-10-21 |
-| `docs/manual/rol-cajero-receptor.md` | project | Marcos Bonifasi | current | 2026-10-21 |
-| `docs/manual/rol-cliente.md` | project | Marcos Bonifasi | current | 2026-10-21 |
+| `docs/manual-usuario.md` | project | Marcos Bonifasi | current | 2026-10-22 |
+| `docs/manual/README.md` | project | Marcos Bonifasi | current | 2026-10-22 |
 | `docs/operations/CI.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/operations/CLOUD.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/operations/CONTAINERS.md` | project | Marcos Bonifasi | current | 2026-10-21 |

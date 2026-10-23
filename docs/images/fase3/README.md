@@ -37,5 +37,5 @@ La captura es una instantánea de datos de prueba, no un resultado permanente.
 
 Los nueve dashboards se leen con sus filtros/ventana en
 [la evidencia cloud](../../qa/backend/T-60-cloud-evidence.md); las pantallas
-por rol se explican en [el recorrido](../../manual/recorrido-fase3.md).
+por rol se explican en [el manual de usuario unificado](../../manual-usuario.md#4-recorrido-visual-de-fase-iii-evidencia-real-en-producción).
 Las contraseñas del equipo, API keys y JWT no son artefactos de documentación.

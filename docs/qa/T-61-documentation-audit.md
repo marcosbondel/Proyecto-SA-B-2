@@ -55,7 +55,7 @@ descubre: se identifican con propietario y #167 para implementación separada.
 | C — ADR | [020–023](../architecture/adr/README.md) | SLO, v1, diagramación y evolución observabilidad; 013 superseded, 018 conserva historia. |
 | D — Postmortems | [Índice](../sre/postmortems/README.md) | Tres experimentos cloud nuevos, Rabbit real reconstruido parcial y cuatro históricos kind. Falta caída de banco externo dev. |
 | E — Evidencia cloud/carga | [Informe T-60](backend/T-60-cloud-evidence.md), nueve dashboards y raw k6 | Dos umbrales k6 fallan, uno pasa; HPA hasta 5, saldo total conservado. Tempo→Loki y compensación observados; detalle de anotación deploy y apertura log→Tempo independiente parciales. |
-| F — Manuales | [Guías por rol](../manual/README.md), [recorrido Fase III](../manual/recorrido-fase3.md), [24 casos](guia-validacion-manual-fase3.md) | Navegación/capturas reales; casos mutantes pendientes se conservan como tales. |
+| F — Manuales | [Manual unificado](../manual-usuario.md), [índice](../manual/README.md), [24 casos](guia-validacion-manual-fase3.md) | Navegación/capturas reales; casos mutantes pendientes se conservan como tales. |
 | G — Proyecto/operación | [README](../../README.md), [cloud](../operations/CLOUD.md), [interbank](../operations/INTERBANK.md), [metodología](../METHODOLOGY.md) | Estado observado separado del objetivo; Bonking es GitHub Projects. |
 | H — Trazabilidad/deuda | [Inventario](../DOC_INVENTORY.md), [deudas](../TECH_DEBT.md), [dominio](../domain/README.md) | Dueños conservados; cierres sólo con fuente/evidencia, brechas nuevas vinculadas a #167. |
 | I — Verificación | [Informe y manifiesto](verification/T-61-verification.md) | No se publica “todo verde” ante fallos de entorno, umbrales o herramientas. |

@@ -78,7 +78,7 @@ Consult these documents before making decisions or describing the repository:
 - [docs/operations/CLOUD.md](docs/operations/CLOUD.md): **the cloud runbook** — from an empty GCP project to a system that answers, and the conditional bootstrap/import steps outside a routine Terraform run. Read it before changing `infra/terraform/gcp/` or the deployment workflows.
 - [docs/operations/MONOREPO.md](docs/operations/MONOREPO.md): **the monorepo strategy** — one directory per component and how a change redeploys only that component. Read it before adding a component or changing the path filters.
 - [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md): **the Kubernetes runbook** — prerequisites, the four commands that take the system from a clean machine to a running cluster, verification, the Saga run, scaling limits and every failure mode. Read it before changing the Helm chart, the kind configuration or anything under `infra/k8s/`.
-- [docs/manual/](docs/manual/README.md): the user manual — the general guide, one walkthrough per role, and the 78-step visual tour.
+- [docs/manual-usuario.md](docs/manual-usuario.md): the unified user manual — the general guide, one walkthrough per role, Phase III evidence, and the 78-step visual tour.
 - [docs/qa/](docs/qa/README.md): the test evidence — the happy-path and error-case guide, the validation report, and the screenshots the suites produce.
 - [docs/sre/](docs/sre/sli-slo-sla.md): the unified SLI, SLO and SLA framework; §5.3 names the
   five SLO the Fase 3 measures with real data, with their PromQL and error budget.
