@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatQuetzales, MIN_AMOUNT_MINOR } from '../../lib/money';
-import { mayTakeDeposits } from '../../lib/account';
+import { accountReference, mayTakeDeposits } from '../../lib/account';
 import type { AccountSummary } from '../../lib/account';
 
 /**
@@ -43,7 +43,7 @@ function formatDisplayName(name?: string): string {
 function describeAccount(account: AccountSummary): string {
   const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
   const namePart = account.holderName ? `${formatDisplayName(account.holderName)} · ` : '';
-  return `${namePart}${kind} · ···${account.accountId.slice(-6)} · ${formatQuetzales(account.balance.amountMinor)}`;
+  return `${namePart}${kind} · ${accountReference(account)} · ${formatQuetzales(account.balance.amountMinor)}`;
 }
 
 const accountItems = computed(() =>

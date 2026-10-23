@@ -44,7 +44,14 @@ defineProps<{ accounts: readonly AccountSummary[]; showHolder?: boolean }>();
           <td
             class="border-t border-[#E9E9EC] py-4 pr-4 font-mono text-[13px] tracking-[0.03em] text-[#5A5B63]"
             style="font-variant-numeric: tabular-nums lining-nums"
-          >{{ account.accountId }}</td>
+          >
+            <div
+              v-if="account.accountNumber"
+              class="font-medium text-[#23242A]"
+              data-testid="account-number"
+            >{{ account.accountNumber }}</div>
+            <div :class="account.accountNumber ? 'text-[11px] text-[#75767F]' : ''">{{ account.accountId }}</div>
+          </td>
           <td
             v-if="showHolder"
             class="border-t border-[#E9E9EC] py-4 pr-4 text-[13px]"
