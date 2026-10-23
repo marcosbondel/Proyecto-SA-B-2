@@ -321,9 +321,12 @@ test('cambiar failCount o failTargets rearma los contadores', async () => {
 });
 
 test('vencimiento: con honorExpiry el receptor rechaza con EXPIRED; sin él acredita tarde', async () => {
-  const { mock, ourBank } = await started({ faults: { delayMs: 450 } });
+  const { mock, ourBank } = await started({ faults: { delayMs: 1_500 } });
   // Con milisegundos: truncar a segundos podría dejar la hora en el pasado.
-  const soon = () => new Date(Date.now() + 250).toISOString();
+  // 700 ms para que el POST llegue antes de vencer aun en un runner lento (con
+  // 250 ms, CI lo vio llegar tarde y el mock lo rechazó al recibirlo, 422), y
+  // el callback sale a los 1500 ms: después del vencimiento, que es lo probado.
+  const soon = () => new Date(Date.now() + 700).toISOString();
 
   const honored = transferRequest({ expiresAt: soon() });
   await expectContract('TransferAck', await mock.send(honored), 202);
