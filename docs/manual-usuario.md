@@ -296,7 +296,7 @@ El rol de SRE u Operador de Infraestructura opera fuera del portal web comercial
 
 ## 4. Recorrido Visual de Fase III (Evidencia Real en Producción)
 
-Las siguientes doce capturas fueron obtenidas directamente del navegador sobre la aplicación desplegada en **Google Cloud (Cloud Run y GKE)** durante la entrega académica de **Fase III**, utilizando datos reales del despliegue:
+Las siguientes doce capturas fueron obtenidas directamente del navegador sobre la aplicación desplegada en **Google Cloud (Cloud Run y GKE)** durante la entrega académica de **Fase III**, utilizando datos reales del despliegue *(también disponible como guía dedicada e independiente en [manual/recorrido-fase3.md](manual/recorrido-fase3.md))*:
 
 ### 4.1 Iniciar sesión
 
