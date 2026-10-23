@@ -3,7 +3,7 @@
 ## Cadence
 
 The team works in weekly sprints aligned with the Bank USAC milestones. The
-Notion project board is the operational source of truth for ticket ownership,
+[GitHub Projects board Bonking](https://github.com/users/marcosbondel/projects/4) is the operational source of truth for ticket ownership,
 delivery dates, and status. The repository is the source of truth for durable
 decisions and implementation evidence.
 
@@ -36,9 +36,10 @@ frontend work and is retired; its number now belongs to the use-case diagram.
 
 ## Source Of Truth
 
-The Notion board tracks each ticket with an owner, an `Entrega` date, and one of
-three statuses: `Not started`, `In progress`, or `Done`. A status change in the
-board is the authoritative workflow transition. Repository documents record the
+[GitHub Projects Bonking](https://github.com/users/marcosbondel/projects/4) tracks
+tickets, owners and their current status fields. The associated GitHub issue
+holds acceptance criteria; no status is inferred merely from a local document.
+A confirmed change in the board is the authoritative workflow transition. Repository documents record the
 decisions and evidence that make the status meaningful.
 
 ## Definition Of Done
@@ -63,7 +64,20 @@ remains accountable for coordination.
 
 ## Blockers
 
-Any blocker is reported in the affected Notion ticket on the same day it is
+Any blocker is reported in the affected GitHub issue on the same day it is
 discovered. The report names the missing decision or dependency, its impact,
 the owner who can resolve it, and the next check. Blockers are not deferred to
 the end of the sprint.
+
+## Fase III: código y documentación
+
+[T-60 / #167](https://github.com/marcosbondel/Proyecto-SA-B-2/issues/167)
+concentra código/despliegue y
+[T-61 / #168](https://github.com/marcosbondel/Proyecto-SA-B-2/issues/168)
+su documentación. El [plan y matriz T-61](qa/T-61-documentation-audit.md)
+registran alcance, evidencia, validaciones y bloqueos. No cerrar un criterio
+cloud con una ejecución kind ni declarar todas las pruebas verdes si hay
+umbrales fallidos, suites omitidas o dependencias ausentes. Los experimentos
+autorizados se limitan a dev y restauran la simulación; prod se consulta en
+modo lectura. Las fechas de H1–H6 anteriores describen Fase I, no un calendario
+vigente de entrega Fase III.
