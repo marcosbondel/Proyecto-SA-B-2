@@ -5,7 +5,7 @@
 
 ## Qué significa
 
-Más del 1 % de las entregas terminó en una DLQ. Un mensaje en la cola muerta es
+La proporción de entregas `dead_letter` supera 1 % en la tasa de 5 min durante **15 min**. Un mensaje en la cola muerta es
 **trabajo detenido**: alguien pidió algo, el sistema lo aceptó y nadie lo está
 procesando. Es la alerta con la que menos se puede esperar, porque el dinero
 puede estar a medio camino.
@@ -18,7 +18,9 @@ puede estar a medio camino.
      rate(messaging_client_consumed_messages_total{bank_delivery_outcome!="ack"}[5m])
    )
    ```
-   `retry` es normal y esperado; `dead_letter` e `invalid` no.
+   `retry` señala otro intento; `dead_letter`, `invalid` y `dropped`
+   requieren explicación. La regla de SLO-1 resta sólo `dead_letter`: no
+   demuestra que no haya pérdida o mensajes inválidos.
 2. **Por qué falló el handler.** En *Explore → Loki*:
    ```logql
    {service_name=~".+"} | level="error" |= "dead"
@@ -30,7 +32,7 @@ puede estar a medio camino.
    sin versionar). Si son todos los de un servicio, es el servicio.
 4. **La cola, en el broker.**
    ```bash
-   kubectl exec -n prod deploy/bank-usac-rabbitmq -- rabbitmqctl list_queues name messages | grep -i dlq
+   kubectl exec -n prod deploy/rabbitmq -- rabbitmqctl list_queues name messages | grep -i dlq
    ```
 5. **La auditoría oye todo.** Lo que la auditoría registró como `INVALID` dice
    qué mensajes llegaron ilegibles:
@@ -45,9 +47,11 @@ puede estar a medio camino.
   a la DLQ y multiplica el ruido.
 - **Reencolar**, cuando el consumidor ya está arreglado: mover los mensajes de
   la DLQ a su cola de origen con el *shovel* de RabbitMQ o publicándolos de
-  nuevo. **La idempotencia está de nuestro lado**: cada handler deduplica por
-  `messageId` antes de tocar estado, así que un mensaje reprocesado no mueve
-  dinero dos veces. Eso es lo que hace seguro reencolar.
+  nuevo. Conservar **envelope, `messageId`, `correlationId`, routing key y clave
+  de idempotencia originales**. Validar con el dueño del consumidor el alcance
+  de su deduplicación; cambiar identificadores puede convertir un reenvío en
+  una operación nueva. Reprocesar una muestra, comprobar su estado/saldo y
+  continuar sólo si el defecto ya está corregido.
 - **Un contrato roto** → `pnpm test:contract` localmente contra el mensaje
   real. Si el productor cambió un campo sin versionar el contrato, el arreglo es
   en el productor.
@@ -60,3 +64,11 @@ puede estar a medio camino.
   trabajo pendiente. La DLQ es el inventario de lo que falta hacer.
 - Desactivar el reintento. La escalera existe para absorber un fallo
   transitorio; sin ella, un blip del broker se convierte en una DLQ llena.
+
+## Cierre
+
+Registrar la cola y su recuento antes/después, la causa del mensaje, el destino
+de cada reenvío y la conciliación de Sagas afectadas. Verificar caída de la
+proporción, cola procesable y resolución de la alerta. El contador de entregas
+incluye reintentos y redeliveries: no equivale a un total de eventos de negocio
+únicos.

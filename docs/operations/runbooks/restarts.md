@@ -17,14 +17,15 @@ segunda —la que importa— se pareciera a la primera.
 - **`PodRestarting`** — un pod se reinició más de dos veces en diez minutos. Es
   un pod enfermo: una sonda mal calibrada, un `OOMKilled`, una migración que
   falla al arrancar.
-- **`MassRestartDependencyLost`** — **más de la mitad de los componentes** se
-  reiniciaron en la misma ventana. Eso no es un montón de pods enfermos a la vez:
-  es **una dependencia compartida que se cayó**. El broker, una base de datos, el
-  DNS.
+- **`MassRestartDependencyLost`** — **pods reiniciados / número de Deployments > 0.5** en diez minutos. Sugiere revisar una dependencia compartida
+  (broker, base, DNS), después de identificar los componentes afectados.
 
-El umbral de la segunda es una fracción y no un número de pods a propósito: con
-un siete escrito dentro, dejaría de servir en cuanto el chart creciera o un HPA
-subiera una réplica.
+La segunda es un **proxy**: el numerador cuenta pods con reinicios y el
+denominador cuenta Deployments, no réplicas ni componentes distintos afectados.
+Con HPA, varias réplicas de un solo servicio pueden activarla y el cociente
+puede superar 1. Confirmar qué componentes fallaron antes de diagnosticar una
+dependencia compartida. Alinear la regla con esa intención requiere un cambio
+de implementación fuera de esta actualización documental.
 
 ## Por qué existen
 
@@ -39,9 +40,8 @@ usa 5 s por defecto, RabbitMQ cierra tras dos latidos perdidos, y un bucle de
 eventos ocupado 11 s mata la conexión de los siete a la vez. Está contado entero
 en [el postmortem](../../sre/postmortems/2026-10-15-latido-amqp.md).
 
-La lección que estas dos alertas codifican: **un reinicio simultáneo no es un
-síntoma, es un diagnóstico.** Dice «dependencia compartida» antes de que nadie
-mire un log.
+La simultaneidad orienta la investigación hacia una dependencia compartida,
+pero los logs y eventos confirman la causa; el ratio por sí solo no la prueba.
 
 ## Cómo diagnosticarlas
 
@@ -70,7 +70,7 @@ mire un log.
    ```bash
    # El broker. Si murió, los seis servicios de mensajería se van con él
    # (TD-092: terminan el proceso al perder la conexión).
-   kubectl get pods -n <ns> -l app.kubernetes.io/name=rabbitmq
+   kubectl get pods -n <ns> -l app.kubernetes.io/component=rabbitmq
    kubectl logs -n <ns> deploy/<servicio> --previous | grep -i "heartbeat\|ECONNRESET\|channel closed"
 
    # Las bases. Están FUERA del clúster: cinco VMs sin IP pública.
@@ -92,18 +92,20 @@ mire un log.
 
 ## Cómo mitigarlas
 
-**Nada aquí justifica tocar un saldo a mano.** Un reinicio en medio de una Saga
-lo recoge el barrido: `transaction-service` y `payment-service` escriben sus
+**Nada aquí justifica tocar un saldo a mano.** Un reinicio en medio de una Saga puede recuperarse mediante mensajes pendientes y barridos: `transaction-service` y `payment-service` escriben sus
 eventos en un `outbox_messages` dentro de la transacción que los produce, y un
-relay los publica después (TD-047, TD-093). Lo que un reinicio puede retrasar, no
-lo pierde.
+relay los publica después (TD-047, TD-093). El outbox no garantiza recuperar cualquier mensaje que el broker ya perdió; comprobar pendientes y saldos antes del cierre.
 
 - **Si es el broker y la causa es el latido:** ya está arreglado
   (`heartbeatSeconds: 30` en `@bank/messaging`). Si vuelve a pasar, el bucle de
   eventos se está bloqueando más de 60 s, y eso es un defecto de un servicio, no
   de la configuración.
-- **Si es una base de datos:** las cinco están fuera del clúster y comparten
-  `dev` y `prod` (TD-070). Comprueba la VM antes de tocar el chart.
+- **Si es una base de datos:** las cinco VMs están fuera del clúster; `dev` tiene bases `_dev`
+  separadas, pero comparte máquinas/capacidad con `prod`. Comprobar la VM y el
+  nombre efectivo de base antes de tocar el chart.
+- **Si RabbitMQ no vuelve por `.erlang.cookie` o un PVC:** seguir
+  [el procedimiento del broker](consumer-lag.md#rabbitmq-pvc-y-permisos-de-erlangcookie).
+  Conservar logs previos y no borrar el claim para forzar un arranque limpio.
 - **Si es un pod solo y es `OOMKilled`:** sube su límite en `values.yaml` y
   despliega por el pipeline. No con `kubectl set resources`, que se pierde en el
   siguiente `helm upgrade` y además deja el chart mintiendo.
@@ -123,3 +125,10 @@ lo pierde.
 Todavía no. La alerta se escribió **después** del incidente que la justifica
 (TD-091), así que lo que hay es el postmortem y no una ocasión en que esta alerta
 avisara a tiempo. La primera vez que suene, se anota aquí.
+
+## Cierre verificable
+
+Registrar hora del último reinicio, causa de terminación, pods Ready y estado
+estable de la dependencia. Verificar mensajes/operaciones en vuelo y resolución
+en Grafana y Audit. Las alertas no tienen `for`: el evento ya ocurrió. No
+reiniciar de nuevo para borrar el contador que se está investigando.

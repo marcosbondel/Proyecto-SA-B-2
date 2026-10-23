@@ -60,3 +60,15 @@ objetivo real se incumpla.
   lo desharía.
 - **Una sola ruta** → es un defecto de esa ruta, no del sistema: abrir el
   incidente con la traza más lenta.
+
+## Validación del diagnóstico
+
+Agregar `environment="dev"` o `environment="prod"` a las consultas crudas, y
+`http_route!~"/health|/ready"` al desglosar por ruta, igual que las reglas.
+Una proporción de bucket es el porcentaje medido hasta ese límite; el p95
+interpolado es una estimación y puede diferir cerca de un límite. No usar el
+p95 interpolado como sustituto exacto del presupuesto de SLO-7.
+
+La respuesta HTTP 202 sólo acepta el trabajo: no mide la finalización de la
+Saga. Confirmar recuperación de GET/POST, estado `resolved` y recepción en
+Audit antes de cerrar.
