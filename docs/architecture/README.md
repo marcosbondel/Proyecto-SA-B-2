@@ -12,8 +12,8 @@ pendientes están en [la auditoría](../qa/T-61-documentation-audit.md).
 | --- | --- | --- | --- |
 | Arquitectura general | [PUML](diagrams/01-arquitectura-general.puml) | [PNG](diagrams/01-arquitectura-general.png) | [Arquitectura](../architecture.md) |
 | C4 L1, contexto | [DSL](diagrams/02-c4-contexto.dsl) | [PNG](diagrams/02-c4-contexto.png) | [Contexto](c4-context.md) |
-| C4 L2, contenedores | [DSL](diagrams/03-c4-contenedores.dsl) | [PNG](diagrams/03-c4-contenedores.png) | [Contenedores](c4-container.md) |
-| C4 L3, seis vistas | [DSL](diagrams/04-c4-componentes.dsl) | [Transaction](diagrams/04-c4-componentes.png) | [Los seis contenedores](c4-component.md) |
+| C4 L2, contenedores | [DSL](diagrams/03-c4-contenedores.dsl) / [PUML](diagrams/03-c4-contenedores.puml) | [PNG](diagrams/03-c4-contenedores.png) | [Contenedores](c4-container.md) |
+| C4 L3, seis vistas | [DSL](diagrams/04-c4-componentes.dsl) / [PUML](diagrams/04-c4-componentes.puml) | [Transaction](diagrams/04-c4-componentes.png) | [Los seis contenedores](c4-component.md) |
 | Despliegue local kind | [PUML](diagrams/05-uml-despliegue.puml) | [PNG](diagrams/05-uml-despliegue.png) | [Despliegue](deployment.md) |
 | Crear cuenta | [PUML](diagrams/06-uml-secuencia-crear-cuenta.puml) | [PNG](diagrams/06-uml-secuencia-crear-cuenta.png) | [Secuencia](sequence-create-account.md) |
 | Transferencia/Saga | [PUML](diagrams/07-uml-secuencia-transferencia.puml) | [PNG](diagrams/07-uml-secuencia-transferencia.png) | [Secuencia](sequence-transfer.md) |
