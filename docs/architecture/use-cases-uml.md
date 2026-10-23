@@ -2,6 +2,12 @@
 
 Este documento consolida la especificación formal y la jerarquía de **Casos de Uso de Bank USAC**, combinando los diagramas visuales UML con la especificación textual detallada de cada flujo de negocio (actores, precondiciones, entradas, secuencias asíncronas y excepciones esperadas).
 
+La política del 2026-10-22 exige figuras y conectores nativos de Lucid para los
+casos de uso y entrega sólo en PNG. Los enlaces PlantUML de abajo conservan
+la fuente semántica para cotejo; no certifican la nueva edición o exportación
+de Lucid. [ADR-024](adr/ADR-024-native-lucid-and-png-delivery.md) registra la
+decisión y la [auditoría T-61](../qa/T-61-documentation-audit.md) su avance.
+
 ---
 
 ## 1. Nivel Macro: Alto Nivel del Sistema (`CDU000`)
@@ -141,3 +147,14 @@ Fuentes: [PlantUML (`01-primera-descomposicion.puml`)](diagrams/cdu/01-primera-d
 * **Compensación Contable**:
   * Si el débito falla inicialmente: Cierra en `FAILED` (no hay nada que deshacer porque el dinero nunca salió).
   * Si el pago posterior falla o se agotan los reintentos: Se ejecuta la compensación. `Account Service` devuelve el dinero exacto a la cuenta origen mediante un registro formal `COMPENSATION` y la transacción culmina en `COMPENSATED`.
+
+## Extensiones Fase III
+
+![Casos adicionales](diagrams/13-casos-uso-fase3.png)
+
+[Fuente](diagrams/13-casos-uso-fase3.puml). Complementa la jerarquía CDU
+histórica con depósitos v1, notificaciones, simulación administrativa,
+anomalías N/M y observabilidad. Los permisos efectivos están en
+[actores](../domain/actors.md); el acceso SRE a Grafana es independiente del
+JWT bancario. Los flujos detallados actuales son los de
+[casos de uso](../domain/use-cases.md).

@@ -1,82 +1,103 @@
-# Diagramas Entidad-Relación (ER) por Microservicio — Bank USAC
+# Diagramas entidad–relación por servicio — Fase III
 
-Este directorio contiene los diagramas Entidad-Relación (ER) de cada una de las **cinco bases de datos independientes** del sistema bancario, garantizando el principio de arquitectura **Database-per-Service** ([ADR-005](../../adr/ADR-005-persistence.md)).
+Los cinco diagramas reflejan el DDL **acumulado** de las migraciones del repositorio, revisado el 2026-10-21. No afirman que una instancia desplegada tenga todas las migraciones aplicadas. [El catálogo físico](../../../generated/db-schema.md) detalla cada columna, default, CHECK e índice; la fuente ejecutable sigue siendo `apps/services/*/src/infrastructure/persistence/migrations.ts`.
 
-Cada microservicio cuenta con:
-1. **Código fuente DBML** (`.dbml`): Especificación declarativa en Database Markup Language.
-2. **Exportación gráfica PNG** (`.png`): Generada con alta resolución a través de [databasediagram.com](https://databasediagram.com/app).
+| Servicio | Migraciones | Tablas propias + migrador | Fuente | Exportación |
+| --- | --- | --- | --- | --- |
+| Customer | 001–009 | 5 + 1 | [DBML](customer-er.dbml) | [PNG](customer-er.png) |
+| Account | 001–010 | 5 + 1 | [DBML](account-er.dbml) | [PNG](account-er.png) |
+| Transaction | 001–012 | 6 + 1 | [DBML](transaction-er.dbml) | Pendiente de exportación |
+| Payment | 001–018 | 9 + 1 | [DBML](payment-er.dbml) | [PNG](payment-er.png) |
+| Notification & Audit | 001–007 | 4 + 1 | [DBML](notification-audit-er.dbml) | [PNG](notification-audit-er.png) |
 
----
+`schema_migrations` es infraestructura del migrador: se crea antes de recorrer `MIGRATIONS`, en cada base, y no es una entidad bancaria. Se incluye para que “todas las tablas” tenga un significado físico verificable. `account_number_seq` es una secuencia, documentada en el catálogo, y no se dibuja como tabla.
 
-## Índice de Microservicios
+Las PK, FK y nulabilidad aparecen junto a las columnas. Los índices parciales conservan su predicado en `note`, porque DBML no expresa `WHERE` como propiedad de índice. Los CHECK conservan su SQL completo en la nota de tabla y en el catálogo; no se presentan enumeraciones de aplicación como restricciones inexistentes. La marca de tiempo física `interbank_sends.decided_at` incluye TIMEOUT por compatibilidad de su CHECK, aunque TIMEOUT **ya no es un veredicto de negocio**.
 
-| # | Microservicio | Base de Datos | Tablas Principales | Fuentes | Diagrama |
-|---|---------------|---------------|-------------------|---------|----------|
-| 1 | **Customer Service** | `customer_db` | `customers`, `identity_documents`, `email_activation_tokens`, `password_reset_tokens`, `processed_messages` | [`.dbml`](customer-er.dbml) | [Ver](#1-customer-service-customer_db) |
-| 2 | **Account Service** | `account_db` | `accounts`, `account_operations`, `deactivation_runs`, `processed_messages` | [`.dbml`](account-er.dbml) | [Ver](#2-account-service-account_db) |
-| 3 | **Transaction Service** | `transaction_db` | `transactions`, `transaction_events`, `transaction_aliases`, `outbox_messages`, `processed_messages` | [`.dbml`](transaction-er.dbml) | [Ver](#3-transaction-service-transaction_db) |
-| 4 | **Payment Service** | `payment_db` | `payments`, `payment_attempts`, `outbox_messages` | [`.dbml`](payment-er.dbml) | [Ver](#4-payment-service-payment_db) |
-| 5 | **Notification & Audit Service** | `notification_audit_db` | `audit_events`, `notifications`, `processed_messages` | [`.dbml`](notification-audit-er.dbml) | [Ver](#5-notification--audit-service-notification_audit_db) |
-
-Para consultar el catálogo técnico exhaustivo de tipos de datos, restricciones de integridad, índices y defaults a nivel de columna, consulte el [Esquema Integral de Bases de Datos](../../../generated/db-schema.md).
-
----
+Sólo las once FK **declaradas en SQL** producen líneas. `customer_id`, referencias de cuentas, `original_transfer_id`, `hold_reversal_id` y referencias entre servicios no reciben FK inventadas. Un ER físico no convierte una asociación lógica en acoplamiento de datos.
 
 ## 1. Customer Service (`customer_db`)
-Gestiona la identidad, credenciales scrypt, activación por token y validación de fotografía de documento DPI.
 
-![Diagrama ER - Customer Service](customer-er.png)
+![ER Customer Service](customer-er.png)
 
-* **`customers`**: Almacena clientes, roles (`CLIENTE`, `CAJERO_RECEPTOR`, `ADMINISTRADOR`), estado de activación, hash scrypt y versión para bloqueo optimista. Índice único insensible a mayúsculas sobre `LOWER(email)`.
-* **`identity_documents`**: Fotografía del DPI con hash SHA-256 único, tamaño y validación para la mesa de control del cajero.
-* **`email_activation_tokens`**: Tokens criptográficos hasheados (24h) para verificación obligatoria de correo electrónico.
-* **`password_reset_tokens`**: Tokens hasheados de un solo uso (1h) con invalidación atómica para recuperación de contraseña.
-* **`processed_messages`**: Deduplicación idempotente de comandos entrantes por `(idempotency_key, message_type)`.
+[Fuente DBML: ER de Customer Service](customer-er.dbml)
 
----
+Identidad, fotografía, activación y recuperación; añade KYC, contexto de traza y tamaños físicos ampliados de correo/documento/usuario para liberar sus valores al rechazar una identidad. Los límites de entrada del DTO no se amplían por ello. Tres FK locales con `ON DELETE CASCADE`; SHA-256 único, correo único normalizado y tokens almacenados como digest.
 
 ## 2. Account Service (`account_db`)
-Gestiona las cuentas bancarias monetarias y de ahorro, saldos exactos en `NUMERIC(14,2)`, operaciones contables inmutables, recaudación de facturadores y desactivación automática.
 
-![Diagrama ER - Account Service](account-er.png)
+![ER Account Service](account-er.png)
 
-* **`accounts`**: Cuentas con saldo, tipo (`MONETARIA`, `AHORRO`), versión optimista, restricción `CHECK (balance >= 0)` y columnas colectoras de facturadores (`biller_code`, `biller_name`).
-* **`account_operations`**: Libro mayor contable con movimientos de `DEBIT`, `CREDIT` y `COMPENSATION`, saldo posterior garantizado e índice de negocio único por `(transaction_id, type)`.
-* **`deactivation_runs`**: Registro auditable de ejecuciones del proceso automático de desactivación de cuentas inactivas con saldo < Q50.00.
-* **`processed_messages`**: Idempotencia garantizada por `(idempotency_key, type)`.
+[Fuente DBML: ER de Account Service](account-er.dbml)
 
----
+Account es el único escritor del saldo. `NUMERIC(14,2)`, bloqueo de fila, versión y CHECK de no negatividad se complementan. `COMMISSION` forma parte del libro y se devuelve en compensación. `account_anomalies` registra alta frecuencia sin bloquear. El número público `02-NNNNNNNNN` convive con el UUID interno y permite interoperar con el límite de 34 caracteres del contrato oficial.
 
 ## 3. Transaction Service (`transaction_db`)
-Orquesta la máquina de estados de transferencias monetarias y pagos mediante el patrón Saga Coreografiada.
 
-![Diagrama ER - Transaction Service](transaction-er.png)
+[Fuente DBML: ER de Transaction Service](transaction-er.dbml)
 
-* **`transactions`**: Instancias de transferencia con estados finitos (`PENDING`, `DEBITING`, `PAYMENT_PENDING`, `COMPLETED`, `FAILED`, `COMPENSATED`), identidad del solicitante (`customer_id`), referencia de contrato de servicio (`reference`) y escenario simulado.
-* **`transaction_events`**: Bitácora inmutable de eventos recibidos y transiciones efectuadas localmente.
-* **`transaction_aliases`**: Resolución de reintentos idempotentes que asocian identificadores solicitados (202) con la transferencia canónica.
-* **`outbox_messages`**: Patrón Transactional Outbox para publicación confiable y atómica hacia RabbitMQ.
-* **`processed_messages`**: Deduplicación por `message_id` del envelope.
-
----
+La Saga conserva seis estados. `transaction_events` registra mensajes y rechazos de transición; `transaction_transitions` registra cada transición legal junto a su cambio de estado. El outbox conserva el contexto W3C. `transactions.interbank` es contexto del pago externo y no una relación SQL con Payment. Las cuentas siguen siendo opacas y no se lee un saldo desde aquí.
 
 ## 4. Payment Service (`payment_db`)
-Procesa pagos a facturadores externos y servicios internos, gestionando la escalera de reintentos y estados de liquidación.
 
-![Diagrama ER - Payment Service](payment-er.png)
+![ER Payment Service](payment-er.png)
 
-* **`payments`**: Pagos solicitados con referencia a la transferencia de origen, montos, escenarios de prueba, próximo intento programado (`next_attempt_at`) e índices de barrido.
-* **`payment_attempts`**: Registro auditable e inmutable de cada intento de cobro (ladder de reintentos).
-* **`outbox_messages`**: Publicación transaccional de eventos de intento fallido y desenlaces terminales.
+[Fuente DBML: ER de Payment Service](payment-er.dbml)
 
----
+Nueve tablas propias: pago e intentos, outbox, simulación, depósitos entrantes, conflictos, envíos, reversos recibidos e historial de envíos. Los plazos, consultas/cancelaciones, reverso automático, identificación y liquidación del reembolso y arrendamientos (`claimed_until`) son columnas persistidas. El `payment_id` del outbox admite NULL: un veredicto interbancario no necesita crear una fila ficticia en `payments`. Los porcentajes de simulación usan `DOUBLE PRECISION`; el dinero nunca lo hace.
 
 ## 5. Notification & Audit Service (`notification_audit_db`)
-Concentra la bitácora transversal inmutable del sistema (con datos personales redactados) y el buzón de notificaciones.
 
-![Diagrama ER - Notification & Audit Service](notification-audit-er.png)
+![ER Notification & Audit Service](notification-audit-er.png)
 
-* **`audit_events`**: Registro append-only de eventos de todos los servicios, deduplicado por `(event_id, consumer)` y con payload sensible redactado previamente al insert.
-* **`notifications`**: Buzón de notificaciones con control de destinatario, vinculación por cliente (`customer_id`), control de lectura (`read_at`) y despacho simulado.
-* **`processed_messages`**: Registro de métricas de entrega y conteo de redelivery para observabilidad operativa.
+[Fuente DBML: ER de Notification & Audit Service](notification-audit-er.dbml)
 
+Auditoría redactada antes del INSERT, deduplicada por evento y consumidor, con `trace_id` opcional y filtros por productor/severidad. Las notificaciones tienen destinatario de buzón y clave de repetición. `slo_alert_notifications` controla `firing` y `resolved`; escuchar una alerta no da al servicio autoridad sobre una Saga. No hay FK locales declaradas: no se añaden por el parecido de los identificadores.
+
+## Edición y validación
+
+Los modelos DBML y sus exportaciones gráficas corresponden a las 5 bases de datos de Bank USAC. Cuatro de las exportaciones PNG han sido incorporadas y Transaction conserva su fuente DBML validada. [ADR-024](../../adr/ADR-024-native-lucid-and-png-delivery.md) registra la política de fuentes y entrega.
+
+1. Modificar el DBML a partir del resultado acumulado de las migraciones;
+   comprobar tipos, nulabilidad, defaults, índices y restricciones, incluyendo
+   eliminaciones y sustituciones.
+2. Validar con el parser oficial de DBML. `dbml2sql <archivo.dbml> --postgres
+   -o <salida-temporal.sql>` es una opción donde el CLI resuelva las rutas;
+   la comprobación en memoria de abajo documenta la alternativa usada en
+   Windows. El SQL exportado es sólo una comprobación de sintaxis: **no es
+   una migración**, no debe aplicarse y no preserva por sí solo los CHECK o
+   predicados WHERE documentados como notas.
+3. El solicitante exportará los ER en PNG. Antes de volver a incrustarlos,
+   revisar nombres, claves, cardinalidades, direcciones, nulabilidad,
+   legibilidad y ausencia de recortes contra DBML y el catálogo acumulado.
+   La validación de sintaxis no demuestra esa revisión visual.
+
+### Validación DBML ejecutada en T-61 (Windows)
+
+El CLI oficial `@dbml/cli` 10.3.1 falló antes de leer los modelos al convertir
+la ruta absoluta Windows a una cadena codificada. Se usó su parser oficial
+`@dbml/core` 10.3.1 en memoria, formato `dbmlv2`: **cinco modelos válidos,
+34 tablas y once FK**, con exportación PostgreSQL sólo a archivos temporales.
+[Resultado por archivo](../../../qa/verification/T-61-dbml.json).
+No se aplicó ese SQL ni se alteraron migraciones.
+
+Para reproducirlo, instala `@dbml/core@10.3.1` con npm en una carpeta temporal
+ajena a las dependencias del workspace. Guarda allí `verify.cjs`, junto a su
+`node_modules`, y ejecuta `node <temporal>/verify.cjs <raíz-del-repositorio>`:
+
+```javascript
+const fs = require('node:fs');
+const path = require('node:path');
+const { Parser, ModelExporter } = require('@dbml/core');
+const folder = path.join(process.argv[2], 'docs/architecture/diagrams/er');
+for (const name of fs.readdirSync(folder).filter(n => n.endsWith('.dbml'))) {
+  const model = Parser.parse(fs.readFileSync(path.join(folder, name), 'utf8'), 'dbmlv2');
+  const sql = ModelExporter.export(model, 'postgres');
+  console.log(name, 'tables:', model.schemas.reduce((n, s) => n + s.tables.length, 0),
+    'FK:', (sql.match(/ADD FOREIGN KEY/g) || []).length);
+}
+```
+
+El parser confirma sintaxis y referencias locales del modelo. La equivalencia
+con las migraciones se revisa además mediante el catálogo acumulado: una
+exportación exitosa no comprueba por sí sola CHECK, predicados ni datos vivos.

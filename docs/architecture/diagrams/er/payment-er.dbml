@@ -1,57 +1,301 @@
-// Payment Service - Entity-Relationship Diagram (DBML)
-// Database: payment_db (PostgreSQL 18.4)
+// T-61 — esquema físico acumulado. PostgreSQL 18.4; no FK entre servicios.
+// 18 migraciones + schema_migrations; revisión 2026-10-21.
+Project payment_db {
+  database_type: 'PostgreSQL'
+  Note: '''Payment Service. Resultado acumulado del DDL versionado; no es evidencia de migraciones aplicadas en cloud.'''
+}
 
 Table payments {
-  payment_id uuid [pk]
-  transaction_id uuid [unique, not null, note: 'Transacción origen que ordenó el pago']
-  amount numeric(14,2) [not null, note: 'Monto a pagar']
-  status varchar(20) [not null, default: 'PENDING', note: 'PENDING, SUCCEEDED, FAILED']
-  attempt integer [note: 'Número de intento actual']
-  error_type varchar(20) [note: 'TRANSIENT, PERMANENT']
-  failure_reason text [note: 'PAYMENT_DECLINED, PAYMENT_RETRIES_EXHAUSTED']
-  provider_reference varchar(100) [note: 'Referencia del proveedor externo']
-  scenario varchar(20) [note: 'Escenario simulado: APPROVE, REJECT, TRANSIENT_FAILURE, TIMEOUT']
-  origin_correlation_id uuid [note: 'Correlación de la transferencia original']
-  next_attempt_at timestamptz [note: 'Hora programada para el siguiente intento']
+  payment_id uuid [pk, not null]
+  transaction_id uuid [not null]
+  amount numeric(14,2) [not null]
+  status varchar(20) [not null, default: 'PENDING']
+  attempt integer
+  error_type varchar(20)
+  failure_reason text
+  provider_reference varchar(100)
+  scenario varchar(20)
+  origin_correlation_id uuid
+  next_attempt_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   decided_at timestamptz
+  trace_context varchar(80)
+  claimed_until timestamptz
 
   indexes {
-    transaction_id [unique, name: 'payments_transaction_key']
-    next_attempt_at [name: 'payments_due_idx', note: 'WHERE status = PENDING AND next_attempt_at IS NOT NULL']
-    status [name: 'payments_status_idx']
+    (transaction_id) [unique, name: 'payments_transaction_key']
+    (next_attempt_at) [name: 'payments_due_idx', note: "WHERE status = 'PENDING' AND next_attempt_at IS NOT NULL"]
+    (status) [name: 'payments_status_idx']
   }
-  Note: 'Gestión de pagos a facturadores y proveedores externos'
+
+  Note: '''Registro local de Payment Service.
+
+Restricciones SQL:
+payments_status_known: CHECK (status IN ('PENDING','SUCCEEDED','FAILED'))
+payments_error_type_known: CHECK (error_type IS NULL OR error_type IN ('TRANSIENT','PERMANENT'))
+payments_failure_reason_known: CHECK (failure_reason IS NULL OR failure_reason IN ('PAYMENT_DECLINED','PAYMENT_RETRIES_EXHAUSTED'))
+payments_amount_positive: CHECK (amount > 0)
+payments_settled_has_decision: CHECK ((status = 'PENDING') = (decided_at IS NULL))
+payments_failed_has_reason: CHECK ((status = 'FAILED') = (failure_reason IS NOT NULL))
+payments_succeeded_has_reference: CHECK ((status = 'SUCCEEDED') = (provider_reference IS NOT NULL))
+payments_settled_is_not_due: CHECK (status = 'PENDING' OR next_attempt_at IS NULL)
+payments_scenario_known: CHECK (scenario IS NULL OR scenario IN ('APPROVE','REJECT','TRANSIENT_FAILURE','TIMEOUT'))'''
 }
 
 Table payment_attempts {
-  payment_id uuid [not null, ref: > payments.payment_id]
+  payment_id uuid [not null]
   attempt_number integer [not null]
-  result varchar(20) [not null, note: 'SUCCEEDED, FAILED']
-  error_type varchar(20) [note: 'TRANSIENT, PERMANENT']
+  result varchar(20) [not null]
+  error_type varchar(20)
   failure_reason text
-  provider_result varchar(20) [note: 'SUCCESS, FAILURE, TIMEOUT — lo que respondió el proveedor simulado (T-29)']
   occurred_at timestamptz [not null, default: `now()`]
+  provider_result varchar(20)
 
   indexes {
-    (payment_id, attempt_number) [pk]
+    (payment_id, attempt_number) [pk, name: 'payment_attempts_pkey']
   }
-  Note: 'Historial inmutable de cada intento de pago en la escalera de reintentos'
+
+  Note: '''Registro local de Payment Service.
+
+Restricciones SQL:
+payment_attempts_result_known: CHECK (result IN ('SUCCEEDED','FAILED'))
+payment_attempts_error_type_known: CHECK (error_type IS NULL OR error_type IN ('TRANSIENT','PERMANENT'))
+payment_attempts_success_is_clean: CHECK (result = 'FAILED' OR (error_type IS NULL AND failure_reason IS NULL))
+payment_attempts_provider_result_known: CHECK (provider_result IS NULL OR provider_result IN ('SUCCESS','FAILURE','TIMEOUT'))'''
 }
 
 Table outbox_messages {
-  id bigserial [pk]
-  payment_id uuid [not null, ref: > payments.payment_id]
+  id bigserial [pk, not null]
+  payment_id uuid
   exchange varchar(120) [not null]
   routing_key varchar(200) [not null]
-  envelope jsonb [not null, note: 'Envolvente del evento de intento o resultado']
-  dispatch_status varchar(20) [not null, default: 'PENDING', note: 'PENDING, DISPATCHED']
+  envelope jsonb [not null]
+  dispatch_status varchar(20) [not null, default: 'PENDING']
   created_at timestamptz [not null, default: `now()`]
   published_at timestamptz
+  trace_context varchar(80)
 
   indexes {
-    id [name: 'outbox_messages_pending_idx', note: 'WHERE dispatch_status = PENDING']
+    (id) [name: 'outbox_messages_pending_idx', note: "WHERE dispatch_status = 'PENDING'"]
   }
-  Note: 'Transactional Outbox para publicación confiable de eventos de pago'
+
+  Note: '''Bandeja transaccional. En Payment, payment_id permite NULL para eventos interbancarios sin fila payments; la FK local sigue existiendo.
+
+Restricciones SQL:
+outbox_messages_status_known: CHECK (dispatch_status IN ('PENDING','DISPATCHED'))'''
 }
+
+Table payment_simulation_settings {
+  id smallint [pk, not null, default: 1]
+  failure_rate_percent "double precision" [not null]
+  timeout_rate_percent "double precision" [not null]
+  latency_ms integer [not null]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''Una fila; porcentajes no monetarios DOUBLE PRECISION, suma <= 100; latencia entre 0 y 30000 ms.
+
+Restricciones SQL:
+payment_simulation_single_row: CHECK (id = 1)
+payment_simulation_rates_in_range: CHECK (failure_rate_percent BETWEEN 0 AND 100 AND timeout_rate_percent BETWEEN 0 AND 100 AND failure_rate_percent + timeout_rate_percent <= 100)
+payment_simulation_latency_in_range: CHECK (latency_ms BETWEEN 0 AND 30000)'''
+}
+
+Table interbank_deposits {
+  deposit_id uuid [pk, not null]
+  origin_bank_code varchar(32) [not null]
+  external_transfer_id varchar(128) [not null]
+  idempotency_key varchar(128) [not null]
+  destination_account_id varchar(64) [not null]
+  amount_minor bigint [not null]
+  currency varchar(3) [not null]
+  correlation_id uuid [not null]
+  origin_envelope jsonb [not null]
+  stage varchar(20) [not null]
+  rejection_reason varchar(40)
+  next_action_at timestamptz
+  result_envelope jsonb
+  result_published_at timestamptz
+  callback_attempts integer [not null, default: 0]
+  callback_due_at timestamptz
+  callback_delivered_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  decided_at timestamptz
+  trace_context varchar(80)
+  partner_timestamp timestamptz
+  origin_account varchar(34)
+  partner_created_at timestamptz
+  partner_expires_at timestamptz
+  description varchar(140)
+  credit_account_ref varchar(64)
+  hold_reversal_id uuid
+  refund_of_reversal_id uuid
+  claimed_until timestamptz
+
+  indexes {
+    (origin_bank_code, external_transfer_id) [unique, name: 'interbank_deposits_origin_bank_code_external_transfer_id_key']
+    (origin_bank_code, idempotency_key) [unique, name: 'interbank_deposits_origin_bank_code_idempotency_key_key']
+    (next_action_at) [name: 'interbank_action_due_idx', note: "WHERE next_action_at IS NOT NULL"]
+    (callback_due_at) [name: 'interbank_callback_due_idx', note: "WHERE callback_due_at IS NOT NULL"]
+    (partner_expires_at) [name: 'interbank_deposit_expiry_idx', note: "WHERE stage IN ('ELIGIBILITY','CREDIT')"]
+    (origin_bank_code, created_at) [name: 'interbank_deposit_reconciliation_idx']
+    (hold_reversal_id) [name: 'interbank_deposit_held_idx', note: "WHERE hold_reversal_id IS NOT NULL"]
+  }
+
+  Note: '''Recepción v1: ELIGIBILITY, CREDIT, ACCEPTED, REJECTED, CANCELLED; callback y publicación persistidos. Retención de posibles reembolsos.
+
+Restricciones SQL:
+interbank_deposits_amount_minor_check: CHECK (amount_minor > 0)
+interbank_deposits_stage_check: CHECK (stage IN ('ELIGIBILITY','CREDIT','ACCEPTED','REJECTED','CANCELLED'))
+interbank_deposits_decided_at_check: CHECK ((stage IN ('ACCEPTED','REJECTED','CANCELLED')) = (decided_at IS NOT NULL))
+interbank_deposits_reason_check: CHECK ((stage IN ('REJECTED','CANCELLED')) = (rejection_reason IS NOT NULL))
+interbank_deposits_result_check: CHECK ((stage IN ('ACCEPTED','REJECTED','CANCELLED')) = (result_envelope IS NOT NULL))'''
+}
+
+Table interbank_conflicts {
+  message_id uuid [pk, not null]
+  origin_envelope jsonb [not null]
+  result_envelope jsonb [not null]
+  result_published_at timestamptz
+  callback_attempts integer [not null, default: 0]
+  callback_due_at timestamptz [not null]
+  callback_delivered_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  trace_context varchar(80)
+  claimed_until timestamptz
+
+  indexes {
+    (callback_due_at) [name: 'interbank_conflict_callback_due_idx', note: "WHERE callback_delivered_at IS NULL"]
+  }
+
+  Note: '''Conflictos de recepción por contenido diferente; evidencia y callback independiente.'''
+}
+
+Table interbank_sends {
+  interbank_transfer_id varchar(128) [pk, not null]
+  payment_id uuid [not null, unique]
+  transaction_id uuid [not null]
+  idempotency_key varchar(128) [not null, unique]
+  destination_bank_code varchar(32) [not null]
+  destination_account varchar(64) [not null]
+  amount_minor bigint [not null]
+  currency varchar(3) [not null]
+  correlation_id uuid [not null]
+  origin_envelope jsonb [not null]
+  state varchar(12) [not null]
+  reason varchar(64)
+  attempts integer [not null, default: 0]
+  next_attempt_at timestamptz
+  confirmation_due_at timestamptz [not null]
+  trace_context varchar(80)
+  created_at timestamptz [not null, default: `now()`]
+  sent_at timestamptz
+  decided_at timestamptz
+  reversed_at timestamptz
+  verdict_enqueued_at timestamptz
+  release_not_before timestamptz
+  probe_kind varchar(12)
+  probe_status varchar(12)
+  probed_at timestamptz
+  cancel_kind varchar(12)
+  cancel_result varchar(20)
+  cancel_requested_at timestamptz
+  resolve_not_before timestamptz
+  origin_account varchar(34)
+  customer_id uuid
+  probe_attempts integer [not null, default: 0]
+  cancel_attempts integer [not null, default: 0]
+  reversal_id uuid
+  reversal_state varchar(12)
+  reversal_attempts integer [not null, default: 0]
+  reversal_next_at timestamptz
+  reversal_requested_at timestamptz
+  reversal_refund_transfer_id uuid
+  reversal_message varchar(200)
+  refund_settled_at timestamptz
+  refund_inbound_id varchar(128)
+  claimed_until timestamptz
+
+  indexes {
+    (next_attempt_at) [name: 'interbank_send_attempt_due_idx', note: "WHERE state = 'PENDING'"]
+    (confirmation_due_at) [name: 'interbank_send_confirmation_due_idx', note: "WHERE state IN ('PENDING','SENT')"]
+    (transaction_id) [name: 'interbank_send_transaction_idx']
+    (resolve_not_before) [name: 'interbank_sends_resolving_idx', note: "WHERE state = 'TIMEOUT' AND release_not_before IS NOT NULL"]
+    (decided_at) [name: 'interbank_sends_unreconciled_idx', note: "WHERE state IN ('ACCEPTED','REJECTED') AND verdict_enqueued_at IS NULL"]
+    (customer_id, `created_at DESC`) [name: 'interbank_sends_customer_idx']
+    (reversal_next_at) [name: 'interbank_sends_reversal_due_idx', note: "WHERE reversal_state IN ('PENDING','PROCESSING')"]
+    (refund_inbound_id) [unique, name: 'interbank_sends_refund_once', note: "WHERE refund_inbound_id IS NOT NULL"]
+  }
+
+  Note: '''Envío, reserva, sondeo, cancelación, reverso automático y liquidación de reembolso. TIMEOUT no decide ni compensa; decided_at se conserva como marca física de vencimiento.
+
+Restricciones SQL:
+interbank_sends_amount_minor_check: CHECK (amount_minor > 0)
+interbank_sends_state_check: CHECK (state IN ('PENDING','SENT','ACCEPTED','REJECTED','TIMEOUT','REVERSED'))
+interbank_sends_check: CHECK ((state IN ('ACCEPTED','REJECTED','TIMEOUT','REVERSED')) = (decided_at IS NOT NULL))
+interbank_sends_check1: CHECK ((state IN ('REJECTED','TIMEOUT','REVERSED')) = (reason IS NOT NULL))
+interbank_sends_check2: CHECK ((state = 'REVERSED') = (reversed_at IS NOT NULL))
+interbank_sends_check3: CHECK ((state = 'PENDING') = (next_attempt_at IS NOT NULL))
+interbank_sends_probe_known: CHECK (probe_kind IS NULL OR probe_kind IN ('ANSWERED','UNKNOWN','UNREACHABLE'))
+interbank_sends_cancel_known: CHECK (cancel_kind IS NULL OR cancel_kind IN ('ANSWERED','UNREACHABLE'))
+interbank_sends_probe_coherent: CHECK ((probe_kind = 'ANSWERED') IS NOT TRUE OR probe_status IS NOT NULL)
+interbank_sends_cancel_coherent: CHECK ((cancel_kind = 'ANSWERED') IS NOT TRUE OR cancel_result IS NOT NULL)
+interbank_sends_reversal_known: CHECK (reversal_state IS NULL OR reversal_state IN ('PENDING','PROCESSING','COMPLETED','FAILED'))
+interbank_sends_reversal_coherent: CHECK ((reversal_id IS NULL) = (reversal_state IS NULL))
+interbank_sends_reversal_after_release: CHECK (reversal_id IS NULL OR state IN ('REJECTED','REVERSED'))
+interbank_sends_refund_coherent: CHECK ((refund_settled_at IS NULL) = (refund_inbound_id IS NULL) AND (refund_settled_at IS NULL OR reversal_id IS NOT NULL))'''
+}
+
+Table interbank_reversals {
+  reversal_id uuid [pk, not null]
+  original_transfer_id uuid [not null, unique]
+  requester_bank_code varchar(8) [not null]
+  amount_minor bigint [not null]
+  status varchar(12) [not null]
+  refund_transfer_id uuid
+  reason_message varchar(200)
+  origin_envelope jsonb [not null]
+  trace_context text
+  created_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+
+  indexes {
+    (created_at) [name: 'interbank_reversal_pending_idx', note: "WHERE status = 'PROCESSING'"]
+  }
+
+  Note: '''Reversos solicitados a este receptor. original_transfer_id es referencia lógica sin FK.
+
+Restricciones SQL:
+interbank_reversals_amount_minor_check: CHECK (amount_minor > 0)
+interbank_reversals_status_check: CHECK (status IN ('PROCESSING','COMPLETED','FAILED'))
+interbank_reversals_check: CHECK ((status = 'COMPLETED') = (refund_transfer_id IS NOT NULL))
+interbank_reversals_check1: CHECK ((status = 'COMPLETED') = (completed_at IS NOT NULL))
+interbank_reversals_check2: CHECK ((status = 'FAILED') = (reason_message IS NOT NULL))'''
+}
+
+Table interbank_send_history {
+  history_id bigserial [pk, not null]
+  interbank_transfer_id varchar(128) [not null]
+  state varchar(12) [not null]
+  reason varchar(64)
+  at timestamptz [not null]
+
+  indexes {
+    (interbank_transfer_id, history_id) [name: 'interbank_send_history_idx']
+  }
+
+  Note: '''Historial de estados del depósito enviado. Sin FK a interbank_sends por decisión explícita de migración016.
+
+Restricciones SQL:
+interbank_send_history_state_check: CHECK (state IN ('PENDING','SENT','ACCEPTED','REJECTED','TIMEOUT','REVERSED'))'''
+}
+
+Table schema_migrations {
+  name text [pk, not null]
+  applied_at timestamptz [not null, default: `now()`]
+
+  Note: '''Infraestructura del migrador, no entidad de dominio. Se crea fuera de MIGRATIONS antes de aplicarlas; una tabla en cada base.'''
+}
+
+Ref: payment_attempts.payment_id > payments.payment_id [delete: cascade]
+Ref: outbox_messages.payment_id > payments.payment_id [delete: cascade]

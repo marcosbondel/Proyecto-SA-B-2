@@ -2,6 +2,7 @@
 title CDU001.6 - Validar identidad
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -10,17 +11,19 @@ skinparam activity {
 
 |Cajero o Administrador|
 start
-:Revisar fotografía de DPI (MinIO) y datos del cliente;
+:Consultar foto por ruta protegida del Gateway;
+:Revisar visualmente la identidad y emitir veredicto;
 |Customer Service|
-:Evaluar autenticidad y coincidencia de identidad;
+:Autorizar personal y aplicar veredicto idempotente;
 if (¿Identidad aprobada?) then (No)
     :Persistir identityStatus = REJECTED y kycStatus = REJECTED;
-    :Publicar customer.identity.rejected y customer.kyc.rejected;
+    :Publicar customer.identity.rejected.v1 y customer.kyc.rejected.v1;
     |Notification & Audit|
     :Registrar rechazo y notificar motivo;
 else (Sí)
+    |Customer Service|
     :Persistir identityStatus = VALIDATED y kycStatus = VERIFIED;
-    :Publicar customer.identity.validated y customer.kyc.verified;
+    :Publicar customer.identity.validated.v1 y customer.kyc.verified.v1;
     note right
       El estado kycStatus = VERIFIED
       habilita al cliente para iniciar
@@ -30,4 +33,10 @@ else (Sí)
     :Registrar validación exitosa;
 endif
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

@@ -2,6 +2,7 @@
 title CDU001.2 - Activar cliente por correo
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -12,17 +13,24 @@ skinparam activity {
 start
 :Abrir el enlace recibido;
 |Gateway|
-:Publicar customer.verify-email;
+:Publicar customer.verify-email.v1;
 |Customer Service|
 :Validar token de activación;
 if (¿Token válido y vigente?) then (No)
-    :Rechazar ACTIVATION_TOKEN_INVALID;
+    :Rechazar ACTIVATION_TOKEN_EXPIRED si venció;
+    :En otros casos ACTIVATION_TOKEN_INVALID;
 else (Sí)
     :Marcar emailVerifiedAt;
     :Cambiar estado a ACTIVE;
-    :Publicar customer.email.verified;
+    :Publicar customer.email.verified.v1;
     |Notification & Audit|
     :Registrar la activación;
 endif
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

@@ -2,6 +2,7 @@
 title CDU001.11 - Solicitar restablecimiento de contraseña
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -12,7 +13,7 @@ skinparam activity {
 start
 :Escribir el correo en /recuperar;
 |Gateway|
-:Publicar customer.password-reset.requested;
+:Publicar customer.password-reset.requested.v1;
 :Responder 202 sin esperar nada;
 |Customer Service|
 :Buscar el correo normalizado;
@@ -21,15 +22,20 @@ if (¿Existe ese correo?) then (No)
     :No publicar nada;
 else (Sí)
     :Emitir token y guardar solo su digest con vencimiento;
-    :Publicar customer.password-reset.issued;
+    :Publicar customer.password-reset.issued.v1;
     |Notification & Audit|
     :Entregar el enlace al correo del cliente;
 endif
 stop
 
 legend right
-    El 202 es idéntico exista o no la dirección: responder distinto
+El 202 es idéntico exista o no la dirección: responder distinto
     convertiría esta ruta en una lista de quién tiene cuenta aquí.
     El registro de idempotencia no guarda la dirección consultada.
+
+Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
 endlegend
 @enduml

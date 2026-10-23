@@ -2,6 +2,7 @@
 title CDU001.12 - Restablecer contraseña con el enlace
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -12,26 +13,32 @@ skinparam activity {
 start
 :Abrir el enlace y escribir la contraseña nueva;
 |Gateway|
-:Publicar customer.password-reset.confirm;
+:Publicar customer.password-reset.confirm.v1;
 :Esperar el evento correlacionado hasta cinco segundos;
 |Customer Service|
 :Buscar el token por su digest;
 if (¿Token válido, sin usar y vigente?) then (No)
-    :Rechazar con el MISMO motivo en los tres casos;
-    :Publicar customer.password-reset.rejected;
+    :Distinguir RESET_TOKEN_EXPIRED y RESET_TOKEN_INVALID internamente;
+    :Publicar customer.password-reset.rejected.v1;
 else (Sí)
     :Hashear la contraseña con el hasher del registro;
     :Quemar todos los tokens vivos del cliente;
-    :Publicar customer.password-reset.completed;
+    :Publicar customer.password-reset.completed.v1;
     |Notification & Audit|
     :Registrar el restablecimiento;
 endif
 stop
 
 legend right
-    Inventado, ya usado y vencido producen un rechazo idéntico:
-    distinguirlos diría si el enlace existió alguna vez.
+Customer distingue expirado de inválido en su evento.
+    Gateway/interfaz normalizan el mensaje que ve la persona;
+    no confundir privacidad del mensaje con el motivo interno.
     Se queman todos los tokens vivos, no solo el gastado: quien
     restablece puede estar haciéndolo porque su buzón no es solo suyo.
+
+Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
 endlegend
 @enduml

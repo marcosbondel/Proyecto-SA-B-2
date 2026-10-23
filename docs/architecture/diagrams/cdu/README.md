@@ -52,10 +52,14 @@ microservicio.
 - Un **diagrama de actividad** muestra el flujo principal, decisiones, errores
   y resultados de un caso de uso. Es el equivalente a los diagramas de flujo
   mostrados en clase.
-- PlantUML es la fuente versionada de todos estos diagramas y la notación UML
-  nativa de los casos de uso. Las fuentes Mermaid que ADR-013 pedía junto a ella
-  se retiraron del repositorio el 2026-09-02, así que cada diagrama de esta
-  carpeta se entrega como `.puml` más su PNG.
+- PlantUML conserva las fuentes semánticas versionadas de estos diagramas.
+  Las fuentes Mermaid que ADR-013 pedía junto a ellas se retiraron el
+  2026-09-02. La política del 2026-10-22 pide edición nativa de los casos de uso
+  en Lucid y entrega sólo en PNG; los PUML permiten cotejar su contenido.
+  [ADR-024](../../adr/ADR-024-native-lucid-and-png-delivery.md) registra el
+  cambio y la [auditoría T-61](../../../qa/T-61-documentation-audit.md) conserva
+  el estado de revisión y exportación. Las actividades conservan PUML como
+  fuente; la existencia de un PNG no certifica que proceda de Lucid.
 
 ## Fuente funcional
 
@@ -144,4 +148,14 @@ Cada diagrama tiene su fuente PlantUML versionada y el PNG que se entrega.
 | CDU005.1 | Registrar evento de auditoría | [`.puml`](notification-audit/flujos/CDU005.1-registrar-auditoria.puml) | [`.png`](notification-audit/flujos/CDU005.1-registrar-auditoria.png) |
 | CDU005.2 | Enviar notificación | [`.puml`](notification-audit/flujos/CDU005.2-enviar-notificacion.puml) | [`.png`](notification-audit/flujos/CDU005.2-enviar-notificacion.png) |
 | CDU005.3 | Consultar la bitácora de auditoría | [`.puml`](notification-audit/flujos/CDU005.3-consultar-auditoria.puml) | [`.png`](notification-audit/flujos/CDU005.3-consultar-auditoria.png) |
-| CDU005.4 | Consultar notificaciones propias | [`.puml`](notification-audit/flujos/CDU005.4-consultar-notificaciones.puml) | [`.png`](notification-audit/flujos/CDU005.4-consultar-notificaciones.png) |
+| CDU005.4 | Bandeja propia por rol y consola de entregas sólo administrador | [`.puml`](notification-audit/flujos/CDU005.4-consultar-notificaciones.puml) | [`.png`](notification-audit/flujos/CDU005.4-consultar-notificaciones.png) |
+
+## Revisión Fase III — T-61
+
+Las 31 fuentes y sus PNG se revisaron manteniendo su estilo azul: depósito
+Ahorro Q100, comisión Q3 por débito, dedup de auditoría por consumidor,
+registro INVALID y redacción antes de insertar, canales reales/simulados y
+monitor Payment sólo para personal. Las etiquetas de mensajes llevan `.v1`.
+La nota tecnológica identifica la implementación sin sustituir el flujo de
+negocio. Las extensiones interbancarias, anomalía y SRE se complementan en
+[el diagrama13](../13-casos-uso-fase3.png) y [casos actuales](../../../domain/use-cases.md).

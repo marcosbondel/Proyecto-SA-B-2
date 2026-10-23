@@ -2,20 +2,37 @@
 title CDU005.4 - Consultar notificaciones
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
     FontColor #1168BD
 }
 
-|Administrador|
+|Usuario autenticado|
 start
-:Solicitar consulta de notificaciones;
-|Gateway|
-:Publicar notifications.query.requested;
-|Notification & Audit|
-:Validar filtros y permisos;
-:Consultar estados y resultados de entrega;
-:Responder la consulta;
+if (¿Consulta de consola global de entregas?) then (Sí)
+    |Gateway|
+    :Exigir ADMINISTRADOR;
+    :Publicar notification.list.query.v1;
+    |Notification & Audit|
+    :Consultar estados/resultados de entrega y filtros;
+else (Bandeja propia / cualquier rol)
+    |Gateway|
+    :Tomar customerId de la identidad, no del cuerpo;
+    :Publicar notification.inbox.query.v1;
+    |Notification & Audit|
+    :Consultar sólo avisos del destinatario;
+    if (¿Marcar uno o todos leídos?) then (Sí)
+        :Aplicar notification.mark-read.v1 por destinatario;
+    endif
+endif
+:Responder vista correspondiente;
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

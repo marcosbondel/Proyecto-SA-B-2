@@ -2,6 +2,7 @@
 title CDU002.1 - Abrir cuenta
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -17,15 +18,21 @@ if (¿Tipo válido y rol permitido?) then (No)
     :Rechazar la apertura (ROLE_NOT_ELIGIBLE / FORBIDDEN);
     stop
 else (Sí)
-    if (¿Es AHORRO y depósito inicial < Q50.00?) then (Sí)
+    if (¿Es AHORRO y depósito inicial < Q100.00?) then (Sí)
         :Rechazar apertura (MINIMUM_BALANCE_VIOLATION);
         stop
     else (No)
         :Crear cuenta ACTIVE con saldo inicial (Q0.00 o depósito);
-        :Publicar account.opened;
+        :Publicar account.opened.v1;
         |Notification & Audit|
         :Registrar apertura y clasificar evento;
     endif
 endif
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml
