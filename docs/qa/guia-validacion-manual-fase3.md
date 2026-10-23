@@ -62,7 +62,7 @@ verifica el estado final incluso si un escenario falla.
 ## Capturas de Fase III
 
 Las doce capturas siguientes existen en `docs/images/fase3/manual/`;
-[el recorrido](../manual/recorrido-fase3.md) las enlaza y explica. El
+[el manual de usuario unificado](../manual-usuario.md#4-recorrido-visual-de-fase-iii-evidencia-real-en-producción) las enlaza y explica. El
 [manifiesto](../images/fase3/manifest.json) registra origen, hora UTC, tamaño y hash:
 
 | Archivo capturado | Contenido observado |
@@ -100,7 +100,7 @@ retoques el resultado de una operación ni sustituyas “Sin dato” por cifras.
   conjunto ejecutable `DELIVERABLE`, no esos comentarios.
 - La integración web usa Nitro real y upstreams controlados. No prueba por sí
   sola los siete componentes desplegados ni todo el recorrido de navegador.
-- Las capturas del [recorrido anterior](../manual/recorrido-visual.md) pertenecen
+- Las capturas del [recorrido visual integral](../manual-usuario.md#5-recorrido-visual-paso-a-paso-del-flujo-práctico-integral) pertenecen
   a su ejecución histórica. No acreditan la configuración de producción actual.
 - Si aparece un fallo, registra pasos, expectativa, resultado, IDs y evidencia y
   vincúlalo al ticket de implementación #167. La revisión T-61 cambia
@@ -111,6 +111,6 @@ un caso ni la historia completa por disponer de un procedimiento escrito.
 
 ## Evidencia de esta sesión
 
-[Recorrido real](../manual/recorrido-fase3.md), [carga cloud](backend/T-60-cloud-evidence.md)
+[Manual de usuario](../manual-usuario.md), [carga cloud](backend/T-60-cloud-evidence.md)
 y [manifiesto de capturas](../images/fase3/manifest.json). No se sustituye un
 caso pendiente por una captura de otra acción o entorno.

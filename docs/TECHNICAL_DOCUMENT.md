@@ -51,7 +51,7 @@ pendientes de §15.
 | **Definición de SLI, SLO y SLA** | [`docs/sre/sli-slo-sla.md`](sre/sli-slo-sla.md) (indicadores, objetivos, ventanas, presupuesto y exclusiones; §5.3 concentra la medición de Fase III); las preocupaciones de diseño que responden, en [`docs/RELIABILITY.md`](RELIABILITY.md) | **Completo** |
 | **Casos de uso detallados** | [`docs/domain/use-cases.md`](domain/use-cases.md) y jerarquía UML en [`docs/architecture/diagrams/cdu/`](architecture/diagrams/cdu/README.md) | **Completo** |
 | **Decisiones arquitectónicas (ADRs)** | [`docs/adr.md`](adr.md) y los registros formales en [`docs/architecture/adr/`](architecture/adr/README.md), de los cuales [ADR-014](architecture/adr/ADR-014-cloud-provider.md), [ADR-015](architecture/adr/ADR-015-ci-cd-platform.md) y [ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md) son los de la Fase II | **Completo** |
-| **Manual de usuario y evidencia** | [`docs/manual/`](manual/README.md) — la guía general, una por rol y el [recorrido visual](manual/recorrido-visual.md) histórico de 78 pasos, más la [validación Fase III](qa/guia-validacion-manual-fase3.md) | **Procedimientos revisados; evidencia según registro** |
+| **Manual de usuario y evidencia** | [`docs/manual-usuario.md`](manual-usuario.md) — el manual de usuario unificado (accesos, roles Cliente/Cajero/Admin/SRE, recorrido visual Fase III con capturas reales y recorrido práctico de 78 pasos), más la [validación Fase III](qa/guia-validacion-manual-fase3.md) | **Procedimientos revisados; evidencia según registro** |
 | **Estrategia de monorepo** | Raíz: `pnpm-workspace.yaml`, `package.json` y Turborepo (`turbo.json`) | **Completo** |
 | **5 microservicios desacoplados** | [`apps/services/`](../apps/services/) (`customer`, `account`, `transaction`, `payment`, `notification-audit`) | **Completo** |
 | **API Gateway perimetral** | [`apps/gateway/`](../apps/gateway/) (NestJS, puerto 3000, sin DB, sin HTTP interno) | **Completo** |
@@ -459,11 +459,14 @@ conservan el razonamiento de las decisiones históricas.
 
 ## 7. Manual de usuario y guías operativas
 
-El manual de usuario se encuentra completamente estructurado en [`docs/manual/recorrido-visual.md`](manual/recorrido-visual.md) y [`docs/manual/`](manual/README.md), proporcionando guías específicas para cada rol:
+El manual de usuario se encuentra completamente unificado en el [Manual de Usuario Unificado — Bank USAC](manual-usuario.md), proporcionando en un solo documento canónico las guías y recorridos específicos para cada rol:
 
-* **[Manual del Cliente](manual/rol-cliente.md):** Flujo de auto-registro, verificación de correo, consulta de balances, realización de transferencias locales y pago de facturas.
-* **[Manual del Cajero Receptor](manual/rol-cajero-receptor.md):** Atención a cuentahabientes, registro de depósitos en efectivo y bandeja de validación de documentos DPI.
-* **[Manual del Administrador](manual/rol-administrador.md):** Monitoreo de auditoría con mascarado de datos, inspección de eventos y gestión de desactivación de cuentas.
+* **[Portal del Cliente](manual-usuario.md#31-portal-del-cliente-cliente):** Flujo de auto-registro, verificación de correo, consulta de balances, cuentas monetarias/ahorro, transferencias locales Saga, depósitos interbancarios, pago de servicios públicos y notificaciones.
+* **[Portal del Cajero Receptor](manual-usuario.md#32-portal-del-cajero-receptor-cajero_receptor):** Ventanilla presencial, registro con validación física directa, mesa de validación de documentos DPI con foto protegida, apertura de cuentas, depósitos en efectivo que reactivan cuentas inactivas y monitoreo operativo.
+* **[Portal del Administrador](manual-usuario.md#33-portal-del-administrador-administrador):** Alta presencial de personal en cualquier rol, gestión global de cuentas y bloqueos judiciales, auditoría transversal con cuatro filtros combinados (`correlationId`, `traceId`, servicio emisor, nivel), consola global de notificaciones y simulación.
+* **[Plataforma de Observabilidad — Operador / SRE](manual-usuario.md#34-plataforma-de-observabilidad--operador--sre):** Dashboards de servicio y negocio en Grafana, trazas en Tempo (TraceQL), logs en Loki (LogQL) y métricas en Prometheus.
+* **[Recorrido Visual de Fase III](manual-usuario.md#4-recorrido-visual-de-fase-iii-evidencia-real-en-producción):** 12 capturas reales de producción en Google Cloud.
+* **[Recorrido Visual Paso a Paso del Flujo Práctico Integral](manual-usuario.md#5-recorrido-visual-paso-a-paso-del-flujo-práctico-integral):** 78 pasos documentados con capturas visuales sobre el caso de negocio unificado.
 
 ---
 

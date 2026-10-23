@@ -65,7 +65,7 @@ corrida no las guardó; están marcados en el texto como pendientes de recaptura
 - [Plan y matriz documental T-61](T-61-documentation-audit.md).
 - [Guía de 24 casos, con ejecución parcial explícita](guia-validacion-manual-fase3.md).
 - [Cloud: inventario, carga, HPA, saldos y fallos](backend/T-60-cloud-evidence.md).
-- [Recorrido real por roles](../manual/recorrido-fase3.md).
+- [Recorrido real por roles (Fase III)](../manual-usuario.md#4-recorrido-visual-de-fase-iii-evidencia-real-en-producción).
 
 Los resultados históricos de abajo no se renuevan por cambiar documentación.
 Los archivos raw en `load/` conservan fallos y tiempos, no sólo los éxitos.

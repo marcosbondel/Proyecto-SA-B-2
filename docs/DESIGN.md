@@ -176,7 +176,7 @@ change rather than the code:
 | The original parity delivery lacked browser review | **Historical gap (TD-054).** Later captures and tests must be evaluated by their date, route, state and comparison reference. |
 
 The original parity delivery's static checks did not prove visual fidelity.
-The repository now contains the [historical visual walkthrough](manual/recorrido-visual.md)
+The repository now contains the [visual walkthrough](manual-usuario.md#5-recorrido-visual-paso-a-paso-del-flujo-práctico-integral)
 and Nitro HTTP integration suites, including SSR, guards, proxy, audit and
 interbank screens. Those are different evidence: HTTP tests do not prove pixel
 parity, and a screenshot of one route does not prove all thirty-four screens.
