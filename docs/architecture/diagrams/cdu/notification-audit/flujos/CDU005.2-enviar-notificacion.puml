@@ -2,6 +2,7 @@
 title CDU005.2 - Enviar notificación
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -12,12 +13,23 @@ skinparam activity {
 start
 :Consumir evento que requiere notificación;
 :Crear Notification PENDING;
-:Enviar el mensaje al servicio de correo;
+:Elegir canal según evento y configuración;
+if (¿Resend y evento elegible con email?) then (Sí)
+    :Entregar por adaptador Resend / HTTPS;
+else (No)
+    :Entregar por canal simulado;
+endif
 if (¿Entrega exitosa?) then (Sí)
     :Registrar estado SENT;
 else (No)
     :Registrar estado FAILED;
-    :Programar reintento;
+    :Conservar FAILED sin reintento programado;
 endif
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

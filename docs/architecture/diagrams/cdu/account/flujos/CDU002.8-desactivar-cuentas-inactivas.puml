@@ -2,6 +2,7 @@
 title CDU002.8 - Desactivar cuentas inactivas
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -10,10 +11,10 @@ skinparam activity {
 
 |Proceso automático (Scheduler)|
 start
-:Disparar tarea periódica de revisión de inactividad;
+:Disparar tarea periódica con lease distribuido PostgreSQL;
 |Account Service|
 :Calcular fecha de corte con reloj inyectado
-(cuentas ACTIVE sin movimientos en > 6 meses);
+(cuentas ACTIVE con seis meses sin movimientos y saldo < Q50.00);
 :Buscar cuentas elegibles para desactivación;
 if (¿Se encontraron cuentas inactivas?) then (No)
     :Registrar ejecución sin cambios;
@@ -29,4 +30,10 @@ endif
 |Account Service|
 :Finalizar lote y registrar métricas de cuentas procesadas;
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

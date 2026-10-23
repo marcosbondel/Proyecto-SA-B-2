@@ -2,6 +2,7 @@
 title CDU001.1 - Registrar cliente
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -17,10 +18,21 @@ if (¿Datos válidos?) then (No)
     :Rechazar con el motivo correspondiente;
 else (Sí)
     :Generar username único;
-    :Persistir Customer como PENDING_ACTIVATION;
-    :Publicar customer.registered;
+    if (¿Registro presencial por personal autorizado?) then (Sí)
+        :Persistir ACTIVE, identityStatus VALIDATED y kycStatus VERIFIED;
+        :Publicar customer.registered.v1 e identidad validada;
+    else (No / público)
+        :Persistir PENDING_ACTIVATION y estado de revisión de identidad;
+        :Publicar customer.registered.v1 y customer.activation.requested.v1;
+    endif
     |Notification & Audit|
     :Registrar el evento de auditoría;
 endif
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

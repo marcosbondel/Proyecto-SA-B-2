@@ -1,84 +1,115 @@
-// Customer Service - Entity-Relationship Diagram (DBML)
-// Database: customer_db (PostgreSQL 18.4)
+// T-61 — esquema físico acumulado. PostgreSQL 18.4; no FK entre servicios.
+// 9 migraciones + schema_migrations; revisión 2026-10-21.
+Project customer_db {
+  database_type: 'PostgreSQL'
+  Note: '''Customer Service. Resultado acumulado del DDL versionado; no es evidencia de migraciones aplicadas en cloud.'''
+}
 
 Table customers {
-  customer_id uuid [pk]
+  customer_id uuid [pk, not null]
   full_name varchar(200) [not null]
-  document_number varchar(50) [unique, not null]
-  email varchar(320) [unique, not null]
+  document_number varchar(100) [not null, unique]
+  email varchar(400) [not null, unique]
   birth_date date [not null]
   address varchar(300)
-  username varchar(60) [unique, not null]
-  identity_status varchar(20) [not null, default: 'PENDING', note: 'PENDING, VALIDATED, REJECTED']
-  role varchar(20) [not null, default: 'CLIENTE', note: 'CLIENTE, CAJERO_RECEPTOR, ADMINISTRADOR']
-  status varchar(20) [not null, default: 'PENDING_ACTIVATION', note: 'PENDING_ACTIVATION, ACTIVE']
+  username varchar(120) [not null, unique]
+  identity_status varchar(20) [not null, default: 'PENDING']
+  role varchar(20) [not null, default: 'CLIENTE']
+  status varchar(20) [not null, default: 'PENDING_ACTIVATION']
   password_hash varchar(255) [not null]
   email_verified_at timestamptz
-  version integer [not null, default: 0, note: 'Optimistic lock counter']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
+  version integer [not null, default: 0]
+  kyc_status varchar(20) [not null, default: 'PENDING']
+  creation_trace varchar(80)
 
   indexes {
-    email [unique, name: 'customers_email_lower_key', note: 'ON LOWER(email)']
+    (`LOWER(email)`) [unique, name: 'customers_email_lower_key']
   }
-  Note: 'Entidad principal de identidad y credenciales del cliente'
+
+  Note: '''Identidad, credencial scrypt, activación, KYC y contexto de la traza de creación. Límites físicos ampliados para el sufijo de rechazo; el DTO conserva límites de entrada.
+
+Restricciones SQL:
+customers_role_known: CHECK (role IN ('CLIENTE', 'CAJERO_RECEPTOR', 'ADMINISTRADOR'))
+customers_identity_status_known: CHECK (identity_status IN ('PENDING', 'VALIDATED', 'REJECTED'))
+customers_active_iff_verified: CHECK ((status = 'ACTIVE') = (email_verified_at IS NOT NULL))
+customers_kyc_status_known: CHECK (kyc_status IN ('PENDING', 'VERIFIED', 'REJECTED'))'''
 }
 
 Table identity_documents {
-  document_id uuid [pk]
-  customer_id uuid [not null, ref: > customers.customer_id]
+  document_id uuid [pk, not null]
+  customer_id uuid [not null]
   original_filename varchar(255)
   mime_type varchar(100) [not null]
   size_bytes integer [not null]
-  sha256 char(64) [unique, not null, note: 'Hash SHA-256 de la fotografía']
+  sha256 char(64) [not null]
   content bytea [not null]
   validation_status varchar(20) [not null]
   created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    customer_id [name: 'identity_documents_customer_idx']
-    sha256 [unique, name: 'identity_documents_sha256_key']
+    (customer_id) [name: 'identity_documents_customer_idx']
+    (sha256) [unique, name: 'identity_documents_sha256_key']
   }
-  Note: 'Fotografía y documento de identificación para mesa de control'
+
+  Note: '''Fotografía verificada contra MinIO; bytes y digest privados de Customer.
+
+Restricciones SQL:
+identity_documents_size_within_ceiling: CHECK (size_bytes > 0 AND size_bytes <= 5242880)'''
 }
 
 Table email_activation_tokens {
-  token_id uuid [pk]
-  customer_id uuid [not null, ref: > customers.customer_id]
-  token_hash char(64) [unique, not null, note: 'Hash SHA-256 del token de activación']
+  token_id uuid [pk, not null]
+  customer_id uuid [not null]
+  token_hash char(64) [not null, unique]
   expires_at timestamptz [not null]
   used_at timestamptz
   created_at timestamptz [not null, default: `now()`]
 
   indexes {
-    customer_id [name: 'email_activation_tokens_customer_idx']
+    (customer_id) [name: 'email_activation_tokens_customer_idx']
   }
-  Note: 'Tokens hashed de activación de cuenta por correo electrónico'
-}
 
-Table password_reset_tokens {
-  token_id uuid [pk]
-  customer_id uuid [not null, ref: > customers.customer_id]
-  token_hash char(64) [unique, not null, note: 'Hash SHA-256 del token de recuperación']
-  expires_at timestamptz [not null]
-  used_at timestamptz
-  created_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    customer_id [name: 'password_reset_tokens_customer_idx', note: 'WHERE used_at IS NULL']
-  }
-  Note: 'Tokens de recuperación de contraseña de vida corta'
+  Note: '''Digest de token de activación de un solo uso (24 h).'''
 }
 
 Table processed_messages {
-  message_id uuid [pk]
+  message_id uuid [pk, not null]
   idempotency_key varchar(200) [not null]
   message_type varchar(120) [not null]
   result_summary jsonb [not null]
   processed_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (idempotency_key, message_type) [unique]
+    (idempotency_key, message_type) [unique, name: 'processed_messages_once']
   }
-  Note: 'Tabla de deduplicación e idempotencia de comandos RabbitMQ'
+
+  Note: '''Deduplicación local. La clave real depende del servicio: message_id, par con consumer o idempotency_key/message_type.'''
 }
+
+Table password_reset_tokens {
+  token_id uuid [pk, not null]
+  customer_id uuid [not null]
+  token_hash char(64) [not null, unique]
+  expires_at timestamptz [not null]
+  used_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (customer_id) [name: 'password_reset_tokens_customer_idx', note: "WHERE used_at IS NULL"]
+  }
+
+  Note: '''Digest de recuperación de contraseña de un solo uso (1 h), separado de activación.'''
+}
+
+Table schema_migrations {
+  name varchar(120) [pk, not null]
+  applied_at timestamptz [not null, default: `now()`]
+
+  Note: '''Infraestructura del migrador, no entidad de dominio. Se crea fuera de MIGRATIONS antes de aplicarlas; una tabla en cada base.'''
+}
+
+Ref: identity_documents.customer_id > customers.customer_id [delete: cascade]
+Ref: email_activation_tokens.customer_id > customers.customer_id [delete: cascade]
+Ref: password_reset_tokens.customer_id > customers.customer_id [delete: cascade]

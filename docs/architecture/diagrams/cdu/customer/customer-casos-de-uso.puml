@@ -4,6 +4,7 @@ left to right direction
 title CDU001 - Gestionar clientes e identidad
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam packageStyle rectangle
 skinparam usecase {
     BackgroundColor #FFFFFF
@@ -70,10 +71,15 @@ note right of uc_customer_activate
 end note
 
 legend right
-    La validación de identidad es distinta de la activación por correo.
+La validación de identidad es distinta de la activación por correo.
     La foto queda bajo responsabilidad de Customer Service.
     Recuperar la contraseña es anónimo y responde igual exista o no
     el correo. Cambiarla desde la sesión exige la contraseña actual
     y es "solo la propia", incluso para un administrador.
+
+Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
 endlegend
 @enduml

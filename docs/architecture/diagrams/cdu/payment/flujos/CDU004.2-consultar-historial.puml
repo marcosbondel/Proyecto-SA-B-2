@@ -2,22 +2,31 @@
 title CDU004.2 - Consultar historial de pagos
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
     FontColor #1168BD
 }
 
-|Cliente o Administrador|
+|Cajero o Administrador|
 start
-:Solicitar historial de pagos;
-|Payment Service|
-:Validar autorización y filtros;
+:Solicitar monitor de pagos e intentos;
+|Gateway|
+:Validar JWT y rol del personal;
 if (¿Solicitud autorizada?) then (No)
     :Rechazar consulta;
 else (Sí)
-    :Leer pagos del solicitante;
-    :Responder el historial;
+    :Consultar por AMQP;
+    |Payment Service|
+    :Leer pagos globales y filtros;
+    :Responder monitor / intentos;
 endif
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml
