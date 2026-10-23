@@ -48,6 +48,7 @@ import {
   INTERBANK_ID_SECRET,
   INTERBANK_MAX_AMOUNT_MINOR,
   INTERBANK_PARTNER_BANK_CODE,
+  INTERBANK_PARTNER_BANK_CODES,
 } from '../../src/interfaces/interbank-v1.tokens';
 import { InterbankSendUseCase } from '../../src/application/routes/interbank-send.use-case';
 import { JwtGuard, SESSION_VERIFIER } from '../../src/interfaces/guards/jwt.guard';
@@ -200,6 +201,9 @@ export const TEST_ALERT_TOKEN = 'an-alert-webhook-token-of-32-chars!!';
 export const TEST_INTERBANK_TOKEN = 'an-interbank-partner-token-of-32-chars!!';
 /** La API key del contrato oficial (`X-Api-Key`), que identifica al banco (T-56). */
 export const TEST_INTERBANK_API_KEY = 'an-interbank-api-key-of-32-characters!!';
+/** A second registered bank (T-60): the registry admits several at once. */
+export const TEST_SECOND_PARTNER_BANK_CODE = 'BANK16';
+export const TEST_SECOND_INTERBANK_API_KEY = 'a-second-bank-api-key-of-32-characters!';
 export const TEST_PARTNER_BANK_CODE = 'BANK99';
 export const TEST_OWN_BANK_CODE = 'BANK02';
 /** El límite por operación del contrato: Q10 000,00 (T-60). */
@@ -263,10 +267,17 @@ export async function buildHarness(
       InterbankApiKeyGuard,
       {
         provide: INTERBANK_API_KEYS,
-        useValue: { [TEST_PARTNER_BANK_CODE]: TEST_INTERBANK_API_KEY },
+        useValue: {
+          [TEST_PARTNER_BANK_CODE]: TEST_INTERBANK_API_KEY,
+          [TEST_SECOND_PARTNER_BANK_CODE]: TEST_SECOND_INTERBANK_API_KEY,
+        },
       },
       { provide: INTERBANK_BANK_CODE, useValue: TEST_OWN_BANK_CODE },
       { provide: INTERBANK_PARTNER_BANK_CODE, useValue: TEST_PARTNER_BANK_CODE },
+      {
+        provide: INTERBANK_PARTNER_BANK_CODES,
+        useValue: [TEST_PARTNER_BANK_CODE, TEST_SECOND_PARTNER_BANK_CODE],
+      },
       { provide: INTERBANK_MAX_AMOUNT_MINOR, useValue: TEST_MAX_AMOUNT_MINOR },
       { provide: INTERBANK_ID_SECRET, useValue: 'a-test-secret-for-derived-interbank-ids' },
       InterbankSendUseCase,

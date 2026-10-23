@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { accountReference } from '../../lib/account';
 import type { AccountSummary } from '../../lib/account';
 import { asyncStateFor } from '../../lib/gateway-error';
 import type { AsyncState, LoadState } from '../../lib/gateway-error';
@@ -85,7 +86,7 @@ const source = computed(
 function describe(account: AccountSummary): string {
   const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
 
-  return `${kind} · ···${account.accountId.slice(-6)} · ${formatQuetzales(account.balance.amountMinor)}`;
+  return `${kind} · ${accountReference(account)} · ${formatQuetzales(account.balance.amountMinor)}`;
 }
 
 const sourceItems = computed(() =>

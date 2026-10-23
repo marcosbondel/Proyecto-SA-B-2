@@ -14,3 +14,6 @@ export * from './routing/routing-keys';
 export * from './routing/topology';
 
 export * from './validation/validate-message';
+
+export type { InterbankPartner } from './config/interbank-partners';
+export { parseInterbankPartners } from './config/interbank-partners';
