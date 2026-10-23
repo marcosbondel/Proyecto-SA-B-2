@@ -27,6 +27,14 @@ export interface WireMoney {
 
 export interface AccountSummary {
   readonly accountId: string;
+  /**
+   * The number a person reads and gives out (`02-000000009`), beside the
+   * internal `accountId`. It is what another bank deposits to under the
+   * interbank contract (T-60), so it is shown wherever an account is, and the
+   * UUID stays next to it. Optional because an Account reply from before the
+   * number existed does not carry it.
+   */
+  readonly accountNumber?: string;
   readonly customerId: string;
   /**
    * The holder's name, when the Gateway could resolve it.
@@ -303,4 +311,17 @@ export function outcomeFromAccountAudit(events: readonly AuditEvent[]): CommandO
 /** The total of a set of accounts, for the consolidated figure the prototype shows. */
 export function totalBalanceMinor(accounts: readonly AccountSummary[]): number {
   return accounts.reduce((total, account) => total + account.balance.amountMinor, 0);
+}
+
+/**
+ * How an account is referred to in a selector: its number, when there is one,
+ * and the last six characters of its identifier — the part those labels
+ * already showed, kept so nothing a person learned to look for goes away.
+ */
+export function accountReference(account: Pick<AccountSummary, 'accountId' | 'accountNumber'>): string {
+  const tail = `···${account.accountId.slice(-6)}`;
+
+  return account.accountNumber === undefined || account.accountNumber.length === 0
+    ? tail
+    : `${account.accountNumber} · ${tail}`;
 }

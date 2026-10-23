@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { accountReference } from '../../lib/account';
 import type { AccountSummary } from '../../lib/account';
 import { transferProblems } from '../../lib/transaction';
 import type { PaymentScenario } from '../../lib/transaction';
@@ -238,7 +239,7 @@ function describe(account: AccountSummary): string {
   const kind = account.accountType === 'MONETARIA' ? 'Monetaria' : 'Ahorro';
   const namePart = account.holderName ? `${formatDisplayName(account.holderName)} · ` : '';
 
-  return `${namePart}${kind} · ···${account.accountId.slice(-6)} · ${formatQuetzales(account.balance.amountMinor)}`;
+  return `${namePart}${kind} · ${accountReference(account)} · ${formatQuetzales(account.balance.amountMinor)}`;
 }
 
 const sourceItems = computed(() =>
