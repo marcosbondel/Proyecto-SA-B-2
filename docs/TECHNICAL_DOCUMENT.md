@@ -317,6 +317,8 @@ idempotencia. Las anomalías de actividad se registran antes de anunciarlas.
 
 #### Transaction Service (`postgres-transaction` : 5435)
 
+![Modelo ER - Transaction Service](architecture/diagrams/er/transaction-er.png)
+
 [Fuente DBML de Transaction](architecture/diagrams/er/transaction-er.dbml).
 
 Transacciones, transiciones, deduplicación/alias y outbox. El historial conserva

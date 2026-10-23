@@ -6,7 +6,7 @@ Los cinco diagramas reflejan el DDL **acumulado** de las migraciones del reposit
 | --- | --- | --- | --- | --- |
 | Customer | 001–009 | 5 + 1 | [DBML](customer-er.dbml) | [PNG](customer-er.png) |
 | Account | 001–010 | 5 + 1 | [DBML](account-er.dbml) | [PNG](account-er.png) |
-| Transaction | 001–012 | 6 + 1 | [DBML](transaction-er.dbml) | Pendiente de exportación |
+| Transaction | 001–012 | 6 + 1 | [DBML](transaction-er.dbml) | [PNG](transaction-er.png) |
 | Payment | 001–018 | 9 + 1 | [DBML](payment-er.dbml) | [PNG](payment-er.png) |
 | Notification & Audit | 001–007 | 4 + 1 | [DBML](notification-audit-er.dbml) | [PNG](notification-audit-er.png) |
 
@@ -34,6 +34,8 @@ Account es el único escritor del saldo. `NUMERIC(14,2)`, bloqueo de fila, versi
 
 ## 3. Transaction Service (`transaction_db`)
 
+![ER Transaction Service](transaction-er.png)
+
 [Fuente DBML: ER de Transaction Service](transaction-er.dbml)
 
 La Saga conserva seis estados. `transaction_events` registra mensajes y rechazos de transición; `transaction_transitions` registra cada transición legal junto a su cambio de estado. El outbox conserva el contexto W3C. `transactions.interbank` es contexto del pago externo y no una relación SQL con Payment. Las cuentas siguen siendo opacas y no se lee un saldo desde aquí.
@@ -56,7 +58,7 @@ Auditoría redactada antes del INSERT, deduplicada por evento y consumidor, con 
 
 ## Edición y validación
 
-Los modelos DBML y sus exportaciones gráficas corresponden a las 5 bases de datos de Bank USAC. Cuatro de las exportaciones PNG han sido incorporadas y Transaction conserva su fuente DBML validada. [ADR-024](../../adr/ADR-024-native-lucid-and-png-delivery.md) registra la política de fuentes y entrega.
+Los modelos DBML y sus exportaciones gráficas corresponden a las 5 bases de datos de Bank USAC. Las cinco exportaciones PNG han sido incorporadas y enlazadas. [ADR-024](../../adr/ADR-024-native-lucid-and-png-delivery.md) registra la política de fuentes y entrega.
 
 1. Modificar el DBML a partir del resultado acumulado de las migraciones;
    comprobar tipos, nulabilidad, defaults, índices y restricciones, incluyendo
