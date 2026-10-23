@@ -17,6 +17,12 @@ dependencia del caso de uso en una dependencia de su adaptador concreto.
 
 ![Transaction](diagrams/04-c4-componentes.png)
 
+### Vista optimizada (Clean Architecture ordenada)
+
+![Transaction optimizado](diagrams/04-c4-componentes-new.png)
+
+[Fuente PlantUML optimizada](diagrams/04-c4-componentes-new.puml) con flujo horizontal ordenado por capas (Interfaces -> Casos de Uso -> Puertos y Dominio -> Adaptadores e Infraestructura -> DB) para eliminar intersecciones.
+
 Los 26 componentes muestran el recorrido del delivery hasta la decisión y su
 persistencia. Se conservan los nombres reales y las carpetas aparecen en los
 metadatos de cada bloque:
