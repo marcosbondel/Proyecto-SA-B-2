@@ -5,177 +5,43 @@ Short map for AI agents working in this repository. Durable knowledge lives in
 
 ## Repo Status
 
-A pnpm workspace with everything under `apps/`: the Gateway and the Nuxt
-frontend at the top level, the five domain services under `apps/services/`, and
-`@bank/contracts`, `@bank/messaging`, `@bank/observability` and `@bank/tooling`
-under `apps/packages/`. All seven applications install, build, lint and test
-from a clean checkout.
+A pnpm/Turborepo workspace: seven applications under `apps/` (Gateway, Nuxt
+frontend and five domain services), and contracts, messaging, observability and
+tooling under `apps/packages/`. The optional partner-bank mock is a test
+application, not a sixth banking microservice.
 
-`apps/partner-bank-mock/` is an optional local T-46 test application; it is
-not one of the seven bank deployments.
+**Phase III is implemented and deployed.** It adds lifecycle/anomaly and
+transfer telemetry, runtime payment simulation, filtered audit and trace links,
+interbank send/receive/reconciliation, and the OpenTelemetry/Prometheus/Tempo/
+Loki/Grafana stack. Read [ARCHITECTURE.md](ARCHITECTURE.md) for boundaries,
+[docs/TECHNICAL_DOCUMENT.md](docs/TECHNICAL_DOCUMENT.md) for the deliverables and
+[docs/operations/CLOUD.md](docs/operations/CLOUD.md) for observed deployment.
 
-**The API Gateway is implemented** (T-15, extended by T-17, T-19, T-20 and the
-prototype-parity work): twenty-four paths, JWT authentication, role
-authorization from decision D-06, request/reply with a five-second ceiling, a
-seven-code error contract, the identity-document photo deposited in MinIO, and a
-versioned OpenAPI contract in `apps/gateway/openapi/`.
+The Gateway owns no domain layer, database or internal HTTP client. Domain
+services communicate through AMQP and own their PostgreSQL databases outside
+Kubernetes. Payment's HTTP reaches the external bank; Notification's HTTP
+reaches Resend. Neither is an internal service-to-service exception.
 
-**`apps/web` implements the Claude Design prototype in full** — all thirty-four
-screens of `bonking.dc.html`, mapped route by route in
-[docs/FRONTEND.md](docs/FRONTEND.md#the-screen-inventory). Beyond the five
-original modules it now carries password recovery, Mi perfil with its password
-change, the deposit window, the transfer history and the Saga monitor, the
-service-payment product, the customer's notification inbox, and the three
-per-role dashboards behind one route.
+The frontend maps the thirty-four prototype screens and adds Phase III routes;
+[docs/FRONTEND.md](docs/FRONTEND.md#the-screen-inventory) distinguishes source,
+Nitro tests and browser evidence. A `202` is acceptance, not business success;
+interbank TIMEOUT retains reservation during reconciliation.
 
-Two Gateway routes are worth knowing about because they are the only ones that
-**compose**: `GET /api/accounts` merges Account Service's rows with Customer
-Service's names in one extra round trip (closing TD-026), and
-`GET /api/dashboard` asks five services at once and returns what each answered,
-with every section independently optional. Neither computes anything — holding
-several replies is aggregation, which is what an entry point is for.
+**Operational snapshot, 2026-10-21:** GKE is in `us-central1-c`; `prod` and
+`dev` run separate workloads/brokers and distinct database names on shared VMs.
+Production has the partner mock; dev has none, so mock failure experiments
+require preparation. Observability has nine dashboards, sixteen alert rules
+and seven runbooks. Desired NetworkPolicies exist in source but were absent in
+the three live namespaces; RabbitMQ live was 3.13-management versus the desired
+4.3.4. Do not infer applied controls from chart defaults. The deployment and
+evidence documents record these differences without treating readiness as
+proof of SLO or fault tolerance.
 
-The Gateway has no `domain/` layer and never will — it holds no business logic
-(constitution V), and a test asserts it has no database and no HTTP client
-towards any internal service.
-
-**Customer Service is implemented** (T-16): four tables of its own, five message
-handlers, idempotency by unique constraint, scrypt credentials, email activation
-by hashed token, and the simulated identity validation that recomputes the photo
-digest against the object the Gateway uploaded.
-
-**Account Service is implemented** (T-17): four tables of its own, eight message
-handlers, money as `NUMERIC(14,2)` read back through exact string arithmetic,
-balances protected by `SELECT … FOR UPDATE` plus an optimistic `version` plus a
-`CHECK (balance >= 0)`, idempotency evaluated **before** any balance moves, the
-Saga's debit / credit / compensation, and the automatic deactivation job with an
-injected clock. Its integration suite runs against a real PostgreSQL and is
-skipped without `DATABASE_URL`.
-
-**Transaction Service is implemented** (T-18): four tables of its own, nine
-message handlers over its two queues, the six-state machine as a single pure
-function that refuses every transition not in the diagram, transitions decided
-under `SELECT … FOR UPDATE` so two Saga events cannot both be applied,
-deduplication by the envelope's `messageId` before any state is touched, and the
-alias table that makes a retried `transactionId` resolve to the transfer that
-actually exists. It decides no funds and reads no balance — the debit verdict
-arrives as an event, which is what criterion 8 asks for and what
-`test/isolation.spec.ts` enforces. Its concurrency and constraint tests need a
-real PostgreSQL and skip without `DATABASE_URL`.
-
-**Notification & Audit Service is implemented** (T-20): three tables of its own,
-five queues rather than one — `audit.customer`, `audit.account`,
-`audit.transaction`, `audit.payment` for the event families and `audit.query`
-for the two questions it answers — deduplication as the primary key
-`(event_id, consumer)` so a redelivery produces neither a second record nor a
-second notification, the payload **redacted before the insert** so the one
-database that hears every event never stores a document, an address or an
-amount, and a simulated delivery channel that never throws. It is the only
-service that takes **no** validator from the broker: a message it cannot parse
-is recorded `INVALID` rather than parked, because the service whose job is to
-record what arrived cannot be the one that never sees it. It publishes replies
-and nothing else — `ReplyPublisher` has one method, and
-`test/isolation.spec.ts` fails the build if a command or an event is ever put
-on an exchange from here.
-
-**Payment Service is implemented** (the backend half of T-19, built in T-21):
-two tables of its own, three message handlers over `payment.commands`, the
-provider as a single pure function that decides an attempt with no clock and no
-database in sight, attempts serialised by `SELECT … FOR UPDATE` plus a check
-that the attempt number follows the row — so a redelivered command and the retry
-sweeper cannot both charge — and a retry ladder whose due time is a **column
-rather than a timer**, so a rescheduled pod does not forget a transfer
-mid-payment. It publishes `payment.attempt.failed.v1` for every failed attempt
-including the last, which is what makes the ladder observable while it is being
-climbed, and only the terminal event closes the Saga. It orders nothing from
-anybody: there is no `send` on its publisher and `test/isolation.spec.ts` fails
-the build if one appears.
-
-**The Saga now runs end to end, in all three of its shapes.**
-`pnpm images:flow` executes them against the built images and checks the
-balances before and after each: a transfer that COMPLETES, a refused payment
-that COMPENSATES on the first attempt, and one that climbs the ladder to its end
-and then COMPENSATES. The compensation is asserted as a fact about the money,
-not as a status somebody wrote down.
-
-**Six of the debts that blocked screens are closed** (TD-026, TD-027, TD-033,
-TD-035, TD-038, TD-041), and none by the remedy its own row proposed — each
-turned out to rest on a premise that was wrong:
-
-- The transfer's originator was **already in the envelope**; nothing was missing
-  but a column to put it in, which closed the listing and the ownership check
-  together.
-- A holder's name needed neither a projection nor a per-row lookup: one batch
-  query and one composition at the Gateway.
-- A service payment is **a transfer to an account the biller holds**, so `G-01`
-  needed no second money movement, no nullable target and no branch in the state
-  machine.
-- The notification's subject was **already being computed** to derive the
-  simulated address, and thrown away.
-
-TD-021 (a customer cannot read their own audit trail), TD-032, TD-037, TD-039
-and TD-040 stand as recorded. Five deviations from the prototype are now written
-down as TD-050 to TD-054 — including TD-054, which is the honest one: the whole
-prototype was implemented without opening a browser.
-
-`ARCHITECTURE.md` records the target architecture; the local Kubernetes
-deployment is built — a Helm chart over a kind cluster (US1), described in
-[infra/k8s/README.md](infra/k8s/README.md).
-
-**Every component is containerised** (T-21): seven multi-stage images, one
-Dockerfile each and no generic one, all running as `node` (uid 1000), with
-nothing but `NODE_ENV` baked in and every credential arriving at run time.
-`/health` and `/ready` answer different questions in all seven — the port now
-opens *before* the migrations and the broker, so a database that is briefly away
-no longer turns a liveness probe into a restart loop. `pnpm images:build` tags
-each image with the commit inside it, which is the value T-22 puts in
-`values.yaml`; `pnpm images:smoke` asserts the labels, the port, the user, the
-absence of secrets in any layer, and the degraded cases; `pnpm images:flow` runs
-the assignment's own flow — register, open accounts, transfer — through the
-images end to end. The inventory, the required variables per component and the
-base-image bump procedure are in
-[docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
-
-**Phase II is built and deployed.** Five functional extensions, a four-workflow
-pipeline, Terraform, and a system running on Google Cloud Platform.
-
-- **The extensions live inside the transfer Saga**, in this order: the KYC gate
-  (`customer.kyc.checked.v1`, and a customer who is not `VERIFIED` closes the
-  transfer in `FAILED` without moving money) → the account-type rule (`AHORRO`
-  opens at Q100.00 and charges Q3.00 per debit **in the same row lock**, and a
-  compensation returns the commission too) → the history with its date and
-  status filters → the external payment with `SUCCESS` / `FAILURE` / `TIMEOUT`
-  over the 1 s / 5 s / 30 s ladder → the notification classified `INFO`,
-  `WARNING` or `ERROR`. The assignment's three states — `PENDING`, `APPROVED`,
-  `FAILED` — are a **projection** (`phaseStatus`) of the Saga's six, never a
-  replacement.
-- **Continuous integration** (T-32) runs on a push to `feature/**`, `fix/**`,
-  `test/**`, `docs/**`, `chore/**` or `refactor/**`, and on a pull request into
-  `develop` or `main`, as three chained jobs: `build`, `test`, `validate`.
-  **PostgreSQL 18.4 and RabbitMQ 4.3.4 now run as service containers**, so the
-  integration suites that used to `describe.skip` themselves actually execute —
-  TD-069 is closed, and every integration step fails if Jest reports a suite as
-  `skipped`. `validate` is skipped on a pull request into `develop` and runs on
-  one into `main`.
-- **Delivery and deployment** are three more workflows: `changes.yml` decides
-  which components a commit touched, `release.yml` publishes seven versioned
-  images on a `v*` tag, and `cd.yml` deploys the changed components to namespace
-  `dev` on `develop` and rolls production forward on `main` **using only images
-  release already published**. No tag is ever `latest`; a deploy that does not
-  reach `Ready` rolls itself back.
-- **The infrastructure is one Terraform module** (`infra/terraform/gcp/`): a VPC
-  with a private data subnet, five Compute Engine VMs with no public IP running
-  one PostgreSQL each, a zonal GKE cluster of three nodes, and Cloud Run for the
-  frontend. The seven workloads carry an HPA at 80 % CPU with requests and
-  limits.
-- **What is not finished, and matters before you touch it**: `dev` and `prod`
-  share the five databases (TD-070); the Artifact Registry repository, the
-  Gateway's public `LoadBalancer` and the Cloud Run revision are created by hand
-  (TD-079, TD-080, TD-081).
-
-Read [docs/operations/CI.md](docs/operations/CI.md) before changing a workflow
-and [docs/operations/CLOUD.md](docs/operations/CLOUD.md) before touching
-anything under `infra/terraform/`.
+Terraform now declares Artifact Registry and the reserved Gateway IP; Helm owns
+the Gateway Service, and CD updates the Cloud Run image. Historical TD-070 and
+TD-079–081 must be read with their current entries in
+[docs/TECH_DEBT.md](docs/TECH_DEBT.md), not the old premise of shared database
+names or three wholly manual resources.
 
 ## Project Documentation
 
@@ -209,7 +75,7 @@ Consult these documents before making decisions or describing the repository:
 - [docs/adr.md](docs/adr.md): the unified Spanish narrative of the decisions. The canonical records are `docs/architecture/adr/`; where the two disagree, the ADR wins.
 - [docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md): **the image inventory** — one row per component with its Dockerfile, port, start command, health checks and required variables, plus the tagging scheme T-22 references. Read it before changing a Dockerfile, adding a variable a container needs, or writing the Helm chart.
 - [docs/operations/CI.md](docs/operations/CI.md): **the four GitHub Actions workflows** — what triggers each, what every stage verifies, how a version is published, and what a green run does not prove. Read it before changing anything under `.github/workflows/` or the root `build`/`lint`/`typecheck`/`test`/`test:contract` scripts it calls.
-- [docs/operations/CLOUD.md](docs/operations/CLOUD.md): **the cloud runbook** — from an empty GCP project to a system that answers, and which three steps Terraform does not yet cover. Read it before changing `infra/terraform/gcp/` or the deployment workflows.
+- [docs/operations/CLOUD.md](docs/operations/CLOUD.md): **the cloud runbook** — from an empty GCP project to a system that answers, and the conditional bootstrap/import steps outside a routine Terraform run. Read it before changing `infra/terraform/gcp/` or the deployment workflows.
 - [docs/operations/MONOREPO.md](docs/operations/MONOREPO.md): **the monorepo strategy** — one directory per component and how a change redeploys only that component. Read it before adding a component or changing the path filters.
 - [docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md): **the Kubernetes runbook** — prerequisites, the four commands that take the system from a clean machine to a running cluster, verification, the Saga run, scaling limits and every failure mode. Read it before changing the Helm chart, the kind configuration or anything under `infra/k8s/`.
 - [docs/manual/](docs/manual/README.md): the user manual — the general guide, one walkthrough per role, and the 78-step visual tour.
@@ -366,15 +232,14 @@ about this system at all. Substitute whatever `infra/docker/.env` actually holds
 `turbo` is used rather than `pnpm --filter` so the dependency build runs first,
 per the consequence above.
 
-`apps/web` has **no component-level test framework**; that needs a Nuxt-native
-runner and is recorded as TD-010. Do not claim component coverage.
+**Web tests have two layers.** Node test runner verifies pure functions and
+static assertions. Vitest with `@nuxt/test-utils` verifies real Nitro processes,
+SSR, proxy, guards and Phase III screens using controlled upstreams. These HTTP
+integrations do not imply mounted-component coverage or an E2E bank run.
+Read [docs/FRONTEND.md](docs/FRONTEND.md#verification) before describing coverage.
 
-What it does have is a real suite over `app/lib/` on the Node test runner: the
-D-06 permission matrix, the money rules and the error normalisation. That is
-deliberate — anything in this application that **decides** something lives in
-`app/lib/` as a pure function precisely so TD-010 cannot make it unverifiable.
-A decision written into a template would be untestable by an accident of
-tooling.
+Anything that decides a frontend rule belongs in `app/lib/` so it remains
+independently testable.
 
 **Lint enforces architecture, not just style.** A service importing another
 service, a `domain` file importing a framework, or an `application` file

@@ -6,7 +6,7 @@ Bank USAC is a distributed banking system for Software Avanzado, Section B,
 Group 2. The system has one API Gateway, a Nuxt frontend, RabbitMQ messaging,
 and exactly five independently owned microservices. Service-to-service
 communication is asynchronous, and each service owns one PostgreSQL database
-outside the local Kubernetes cluster.
+outside Kubernetes, on host/Docker locally and Compute Engine VMs in GCP.
 
 The architecture is designed for independent service ownership, eventual
 consistency, and auditable distributed operations. The transfer flow uses a
@@ -19,9 +19,9 @@ transaction.
 | --- | --- | --- |
 | Customer Service | Register customers, authenticate them, activate them by email, validate identity, and manage customer details. | Customer identity, document, contact, birth date, address, username, access credential, role, identity status, and email verification. |
 | Account Service | Create accounts, expose balances, update balances, and deactivate inactive low-balance accounts. | Accounts, customer references, balances, account state, account type, and last activity. |
-| Transaction Service | Validate funds, coordinate transfers, and record transaction state. | Transaction id, source and target accounts, amount, status, idempotency key, and timestamps. |
-| Payment Service | Process internal or external payments and validate payment operations. | Payment id, transaction reference, payment status, attempt number, and failure reason. |
-| Notification & Audit Service | Publish notifications, record audit events, and provide distributed logging foundations. | Event id, event type, timestamp, payload, correlation id, origin, and notification delivery state. |
+| Transaction Service | Coordinate the transfer Saga from account verdicts, and record history and state; it never decides funds. | Transaction id, source and target accounts, amount, status, idempotency key, and timestamps. |
+| Payment Service | Process payment attempts, runtime simulation and interbank send/receive/reconciliation. | Payment id, transaction reference, payment status, attempt number, and failure reason. |
+| Notification & Audit Service | Deliver notifications, persist redacted events and answer queries; ingest SLO alerts and never publish domain commands/events. | Event id, event type, timestamp, payload, correlation id, origin, and notification delivery state. |
 
 The services exchange events and asynchronous request/reply messages through
 RabbitMQ. No service reads another service's database. The API Gateway is the
@@ -90,15 +90,17 @@ alternatives and the accepted trade-off.
   [ADR-005](docs/architecture/adr/ADR-005-persistence.md).
 - **Runtime:** Docker containers —
   [ADR-006](docs/architecture/adr/ADR-006-containerization.md) — in a Kubernetes
-  cluster, released through a single Helm chart (`infra/k8s/helm/bank-usac`).
+  cluster, released through the banking Helm chart (`infra/k8s/helm/bank-usac`);
+  observability is a separate release/chart (`bank-observability`).
   The **same chart** installs on a local kind cluster —
   [ADR-007](docs/architecture/adr/ADR-007-local-orchestration.md) — and on GKE.
 - **Service structure:** Clean Architecture inside each service —
   [ADR-008](docs/architecture/adr/ADR-008-service-internal-architecture.md).
 - **Distributed workflows:** Saga by choreography —
   [ADR-009](docs/architecture/adr/ADR-009-distributed-transactions.md).
-- **Diagrams:** versioned Mermaid and PlantUML sources, with Lucid optional —
-  [ADR-013](docs/architecture/adr/ADR-013-diagramming-toolchain-revision.md).
+- **Diagrams:** versioned PlantUML, Structurizr DSL and DBML sources and their
+  reviewed image artifacts. The [ADR index](docs/architecture/adr/README.md)
+  records the historical toolchain and its T-61 revision.
 - **Cloud:** Google Cloud Platform —
   [ADR-014](docs/architecture/adr/ADR-014-cloud-provider.md).
 - **CI/CD:** GitHub Actions, four workflows —
@@ -148,57 +150,51 @@ RabbitMQ clients, or other services.
   represented by events or explicitly copied read models, never by direct SQL.
 - Distributed operations use Saga steps and compensations. A handler must be
   idempotent and preserve `correlationId` across the flow.
-- Databases stay outside Kubernetes; service and Gateway workloads run inside
-  the local kind cluster.
+- Databases stay outside Kubernetes; banking workloads use kind locally and
+  GKE in cloud. Cloud Run additionally serves the public frontend.
+- External HTTP egress belongs to Payment (partner bank) and Notification
+  (Resend), with the constraints in ADR-019 and the operation runbooks.
+- Trace context crosses AMQP and external HTTP; telemetry never changes a
+  domain outcome. Label/cardinality rules live in the telemetry catalogue.
 
 ## Current State
 
-Verified against the workspace and the running deployment on 2026-09-26.
+Documented against source and the cloud inventory on **2026-10-21**.
+Production's seven banking deployments and optional partner mock use
+`v1.3.6`; the public frontend is on Cloud Run. The
+[production inventory](docs/qa/load/2026-10-21-gke-prod-inventory.txt) records
+images, readiness, Services, HPA and PVC at capture time, not permanent health.
 
-**The system is built and deployed.** All seven applications build, lint, typecheck
-and test from a clean checkout, and the whole thing runs on Google Cloud Platform:
-seven workloads in the GKE namespace `prod`, the frontend on Cloud Run, and the five
-PostgreSQL databases on Compute Engine virtual machines outside the cluster.
+Phase III adds customer lifecycle and account anomaly telemetry, transfer
+duration/error measurements, runtime payment simulation, four audit filters,
+trace identifiers/links, and interbank send/receive/reconciliation. The Saga's
+six states and its Phase II projection remain distinct from the interbank
+states. TIMEOUT interbank keeps reservation during reconciliation; released
+without verification is an operational exception that is surfaced.
 
-- **The five domain services are implemented.** Customer, Account, Transaction,
-  Payment and Notification & Audit each own a schema, their message handlers,
-  idempotency enforced by a database constraint, and money as `NUMERIC(14,2)` that
-  no float ever touches. The transfer's six-state machine is one pure function that
-  refuses every transition outside the diagram.
-- **The Gateway holds no business logic**, no database and no HTTP client towards
-  any internal service — and a test asserts all three rather than asking to be
-  believed. Two routes compose replies; none computes anything.
-- **`apps/web` implements the whole prototype**, thirty-four screens, mapped route
-  by route in [docs/FRONTEND.md](docs/FRONTEND.md).
-- **The Saga runs end to end in all three shapes** — completed, compensated on the
-  first refusal, and compensated after climbing the retry ladder — each asserted by
-  `pnpm images:flow` as a fact about the money rather than a status somebody wrote
-  down.
-- **Phase II's five extensions are in** and integrated into the transfer flow in
-  this order: KYC gate → account-type rule with its commission → history → external
-  payment with its ladder → classified notification. Detail in
-  [docs/TECHNICAL_DOCUMENT.md §12](docs/TECHNICAL_DOCUMENT.md#12-fase-ii--extensión-funcional-por-microservicio).
-- **The pipeline is four GitHub Actions workflows**: Build / Test / Validación as
-  three chained jobs, a reusable path filter, a release phase that publishes seven
-  versioned images, and a deployment that rolls out to `dev` on `develop` and to
-  `prod` on `main` — never building an image in production, never tagging `latest`,
-  and rolling itself back when a deploy does not reach `Ready`.
-  See [docs/operations/CI.md](docs/operations/CI.md).
-- **The infrastructure is Terraform**, one module in `infra/terraform/gcp/`. See
-  [docs/operations/CLOUD.md](docs/operations/CLOUD.md) for the procedure.
+The cluster is in `us-central1-c`, with dev, prod and observability namespaces.
+Five private VMs host separate production and `_dev` databases. Compute,
+cluster and quotas remain shared failure domains. Dev has no partner mock and
+its partner URL is empty; a mock experiment is not ready merely because dev
+pods are Ready.
 
-**What is not finished.** Three cloud resources are still created by hand — the
-Artifact Registry repository, the Gateway's public `LoadBalancer` and the Cloud Run
-revision that serves the frontend (TD-079, TD-080, TD-081) — and `dev` and `prod`
-share the five databases, so environment isolation today covers compute and
-messaging but not data (TD-070). The open correctness debts worth knowing before
-touching the affected code are TD-074 (account opening has no KYC gate at the API),
-TD-076 (the broker's retry path can kill a service process) and TD-078 (the Gateway
-reports a registration timeout as `202`). All of them, with their proposed fixes,
-are in [docs/TECH_DEBT.md](docs/TECH_DEBT.md).
+Terraform declares VPC/subnets/NAT, VM databases, GKE, Artifact Registry,
+reserved Gateway IP and Cloud Run. Helm owns the application and observability
+releases; GitHub Actions deploys versioned images and updates Cloud Run.
+Resource imports and applied state still need verification for an existing
+installation; source presence alone does not establish management history.
 
-The web dependency manifest carries `@artmizu/nuxt-prometheus`, retained as pending
-debt for the observability ticket T-24 (TD-006).
+Nine dashboards and sixteen alert rules link to seven runbooks. The stack is
+OpenTelemetry → Collector → Prometheus/Tempo, and pod logs → log agent → Loki,
+queried through Grafana. Grafana currently has a public LoadBalancer and an
+independent login. See [CLOUD](docs/operations/CLOUD.md),
+[telemetry](docs/sre/telemetry-catalog.md) and [SLO](docs/sre/sli-slo-sla.md).
+
+**Known differences:** no NetworkPolicy objects were observed in the three
+namespaces despite Dataplane V2 and source policies; RabbitMQ live was
+3.13-management versus desired 4.3.4. HPA objects are installed, but a live
+scaling event must be supported by load evidence. These are not cleared by
+updating documentation; follow [TECH_DEBT](docs/TECH_DEBT.md).
 
 ## Commands
 
@@ -210,32 +206,33 @@ Run from the **repository root**, never from an application directory. Node
 | `pnpm install` | Whole workspace, one lockfile |
 | `pnpm build` | Shared packages first, then the seven applications |
 | `pnpm lint` | Style **and** the executable architecture boundaries |
-| `pnpm test` | Unit tests everywhere |
+| `pnpm test` | Unit and configured integration tests; inspect omitted suites |
 | `pnpm test:contract` | Contract tests over `@bank/contracts` |
 | `pnpm format` | Formatting |
 | `pnpm dev` | Local development |
 
-Per application: `pnpm --filter <name> <command>`. In a fresh clone `pnpm build`
-must precede testing a single application, because the shared packages are
-consumed from `dist/`.
+Per application: `pnpm --filter <name> <command>` runs only that command.
+`pnpm exec turbo run <task> --filter=<name>` also resolves the declared
+dependency builds, so a fresh checkout has the shared `dist/` it needs.
 
-Deployment commands arrive with the tickets that create what they deploy:
-`docker build` per workload in T-21, and `helm upgrade --install` against the
-kind cluster in T-22 ([ADR-007](docs/architecture/adr/ADR-007-local-orchestration.md)).
-Applying raw manifests by hand is not a supported path.
+Local and cloud deployment procedures are in
+[DEPLOYMENT](docs/operations/DEPLOYMENT.md) and [CLOUD](docs/operations/CLOUD.md).
+Applying raw manifests by hand is not a supported release path.
 
 Two things worth knowing before claiming a check passed:
 
 - **Lint enforces architecture.** The rules live in
   `apps/packages/tooling/eslint.base.mjs`. If one blocks a change, the design is
   wrong — an exception is not added to make it pass.
-- **`apps/web` has no component test framework.** Its `test` script is a single
-  `node --test` smoke test, not a Vue suite (TD-010). No work in this repository
-  may claim component coverage for the web app.
+- **Web verification has two layers.** Node test runner checks pure functions
+  and static assertions; Vitest/Nuxt test-utils checks real Nitro processes,
+  SSR, guards, proxy and selected Phase III screens against controlled
+  upstreams. Neither proves an E2E bank run or complete component coverage.
+  See [FRONTEND](docs/FRONTEND.md#verification).
 
 ## Related Docs
 
-- [docs/architecture/adr/](docs/architecture/adr/README.md) - the sixteen decision
+- [docs/architecture/adr/](docs/architecture/adr/README.md) - the decision
   records: what was chosen, what was rejected, and why. ADR-014 to ADR-016 are the
   Phase II ones — cloud provider, CI/CD platform and cloud infrastructure.
 - [docs/architecture/decision-matrix.md](docs/architecture/decision-matrix.md) -
@@ -251,7 +248,7 @@ Two things worth knowing before claiming a check passed:
 - [docs/DOC_INVENTORY.md](docs/DOC_INVENTORY.md) - documentation classification.
 - [docs/TECH_DEBT.md](docs/TECH_DEBT.md) - open and closed debt.
 - [docs/TECHNICAL_DOCUMENT.md](docs/TECHNICAL_DOCUMENT.md) - the consolidated
-  deliverable, with the Phase II sections.
+  deliverable, including Phase II and III.
 - [docs/operations/CLOUD.md](docs/operations/CLOUD.md) - the GCP deployment
   procedure.
 - [docs/operations/CI.md](docs/operations/CI.md) - the four CI/CD workflows.
