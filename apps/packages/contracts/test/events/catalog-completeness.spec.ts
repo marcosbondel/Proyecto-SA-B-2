@@ -8,11 +8,12 @@ const REPO_ROOT = join(__dirname, '..', '..', '..', '..', '..');
 const DOMAIN_CATALOGUE = join(REPO_ROOT, 'docs', 'domain', 'message-catalog.md');
 
 /**
- * The names T-02 fixed, read out of the document that fixed them.
+ * The names the domain catalogue lists, read out of the document itself.
  *
  * Reading the markdown rather than hard-coding a list is the point: if somebody
  * renames a message in the domain catalogue without contracting it, this test
- * fails instead of the two documents drifting apart in silence.
+ * fails instead of the two documents drifting apart in silence. Since T-61 the
+ * document is the literal inventory of every contract, versioned names included.
  */
 function namesFromDomainCatalogue(): string[] {
   const markdown = readFileSync(DOMAIN_CATALOGUE, 'utf8');
@@ -64,11 +65,68 @@ describe('the catalogue as a whole', () => {
   });
 });
 
-describe('coherence with the domain catalogue that T-02 closed', () => {
-  const domainNames = namesFromDomainCatalogue();
+describe('coherence with the domain catalogue', () => {
+  const inventory = namesFromDomainCatalogue();
 
-  it('reads the 35 messages T-02 fixed', () => {
-    expect(domainNames).toHaveLength(35);
+  it('lists every contracted message', () => {
+    const missing = catalog.map((c) => c.name).filter((name) => !inventory.includes(name));
+
+    expect(missing).toEqual([]);
+  });
+
+  it('lists nothing that is not contracted', () => {
+    expect(inventory.filter((name) => !catalogByName.has(name))).toEqual([]);
+  });
+});
+
+/**
+ * The 35 messages T-02 fixed. The domain catalogue listed exactly these until
+ * T-61 turned it into the inventory of all 134 (`9103754`); the list now lives
+ * here so the extension record below keeps the line it is drawn against.
+ */
+const T02_NAMES = [
+  'account.balance.query',
+  'account.create',
+  'account.credit.rejected',
+  'account.credit.requested',
+  'account.credited',
+  'account.deactivated',
+  'account.debit.compensated',
+  'account.debit.compensation.requested',
+  'account.debit.rejected',
+  'account.debit.requested',
+  'account.debited',
+  'account.opened',
+  'account.reactivated',
+  'account.set-status',
+  'customer.activation.requested',
+  'customer.authenticate',
+  'customer.email.verified',
+  'customer.identity.rejected',
+  'customer.identity.validated',
+  'customer.login.rejected',
+  'customer.login.succeeded',
+  'customer.register',
+  'customer.registered',
+  'customer.update',
+  'customer.updated',
+  'customer.validate-identity',
+  'customer.verify-email',
+  'payment.failed',
+  'payment.requested',
+  'payment.succeeded',
+  'transaction.compensated',
+  'transaction.completed',
+  'transaction.failed',
+  'transaction.initiated',
+  'transfer.requested',
+];
+
+describe('coherence with the 35 messages T-02 closed', () => {
+  const domainNames = T02_NAMES;
+
+  it('keeps the 35 messages T-02 fixed', () => {
+    expect(new Set(domainNames).size).toBe(35);
   });
 
   it('contracts every one of them, with a version suffix', () => {
