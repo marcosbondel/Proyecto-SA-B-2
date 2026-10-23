@@ -7,6 +7,14 @@
 **Inyectado con:** `PUT /api/payments/simulation`, **en caliente**: 30 % de
 fallos y 10 % de expiraciones, sin reiniciar nada y sin desplegar nada.
 
+> **Relectura T-61 (2026-10-21):** evidencia histórica de kind, conservada.
+> `source=runtime` distingue ajustes del administrador frente a `scenario` y
+> `configuration`; todo el proveedor es simulado. La primera espera es 1 s;
+> alcanzar el segundo reintento suma 6 s y sí fuerza superar 5 s. La frecuencia
+> observada en esta corrida no debe inferirse sólo de la tasa de fallo de un
+> intento. TD-094 continúa pendiente; no se usa el p95 histórico como medida
+> de producción ni se modificó el umbral para hacerlo cumplir.
+
 ## 1. Resumen en tres líneas
 
 Con el proveedor fallando el 30 % de las veces y expirando otro 10 %, de 224

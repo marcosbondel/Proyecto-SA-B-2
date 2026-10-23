@@ -14,6 +14,12 @@ momento se apagó ni se alteró el sistema del otro grupo.**
 > fallos no restan si el banco propio reacciona bien. Así que la pregunta de
 > este postmortem no es «¿por qué rechazó?» sino **«¿volvió el dinero?»**.
 
+> **Relectura T-61 (2026-10-21):** corrida histórica de kind con el protocolo
+> anterior. Se conservan cifras y plazos originales. El contrato vigente usa
+> TTL 180 s, consulta/cancelación y 300 s adicionales antes de una liberación
+> no verificada; los timeouts actuales no entran al histograma de confirmación.
+> Estos resultados no prueban ese protocolo ni una corrida GKE actual.
+
 ## 1. Resumen en tres líneas
 
 Se hizo que el banco pareja rechazara el 100 % de los depósitos que este banco
