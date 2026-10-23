@@ -1,0 +1,33 @@
+[
+  {
+    "at": "2026-10-22T04:46:28.854Z",
+    "event": "start",
+    "environment": "dev",
+    "gateway": "http://136.71.158.228:3000",
+    "scenario": "pod",
+    "initialSimulation": {
+      "failureRatePercent": 0,
+      "timeoutRatePercent": 0,
+      "latencyMs": 0
+    }
+  },
+  {
+    "at": "2026-10-22T04:46:56.187Z",
+    "event": "delete-dev-pod",
+    "pod": "bank-usac-dev-transaction-service-78bd4ccb75-hrsgn"
+  },
+  {
+    "at": "2026-10-22T04:47:51.113Z",
+    "event": "load-finished",
+    "exitCode": 0,
+    "aborted": false
+  },
+  {
+    "at": "2026-10-22T04:48:36.115Z",
+    "event": "after-drain"
+  },
+  {
+    "at": "2026-10-22T04:48:36.970Z",
+    "event": "finish"
+  }
+]

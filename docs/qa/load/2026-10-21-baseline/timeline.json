@@ -1,0 +1,28 @@
+[
+  {
+    "at": "2026-10-22T04:28:33.059Z",
+    "event": "start",
+    "environment": "dev",
+    "gateway": "http://136.71.158.228:3000",
+    "scenario": "baseline",
+    "initialSimulation": {
+      "failureRatePercent": 0,
+      "timeoutRatePercent": 0,
+      "latencyMs": 0
+    }
+  },
+  {
+    "at": "2026-10-22T04:29:56.549Z",
+    "event": "load-finished",
+    "exitCode": 99,
+    "aborted": false
+  },
+  {
+    "at": "2026-10-22T04:30:41.551Z",
+    "event": "after-drain"
+  },
+  {
+    "at": "2026-10-22T04:30:42.385Z",
+    "event": "finish"
+  }
+]

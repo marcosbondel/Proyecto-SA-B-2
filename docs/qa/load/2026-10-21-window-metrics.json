@@ -1,0 +1,604 @@
+{
+  "observedAt": "2026-10-22T05:13:26.284Z",
+  "queries": {
+    "baseline_server_p50": {
+      "promql": "histogram_quantile(0.5,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[129s] @1792643441.551)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646007.248,
+                "2.2186530592716203"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "baseline_server_p95": {
+      "promql": "histogram_quantile(0.95,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[129s] @1792643441.551)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646007.364,
+                "4.838460783317669"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "baseline_server_p99": {
+      "promql": "histogram_quantile(0.99,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[129s] @1792643441.551)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646007.449,
+                "5.6144861339963965"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "baseline_terminal_results": {
+      "promql": "sum by(result)(increase(bank_transfer_finished_total{environment=\"dev\"}[129s] @1792643441.551))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "result": "failed"
+              },
+              "value": [
+                1792646007.553,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "result": "compensated"
+              },
+              "value": [
+                1792646007.553,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "result": "completed"
+              },
+              "value": [
+                1792646007.553,
+                "193.52181283809855"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "provider_server_p50": {
+      "promql": "histogram_quantile(0.5,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[133s] @1792644289.512)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646007.66,
+                "2.259008234872897"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "provider_server_p95": {
+      "promql": "histogram_quantile(0.95,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[133s] @1792644289.512)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646007.76,
+                "9.440461151274395"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "provider_server_p99": {
+      "promql": "histogram_quantile(0.99,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[133s] @1792644289.512)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646007.874,
+                "39.90288061403778"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "provider_terminal_results": {
+      "promql": "sum by(result)(increase(bank_transfer_finished_total{environment=\"dev\"}[133s] @1792644289.512))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "result": "failed"
+              },
+              "value": [
+                1792646007.964,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "result": "compensated"
+              },
+              "value": [
+                1792646007.964,
+                "2.091625"
+              ]
+            },
+            {
+              "metric": {
+                "result": "completed"
+              },
+              "value": [
+                1792646007.964,
+                "155.25708333333333"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "pod_server_p50": {
+      "promql": "histogram_quantile(0.5,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[128s] @1792644516.115)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646008.067,
+                "1.4118429723470878"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "pod_server_p95": {
+      "promql": "histogram_quantile(0.95,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[128s] @1792644516.115)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646008.163,
+                "3.3775977573066713"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "pod_server_p99": {
+      "promql": "histogram_quantile(0.99,sum by(le)(increase(bank_transfer_duration_seconds_bucket{environment=\"dev\"}[128s] @1792644516.115)))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {},
+              "value": [
+                1792646008.247,
+                "3.9244637550692225"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "pod_terminal_results": {
+      "promql": "sum by(result)(increase(bank_transfer_finished_total{environment=\"dev\"}[128s] @1792644516.115))",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "result": "failed"
+              },
+              "value": [
+                1792646008.346,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "result": "compensated"
+              },
+              "value": [
+                1792646008.346,
+                "0"
+              ]
+            },
+            {
+              "metric": {
+                "result": "completed"
+              },
+              "value": [
+                1792646008.346,
+                "248.63716666666667"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "hpa_before": {
+      "promql": "kube_horizontalpodautoscaler_status_current_replicas{namespace=\"dev\"} @1792643100",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "__name__": "kube_horizontalpodautoscaler_status_current_replicas",
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-web",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.358,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "kube_horizontalpodautoscaler_status_current_replicas",
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-customer-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.358,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "kube_horizontalpodautoscaler_status_current_replicas",
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-notification-audit-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.358,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "kube_horizontalpodautoscaler_status_current_replicas",
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-gateway",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.358,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "kube_horizontalpodautoscaler_status_current_replicas",
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-account-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.358,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "kube_horizontalpodautoscaler_status_current_replicas",
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-transaction-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.358,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "__name__": "kube_horizontalpodautoscaler_status_current_replicas",
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-payment-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.358,
+                "1"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "hpa_during": {
+      "promql": "max_over_time(kube_horizontalpodautoscaler_status_current_replicas{namespace=\"dev\"}[25m] @1792644600)",
+      "response": {
+        "status": "success",
+        "data": {
+          "resultType": "vector",
+          "result": [
+            {
+              "metric": {
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-web",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.454,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-customer-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.454,
+                "1"
+              ]
+            },
+            {
+              "metric": {
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-notification-audit-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.454,
+                "5"
+              ]
+            },
+            {
+              "metric": {
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-gateway",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.454,
+                "5"
+              ]
+            },
+            {
+              "metric": {
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-account-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.454,
+                "5"
+              ]
+            },
+            {
+              "metric": {
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-transaction-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.454,
+                "5"
+              ]
+            },
+            {
+              "metric": {
+                "app_kubernetes_io_component": "metrics",
+                "app_kubernetes_io_instance": "bank-observability",
+                "app_kubernetes_io_managed_by": "Helm",
+                "app_kubernetes_io_name": "kube-state-metrics",
+                "app_kubernetes_io_part_of": "kube-state-metrics",
+                "app_kubernetes_io_version": "2.20.0",
+                "helm_sh_chart": "kube-state-metrics-8.6.0",
+                "horizontalpodautoscaler": "bank-usac-dev-payment-service",
+                "instance": "10.20.0.16:8080",
+                "job": "kubernetes-service-endpoints",
+                "namespace": "dev",
+                "node": "gke-bank-usac-vpc-gk-bank-usac-vpc-no-8f92baeb-9z18",
+                "service": "bank-observability-kube-state-metrics"
+              },
+              "value": [
+                1792646008.454,
+                "1"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

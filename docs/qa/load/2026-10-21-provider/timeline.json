@@ -1,0 +1,37 @@
+[
+  {
+    "at": "2026-10-22T04:42:37.351Z",
+    "event": "start",
+    "environment": "dev",
+    "gateway": "http://136.71.158.228:3000",
+    "scenario": "provider",
+    "initialSimulation": {
+      "failureRatePercent": 0,
+      "timeoutRatePercent": 0,
+      "latencyMs": 0
+    }
+  },
+  {
+    "at": "2026-10-22T04:44:04.501Z",
+    "event": "load-finished",
+    "exitCode": 99,
+    "aborted": false
+  },
+  {
+    "at": "2026-10-22T04:44:49.512Z",
+    "event": "after-drain"
+  },
+  {
+    "at": "2026-10-22T04:44:50.500Z",
+    "event": "simulation-restored",
+    "settings": {
+      "failureRatePercent": 0,
+      "timeoutRatePercent": 0,
+      "latencyMs": 0
+    }
+  },
+  {
+    "at": "2026-10-22T04:44:50.500Z",
+    "event": "finish"
+  }
+]

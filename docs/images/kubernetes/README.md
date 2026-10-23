@@ -9,7 +9,7 @@ El procedimiento que las produce está en
 [`docs/operations/DEPLOYMENT.md`](../../operations/DEPLOYMENT.md).
 
 **Están todas.** Se muestran, con su lectura, en
-[`docs/TECHNICAL_DOCUMENT.md` §9](../../TECHNICAL_DOCUMENT.md#9-contenedores-y-despliegue).
+[`docs/TECHNICAL_DOCUMENT.md` §9](../../TECHNICAL_DOCUMENT.md#9-contenedores-y-despliegue-en-kubernetes).
 Tomadas el 2026-09-03 contra el clúster kind, release `bank-usac`.
 
 ## Qué debe haber aquí

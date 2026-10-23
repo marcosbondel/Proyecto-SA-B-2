@@ -1,271 +1,92 @@
-# Manual del Cajero Receptor
+# Manual del Cajero receptor
 
-Esta guía es para el **personal de ventanilla**: quien atiende al cliente que
-tiene enfrente, lo registra, le abre cuentas y transfiere por él.
+Guía de ventanilla revisada para Fase III el 21 de octubre de 2026. Consulta el
+[manual general](../manual-usuario.md) para estados y reglas compartidas.
 
-Los conceptos que se repiten en todas las pantallas —qué significa «solicitud
-recibida», el identificador de correlación, la clave de idempotencia— están en
-el [manual general](README.md#3-cómo-leer-lo-que-el-sistema-te-responde).
+## 1. Inicio y alcance
 
-## Lo que puedes hacer
+El tablero del Cajero reúne tareas y cifras operativas. **Sin dato** significa
+que la sección no respondió; no debe leerse como cero. El menú ofrece Inicio,
+Clientes, Cuentas, Transferencias y Pagos. Tu bandeja personal está en la campana.
 
-| Módulo | Qué puedes hacer |
-| --- | --- |
-| **Inicio** | Tu turno en tres números: validaciones pendientes, cuentas creadas hoy y depósitos del día. |
-| **Clientes** | Registrar clientes, actualizar tus datos, abrir la ficha de un cliente y **revisar la cola de validación de identidad**. |
-| **Cuentas** | Abrir cuentas **a nombre de otro cliente**, consultar cuentas y sus movimientos, y **registrar depósitos en ventanilla**. |
-| **Transferencias** | Enviar transferencias, seguir su estado y vigilar la Saga desde el monitoreo. |
-| **Pagos** | Pagar servicios y vigilar el paso de pago de las transferencias y sus reintentos. |
+Puedes registrar clientes, validar identidad, abrir cuentas para titulares,
+recibir depósitos, gestionar cuentas y monitorear transferencias y pagos.
+Auditoría global y alta de personal están reservadas al Administrador.
 
-**Lo que no puedes hacer:** activar o desactivar cuentas (es del Administrador),
-ni consultar el rastro de auditoría ni la consola de notificaciones. Tampoco
-puedes **registrar cajeros ni administradores**: solo un administrador puede
-crear personal del banco, y el sistema rechaza el registro si lo intentas desde
-tu sesión. Y tampoco puedes cambiar la contraseña de un cliente: si no puede
-entrar, dile que use **¿Olvidaste tu contraseña?** — el enlace llega a su propio
-correo, que es lo único que prueba que es él.
+## 2. Registro presencial
 
-Tu menú lateral tiene cinco entradas: **Inicio**, **Clientes**, **Cuentas**,
-**Transferencias** y **Pagos**.
+1. Abre **Clientes → Nuevo cliente**.
+2. Comprueba físicamente los datos y el documento de la persona.
+3. Completa el asistente de datos, documento y confirmación.
+4. Guarda y entrega el `customerId` y el usuario; conserva el código de
+   seguimiento para comprobar el alta.
+5. Consulta la ficha después del procesamiento.
 
----
+El registro hecho por personal crea al cliente **activo y con identidad
+validada**; no exige abrir el correo de activación antes de entrar. El registro
+público tiene otro recorrido: correo activo y KYC pendiente pueden coexistir.
+El Cajero crea Clientes; solo el Administrador crea Cajeros o Administradores.
 
-## Registrar un depósito
+## 3. Revisión de identidad
 
-**Cuentas → Depósito.** Es la única operación de dinero del sistema que responde
-en el momento: no hay Saga que esperar, porque un depósito acredita una cuenta y
-no tiene contraparte.
+En `/clientes/validaciones`, abre un expediente pendiente. El detalle muestra
+datos declarados y la fotografía del documento obtenida mediante una ruta
+protegida. Diferencia **sin foto adjunta** de **no pudimos mostrar la foto**.
 
-1. Escribe el **número de cuenta** completo (el identificador, no un alias) y el
-   **monto**. La descripción es opcional y **queda registrada tal cual**: no
-   anotes datos personales ahí.
-2. Presiona **Continuar**. La pantalla te repite la cuenta y el monto antes de
-   comprometerlos — es el único lugar donde un dígito mal tecleado mueve dinero
-   real a la cuenta equivocada sin que nadie más lo note.
-3. **Registrar depósito.** El comprobante muestra el monto, el saldo resultante
-   y un `operationId`.
+Compara los datos antes de **Aprobar identidad**. **Rechazar** abre una
+confirmación y registra el rechazo. No confirmes basándote en una imagen que
+no se pudo cargar. La aprobación de identidad y el KYC se reflejan en la ficha;
+la aceptación de un comando no reemplaza la consulta de su resultado.
 
-Si la cuenta estaba **inactiva**, el depósito la reactiva en lugar de ser
-rechazado.
+## 4. Apertura y depósitos
 
-**Si la pantalla dice que no recibió confirmación a tiempo, no vuelvas a
-cobrar.** El depósito pudo haberse registrado: consulta el saldo de la cuenta
-antes de intentar de nuevo.
+En **Cuentas → Abrir cuenta**, selecciona al titular correcto. Elige Monetaria
+o Ahorro y cumple los avisos de verificación. Ahorro requiere al menos Q 100.00
+iniciales; la comprobación del recibo en este proyecto es simulada.
 
----
+Para efectivo usa `/cuentas/deposito`, verifica cuenta e importe y guarda el
+`operationId` del recibo. Un depósito puede reactivar una cuenta inactiva.
+No hay operación de retiro de efectivo.
 
-## 1. Registrar a un cliente en ventanilla
+La **Gestión de cuentas** permite buscar entre las filas cargadas y filtrar
+estado y tipo. Para activar o desactivar una cuenta, registra un motivo y
+comprueba después el estado. El Cajero sí dispone de esta gestión; no es una
+facultad exclusiva del Administrador.
 
-Menú **Clientes** → botón **Nuevo cliente**.
+## 5. Transferencias y pagos asistidos
 
-Es un asistente de tres pasos. Lo llenas tú con los datos y el documento que
-trae la persona.
+Verifica titular, cuenta e importe antes de enviar. Una respuesta aceptada
+requiere seguimiento. Conserva la misma solicitud al reintentar; iniciar un
+formulario nuevo puede producir otra operación.
 
-**Paso 1 — Datos personales**
+En transferencias internas distingue Fallida (sin débito exitoso) y Compensada
+(débito devuelto). En Ahorro comprueba también la devolución de Q 3.00 de comisión
+cuando corresponda.
 
-| Campo | Qué pedirle a la persona |
-| --- | --- |
-| Nombre completo | Como aparece en el documento. Al menos un nombre y un apellido. |
-| Fecha de nacimiento | Debe tener **18 años o más**. El campo muestra la edad calculada. |
-| Dirección | Su dirección de residencia. |
-| Correo electrónico | **Un correo al que tenga acceso.** Ahí llega el enlace de activación, y sin abrirlo no podrá entrar. |
-| **Rol** | Déjalo en **Cliente**. La lista ofrece también Cajero receptor y Administrador, pero desde tu sesión el banco no los acepta. |
+Los depósitos a otro banco tienen historial y detalle propios. **TIMEOUT
+conserva la reserva mientras se reconcilia**; no es una devolución. Sigue el
+reverso y no indiques al cliente que envíe de nuevo antes de resolver el estado.
+La guía del [Cliente](rol-cliente.md#4-depósito-a-otro-banco) explica los seis
+estados.
 
-El campo **Rol** es lo único que distingue este formulario del registro público.
-La lista muestra los tres roles, pero **desde ventanilla solo funciona
-Cliente**: si eliges Cajero receptor o Administrador, el registro se rechaza,
-porque solo un administrador puede dar de alta al personal del banco. No es una
-avería del formulario; es la regla que impide que alguien se nombre
-administrador a sí mismo.
+En `/pagos/monitor` filtra por estado y fallo. La ficha muestra hasta cuatro
+intentos, esperas de 1/5/30 segundos y resultado del proveedor. El chip de
+escenario identifica la demostración. La configuración global de simulación
+se cambia por API administrativa, no desde este monitor.
 
-**Paso 2 — Documento de identidad**
+## 6. Reportar una incidencia
 
-El número de DPI (13 dígitos) y una **foto del documento**, JPG o PNG de menos
-de 5 MB. Si la imagen no sirve, el sistema lo dice antes de enviar nada.
+Guarda entorno, hora, ruta, estado, identificador de transferencia o depósito,
+`correlationId` y `traceId`. El Administrador puede consultar el rastro; el
+operador SRE puede buscar la traza en Grafana con sus propios permisos.
 
-**Paso 3 — Confirmación**
+Si no llega un correo, consulta al equipo el canal y el estado de entrega;
+Resend puede estar configurado tanto localmente como en cloud. No garantices
+entrega por el texto de una confirmación ni publiques el enlace privado.
 
-Revisa los datos con la persona presente, escribe la contraseña inicial (mínimo
-8 caracteres) y acepta los términos. El **username** lo propone el sistema a
-partir del nombre; si ya existe, le añadirá un sufijo.
+Volver al [índice de manuales](README.md).
 
-Pulsa **Crear cuenta**.
+## Capturas actuales de Fase III
 
-### Qué decirle a la persona
-
-La pantalla confirma que el registro fue **enviado**, no completado. Antes de
-que se vaya de la ventanilla:
-
-1. **Dale su customerId.** Está en pantalla con un botón para copiarlo. Es la
-   forma de abrir su ficha después: el sistema no tiene búsqueda de clientes por
-   nombre ni por DPI.
-2. **Explícale la activación.** Le llegará un correo con un enlace. Hasta que lo
-   abra, **no podrá iniciar sesión**.
-3. **Explícale la validación del documento.** Su acceso queda activo con el
-   correo, pero la foto del documento la revisa un cajero después.
-
-Para atender a la siguiente persona, usa el botón **Registrar otro**: además de
-limpiar el formulario, empieza una intención nueva, lo que evita que el sistema
-confunda dos registros distintos.
-
-## 2. Abrir una cuenta para un cliente
-
-Menú **Cuentas** → **Abrir cuenta**.
-
-1. Elige el tipo: **Monetaria** (uso diario) o **Ahorro** (para guardar; hoy
-   funciona igual y **no genera intereses**).
-2. Marca la casilla **«La cuenta es para otro cliente»** y pega el **customerId
-   del titular**. Es el identificador que devolvió su registro; no hay búsqueda
-   por nombre ni por DPI.
-3. **Continuar** → revisa la confirmación → **Crear la cuenta**.
-
-La cuenta se abre con **Q 0.00** y activa. **Dale al cliente el número de cuenta**
-que aparece al final: es con lo que consulta su saldo y con lo que recibe
-transferencias.
-
-> **No hay campo de depósito inicial**: la cuenta se abre en cero. Si el cliente
-> trae dinero, ábrele la cuenta y luego regístrale el depósito desde
-> *Cuentas → Depósito*, con el número de cuenta que acaba de salir.
-
-Si dejas la casilla sin marcar, la cuenta se abre **a tu nombre**, no al del
-cliente. Revísalo antes de confirmar.
-
-## 3. Transferir por el cliente presente
-
-Menú **Transferencias** → **Nueva transferencia**.
-
-Necesitas el **número de la cuenta de origen**, el de la **cuenta de destino** y
-el **monto**. Deja *Escenario de pago* en *«Sin escenario (comportamiento
-real)»*: las otras opciones son para demostraciones y fuerzan artificialmente el
-resultado del pago.
-
-La pantalla **no comprueba el saldo antes de enviar**. Si no hay fondos, la
-transferencia terminará en *Fallida* y el dinero no se habrá movido.
-
-Al enviar llegas a la pantalla de seguimiento, que se actualiza sola. Lo que le
-puedes decir al cliente según el estado:
-
-| Estado | Qué decirle |
-| --- | --- |
-| **Aceptada** / **Debitando** | «El banco ya la recibió, todavía no se ha movido el dinero.» |
-| **Procesando pago** | «El dinero ya salió de la cuenta. Si el pago falla, vuelve solo.» |
-| **Completada** | «Llegó a la cuenta de destino.» |
-| **Fallida** | «No se hizo. Su dinero nunca salió de la cuenta.» |
-| **Compensada** | «No se completó y el dinero ya fue devuelto. En el estado de cuenta verá dos movimientos y el mismo saldo.» |
-
-Si termina mal, la pantalla explica el motivo —saldo insuficiente, cuenta
-inactiva, cuenta no encontrada, pago rechazado— en lenguaje claro.
-
-**Dale al cliente el identificador de la transferencia.** Con él puede abrirla
-directamente desde *Transferencias → Consultar una transferencia*. Aunque lo
-pierda, la pantalla de **Transferencias** lista las más recientes de quien está
-en sesión, así que no es la única forma de volver a ella.
-
-Si la pantalla dice *«Dejamos de consultar tras dos minutos»*, la transferencia
-sigue viva. No es un fallo; es que la pantalla dejó de preguntar.
-
-## 4. Vigilar los pagos
-
-Menú **Pagos**.
-
-Un pago es el paso intermedio de una transferencia: ocurre después de cobrar la
-cuenta de origen y antes de acreditar la de destino. **No se crea desde aquí** —
-nace de una transferencia. Esta pantalla sirve para vigilar los que están en
-curso y los que terminaron mal.
-
-La tabla se puede filtrar por estado (*En proceso*, *Aprobado*, *No completado*)
-y por tipo de fallo (*Transitorio*, *Permanente*). El aviso rojo de arriba
-resume cuántos no se completaron y por qué.
-
-Pulsa **Ver estado** para ver el detalle de uno. Los cuatro resultados posibles:
-
-| Resultado | Qué significa |
-| --- | --- |
-| **En proceso** | Todavía no responde. El dinero ya salió del origen; si no se completa, vuelve solo. |
-| **Aprobado** | Se ordenó el crédito al destino. |
-| **Rechazado** | Rechazo firme. **No se reintenta**, porque daría el mismo resultado. El dinero ya se devolvió. |
-| **Fallido** | Se agotaron los intentos. Nadie lo rechazó: el sistema dejó de intentarlo. El dinero se devolvió y la transferencia se puede volver a hacer. |
-
-La sección **Intentos** muestra en qué intento va (hasta 4) y cuánto falta para
-el siguiente. Las esperas son de 1, 5 y 30 segundos, así que un pago con
-problemas puede tardar. Un **fallo transitorio** se reintenta; un **rechazo
-permanente**, no.
-
-Desde el detalle del pago puedes saltar a la transferencia que lo originó, y
-desde la transferencia al pago.
-
-## 5. Validación de identidad
-
-Menú **Clientes** → tarjeta **Validación de identidad** → **Ver la cola**.
-
-Esta es una de tus tareas de ventanilla. La cola lista a los clientes cuyo
-documento espera revisión, con su nombre y su correo; el enlace **Revisar** abre
-la ficha de uno.
-
-En la pantalla de revisión verás los **datos declarados** —nombre, número de
-documento, fecha de nacimiento, dirección, username y el estado actual de la
-identidad— y dos botones:
-
-| Botón | Qué hace |
-| --- | --- |
-| **Aprobar identidad** | Da la identidad por validada. |
-| **Rechazar** | Pide confirmación y, al confirmar, la rechaza. El cliente recibe un aviso y podrá volver a subir su documento. |
-
-El veredicto no se puede deshacer, así que confírmalo antes de pulsar. Al
-enviarlo, la pantalla avisa que se registró; el cliente sale de la cola cuando
-el banco termine de procesarlo, no en el instante del clic.
-
-> **La foto del documento todavía no se muestra.** En su lugar aparece un
-> recuadro gris que lo explica: la imagen se guarda cuando la persona se
-> registra, pero el sistema aún no tiene una pantalla que la muestre. Es lo
-> único que falta de esta función. Mientras tanto, revisa la identidad con el
-> documento que la persona te presenta en ventanilla y con los datos declarados
-> que sí ves en pantalla.
-
-Cuando registres a alguien, explícale que la revisión de su documento queda
-pendiente y que **no bloquea su acceso** al sistema: podrá entrar en cuanto
-active su cuenta desde el correo.
-
-## 6. Tus propios datos
-
-Menú **Clientes** → **Abrir mi ficha**. Puedes cambiar tu nombre, tu dirección y
-tu fecha de nacimiento.
-
-Tu **contraseña** se cambia en **Mi perfil**, en el menú de tu nombre arriba a
-la derecha: ahí se te pide la actual antes de poner la nueva. El correo y el
-username no se pueden cambiar desde la aplicación.
-
----
-
-## Problemas comunes
-
-**El cliente dice que no le llega el correo de activación.**
-En una instalación local no sale ningún correo: el canal está simulado. En una
-demostración, pide el enlace al equipo técnico.
-
-**Registré a alguien y no encuentro su ficha.**
-Necesitas su customerId. No hay búsqueda de clientes por nombre ni por DPI. Si
-lo perdiste y esa persona todavía tiene el documento sin revisar, búscala por su
-nombre en la **cola de validación de identidad**: es el único lugar donde el
-sistema lista clientes.
-
-**Abrí la cuenta y quedó a mi nombre.**
-Faltó marcar *«La cuenta es para otro cliente»*. La cuenta no se puede
-reasignar; ábrele una nueva al cliente.
-
-**Envié la transferencia dos veces por error.**
-No se duplicó: la clave de idempotencia hace que el sistema reconozca que es el
-mismo intento. Si de verdad quieres hacer una segunda transferencia, empieza una
-nueva desde el formulario.
-
-**Un pago lleva mucho en «En proceso».**
-Está subiendo la escalera de reintentos. Puede tardar más de medio minuto. La
-sección *Intentos* dice en cuál va.
-
-**No veo el módulo de Auditoría.**
-Tu rol no lo tiene. Si necesitas rastrear una operación, pásale el identificador
-de correlación a un Administrador.
-
----
-
-Volver al [manual general](README.md).
+El [recorrido del despliegue real](recorrido-fase3.md) complementa los pasos anteriores
+con interbancario, auditoría/trazas, pagos, notificaciones y ventanilla.

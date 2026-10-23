@@ -1,0 +1,326 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: test/load/transfer.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 15 max VUs, 1m30s max duration (incl. graceful stop):
+              * transferencias: Up to 15 looping VUs for 1m20s over 3 stages (gracefulRampDown: 10s, gracefulStop: 30s)
+
+time="2026-10-21T22:42:38-06:00" level=info msg="origen b0000000-0000-4000-8000-000000000003 (233100 centavos) -> destino b0000000-0000-4000-8000-000000000004" source=console
+
+running (0m01.0s), 01/15 VUs, 0 complete and 0 interrupted iterations
+transferencias   [   0% ] 01/15 VUs  0m00.3s/1m20.0s
+
+running (0m02.0s), 01/15 VUs, 0 complete and 0 interrupted iterations
+transferencias   [   2% ] 01/15 VUs  0m01.3s/1m20.0s
+
+running (0m03.0s), 01/15 VUs, 1 complete and 0 interrupted iterations
+transferencias   [   3% ] 01/15 VUs  0m02.3s/1m20.0s
+
+running (0m04.0s), 01/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [   4% ] 01/15 VUs  0m03.3s/1m20.0s
+
+running (0m05.0s), 01/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [   5% ] 01/15 VUs  0m04.3s/1m20.0s
+
+running (0m06.0s), 02/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [   7% ] 02/15 VUs  0m05.3s/1m20.0s
+
+running (0m07.0s), 02/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [   8% ] 02/15 VUs  0m06.3s/1m20.0s
+
+running (0m08.0s), 02/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [   9% ] 02/15 VUs  0m07.3s/1m20.0s
+
+running (0m09.0s), 02/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [  10% ] 02/15 VUs  0m08.3s/1m20.0s
+
+running (0m10.0s), 02/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [  12% ] 02/15 VUs  0m09.3s/1m20.0s
+
+running (0m11.0s), 03/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [  13% ] 03/15 VUs  0m10.3s/1m20.0s
+
+running (0m12.0s), 03/15 VUs, 2 complete and 0 interrupted iterations
+transferencias   [  14% ] 03/15 VUs  0m11.3s/1m20.0s
+
+running (0m13.0s), 03/15 VUs, 4 complete and 0 interrupted iterations
+transferencias   [  15% ] 03/15 VUs  0m12.3s/1m20.0s
+
+running (0m14.0s), 03/15 VUs, 6 complete and 0 interrupted iterations
+transferencias   [  17% ] 03/15 VUs  0m13.3s/1m20.0s
+
+running (0m15.0s), 03/15 VUs, 7 complete and 0 interrupted iterations
+transferencias   [  18% ] 03/15 VUs  0m14.3s/1m20.0s
+
+running (0m16.0s), 04/15 VUs, 8 complete and 0 interrupted iterations
+transferencias   [  19% ] 04/15 VUs  0m15.3s/1m20.0s
+
+running (0m17.0s), 04/15 VUs, 10 complete and 0 interrupted iterations
+transferencias   [  20% ] 04/15 VUs  0m16.3s/1m20.0s
+
+running (0m18.0s), 04/15 VUs, 13 complete and 0 interrupted iterations
+transferencias   [  22% ] 04/15 VUs  0m17.3s/1m20.0s
+
+running (0m19.0s), 04/15 VUs, 13 complete and 0 interrupted iterations
+transferencias   [  23% ] 04/15 VUs  0m18.3s/1m20.0s
+
+running (0m20.0s), 04/15 VUs, 13 complete and 0 interrupted iterations
+transferencias   [  24% ] 04/15 VUs  0m19.3s/1m20.0s
+
+running (0m21.0s), 05/15 VUs, 13 complete and 0 interrupted iterations
+transferencias   [  25% ] 05/15 VUs  0m20.3s/1m20.0s
+
+running (0m22.0s), 05/15 VUs, 15 complete and 0 interrupted iterations
+transferencias   [  27% ] 05/15 VUs  0m21.3s/1m20.0s
+
+running (0m23.0s), 05/15 VUs, 15 complete and 0 interrupted iterations
+transferencias   [  28% ] 05/15 VUs  0m22.3s/1m20.0s
+
+running (0m24.0s), 05/15 VUs, 16 complete and 0 interrupted iterations
+transferencias   [  29% ] 05/15 VUs  0m23.3s/1m20.0s
+
+running (0m25.0s), 06/15 VUs, 19 complete and 0 interrupted iterations
+transferencias   [  30% ] 06/15 VUs  0m24.3s/1m20.0s
+
+running (0m26.0s), 06/15 VUs, 19 complete and 0 interrupted iterations
+transferencias   [  32% ] 06/15 VUs  0m25.3s/1m20.0s
+
+running (0m27.0s), 06/15 VUs, 21 complete and 0 interrupted iterations
+transferencias   [  33% ] 06/15 VUs  0m26.3s/1m20.0s
+
+running (0m28.0s), 06/15 VUs, 24 complete and 0 interrupted iterations
+transferencias   [  34% ] 06/15 VUs  0m27.3s/1m20.0s
+
+running (0m29.0s), 07/15 VUs, 26 complete and 0 interrupted iterations
+transferencias   [  35% ] 07/15 VUs  0m28.3s/1m20.0s
+
+running (0m30.0s), 07/15 VUs, 28 complete and 0 interrupted iterations
+transferencias   [  37% ] 07/15 VUs  0m29.3s/1m20.0s
+
+running (0m31.0s), 07/15 VUs, 31 complete and 0 interrupted iterations
+transferencias   [  38% ] 07/15 VUs  0m30.3s/1m20.0s
+
+running (0m32.0s), 07/15 VUs, 32 complete and 0 interrupted iterations
+transferencias   [  39% ] 07/15 VUs  0m31.3s/1m20.0s
+
+running (0m33.0s), 08/15 VUs, 33 complete and 0 interrupted iterations
+transferencias   [  40% ] 08/15 VUs  0m32.3s/1m20.0s
+
+running (0m34.0s), 08/15 VUs, 36 complete and 0 interrupted iterations
+transferencias   [  42% ] 08/15 VUs  0m33.3s/1m20.0s
+
+running (0m35.0s), 08/15 VUs, 37 complete and 0 interrupted iterations
+transferencias   [  43% ] 08/15 VUs  0m34.3s/1m20.0s
+
+running (0m36.0s), 08/15 VUs, 39 complete and 0 interrupted iterations
+transferencias   [  44% ] 08/15 VUs  0m35.3s/1m20.0s
+
+running (0m37.0s), 09/15 VUs, 39 complete and 0 interrupted iterations
+transferencias   [  45% ] 09/15 VUs  0m36.3s/1m20.0s
+
+running (0m38.0s), 09/15 VUs, 44 complete and 0 interrupted iterations
+transferencias   [  47% ] 09/15 VUs  0m37.3s/1m20.0s
+
+running (0m39.0s), 09/15 VUs, 45 complete and 0 interrupted iterations
+transferencias   [  48% ] 09/15 VUs  0m38.3s/1m20.0s
+
+running (0m40.0s), 09/15 VUs, 46 complete and 0 interrupted iterations
+transferencias   [  49% ] 09/15 VUs  0m39.3s/1m20.0s
+
+running (0m41.0s), 10/15 VUs, 50 complete and 0 interrupted iterations
+transferencias   [  50% ] 10/15 VUs  0m40.3s/1m20.0s
+
+running (0m42.0s), 10/15 VUs, 51 complete and 0 interrupted iterations
+transferencias   [  52% ] 10/15 VUs  0m41.3s/1m20.0s
+
+running (0m43.0s), 10/15 VUs, 52 complete and 0 interrupted iterations
+transferencias   [  53% ] 10/15 VUs  0m42.3s/1m20.0s
+
+running (0m44.0s), 10/15 VUs, 57 complete and 0 interrupted iterations
+transferencias   [  54% ] 10/15 VUs  0m43.3s/1m20.0s
+
+running (0m45.0s), 11/15 VUs, 59 complete and 0 interrupted iterations
+transferencias   [  55% ] 11/15 VUs  0m44.3s/1m20.0s
+
+running (0m46.0s), 11/15 VUs, 60 complete and 0 interrupted iterations
+transferencias   [  57% ] 11/15 VUs  0m45.3s/1m20.0s
+
+running (0m47.0s), 11/15 VUs, 62 complete and 0 interrupted iterations
+transferencias   [  58% ] 11/15 VUs  0m46.3s/1m20.0s
+
+running (0m48.0s), 11/15 VUs, 64 complete and 0 interrupted iterations
+transferencias   [  59% ] 11/15 VUs  0m47.3s/1m20.0s
+
+running (0m49.0s), 12/15 VUs, 68 complete and 0 interrupted iterations
+transferencias   [  60% ] 12/15 VUs  0m48.3s/1m20.0s
+
+running (0m50.0s), 12/15 VUs, 71 complete and 0 interrupted iterations
+transferencias   [  62% ] 12/15 VUs  0m49.3s/1m20.0s
+
+running (0m51.0s), 12/15 VUs, 73 complete and 0 interrupted iterations
+transferencias   [  63% ] 12/15 VUs  0m50.3s/1m20.0s
+
+running (0m52.0s), 12/15 VUs, 74 complete and 0 interrupted iterations
+transferencias   [  64% ] 12/15 VUs  0m51.3s/1m20.0s
+
+running (0m53.0s), 13/15 VUs, 74 complete and 0 interrupted iterations
+transferencias   [  65% ] 13/15 VUs  0m52.3s/1m20.0s
+
+running (0m54.0s), 13/15 VUs, 78 complete and 0 interrupted iterations
+transferencias   [  67% ] 13/15 VUs  0m53.3s/1m20.0s
+
+running (0m55.0s), 13/15 VUs, 79 complete and 0 interrupted iterations
+transferencias   [  68% ] 13/15 VUs  0m54.3s/1m20.0s
+
+running (0m56.0s), 13/15 VUs, 80 complete and 0 interrupted iterations
+transferencias   [  69% ] 13/15 VUs  0m55.3s/1m20.0s
+
+running (0m57.0s), 14/15 VUs, 82 complete and 0 interrupted iterations
+transferencias   [  70% ] 14/15 VUs  0m56.3s/1m20.0s
+
+running (0m58.0s), 14/15 VUs, 83 complete and 0 interrupted iterations
+transferencias   [  72% ] 14/15 VUs  0m57.3s/1m20.0s
+
+running (0m59.0s), 14/15 VUs, 83 complete and 0 interrupted iterations
+transferencias   [  73% ] 14/15 VUs  0m58.3s/1m20.0s
+
+running (1m00.0s), 14/15 VUs, 84 complete and 0 interrupted iterations
+transferencias   [  74% ] 14/15 VUs  0m59.3s/1m20.0s
+
+running (1m01.0s), 15/15 VUs, 90 complete and 0 interrupted iterations
+transferencias   [  75% ] 15/15 VUs  1m00.3s/1m20.0s
+
+running (1m02.0s), 15/15 VUs, 92 complete and 0 interrupted iterations
+transferencias   [  77% ] 15/15 VUs  1m01.3s/1m20.0s
+
+running (1m03.0s), 15/15 VUs, 94 complete and 0 interrupted iterations
+transferencias   [  78% ] 15/15 VUs  1m02.3s/1m20.0s
+
+running (1m04.0s), 15/15 VUs, 98 complete and 0 interrupted iterations
+transferencias   [  79% ] 15/15 VUs  1m03.3s/1m20.0s
+
+running (1m05.0s), 15/15 VUs, 100 complete and 0 interrupted iterations
+transferencias   [  80% ] 15/15 VUs  1m04.3s/1m20.0s
+
+running (1m06.0s), 15/15 VUs, 104 complete and 0 interrupted iterations
+transferencias   [  82% ] 15/15 VUs  1m05.3s/1m20.0s
+
+running (1m07.0s), 15/15 VUs, 105 complete and 0 interrupted iterations
+transferencias   [  83% ] 15/15 VUs  1m06.3s/1m20.0s
+
+running (1m08.0s), 13/15 VUs, 108 complete and 0 interrupted iterations
+transferencias   [  84% ] 13/15 VUs  1m07.3s/1m20.0s
+
+running (1m09.0s), 13/15 VUs, 110 complete and 0 interrupted iterations
+transferencias   [  85% ] 13/15 VUs  1m08.3s/1m20.0s
+
+running (1m10.0s), 12/15 VUs, 116 complete and 0 interrupted iterations
+transferencias   [  87% ] 12/15 VUs  1m09.3s/1m20.0s
+
+running (1m11.0s), 10/15 VUs, 122 complete and 0 interrupted iterations
+transferencias   [  88% ] 10/15 VUs  1m10.3s/1m20.0s
+
+running (1m12.0s), 09/15 VUs, 125 complete and 0 interrupted iterations
+transferencias   [  89% ] 09/15 VUs  1m11.3s/1m20.0s
+
+running (1m13.0s), 08/15 VUs, 128 complete and 0 interrupted iterations
+transferencias   [  90% ] 08/15 VUs  1m12.3s/1m20.0s
+
+running (1m14.0s), 08/15 VUs, 130 complete and 0 interrupted iterations
+transferencias   [  92% ] 08/15 VUs  1m13.3s/1m20.0s
+
+running (1m15.0s), 07/15 VUs, 134 complete and 0 interrupted iterations
+transferencias   [  93% ] 07/15 VUs  1m14.3s/1m20.0s
+
+running (1m16.0s), 07/15 VUs, 135 complete and 0 interrupted iterations
+transferencias   [  94% ] 07/15 VUs  1m15.3s/1m20.0s
+
+running (1m17.0s), 07/15 VUs, 136 complete and 0 interrupted iterations
+transferencias   [  95% ] 07/15 VUs  1m16.3s/1m20.0s
+
+running (1m18.0s), 07/15 VUs, 138 complete and 0 interrupted iterations
+transferencias   [  97% ] 07/15 VUs  1m17.3s/1m20.0s
+
+running (1m19.0s), 06/15 VUs, 139 complete and 0 interrupted iterations
+transferencias   [  98% ] 06/15 VUs  1m18.3s/1m20.0s
+
+running (1m20.0s), 03/15 VUs, 142 complete and 0 interrupted iterations
+transferencias   [  99% ] 03/15 VUs  1m19.3s/1m20.0s
+
+running (1m21.0s), 03/15 VUs, 142 complete and 0 interrupted iterations
+transferencias ↓ [ 100% ] 03/15 VUs  1m20s
+
+running (1m22.0s), 03/15 VUs, 142 complete and 0 interrupted iterations
+transferencias ↓ [ 100% ] 03/15 VUs  1m20s
+
+running (1m23.0s), 03/15 VUs, 142 complete and 0 interrupted iterations
+transferencias ↓ [ 100% ] 03/15 VUs  1m20s
+
+running (1m24.0s), 03/15 VUs, 142 complete and 0 interrupted iterations
+transferencias ↓ [ 100% ] 03/15 VUs  1m20s
+
+running (1m25.0s), 02/15 VUs, 143 complete and 0 interrupted iterations
+transferencias ↓ [ 100% ] 03/15 VUs  1m20s
+
+running (1m26.0s), 01/15 VUs, 144 complete and 0 interrupted iterations
+transferencias ↓ [ 100% ] 03/15 VUs  1m20s
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate>0.99' rate=100.00%
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+    transfer_accept_ms
+    ✓ 'p(95)<3000' p(95)=454.92ms
+
+    transfer_saga_ms
+    ✗ 'p(95)<5000' p(95)=10.4s
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 290     3.346634/s
+    checks_succeeded...: 100.00% 290 out of 290
+    checks_failed......: 0.00%   0 out of 290
+
+    ✓ la transferencia fue aceptada (202)
+    ✓ la respuesta trae su transactionId
+
+    CUSTOM
+    transfer_accept_ms.............: avg=224.32ms min=104.54ms med=171.75ms max=773.94ms p(90)=408.83ms p(95)=454.92ms
+    transfer_saga_ms...............: avg=4.24s    min=1.2s     med=3.12s    max=15.99s   p(90)=9.11s    p(95)=10.4s   
+
+    HTTP
+    http_req_duration..............: avg=242.47ms min=100.17ms med=159.15ms max=2.61s    p(90)=443.97ms p(95)=617.09ms
+      { expected_response:true }...: avg=242.47ms min=100.17ms med=159.15ms max=2.61s    p(90)=443.97ms p(95)=617.09ms
+    http_req_failed................: 0.00%  0 out of 759
+    http_reqs......................: 759    8.758948/s
+
+    EXECUTION
+    iteration_duration.............: avg=4.48s    min=1.35s    med=3.27s    max=16.13s   p(90)=9.28s    p(95)=11.16s  
+    iterations.....................: 144    1.661777/s
+    vus............................: 1      min=1        max=15
+    vus_max........................: 15     min=15       max=15
+
+    NETWORK
+    data_received..................: 932 kB 11 kB/s
+    data_sent......................: 347 kB 4.0 kB/s
+
+
+
+
+running (1m26.7s), 00/15 VUs, 144 complete and 1 interrupted iterations
+transferencias ✓ [ 100% ] 00/15 VUs  1m20s
+time="2026-10-21T22:44:04-06:00" level=error msg="thresholds on metrics 'transfer_saga_ms' have been crossed"
