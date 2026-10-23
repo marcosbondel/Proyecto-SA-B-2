@@ -71,6 +71,7 @@ const visible = computed(() => {
     : accounts.value.filter(
         (account) =>
           account.accountId.toLowerCase().includes(needle) ||
+          (account.accountNumber ?? '').toLowerCase().includes(needle) ||
           account.customerId.toLowerCase().includes(needle) ||
           // Searching by the holder's name is the reason the column exists.
           (account.holderName ?? '').toLowerCase().includes(needle),
@@ -250,7 +251,14 @@ useHead({ title: 'Gestión de cuentas · bonking' });
             <td
               class="border-t border-[#E9E9EC] py-3.5 pr-4 font-mono text-[13px] tracking-[0.03em]"
               style="font-variant-numeric: tabular-nums lining-nums"
-            >{{ account.accountId }}</td>
+            >
+              <div
+                v-if="account.accountNumber"
+                class="font-medium text-[#23242A]"
+                data-testid="account-number"
+              >{{ account.accountNumber }}</div>
+              <div :class="account.accountNumber ? 'text-[11px] text-[#75767F]' : ''">{{ account.accountId }}</div>
+            </td>
             <td class="border-t border-[#E9E9EC] py-3.5 pr-4">
               <div
                 class="text-[13px] font-medium text-[#23242A]"
@@ -292,6 +300,10 @@ useHead({ title: 'Gestión de cuentas · bonking' });
         <h2 class="text-[16px] font-semibold">
           {{ target.status === 'ACTIVE' ? 'Desactivar' : 'Reactivar' }} la cuenta
         </h2>
+        <p
+          v-if="target.accountNumber"
+          class="mt-1 font-mono text-[13px] font-medium text-[#23242A]"
+        >{{ target.accountNumber }}</p>
         <p class="mt-1 break-all font-mono text-[12px] text-[#5A5B63]">{{ target.accountId }}</p>
       </template>
 
