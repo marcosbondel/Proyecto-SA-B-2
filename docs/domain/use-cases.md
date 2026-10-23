@@ -1,14 +1,13 @@
 # Business Use Cases
 
-Six flows, each with its actor, input, observable result, the sequence of services that react,
+The six original flows retain their identifiers; implemented Phase II/III flows are appended below. Each records its actor, input, observable result, the sequence of services that react,
 and the failures that are expected rather than accidental. Message names refer to
 [message-catalog.md](message-catalog.md).
 
 Three of these are the use cases the assignment requires by name — open an account, query a
 balance, transfer money (§4.2, use-case diagram). The other three are what makes them work.
 
-**No synchronous call exists between services in any flow.** The only direct answer anywhere is
-the Gateway's asynchronous request/reply.
+**Internal services communicate by broker.** The external bank and Resend are third-party HTTP integrations; they do not permit HTTP between bank services.
 
 Related: [actors.md](actors.md) · [entities.md](entities.md) · [bounded-contexts.md](bounded-contexts.md)
 
@@ -47,8 +46,8 @@ Related: [actors.md](actors.md) · [entities.md](entities.md) · [bounded-contex
 | --- | --- |
 | **Actor** | `CLIENTE` for themselves, or `CAJERO_RECEPTOR` / `ADMINISTRADOR` for any client |
 | **Preconditions** | The customer exists and has `role = CLIENTE` |
-| **Input** | `customerId`, `accountType` (`MONETARIA` or `AHORRO`) |
-| **Result** | An `Account` exists with `balance = 0.00`, `status = ACTIVE`, and the requested type |
+| **Input** | `customerId`, `accountType` (MONETARIA/AHORRO), optional exact initialDeposit; AHORRO requires at least Q100.00 |
+| **Result** | Account with UUID, public accountNumber, ACTIVE, requested type and the admitted initial balance |
 
 **Sequence**
 
@@ -61,9 +60,10 @@ Related: [actors.md](actors.md) · [entities.md](entities.md) · [bounded-contex
 
 | Failure | Result |
 | --- | --- |
-| The referenced customer does not exist | Detected downstream, never by reading Customer Service's data. The account is not created and the rejection is recorded |
+| The referenced customer does not exist | No existence lookup is implemented in Account. This remains a boundary limitation, not a guaranteed rejection |
 | The customer is staff | `ROLE_NOT_ELIGIBLE` (C-6) |
 | Account type missing or unrecognised | Rejected; the type is required at creation |
+| AHORRO initial deposit below Q100.00 | MINIMUM_BALANCE_VIOLATION, no account created |
 
 > Account Service cannot verify the customer exists, and must not try. That is the price of the
 > boundary, and it is the intended design (§4.2, mandatory design rules, p. 7).
@@ -266,3 +266,44 @@ correlation identifier across all flows (§4.2, SRE considerations, p. 7).
 so using it to deduplicate would discard the flow itself. Deduplication is by `eventId`, and
 transfer-level idempotency is by `idempotencyKey`. The three mechanisms are described in
 [entities.md](entities.md).
+
+
+## 7. Read history and the real transfer timeline
+
+**Actor:** CLIENTE own operations; staff operational scope. Read the status/detail or list by account, dates and status. `phaseStatus` projects PENDING/DEBITING/PAYMENT_PENDING to PENDING, COMPLETED to APPROVED, FAILED/COMPENSATED to FAILED; the six original states remain authoritative. Legal transitions are stored atomically with the state change and returned oldest first. A read does not refresh account activity or move money.
+
+## 8. Pay a biller or register a counter deposit
+
+A bill payment is the transfer of case 6 to a seeded institutional biller account, carrying its reference; no second movement or Saga is introduced. The customer uses their source; staff scope follows the matrix. A counter deposit is CAJERO_RECEPTOR/ADMINISTRADOR, reaches Account by command, and records a CREDIT without transfer transactionId. Duplicate request cannot produce a second credit. There is no cash withdrawal flow.
+
+## 9. Detect unusually frequent account usage
+
+**Actor:** system after committed debit/credit. Count the preceding M minutes (sliding window), emit when count > N; defaults N=10, M=5. A separate per-account advisory lock serializes detection without holding the balance row. One notification window and a 60 s publication lease prevent noise and allow retry after a crash. Audit classifies WARNING; the account continues operating. Commission and compensation do not inflate usage.
+
+## 10. Change and observe provider simulation
+
+**Actor:** ADMINISTRADOR. Read/update failureRatePercent, timeoutRatePercent and latencyMs through Gateway → RabbitMQ → Payment; persist once and reply with current configuration. Rates 0–100, sum <=100, latency 0–30000 ms; reset returns to runtime defaults. An explicit scenario wins over probabilistic settings. Normal transfers use the same KYC/debit/payment/compensation flow. Reject unauthorized/invalid changes and restore the pre-test settings after an exercise.
+
+## 11. Inspect audit by correlation, trace, service and level
+
+**Actor:** ADMINISTRADOR. Filter the audit query by correlationId, traceId, service and level; the row links to distributed evidence when traceId exists. Payload is already redacted; a historical NULL trace does not become an invented ID. The customer sees only their notification inbox, not the whole audit console. An unavailable Audit delays this view without preventing the transfer Saga from advancing.
+
+## 12. Record and notify an SLO alert
+
+**Actor:** Grafana/monitoring stack using its webhook secret. Gateway normalizes and publishes `alert.slo.received.v1`; Audit records/classifies and notifies. Firing critical → ERROR, firing warning → WARNING, resolved → INFO; the worst active alert governs the batch. Persisted keys/cooldown prevent repeated notifications for the same alert state. A notification failure does not change an account, retry a payment or compensate a Saga.
+
+## 13. Send a deposit to the other bank
+
+**Actor:** CLIENTE only, own source; JWT and stable idempotency key. Input is source UUID, destination bank/number and integer centavos. Gateway resolves the public origin number through Account and returns 202 plus transactionId/interbankTransferId/correlationId. Transaction executes KYC and debit, and Payment sends the official HTTP request with key and traceparent. 202 is admission; only callback/probe/cancel resolution gives a verdict. ACCEPTED completes the Saga; REJECTED requests compensation including commission and then becomes REVERSED. TIMEOUT keeps funds reserved while the 180 s + 300 s protocol resolves. See [INTERBANK](../operations/INTERBANK.md).
+
+**Expected cases:** invalid recipient syntax, unsupported bank/currency, amount over configured/common limit rejected before debit; remote rejection compensated; missing response probes then cancels; duplicate callback discarded; early callback allowed even before local SENT write; unverified release alerts; accepted-after-release triggers remote reversal. Read list/detail on the dedicated interbank endpoint, with masked destination and ownership scope.
+
+## 14. Receive, cancel and reconcile an interbank deposit
+
+**Actor:** participating bank through X-Api-Key, stable ID and W3C trace context. Admit a new valid request with 202, return current state with 200 for identical retry, reject conflicting data with 409. Payment asks Account eligibility then credit; no cross-database read. Account rechecks ACTIVE and idempotency. Payment reports final status by callback and daily UTC reconciliation page. Cancel an unknown/uncredited ID durably; when a credit is in flight, return retryable 503 rather than claim it was cancelled. Unknown/foreign query is 404.
+
+**Known boundary:** the account command does not carry expiresAt, so the code does not prove that a credit delayed in RabbitMQ cannot cross the contract deadline. The required hard expiry and the implemented pre-dispatch expiry are distinguished in [ADR-021](../architecture/adr/ADR-021-interbank-protocol-v1.md); resolving the race is code work outside T-61.
+
+## 15. Reverse a late acceptance without paying the client twice
+
+**Actor:** system detects contradictory late ACCEPTED after local release; operator investigates ERROR. Persist a stable reversal request, submit/consult it with retry, and let the receiving bank debit and return through a **new** official transfer. If the client has already been compensated, absorb that refund in institutional settlement. Hold an ambiguous candidate until the reversal identifies the refund; do not credit the client by guessing. Unique refund identity and settlement marker forbid a second application. Failed/exhausted reversal or an unresolved expired hold remains visible for reconciliation; no manual status edit substitutes for the money movement.

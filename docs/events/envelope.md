@@ -58,7 +58,7 @@ the suffix and the field makes the message invalid.
 | `correlationId` | Generated | **Copied unchanged** |
 | `causationId` | `null` | The `messageId` being handled |
 | `identity` | The one the Gateway verified | Copied unchanged |
-| `idempotencyKey` | The client's, or generated | Derived deterministically |
+| `idempotencyKey` | Caller key when supplied; otherwise generated messageId | Explicitly supplied by caller when business identity must remain stable; otherwise each new follow-up gets its new messageId |
 
 Regenerating `correlationId` at an intermediate step is the most expensive defect this contract
 can suffer, because nothing fails: the flow simply stops being reconstructible.
@@ -74,18 +74,21 @@ reaches the broker the token is gone.
 It is `null` for work nobody originated — the automatic deactivation of an idle account has no
 user behind it.
 
-**The trust assumption, stated rather than implied**: this is safe only while no producer
-publishes to the broker without having passed through the Gateway. If that ever stops being
-true, the envelope guarantees nothing about identity.
+**Trust boundary:** authenticated external requests enter through Gateway, but internal services also publish follow-ups and system work. The broker credential/publisher boundary must therefore remain trusted. The envelope is not independently signed and a compromised authorized publisher could forge identity; it is not per-service JWT validation.
 
 ## What never travels here
 
-Passwords, session tokens, signing secrets, activation tokens and image bytes. The credential
-and the activation token appear in exactly one message each, in the payload, and are named in
-[`catalog.md`](catalog.md); they never reach the envelope, a log, or an audit event.
+Session JWTs, signing secrets and image bytes do not belong to envelope metadata. Plaintext credentials and activation/recovery tokens appear in the specific payloads needed to register, authenticate, deliver or replace a credential; they are not limited to one catalogue message in the implemented system. They must never be logged, echoed into unrelated replies or persisted in the audit payload. Customer retains digests/hashes; the notification channel handles delivery. See [data ownership](../domain/bounded-contexts.md).
 
 ## Serialization
 
 UTF-8 JSON, published with `contentType: application/json` and `persistent: true`. The AMQP
 properties `messageId`, `correlationId`, `type` and `timestamp` mirror envelope fields so the
 broker's management UI is readable without decoding the body.
+
+
+## W3C context is transport metadata
+
+`correlationId` is a business flow identifier, not an OpenTelemetry traceId. W3C `traceparent` travels in HTTP/AMQP headers, with PRODUCER injection and CONSUMER extraction in `@bank/messaging`; it is not an extra mandatory field of the JSON envelope. The two identifiers remain distinct even when they identify the same operation in the operator's view.
+
+Deferred work persists the context it must continue, including Payment attempts/outbox, interbank callbacks/probes/cancellation/reversals and Customer creation-to-review links. A valid context continues the trace; without a registered SDK/context, absence is honest. External-bank calls generate a non-sampled W3C context if necessary because the official wire contract requires the header. Audit's optional traceId is derived from transport and is never substituted for correlationId or idempotency.
