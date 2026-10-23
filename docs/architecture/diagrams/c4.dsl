@@ -1,143 +1,110 @@
-workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Avanzado." {
-
+workspace "Bank USAC - Fase III" "Modelo compartido; estado configurado contrastado con GKE el 2026-10-21. Las variantes locales se leen en deployment.md." {
     !identifiers hierarchical
-
     model {
-        # --- ACTORES ---
-        cliente = person "Cliente" "Rol CLIENTE. Cuentahabiente que consulta saldo, transfiere y gestiona sus datos."
-        cajero = person "Cajero Receptor" "Rol CAJERO_RECEPTOR. Personal en ventanilla que atiende a los clientes."
-        admin = person "Administrador" "Rol ADMINISTRADOR. Supervisa clientes, cuentas y auditoría."
-
-        # --- SISTEMAS EXTERNOS SIMULADOS ---
-        correo = softwareSystem "Servicio de Correo Electrónico (Simulado)" "Entrega el enlace de activación de cuenta. Sistema externo simulado."
-        proveedor = softwareSystem "Proveedor de Pagos (Simulado)" "Procesa pagos externos que el banco no resuelve internamente. Sistema externo simulado."
-
-        # --- SISTEMA PRINCIPAL ---
-        bankusac = softwareSystem "Bank USAC" "Sistema bancario distribuido. Gestiona clientes, cuentas, transferencias, pagos y auditoría." {
-
-            group "Kubernetes Cluster" {
-                frontend = container "Frontend" "Interfaz de los tres actores. No contiene lógica de negocio." "Nuxt 4 + @nuxt/ui" "Web Browser"
-                gateway = container "API Gateway" "Único entrypoint. Valida el JWT y traduce HTTP síncrono a mensajes AMQP; sin lógica de negocio ni base de datos." "NestJS" "Server-Side Application"
-
-                customer = container "Customer Service" "Identidad del cliente y estado KYC (PENDING/VERIFIED/REJECTED); responde el gate que autoriza transferir." "NestJS" "Server-Side Application"
-                account = container "Account Service" "Cuentas y balances. Tipos MONETARIA y AHORRO con saldo mínimo de apertura y comisión por débito." "NestJS" "Server-Side Application"
-                transaction = container "Transaction Service" "Orquestación de la Saga e historial con filtros por cuenta, estado y fecha." "NestJS" "Server-Side Application"
-                payment = container "Payment Service" "Pagos externos simulados (SUCCESS/FAILURE/TIMEOUT) y escalera de reintentos." "NestJS" "Server-Side Application"
-                notification = container "Notification & Audit Service" "Clasifica cada evento INFO/WARNING/ERROR, notifica según tipo y guarda el historial; terminal." "NestJS" "Server-Side Application"
+        cliente = person "Cliente" "Consulta y opera sus cuentas; consulta seguimiento y notificaciones."
+        cajero = person "Cajero receptor" "Atiende clientes en ventanilla con permisos D-06."
+        admin = person "Administrador" "Consulta auditoría, pagos y notificaciones; configura la simulación por API."
+        sre = person "Operador / SRE" "Diagnostica métricas, trazas, logs y alertas en Grafana."
+        banco = softwareSystem "Banco externo" "Contrato interbancario v1: HTTP 202, callback, consulta, cancelación y reverso."
+        resend = softwareSystem "Resend" "Entrega real del correo de activación. También admite recuperación, rechazo de identidad y cambio de contraseña según evento."
+        bankusac = softwareSystem "Bank USAC" "Cinco servicios de dominio, API Gateway y frontend; Saga y observabilidad." {
+            frontend = container "Frontend" "SSR en Cloud Run; proxy Nitro hacia el Gateway. También existe carga web en GKE." "Nuxt 4 / Vue 3 / Nitro"
+            group "GKE - namespace dev o prod" {
+                gateway = container "API Gateway" "JWT y roles; REST, interbank/v1, alertas SLO y simulación. Sin BD ni lógica de negocio." "Node.js 24 / NestJS"
+                customer = container "Customer Service" "Identidad, KYC, credenciales y eventos del ciclo de vida; verifica foto." "Node.js 24 / NestJS"
+                account = container "Account Service" "Saldo exacto, comisión, liquidación y compensación; anomalía de frecuencia N/M." "Node.js 24 / NestJS"
+                transaction = container "Transaction Service" "Saga de seis estados, historial, outbox y medición de transiciones." "Node.js 24 / NestJS"
+                payment = container "Payment Service" "Reintentos persistidos; simulación en caliente; envío/recepción y protocolo TIMEOUT interbancario." "Node.js 24 / NestJS"
+                audit = container "Notification & Audit" "Auditoría redactada, notificaciones y alertas; consulta por correlación, traza, servicio y nivel." "Node.js 24 / NestJS"
+                rabbit = container "RabbitMQ" "Comandos, eventos y request/reply. Volumen persistente por entorno." "RabbitMQ / AMQP 0-9-1 (GKE observado: 3.13-management)" "Broker"
+                minio = container "MinIO" "Objetos de identidad; Gateway escribe y Customer verifica." "API S3 compatible"
+                mock = container "partner-bank-mock (opcional)" "Simula contrato v1 y fallos. Observado en prod v1.3.6; ausente en dev el 2026-10-21; no es un sexto servicio de dominio." "Node.js / HTTP :3021"
             }
-
-            group "Infraestructura externa al Cluster (Docker en el host)" {
-                rabbitmq = container "RabbitMQ" "Broker central de mensajería asíncrona, fuera de kind." "RabbitMQ 4.3.4-management / AMQP" "Message Broker"
-                customer_db = container "Customer DB" "Base exclusiva de Customer Service." "PostgreSQL" "Database"
-                account_db = container "Account DB" "Base exclusiva de Account Service." "PostgreSQL" "Database"
-                transaction_db = container "Transaction DB" "Base exclusiva de Transaction Service." "PostgreSQL" "Database"
-                payment_db = container "Payment DB" "Base exclusiva de Payment Service." "PostgreSQL" "Database"
-                notification_db = container "Notification DB" "Base exclusiva de Notification & Audit Service." "PostgreSQL" "Database"
-                minio = container "MinIO" "Búfer S3-compatible para fotografías de identidad; fuera de kind." "MinIO / S3-compatible API" "Object Store"
+            group "Compute Engine - cinco VMs privadas fuera de GKE" {
+                customer_db = container "Customer DB" "customer / customer_dev; exclusiva de Customer." "PostgreSQL 18.4 / pg" "Database"
+                account_db = container "Account DB" "account / account_dev; exclusiva de Account." "PostgreSQL 18.4 / pg" "Database"
+                transaction_db = container "Transaction DB" "transaction / transaction_dev; exclusiva de Transaction." "PostgreSQL 18.4 / pg" "Database"
+                payment_db = container "Payment DB" "payment / payment_dev; exclusiva de Payment." "PostgreSQL 18.4 / pg" "Database"
+                audit_db = container "Audit DB" "notification_audit / notification_audit_dev; exclusiva de Audit." "PostgreSQL 18.4 / pg" "Database"
+            }
+            group "GKE - namespace observability" {
+                collector = container "otel-gateway" "Deployment: recibe trazas y métricas; redacta atributos sensibles." "OpenTelemetry Collector / OTLP :4317,:4318" "Telemetry"
+                agent = container "otel-log-agent" "DaemonSet: lee stdout JSON en /var/log/pods, extrae contexto y redacta." "OpenTelemetry Collector / filelog" "Telemetry"
+                prometheus = container "Prometheus" "Scrape, reglas de grabación y SLO; PVC 10 GiB, retención 7 días." "Prometheus / PromQL" "Telemetry"
+                tempo = container "Tempo" "Trazas correlacionadas; PVC 10 GiB, retención 7 días." "Grafana Tempo / TraceQL" "Telemetry"
+                loki = container "Loki" "Logs y metadatos de correlación; PVC 10 GiB, retención 7 días." "Grafana Loki / LogQL" "Telemetry"
+                grafana = container "Grafana" "Nueve dashboards, 16 alertas y Explore. LoadBalancer público; autenticación admin." "Grafana 12.3.1 / PVC 2 GiB" "Telemetry"
+                ksm = container "kube-state-metrics" "Estado de Deployments, réplicas y HPA; señal de anotación de despliegue." "Kubernetes metrics / HTTP :8080" "Telemetry"
             }
         }
-
-        # --- RELACIONES RESUMIDAS DEL CONTEXTO ---
-        cliente -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
-        cajero -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
-        admin -> bankusac "Accede mediante Frontend y API Gateway" "HTTPS (síncrono) -> AMQP (asíncrono)"
-        bankusac -> correo "Solicita entrega de correo de activación" "External email delivery | simulado"
-        bankusac -> proveedor "Procesa pagos externos" "API | solicitud externa | simulado"
-
-        # --- ACTORES Y ENTRYPOINT DEL NIVEL DE CONTENEDORES ---
-        cliente -> bankusac.frontend "Interacción de usuario" "UI | interacción de usuario"
-        cajero -> bankusac.frontend "Interacción de usuario" "UI | interacción de usuario"
-        admin -> bankusac.frontend "Interacción de usuario" "UI | interacción de usuario"
-        bankusac.frontend -> bankusac.gateway "Invoca la API" "HTTPS / REST / JSON | request síncrono"
-
-        # --- GATEWAY <-> RABBITMQ ---
-        # Detalle de mensajes por canal en message-catalog.md; aquí se agrupan por dirección
-        # para que el diagrama de contenedores no repita una flecha por cada tipo de mensaje.
-        bankusac.gateway -> bankusac.rabbitmq "Publica comandos y requests: Customer, Account, Transaction, Payment y Audit (incluye audit.query.requested)" "AMQP | comando/request | correlationId"
-        bankusac.rabbitmq -> bankusac.gateway "Entrega las respuestas request/reply de los cinco servicios: customer.*.replied, account.*.replied, transaction.*.replied, payment.*.replied y, de Notification & Audit, audit.*.replied y notification.*.replied" "AMQP | respuesta | correlationId"
-
-        # --- RABBITMQ <-> CUSTOMER ---
-        bankusac.rabbitmq -> bankusac.customer "Entrega toda la familia customer.# : register, authenticate, verify-email, update, set-identity-verdict, change-password, password-reset.* y las consultas get/names" "AMQP | comando/request-reply | correlationId"
-        bankusac.customer -> bankusac.rabbitmq "Publica respuestas y eventos: registered, activation.requested, email.verified, identity.*, login.*" "AMQP | evento/respuesta | correlationId"
-
-        # --- RABBITMQ <-> ACCOUNT ---
-        bankusac.rabbitmq -> bankusac.account "Entrega toda la familia account.# : create, deposit, set-status, los comandos de Saga (debit/credit/compensation) y las consultas balance, list, operations, billers y stats" "AMQP | comando/request-reply | correlationId"
-        bankusac.account -> bankusac.rabbitmq "Publica las respuestas de consulta y los eventos de Saga/auditoría: account.opened, account.deposited, account.debited, account.debit.rejected, account.credited, account.credit.rejected, account.debit.compensated y account.deactivated (job automático)" "AMQP | evento/respuesta | correlationId"
-
-        # --- RABBITMQ <-> TRANSACTION ---
-        bankusac.rabbitmq -> bankusac.transaction "Entrega transfer.requested, customer.kyc.checked (Gate KYC), las consultas transaction.status.requested, transaction.list.query y transaction.stats.query, y los eventos de Saga de Account/Payment" "AMQP | comando/evento | correlationId"
-        bankusac.transaction -> bankusac.rabbitmq "Publica customer.kyc.check.requested (Gate KYC), comandos de Saga (debit/credit/compensation), payment.requested, las respuestas transaction.status.replied, transaction.list.replied y transaction.stats.replied, y eventos de auditoría" "AMQP | comando/evento/respuesta | correlationId"
-
-        # --- RABBITMQ <-> PAYMENT ---
-        bankusac.rabbitmq -> bankusac.payment "Entrega payment.requested y las consultas payment.status.query, payment.list.query y payment.stats.query" "AMQP | comando | correlationId"
-        bankusac.payment -> bankusac.rabbitmq "Publica payment.attempt.failed (uno por intento fallido, no terminal), payment.succeeded, payment.failed, las respuestas payment.*.replied y eventos de auditoría" "AMQP | evento/respuesta | correlationId"
-
-        # --- AUDITORÍA: DESTINO FINAL ---
-        bankusac.rabbitmq -> bankusac.notification "Entrega los eventos de bank.events en cuatro colas por familia (customer.#, account.#, transaction.#, payment.#) y, en una quinta, las consultas: audit.query.requested, audit.stats.query, notification.list.query, notification.inbox.query y notification.mark-read" "AMQP | evento/comando | correlationId"
-        bankusac.notification -> bankusac.rabbitmq "Publica solo respuestas: audit.query.replied, audit.stats.replied, notification.list.replied, notification.inbox.replied y notification.read.replied" "AMQP | respuesta | correlationId"
-
-        # --- ACTIVACIÓN DE CORREO ---
-        bankusac.notification -> correo "Entrega correo de activación" "Email delivery | efecto externo | sistema simulado"
-
-        # --- INTEGRACIÓN EXTERNA DE PAGOS ---
-        bankusac.gateway -> bankusac.minio "Escribe fotografía y publica su referencia" "S3-compatible API | síncrono hacia infraestructura"
-        bankusac.customer -> bankusac.minio "Lee y verifica fotografía por referencia" "S3-compatible API | síncrono hacia infraestructura"
-        bankusac.payment -> proveedor "Solicita procesamiento de pago externo" "External payment API | solicitud externa | simulado"
-
-        # --- BASE DE DATOS POR SERVICIO ---
-        bankusac.customer -> bankusac.customer_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
-        bankusac.account -> bankusac.account_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
-        bankusac.transaction -> bankusac.transaction_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
-        bankusac.payment -> bankusac.payment_db "Lee/escribe únicamente su base" "TCP/IP | acceso a datos"
-        bankusac.notification -> bankusac.notification_db "Escribe únicamente su base" "TCP/IP | acceso a datos"
+        cliente -> bankusac "Opera y sigue sus operaciones" "HTTPS / interfaz web"
+        cajero -> bankusac "Atiende en ventanilla" "HTTPS / interfaz web"
+        admin -> bankusac "Supervisa y consulta auditoría" "HTTPS / interfaz web"
+        sre -> bankusac "Investiga incidentes y SLO" "Grafana / Explore"
+        bankusac -> banco "Envía depósitos y resultados; consulta, cancela y revierte" "HTTP(S) / JSON / X-Api-Key / traceparent"
+        banco -> bankusac "Entrega depósitos y callbacks" "Contrato v1 / HTTP 202 + resultado asíncrono"
+        bankusac -> resend "Entrega activación" "HTTPS / API Resend"
+        cliente -> bankusac.frontend "Opera" "HTTPS :443"
+        cajero -> bankusac.frontend "Atiende" "HTTPS :443"
+        admin -> bankusac.frontend "Supervisa" "HTTPS :443"
+        sre -> bankusac.grafana "Diagnostica y consulta" "HTTP :80 / sesión autenticada"
+        bankusac.frontend -> bankusac.gateway "Proxy SSR/API" "HTTP :3000 / REST JSON / correlationId"
+        bankusac.gateway -> bankusac.rabbit "Comandos, consultas y callback traducido a mensaje" "AMQP 0-9-1 :5672 / request-reply <=5 s"
+        bankusac.rabbit -> bankusac.gateway "Respuestas de dominio" "AMQP :5672 / correlationId + traceparent"
+        bankusac.rabbit -> bankusac.customer "Comandos y KYC" "AMQP / asíncrono"
+        bankusac.customer -> bankusac.rabbit "Respuestas y eventos de ciclo de vida" "AMQP / asíncrono"
+        bankusac.rabbit -> bankusac.account "Movimientos y consultas" "AMQP / asíncrono"
+        bankusac.account -> bankusac.rabbit "Veredictos y account.anomaly.detected.v1" "AMQP / asíncrono"
+        bankusac.rabbit -> bankusac.transaction "Solicitudes y eventos de Saga" "AMQP / asíncrono"
+        bankusac.transaction -> bankusac.rabbit "KYC, débito, pago, crédito y compensación" "AMQP / outbox / asíncrono"
+        bankusac.rabbit -> bankusac.payment "Pagos, depósitos y resultados v1" "AMQP / asíncrono"
+        bankusac.payment -> bankusac.rabbit "Veredictos, acciones de Account y respuestas" "AMQP / outbox / asíncrono"
+        bankusac.rabbit -> bankusac.audit "Eventos y consultas de auditoría" "AMQP / asíncrono"
+        bankusac.audit -> bankusac.rabbit "Sólo respuestas" "AMQP / request-reply"
+        bankusac.gateway -> bankusac.minio "Deposita foto" "S3 / HTTP :9000"
+        bankusac.customer -> bankusac.minio "Verifica objeto y digest" "S3 / HTTP :9000"
+        bankusac.customer -> bankusac.customer_db "Sólo su base" "TCP :5432 / pg / SQL parametrizado"
+        bankusac.account -> bankusac.account_db "Sólo su base; row lock" "TCP :5432 / NUMERIC(14,2)"
+        bankusac.transaction -> bankusac.transaction_db "Sólo su base; estado + outbox" "TCP :5432 / transacción local"
+        bankusac.payment -> bankusac.payment_db "Sólo su base; reintentos y leases" "TCP :5432 / transacción local"
+        bankusac.audit -> bankusac.audit_db "Sólo su base; payload redactado" "TCP :5432 / deduplicación"
+        bankusac.payment -> banco "Contrato v1: envío, sondeo, cancelación y reverso" "HTTP(S) / JSON / X-Api-Key / traceparent"
+        banco -> bankusac.gateway "Depósitos y callbacks /interbank/v1/*" "HTTP :3000 / X-Api-Key / traceparent"
+        bankusac.payment -> bankusac.mock "Alternativa de prueba configurada explícitamente" "HTTP :3021 / contrato v1"
+        bankusac.mock -> bankusac.gateway "Callback de prueba" "HTTP /interbank/v1/*"
+        bankusac.audit -> resend "Correo de activación" "HTTPS :443 / API Resend"
+        bankusac.gateway -> bankusac.collector "Trazas y métricas" "OTLP gRPC :4317 o HTTP :4318"
+        bankusac.customer -> bankusac.collector "Trazas y métricas" "OTLP / @bank/observability"
+        bankusac.account -> bankusac.collector "Trazas y métricas" "OTLP / @bank/observability"
+        bankusac.transaction -> bankusac.collector "Trazas y métricas" "OTLP / @bank/observability"
+        bankusac.payment -> bankusac.collector "Trazas y métricas" "OTLP / @bank/observability"
+        bankusac.audit -> bankusac.collector "Trazas y métricas" "OTLP / @bank/observability"
+        bankusac.collector -> bankusac.tempo "Exporta spans redactados" "OTLP gRPC :4317"
+        bankusac.prometheus -> bankusac.collector "Scrape de métricas" "HTTP :8889 /metrics"
+        bankusac.agent -> bankusac.loki "Logs de stdout; sin broker" "OTLP HTTP :3100 /otlp"
+        bankusac.prometheus -> bankusac.frontend "Métricas web" "HTTP /metrics (carga web de GKE)"
+        bankusac.prometheus -> bankusac.rabbit "Scrape del broker" "HTTP :15692 /metrics"
+        bankusac.prometheus -> bankusac.ksm "Scrape de plataforma" "HTTP :8080 /metrics"
+        bankusac.grafana -> bankusac.prometheus "SLI, SLO y error budget" "PromQL / HTTP"
+        bankusac.grafana -> bankusac.tempo "Trazas" "TraceQL / HTTP :3200"
+        bankusac.grafana -> bankusac.loki "Logs y salto a traza" "LogQL / HTTP :3100"
+        bankusac.grafana -> bankusac.gateway "Webhook POST /api/alerts/slo" "HTTP :3000 / token secreto"
     }
-
     views {
         systemContext bankusac "Diagrama_Contexto" {
-            include cliente cajero admin bankusac correo proveedor
-            autoLayout lr 450 250
+            include cliente cajero admin sre bankusac banco resend
+            autoLayout lr 700 450
         }
-
         container bankusac "Diagrama_Contenedores" {
-            include cliente cajero admin
-            include bankusac.frontend bankusac.gateway
-            include bankusac.customer bankusac.account bankusac.transaction bankusac.payment bankusac.notification
-            include bankusac.rabbitmq
-            include bankusac.customer_db bankusac.account_db bankusac.transaction_db bankusac.payment_db bankusac.notification_db
-            include bankusac.minio
-            include correo proveedor
-            autoLayout tb 650 400
+            include *
+            autoLayout lr 900 500
         }
-
-        dynamic bankusac "Flujo_Saga_Transferencia_Exitoso" "Camino feliz de una transferencia entre cuentas con Gate KYC (patrón Saga)." {
-            cliente -> bankusac.frontend "1. Solicita transferencia"
-            bankusac.frontend -> bankusac.gateway "2. POST /transfers"
-            bankusac.gateway -> bankusac.rabbitmq "3. Publica transfer.requested"
-            bankusac.rabbitmq -> bankusac.transaction "4. Entrega transfer.requested"
-            bankusac.transaction -> bankusac.rabbitmq "5. Publica customer.kyc.check.requested (Gate KYC)"
-            bankusac.rabbitmq -> bankusac.customer "6. Entrega customer.kyc.check.requested"
-            bankusac.customer -> bankusac.rabbitmq "7. Publica customer.kyc.checked (VERIFIED)"
-            bankusac.rabbitmq -> bankusac.transaction "8. Entrega customer.kyc.checked (aprobado)"
-            bankusac.transaction -> bankusac.rabbitmq "9. Publica account.debit.requested"
-            bankusac.rabbitmq -> bankusac.account "10. Entrega account.debit.requested"
-            bankusac.account -> bankusac.rabbitmq "11. Publica account.debited"
-            bankusac.rabbitmq -> bankusac.transaction "12. Entrega account.debited"
-            bankusac.transaction -> bankusac.rabbitmq "13. Publica payment.requested"
-            bankusac.rabbitmq -> bankusac.payment "14. Entrega payment.requested"
-            bankusac.payment -> proveedor "15. Procesa pago externo"
-            bankusac.payment -> bankusac.rabbitmq "16. Publica payment.succeeded"
-            bankusac.rabbitmq -> bankusac.transaction "17. Entrega payment.succeeded"
-            bankusac.transaction -> bankusac.rabbitmq "18. Publica account.credit.requested"
-            bankusac.rabbitmq -> bankusac.account "19. Entrega account.credit.requested"
-            bankusac.account -> bankusac.rabbitmq "20. Publica account.credited"
-            bankusac.rabbitmq -> bankusac.transaction "21. Entrega account.credited"
-            bankusac.transaction -> bankusac.rabbitmq "22. Publica transaction.completed"
-            bankusac.rabbitmq -> bankusac.notification "23. Consume eventos para auditoría"
-            autoLayout lr 450 250
-        }
-
-        theme default
         styles {
+
+            element "Element" {
+                fontSize 22
+                width 390
+            }
             element "Person" {
                 shape Person
                 background #ffffff
@@ -146,70 +113,37 @@ workspace "Bank USAC" "Sistema bancario distribuido para el curso de Software Av
             }
             element "Software System" {
                 background #ffffff
-                color #EF9425
-                stroke #EF9425
+                color #ef9425
+                stroke #ef9425
             }
             element "Container" {
                 background #ffffff
-                color #1168BD
-                stroke #1168BD
-            }
-            element "Boundary" {
-                background #ffffff
-                color #1168BD
-                stroke #1168BD
-            }
-            element "Group" {
-                background #ffffff
-                color #1168BD
-                stroke #1168BD
-            }
-            element "Group:Kubernetes Cluster" {
-                color #1168BD
-                stroke #1168BD
-            }
-            element "Group:Infraestructura externa al Cluster (Docker en el host)" {
-                color #707070
-                stroke #707070
-            }
-            element "Web Browser" {
-                shape WebBrowser
-                background #ffffff
-                color #1168BD
-                stroke #1168BD
-            }
-            element "Server-Side Application" {
-                shape Component
-                background #ffffff
-                color #1168BD
-                stroke #1168BD
-            }
-            element "Message Broker" {
-                shape Pipe
-                background #ffffff
-                color #1168BD
-                stroke #1168BD
+                color #1168bd
+                stroke #1168bd
             }
             element "Database" {
                 shape Cylinder
-                background #ffffff
-                color #1168BD
-                stroke #1168BD
+                background #f1f4f8
+                color #336791
+                stroke #336791
             }
-            element "Object Store" {
-                shape Cylinder
+            element "Broker" {
+                shape Pipe
                 background #ffffff
-                color #1168BD
-                stroke #1168BD
+                color #c11926
+                stroke #c11926
             }
-            element "Existing System" {
-                background #ffffff
-                color #C11926
-                stroke #C11926
+            element "Telemetry" {
+                background #f6f0ff
+                color #70519b
+                stroke #70519b
             }
             relationship "Relationship" {
                 color #707070
+                fontSize 16
+                style solid
             }
+
         }
     }
 }
