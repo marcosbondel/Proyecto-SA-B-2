@@ -157,8 +157,7 @@ Worked example: [`examples/compensated.json`](examples/compensated.json).
 
 ### 1. Happy path
 
-All eight steps, closing in `COMPLETED`. Eleven messages, one `correlationId`, a causal chain
-with no gaps. [`examples/happy-path.json`](examples/happy-path.json).
+The current KYC-gated flow closes in COMPLETED, preserving correlation and causal links. The generated example is a historical reduced Saga without all current gates/observers; its message count is not the full deployed flow. [`examples/happy-path.json`](examples/happy-path.json).
 
 ### 2. KYC refused
 
@@ -179,8 +178,8 @@ in `FAILED`.
 The Gateway waits at most five seconds for a reply. When that expires it stops waiting and
 answers the client that the result is not yet known.
 
-**The timeout does not cancel anything.** There is no cancellation message in the catalogue,
-and adding one would be wrong: the Saga is already in flight across five services and stopping
+**The Gateway reply timeout does not cancel the Saga.** Interbank has its own cancellation protocol, which does not cancel an internal Saga simply because an HTTP waiter timed out;
+the Saga is already in flight across services and stopping
 it midway is exactly the situation compensation exists to avoid. The caller comes back with
 `transaction.status.requested.v1` and finds out how it ended.
 
@@ -226,6 +225,16 @@ dead-letter queue and the transfer stops advancing. The most serious case is
 `account.debit.compensation.requested.v1`: the money is out of the source account and has not
 come back.
 
-Nothing in this ticket detects that. The procedure for finding and resolving a stalled Saga is
-**T-23**; the dead-letter queues that make it findable are described in
+Phase III detects lag, dead letters and transfer latency with metrics/alerts; an alert does not repair the transfer by itself. Follow the [DLQ runbook](../operations/runbooks/dead-letter.md) and [transfer runbook](../operations/runbooks/transfer-latency.md); the queues are described in
 [`topology.md`](topology.md).
+
+
+## Interbank uses this Saga and has a separate protocol state
+
+A transfer with interbank context still runs KYC → Account debit → Payment verdict → credit to institutional settlement or source compensation. Account alone moves funds; an AHORRO debit includes its commission and compensation restores both.
+
+Payment waits for the partner's 202 + callback. At createdAt +180 s it records TIMEOUT **without** `payment.failed.v1`; the Saga stays PAYMENT_PENDING and funds remain reserved. Probe then cancellation determines ACCEPTED or REJECTED. If neither yields a verified result, release requires expiresAt +300 s and an ERROR alert. Only a decided negative verdict invokes the compensation path above; Account's acknowledgement then marks the deposit REVERSED. A reply timeout of five seconds is unrelated to these deadlines.
+
+An ACCEPTED arriving after release requests a remote reversal and records ERROR; its refund is a new transfer. If the client is already compensated, the incoming refund settles the institutional account instead of paying the client again. A candidate refund can be held while reversal status identifies it. The [protocol ADR](../architecture/adr/ADR-021-interbank-protocol-v1.md) and [runbook](../operations/INTERBANK.md) explain idempotency, state history, outbox, leases and the observed receiver hard-expiry limitation.
+
+Counters distinguish timeout at the deadline from later resolution, so a single send is counted once in the result denominator. Replaying a terminal verdict is not a second transfer. Recovery of a previously missing verdict uses the same atomic outbox and legal Saga transitions; manually crediting an account is not equivalent evidence.

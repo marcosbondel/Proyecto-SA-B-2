@@ -14,7 +14,7 @@
    - [3.2 Modelo C4 — Nivel 1: Contexto del Sistema](#32-modelo-c4--nivel-1-contexto-del-sistema)
    - [3.3 Modelo C4 — Nivel 2: Contenedores](#33-modelo-c4--nivel-2-contenedores)
    - [3.4 Modelo C4 — Nivel 3: Componentes y Arquitectura Limpia](#34-modelo-c4--nivel-3-componentes-y-arquitectura-limpia)
-   - [3.5 Diagrama UML de Despliegue](#35-diagrama-uml-de-despliegue)
+   - [3.5 Diagrama UML de Despliegue](#35-diagrama-uml-de-despliegue-local-kind)
    - [3.6 Diagrama UML de Secuencia: Creación de Cuenta](#36-diagrama-uml-de-secuencia-creación-de-cuenta)
    - [3.7 Diagrama UML de Secuencia: Transferencia con Saga Coreografiada](#37-diagrama-uml-de-secuencia-transferencia-con-saga-coreografiada)
    - [3.8 Diagramas UML de Casos de Uso (Jerarquía y Roles)](#38-diagramas-uml-de-casos-de-uso-jerarquía-y-roles)
@@ -26,56 +26,70 @@
 7. [Manual de usuario y guías operativas](#7-manual-de-usuario-y-guías-operativas)
 8. [Estructura del monorepo y código fuente](#8-estructura-del-monorepo-y-código-fuente)
 9. [Contenedores y despliegue en Kubernetes](#9-contenedores-y-despliegue-en-kubernetes)
-10. [Frontend web (Nuxt 3) y validación de roles](#10-frontend-web-nuxt-3-y-validación-de-roles)
+10. [Frontend web (Nuxt 4) y validación de roles](#10-frontend-web-nuxt-4-y-validación-de-roles)
 11. [Verificación, calidad y deudas técnicas controladas](#11-verificación-calidad-y-deudas-técnicas-controladas)
 12. [Fase II — Extensión funcional por microservicio](#12-fase-ii--extensión-funcional-por-microservicio)
 13. [Fase II — Pipeline CI/CD, estrategia de ramas y despliegue selectivo](#13-fase-ii--pipeline-cicd-estrategia-de-ramas-y-despliegue-selectivo)
 14. [Fase II — Infraestructura como código y despliegue en la nube](#14-fase-ii--infraestructura-como-código-y-despliegue-en-la-nube)
+15. [Fase III — observabilidad, interbancario y evidencia](#15-fase-iii--observabilidad-interbancario-y-evidencia)
 
 ---
 
 ## 1. Los entregables del enunciado y su ubicación
 
-Este documento consolida la arquitectura, el diseño y las evidencias de implementación de **Bank USAC**, guiando la evaluación hacia cada artefacto concreto versionado en el repositorio:
+Este documento consolida arquitectura, diseño y evidencias de **Bank USAC**.
+La revisión T-61 del **21 de octubre de 2026** distingue código implementado,
+configuración declarada, estado cloud observado y pruebas ejecutadas. Los
+estados de la tabla no certifican requisitos sin evidencia ni sustituyen los
+pendientes de §15.
 
 | Entregable Oficial | Dónde vive en el repositorio | Estado |
 | :--- | :--- | :---: |
 | **Documento técnico completo** | Este documento ([`docs/TECHNICAL_DOCUMENT.md`](TECHNICAL_DOCUMENT.md)) + [`docs/architecture.md`](architecture.md). El índice de toda la documentación es [`docs/README.md`](README.md) | **Completo** |
 | **Caso de negocio, requisitos y trazabilidad** | [`docs/dda.md`](dda.md) — stakeholders, RF/RNF, escenarios de calidad y las matrices que atan cada requisito a su caso de uso | **Completo** |
-| **Diagramas arquitectónicos** | [`docs/architecture/diagrams/`](architecture/diagrams/) (fuentes `.puml`, `.dsl`, `.dbml` e imágenes renderizadas `.png`) | **Completo** |
-| **Definición de SLI, SLO y SLA** | [`docs/sre/sli-slo-sla.md`](sre/sli-slo-sla.md) (Marco unificado: 30 indicadores, 26 objetivos, 99.99% disponibilidad y exclusiones); las preocupaciones de diseño que responden, en [`docs/RELIABILITY.md`](RELIABILITY.md) | **Completo** |
+| **Diagramas arquitectónicos** | [`docs/architecture/diagrams/`](architecture/diagrams/) (fuentes `.puml`, `.dsl`, `.dbml` y diagramas sólo en `.png`); [ADR-024](architecture/adr/ADR-024-native-lucid-and-png-delivery.md) exige edición nativa Lucid para casos de uso/despliegue | **Revisión gráfica en curso; ER pendiente del solicitante** |
+| **Definición de SLI, SLO y SLA** | [`docs/sre/sli-slo-sla.md`](sre/sli-slo-sla.md) (indicadores, objetivos, ventanas, presupuesto y exclusiones; §5.3 concentra la medición de Fase III); las preocupaciones de diseño que responden, en [`docs/RELIABILITY.md`](RELIABILITY.md) | **Completo** |
 | **Casos de uso detallados** | [`docs/domain/use-cases.md`](domain/use-cases.md) y jerarquía UML en [`docs/architecture/diagrams/cdu/`](architecture/diagrams/cdu/README.md) | **Completo** |
-| **Decisiones arquitectónicas (ADRs)** | [`docs/adr.md`](adr.md) y 16 registros formales en [`docs/architecture/adr/`](architecture/adr/README.md), de los cuales [ADR-014](architecture/adr/ADR-014-cloud-provider.md), [ADR-015](architecture/adr/ADR-015-ci-cd-platform.md) y [ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md) son los de la Fase II | **Completo** |
-| **Manual de usuario integral** | [`docs/manual/`](manual/README.md) — la guía general, una por rol y el [recorrido visual](manual/recorrido-visual.md) de 78 pasos con captura por paso | **Completo** |
+| **Decisiones arquitectónicas (ADRs)** | [`docs/adr.md`](adr.md) y los registros formales en [`docs/architecture/adr/`](architecture/adr/README.md), de los cuales [ADR-014](architecture/adr/ADR-014-cloud-provider.md), [ADR-015](architecture/adr/ADR-015-ci-cd-platform.md) y [ADR-016](architecture/adr/ADR-016-cloud-infrastructure.md) son los de la Fase II | **Completo** |
+| **Manual de usuario y evidencia** | [`docs/manual/`](manual/README.md) — la guía general, una por rol y el [recorrido visual](manual/recorrido-visual.md) histórico de 78 pasos, más la [validación Fase III](qa/guia-validacion-manual-fase3.md) | **Procedimientos revisados; evidencia según registro** |
 | **Estrategia de monorepo** | Raíz: `pnpm-workspace.yaml`, `package.json` y Turborepo (`turbo.json`) | **Completo** |
 | **5 microservicios desacoplados** | [`apps/services/`](../apps/services/) (`customer`, `account`, `transaction`, `payment`, `notification-audit`) | **Completo** |
 | **API Gateway perimetral** | [`apps/gateway/`](../apps/gateway/) (NestJS, puerto 3000, sin DB, sin HTTP interno) | **Completo** |
 | **Despliegue en Kubernetes** | [`infra/k8s/`](../infra/k8s/README.md), chart Helm en `infra/k8s/helm/bank-usac/` y runbook local [`DEPLOYMENT.md`](operations/DEPLOYMENT.md) | **Completo** |
-| **Frontend web funcional** | [`apps/web/`](../apps/web/README.md) (Nuxt 3, puerto 3010, Claude Design, 34 pantallas) | **Completo** |
+| **Frontend web funcional** | [`apps/web/`](../apps/web/README.md) (Nuxt 4, puerto 3010, Claude Design, 34 pantallas) | **Completo** |
 | **Código: microservicios extendidos (Fase II)** | KYC, tipos de cuenta con comisión, historial con filtros, pagos externos simulados y clasificación de eventos — §12 de este documento, con la evidencia por ticket en [`docs/qa/backend/`](qa/README.md) | **Completo** |
 | **Pipeline: CI/CD funcional (Fase II)** | [`.github/workflows/`](../.github/workflows/) — `ci.yml`, `changes.yml`, `release.yml`, `cd.yml`; explicados en [`operations/CI.md`](operations/CI.md) y en §13 | **Completo** |
-| **Infraestructura: scripts de Terraform (Fase II)** | [`infra/terraform/gcp/`](../infra/terraform/gcp/README.md) — VPC, cinco VMs con PostgreSQL, GKE y Cloud Run; §14 | **Completo, con tres recursos aún manuales (TD-079 … TD-081)** |
+| **Infraestructura: scripts de Terraform (Fase II)** | [`infra/terraform/gcp/`](../infra/terraform/gcp/README.md) — VPC, cinco VMs con PostgreSQL, GKE y Cloud Run; §14 | **Actualizado: recursos declarados y despliegue verificado por separado** |
 | **Despliegue: sistema en la nube (Fase II)** | GKE namespaces `prod` y `dev`, frontend en Cloud Run. Procedimiento completo en [`operations/CLOUD.md`](operations/CLOUD.md) | **Completo** |
-| **Documento: arquitectura actualizada (Fase II)** | Este documento (§3.10, §12, §13 y §14) y [`docs/architecture.md`](architecture.md) §7.1.2 | **Completo** |
+| **Documento: arquitectura actualizada (Fase II y III)** | Este documento (§3.10, §12, §13 y §14) y [`docs/architecture.md`](architecture.md) §7.1.2 | **Completo** |
 | **Informe de Pruebas E2E** | [`docs/qa/`](qa/README.md) — el [informe de validación](qa/validation-report.md) con las 68 pruebas una por una, la [guía de happy path y errores](qa/happypath.md) y las capturas que produce cada suite; la narrativa de la ejecución, en [`E2E.md`](../E2E.md) | **Completo** |
 
 ---
 
 ## 2. Resumen del sistema y arquitectura general
 
-Bank USAC implementa una arquitectura bancaria distribuida de microservicios orientada a eventos, aplicando **Clean Architecture** en cada servicio, **Saga por coreografía** para flujos distribuidos y comunicación **100% asíncrona mediante RabbitMQ (AMQP 0-9-1)**.
+Bank USAC implementa microservicios orientados a eventos, con **Clean
+Architecture**, **Saga por coreografía** y comunicación interna asíncrona
+mediante **RabbitMQ (AMQP 0-9-1)**. Payment y Notification & Audit realizan
+HTTP hacia terceros, no hacia otros servicios del banco.
 
 ### Matriz de componentes y responsabilidades
 
-| Componente | Rol en el sistema | Puerto Host | Base de datos | Comunicación Externa |
+| Componente | Rol en el sistema | Puerto de aplicación local | Base local / puerto publicado | Dependencias e integración |
 | :--- | :--- | :---: | :---: | :--- |
-| **Frontend Web** | Interfaz de usuario reactiva en Nuxt 3 para los 3 roles. | `3010` | Ninguna | HTTP REST hacia API Gateway |
+| **Frontend Web** | Interfaz de usuario reactiva en Nuxt 4 para los 3 roles. | `3010` | Ninguna | HTTP REST hacia API Gateway |
 | **API Gateway** | Único punto de entrada perimetral. Autenticación JWT, RBAC y traducción HTTP ↔ AMQP. | `3000` | Ninguna | RabbitMQ (`bank.commands`, `bank.replies`) y MinIO |
-| **Customer Service** | Gestión de clientes, identidad (DPI en MinIO), tokens de activación y contraseñas scrypt. | `3001` (solo `/health`) | `5433` (`customer`) | RabbitMQ |
-| **Account Service** | Cuentas monetarias y de ahorro, saldos exactos, movimientos y desactivación automática. | `3002` (solo `/health`) | `5434` (`account`) | RabbitMQ |
-| **Transaction Service** | Coordinación de la Saga distribuida y máquina de estados finita pura (6 estados). | `3003` (solo `/health`) | `5435` (`transaction`) | RabbitMQ |
-| **Payment Service** | Procesamiento de pagos a servicios (EEGSA, Empagua, Claro) y escalera de reintentos en BD. | `3004` (solo `/health`) | `5436` (`payment`) | RabbitMQ |
-| **Notification & Audit** | Bitácora inmutable con *pre-insert redaction* y notificaciones por correo/inbox. | `3005` (solo `/health`) | `5437` (`notification_audit`) | RabbitMQ |
+| **Customer Service** | Identidad, credenciales scrypt, activación y KYC; verifica y conserva la foto cargada. | `3001` | `5433` (`customer`) | RabbitMQ, PostgreSQL y lectura de objetos MinIO |
+| **Account Service** | Cuentas, dinero exacto, depósitos, comisión, compensación y actividad. | `3002` | `5434` (`account`) | RabbitMQ y PostgreSQL |
+| **Transaction Service** | Saga de seis estados, historial, deduplicación y outbox; no decide fondos. | `3003` | `5435` (`transaction`) | RabbitMQ y PostgreSQL |
+| **Payment Service** | Intentos, simulación persistida y envío/recepción/reconciliación interbancaria. | `3004` | `5436` (`payment`) | RabbitMQ, PostgreSQL y HTTP al banco externo |
+| **Notification & Audit** | Bitácora redactada antes del insert, bandejas, entrega y alertas SLO. | `3005` | `5437` (`notification_audit`) | RabbitMQ, PostgreSQL y HTTPS a Resend cuando está configurado |
+
+Los servicios de dominio sirven las sondas HTTP `/health` y `/ready`, sin
+operaciones bancarias HTTP entre ellos. Las métricas de los seis NestJS se
+exportan por OTLP; Nuxt expone `/metrics` para scrape. Los puertos
+5433–5437 son publicaciones locales: PostgreSQL usa 5432 dentro de la red de
+infraestructura. La topología cloud y sus IP se explican en §3.10.
 
 ### Tres principios inviolables de aislamiento
 
@@ -96,15 +110,23 @@ El diagrama de arquitectura general ilustra la división entre la red perimetral
 ![Arquitectura General](architecture/diagrams/01-arquitectura-general.png)
 
 #### Explicación Técnica
-* **Perímetro Exterior:** Los usuarios (Cliente, Cajero Receptor y Administrador) se comunican mediante HTTPS con la aplicación Web (puerto `3010`) y el API Gateway (puerto `3000`).
+* **Perímetro exterior:** En local, Web usa HTTP :3010 y Gateway HTTP :3000.
+  En cloud, Web se sirve por HTTPS :443 desde Cloud Run; el Gateway observado
+  sigue en HTTP :3000. El proxy Nitro evita contenido mixto en el navegador,
+  pero no cifra ese segundo tramo.
 * **Límite del Clúster / Entorno de Aplicaciones:** El API Gateway actúa como frontera de seguridad; valida credenciales y convierte las peticiones entrantes en comandos asíncronos encolados en RabbitMQ.
-* **Infraestructura de Soporte Externa:** Fuera del clúster de ejecución corren las 5 instancias independientes de PostgreSQL 18.4 (puertos `5433` a `5437`), el bus de mensajería RabbitMQ (puerto `5673` en host, `5672` interno) y el almacenamiento S3 compatible MinIO (puerto `9002` en host, `9000` interno).
+* **Infraestructura:** En kind local, PostgreSQL, RabbitMQ y MinIO están fuera
+  del clúster sobre Docker. En GKE, PostgreSQL sigue fuera en cinco VMs,
+  mientras RabbitMQ y MinIO residen en cada namespace bancario. Los puertos
+  publicados locales se comprueban con Docker; no son las direcciones cloud.
 
 ---
 
 ### 3.2 Modelo C4 — Nivel 1: Contexto del Sistema
 
-El diagrama de contexto establece los límites de **Bank USAC**, los actores que interactúan con él y las integraciones externas simuladas:
+El diagrama de contexto establece los límites de **Bank USAC**, los actores y
+los terceros. Las integraciones reales y los adaptadores de demostración se
+identifican por separado:
 
 ![C4 Nivel 1 - Contexto](architecture/diagrams/02-c4-contexto.png)
 
@@ -114,8 +136,16 @@ El diagrama de contexto establece los límites de **Bank USAC**, los actores que
   2. **Cajero Receptor:** Operador en ventanilla que ejecuta depósitos en efectivo, abre cuentas presenciales y valida la identidad de nuevos clientes.
   3. **Administrador:** Personal bancario que supervisa la bitácora de auditoría global, desactiva cuentas inactivas y monitorea la salud del sistema.
 * **Sistemas Externos:**
-  * **Servicio de Correo Electrónico:** Entrega enlaces de activación y tokens de recuperación de contraseñas.
-  * **Proveedor de Pagos:** Sistema externo simulado que liquida los pagos de servicios básicos que el banco no procesa internamente.
+  * **Resend:** Puede entregar activación, recuperación y avisos de seguridad
+    autorizados cuando existe dirección real y está configurado el canal.
+  * **Banco externo:** Expone el protocolo interbancario v1; el mock BANK99
+    desplegado en prod es una alternativa de pruebas, no evidencia de conexión
+    a una entidad financiera real.
+  * **Proveedor simulado:** Es un adaptador dentro de Payment. Pagar EEGSA,
+    EMPAGUA o CLARO es transferir a su cuenta recaudadora en este banco; no se
+    afirma una integración con las APIs reales de esas empresas.
+  * **Operador SRE y observabilidad:** Acceso independiente a Grafana para
+    métricas, trazas y logs; no se deriva del rol bancario.
 
 ---
 
@@ -126,9 +156,9 @@ El diagrama de contenedores detalla los límites de despliegue, protocolos de re
 ![C4 Nivel 2 - Contenedores](architecture/diagrams/03-c4-contenedores.png)
 
 #### Explicación Técnica
-* **Tráfico Web y API:** El Frontend (Nuxt 3) invoca al API Gateway mediante peticiones REST/JSON autenticadas con encabezados `Authorization: Bearer <JWT>`.
+* **Tráfico Web y API:** El Frontend (Nuxt 4) invoca al API Gateway mediante peticiones REST/JSON autenticadas con encabezados `Authorization: Bearer <JWT>`.
 * **Bus de Mensajería RabbitMQ:** Cuatro topic exchanges durables organizan el enrutamiento:
-  * `bank.commands`: Comandos directos dirigidos a un microservicio específico (`account.create.v1`, `transfer.create.v1`, etc.).
+  * `bank.commands`: Comandos directos dirigidos a un microservicio específico (`account.create.v1`, `transfer.requested.v1`, etc.).
   * `bank.events`: Eventos de dominio emitidos tras completar una operación (`account.opened.v1`, `account.debited.v1`, etc.).
   * `bank.replies`: Respuestas correlacionadas para operaciones de consulta o confirmación inmediata hacia el Gateway.
   * `bank.errors`: Mensajes rechazados o con fallos de validación dirigidos a Dead Letter Queues (DLQ).
@@ -138,31 +168,40 @@ El diagrama de contenedores detalla los límites de despliegue, protocolos de re
 
 ### 3.4 Modelo C4 — Nivel 3: Componentes y Arquitectura Limpia
 
-El diagrama de componentes muestra el diseño interno basado en **Clean Architecture** (ejemplificado en `Transaction Service`):
+El DSL contiene seis vistas internas: Gateway y cinco servicios. La vista
+Transaction ilustra Clean Architecture; el Gateway no tiene capa de dominio.
+[Las seis vistas y su explicación](architecture/c4-component.md) incluyen
+Customer, Account, Payment y Notification & Audit:
 
 ![C4 Nivel 3 - Componentes](architecture/diagrams/04-c4-componentes.png)
 
 #### Explicación Técnica
-* **Capa de Dominio (Pureza Absoluta):** Entidades como `Transaction` y la máquina de estados de 6 transiciones (`PENDING`, `DEBITING`, `DEBITED`, `PAYMENT_PENDING`, `COMPLETED`, `FAILED`, `COMPENSATED`). No importa librerías externas ni frameworks.
-* **Capa de Aplicación (Casos de Uso):** Orquestadores locales como `RequestTransferUseCase` y `SagaCoordinator` que dictan el avance de la transacción según los eventos recibidos.
-* **Adaptadores Primarios (Inbound):** `RabbitMqConsumerAdapter` recibe mensajes de la cola, deserializa el sobre canónico (`Envelope`) y delega la ejecución al handler correspondiente (`TransferRequestedHandler`, `AccountDebitedHandler`, etc.).
-* **Adaptadores Secundarios (Outbound):** `TransactionPostgresRepository` realiza persistencia transaccional con bloqueos pesimistas `SELECT ... FOR UPDATE`, mientras `RabbitMqPublisherAdapter` garantiza la entrega al broker.
+* **Capa de Dominio (Pureza Absoluta):** Entidades como `Transaction` y la máquina de seis estados (`PENDING`, `DEBITING`, `PAYMENT_PENDING`, `COMPLETED`, `FAILED`, `COMPENSATED`). No importa librerías externas ni frameworks.
+* **Aplicación:** Los casos de uso admiten la solicitud y aplican los eventos
+  recibidos a la máquina de estados. Transaction coordina las siguientes
+  órdenes mediante AMQP; no consulta balances ni llama servicios por HTTP.
+* **Entrada:** El router de mensajes dirige cada sobre al handler registrado
+  por `messageType`, que delega en el caso de uso correspondiente.
+* **Salida:** El puerto de repositorio se implementa con PostgreSQL y bloqueos
+  `SELECT ... FOR UPDATE`. El publicador y el relay outbox envían comandos,
+  eventos y respuestas al exchange definido por el catálogo. El outbox y la
+  idempotencia permiten reentrega sin duplicar el efecto monetario; no se
+  afirma entrega exactamente una vez.
 
 ---
 
 ### 3.5 Diagrama UML de Despliegue (local, kind)
 
-Muestra la topología física y de orquestación en el clúster **local** de Kubernetes (kind) bajo el namespace `bank-usac`. La topología en la nube, que es la de la Fase II, es el diagrama de §3.10:
+![Despliegue local con kind, Docker y Helm](architecture/diagrams/05-uml-despliegue.png)
 
-![UML Despliegue](architecture/diagrams/05-uml-despliegue.png)
+La fuente [05-uml-despliegue.puml](architecture/diagrams/05-uml-despliegue.puml)
+representa el host Docker, kind y el namespace `bank-usac`. Helm instala los
+siete componentes; `bank-observability` es un segundo chart en su namespace.
+PostgreSQL, RabbitMQ y MinIO locales se alcanzan por red Docker mediante
+Services/Endpoints; `host.docker.internal` es un fallback configurado.
 
-#### Explicación Técnica
-* **Dentro del Clúster Kubernetes:**
-  * Siete Deployments con réplicas configuradas: `frontend`, `gateway`, `customer-service`, `account-service`, `transaction-service`, `payment-service` y `notification-audit-service`.
-  * Servicios `ClusterIP` para comunicación interna y un `Ingress/NodePort` para exponer el Frontend (puerto 3010) y el Gateway (puerto 3000).
-  * Todos los pods corren como usuario sin privilegios (`node`, uid 1000) con sondas de liveness (`/health`) y readiness (`/ready`) independientes.
-* **Fuera del Clúster (Host):**
-  * Las 5 bases de datos PostgreSQL, RabbitMQ y MinIO corren en Docker Compose sobre la red del host, accesibles desde los pods mediante `host.docker.internal`. Esto cumple rigurosamente el requisito §4.2 del enunciado.
+Las sondas, HPA, ConfigMaps, Secrets y protocolos pertenecen al despliegue local;
+no confundirlo con Cloud Run, VMs y GKE del diagrama 08.
 
 ---
 
@@ -173,13 +212,17 @@ Ilustra la interacción asíncrona real para la apertura de una cuenta bancaria 
 ![UML Secuencia Crear Cuenta](architecture/diagrams/06-uml-secuencia-crear-cuenta.png)
 
 #### Paso a Paso del Flujo
-1. El usuario (o cajero) envía `POST /api/accounts` al API Gateway con los datos de apertura y tipo de cuenta.
-2. El Gateway genera un `correlationId` único, empaqueta el sobre `Envelope` y publica el comando `account.create.v1` en `bank.commands`.
-3. El Gateway responde inmediatamente `202 Accepted` indicando recepción de la solicitud (o espera la respuesta correlacionada en un ciclo de 5 s).
-4. `account-service` consume el comando, valida los datos, genera el número de cuenta bancario y persiste el registro en PostgreSQL (`accounts`) de forma atómica.
-5. `account-service` publica el evento `account.opened.v1` en `bank.events` y envía la respuesta con los datos de la cuenta a `bank.replies`.
-6. `notification-audit-service` captura el evento para registrar la bitácora de auditoría y enviar la notificación de bienvenida.
-7. El cliente recibe la confirmación con el saldo inicial (Q0.00) y número de cuenta asignado.
+
+1. El Gateway valida la petición HTTP y publica `account.create.v1`, con
+   identidad, correlación y clave del intento.
+2. Devuelve `202`, `accountId` y correlación; la apertura no es un
+   request/reply que garantice éxito en esa respuesta.
+3. Account valida y persiste el resultado idempotente. Monetaria y Ahorro
+   tienen reglas e importes iniciales distintos.
+4. Publica `account.opened.v1` o rechazo; Notification & Audit registra el
+   evento y genera los avisos correspondientes.
+5. La consulta posterior de la cuenta confirma el estado; el Administrador
+   puede además observar el resultado en el rastro autorizado.
 
 ---
 
@@ -235,85 +278,127 @@ La funcionalidad del sistema se modela en una jerarquía formal que abarca los t
 * **Cajero Receptor:**
   * `CDU001.6` Revisión y validación manual de documentos de identidad (aprobación/rechazo de DPI).
   * `CDU002.1` Apertura asistida de cuentas para cuentahabientes.
-  * `CDU002.5` Registro de depósitos en efectivo por ventanilla.
+  * `CDU002.9` Registro de depósitos en efectivo por ventanilla.
 * **Administrador:**
-  * `CDU002.4` Desactivación de cuentas inactivas (> 6 meses sin movimientos y saldo < Q50.00).
-  * `CDU005.1` Consulta de bitácora general de auditoría y monitoreo distribuido.
-  * `CDU005.3` Inspección de eventos y estados de transacciones en la Saga.
+  * `CDU002.4` Cambio manual de estado con motivo; sólo Administrador.
+  * `CDU002.8` Barrido automático: al menos seis meses calendario sin movimientos y saldo actual < Q50.00, con lease distribuido.
+  * `CDU005.1` Registro de eventos de auditoría (consumidor interno).
+  * `CDU005.3` Consulta administrativa de auditoría y rastro; estados Saga en CDU003.2.
 
 ---
 
 ### 3.9 Modelos Entidad-Relación Físicos (ER)
 
-Cada microservicio gestiona su propio esquema relacional en PostgreSQL 18.4, garantizando un almacenamiento especializado e independiente:
+Cada servicio conserva una base propia. Los puertos 5433–5437 de abajo son
+publicaciones locales, no puertos diferentes del motor PostgreSQL en cloud.
+Los cinco DBML se contrastan con migraciones acumuladas; el
+[catálogo físico](generated/db-schema.md) detalla columnas, índices y checks.
+Los diagramas ER físicos corresponden a las exportaciones gráficas de los modelos DBML. El
+[índice ER](architecture/diagrams/er/README.md) conserva la validación DBML y
+los límites del modelo físico.
 
 #### Customer Service (`postgres-customer` : 5433)
-![ER Customer](architecture/diagrams/er/customer-er.png)
-* *Tablas:* `customers` (datos personales, rol, estado de identidad), `identity_documents` (metadatos del DPI y digest SHA-256), `email_activation_tokens` (tokens SHA-256 de un solo uso), `password_reset_tokens` y `processed_messages` (idempotencia).
+
+![Modelo ER - Customer Service](architecture/diagrams/er/customer-er.png)
+
+[Fuente DBML de Customer](architecture/diagrams/er/customer-er.dbml).
+
+Identidad, credenciales, documentos, activación, recuperación e idempotencia.
+La telemetría conserva el contexto de creación sin inventar una traza ausente.
 
 #### Account Service (`postgres-account` : 5434)
-![ER Account](architecture/diagrams/er/account-er.png)
-* *Tablas:* `accounts` (número de cuenta, saldo en `NUMERIC(14,2)`, versión optimista, estado activa/bloqueada), `account_operations` (débitos, créditos, depósitos), `deactivation_runs` (historial de barrido de inactivas) y `processed_messages`.
+
+![Modelo ER - Account Service](architecture/diagrams/er/account-er.png)
+
+[Fuente DBML de Account](architecture/diagrams/er/account-er.dbml).
+
+Cuentas y operaciones monetarias, versión y restricciones de saldo, barridos e
+idempotencia. Las anomalías de actividad se registran antes de anunciarlas.
 
 #### Transaction Service (`postgres-transaction` : 5435)
-![ER Transaction](architecture/diagrams/er/transaction-er.png)
-* *Tablas:* `transactions` (idempotency_key, cuenta origen, cuenta destino, monto, estado de Saga), `transaction_events` (historial de transiciones de estado) y `processed_messages`.
+
+[Fuente DBML de Transaction](architecture/diagrams/er/transaction-er.dbml).
+
+Transacciones, transiciones, deduplicación/alias y outbox. El historial conserva
+estado y tiempos para medición de latencia; no duplica decisiones de saldo.
 
 #### Payment Service (`postgres-payment` : 5436)
-![ER Payment](architecture/diagrams/er/payment-er.png)
-* *Tablas:* `payments` (facturador, referencia de pago, monto, estado), `payment_attempts` (escalera de reintentos, `attempt_number`, `next_attempt_at`, error diagnosticado) y `processed_messages`.
+
+![Modelo ER - Payment Service](architecture/diagrams/er/payment-er.png)
+
+[Fuente DBML de Payment](architecture/diagrams/er/payment-er.dbml).
+
+Pagos, intentos, simulación persistida, outbox y tablas interbancarias para
+envío, recepción, intentos/callbacks, reservas, reconciliación y reversos.
+Las claves y restricciones se explican en el catálogo; no son tablas de Account.
 
 #### Notification & Audit Service (`postgres-notification-audit` : 5437)
-![ER Notification Audit](architecture/diagrams/er/notification-audit-er.png)
-* *Tablas:* `audit_events` (registro inmutable con payload redactado, correlation_id, timestamp), `notifications` (asunto, canal simulado, estado de entrega) y `processed_messages`.
+
+![Modelo ER - Notification & Audit Service](architecture/diagrams/er/notification-audit-er.png)
+
+[Fuente DBML de Notification & Audit](architecture/diagrams/er/notification-audit-er.dbml).
+
+Eventos redactados, notificaciones con lectura/entrega y destinatario lógico,
+deduplicación y registro de alertas SLO. No se dibujan claves foráneas hacia
+bases de otros servicios.
 
 ---
 
 ### 3.10 Diagrama de Despliegue en la Nube (GCP — Fase II)
 
-La topología que la Fase II entrega y que está corriendo hoy. A diferencia de §3.5, aquí las bases de datos son **máquinas virtuales de Compute Engine**, el clúster es **GKE administrado** y el frontend vive **fuera del clúster**, en Cloud Run:
+La vista cloud se actualiza para Fase III y se mantiene distinta de la local.
 
-![Diagrama de Despliegue en la Nube GCP](architecture/diagrams/08-despliegue-cloud-gcp.png)
+![Despliegue cloud: Terraform, Helm, GKE y observabilidad](architecture/diagrams/08-despliegue-cloud-gcp.png)
 
-Fuente versionada: [`08-despliegue-cloud-gcp.puml`](architecture/diagrams/08-despliegue-cloud-gcp.puml)
+Fuente: [08-despliegue-cloud-gcp.puml](architecture/diagrams/08-despliegue-cloud-gcp.puml).
 
 #### Lectura del diagrama
 
-* **Cloud Run (`bank-usac-web`)** sirve el frontend Nuxt por HTTPS con certificado gestionado, escalando de 0 a 5 instancias. No está dentro de la VPC: llega al Gateway por su dirección pública.
-* **VPC `bank-usac-vpc`**, con dos subredes de propósito distinto:
-  * **`10.10.0.0/20`** para el plano de datos de GKE, con rangos secundarios `10.20.0.0/16` (pods) y `10.30.0.0/20` (services).
-  * **`10.40.0.0/24`** exclusiva para las bases de datos. **Ninguna de las cinco VM tiene IP pública**; su salida a Internet —la que necesita `apt-get install postgresql`— pasa por Cloud Router + Cloud NAT.
-* **Clúster GKE `bank-usac-vpc-gke`**, zonal en `us-central1-a`, con un pool gestionado de tres nodos `e2-standard-2`, y **dos namespaces**:
-  * **`prod`** — el release `bank-usac`, con imágenes `vX.Y.Z` publicadas por la fase de entrega.
-  * **`dev`** — el release `bank-usac-dev`, con imágenes `dev-<sha>`, desplegado en cada merge a `develop` y **sólo con los componentes que cambiaron**.
-  * Cada namespace levanta **su propio RabbitMQ y su propio MinIO**, de modo que mensajería y almacenamiento de objetos sí están separados entre entornos.
-  * Los siete componentes llevan **HPA al 80 % de CPU** (de 1 a 5 réplicas) con `requests` y `limits` de CPU y memoria. `account-service` se queda en una réplica por diseño: además de consumir su cola ejecuta el barrido de cuentas inactivas, y su arrendamiento por `pg_try_advisory_lock` es lo que permite que el HPA exista sin que el barrido corra N veces.
-* **Cinco VM de Compute Engine**, una base por microservicio, que es la misma invariante de ADR-005 llevada a la nube: una máquina, una base, una credencial.
+- **Terraform** declara VPC, subredes y rangos, Cloud Router/NAT, cinco VMs
+  PostgreSQL privadas, GKE, Artifact Registry, IP reservada del Gateway y
+  Cloud Run. Las flechas de aprovisionamiento se separan del tráfico.
+- **Helm** instala el banco y el stack `bank-observability`; GitHub Actions
+  publica imágenes versionadas, actualiza cargas y el frontend de Cloud Run.
+- **GKE** observado está en `us-central1-c` con dev, prod y observability.
+  Dev/prod tienen brokers y MinIO separados y bases con nombres distintos
+  sobre las mismas VMs. VPC, nodos y cuotas son recursos compartidos.
+- **Cloud Run** sirve el frontend Nuxt 4 por HTTPS; Nitro puede actuar como
+  proxy hacia el Gateway HTTP para evitar contenido mixto.
+- **HPA** está configurado al 80 % CPU, rango 1–5, con requests/limits. Account
+  usa un lease PostgreSQL para que el barrido no se ejecute por cada réplica.
+  Existencia de HPA no demuestra un escalado durante carga.
+- **Observabilidad** recibe OTLP de los seis procesos NestJS y scrapea las
+  métricas web de Nitro. Logs van por agente a Loki; Grafana consulta
+  Prometheus, Tempo y Loki. PVC y políticas deseadas se rotulan por componente.
+- **Diferencias live:** Grafana usa LoadBalancer público; no se observaron
+  NetworkPolicies en los tres namespaces. RabbitMQ usa 3.13-management,
+  frente a 4.3.4 deseado. Dev no tiene mock ni URL pareja configurada.
 
-**Lo que el diagrama dice y conviene no pasar por alto:** las cinco bases son **compartidas por `dev` y `prod`**. La nota al pie del diagrama lo declara, y la deuda que lo registra es TD-070.
+Los [inventarios](qa/load/) fijan lo observado el 21 de octubre; los pasos y
+riesgos están en [CLOUD](operations/CLOUD.md). Un recurso en Terraform o un
+control en Helm no demuestra que esté aplicado.
 
 ---
 
 ## 4. Métricas SRE: Definición de SLI, SLO y SLA
 
-Definidas en [`docs/RELIABILITY.md`](RELIABILITY.md), estas métricas cuantifican el rendimiento y la disponibilidad requerida para una operación bancaria crítica:
+El [marco SLI/SLO/SLA](sre/sli-slo-sla.md) es la fuente de umbrales, ventanas,
+PromQL y presupuesto; [RELIABILITY](RELIABILITY.md) explica su intención. Esta
+sección evita mantener otro juego contradictorio de porcentajes.
 
-### Service Level Indicators (SLI)
-* **Disponibilidad del API Gateway ($SLI_{disp}$):**  
-  $$SLI_{disp} = \frac{\text{Peticiones HTTP exitosas (no 5xx)}}{\text{Total de peticiones HTTP válidas}} \times 100$$
-* **Latencia de Procesamiento en Gateway ($SLI_{lat}$):**  
-  Porcentaje de peticiones resueltas en $T \le 200\text{ ms}$ para endpoints de consulta y $T \le 500\text{ ms}$ para aceptación de comandos asíncronos.
-* **Éxito de Entrega Asíncrona ($SLI_{msg}$):**  
-  Porcentaje de mensajes AMQP procesados y confirmados (`ack`) sin terminar en cola de errores (DLQ).
+Fase III operacionaliza cinco familias: disponibilidad del Gateway, duración
+terminal de transferencias, éxito y latencia del proveedor, y confirmación
+interbancaria por dirección. El [catálogo](sre/telemetry-catalog.md) fija
+unidades, etiquetas, cardinalidad, spans y campos de logs.
 
-### Service Level Objectives (SLO) — Compromisos Internos
-* **Disponibilidad:** $\ge 99.9\%$ en ventanas móviles de 30 días naturales.
-* **Latencia (p95):** $\le 250\text{ ms}$ para transferencias y aperturas de cuenta en el Gateway.
-* **Error Budget:** $0.1\%$ mensual (aproximadamente 43.2 minutos de indisponibilidad permitida por mes).
+El presupuesto debe calcularse para la ventana y entorno observados. Ausencia
+de tráfico, NaN o datos sin continuidad no equivalen a 100 % de cumplimiento.
+El proxy Prometheus y el objetivo de negocio pueden tener poblaciones
+distintas; esas diferencias se declaran en §5.3 del marco.
 
-### Service Level Agreement (SLA) — Compromiso Externo
-* **Disponibilidad Garantizada:** $99.5\%$ mensual para operaciones de clientes en banca web.
-* **Ventana de Mantenimiento:** Programada en horas de baja demanda con previo aviso de 48 horas.
+El SLA es académico. Los invariantes financieros y de seguridad no reciben
+presupuesto para pérdidas o accesos indebidos. No se presentan los objetivos
+como disponibilidad garantizada o recuperación demostrada sin medición.
 
 ---
 
@@ -322,37 +407,50 @@ Definidas en [`docs/RELIABILITY.md`](RELIABILITY.md), estas métricas cuantifica
 Documentados en prosa formal en [`docs/domain/use-cases.md`](domain/use-cases.md), organizados por actor y objetivo de negocio:
 
 1. **CU-01: Registro y Activación de Cliente (Rol Cliente)**  
-   Captura de nombres, correo, documento de identificación y contraseña cifrada con `scrypt`. Generación de token seguro enviado por correo.
+   Captura de nombres, correo y documento; Customer guarda un hash de contraseña
+   derivado con `scrypt`. El correo se entrega según el canal configurado y el
+   estado real de envío.
 2. **CU-02: Validación de Identidad por Ventanilla (Rol Cajero Receptor)**  
-   Inspección visual del documento subido a MinIO. Emisión de veredicto con `POST /api/customers/:id/identity-verdict` (`VERIFIED` o `REJECTED`).
+   Inspección visual de la fotografía recuperada por la ruta protegida. Emisión
+   del veredicto con `POST /api/customers/:id/identity-verdict`
+   (`VALIDATED` o `REJECTED`); el KYC usa su vocabulario
+   `VERIFIED`/`REJECTED`, distinto del estado documental.
 3. **CU-03: Apertura de Cuenta Monetaria o de Ahorro (Rol Cliente / Cajero)**  
-   Creación de cuenta con validación de tipo y generación de identificador bancario único con saldo inicial en cero.
+   Creación con validación de tipo e identificador bancario único: Monetaria
+   nace con Q 0.00; Ahorro exige un importe inicial de al menos Q 100.00.
 4. **CU-04: Depósito en Ventanilla (Rol Cajero Receptor)**  
    Abono en efectivo inmediato a una cuenta existente mediante `POST /api/accounts/:id/deposit`.
 5. **CU-05: Transferencia entre Cuentas y Compensación (Rol Cliente)**  
    Ejecución de la Saga coreografiada con débito atómico, verificación de fondos, pago a facturador y crédito final o reversión.
-6. **CU-06: Auditoría Global y Desactivación de Inactivas (Rol Administrador)**  
-   Inspección de eventos encolados en la bitácora central y ejecución del job de desactivación de cuentas sin movimientos.
+6. **CU-06: Auditoría Global y Gestión de Cuentas (Rol Administrador)**
+   Consulta de eventos persistidos y cambios manuales de estado con motivo.
+   El barrido de cuentas inactivas lo ejecuta Account automáticamente, con
+   exclusión entre réplicas mediante lease PostgreSQL; no es un botón de
+   Auditoría ni una tarea que el Administrador ejecute desde esa pantalla.
 
 ---
 
 ## 6. Justificación de decisiones arquitectónicas (ADRs)
 
-Los trece registros de decisiones arquitectónicas están documentados en [`docs/architecture/adr/`](architecture/adr/README.md) y consolidados en [`docs/adr.md`](adr.md):
+Los registros de decisiones arquitectónicas están en el
+[índice canónico](architecture/adr/README.md) y se sintetizan en
+[`docs/adr.md`](adr.md). La tabla siguiente es una selección; los sucesores
+conservan el razonamiento de las decisiones históricas.
 
 | Registro | Decisión Adoptada | Alternativas Evaluadas y Rechazadas | Justificación Técnica Principal |
 | :--- | :--- | :--- | :--- |
 | **ADR-001** | Node.js 24 LTS + TypeScript en backend | Java (Spring Boot), Go | Tipado compartido en monorepo con Zod y compatibilidad nativa de contratos. |
-| **ADR-002** | Nuxt 3 (Vue 3) en frontend | React / Next.js, Angular | SSR nativo, enrutamiento semántico y rápida integración con Claude Design. |
+| **ADR-002** | Nuxt 4 (Vue 3) en frontend | React / Next.js, Angular | SSR nativo, enrutamiento semántico y rápida integración con Claude Design. |
 | **ADR-003** | Comunicación 100% asíncrona (AMQP) | REST síncrono inter-servicio, gRPC | Desacoplamiento total y resiliencia ante caídas temporales de servicios. |
 | **ADR-004** | RabbitMQ como Message Broker | Apache Kafka, NATS | Soporte nativo para topic exchanges, colas durables y patrón request/reply. |
 | **ADR-005** | PostgreSQL 18.4 independiente por servicio | MySQL, MongoDB | Integridad ACID, bloqueos `SELECT ... FOR UPDATE` y soporte `NUMERIC(14,2)`. |
-| **ADR-006** | Contenedores Docker multi-stage | Imágenes convencionales | Tamaño mínimo (<150 MB), compilación reproducible y usuario no-root (`node`). |
+| **ADR-006** | Contenedores Docker multi-stage | Imágenes convencionales | Separar build y runtime, ejecutar como `node` y verificar las imágenes con `images:smoke`; no se afirma un tamaño sin medirlo. |
 | **ADR-007** | Orquestación local con kind y Helm | Minikube, Docker Compose puro | Reproduce fielmente la topología de clúster K8s de producción. |
 | **ADR-008** | Clean Architecture / Puertos y Adaptadores | Arquitectura en capas tradicional | Independencia de frameworks y pruebas de dominio aisladas sin base de datos. |
-| **ADR-009** | Transacciones distribuidas con Saga Coreografiada | Saga Orquestada, 2PC (Two-Phase Commit) | Elimina el punto único de falla (SPOF) del orquestador y distribuye la lógica. |
-| **ADR-010** | JWT asimétrico + Scrypt para contraseñas | Sesiones en Redis, Bcrypt | Seguridad contra ataques de fuerza bruta y validación de tokens sin consultar DB. |
-| **ADR-011/013** | Diagramación como código (PlantUML + DBML) | Herramientas gráficas (Draw.io, Lucid) | Versionamiento en Git, auditoría de cambios y renderizado automatizado. |
+| **ADR-009** | Transacciones distribuidas con Saga Coreografiada | Saga Orquestada, 2PC (Two-Phase Commit) | Reacciona a eventos; Transaction coordina sus transiciones y emite comandos. No hay transacción global ACID ni coordinador HTTP externo. |
+| **ADR-010** | JWT HS256 + scrypt para contraseñas | Sesiones en Redis, Bcrypt | Seguridad contra ataques de fuerza bruta y validación de tokens sin consultar DB. |
+| **ADR-022** | Política histórica de fuentes y renders; parcialmente sustituida por ADR-024 | Sólo imagen sin fuente verificable | Conserva la decisión del 2026-10-21 y la procedencia de las alternativas del editor. |
+| **ADR-024** | Casos de uso/despliegue nativos en Lucid; diagramas sólo PNG; ER como DBML para exportación del solicitante | Importar imágenes como documento editable, SVG paralelos, regenerar ER con Pillow | Mantener fuentes semánticas y comprobar documento, exportación y legibilidad antes del cierre. |
 | **ADR-012** | Almacenamiento de objetos en MinIO | Guardado en PostgreSQL (bytea), S3 AWS | Compatibilidad con API S3 para DPIs sin incurrir en costos de nube en local. |
 
 ---
@@ -375,7 +473,7 @@ El repositorio utiliza un esquema monorepo impulsado por **pnpm** y **Turborepo*
 Proyecto-SA-B-2/
 ├── apps/
 │   ├── gateway/                  # API Gateway NestJS (puerto 3000)
-│   ├── web/                      # Frontend Nuxt 3 (puerto 3010)
+│   ├── web/                      # Frontend Nuxt 4 (puerto 3010)
 │   ├── services/
 │   │   ├── customer-service/     # Microservicio de Clientes e Identidad
 │   │   ├── account-service/      # Microservicio de Cuentas y Saldos
@@ -426,27 +524,41 @@ Esta sección es la evidencia del clúster **local**. El despliegue en la nube �
 
 ---
 
-## 10. Frontend web (Nuxt 3) y validación de roles
+## 10. Frontend web (Nuxt 4) y validación de roles
 
-La aplicación web en [`apps/web/`](../apps/web/) ofrece una experiencia bancaria moderna basada en **Claude Design** con 34 pantallas funcionales:
+La aplicación [Nuxt 4](FRONTEND.md) mapea las treinta y cuatro pantallas del
+prototipo y añade Fase III. La comparación visual se registra por separado:
 
 * **Módulo de Autenticación y Perfil:** Login, registro con carga de DPI, activación por correo, recuperación y cambio de contraseña.
 * **Módulo de Cuentas y Movimientos:** Listado de cuentas monetarias y de ahorro, apertura asistida, detalle de saldos y depósitos en ventanilla.
-* **Módulo de Transferencias y Saga Monitor:** Transferencias locales con visualizador en vivo del estado de la Saga (`PENDING` $\rightarrow$ `DEBITED` $\rightarrow$ `COMPLETED`).
+* **Módulo de Transferencias y Saga Monitor:** Transferencias internas con los
+  estados PENDING, DEBITING, PAYMENT_PENDING, COMPLETED, FAILED y COMPENSATED.
+  No existe un estado Saga DEBITED; el débito confirmado llega como evento.
 * **Módulo de Pagos de Servicios:** Pago de facturas de agua, luz y telefonía con selector de facturador y referencia de cobro.
-* **Bandeja de Notificaciones y Auditoría:** Notificaciones en tiempo real para clientes y bitácora con mascarado de información para administradores.
+* **Bandeja y Auditoría:** Lectura personal y consola de entrega independientes; cuatro filtros globales, detalle redactado y trazas enlazables.
+* **Interbancario:** Formulario, lista por seis estados y detalle de motivo/historial/reverso; TIMEOUT no equivale a devolución.
 
 ---
 
 ## 11. Verificación, calidad y deudas técnicas controladas
 
-### Métricas de Validación en el Repositorio
+### Evidencia y límites de validación
 
-* **Pruebas de Aislamiento y Dominio:** Todas las suites pasan con éxito (`pnpm test`).
-* **Pruebas de Contratos de Eventos:** 16 suites y **775 pruebas aprobadas** en `@bank/contracts` (`pnpm test:contract`), sobre un catálogo de **103 mensajes exactos** que una prueba fija: añadir o quitar uno sin actualizar el catálogo rompe la compilación.
-* **Chequeo de Tipos y Linter:** 11 paquetes aprobados con **0 errores de TypeScript y 0 infracciones de arquitectura** (`pnpm typecheck`, `pnpm lint`).
-* **Pruebas End-to-End (E2E):** Suite Playwright con **11/11 en QA y Seguridad** y **67/69 en Happy Path** con 138+ capturas en [`docs/qa/screenshots/`](qa/screenshots/) (documentado en [`E2E.md`](../E2E.md)).
-* **Integridad de Enlaces de Documentación:** verificada con un barrido sobre los 297 archivos Markdown del repositorio. Los enlaces relativos rotos que quedaban en `docs/` se corrigieron el 2026-09-26; los restantes viven en `.agents/` y `.opencode/`, que son plantillas de configuración de herramientas y no documentación del sistema.
+Los resultados y conteos deben leerse con su fecha y comando en
+[QA](qa/README.md), [E2E](../E2E.md) y las evidencias por ticket. Los conteos
+históricos no son el resultado de esta revisión ni una declaración de que el
+checkout actual pasa todas las pruebas.
+
+La web tiene Node test runner y Vitest/Nitro real con upstreams controlados.
+Eso no prueba todos los componentes Vue ni el banco desplegado completo.
+Las suites PostgreSQL/RabbitMQ requieren infraestructura de prueba y algunas se
+omiten sin variables; las suites de repositorio hacen TRUNCATE. Nunca deben
+apuntarse a bases de demo activas o producción.
+
+Los comandos, entorno y resultados frescos de T-61 se incorporan a su informe
+de validación; cualquier fallo existente se conserva como hallazgo. La
+[matriz manual](qa/guia-validacion-manual-fase3.md) identifica qué recorridos
+fueron observados y cuáles siguen pendientes.
 
 ### Registro de Deudas Técnicas Menores ([`docs/TECH_DEBT.md`](TECH_DEBT.md))
 * **TD-018 (Retiro en ventanilla):** Se implementó el depósito en ventanilla (`POST /api/accounts/:id/deposit`), manteniéndose el retiro diferido para priorizar la estabilidad de la Saga de transferencias.
@@ -629,14 +741,14 @@ Un único módulo raíz de Terraform, `infra/terraform/gcp/`, con el proveedor `
 | Archivo | Recursos |
 | :--- | :--- |
 | [`vpc.tf`](../infra/terraform/gcp/vpc.tf) | VPC `bank-usac-vpc`, subred GKE `10.10.0.0/20` con rangos secundarios de pods y services, subred de bases `10.40.0.0/24`, Cloud Router, Cloud NAT y tres reglas de firewall (tráfico interno, SSH sólo desde el rango de IAP, y los rangos de health check) |
-| [`compute_vms.tf`](../infra/terraform/gcp/compute_vms.tf) | Cinco instancias `e2-medium` con Debian 12, disco de 20 GB y **sin IP pública**, cada una con un `metadata_startup_script` que instala PostgreSQL y crea **un rol y una base** |
+| [`compute_vms.tf`](../infra/terraform/gcp/compute_vms.tf) | Cinco instancias `e2-medium` con Debian 12, disco de 20 GB y **sin IP pública**, cada una con un `metadata_startup_script` que instala PostgreSQL y crea roles y bases por servicio; el aislamiento `_dev` se prepara con el procedimiento cloud |
 | [`gke.tf`](../infra/terraform/gcp/gke.tf) | Clúster zonal, pool gestionado de 3 × `e2-standard-2`, canal `REGULAR`, auto-reparación, Workload Identity y el **addon de HPA habilitado** |
 | [`cloud_run.tf`](../infra/terraform/gcp/cloud_run.tf) | Servicio `bank-usac-web`, puerto 8080, de 0 a 5 instancias, público |
 | [`outputs.tf`](../infra/terraform/gcp/outputs.tf) | Las cinco IP privadas, el comando de credenciales de `kubectl` y la URL de Cloud Run |
 
 ### 14.2 Variables y procedimiento
 
-El ciclo es el estándar —`terraform init`, `validate`, `plan`, `apply`— desde `infra/terraform/gcp/`, con un `terraform.tfvars` copiado del ejemplo. Las variables que hay que dar son `project_id` y las contraseñas de base de datos; el resto tiene valores por defecto (`region = us-central1`, `zone = us-central1-a`, `gke_node_count = 3`, `vm_machine_type = e2-medium`). Después, el pipeline despliega y nadie vuelve a tocar Terraform.
+El ciclo es el estándar —`terraform init`, `validate`, `plan`, `apply`— desde `infra/terraform/gcp/`, con un `terraform.tfvars` copiado del ejemplo. Las variables que hay que dar son `project_id` y las contraseñas de base de datos; el resto tiene valores por defecto (`region = us-central1`, `zone = us-central1-c`, `gke_node_count = 3`, `vm_machine_type = e2-medium`). Después, el pipeline despliega; cualquier cambio de infraestructura exige revisar el plan y el estado de Terraform.
 
 El procedimiento completo, incluidos los pasos que Terraform no cubre, está en [`operations/CLOUD.md`](operations/CLOUD.md).
 
@@ -646,19 +758,74 @@ Los siete componentes llevan un `HorizontalPodAutoscaler` (`autoscaling/v2`) con
 
 ### 14.4 Separación de entornos
 
-`dev` y `prod` son dos namespaces del mismo clúster. Cada uno tiene sus pods, **su propio RabbitMQ y su propio MinIO**, y sus propias etiquetas de imagen. Lo que **no** está separado son las cinco bases de datos: ambos entornos leen las mismas `INFRA_ADDRESSES`. Es una desviación conocida del enunciado, decidida a sabiendas y registrada como **TD-070**, con su remedio escrito —bases por entorno sobre las mismas VM, que el enunciado permite— y la razón por la que no está aplicada: las VM no tienen IP pública y ningún runner puede alcanzarlas.
+Dev/prod tienen namespaces, broker, MinIO y bases con nombres distintos.
+Comparten las cinco VMs, el clúster y cuotas. La evidencia de la revisión
+confirma `payment_dev` frente a `payment`; las credenciales nunca se
+publican. Las pruebas destructivas siguen requiriendo bases de prueba propias.
 
-### 14.5 Lo que todavía no está en Terraform
+### 14.5 Propiedad de recursos y deriva
 
-Tres recursos del sistema en producción se crean fuera del módulo. Están registrados como deuda porque el enunciado penaliza explícitamente la infraestructura creada a mano:
+Terraform declara Artifact Registry y la IP reservada del Gateway. Helm declara
+el Service LoadBalancer; CD aplica la versión de Cloud Run y Terraform ignora
+su imagen para no revertirla. La vieja lista de tres recursos totalmente
+manuales quedó obsoleta. La adopción por import y el estado aplicado se comprueban
+según [CLOUD](operations/CLOUD.md), sin alterar ADR históricos.
 
-| Recurso | Deuda |
-| :--- | :--- |
-| El repositorio de Artifact Registry `bank-images` | **TD-079** |
-| El `Service` de tipo `LoadBalancer` que expone el Gateway | **TD-080** |
-| La revisión de Cloud Run que sirve el frontend real | **TD-081** |
+---
 
-Los tres tienen su comando en [`operations/CLOUD.md`](operations/CLOUD.md) y su arreglo propuesto en [`TECH_DEBT.md`](TECH_DEBT.md). Preferimos que estén escritos a que se descubran.
+## 15. Fase III — observabilidad, interbancario y evidencia
+
+| Capacidad | Fuente y evidencia |
+| --- | --- |
+| Ciclo de vida del cliente y actividad de cuentas | [Catálogo de telemetría](sre/telemetry-catalog.md), evidencias T-41/T-42 en [QA](qa/README.md). |
+| Duración y errores Saga, proveedor y simulación | Métricas T-43/T-44, intentos persistidos, [manual técnico](manual-tecnico.md#simulación-administrativa-de-pagos). |
+| Auditoría, alertas y navegación por traza | T-45, cuatro filtros, payload redactado y [guía de navegador](qa/guia-validacion-manual-fase3.md). |
+| Interbancario | [Contrato y runbook](operations/INTERBANK.md), [acuerdo](operations/INTERBANK-AGREEMENT.md), callback, consulta, cancelación y reverso. |
+| Stack observabilidad | OpenTelemetry/Collector, Prometheus, Tempo, Loki, agente de logs, Grafana y kube-state-metrics; [runbooks](operations/runbooks/README.md). |
+| SLO y respuesta | [Marco SRE](sre/sli-slo-sla.md), nueve dashboards, dieciséis reglas y siete runbooks. |
+| Fallos y recuperación | [Postmortems](sre/postmortems/README.md), evidencia histórica y cloud distinguidas por fecha/entorno. |
+| Estado cloud | Inventarios [prod](qa/load/2026-10-21-gke-prod-inventory.txt), [dev](qa/load/2026-10-21-gke-dev-inventory.txt) y [observabilidad](qa/load/2026-10-21-gke-observability-inventory.txt). |
+
+### Diagramas técnicos complementarios
+
+- [Envío interbancario](architecture/diagrams/09-secuencia-envio-interbancario.puml):
+  reserva, HTTP, aceptación inicial, callback y resolución de TIMEOUT.
+- [Recepción interbancaria](architecture/diagrams/10-secuencia-recepcion-interbancaria.puml):
+  deduplicación, crédito y callback/reintentos.
+- [Reintentos de pago](architecture/diagrams/11-secuencia-reintentos-pago.puml):
+  persistencia, exclusión concurrente y compensación tras fallo terminal.
+- [Observabilidad y alertas](architecture/diagrams/12-observabilidad-y-alertas.puml):
+  OTLP backend, scrape web, logs, consultas y entrega de alertas por Gateway.
+
+Los diagramas documentales se entregan sólo en PNG. Casos de uso y despliegue
+pasan a edición nativa en Lucid; sus PUML conservan el contenido para cotejo.
+C4 mantiene DSL/CLI y las secuencias mantienen PUML. Los cinco ER quedan como
+DBML, pendientes de exportación por el solicitante. La política vigente está
+en [ADR-024](architecture/adr/ADR-024-native-lucid-and-png-delivery.md), que
+sustituye la política gráfica de ADR-022. Las alternativas históricas del
+editor siguen separadas. La [auditoría T-61](qa/T-61-documentation-audit.md)
+registra las exportaciones comprobadas; la presencia de una imagen no prueba
+su origen en Lucid ni la ejecución del escenario representado.
+
+![Casos de uso Fase III](architecture/diagrams/13-casos-uso-fase3.png)
+
+[Fuente 13](architecture/diagrams/13-casos-uso-fase3.puml): extensiones v1,
+notificaciones, anomalía N/M, simulación API y acceso SRE. El detalle de
+permisos continúa en el modelo de actores.
+
+[Informe T-61](qa/T-61-documentation-audit.md) y
+[evidencia cloud T-60](qa/backend/T-60-cloud-evidence.md) identifican resultados
+reales, límites, pruebas fallidas y pendientes; no se deduce cumplimiento de
+un pod Ready.
+
+### Condiciones que impiden un cierre sin reservas
+
+La revisión observó RabbitMQ live diferente del deseado, ausencia de
+NetworkPolicies aplicadas y dev sin mock ni URL pareja; no se ocultan con un
+diagrama del estado objetivo. Readiness y HPA configurado no acreditan tolerancia
+a fallos ni escalado. La evidencia histórica no sustituye experimentos cloud
+pendientes. La aceptación final de #168 depende de su matriz de criterios y de
+resultados verificables, incluidos los pendientes vinculados a #167.
 
 ---
 

@@ -24,7 +24,7 @@ Related: [bounded-contexts.md](bounded-contexts.md) · [use-cases.md](use-cases.
 | Address | — |
 | `username` | Generated from the full name, and unique |
 | Identity-document photo reference | Nullable until uploaded |
-| Access credential | Never leaves the service |
+| Access credential | Stored scrypt hash never leaves Customer. Plaintext input reaches it through the necessary registration/authentication/password commands; never logged, echoed or published in events. |
 | `role` | `ADMINISTRADOR` \| `CAJERO_RECEPTOR` \| `CLIENTE` |
 | `identityStatus` | `PENDING` \| `VALIDATED` \| `REJECTED` |
 | `kycStatus` | `PENDING` \| `VERIFIED` \| `REJECTED` — Fase 2 (§4.1, p. 4), C-8 |
@@ -95,7 +95,8 @@ the other. A customer may be `ACTIVE` with `identityStatus = PENDING`, and may b
 
 | Attribute | Notes |
 | --- | --- |
-| `customerId` | Opaque reference. Always to a `Customer` with `role = CLIENTE` |
+| `customerId` | Opaque client reference; institutional biller/settlement accounts use synthetic system holders without cross-service FK |
+| `accountNumber` | Unique public `02-NNNNNNNNN`; accountId remains internal UUID |
 | `balance` | Quetzales, exactly two decimals |
 | `status` | `ACTIVE` \| `INACTIVE` |
 | `accountType` | `MONETARIA` \| `AHORRO`. Pure classification through Phase 1 (D-02); carries its own rules as of T-27 |
@@ -179,8 +180,8 @@ case, a transfer failing at the last step for a reason the sender can neither kn
 | --- | --- | --- |
 | A-1 | `balance` is never negative after an approved operation | `INSUFFICIENT_FUNDS` — the debit is rejected, never partially applied |
 | A-2 | A debit applies only to an `ACTIVE` account | `ACCOUNT_INACTIVE` — rejected; the Saga closes in `FAILED` |
-| A-3 | A credit to an `INACTIVE` account is applied and reactivates it | No failure; this is a legal transition |
-| A-4 | Every confirmed movement updates `lastActivityAt`; querying the balance does not | — |
+| A-3 | An ordinary credit to INACTIVE applies and reactivates; interbank credit requires ACTIVE | Interbank: ACCOUNT_INACTIVE; ordinary credit: legal reactivation |
+| A-4 | Customer debit/credit updates lastActivityAt; reads and compensation do not | Compensation repairs the bank process and is not fresh customer activity |
 | A-5 | The deactivation process is idempotent: an already `INACTIVE` account does not transition again nor emit a second event | — |
 | A-6 | Amounts carry exactly two decimals | `INVALID_AMOUNT_PRECISION` — rejected, never rounded |
 
@@ -294,7 +295,7 @@ already draw from `status` alone.
 ### States
 
 `PENDING` → `SUCCEEDED` \| `FAILED`. Retries happen **inside** `PENDING`, incrementing
-`attempt`; `FAILED` is reached only when retries are exhausted, and is terminal.
+`attempt`; `FAILED` is terminal and follows either permanent refusal or exhausted transient retries.
 
 ### The simulated external provider (T-29)
 
@@ -328,9 +329,7 @@ Attributes: event type, `timestamp`, `payload`, `correlationId`, originating ser
 **No states.** It is an append-only record and it is **immutable**: never modified, never
 deleted, not even by an `ADMINISTRADOR`.
 
-**`severity` (T-30)** is computed once, by a pure function of `(messageType,
-processingStatus, parked)` — never of the payload, so a severity is always re-derivable
-from the row a reader already has. `ERROR` means this service itself failed to record the
+**`severity` (T-30/T-45)** is computed once by a pure function. For domain events it uses message type, processing status and parked status; for `alert.slo.received.v1` it also reads the normalized alert payload: firing critical is ERROR, firing warning is WARNING and resolution is INFO. The worst severity in a batch wins. `ERROR` means this service itself failed to record the
 message, or the message reached the trail through the `bank.errors` drain after
 exhausting its retry ladder; `WARNING` means an expected business refusal with nothing to
 undo, or a payload this consumer could not read; `INFO` means the system did what was
@@ -343,8 +342,8 @@ below, restated) forbids correcting after the fact.
 | # | Invariant | Expected failure |
 | --- | --- | --- |
 | E-1 | Every `AuditEvent` carries a `correlationId` | Record rejected; an event without correlation is not auditable |
-| E-2 | An already recorded `eventId` is not recorded twice | Silently discarded |
-| E-3 | The `payload` contains no access credential and no full identity document number | A model violation, not a runtime error — it is caught in review |
+| E-2 | A messageId is recorded at most once per logical consumer | PK (event_id, consumer); a redelivery does not create another audit row |
+| E-3 | Persisted payload contains no credential, full identity document, address or exact monetary amount | Redaction executes before insert; tests verify the boundary |
 | E-4 | Every processable event receives exactly one `severity` (T-30) | `severity` computed and persisted alongside the row, in the same insert |
 
 ---
@@ -364,6 +363,33 @@ Attributes: `notificationId`, `customerId` (for recipient inbox scoping), `recip
 
 ---
 
+## Phase III: account usage, simulation and operational notifications
+
+`AccountAnomaly` belongs to Account: count DEBIT/CREDIT in the configured window, emit only when count > N, deduplicate per account/window. COMMISSION/COMPENSATION are not new customer usage. The durable claim and publication columns support recovery; the anomaly never changes account status ([ADR-017](../architecture/adr/ADR-017-account-anomaly-reports-not-blocks.md)).
+
+`SimulationSettings` belongs to Payment: failure and timeout percentages each 0–100, combined <=100; latency 0–30000 ms. The administrative update is persisted and read through the broker without redeploy. An explicit scenario takes precedence over rates; unscripted attempts use injected randomness. Provider decisions remain pure; actual delay occurs outside the domain. Retry 1 s/5 s/30 s is persisted as due time, not an in-memory timer.
+
+Audit adds an optional nonzero 32-hex traceId, service/level/correlation filters, and severity for account anomalies and SLO alerts. A row predating instrumentation retains NULL. Notification delivery can be simulated or use Resend; a successful simulated delivery does not prove external email. SLO notifications deduplicate by alert identity and firing/resolved status, with their own persisted reminder record.
+
+## Phase III: interbank deposits and reversals
+
+Payment owns the protocol; Account alone applies money. See [ADR-021](../architecture/adr/ADR-021-interbank-protocol-v1.md) and [INTERBANK](../operations/INTERBANK.md) for transport, limits and recovery.
+
+| Concept | States / transitions | Money consequence |
+| --- | --- | --- |
+| Send | PENDING → SENT; PENDING/SENT → TIMEOUT; callback ACCEPTED/REJECTED legal from PENDING/SENT/TIMEOUT | TIMEOUT retains reserve; no failure event merely for expiry. |
+| Resolution | TIMEOUT → ACCEPTED or REJECTED after probe/cancel/margin decision | ACCEPTED completes; REJECTED requests compensation. |
+| Returned send | REJECTED → REVERSED on account.debit.compensated | Evidence that source funds were returned, including commission. TIMEOUT → REVERSED remains compatible with old in-flight deployments. |
+| Receipt | ELIGIBILITY → CREDIT → ACCEPTED; refusal/expiry → REJECTED; safe cancellation → CANCELLED | CREDIT waits for Account; an inactive account is refused and not reactivated. API projects first two stages to PROCESSING. |
+| Reversal | Receiver PROCESSING → COMPLETED / FAILED; outgoing recovery also has local PENDING | Debit the remotely credited account and send a new refund deposit. Local compensation and remote reversal are different effects. |
+| Refund | No state enum added to the send; persisted hold/refund/settlement facts | If client is already compensated, refund goes to institutional settlement, never a second client credit. |
+
+The official TTL is 180 s, with an additional 300 s before unverified release. `404` does not release funds: cancel first. A late ACCEPTED after release raises ERROR and persists an outgoing reversal. If a candidate refund arrives before its reversal identifies it, it is held; expiry rejects unresolved holds rather than crediting by guess.
+
+Business idempotency covers the same ID/content, conflict rejection, atomic verdict+outbox, local movement uniqueness and unique refund settlement. A stored lease coordinates sweepers and survives restart through expiry.
+
+**Observed gap, not an approved rule:** Account's credit command carries no expiresAt, so Payment's expiry check before dispatch does not atomically forbid a delayed AMQP credit after expiry. `CREDIT` cannot safely be cancelled while Account's answer is unknown. Record this limit in #167 and verify the boundary with a real delayed delivery; documentation must not claim the invariant already holds under that race.
+
 ## Cross-cutting invariants
 
 | # | Invariant | Protected by |
@@ -371,7 +397,7 @@ Attributes: `notificationId`, `customerId` (for recipient inbox scoping), `recip
 | X-1 | No service queries another service's tables | All. This is the one penalized with 50 % of the grade (§4.2, p. 13) |
 | X-2 | Data owned elsewhere arrives by event or async request/reply | All |
 | X-3 | Every flow propagates its `correlationId` end to end | The Gateway originates it; everyone propagates it |
-| X-4 | Every consumer deduplicates by `eventId` | All consumers |
+| X-4 | Consumers deduplicate their inputs using the appropriate message/business key | messageId for Saga; per-consumer audit key; idempotency/type for movements and deposit ID for interbank credit |
 | X-5 | Every operation spanning two services has a defined compensation | Coordinated by Transaction Service |
 | X-6 | All amounts are quetzales with exactly two decimals | Account and Transaction |
 | X-7 | The Gateway makes no domain decision | The Gateway |
