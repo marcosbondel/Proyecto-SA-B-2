@@ -5,6 +5,12 @@
 [Fuente DSL](diagrams/03-c4-contenedores.dsl), [modelo](diagrams/c4.dsl),
 [PNG ampliado](diagrams/03-c4-contenedores.png).
 
+### Vista optimizada (trazado limpio y relaciones ordenadas)
+
+![Contenedores optimizado](diagrams/03-c4-contenedores-new.png)
+
+[Fuente PlantUML optimizada](diagrams/03-c4-contenedores-new.puml) con alineación por capas (Perímetro / Dominio / Persistencia / Observabilidad) para eliminar cruces de líneas e intersecciones complejas.
+
 Nuxt 4/Vue 3/Nitro sirve la interfaz; su proxy llama al Gateway NestJS. Los
 cinco servicios NestJS/Node 24 se comunican exclusivamente por RabbitMQ AMQP
 0-9-1, con `correlationId` y `traceparent`. Cada servicio posee una base

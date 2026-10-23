@@ -1,0 +1,277 @@
+@startuml
+title <size:24>Bank USAC - C4 L3: Componentes de Transaction Service (Vista Optimizada)</size>\n<size:16>Estructura Clean Architecture: Interfaces (Handlers) -> Application (Use Cases) -> Domain & Ports -> Infrastructure (Adapters) -> DB</size>
+
+set separator none
+left to right direction
+skinparam ranksep 80
+skinparam nodesep 30
+hide stereotype
+skinparam linetype ortho
+skinparam roundcorner 6
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+
+
+<style>
+  root {
+    BackgroundColor: #ffffff;
+    FontColor: #444444;
+  }
+  // Element
+  .Element-RWxlbWVudA== {
+    BackgroundColor: #ffffff;
+    LineColor: #444444;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #444444;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Element,Component,Application
+  .Element-RWxlbWVudCxDb21wb25lbnQsQXBwbGljYXRpb24= {
+    BackgroundColor: #ffffff;
+    LineColor: #d17c17;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #d17c17;
+    FontSize: 20;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 360;
+  }
+  // Element,Component,Domain
+  .Element-RWxlbWVudCxDb21wb25lbnQsRG9tYWlu {
+    BackgroundColor: #ffffff;
+    LineColor: #398819;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #398819;
+    FontSize: 20;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 360;
+  }
+  // Element,Component,Infrastructure
+  .Element-RWxlbWVudCxDb21wb25lbnQsSW5mcmFzdHJ1Y3R1cmU= {
+    BackgroundColor: #ffffff;
+    LineColor: #c11926;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #c11926;
+    FontSize: 20;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 360;
+  }
+  // Element,Component,Interfaces
+  .Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw== {
+    BackgroundColor: #ffffff;
+    LineColor: #1168bd;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #1168bd;
+    FontSize: 20;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 360;
+  }
+  // Element,Component,Port
+  .Element-RWxlbWVudCxDb21wb25lbnQsUG9ydA== {
+    BackgroundColor: #fff7ec;
+    LineColor: #d17c17;
+    LineStyle: 10-10;
+    LineThickness: 2;
+    FontColor: #d17c17;
+    FontSize: 20;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 360;
+  }
+  // Element,Database
+  .Element-RWxlbWVudCxEYXRhYmFzZQ== {
+    BackgroundColor: #f1f4f8;
+    LineColor: #336791;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #336791;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 450;
+  }
+  // Relationship
+  .Relationship-UmVsYXRpb25zaGlw {
+    LineThickness: 2;
+    LineStyle: 0;
+    LineColor: #707070;
+    FontColor: #707070;
+    FontSize: 16;
+  }
+  // Relationship,Implements
+  .Relationship-UmVsYXRpb25zaGlwLEltcGxlbWVudHM= {
+    LineThickness: 2;
+    LineStyle: 10-10;
+    LineColor: #707070;
+    FontColor: #707070;
+    FontSize: 16;
+  }
+  // Bank USAC
+  .Boundary-QmFuayBVU0FD {
+    BackgroundColor: #ffffff;
+    LineColor: #444444;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #444444;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+  }
+  // Transaction Service
+  .Boundary-VHJhbnNhY3Rpb24gU2VydmljZQ== {
+    BackgroundColor: #ffffff;
+    LineColor: #444444;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #444444;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+  }
+</style>
+
+rectangle "==RabbitMQ\n<size:16>[Software System]</size>\n\nTransporte AMQP; contexto W3C; no lógica de negocio." <<Element-RWxlbWVudA==>> as RabbitMQ
+
+rectangle "Bank USAC\n<size:16>[Software System]</size>" <<Boundary-QmFuayBVU0FD>> {
+  rectangle "Transaction Service\n<size:16>[Container: Node.js 24 / NestJS / TypeScript]</size>" <<Boundary-VHJhbnNhY3Rpb24gU2VydmljZQ==>> {
+    rectangle "==InboundMessageRouter\n<size:14>[Component: interfaces / dispatch]</size>\n\nEnruta por messageType; instancia por delivery y valida handler único." <<Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw==>> as BankUSAC.TransactionService.InboundMessageRouter
+    rectangle "==RequestTransferHandler\n<size:14>[Component: interfaces / AMQP / comando]</size>\n\ntransfer.requested.v1; Zod, identidad e idempotencyKey del envelope." <<Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw==>> as BankUSAC.TransactionService.RequestTransferHandler
+    rectangle "==TransactionStatusHandler\n<size:14>[Component: interfaces / AMQP / consulta]</size>\n\ntransaction.status.requested.v1; consulta por ID o correlación." <<Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw==>> as BankUSAC.TransactionService.TransactionStatusHandler
+    rectangle "==TransactionListHandler\n<size:14>[Component: interfaces / AMQP / consulta]</size>\n\ntransaction.list.query.v1; cuenta, fechas, estado y alcance del actor." <<Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw==>> as BankUSAC.TransactionService.TransactionListHandler
+    rectangle "==TransactionStatsHandler\n<size:14>[Component: interfaces / AMQP / consulta]</size>\n\ntransaction.stats.query.v1; contadores para personal autorizado." <<Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw==>> as BankUSAC.TransactionService.TransactionStatsHandler
+    rectangle "==PaymentAttemptFailedHandler\n<size:14>[Component: interfaces / AMQP / evento]</size>\n\npayment.attempt.failed.v1; registra intento sin cerrar PAYMENT_PENDING." <<Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw==>> as BankUSAC.TransactionService.PaymentAttemptFailedHandler
+    rectangle "==SagaEventHandler<T> + sagaHandlers()\n<size:14>[Component: interfaces / AMQP / eventos]</size>\n\nOcho bindings: KYC; débito y rechazo; pago y rechazo; crédito y rechazo; compensación." <<Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw==>> as BankUSAC.TransactionService.SagaEventHandlerTsagaHandlers
+    component "==DependencyHealthPort\n<size:14>[Component: interfaces / contrato de health]</size>\n\nBroker conectado, base alcanzable y consumidores; main.ts suministra closures." <<Element-RWxlbWVudCxDb21wb25lbnQsUG9ydA==>> as BankUSAC.TransactionService.DependencyHealthPort
+    rectangle "==HealthController\n<size:14>[Component: interfaces / NestJS :3003]</size>\n\n/health: proceso vivo. /ready: broker, base y consumidores preparados." <<Element-RWxlbWVudCxDb21wb25lbnQsSW50ZXJmYWNlcw==>> as BankUSAC.TransactionService.HealthController
+    rectangle "==RequestTransferUseCase\n<size:14>[Component: application / caso de uso]</size>\n\nValida solicitud, crea PENDING, conserva alias y abre la puerta KYC." <<Element-RWxlbWVudCxDb21wb25lbnQsQXBwbGljYXRpb24=>> as BankUSAC.TransactionService.RequestTransferUseCase
+    rectangle "==GetTransactionStatusUseCase\n<size:14>[Component: application / caso de uso]</size>\n\nEstado, phaseStatus e historial real; sólo propietario o personal." <<Element-RWxlbWVudCxDb21wb25lbnQsQXBwbGljYXRpb24=>> as BankUSAC.TransactionService.GetTransactionStatusUseCase
+    rectangle "==ListTransactionsUseCase\n<size:14>[Component: application / caso de uso]</size>\n\nListado acotado por identidad, cuentas, fechas y estados." <<Element-RWxlbWVudCxDb21wb25lbnQsQXBwbGljYXRpb24=>> as BankUSAC.TransactionService.ListTransactionsUseCase
+    rectangle "==GetTransactionStatsUseCase\n<size:14>[Component: application / caso de uso]</size>\n\nAgrega contadores del monitor sin leer saldos." <<Element-RWxlbWVudCxDb21wb25lbnQsQXBwbGljYXRpb24=>> as BankUSAC.TransactionService.GetTransactionStatsUseCase
+    rectangle "==RecordPaymentAttemptUseCase\n<size:14>[Component: application / caso de uso]</size>\n\nDeduplica y registra intento, error y willRetry; no transiciona Saga." <<Element-RWxlbWVudCxDb21wb25lbnQsQXBwbGljYXRpb24=>> as BankUSAC.TransactionService.RecordPaymentAttemptUseCase
+    rectangle "==AdvanceSagaUseCase\n<size:14>[Component: application / caso de uso]</size>\n\nProporciona decide/applyEvent y efectos; repositorio ejecuta bajo row lock." <<Element-RWxlbWVudCxDb21wb25lbnQsQXBwbGljYXRpb24=>> as BankUSAC.TransactionService.AdvanceSagaUseCase
+    component "==TransactionRepository\n<size:14>[Component: application / ports.ts]</size>\n\nstart, applyEvent, recordAlias, list, stats, transitionsOf y dispatchPendingOutbox." <<Element-RWxlbWVudCxDb21wb25lbnQsUG9ydA==>> as BankUSAC.TransactionService.TransactionRepository
+    component "==EventPublisher\n<size:14>[Component: application / ports.ts]</size>\n\nsend/publish/reply y envelopeFor; separa construir outbox de enviar." <<Element-RWxlbWVudCxDb21wb25lbnQsUG9ydA==>> as BankUSAC.TransactionService.EventPublisher
+    component "==TransferTelemetry\n<size:14>[Component: application / ports.ts]</size>\n\nopenTransfer, step y paymentAttempt; sin depender del SDK." <<Element-RWxlbWVudCxDb21wb25lbnQsUG9ydA==>> as BankUSAC.TransactionService.TransferTelemetry
+    rectangle "==Transaction + applyEvent()\n<size:14>[Component: domain / TypeScript puro / transaction.ts]</size>\n\nPENDING, DEBITING, PAYMENT_PENDING, COMPLETED, FAILED, COMPENSATED; transición ilegal rechazada." <<Element-RWxlbWVudCxDb21wb25lbnQsRG9tYWlu>> as BankUSAC.TransactionService.TransactionapplyEvent
+    rectangle "==Money / amountProblem()\n<size:14>[Component: domain / TypeScript puro / money.ts]</size>\n\nMonto positivo y precisión exacta; no consulta ni calcula saldo disponible." <<Element-RWxlbWVudCxDb21wb25lbnQsRG9tYWlu>> as BankUSAC.TransactionService.MoneyamountProblem
+    rectangle "==phaseStatusOf() / statusesInPhase()\n<size:14>[Component: domain / TypeScript puro / phase-status.ts]</size>\n\nProyección PENDING / APPROVED / FAILED sin sustituir los seis estados." <<Element-RWxlbWVudCxDb21wb25lbnQsRG9tYWlu>> as BankUSAC.TransactionService.phaseStatusOfstatusesInPhase
+    rectangle "==MessageBroker\n<size:14>[Component: infrastructure / @bank/messaging]</size>\n\ntransaction.commands + transaction.saga; ack, retry 1/5/30 s, DLQ y contexto W3C." <<Element-RWxlbWVudCxDb21wb25lbnQsSW5mcmFzdHJ1Y3R1cmU=>> as BankUSAC.TransactionService.MessageBroker
+    rectangle "==BrokerEventPublisher\n<size:14>[Component: infrastructure / AMQP + Zod]</size>\n\nImplementa EventPublisher; forCause conserva correlación, causalidad e identidad." <<Element-RWxlbWVudCxDb21wb25lbnQsSW5mcmFzdHJ1Y3R1cmU=>> as BankUSAC.TransactionService.BrokerEventPublisher
+    rectangle "==PostgresTransactionRepository\n<size:14>[Component: infrastructure / PostgreSQL + pg]</size>\n\nFOR UPDATE; dedup messageId; estado, transición y outbox atómicos; pg parametrizado." <<Element-RWxlbWVudCxDb21wb25lbnQsSW5mcmFzdHJ1Y3R1cmU=>> as BankUSAC.TransactionService.PostgresTransactionRepository
+    rectangle "==OutboxRelay\n<size:14>[Component: infrastructure / AdaptiveTicker]</size>\n\ndispatchPendingOutbox: SKIP LOCKED y publish con contexto; tick 200 ms, idle hasta 2 s." <<Element-RWxlbWVudCxDb21wb25lbnQsSW5mcmFzdHJ1Y3R1cmU=>> as BankUSAC.TransactionService.OutboxRelay
+    rectangle "==OtelTransferTelemetry\n<size:14>[Component: infrastructure / OTLP]</size>\n\nSpans saga.*, duración y resultado; IDs en logs/trazas y etiquetas acotadas." <<Element-RWxlbWVudCxDb21wb25lbnQsSW5mcmFzdHJ1Y3R1cmU=>> as BankUSAC.TransactionService.OtelTransferTelemetry
+  }
+
+  database "==Transaction DB\n<size:16>[Container: PostgreSQL 18.4 / TCP :5432]</size>\n\nSiete tablas propias, incluido schema_migrations; ninguna lectura a otra base." <<Element-RWxlbWVudCxEYXRhYmFzZQ==>> as BankUSAC.TransactionDB
+}
+
+BankUSAC.TransactionService.SagaEventHandlerTsagaHandlers --> BankUSAC.TransactionService.AdvanceSagaUseCase <<Relationship-UmVsYXRpb25zaGlw>> : "execute(event)\n<size:11>[llamada local]</size>"
+BankUSAC.TransactionService.RequestTransferUseCase --> BankUSAC.TransactionService.AdvanceSagaUseCase <<Relationship-UmVsYXRpb25zaGlw>> : "Abre KYC / reanuda PENDING\n<size:11>[llamada local]</size>"
+BankUSAC.TransactionService.RequestTransferUseCase --> BankUSAC.TransactionService.TransactionapplyEvent <<Relationship-UmVsYXRpb25zaGlw>> : "openTransaction / requestRefusal\n<size:11>[regla pura]</size>"
+BankUSAC.TransactionService.AdvanceSagaUseCase --> BankUSAC.TransactionService.TransactionapplyEvent <<Relationship-UmVsYXRpb25zaGlw>> : "applyEvent como callback decide\n<size:11>[regla pura bajo lock]</size>"
+BankUSAC.TransactionService.TransactionapplyEvent --> BankUSAC.TransactionService.MoneyamountProblem <<Relationship-UmVsYXRpb25zaGlw>> : "amountProblem / sameAmount\n<size:11>[regla pura]</size>"
+BankUSAC.TransactionService.AdvanceSagaUseCase --> BankUSAC.TransactionService.phaseStatusOfstatusesInPhase <<Relationship-UmVsYXRpb25zaGlw>> : "phaseStatusOf\n<size:11>[proyección pura]</size>"
+BankUSAC.TransactionService.GetTransactionStatusUseCase --> BankUSAC.TransactionService.TransactionapplyEvent <<Relationship-UmVsYXRpb25zaGlw>> : "mayReadTransaction\n<size:11>[regla pura]</size>"
+BankUSAC.TransactionService.GetTransactionStatusUseCase --> BankUSAC.TransactionService.phaseStatusOfstatusesInPhase <<Relationship-UmVsYXRpb25zaGlw>> : "phaseStatusOf\n<size:11>[proyección pura]</size>"
+BankUSAC.TransactionService.ListTransactionsUseCase --> BankUSAC.TransactionService.phaseStatusOfstatusesInPhase <<Relationship-UmVsYXRpb25zaGlw>> : "statusesInPhase / phaseStatusOf\n<size:11>[proyección pura]</size>"
+BankUSAC.TransactionService.RequestTransferUseCase --> BankUSAC.TransactionService.TransactionRepository <<Relationship-UmVsYXRpb25zaGlw>> : "start / recordAlias\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.AdvanceSagaUseCase --> BankUSAC.TransactionService.TransactionRepository <<Relationship-UmVsYXRpb25zaGlw>> : "applyEvent(decide, outbound)\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.GetTransactionStatusUseCase --> BankUSAC.TransactionService.TransactionRepository <<Relationship-UmVsYXRpb25zaGlw>> : "find / transitions / paymentOutcome\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.ListTransactionsUseCase --> BankUSAC.TransactionService.TransactionRepository <<Relationship-UmVsYXRpb25zaGlw>> : "list con filtros\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.GetTransactionStatsUseCase --> BankUSAC.TransactionService.TransactionRepository <<Relationship-UmVsYXRpb25zaGlw>> : "stats\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.RecordPaymentAttemptUseCase --> BankUSAC.TransactionService.TransactionRepository <<Relationship-UmVsYXRpb25zaGlw>> : "recordPaymentAttempt\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.RequestTransferUseCase --> BankUSAC.TransactionService.EventPublisher <<Relationship-UmVsYXRpb25zaGlw>> : "envelopeFor / rechazo\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.AdvanceSagaUseCase --> BankUSAC.TransactionService.EventPublisher <<Relationship-UmVsYXRpb25zaGlw>> : "envelopeFor: comandos y terminal\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.GetTransactionStatusUseCase --> BankUSAC.TransactionService.EventPublisher <<Relationship-UmVsYXRpb25zaGlw>> : "reply\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.ListTransactionsUseCase --> BankUSAC.TransactionService.EventPublisher <<Relationship-UmVsYXRpb25zaGlw>> : "reply\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.GetTransactionStatsUseCase --> BankUSAC.TransactionService.EventPublisher <<Relationship-UmVsYXRpb25zaGlw>> : "reply\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.RequestTransferUseCase --> BankUSAC.TransactionService.TransferTelemetry <<Relationship-UmVsYXRpb25zaGlw>> : "openTransfer\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.AdvanceSagaUseCase --> BankUSAC.TransactionService.TransferTelemetry <<Relationship-UmVsYXRpb25zaGlw>> : "step\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.RecordPaymentAttemptUseCase --> BankUSAC.TransactionService.TransferTelemetry <<Relationship-UmVsYXRpb25zaGlw>> : "paymentAttempt\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.PostgresTransactionRepository --> BankUSAC.TransactionService.TransactionRepository <<Relationship-UmVsYXRpb25zaGlwLEltcGxlbWVudHM=>> : "Implementa\n<size:11>[interfaz de aplicación]</size>"
+BankUSAC.TransactionService.BrokerEventPublisher --> BankUSAC.TransactionService.EventPublisher <<Relationship-UmVsYXRpb25zaGlwLEltcGxlbWVudHM=>> : "Implementa\n<size:11>[interfaz de aplicación]</size>"
+BankUSAC.TransactionService.OtelTransferTelemetry --> BankUSAC.TransactionService.TransferTelemetry <<Relationship-UmVsYXRpb25zaGlwLEltcGxlbWVudHM=>> : "Implementa\n<size:11>[interfaz de aplicación]</size>"
+BankUSAC.TransactionService.BrokerEventPublisher --> BankUSAC.TransactionService.MessageBroker <<Relationship-UmVsYXRpb25zaGlw>> : "publish / reply; envelope validado\n<size:11>[llamada local]</size>"
+BankUSAC.TransactionService.PostgresTransactionRepository --> BankUSAC.TransactionDB <<Relationship-UmVsYXRpb25zaGlw>> : "Siete tablas; sólo su base\n<size:11>[TCP :5432 / SQL parametrizado]</size>"
+BankUSAC.TransactionService.OutboxRelay --> BankUSAC.TransactionService.TransactionRepository <<Relationship-UmVsYXRpb25zaGlw>> : "dispatchPendingOutbox\n<size:11>[usa puerto]</size>"
+BankUSAC.TransactionService.OutboxRelay --> BankUSAC.TransactionService.MessageBroker <<Relationship-UmVsYXRpb25zaGlw>> : "publish de cada outbox\n<size:11>[AMQP con traceparent]</size>"
+BankUSAC.TransactionService.HealthController --> BankUSAC.TransactionService.DependencyHealthPort <<Relationship-UmVsYXRpb25zaGlw>> : "Consulta salud de dependencias\n<size:11>[closures de main.ts]</size>"
+RabbitMQ --> BankUSAC.TransactionService.MessageBroker <<Relationship-UmVsYXRpb25zaGlw>> : "Deliveries y redelivery\n<size:11>[AMQP :5672 / asíncrono]</size>"
+BankUSAC.TransactionService.MessageBroker --> RabbitMQ <<Relationship-UmVsYXRpb25zaGlw>> : "Comandos, eventos y respuestas\n<size:11>[AMQP :5672 / confirm publish]</size>"
+BankUSAC.TransactionService.MessageBroker --> BankUSAC.TransactionService.InboundMessageRouter <<Relationship-UmVsYXRpb25zaGlw>> : "Entrega envelope / route()\n<size:11>[llamada local]</size>"
+BankUSAC.TransactionService.InboundMessageRouter --> BankUSAC.TransactionService.RequestTransferHandler <<Relationship-UmVsYXRpb25zaGlw>> : "transfer.requested\n<size:11>[dispatch local]</size>"
+BankUSAC.TransactionService.InboundMessageRouter --> BankUSAC.TransactionService.TransactionStatusHandler <<Relationship-UmVsYXRpb25zaGlw>> : "status.requested\n<size:11>[dispatch local]</size>"
+BankUSAC.TransactionService.InboundMessageRouter --> BankUSAC.TransactionService.TransactionListHandler <<Relationship-UmVsYXRpb25zaGlw>> : "list.query\n<size:11>[dispatch local]</size>"
+BankUSAC.TransactionService.InboundMessageRouter --> BankUSAC.TransactionService.TransactionStatsHandler <<Relationship-UmVsYXRpb25zaGlw>> : "stats.query\n<size:11>[dispatch local]</size>"
+BankUSAC.TransactionService.InboundMessageRouter --> BankUSAC.TransactionService.PaymentAttemptFailedHandler <<Relationship-UmVsYXRpb25zaGlw>> : "attempt.failed\n<size:11>[dispatch local]</size>"
+BankUSAC.TransactionService.InboundMessageRouter --> BankUSAC.TransactionService.SagaEventHandlerTsagaHandlers <<Relationship-UmVsYXRpb25zaGlw>> : "8 eventos de Saga\n<size:11>[dispatch local]</size>"
+BankUSAC.TransactionService.RequestTransferHandler --> BankUSAC.TransactionService.RequestTransferUseCase <<Relationship-UmVsYXRpb25zaGlw>> : "execute()\n<size:11>[llamada local]</size>"
+BankUSAC.TransactionService.TransactionStatusHandler --> BankUSAC.TransactionService.GetTransactionStatusUseCase <<Relationship-UmVsYXRpb25zaGlw>> : "execute()\n<size:11>[llamada local]</size>"
+BankUSAC.TransactionService.TransactionListHandler --> BankUSAC.TransactionService.ListTransactionsUseCase <<Relationship-UmVsYXRpb25zaGlw>> : "execute()\n<size:11>[llamada local]</size>"
+BankUSAC.TransactionService.TransactionStatsHandler --> BankUSAC.TransactionService.GetTransactionStatsUseCase <<Relationship-UmVsYXRpb25zaGlw>> : "execute()\n<size:11>[llamada local]</size>"
+BankUSAC.TransactionService.PaymentAttemptFailedHandler --> BankUSAC.TransactionService.RecordPaymentAttemptUseCase <<Relationship-UmVsYXRpb25zaGlw>> : "execute()\n<size:11>[llamada local]</size>"
+
+
+' ==================== ALINEACIÓN CLEAN ARCHITECTURE ====================
+' Capa 1: Inbound & Interfaces
+BankUSAC.TransactionService.InboundMessageRouter -[hidden]down-> BankUSAC.TransactionService.RequestTransferHandler
+BankUSAC.TransactionService.RequestTransferHandler -[hidden]down-> BankUSAC.TransactionService.SagaEventHandlerTsagaHandlers
+BankUSAC.TransactionService.SagaEventHandlerTsagaHandlers -[hidden]down-> BankUSAC.TransactionService.TransactionStatusHandler
+BankUSAC.TransactionService.TransactionStatusHandler -[hidden]down-> BankUSAC.TransactionService.TransactionListHandler
+BankUSAC.TransactionService.TransactionListHandler -[hidden]down-> BankUSAC.TransactionService.TransactionStatsHandler
+BankUSAC.TransactionService.TransactionStatsHandler -[hidden]down-> BankUSAC.TransactionService.PaymentAttemptFailedHandler
+BankUSAC.TransactionService.PaymentAttemptFailedHandler -[hidden]down-> BankUSAC.TransactionService.HealthController
+BankUSAC.TransactionService.HealthController -[hidden]right-> BankUSAC.TransactionService.DependencyHealthPort
+
+' Capa 2: Application (Use Cases)
+BankUSAC.TransactionService.RequestTransferUseCase -[hidden]down-> BankUSAC.TransactionService.AdvanceSagaUseCase
+BankUSAC.TransactionService.AdvanceSagaUseCase -[hidden]down-> BankUSAC.TransactionService.GetTransactionStatusUseCase
+BankUSAC.TransactionService.GetTransactionStatusUseCase -[hidden]down-> BankUSAC.TransactionService.ListTransactionsUseCase
+BankUSAC.TransactionService.ListTransactionsUseCase -[hidden]down-> BankUSAC.TransactionService.GetTransactionStatsUseCase
+BankUSAC.TransactionService.GetTransactionStatsUseCase -[hidden]down-> BankUSAC.TransactionService.RecordPaymentAttemptUseCase
+
+' Capa 3: Ports & Domain
+BankUSAC.TransactionService.TransactionRepository -[hidden]down-> BankUSAC.TransactionService.EventPublisher
+BankUSAC.TransactionService.EventPublisher -[hidden]down-> BankUSAC.TransactionService.TransferTelemetry
+BankUSAC.TransactionService.TransferTelemetry -[hidden]down-> BankUSAC.TransactionService.TransactionapplyEvent
+BankUSAC.TransactionService.TransactionapplyEvent -[hidden]down-> BankUSAC.TransactionService.MoneyamountProblem
+BankUSAC.TransactionService.MoneyamountProblem -[hidden]down-> BankUSAC.TransactionService.phaseStatusOfstatusesInPhase
+
+' Capa 4: Infrastructure & External DB
+BankUSAC.TransactionService.PostgresTransactionRepository -[hidden]down-> BankUSAC.TransactionService.BrokerEventPublisher
+BankUSAC.TransactionService.BrokerEventPublisher -[hidden]down-> BankUSAC.TransactionService.OutboxRelay
+BankUSAC.TransactionService.OutboxRelay -[hidden]down-> BankUSAC.TransactionService.OtelTransferTelemetry
+
+' Conexiones de flujo horizontal entre capas
+RabbitMQ -[hidden]right-> BankUSAC.TransactionService.MessageBroker
+BankUSAC.TransactionService.MessageBroker -[hidden]right-> BankUSAC.TransactionService.InboundMessageRouter
+
+BankUSAC.TransactionService.RequestTransferHandler -[hidden]right-> BankUSAC.TransactionService.RequestTransferUseCase
+BankUSAC.TransactionService.SagaEventHandlerTsagaHandlers -[hidden]right-> BankUSAC.TransactionService.AdvanceSagaUseCase
+BankUSAC.TransactionService.TransactionStatusHandler -[hidden]right-> BankUSAC.TransactionService.GetTransactionStatusUseCase
+BankUSAC.TransactionService.TransactionListHandler -[hidden]right-> BankUSAC.TransactionService.ListTransactionsUseCase
+BankUSAC.TransactionService.TransactionStatsHandler -[hidden]right-> BankUSAC.TransactionService.GetTransactionStatsUseCase
+BankUSAC.TransactionService.PaymentAttemptFailedHandler -[hidden]right-> BankUSAC.TransactionService.RecordPaymentAttemptUseCase
+
+BankUSAC.TransactionService.RequestTransferUseCase -[hidden]right-> BankUSAC.TransactionService.TransactionRepository
+BankUSAC.TransactionService.AdvanceSagaUseCase -[hidden]right-> BankUSAC.TransactionService.EventPublisher
+BankUSAC.TransactionService.RecordPaymentAttemptUseCase -[hidden]right-> BankUSAC.TransactionService.TransferTelemetry
+
+BankUSAC.TransactionService.TransactionRepository -[hidden]right-> BankUSAC.TransactionService.PostgresTransactionRepository
+BankUSAC.TransactionService.EventPublisher -[hidden]right-> BankUSAC.TransactionService.BrokerEventPublisher
+BankUSAC.TransactionService.TransferTelemetry -[hidden]right-> BankUSAC.TransactionService.OtelTransferTelemetry
+
+BankUSAC.TransactionService.PostgresTransactionRepository -[hidden]right-> BankUSAC.TransactionDB
+
+@enduml
