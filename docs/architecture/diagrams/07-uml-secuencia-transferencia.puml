@@ -1,364 +1,88 @@
-@startuml
-' Bank USAC - UML 2 Sequence Diagram - Transferencia bancaria
-' Caso de uso 6 (docs/domain/use-cases.md). Saga por coreografia con compensacion
-' explicita, cinco servicios, comunicados solo por RabbitMQ. Incluye la Saga
-' extendida de la Fase 2: el gate KYC antes de mover dinero (C-8), las reglas
-' del tipo de cuenta con su comision, el pago externo simulado con su escalera
-' de reintentos, y la notificacion final. Un solo diagrama:
-' camino feliz, los tres finales (COMPLETED / FAILED / COMPENSATED) y la
-' compensacion con sus dos disparadores.
-' Notacion UML 2 nativa (OMG, Sequence Diagram §17.4.4 / §17.11 Message), misma
-' convencion que 06-uml-secuencia-crear-cuenta.puml: la etiqueta de cada mensaje
-' lleva solo el nombre de la operacion/senal invocada; el protocolo y la
-' sincronia se leen en la firma grafica de la flecha:
-'   ->   cabeza rellena, linea solida  -> llamada sincrona (Synchronous Call)
-'   ->>  cabeza abierta,  linea solida  -> envio de senal/mensaje asincrono
-'                                          (Asynchronous Signal)
-'   -->> cabeza abierta,  linea discontinua -> mensaje de retorno (Reply Message)
-' Cada mensaje trae un titulo para stakeholders seguido, tras un guion, del
-' nombre real de la funcion que lo realiza en el codigo — verificado contra el
-' repositorio. Transaction Service y Payment Service escriben cada comando y
-' cada evento en su propia tabla outbox, dentro de la misma transaccion que
-' decide la fila (TD-031 / TD-047); el `ack` ocurre justo despues de esa
-' escritura, y el publish real hacia RabbitMQ lo hace un barrido periodico
-' (OutboxRelay.runOnce()) — no el handler que atendio el mensaje. Account
-' Service y Notification & Audit no usan outbox: publican en el mismo `execute`.
-
-title UML 2 - Diagrama de Secuencia\nTransferencia bancaria - Saga extendida por coreografia (Bank USAC, Fase 2)\nKYC -> tipo de cuenta -> historial -> pago externo -> notificacion
-
+@startuml 07-uml-secuencia-transferencia
 skinparam shadowing false
 skinparam defaultFontName "Segoe UI"
-skinparam ArrowColor #555555
-skinparam ArrowThickness 1.2
-skinparam sequenceMessageAlign center
-skinparam maxMessageSize 260
-skinparam wrapWidth 260
-skinparam noteBackgroundColor #FFF8DC
-skinparam noteBorderColor #D6B656
+skinparam defaultFontSize 14
+skinparam dpi 180
+skinparam maxMessageSize 190
 skinparam ParticipantBorderColor #1168BD
 skinparam ParticipantBackgroundColor #EAF2FF
-skinparam ParticipantFontColor #1168BD
-skinparam ActorBorderColor #1168BD
-skinparam ActorBackgroundColor #EAF2FF
 skinparam QueueBorderColor #C11926
 skinparam QueueBackgroundColor #FFF0F0
-skinparam LifeLineBorderColor #1168BD
-skinparam ActivationBorderColor #1168BD
-skinparam ActivationBackgroundColor #C6DBF7
-
-legend right
-    |= Elemento | Notación |
-    | <color:#1168BD>Azul</color> | Actor, Frontend, Gateway, Transaction/Account/Payment Service, Notification & Audit |
-    | <color:#C11926>Rojo</color> | RabbitMQ (broker) |
-    | `->` (cabeza rellena, sólida) | Llamada síncrona — Synchronous Call (OMG) |
-    | `->>` (cabeza abierta, sólida) | Señal/mensaje asíncrono — Asynchronous Signal (OMG) |
-    | `-->>` (cabeza abierta, discontinua) | Mensaje de retorno — Reply Message (OMG) |
-    | Título — operación(args) | Título de negocio y, tras el guion, la función real invocada |
-    | `alt` / `else` | Flujo alternativo (fallo esperado / final distinto) |
-    | `opt` | Compensación — se ejecuta solo si un disparador la activó |
-    | `loop` | Escalera de reintentos del pago: cada vuelta es un intento independiente, separado en el tiempo y disparado por el barrido |
-    | Flecha a la propia línea de vida | Self-message: decisión de dominio o barrido periódico del propio servicio (scheduler); no es un mensaje de red |
-    | `...` | Pasa el tiempo entre un intento y el siguiente: el vencimiento vive en una columna, no en un temporizador |
-    | Barra sólida sobre la línea de vida | Casilla de activación |
-endlegend
-
-actor "Actor\n(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)" as Actor
-participant "Frontend" as Frontend
-participant "API Gateway" as Gateway
-queue "Message Broker\n(RabbitMQ)" as Broker
-participant "Customer Service" as Customer
-participant "Transaction Service" as Txn
-participant "Account Service" as Account
-participant "Payment Service" as Payment
-participant "Notification & Audit" as Notif
-
+skinparam noteBackgroundColor #FFF8DC
+skinparam noteBorderColor #D6B656
 autonumber
-
-Actor -> Frontend : Solicitar transferencia - submit()
-activate Frontend
-Frontend -> Gateway : Enviar sourceAccount, targetAccount, amount, idempotencyKey - request(TransferDto)
-activate Gateway
-note over Gateway
-  Genera el identificador de seguimiento
-  y arma el sobre del comando
-  - envelopeForRequest(payload, "transfer.requested.v1", actor, correlationId)
-end note
-Gateway ->> Broker : Publicar comando "transferir" - publisher.publish(transfer.requested.v1)
-Gateway -->> Frontend : Confirmar recepción - 202 Accepted : { transactionId, correlationId }
-deactivate Gateway
-Frontend -->> Actor : "Solicitud recibida" (NO "transferencia completada")
-deactivate Frontend
-
-' ---- Paso 1 ----
-Broker ->> Txn : Entregar transfer.requested - RequestTransferHandler.handle(envelope)
-activate Txn
-
-alt datos inválidos
-    Txn -> Txn : Rechazar — no se crea la Transaction\n- requestRefusal(payload) devuelve el motivo
-    Txn ->> Broker : Publicar evento "transacción fallida" - #refuse() invoca publisher.publish(transaction.failed.v1)
-    Txn ->> Broker : Confirmar (ack) - channel.ack(message)
-    deactivate Txn
-
-else idempotencyKey repetida
-    Txn -> Txn : Resolver contra la transacción original\nLos balances no se mueven - #existing() invoca repository.recordAlias(...)
-    Txn ->> Broker : Confirmar (ack) - channel.ack(message)
-    deactivate Txn
-
-else datos válidos, idempotencyKey nueva
-    Txn -> Txn : Crear la Transaction en PENDING\ny escribir transaction.initiated en el outbox\n- repository.start({ transaction, outbound })
-    Txn -> Txn : Decidir PENDING -> PENDING (autotransición)\ny escribir la pregunta al gate KYC en el outbox\n- saga.execute({ event: KYC_CHECK_ORDERED })
-    Txn ->> Broker : Confirmar (ack) — DESPUÉS de escribir el outbox\n- channel.ack(message)
-    deactivate Txn
-
-    ' ---- Paso 1b: el gate KYC (Fase 2, §4.1 p. 4 — C-8) ----
-    Txn ->> Broker : Preguntar si el cliente está verificado (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(customer.kyc.check.requested.v1)
-
-    Broker ->> Customer : Entregar customer.kyc.check.requested - CheckKycHandler.handle(envelope)
-    activate Customer
-    note over Customer
-      Responde con el veredicto, sin exponer la tabla
-      — mayInitiateTransactions(customer) decide, y
-      la respuesta viaja por el broker (invariante X-1:
-      Transaction Service nunca lee esta base)
-    end note
-    Customer ->> Broker : Publicar evento "KYC comprobado" - publisher.publish(customer.kyc.checked.v1)
-    Customer ->> Broker : Confirmar (ack) - channel.ack(message)
-    deactivate Customer
-
-    Broker ->> Txn : Entregar customer.kyc.checked - SagaEventHandler.handle(envelope)
-    activate Txn
-
-    alt kycStatus != VERIFIED — cierra en FAILED, sin mover un centavo
-        note over Txn
-          PENDING -> FAILED, reason KYC_NOT_VERIFIED
-          - AdvanceSagaUseCase.execute({ event: KYC_REJECTED })
-          Ningún débito llega a ordenarse
-        end note
-        Txn ->> Broker : Confirmar (ack) - channel.ack(message)
-        deactivate Txn
-        Txn ->> Broker : Publicar evento "transacción fallida" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(transaction.failed.v1)
-
-    else kycStatus == VERIFIED — sigue el flujo
-        Txn -> Txn : Decidir PENDING -> DEBITING\ny escribir el comando "debitar" en el outbox (misma transacción, TD-031)\n- saga.execute({ event: KYC_APPROVED }) invoca repository.applyEvent(...)
-        Txn ->> Broker : Confirmar (ack) — DESPUÉS de escribir el outbox\n- channel.ack(message)
-        deactivate Txn
-
-        Txn ->> Broker : Publicar comando "debitar" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(account.debit.requested.v1)
+title UML - Transferencia interna / Saga - Fase III\nKYC -> débito -> pago -> crédito o compensación
+actor "Cliente / Cajero autorizado" as U
+participant "Frontend\nNuxt 4 / Nitro" as W
+participant "Gateway\nNestJS / HTTP" as G
+queue "RabbitMQ\nAMQP 0-9-1" as B
+participant "Transaction\nNestJS / PostgreSQL" as T
+participant "Customer\nNestJS / PostgreSQL" as C
+participant "Account\nNestJS / PostgreSQL" as A
+participant "Payment\nNestJS / PostgreSQL" as P
+participant "Notification & Audit" as N
+participant "Collector -> Tempo" as O
+U -> W : Solicitar transferencia
+W -> G : POST /api/transfers\nJWT + Idempotency-Key
+G ->> B : transfer.requested.v1\ncorrelationId + traceparent
+G --> W : 202 / transactionId + interbankTransferId + correlationId\nCabecera X-Trace-Id
+B ->> T : Crear PENDING / deduplicar / outbox
+T ->> B : customer.kyc.check.requested.v1
+B ->> C : Comprobar identidad KYC
+C ->> B : customer.kyc.checked.v1
+B ->> T : Veredicto KYC
+alt KYC != VERIFIED
+  T ->> B : transaction.failed.v1 / FAILED\nsin mover dinero
+else KYC VERIFIED
+  T ->> B : account.debit.requested.v1
+  B ->> A : Débito bajo SELECT FOR UPDATE
+  note right of A
+    NUMERIC(14,2), version y CHECK >= 0.
+    AHORRO: Q3 de comisión; compensación la devuelve.
+    Operaciones N/M -> account.anomaly.detected.v1.
+  end note
+  alt origen inválido o saldo insuficiente
+    A ->> B : account.debit.rejected.v1
+    B ->> T : FAILED
+  else débito aplicado
+    A ->> B : account.debited.v1
+    B ->> T : DEBITING -> PAYMENT_PENDING
+    T ->> B : payment.requested.v1
+    B ->> P : Registrar pago e intento
+    ref over P : Diagrama 11: reintentos 1 s / 5 s / 30 s
+    alt pago exitoso
+      P ->> B : payment.succeeded.v1
+      B ->> T : Ordenar crédito
+      T ->> B : account.credit.requested.v1
+      B ->> A : Aplicar crédito idempotente
+      alt crédito confirmado
+        A ->> B : account.credited.v1
+        B ->> T : COMPLETED
+        T ->> B : transaction.completed.v1
+      else crédito rechazado
+        A ->> B : account.credit.rejected.v1
+        B ->> T : Ordenar compensación
+      end
+    else rechazo definitivo o escalera agotada
+      P ->> B : payment.failed.v1
+      B ->> T : Ordenar compensación
     end
-
-    ' ---- Paso 2 ----
-    Broker ->> Account : Entregar account.debit.requested - DebitAccountHandler.handle(envelope)
-    activate Account
-
-    alt fondos insuficientes o cuenta origen inactiva — cierra en FAILED
-        Account -> Account : Decidir el rechazo\n- debit(account, amount, now) lanza DomainRejection
-        Account ->> Broker : Publicar evento "débito rechazado" - #reject() invoca publisher.publish(account.debit.rejected.v1)
-        Account ->> Broker : Confirmar (ack) - channel.ack(message)
-        deactivate Account
-
-        Broker ->> Txn : Entregar account.debit.rejected - SagaEventHandler.handle(envelope)
-        activate Txn
-        note over Txn
-          DEBITING -> FAILED
-          - AdvanceSagaUseCase.execute({ event: DEBIT_REJECTED })
-        end note
-        Txn ->> Broker : Confirmar (ack) — evento terminal escrito en el outbox\n- channel.ack(message)
-        deactivate Txn
-        Txn ->> Broker : Publicar evento "transacción fallida" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(transaction.failed.v1)
-
-        Broker ->> Notif : Entregar transaction.failed - RecordEventHandler.handle(envelope)
-        activate Notif
-        note over Notif
-          Registra el cierre y notifica
-          al cliente — FAILED
-          - repository.record({ event, notification, now })
-        end note
-        deactivate Notif
-
-    else débito aplicado
-        Account -> Account : Aplicar el débito bajo el lock de fila\n- debit(account, amount, now) devuelve el movimiento
-        note over Account
-          Las reglas del tipo de cuenta (Fase 2, §4.1 p. 6)
-          se aplican aquí — ruleFor(accountType):
-          AHORRO cobra Q3.00 de comisión en el mismo lock,
-          MONETARIA no tiene regla de comisión.
-          El destino recibe el monto íntegro; la comisión
-          la paga el origen y se revierte si hay compensación
-        end note
-        opt accountType == AHORRO
-            Account ->> Broker : Publicar evento "comisión cobrada" - publisher.publish(account.commission.charged.v1)
-        end
-        Account ->> Broker : Publicar evento "cuenta debitada" - publisher.publish(account.debited.v1)
-        Account ->> Broker : Confirmar (ack) - channel.ack(message)
-        deactivate Account
-
-        ' ---- Paso 3 ----
-        Broker ->> Txn : Entregar account.debited - SagaEventHandler.handle(envelope)
-        activate Txn
-        Txn -> Txn : Decidir DEBITING -> PAYMENT_PENDING\ny escribir el comando "procesar pago" en el outbox\n- AdvanceSagaUseCase.execute({ event: DEBITED })
-        Txn ->> Broker : Confirmar (ack) - channel.ack(message)
-        deactivate Txn
-        Txn ->> Broker : Publicar comando "procesar pago" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(payment.requested.v1)
-
-        ' ---- Paso 4 ----
-        Broker ->> Payment : Entregar payment.requested - ProcessPaymentHandler.handle(envelope)
-        activate Payment
-        Payment -> Payment : Registrar el pago en PENDING\ny ejecutar el intento 1\n- ProcessPaymentUseCase.open(order, publisher) invoca #attemptOnce(payment, 1)
-        note over Payment
-          decideAttempt(payment, provider) decide el veredicto.
-          El resultado se escribe en el outbox en la misma
-          transacción del intento (TD-047); el momento del
-          siguiente intento se guarda como columna
-          (next_attempt_at, con índice parcial):
-          NO es un temporizador en memoria
-        end note
-
-        ' ---- Paso 4b: la escalera de reintentos, un intento por barrido ----
-        loop por cada intento fallido transitorio que aún tenga peldaño (1 s / 5 s / 30 s)
-            Payment ->> Broker : Publicar evento "intento de pago fallido" (barrido del outbox)\n(attempt, errorType, willRetry = true, nextAttemptAt)\n- OutboxRelay.runOnce() invoca broker.publish(payment.attempt.failed.v1)
-            deactivate Payment
-
-            Broker ->> Txn : Entregar payment.attempt.failed - PaymentAttemptFailedHandler.handle(envelope)
-            activate Txn
-            note over Txn
-              Evento observable, NO terminal:
-              la Saga sigue en PAYMENT_PENDING
-              - RecordPaymentAttemptUseCase.execute(...)
-            end note
-            deactivate Txn
-
-            ... el siguiente intento no ocurre dentro de esta entrega: vence en next_attempt_at ...
-
-            Payment -> Payment : Barrer los pagos vencidos\n- RetryScheduler.runOnce() : SELECT ... WHERE next_attempt_at <= now() FOR UPDATE SKIP LOCKED
-            activate Payment
-            note over Payment
-              El vencimiento es una columna, así que un pod
-              reprogramado no olvida el reintento
-              - ProcessPaymentUseCase.retry(payment, publisher) invoca #attemptOnce(payment, attempt + 1)
-            end note
-        end
-
-        alt escalera agotada o pago rechazado — dispara compensación
-            Payment ->> Broker : Publicar evento "intento de pago fallido" (willRetry = false)\n- OutboxRelay.runOnce() invoca broker.publish(payment.attempt.failed.v1)
-            Payment ->> Broker : Publicar evento "pago fallido", el único que cierra la Saga\n- OutboxRelay.runOnce() invoca broker.publish(payment.failed.v1)
-            Payment ->> Broker : Confirmar (ack) - channel.ack(message)
-            deactivate Payment
-
-            Broker ->> Txn : Entregar payment.failed - SagaEventHandler.handle(envelope)
-            activate Txn
-            note over Txn
-              Débito ya aplicado -> requiere
-              compensación
-              - AdvanceSagaUseCase.execute({ event: PAYMENT_FAILED })
-            end note
-            deactivate Txn
-
-        else algún intento tiene éxito
-            Payment ->> Broker : Publicar evento "pago exitoso" (attempt), el único que cierra la Saga\n- OutboxRelay.runOnce() invoca broker.publish(payment.succeeded.v1)
-            Payment ->> Broker : Confirmar (ack) - channel.ack(message)
-            deactivate Payment
-
-            ' ---- Paso 5 ----
-            Broker ->> Txn : Entregar payment.succeeded - SagaEventHandler.handle(envelope)
-            activate Txn
-            Txn -> Txn : Ordenar el crédito y escribirlo en el outbox\n- AdvanceSagaUseCase.execute({ event: PAYMENT_SUCCEEDED })
-            Txn ->> Broker : Confirmar (ack) - channel.ack(message)
-            deactivate Txn
-            Txn ->> Broker : Publicar comando "acreditar" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(account.credit.requested.v1)
-
-            ' ---- Paso 6 ----
-            Broker ->> Account : Entregar account.credit.requested - CreditAccountHandler.handle(envelope)
-            activate Account
-
-            alt cuenta destino no encontrada — dispara compensación
-                Account -> Account : Decidir el rechazo\n- credit(account, amount, now) no encuentra la cuenta destino
-                Account ->> Broker : Publicar evento "crédito rechazado" - publisher.publish(account.credit.rejected.v1)
-                Account ->> Broker : Confirmar (ack) - channel.ack(message)
-                deactivate Account
-
-                Broker ->> Txn : Entregar account.credit.rejected - SagaEventHandler.handle(envelope)
-                activate Txn
-                note over Txn
-                  Débito ya aplicado -> requiere
-                  compensación
-                  - AdvanceSagaUseCase.execute({ event: CREDIT_REJECTED })
-                end note
-                deactivate Txn
-
-            else destino encontrado
-                Account -> Account : Acreditar el destino, reactivarlo\nsi estaba INACTIVE (A-3)\n- credit(account, amount, now)
-                Account ->> Broker : Publicar evento "cuenta acreditada" - publisher.publish(account.credited.v1)
-                Account ->> Broker : Confirmar (ack) - channel.ack(message)
-                deactivate Account
-
-                ' ---- Paso 7 ----
-                Broker ->> Txn : Entregar account.credited - SagaEventHandler.handle(envelope)
-                activate Txn
-                Txn -> Txn : Decidir PAYMENT_PENDING -> COMPLETED\ny escribir transaction.completed en el outbox\n- AdvanceSagaUseCase.execute({ event: CREDITED })
-                Txn ->> Broker : Confirmar (ack) - channel.ack(message)
-                deactivate Txn
-                Txn ->> Broker : Publicar evento "transacción completada" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(transaction.completed.v1)
-
-                Broker ->> Notif : Entregar transaction.completed - RecordEventHandler.handle(envelope)
-                activate Notif
-                note over Notif
-                  Registra el cierre y notifica
-                  al cliente — COMPLETED
-                  - repository.record({ event, notification, now })
-                end note
-                deactivate Notif
-            end
-        end
-
-        opt requiere compensación — disparada por payment.failed o account.credit.rejected
-            activate Txn
-            Txn -> Txn : Decidir la compensación\ny escribir el comando en el outbox\n- AdvanceSagaUseCase.execute({ event: PAYMENT_FAILED | CREDIT_REJECTED })
-            Txn ->> Broker : Confirmar (ack) - channel.ack(message)
-            deactivate Txn
-            Txn ->> Broker : Publicar comando "compensar débito" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(account.debit.compensation.requested.v1)
-
-            Broker ->> Account : Entregar account.debit.compensation.requested - CompensateDebitHandler.handle(envelope)
-            activate Account
-            Account -> Account : Devolver el monto a la cuenta origen\n- compensate(account, amount, now)
-            Account ->> Broker : Publicar evento "débito compensado" - publisher.publish(account.debit.compensated.v1)
-            Account ->> Broker : Confirmar (ack) - channel.ack(message)
-            deactivate Account
-
-            Broker ->> Txn : Entregar account.debit.compensated - SagaEventHandler.handle(envelope)
-            activate Txn
-            Txn -> Txn : Decidir PAYMENT_PENDING -> COMPENSATED\ny escribir transaction.compensated en el outbox\nEl dinero salió y volvió\n- AdvanceSagaUseCase.execute({ event: DEBIT_COMPENSATED })
-            Txn ->> Broker : Confirmar (ack) - channel.ack(message)
-            deactivate Txn
-            Txn ->> Broker : Publicar evento "transacción compensada" (barrido del outbox)\n- OutboxRelay.runOnce() invoca broker.publish(transaction.compensated.v1)
-
-            Broker ->> Notif : Entregar transaction.compensated - RecordEventHandler.handle(envelope)
-            activate Notif
-            note over Notif
-              Registra el cierre y notifica
-              al cliente — COMPENSATED
-              - repository.record({ event, notification, now })
-            end note
-            deactivate Notif
-        end
+    opt compensación ordenada
+      T ->> B : account.debit.compensation.requested.v1
+      B ->> A : Reintegrar débito y comisión una vez
+      A ->> B : account.debit.compensated.v1
+      B ->> T : COMPENSATED
+      T ->> B : transaction.compensated.v1
     end
+  end
 end
-
-note over Actor, Gateway
-  El estado real se consulta después por transactionId, con un techo de 5 s:
-  status(transactionId) → queries.transactionStatus() → askAndWait(envelope)
-  → TransactionStatusHandler.handle() → GetTransactionStatusUseCase.execute()
-  → publisher.reply(transaction.status.replied.v1)
-end note
-
-note over Txn, Account
-  Regla de diseño: Transaction Service NUNCA lee el balance.
-  Ordena el débito/crédito y espera el evento (bounded-contexts.md)
-end note
-
-note over Txn
-  Evento repetido se descarta por el messageId del envelope
-  Transición fuera de orden se descarta como ILLEGAL_TRANSITION
-  - applyEvent(transaction, event) en domain/transaction.ts
+B ->> N : Eventos / redactar / registrar / notificar
+T -> O : spans de Saga / resultado y duración
+note over G,N
+  AMQP conserva correlationId y traceparent; messageId deduplica consumo.
+  Transaction y Payment persisten outbox antes del ack.
+  Métricas usan etiquetas acotadas; IDs se consultan en logs/trazas.
+  Una autotransición registra intentos sin cerrar la Saga.
 end note
 
 @enduml

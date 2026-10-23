@@ -53,13 +53,13 @@
   endlegend
 
   actor "Actor\n(CLIENTE / CAJERO_RECEPTOR / ADMINISTRADOR)" as Actor
-  participant "Frontend" as Frontend
-  participant "API Gateway" as Gateway
+  participant "Frontend\nNuxt 4 / Nitro HTTPS" as Frontend
+  participant "API Gateway\nNestJS / JWT / roles / :3000" as Gateway
   queue "Message Broker\n(RabbitMQ)" as Broker
-  participant "Account Service" as Account
-  database "Account Database" as AccountDB
+  participant "Account Service\nNestJS / AMQP / :3002" as Account
+  database "Account Database\nPostgreSQL 18.4 / TCP :5432" as AccountDB
   participant "Notification & Audit" as Notif
-  database "Audit Database" as AuditDB
+  database "Audit Database\nPostgreSQL 18.4 / TCP :5432" as AuditDB
 
   autonumber
 
@@ -68,6 +68,7 @@
   Frontend -> Gateway : Enviar la solicitud de apertura - open(OpenAccountDto)
   activate Gateway
   note over Gateway
+    Propaga traceparent W3C y correlationId.
     Genera el identificador de seguimiento
     y arma el sobre del comando
     - envelopeForRequest(payload, "account.create.v1", actor, correlationId)
@@ -91,7 +92,7 @@
       note over Account
         Cuenta creada — activa.
         MONETARIA saldo Q0.00 (o depósito).
-        AHORRO exige mínimo Q50.00.
+        AHORRO exige mínimo Q100.00.
       end note
       Account ->> Broker : Publicar evento "cuenta abierta" - publisher.publish(account.opened.v1)
       Account ->> Broker : Confirmar al broker que el mensaje fue procesado\nDESPUÉS de guardar - channel.ack(message)
