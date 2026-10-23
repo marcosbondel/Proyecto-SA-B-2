@@ -2,14 +2,9 @@
 
 ![Contenedores](diagrams/03-c4-contenedores.png)
 
-[Fuente DSL](diagrams/03-c4-contenedores.dsl), [modelo](diagrams/c4.dsl),
-[PNG ampliado](diagrams/03-c4-contenedores.png).
+[Fuente PlantUML](diagrams/03-c4-contenedores.puml), [fuente DSL](diagrams/03-c4-contenedores.dsl), [modelo](diagrams/c4.dsl), [PNG ampliado](diagrams/03-c4-contenedores.png).
 
-### Vista espaciada y diferenciada por color
-
-![Contenedores espaciado](diagrams/03-c4-contenedores-new.png)
-
-[Fuente PlantUML optimizada](diagrams/03-c4-contenedores-new.puml) con espaciado amplio (`ranksep 280`, `nodesep 160`), curvas suaves (`polyline`) y diferenciación cromática de relaciones (Azul: Ingress/HTTP, Rojo: AMQP/RabbitMQ, Azul Marino: PostgreSQL, Púrpura discontinuo: OTLP/Observabilidad, Naranja: Externos) para trazabilidad clara y sin congestión visual.
+Diagrama optimizado con espaciado amplio (`ranksep 280`, `nodesep 160`), curvas suaves (`polyline`) y diferenciación cromática de relaciones (Azul: Ingress/HTTP, Rojo: AMQP/RabbitMQ, Azul Marino: PostgreSQL, Púrpura discontinuo: OTLP/Observabilidad, Naranja: Externos) para trazabilidad clara y sin congestión visual.
 
 Nuxt 4/Vue 3/Nitro sirve la interfaz; su proxy llama al Gateway NestJS. Los
 cinco servicios NestJS/Node 24 se comunican exclusivamente por RabbitMQ AMQP

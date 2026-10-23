@@ -17,11 +17,9 @@ dependencia del caso de uso en una dependencia de su adaptador concreto.
 
 ![Transaction](diagrams/04-c4-componentes.png)
 
-### Vista espaciada y diferenciada por capa (Transaction Service)
+[Fuente PlantUML](diagrams/04-c4-componentes.puml), [fuente DSL](diagrams/04-c4-componentes.dsl), [PNG ampliado](diagrams/04-c4-componentes.png).
 
-![Transaction espaciado](diagrams/04-c4-componentes-new.png)
-
-[Fuente PlantUML optimizada](diagrams/04-c4-componentes-new.puml) con espaciado generoso (`ranksep 260`, `nodesep 80`), curvas suaves (`polyline`) y código cromático por capa de Clean Architecture (Azul: Inbound Handlers, Naranja: Casos de Uso, Verde: Dominio Puro, Rojo: AMQP/Outbox, Verde Azulado: PostgreSQL, Púrpura discontinuo: Telemetría `saga.*`).
+Diagrama optimizado con espaciado generoso (`ranksep 260`, `nodesep 80`), curvas suaves (`polyline`) y código cromático por capa de Clean Architecture (Azul: Inbound Handlers, Naranja: Casos de Uso, Verde: Dominio Puro, Rojo: AMQP/Outbox, Verde Azulado: PostgreSQL, Púrpura discontinuo: Telemetría `saga.*`).
 
 Los 26 componentes muestran el recorrido del delivery hasta la decisión y su
 persistencia. Se conservan los nombres reales y las carpetas aparecen en los
