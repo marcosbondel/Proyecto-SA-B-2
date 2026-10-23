@@ -36,6 +36,7 @@ const malformed = computed(() => !isUuidV4(accountId.value));
 
 interface BalanceReply {
   readonly accountId: string;
+  readonly accountNumber?: string;
   readonly balance: { amountMinor: number; currency: string };
   readonly status: 'ACTIVE' | 'INACTIVE';
   readonly lastActivityAt: string | null;
@@ -70,6 +71,7 @@ async function loadBalance(): Promise<void> {
    */
   account.value = {
     accountId: result.data.accountId,
+    accountNumber: result.data.accountNumber ?? account.value?.accountNumber,
     customerId: account.value?.customerId ?? '',
     accountType: account.value?.accountType ?? 'MONETARIA',
     balance: result.data.balance,

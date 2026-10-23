@@ -21,12 +21,23 @@ const props = defineProps<{ account: AccountSummary; refreshing?: boolean }>();
 defineEmits<{ (event: 'refresh'): void }>();
 
 const copied = ref(false);
+const copiedNumber = ref(false);
 
 async function copy(): Promise<void> {
   await navigator.clipboard.writeText(props.account.accountId);
   copied.value = true;
   setTimeout(() => {
     copied.value = false;
+  }, 1_500);
+}
+
+/** The number another bank deposits to (T-60), copyable for the same reason. */
+async function copyNumber(): Promise<void> {
+  if (props.account.accountNumber === undefined) return;
+  await navigator.clipboard.writeText(props.account.accountNumber);
+  copiedNumber.value = true;
+  setTimeout(() => {
+    copiedNumber.value = false;
   }, 1_500);
 }
 </script>
@@ -55,6 +66,22 @@ async function copy(): Promise<void> {
           data-testid="balance"
         >{{ formatQuetzales(account.balance.amountMinor) }}</p>
 
+        <div v-if="account.accountNumber" class="mt-3 flex flex-wrap items-center gap-2">
+          <code
+            class="font-mono text-[15px] font-semibold tracking-[0.04em] text-white"
+            style="font-variant-numeric: tabular-nums lining-nums"
+            data-testid="account-number"
+          >{{ account.accountNumber }}</code>
+          <UButton
+            size="xs"
+            variant="outline"
+            color="neutral"
+            class="border-white/25 bg-transparent text-white hover:bg-white/10"
+            :aria-label="copiedNumber ? 'Copiado' : 'Copiar el número de cuenta'"
+            @click="copyNumber"
+          >{{ copiedNumber ? 'Copiado' : 'Copiar' }}</UButton>
+        </div>
+
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <code
             class="break-all font-mono text-[13px] tracking-[0.04em] text-[#C3C4CC]"
@@ -65,7 +92,7 @@ async function copy(): Promise<void> {
             variant="outline"
             color="neutral"
             class="border-white/25 bg-transparent text-white hover:bg-white/10"
-            :aria-label="copied ? 'Copiado' : 'Copiar el número de cuenta'"
+            :aria-label="copied ? 'Copiado' : 'Copiar el identificador de la cuenta'"
             @click="copy"
           >{{ copied ? 'Copiado' : 'Copiar' }}</UButton>
         </div>

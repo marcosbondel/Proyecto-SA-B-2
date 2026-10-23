@@ -5,6 +5,7 @@ import { test, describe } from 'node:test';
 import {
   ACCOUNT_STATUS_PRESENTATION,
   ACCOUNT_TYPE_PRESENTATION,
+  accountReference,
   INACTIVITY_MIN_BALANCE_MINOR,
   INACTIVITY_MONTHS,
   deactivationRisk,
@@ -250,5 +251,21 @@ describe('who may register a deposit at a window', () => {
     assert.equal(mayTakeDeposits('ADMINISTRADOR'), true);
     assert.equal(mayTakeDeposits('CLIENTE'), false);
     assert.equal(mayTakeDeposits(null), false);
+  });
+});
+
+describe('how a selector refers to an account (T-60)', () => {
+  const accountId = 'b0000000-0000-4000-8000-000000000003';
+
+  test('shows the account number and keeps the tail of the identifier', () => {
+    assert.equal(accountReference({ accountId, accountNumber: '02-000000008' }), '02-000000008 · ···000003');
+  });
+
+  test('without a number, says only what it said before', () => {
+    assert.equal(accountReference({ accountId }), '···000003');
+  });
+
+  test('treats an empty number as absent', () => {
+    assert.equal(accountReference({ accountId, accountNumber: '' }), '···000003');
   });
 });
