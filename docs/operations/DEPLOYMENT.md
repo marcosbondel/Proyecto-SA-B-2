@@ -14,9 +14,9 @@ Este documento es el procedimiento. La decisión que le da forma —por qué kin
 por qué un chart de Helm y no manifiestos sueltos, y por qué las bases de datos
 viven fuera— está en
 [ADR-007](../architecture/adr/ADR-007-local-orchestration.md); el inventario de
-las siete imágenes está en [CONTAINERS.md](CONTAINERS.md); y la distribución
-física la dibuja el
-[diagrama de despliegue](../architecture/diagrams/05-uml-despliegue.puml).
+las siete imágenes está en [CONTAINERS.md](CONTAINERS.md). Este runbook de
+desarrollo no forma parte de la vista de despliegue del entregable; esa vista
+corresponde a [GCP](../architecture/deployment.md).
 
 ## Qué se despliega, y qué no
 

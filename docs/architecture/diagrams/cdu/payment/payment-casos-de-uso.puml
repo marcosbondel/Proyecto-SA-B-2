@@ -16,24 +16,21 @@ skinparam actor {
     FontColor #398819
 }
 
-actor "Cliente" as actor_payment_customer
 actor "Cajero Receptor" as actor_payment_teller
 actor "Administrador" as actor_payment_admin
 actor "Transaction Service" as actor_payment_transaction
-actor "Proveedor de pagos" as actor_payment_provider
+actor "Banco participante / contrato v1" as actor_payment_provider
 
 rectangle "CDU004 - Gestionar pagos" as system_payment {
     usecase "CDU004.1:\nProcesar pago" as uc_payment_process
     usecase "CDU004.2:\nConsultar historial de pagos" as uc_payment_history
     usecase "CDU004.3:\nValidar operación de pago" as uc_payment_validate
-    usecase "CDU004.4:\nProcesar pago interno" as uc_payment_internal
-    usecase "CDU004.5:\nSolicitar pago externo" as uc_payment_external
+    usecase "CDU004.4:\nSimular pago interno\n(sin proveedor HTTP)" as uc_payment_internal
+    usecase "CDU004.5:\nEnviar al banco\n(HTTP v1 / X-Api-Key)" as uc_payment_external
     usecase "CDU004.6:\nReintentar procesamiento" as uc_payment_retry
     usecase "CDU004.7:\nRegistrar estado del pago" as uc_payment_record
 }
 
-actor_payment_customer -- uc_payment_process
-actor_payment_customer -- uc_payment_history
 actor_payment_teller -- uc_payment_history
 actor_payment_admin -- uc_payment_history
 actor_payment_transaction -- uc_payment_process
@@ -47,8 +44,8 @@ uc_payment_retry .> uc_payment_process : <<extend>>
 
 note right of uc_payment_process
     En la Saga de transferencias,
-    Transaction Service publica payment.requested.
-    Payment Service responde con succeeded o failed.
+    Transaction Service publica payment.requested.v1.
+    Payment responde payment.succeeded.v1 o payment.failed.v1.
 end note
 
 note bottom of uc_payment_history

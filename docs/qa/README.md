@@ -16,6 +16,7 @@ agrega una entrada nueva en vez de editar la existente.
 
 | Documento | Qué contiene |
 | --- | --- |
+| [guia-validacion-manual-fase3-produccion.md](guia-validacion-manual-fase3-produccion.md) | Procedimiento de validación Fase III en producción desde frontend, Grafana y GitHub. Describe pasos y resultados esperados; su existencia no demuestra que se hayan ejecutado. |
 | [happypath.md](happypath.md) | La guía integral: cada módulo con su camino exitoso frente a sus casos de validación y error, para los tres roles, con las capturas de cada paso. |
 | [validation-report.md](validation-report.md) | El informe de validación: las 68 pruebas con su veredicto una por una, agrupadas en once categorías, y el Quality Score resultante. |
 | [qa-test-results.json](qa-test-results.json) | Las métricas de la última corrida, escritas por la suite. |

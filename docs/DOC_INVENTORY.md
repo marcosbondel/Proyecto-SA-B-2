@@ -4,7 +4,7 @@
 
 This inventory accounts for every repository-owned Markdown document with an explicit row, and for harness/vendor/template material through directory rules. It also covers diagram sources, rendered images, screenshots and machine-readable evidence. `docs/` explains the bank; `context/` explains how agents build it. Executable configuration remains in its own directories.
 
-The final Markdown table contains **161 explicit document rows**, including the editor-alternatives index and final verification record. Harness/template trees remain covered by their directory rules.
+The final Markdown table contains **158 explicit document rows**, including the editor-alternatives index, final verification record and production browser validation guide incorporated from develop on 2026-10-23. Harness/template trees remain covered by their directory rules.
 
 The primary component owners remain those in [OWNERSHIP](OWNERSHIP.md). A prior document owner can differ from the component owner and is retained here; review by T-61 does not transfer that responsibility. Findings, limits and source-to-evidence mappings are in the [audit report](qa/T-61-documentation-audit.md); cloud observations are in [T-60 evidence](qa/backend/T-60-cloud-evidence.md).
 
@@ -163,6 +163,7 @@ The primary component owners remain those in [OWNERSHIP](OWNERSHIP.md). A prior 
 | `docs/qa/backend/T-58-telemetry-catalog-evidence.md` | project | Marcos Bonifasi | historical evidence; preserve original run | 2026-10-21 |
 | `docs/qa/backend/T-60-cloud-evidence.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/qa/guia-validacion-manual-fase3.md` | project | Marcos Bonifasi | current | 2026-10-21 |
+| `docs/qa/guia-validacion-manual-fase3-produccion.md` | project | Marcos Bonifasi | current; production browser procedure, not execution evidence | 2026-10-23 |
 | `docs/qa/happypath.md` | project | Enner Mendizabal | historical baseline; see T-61 evidence | 2026-10-21 |
 | `docs/qa/pyramid.md` | generated | — | historical baseline; see T-61 evidence | 2026-10-21 |
 | `docs/qa/validation-report.md` | project | Enner Mendizabal | historical baseline; see T-61 evidence | 2026-10-21 |

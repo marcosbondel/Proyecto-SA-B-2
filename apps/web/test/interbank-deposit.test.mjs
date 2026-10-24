@@ -133,9 +133,10 @@ describe('el motivo, en una frase', () => {
       new URL('../../../docs/references/interbank-contract-v1.openapi.yaml', import.meta.url),
       'utf8',
     );
-    const block = /ReasonCode:\s*\n\s+type: string\s*\n\s+description:[^\n]*\n\s+enum:\n((?:\s+- \w+\n)+)/.exec(
-      yaml,
-    );
+    const block =
+      /ReasonCode:\s*\r?\n\s+type: string\s*\r?\n\s+description:[^\r\n]*\r?\n\s+enum:\r?\n((?:\s+- \w+\r?\n)+)/.exec(
+        yaml,
+      );
 
     assert.ok(block, 'no se encontró ReasonCode en el contrato');
 
