@@ -1,6 +1,6 @@
 # TransferLatencyBreach / TransferLatencyFastBurn / TransferLatencySlowBurn
 
-**SLO-2** — transferencias que terminan en menos de **5.0 s**, objetivo
+**SLO-2** — cierres de transferencia observados hasta **5.0 s**, objetivo
 **≥ 95 %** sobre 7 días corridos.
 
 Tres alertas sobre el mismo objetivo:
@@ -8,13 +8,13 @@ Tres alertas sobre el mismo objetivo:
 | Alerta | Condición | Severidad |
 | --- | --- | --- |
 | `TransferLatencyBreach` | SLI < 95 % durante 30 min | `warning` |
-| `TransferLatencyFastBurn` | burn rate > **14.4×** en 1 h **y** en 5 min | `critical` |
-| `TransferLatencySlowBurn` | burn rate > **6×** en 6 h **y** en 30 min | `warning` |
+| `TransferLatencyFastBurn` | burn rate > **14.4×** en 1 h **y** 5 min, `for: 2m` | `critical` |
+| `TransferLatencySlowBurn` | burn rate > **6×** en 6 h **y** 30 min, `for: 15m` | `warning` |
 
 Las de *burn rate* tienen dos ventanas cada una (SRE Workbook): la larga dice
 que el gasto es real, la corta que sigue ocurriendo — sin ella la alerta seguiría
 disparada media hora después de arreglar la causa. A 14.4× el presupuesto de 7
-días se agota en unas 12 h; a 6×, antes de cerrar la ventana.
+días se agota en unas 12 h; a 6×, en 28 h. En una ventana de 7 d, 14.4× gasta 8.57 % por hora; 6×, 21.43 % en seis horas.
 
 ```promql
 slo:transfer_under_5s:burn_rate5m
@@ -24,8 +24,8 @@ slo:transfer_under_5s:burn_rate6h
 slo:transfer_under_5s:budget_remaining7d
 ```
 
-**Ojo con la escalera del proveedor (TD-094).** Un solo reintento del pago
-(1 s / 5 s / 30 s) ya empuja la transferencia por encima de 5 s, así que un
+**Ojo con la escalera del proveedor (TD-094).** La primera espera del pago es 1 s; alcanzar el **segundo reintento** acumula
+**6 s**, por encima de 5 s antes de procesar, así que un
 escenario de fallos del proveedor dispara estas alertas aunque la Saga esté
 haciendo exactamente lo que debe. Mirar `source` en el paso 3 antes de nada.
 
@@ -52,15 +52,15 @@ que la Saga tiene dinero reservado.
    (`saga.step <paso>`), así que el paso lento se ve a simple vista. En Grafana,
    *Explore → Tempo*, buscar por nombre de span `transfer` y ordenar por
    duración. El sospechoso habitual es `saga.payment attempt`: el proveedor
-   externo tiene una escalera de 1 s / 5 s / 30 s, y un solo reintento ya
-   empuja la transferencia por encima del objetivo.
+   externo tiene una escalera de 1 s / 5 s / 30 s, y llegar al segundo reintento acumula 6 s de espera antes del procesamiento.
    ```promql
    sli:payment_provider:seconds_p95
    sli:payment_provider_failure:ratio_rate5m
    ```
-3. **¿Es simulación?** `source` distingue el fallo real del inyectado por un
-   administrador. Si alguien dejó encendida una simulación de latencia, esto no
-   es un incidente:
+3. **¿Es simulación?** `source` distingue `scenario`, `configuration` y `runtime`; **todos son
+   resultados del proveedor simulado**. La configuración runtime puede explicar
+   la degradación, pero si afecta usuarios fuera de una prueba sigue requiriendo
+   atención. Registrar los valores actuales antes de cambiarlos:
    ```bash
    curl -s "$GATEWAY/api/payments/simulation" -H "Authorization: Bearer $JWT_ADMIN"
    ```
@@ -75,11 +75,16 @@ que la Saga tiene dinero reservado.
 
 ## Cómo mitigarla
 
-- **Simulación encendida** → apagarla: `PUT /api/payments/simulation` con
-  `mode=SUCCESS` (sólo administrador). No hace falta desplegar.
-- **Proveedor externo lento de verdad** → la escalera ya hace su trabajo; lo que
-  se decide es si se acorta el techo. Es un cambio de `PAYMENT_SIM_*` /
-  configuración por ConfigMap, no de código.
+- **Simulación encendida** → restaurar el estado previo aprobado. El cuerpo
+  de `PUT /api/payments/simulation` es la terna completa
+  `{"failureRatePercent":0,"timeoutRatePercent":0,"latencyMs":0}` para una
+  línea base sin fallos, o `{"reset":true}` para volver a los defaults de
+  arranque (que pueden contener fallos). Sólo administrador. No existe
+  `mode=SUCCESS` en ese contrato.
+- **Proveedor simulado bajo fallo esperado** → comprobar recuperación y
+  compensación sin cambiar el umbral de SLO-2. El banco pareja HTTP usa su
+  [runbook propio](partner-bank.md). Cambiar esperas de la escalera o el SLO
+  requiere una decisión explícita (TD-094).
 - **Consumer lag** → [consumer-lag.md](consumer-lag.md).
 - **Base de datos** → mirar las conexiones y los bloqueos de
   `account-service`; su ruta de saldo serializa por fila a propósito, así que
@@ -95,3 +100,15 @@ que la Saga tiene dinero reservado.
   función pura que rechaza cualquier transición fuera del diagrama; lo que
   parece colgado suele estar esperando un reintento cuyo vencimiento está
   guardado en una columna, y se reanuda solo tras un reinicio.
+
+## Población medida y recuperación
+
+La regla desplegada incluye `completed`, `failed` y `compensated` en el
+histograma y excluye Sagas que aún no llegaron a estado final. Difiere de la
+línea base de exitosas completadas: una negativa rápida puede mejorar el ratio,
+y una Saga detenida puede no aparecer. Revisar también el historial, intentos,
+trazas y saldos de las operaciones afectadas. El bucket acumulativo incluye
+exactamente 5 s. Ver [SLO §5.3](../../sre/sli-slo-sla.md#53-los-slo-que-la-fase-3-mide-con-datos-reales-t-58).
+
+Cerrar con simulación restaurada, transferencias resueltas, balances conciliados
+y alerta `resolved` recibida en auditoría; conservar la ventana de degradación.

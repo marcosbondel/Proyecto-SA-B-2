@@ -1,57 +1,79 @@
-// Notification & Audit Service - Entity-Relationship Diagram (DBML)
-// Database: notification_audit_db (PostgreSQL 18.4)
+// T-61 — esquema físico acumulado. PostgreSQL 18.4; no FK entre servicios.
+// 7 migraciones + schema_migrations; revisión 2026-10-21.
+Project notification_audit_db {
+  database_type: 'PostgreSQL'
+  Note: '''Notification & Audit Service. Resultado acumulado del DDL versionado; no es evidencia de migraciones aplicadas en cloud.'''
+}
 
 Table audit_events {
-  event_id uuid [note: 'Identificador del mensaje o evento original (eventId)']
-  consumer varchar(60) [note: 'Cola familiar de auditoría (audit.customer, etc.)']
+  event_id uuid [not null]
   message_type varchar(100) [not null]
   message_version integer [not null]
   producer varchar(100) [not null]
-  occurred_at timestamptz [not null, note: 'Reloj del productor']
-  received_at timestamptz [not null, default: `now()`, note: 'Reloj local de auditoría']
-  correlation_id uuid [not null, note: 'Trazabilidad transversal']
+  occurred_at timestamptz [not null]
+  received_at timestamptz [not null, default: `now()`]
+  correlation_id uuid [not null]
   causation_id uuid
-  payload jsonb [not null, note: 'Payload previamente redactado sin credenciales']
-  processing_status varchar(20) [not null, note: 'PROCESSED, INVALID, ERROR']
-  severity varchar(10) [note: 'INFO, WARNING, ERROR (T-30) — nullable, sin backfill: NULL en filas anteriores a esta columna']
+  payload jsonb [not null]
+  processing_status varchar(20) [not null]
+  consumer varchar(60) [not null]
+  severity varchar(10)
+  trace_id varchar(32)
 
   indexes {
-    (event_id, consumer) [pk]
+    (event_id, consumer) [pk, name: 'audit_events_once_per_consumer']
     (correlation_id, occurred_at) [name: 'audit_events_correlation_idx']
-    (message_type, occurred_at) [name: 'audit_events_type_idx']
-    (severity, occurred_at) [name: 'audit_events_severity_idx']
+    (message_type, `occurred_at DESC`) [name: 'audit_events_type_idx']
+    (severity, `occurred_at DESC`) [name: 'audit_events_severity_idx']
+    (trace_id, occurred_at) [name: 'audit_events_trace_idx', note: "WHERE trace_id IS NOT NULL"]
+    (producer, `occurred_at DESC`) [name: 'audit_events_producer_idx']
   }
-  Note: 'Bitácora global inmutable de todos los eventos del sistema bancario'
+
+  Note: '''Payload redactado antes de insertar. PK compuesta event_id/consumer; trace_id opcional sin inventar historia.
+
+Restricciones SQL:
+audit_events_status_known: CHECK (processing_status IN ('PROCESSED','INVALID','ERROR'))
+audit_events_severity_known: CHECK (severity IS NULL OR severity IN ('INFO','WARNING','ERROR'))
+audit_events_trace_id_shape: CHECK (trace_id IS NULL OR (trace_id ~ '^[0-9a-f]{32}$' AND trace_id <> repeat('0', 32)))'''
 }
 
 Table notifications {
-  notification_id uuid [pk]
-  customer_id uuid [note: 'Cliente dueño de la notificación en su buzón personal']
+  notification_id uuid [pk, not null]
   type varchar(50) [not null]
   channel varchar(20) [not null, default: 'EMAIL']
-  recipient varchar(200) [note: 'Destinatario de correo o canal simulado']
-  reference_id uuid [note: 'Referencia a cuenta, cliente o transacción']
-  subject varchar(200) [not null, note: 'Asunto de la notificación']
-  status varchar(20) [not null, default: 'PENDING', note: 'PENDING, SENT, FAILED']
+  recipient varchar(200)
+  reference_id uuid
+  subject varchar(200) [not null]
+  status varchar(20) [not null, default: 'PENDING']
   correlation_id uuid [not null]
-  caused_by uuid [note: 'ID del evento que causó la notificación']
-  read_at timestamptz [note: 'Fecha/hora de lectura por el cliente en buzón']
+  caused_by uuid
   created_at timestamptz [not null, default: `now()`]
   processed_at timestamptz
-  severity varchar(10) [note: 'INFO, WARNING, ERROR (T-30) — nullable, sin backfill']
+  customer_id uuid
+  read_at timestamptz
+  severity varchar(10)
+  dedupe_key varchar(200)
 
   indexes {
     (correlation_id, created_at) [name: 'notifications_correlation_idx']
-    created_at [name: 'notifications_recent_idx']
-    (caused_by, type) [unique, name: 'notifications_one_per_event_idx', note: 'WHERE caused_by IS NOT NULL']
-    (customer_id, created_at) [name: 'notifications_customer_idx']
+    (`created_at DESC`) [name: 'notifications_recent_idx']
+    (caused_by, type) [unique, name: 'notifications_one_per_event_idx', note: "WHERE caused_by IS NOT NULL"]
+    (customer_id, `created_at DESC`) [name: 'notifications_customer_idx']
+    (dedupe_key) [unique, name: 'notifications_one_per_dedupe_key_idx', note: "WHERE dedupe_key IS NOT NULL"]
   }
-  Note: 'Buzón de notificaciones del cliente e historial de despachos'
+
+  Note: '''Buzón por customer_id y entrega por canal simulado o Resend; dedupe_key separa recordatorios SLO.
+
+Restricciones SQL:
+notifications_status_known: CHECK (status IN ('PENDING','SENT','FAILED'))
+notifications_channel_known: CHECK (channel IN ('EMAIL'))
+notifications_processed_when_settled: CHECK ((status = 'PENDING') = (processed_at IS NULL))
+notifications_severity_known: CHECK (severity IS NULL OR severity IN ('INFO','WARNING','ERROR'))'''
 }
 
 Table processed_messages {
-  message_id uuid [note: 'ID del mensaje en RabbitMQ']
-  consumer varchar(60) [note: 'Consumidor familiar']
+  message_id uuid [not null]
+  consumer varchar(60) [not null]
   message_type varchar(120) [not null]
   outcome varchar(30) [not null]
   deliveries integer [not null, default: 1]
@@ -59,7 +81,30 @@ Table processed_messages {
   last_seen_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (message_id, consumer) [pk]
+    (message_id, consumer) [pk, name: 'processed_messages_pkey']
   }
-  Note: 'Registro operacional de consumo para observar la escalera de reintentos'
+
+  Note: '''Deduplicación local. La clave real depende del servicio: message_id, par con consumer o idempotency_key/message_type.'''
+}
+
+Table slo_alert_notifications {
+  alert_key varchar(200) [not null]
+  status varchar(10) [not null]
+  notified_at timestamptz [not null]
+
+  indexes {
+    (alert_key, status) [pk, name: 'slo_alert_notifications_pk']
+  }
+
+  Note: '''Control de repetición por alerta y firing/resolved; no altera la decisión de otros servicios.
+
+Restricciones SQL:
+slo_alert_notifications_status_known: CHECK (status IN ('firing','resolved'))'''
+}
+
+Table schema_migrations {
+  name varchar(120) [pk, not null]
+  applied_at timestamptz [not null, default: `now()`]
+
+  Note: '''Infraestructura del migrador, no entidad de dominio. Se crea fuera de MIGRATIONS antes de aplicarlas; una tabla en cada base.'''
 }

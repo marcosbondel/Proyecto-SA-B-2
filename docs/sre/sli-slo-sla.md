@@ -1,6 +1,16 @@
 # Marco Integral de Confiabilidad SRE: SLI, SLO y SLA — Bank USAC
 
-Este documento consolida y unifica el marco completo de **Ingeniería de Confiabilidad de Sitios (SRE - Site Reliability Engineering)** para la plataforma bancaria **Bank USAC**. Integra en un único estándar normativo los **Indicadores de Nivel de Servicio (SLI)**, los **Objetivos de Nivel de Servicio (SLO)** y los **Acuerdos de Nivel de Servicio (SLA)**, respaldados por métricas cuantitativas, fórmulas matemáticas, tiempos exactos de respuesta y protocolos de gestión de incidentes adaptados a la criticidad del sector financiero.
+Este documento conserva los identificadores de la línea base T-03 y distingue sus
+objetivos de las mediciones implementadas en Fase III. Revisión documental:
+**2026-10-21**, contra el código y los charts del repositorio. Una configuración
+versionada demuestra cómo se calcula un indicador; el cumplimiento requiere
+además resultados con entorno, versión, consulta y ventana de observación.
+
+La decisión operativa actual queda registrada en
+[ADR-020](../architecture/adr/ADR-020-slo-error-budgets.md), y el despliegue del
+stack en [ADR-023](../architecture/adr/ADR-023-observability-evolution.md).
+Los informes históricos de [postmortems](postmortems/README.md) conservan su
+entorno original: una corrida de kind no demuestra el comportamiento de GKE.
 
 ---
 
@@ -28,7 +38,7 @@ Este documento consolida y unifica el marco completo de **Ingeniería de Confiab
 
 ## 1. Fundamentos y Relación de la Tríada SRE
 
-En Bank USAC, la confiabilidad se gobierna bajo una jerarquía técnica inmutable:
+En Bank USAC, los tres términos tienen funciones distintas:
 
 ```
 +-------------------------------------------------------------------------+
@@ -51,15 +61,18 @@ En Bank USAC, la confiabilidad se gobierna bajo una jerarquía técnica inmutabl
 
 * **SLI (*¿Qué medimos?*)**: Ratios y percentiles derivados de eventos del broker, logs del API Gateway, sondas de Kubernetes y restricciones de base de datos.
 * **SLO (*¿A qué aspiramos internamente?*)**: Umbrales estrictos que delimitan la zona saludable de operación.
-* **SLA (*¿Qué garantizamos externamente?*)**: Compromiso formal hacia el cuentahabiente o evaluador, respaldado por penalizaciones y exclusiones explícitas.
+* **SLA (*¿Qué se compromete ante el evaluador?*)**: Alcance académico de demostración. No existe un contrato comercial de disponibilidad o créditos de servicio en este repositorio.
 
 ---
 
 ## 2. Métricas Cuantitativas Maestras de Disponibilidad
 
-Para una entidad bancaria, la disponibilidad global se define en el estándar de **Alta Disponibilidad de Grado Financiero: 99.99 % ("Cuatro Nueves")**.
-
-$$\text{Disponibilidad (\%)} = \left( \frac{\text{Tiempo Total de Operación} - \text{Tiempo de Indisponibilidad No Programada}}{\text{Tiempo Total de Operación}} \right) \times 100$$
+La referencia histórica de **99.99 %** ilustra la relación matemática entre
+porcentaje e indisponibilidad; **no es el SLO desplegado ni una disponibilidad
+medida**. El SLO-27 que evalúa Grafana es **99 % de respuestas no 5xx en siete
+días**, una proporción de peticiones. La indisponibilidad por tiempo de la tabla
+siguiente es otro indicador: no se puede convertir una en otra sin definir
+tráfico y observaciones sintéticas.
 
 ### 2.1 Presupuesto de Inactividad Permitida (*Downtime Budget*)
 
@@ -73,30 +86,35 @@ $$\text{Disponibilidad (\%)} = \left( \frac{\text{Tiempo Total de Operación} - 
 
 ### 2.2 Objetivos de Recuperación ante Desastres
 
-* **RPO (Recovery Point Objective) = 0 segundos (Cero Pérdida de Datos)**:
-  Ninguna transacción financiera confirmada puede perderse. Se garantiza mediante escritura síncrona en el Write-Ahead Log (WAL) de PostgreSQL, transacciones ACID y persistencia durable de mensajes en colas de RabbitMQ (`durable: true`).
-* **RTO (Recovery Time Objective) < 15 minutos (900 segundos)**:
-  Tiempo límite para restaurar la totalidad de la plataforma ante un desastre mayor en el clúster o la infraestructura en la nube.
-* **MTTD (Mean Time to Detect) < 2 minutos (120 segundos)**:
-  Tiempo medio para que las alertas automáticas detecten anomalías críticas.
-* **MTTR (Mean Time to Recover) < 15 minutos**:
-  Tiempo medio de remediación de incidencias operativas.
+RPO cero y RTO menor de 15 minutos son **aspiraciones de diseño**, pendientes
+de una prueba de restauración con copia de seguridad y tiempo medido. Un commit
+ACID, una cola `durable` y un PVC no prueban por sí solos RPO cero frente a la
+pérdida de una VM, disco o zona. El módulo actual es zonal y los almacenes de
+observabilidad tienen una réplica.
+
+Los objetivos de detección y mitigación por severidad de §7.2 son una guía de
+respuesta del equipo, no tiempos medidos. Cada postmortem debe declarar qué
+marcas temporales existen y cuáles faltan.
 
 ---
 
 ## 3. Métricas de Latencia, Rendimiento y Percentiles
 
-El sistema procesa peticiones sincrónicas en el API Gateway y transacciones asíncronas distribuidas mediante la Saga. A continuación se detallan los límites numéricos de latencia por percentil medidos en milisegundos (ms):
+El Gateway responde por HTTP y espera request/reply AMQP con un techo de
+**5 s**; la aceptación HTTP de una transferencia no equivale al cierre de la
+Saga. Sus objetivos operativos son **GET bajo 1 s** y **POST bajo 3 s**, ambos
+con 95 % de eventos buenos. El histograma HTTP sólo permite medir los comandos
+conservadoramente bajo **2.5 s** (§5.3).
 
-| Tipo de Operación / Endpoint | Throughput Nominal (RPS) | P50 (Mediana) | P90 | P95 (Umbral SLO) | P99 (Cola Crítica) | Techo Técnico (Timeout) |
-|---|---|---|---|---|---|---|
-| **Consultas de Saldo / Dashboard** (`GET /api/dashboard`, `/api/accounts`) | 1,200 req/s | **≤ 30 ms** | **≤ 65 ms** | **≤ 95 ms** | **≤ 180 ms** | 5,000 ms |
-| **Detalle de Cliente / Cuentas** (`GET /api/accounts/:id`, `/api/customers/:id`) | 800 req/s | **≤ 25 ms** | **≤ 50 ms** | **≤ 80 ms** | **≤ 150 ms** | 5,000 ms |
-| **Depósito en Ventanilla** (`POST /api/accounts/:id/deposits`) | 300 req/s | **≤ 55 ms** | **≤ 110 ms** | **≤ 180 ms** | **≤ 320 ms** | 5,000 ms |
-| **Inicio de Transferencia** (`POST /api/transfers`) | 450 req/s | **≤ 80 ms** | **≤ 170 ms** | **≤ 240 ms** | **≤ 450 ms** | 5,000 ms |
-| **Pago de Servicios** (`POST /api/payments`) | 250 req/s | **≤ 75 ms** | **≤ 160 ms** | **≤ 230 ms** | **≤ 420 ms** | 5,000 ms |
-| **Orquestación Saga Completa** (Débito + Broker + Crédito/Compensación) | 200 saga/s | **≤ 420 ms** | **≤ 800 ms** | **≤ 1,200 ms** | **≤ 2,400 ms** | 5,000 ms |
-| **Carga de Fotografía DPI** (`POST /api/customers` multipart MinIO/S3) | 50 req/s | **≤ 150 ms** | **≤ 280 ms** | **≤ 400 ms** | **≤ 800 ms** | 10,000 ms |
+Para la Saga, el umbral sigue siendo **5 s**. La escalera del proveedor agrega
+esperas de **1 s, 5 s y 30 s** entre intentos: no hay un timeout global de
+5 s para todo el flujo. Los percentiles se calculan sobre histogramas en
+segundos y los paneles pueden mostrarlos en milisegundos.
+
+No se publica una capacidad nominal de RPS a partir de estos umbrales. La
+capacidad y los p50/p95/p99 observados pertenecen a una corrida identificada de
+[carga y fallos T-51](../qa/backend/T-51-load-and-failures-evidence.md), no a
+una estimación de dimensionamiento.
 
 ---
 
@@ -140,7 +158,7 @@ El sistema procesa peticiones sincrónicas en el API Gateway y transacciones as�
 | # | Indicador | Fórmula Matemática | Fuente de Datos | Unidad |
 |---|---|---|---|---|
 | **SLI-15**| **Efectividad de Idempotencia** | $$\frac{\sum \text{Comandos duplicados absorbidos con idéntico resultado sin duplicar saldo}}{\sum \text{Comandos duplicados recibidos}}$$ | Restricción única de `idempotencyKey` en BD | Ratio (100.0 %) |
-| **SLI-16**| **Cobertura de Auditoría** | $$\frac{\sum \text{Eventos del flujo principal registrados en la bitácora}}{\sum \text{Eventos del flujo principal publicados en RabbitMQ}}$$ | Cinco colas `audit.*` contra publicaciones | Ratio (%) |
+| **SLI-16**| **Cobertura de Auditoría** | $$\frac{\sum \text{Eventos del flujo principal registrados en la bitácora}}{\sum \text{Eventos del flujo principal publicados en RabbitMQ}}$$ | Seis colas `audit.*` contra publicaciones | Ratio (%) |
 | **SLI-17**| **Tasa de Mensajes No Interpretables** | $$\frac{\sum \text{Filas registradas con } processingStatus = INVALID}{\sum \text{Filas totales registradas en auditoría}}$$ | Tabla de auditoría (`audit_events`) | Ratio (%) |
 | **SLI-18**| **Integridad de Redacción Previa** | Recuento de filas de auditoría que contienen documento DPI, dirección o monto en texto plano (debe ser estrictamente **0**) | Verificación contra `domain/redaction.ts` | Conteo absoluto |
 | **SLI-19**| **Completitud de Envolvente Canónica** | $$\frac{\sum \text{Mensajes con envolvente válida según } envelopeSchema}{\sum \text{Mensajes emitidos}}$$ | Validación de esquemas Zod en `@bank/contracts` | Ratio (%) |
@@ -176,17 +194,17 @@ Admiten una degradación controlada durante picos de carga. Su incumplimiento in
 
 | # | Objetivo | Umbral Mínimo Numérico | Ventana de Medición | Presupuesto de Error (*Error Budget*) | Indicador Asociado |
 |---|---|---|---|---|---|
-| **SLO-1** | Mensajes válidos que no van a Dead-Letter Queue (DLQ) | **≥ 99.00 %** | Ventana mensual / Corrida | 1.00 % de mensajes procesados | SLI-5 |
-| **SLO-2** | Transferencias completadas en menos de 5.0 segundos | **≥ 95.00 %** | Ventana mensual / Corrida | 5.00 % de transferencias | SLI-2, SLI-3 |
-| **SLO-6** | Lecturas en Gateway (`GET`) en menos de 1,000 ms (P95) | **≥ 95.00 %** | Ventana mensual / Corrida | 5.00 % de lecturas HTTP | SLI-7 |
-| **SLO-7** | Comandos en Gateway (`POST`) en menos de 3,000 ms (P95) | **≥ 95.00 %** | Ventana mensual / Corrida | 5.00 % de comandos HTTP | SLI-7 |
-| **SLO-8** | Peticiones que no agotan el techo de timeout (5,000 ms) | **≥ 99.90 %** | Ventana mensual / Corrida | 0.10 % de peticiones | SLI-8 |
-| **SLO-9** | Sondeos de `/ready` exitosos por contenedor | **≥ 99.00 %** | Ventana mensual / Corrida | 1.00 % de sondeos ejecutados | SLI-11 |
+| **SLO-1** | Mensajes válidos que no van a Dead-Letter Queue (DLQ) | **≥ 99.00 %** | Corrida; serie de 7 d cuando existe (§5.3) | 1.00 % de mensajes procesados | SLI-5 |
+| **SLO-2** | Transferencias completadas en menos de 5.0 segundos | **≥ 95.00 %** | Corrida; serie de 7 d cuando existe (§5.3) | 5.00 % de transferencias | SLI-2, SLI-3 |
+| **SLO-6** | Lecturas en Gateway (`GET`) en menos de 1,000 ms (P95) | **≥ 95.00 %** | Corrida; serie de 7 d cuando existe (§5.3) | 5.00 % de lecturas HTTP | SLI-7 |
+| **SLO-7** | Comandos en Gateway (`POST`) en menos de 3,000 ms (P95) | **≥ 95.00 %** | Corrida; serie de 7 d cuando existe (§5.3) | 5.00 % de comandos HTTP | SLI-7 |
+| **SLO-8** | Peticiones que no agotan el techo de timeout (5,000 ms) | **≥ 99.90 %** | Corrida; serie de 7 d cuando existe (§5.3) | 0.10 % de peticiones | SLI-8 |
+| **SLO-9** | Sondeos de `/ready` exitosos por contenedor | **≥ 99.00 %** | Corrida; serie de 7 d cuando existe (§5.3) | 1.00 % de sondeos ejecutados | SLI-11 |
 | **SLO-10**| Pods que alcanzan estado `Ready` en menos de 90 segundos | **≥ 95.00 %** | Por despliegue en clúster | 5.00 % de pods arrancados | SLI-12 |
 | **SLO-11**| Puntualidad de barrido de reintentos P95 (< 1,000 ms) | **≥ 95.00 %** | Por lote de pagos | 5.00 % de ejecuciones | SLI-24 |
-| **SLO-12**| Notificaciones emitidas por evento notificable | **≥ 99.00 %** | Ventana mensual / Corrida | 1.00 % de notificaciones | SLI-26 |
+| **SLO-12**| Notificaciones emitidas por evento notificable | **≥ 99.00 %** | Corrida; serie de 7 d cuando existe (§5.3) | 1.00 % de notificaciones | SLI-26 |
 | **SLO-13**| Documentos de identidad persistidos exitosamente en S3 | **≥ 99.50 %** | Por lote de registros | 0.50 % de cargas de imagen | SLI-27 |
-| **SLO-14**| Reintentos en broker ejecutados dentro de la escalera | **≥ 99.00 %** | Ventana mensual / Corrida | 1.00 % de entregas | SLI-5, SLI-23 |
+| **SLO-14**| Reintentos en broker ejecutados dentro de la escalera | **≥ 99.00 %** | Corrida; serie de 7 d cuando existe (§5.3) | 1.00 % de entregas | SLI-5, SLI-23 |
 
 ---
 
@@ -216,106 +234,121 @@ Son **invariantes absolutos de corrección bancaria**. Tienen **presupuesto de e
 
 ### 5.3 Los SLO que la Fase 3 mide con datos reales (T-58)
 
-§2.1 pide "4 SLI con SLO y alertas" y §4.1 exige **medir cada SLO con datos
-reales**, mostrar su cumplimiento, calcular el error budget y configurar al
-menos cuatro alertas, una de ellas por tasa de consumo del presupuesto. Las dos
-tablas anteriores siguen siendo normativas; lo que esta sección decide es
-**cuáles de ellas dejan de ser papel**, y con qué consulta exacta.
+Las fórmulas implementadas viven en
+[`bank-observability/values.yaml`](../../infra/k8s/helm/bank-observability/values.yaml):
+las tasas rápidas se evalúan cada **30 s**, las proporciones y presupuestos de
+**7 d** cada **5 min**, y las alertas de Grafana cada **1 min**. La retención
+cloud de los tres almacenes es de **7 d**. Los valores de kind reducen esa
+retención a 2 h en Prometheus y 24 h en Tempo: una corrida local no aporta una
+semana de historia.
 
-**La ventana es de 7 días corridos, no mensual.** Los treinta SLO de §5.1 y §5.2
-se escribieron con ventana "mensual / corrida" en la Fase 1, y eso no se puede
-calcular: la retención de Prometheus, Tempo y Loki está fijada en **7 días** por
-coste (§4.2, *Consideraciones de costo*), así que los datos del mes anterior no
-existen. Una ventana que excede la retención no es un objetivo exigente: es un
-objetivo que nadie puede comprobar.
+Toda lectura debe seleccionar `environment="dev"` o `environment="prod"`;
+los logs de Loki usan `deployment_environment`. Antes de anunciar cumplimiento
+se registra el inicio real de la serie: consultar `[7d]` en un stack recién
+creado calcula sobre los datos disponibles y **no prueba siete días completos**.
 
-Los nombres de serie son los que fija
-[`telemetry-catalog.md`](telemetry-catalog.md). Toda consulta admite
-`environment="dev"` o `"prod"` como filtro adicional, que es lo que separa los
-dos entornos en un único stack.
+#### Los cinco grupos medidos
 
-#### Los cinco medidos
+| Objetivo | Regla de proporción rápida | Umbral y presupuesto | Panel y runbook |
+| --- | --- | --- | --- |
+| **SLO-27**, Gateway sin 5xx, excluye `/health` y `/ready` | `slo:gateway_availability:ratio_rate5m` | ≥ 99 %; 1 % de peticiones | `02-slo-error-budget`; [disponibilidad](../operations/runbooks/gateway-availability-burn.md) |
+| **SLO-2**, duración de Saga bajo 5 s | `slo:transfer_under_5s:ratio_rate5m` | ≥ 95 %; 5 % de cierres observados | `02-slo-error-budget`; [transferencias](../operations/runbooks/transfer-latency.md) |
+| **SLO-1**, entregas sin `dead_letter` | `slo:messages_not_dead_lettered:ratio_rate5m` | ≥ 99 %; 1 % de entregas | `02-slo-error-budget`; [DLQ](../operations/runbooks/dead-letter.md) |
+| **SLO-6 / SLO-7**, GET bajo 1 s / POST bajo 3 s | `slo:gateway_reads_under_1s:ratio_rate5m` / `slo:gateway_commands_under_3s:ratio_rate5m` | ≥ 95 %; 5 % por método | `02-slo-error-budget`; [latencia HTTP](../operations/runbooks/gateway-latency.md) |
+| **SLO-28**, interbancario por dirección | `slo:interbank_accepted:ratio_rate5m` / `slo:interbank_sent_accepted:ratio_rate5m` | ≥ 95 %; 5 % por dirección; p95 de confirmación < 5 s | `08-banco-pareja`; [interbancario](../operations/runbooks/partner-bank.md) |
 
-| # | Objetivo | SLI (PromQL, ventana de 5 m para la tasa) | Umbral | Error budget (7 d) |
-|---|---|---|---|---|
-| **SLO-27** *(nuevo)* | **Disponibilidad del API Gateway**: respuestas distintas de 5xx | `sum(rate(http_server_request_duration_seconds_count{service_name="gateway",http_route!~"/health\|/ready",http_response_status_code!~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="gateway",http_route!~"/health\|/ready"}[5m]))` | **≥ 99.00 %** | 1.00 % de las peticiones |
-| **SLO-2** | Transferencias que terminan en menos de 5.0 s | `sum(rate(bank_transfer_duration_seconds_bucket{le=~"5(\\.0+)?"}[5m])) / sum(rate(bank_transfer_duration_seconds_count[5m]))` | **≥ 95.00 %** | 5.00 % de las transferencias |
-| **SLO-1** | Entregas que no acaban en la cola muerta | `1 - (sum(rate(messaging_client_consumed_messages_total{bank_delivery_outcome="dead_letter"}[5m])) / sum(rate(messaging_client_consumed_messages_total[5m])))` | **≥ 99.00 %** | 1.00 % de las entregas |
-| **SLO-6 / SLO-7** | Latencia del Gateway, p95 por método (`GET` < 1 s, `POST` < 3 s) | `histogram_quantile(0.95, sum by (le, http_request_method) (rate(http_server_request_duration_seconds_bucket{service_name="gateway"}[5m])))` | **≥ 95.00 %** | 5.00 % de las peticiones |
-| **SLO-28** *(nuevo, exigido aparte por §4.1)* | **La dependencia con el banco pareja**: depósitos confirmados, y p95 de la confirmación | `sum(rate(bank_interbank_deposits_total{result="accepted"}[5m])) / sum(rate(bank_interbank_deposits_total[5m]))` y `histogram_quantile(0.95, sum by (le) (rate(bank_interbank_deposit_duration_seconds_bucket[5m])))` | **≥ 95.00 %** y **p95 < 5 s** | 5.00 % de los depósitos |
+**Diferencias de medición que deben permanecer visibles:**
 
-**SLO-27 es nuevo porque faltaba el objetivo, no el indicador.** SLI-1 define la
-disponibilidad como `código < 500` desde la Fase 1, y ninguno de los treinta SLO
-estaba ligado a él: SLO-8 mide los timeouts, que es otra pregunta. §4.1 lo exige
-explícitamente como SLI base, así que aquí tiene umbral, presupuesto y alerta.
+- SLO-2 se definió sobre transferencias exitosas en la línea base. La regla
+  actual divide el bucket de duración entre el `_count` de **todos los estados
+  finales**, incluyendo `failed` y `compensated`; tampoco incluye transferencias
+  que siguen pendientes. Es un proxy de duración terminal, no una prueba de
+  éxito ni de ausencia de Sagas detenidas. Alinear esta población requiere un
+  cambio de implementación que T-61 no realiza.
+- Los buckets son acumulativos: `le=~"5(\\.0+)?"` incluye el límite de 5 s;
+  no permite distinguir exactamente 5.000 s de un valor inferior. La lectura
+  operativa es **hasta 5 s**. Lo mismo aplica al límite de 1 s de GET.
+- SLO-7 usa el bucket **2.5 s**: falta una frontera en 3 s. Un POST de 2.7 s
+  cuenta como malo en el panel aun cuando cumple el objetivo nominal.
+- SLO-1 cuenta **entregas**, incluidos reintentos y duplicados; la regla resta
+  sólo `dead_letter`. Los resultados `invalid` y `dropped` requieren su
+  investigación y no deben presentarse como entregas válidas probadas.
+- El ratio interbancario usa decisiones y vencimientos por dirección; un timeout
+  se cuenta al entrar y una resolución posterior no duplica el contador. El p95
+  entrante mide la duración de resolución del depósito local; la entrega del
+  callback tiene contador propio y no forma parte de ese histograma.
+- Un rechazo 4xx de negocio cuenta como disponibilidad HTTP correcta. Una
+  conexión rechazada antes de llegar al proceso no aparece en el histograma:
+  se necesita evidencia externa para una caída total.
 
-**El selector del bucket es una regex, y es a propósito.** Medido contra el
-stack real: el Collector expone `le="5"` en su texto y **Prometheus guarda la
-serie con `le="5.0"`**. Con `le="5"` la consulta no devuelve nada —ni error, ni
-cero: vacío— y el panel de SLO-2 habría salido en blanco para siempre.
-
-**Los sondeos quedan fuera.** `/health` y `/ready` los pide el kubelet cada diez
-segundos: dejarlos dentro inflaría la disponibilidad con tráfico que no es de
-ningún cliente, y una caída real quedaría escondida detrás de miles de sondeos
-exitosos.
-
-**SLO-28 se mide ya en las dos direcciones** (T-47 publicó las métricas del
-envío; T-51 añadió las reglas y las alertas). `bank_interbank_deposits_total` es
-el depósito que el pareja nos manda, `bank_interbank_sent_total` el que le
-mandamos, y el objetivo —≥ 95 % confirmados y p95 < 5 s— se aplica a cada
-dirección por separado, que es lo que pide §4.1 ("enviados y recibidos"). El
-número de *timeouts* sale de `result="timeout"` en esa métrica, no de un
-contador aparte.
-
-Un solo indicador con una etiqueta `direction` habría promediado las dos, y el
-día que el pareja rechaza todo lo nuestro mientras acepta todo lo suyo el
-promedio sale bien. Hasta T-51 la mitad saliente no tenía alerta: el escenario
-obligatorio de carga la encontró por ausencia, rechazando doscientos depósitos
-sin que nada avisara.
+**TD-094 permanece abierta.** La primera espera de 1 s no garantiza incumplir
+5 s; alcanzar el segundo reintento acumula **6 s de espera**, antes de añadir
+procesamiento. El último acumula 36 s. El p95 histórico de 8.25 s de T-51
+corresponde a una prueba con fallos inyectados, no a una medición actual de
+producción. T-61 conserva el umbral y documenta la incompatibilidad entre
+latencia y recuperación; no elimina el tiempo de reintentos de la experiencia
+del cliente.
 
 #### Presupuesto de error y tasa de consumo
 
-Con la fórmula de §6.1 sobre la ventana de 7 días, el presupuesto restante de
-cada objetivo es una *recording rule*:
+Para una ventana `W`, se calcula `P_W = increase(eventos_buenos[W]) /
+increase(eventos_totales[W])`, agrupado por entorno y población. No se promedian
+ratios de cinco minutos: una ventana con un evento no pesa igual que una con
+mil. Ejemplo para SLO-27:
 
 ```promql
-# Presupuesto restante, como fracción de 1 (SLO-27, objetivo 99 %)
-1 - ((1 - avg_over_time(slo:gateway_availability:ratio_rate5m[7d])) / 0.01)
+# Proporción real de peticiones de la ventana y presupuesto restante.
+slo:gateway_availability:ratio_7d{environment="prod"}
+slo:gateway_availability:budget_remaining7d{environment="prod"}
+# Definición del presupuesto, objetivo = 0.99.
+1 - ((1 - slo:gateway_availability:ratio_7d{environment="prod"}) / 0.01)
+# Consumo en la ventana de una hora.
+slo:gateway_availability:burn_rate1h{environment="prod"}
 ```
 
-Y la **tasa de consumo** (*burn rate*) es cuántas veces más rápido se está
-gastando el presupuesto de lo que la ventana admite:
+El numerador ausente se completa con `or 0 * total`, pero el denominador se
+filtra con `> 0`: sin eventos no hay proporción. **“No data” no significa
+100 % ni 0 %**, y un percentil sin observaciones puede ser `NaN`. Los contadores
+se inicializan a cero para observar el primer incremento tras el arranque; eso
+no inventa tráfico ni sustituye las dos muestras que necesitan `rate` e
+`increase`. Deben inspeccionarse también targets de Prometheus, throughput y
+salud del Collector. Todas las alertas usan `noDataState: OK` y
+`execErrState: Error`; una ausencia total de datos puede no abrir un incidente
+de SLO.
 
-```promql
-(1 - slo:gateway_availability:ratio_rate5m) / 0.01
-```
+#### Las dieciséis alertas implementadas
 
-Las cuatro alertas mínimas que T-50 implementa, con los umbrales del *SRE
-Workbook* para una ventana de 7 días:
+La ventana de cálculo y el período `for` son distintos. Esta tabla transcribe
+la configuración vigente; los enlaces apuntan a los siete procedimientos.
 
-| Alerta | Condición | Severidad | Por qué ese umbral |
-|---|---|---|---|
-| `GatewayAvailabilityFastBurn` | burn rate **> 14.4×** sostenido 1 h | `critical` | consume el 2 % del presupuesto en una hora: es una caída en curso, no una degradación |
-| `GatewayAvailabilitySlowBurn` | burn rate **> 6×** sostenido 6 h | `warning` | consume el 5 % en seis horas: no despierta a nadie, pero no se puede ignorar hasta el final de la ventana |
-| `TransferLatencyBreach` | SLI de SLO-2 **< 95 %** durante 30 m | `warning` | media hora descarta un pico de una sola transferencia lenta |
-| `DeadLetterGrowing` | SLI de SLO-1 **< 99 %** durante 15 m | `critical` | un mensaje en la cola muerta es trabajo detenido, y quince minutos ya distinguen un reintento de un atasco |
-| `PartnerBankDegraded` | SLI de SLO-28 **entrante** < 95 % durante 15 m | `warning` | el dinero del cliente no está retenido en esta dirección |
-| `PartnerBankConfirmationSlow` | p95 de la confirmación entrante **> 5 s** durante 15 m | `warning` | |
-| `PartnerBankSendDegraded` *(T-51)* | SLI de SLO-28 **saliente** < 95 % durante **5 m** | `warning` | aquí sí está retenido: el vencimiento son 30 s, y quince minutos de rechazos son treinta compensaciones por minuto antes del primer aviso |
-| `PartnerBankSendConfirmationSlow` *(T-51)* | p95 de la confirmación saliente **> 5 s** durante 5 m | `warning` | |
-| `BrokerConsumerLagHigh` | una cola con **> 500** mensajes pendientes durante 10 m | `warning` | la exige §4.1 como alerta propia de la dependencia externa |
+| Alerta | Condición / ventana | `for` | Severidad | Runbook |
+| --- | --- | --- | --- | --- |
+| `GatewayAvailabilityFastBurn` | burn 1 h > 14.4× | 5 min | critical | [Gateway](../operations/runbooks/gateway-availability-burn.md) |
+| `GatewayAvailabilitySlowBurn` | burn 6 h > 6× | 30 min | warning | [Gateway](../operations/runbooks/gateway-availability-burn.md) |
+| `TransferLatencyFastBurn` | burn 1 h y 5 min > 14.4× | 2 min | critical | [Saga](../operations/runbooks/transfer-latency.md) |
+| `TransferLatencySlowBurn` | burn 6 h y 30 min > 6× | 15 min | warning | [Saga](../operations/runbooks/transfer-latency.md) |
+| `TransferLatencyBreach` | proporción rápida < 95 % | 30 min | warning | [Saga](../operations/runbooks/transfer-latency.md) |
+| `GatewayReadLatencyBreach` | GET bajo 1 s < 95 % | 30 min | warning | [latencia HTTP](../operations/runbooks/gateway-latency.md) |
+| `GatewayCommandLatencyBreach` | POST bajo 2.5 s < 95 % | 30 min | warning | [latencia HTTP](../operations/runbooks/gateway-latency.md) |
+| `DeadLetterGrowing` | entregas sin DLQ < 99 % | 15 min | critical | [DLQ](../operations/runbooks/dead-letter.md) |
+| `BrokerConsumerLagHigh` | una cola con > 500 mensajes listos | 10 min | warning | [broker](../operations/runbooks/consumer-lag.md) |
+| `PartnerBankDegraded` | aceptados entrantes < 95 % | 15 min | warning | [interbancario](../operations/runbooks/partner-bank.md) |
+| `PartnerBankConfirmationSlow` | p95 entrante > 5 s | 15 min | warning | [interbancario](../operations/runbooks/partner-bank.md) |
+| `PartnerBankSendDegraded` | aceptados salientes < 95 % | 5 min | warning | [interbancario](../operations/runbooks/partner-bank.md) |
+| `PartnerBankSendConfirmationSlow` | p95 saliente > 5 s | 5 min | warning | [interbancario](../operations/runbooks/partner-bank.md) |
+| `PodRestarting` | máximo de reinicios por entorno > 2 en 10 min | sin espera adicional | warning | [reinicios](../operations/runbooks/restarts.md) |
+| `MassRestartDependencyLost` | pods reiniciados / número de Deployments > 0.5 en 10 min | sin espera adicional | critical | [reinicios](../operations/runbooks/restarts.md) |
+| `InterbankReserveReleasedUnverified` | logs de liberación sin verificar > 0 en 15 min | sin espera adicional | critical | [conciliación](../operations/runbooks/partner-bank.md#interbankreservereleasedunverified) |
 
-Las nueve van al webhook de Notification & Audit (T-45) —el canal visible que
-pide §4.1, que además deja la alerta en la misma bitácora que el resto de lo que
-pasó— y cada una lleva su *runbook*. La severidad vale `critical`, `warning` o
-`info` y no otra cosa: es lo que acepta el contrato `alert.slo.received.v1`, y
-cualquier otro valor el Gateway lo degrada a `warning` sin decir nada. El *burn rate* está en dos ventanas a
-propósito: una sola ventana corta alerta de cada pico, y una sola larga avisa
-cuando el presupuesto ya se gastó.
+Los contact points dirigen `environment=dev` al Gateway de `dev`, `local` al de
+kind y el resto al de `prod`. El Gateway autentica el webhook con un token
+separado de las sesiones, publica `alert.slo.received.v1` y Audit registra y
+notifica. Ver una alerta en Grafana **no prueba que llegó a auditoría**: hay que
+comprobar ambas superficies, incluido el estado `resolved`.
 
 #### Lo que queda documental, y por qué
 
-Los demás objetivos **siguen siendo exigibles**, pero no se miden con una serie
+Los demás objetivos **siguen siendo objetivos de diseño**, pero no se miden con una serie
 temporal en esta fase, y decirlo es más honesto que un panel que siempre marca
 100 %:
 
@@ -333,40 +366,49 @@ temporal en esta fase, y decirlo es más honesto que un panel que siempre marca
 ## 6. Gestión y Dinámica del Presupuesto de Error (*Error Budget & Burn Rate*)
 
 ### 6.1 Fórmula del Presupuesto de Error
-El presupuesto de error (*Error Budget*) representa el margen tolerable de imperfección:
 
-$$\text{Error Budget} = 100\% - \text{SLO} = 100\% - 99.99\% = 0.01\%$$
+Con objetivo `S`, ventana `W` y proporción de eventos buenos `P_W`:
 
-Para un volumen mensual estimado de **10,000,000 de transacciones**, se permite un máximo de **1,000 peticiones con error técnico 5xx al mes**.
+- Presupuesto admitido: `(1 - S) × total_W` eventos malos.
+- Fracción restante: `1 - (1 - P_W) / (1 - S)`.
+- Burn rate: `(1 - P_W) / (1 - S)`.
+
+Un restante de `1` significa presupuesto intacto; `0`, agotado; un valor
+negativo, incumplimiento. No se recorta a cero porque ocultaría cuánto se
+excedió. Los invariantes de 100 % se validan con pruebas: no se divide por
+presupuesto cero.
 
 ### 6.2 Velocidad de Consumo (*Burn Rate*)
 
-El **Burn Rate** mide la velocidad a la que se consume el presupuesto de error con respecto al tiempo:
+Para siete días (**168 h**), bajo ritmo de tráfico constante y fallo sostenido:
 
-$$\text{Burn Rate} = \frac{\text{Fracción de Presupuesto Consumida}}{\text{Fracción de la Ventana de Tiempo Transcurrida}}$$
+| Burn rate | Tiempo hasta agotar un presupuesto íntegro | Presupuesto gastado en la ventana citada |
+| --- | --- | --- |
+| 1× | 168 h | 100 % en siete días |
+| 6× | 28 h | 21.43 % en 6 h |
+| 14.4× | 11 h 40 min | 8.57 % en 1 h |
 
-| Factor de Burn Rate | \% Presupuesto Consumido | Tiempo para Agotar Presupuesto | Severidad de Alerta | Acción Operativa Obligatoria |
-|---|---|---|---|---|
-| **1.0x** | 100 % en 30 días | 30 días (720 horas) | Informativo | Operación nominal. Ninguna acción requerida. |
-| **2.0x** | 10 % en 36 horas | 15 días (360 horas) | Advertencia (Ticket) | Revisión de logs en horario hábil. |
-| **5.0x** | 15 % en 21 horas | 6 días (144 horas) | Alerta Media | Notificación a SRE on-call. Investigación de causa raíz. |
-| **14.4x** | 5 % en 1 hora | 2 días (50 horas) | **Alerta Crítica (Páger)** | Notificación inmediata 24/7. Mitigación en < 15 min. |
-| **36.0x** | 10 % en 2 horas | 20 horas | **Emergencia (SEV-1)** | Congelamiento de despliegues. Declaración de incidente mayor. |
+Se calcula `burn × horas / 168`. Los porcentajes 2 % en 1 h y 5 % en 6 h
+corresponderían aproximadamente a **30 días**, y no describen este chart. Los
+umbrales 14.4 y 6 se conservan como configuración actual; no se retocan para
+mejorar los resultados de una corrida.
 
 ### 6.3 Política de Agotamiento de Presupuesto (*Error Budget Policy*)
 
-```
- Consumo del Presupuesto de Error Mensual:
- [ 0% -------------- 50% ----------------------- 100% ]
-      ZONA VERDE              ZONA ÁMBAR              ZONA ROJA
-   (Flujo normal)        (Revisión obligada)     (CONGELAMIENTO)
-```
+Política operativa documentada, sin bloqueo automático del pipeline:
 
-1. **Consumo < 50 % (Zona Verde)**: Operación normal. Se permiten nuevos despliegues y cambios de características (*features*).
-2. **Consumo entre 50 % y 99 % (Zona Ámbar)**: Todo despliegue a producción requiere aprobación explícita del líder técnico y reporte de causa raíz del consumo anómalo.
-3. **Consumo ≥ 100 % (Zona Roja)**:
-   * **Congelamiento total de cambios (*Code Freeze*)**: Se bloquea la incorporación de nuevas funcionalidades.
-   * **Prioridad 100 % a Confiabilidad**: El 100% de la capacidad de ingeniería se destina exclusivamente a tareas de estabilización, refactorización y resiliencia hasta el inicio del siguiente ciclo mensual.
+1. Consumo < 50 %: revisión habitual de SLO antes de desplegar.
+2. Consumo entre 50 % y 100 %: el responsable de Infraestructura/SRE y el líder
+   técnico revisan causa, efecto del cambio y mitigación antes de desplegar.
+3. Consumo ≥ 100 %: priorizar mitigación y corrección de confiabilidad; diferir
+   funcionalidades hasta recuperar el presupuesto en la **ventana móvil**.
+4. Una violación contable o de seguridad requiere atender el incidente aunque
+   el presupuesto de disponibilidad esté intacto.
+
+Una ventana móvil no se reinicia el primer día del mes. La política requiere
+revisión humana; el repositorio no contiene un gate que aplique automáticamente
+estos tres niveles. El responsable primario consta en
+[OWNERSHIP](../OWNERSHIP.md).
 
 ---
 
@@ -374,9 +416,15 @@ $$\text{Burn Rate} = \frac{\text{Fracción de Presupuesto Consumida}}{\text{Frac
 
 ### 7.1 Alcance y Compromiso Externo
 
-* **Disponibilidad Comprometida**: **99.99 %** mensual.
-* **Canales Atendidos**: Portal Web de Clientes, Terminal de Ventanilla de Cajeros, Consola Administrativa y API Gateway.
-* **Garantía Contable**: Cero discrepancias en balances monetarios; reversas atómicas automáticas mediante Saga ante cualquier fallo de terceros.
+El SLA es **académico**: demostrar el sistema, la Saga, las compensaciones, la
+idempotencia y su observabilidad ante el evaluador. Se conservan los objetivos
+de las tablas anteriores como criterios de validación. No existe evidencia de
+un contrato comercial que garantice 99.99 % mensual o créditos monetarios.
+
+La compensación es **eventual y explícita**, no una reversa atómica entre bases
+independientes. En el interbancario, consulta y cancelación preceden a la
+liberación cuando falta confirmación; la liberación no verificada exige
+conciliación humana.
 
 ### 7.2 Clasificación de Incidentes Bancarios (SEV-1 a SEV-4)
 
@@ -389,93 +437,101 @@ $$\text{Burn Rate} = \frac{\text{Fracción de Presupuesto Consumida}}{\text{Frac
 
 ### 7.3 Compensaciones Financieras por Incumplimiento
 
-En contratos de servicios bancarios corporativos o acuerdos institucionales, el incumplimiento de la disponibilidad mensual acarrea la aplicación de **Créditos de Servicio** descontables de la facturación:
-
-| Disponibilidad Mensual Real | Porcentaje de Crédito Otorgado al Cliente |
-|---|---|
-| **≥ 99.99 %** | 0 % (Cumplimiento de SLA) |
-| **99.90 % a 99.98 %** | **10 %** de la cuota mensual de servicio |
-| **99.50 % a 99.89 %** | **25 %** de la cuota mensual de servicio |
-| **99.00 % a 99.49 %** | **50 %** de la cuota mensual de servicio |
-| **< 99.00 %** | **100 %** de la cuota mensual de servicio (Reembolso completo del mes) |
+No aplican créditos de servicio o penalizaciones comerciales. La compensación
+financiera de una transferencia fallida devuelve los fondos de la operación;
+es una regla del dominio y no una indemnización por disponibilidad.
 
 ### 7.4 Exclusiones Formales
 
-No se computan como indisponibilidad ni consumen presupuesto de error:
-1. **Rechazos de Negocio**: Peticiones rechazadas legítimamente por la lógica de dominio (fondos insuficientes `400`, cuenta inactiva o credenciales incorrectas `401`).
-2. **Ventanas de Mantenimiento Programado**: Mantenimientos debidamente notificados con 5 días hábiles de anticipación y ejecutados en ventana de bajo tráfico (domingos de 02:00 a 04:00 UTC-6), con un tope máximo de 2 horas al mes.
-3. **Fallas de Conectividad del Cliente**: Problemas imputables al proveedor de Internet del usuario, caídas de DNS público o fallas en el dispositivo cliente.
-4. **Fuerza Mayor**: Caídas globales de infraestructura del proveedor de nube (GCP) declaradas oficialmente en su tablero de estado.
+- Los rechazos 4xx de negocio no descuentan disponibilidad HTTP; sí forman
+  parte de su población y de la latencia percibida.
+- Las sondas `/health` y `/ready` quedan excluidas del SLI de tráfico cliente.
+- Las pruebas con fallos se ejecutan y reportan en `dev`, con su entorno y
+  ventana. No se borran sus fallos de las series para mejorar el SLO.
+- No hay exclusión automática por mantenimiento o caída del proveedor cloud en
+  las reglas actuales. Una exclusión futura requiere una política y una
+  consulta versionadas.
 
 ---
 
 ## 8. Métricas de Infraestructura, Capacidad y Saturación
 
-Para garantizar que el sistema soporte el SLA de 99.99%, la infraestructura en Kubernetes y Compute Engine se dimensiona bajo las siguientes métricas nominales:
+La fuente de capacidad configurada es
+[`bank-usac/values.yaml`](../../infra/k8s/helm/bank-usac/values.yaml), y los
+valores efectivos dependen de los overrides del release. Los objetivos no
+prueban throughput ni disponibilidad por sí solos.
 
 ### 8.1 Dimensionamiento y Autoescalado (HPA)
-* **Umbral de Activación de HPA**: **80 % de utilización promedio de CPU** por Pod.
-* **Rango de Réplicas por Microservicio**: Mínimo **1 Pod**, Máximo **5 Pods** (escalado horizontal elástico).
-* **Período de Estabilización de Escala (*Cooldown*)**: **300 segundos (5 minutos)** para evitar oscilaciones (*flapping*).
-* **Límites de Recursos por Pod**:
-  * Microservicios Node.js: `requests: { cpu: 50m, memory: 128Mi }`, `limits: { cpu: 250m, memory: 256Mi }`.
-  * API Gateway: `requests: { cpu: 100m, memory: 128Mi }`, `limits: { cpu: 500m, memory: 512Mi }`.
+
+El chart configura CPU objetivo de **80 %**, mínimo de **1** y máximo general
+de **5** réplicas; `account-service` también puede escalar: su barrido usa un
+[arriendo PostgreSQL](../../apps/services/account-service/src/infrastructure/persistence/postgres-sweep-lease.ts)
+con `pg_try_advisory_lock` para que sólo una réplica lo ejecute a la vez. Comprobar los HPA y los recursos efectivos
+del namespace antes de interpretar un panel. La evidencia de escalado requiere
+réplicas deseadas/actuales, CPU y eventos de una corrida, no sólo el manifiesto.
 
 ### 8.2 Parámetros del Broker y Bases de Datos
-* **Pool de Conexiones PostgreSQL**: Máximo **20 conexiones por Pod**; timeout de adquisición de conexión: **3,000 ms**.
-* **Capacidad de Almacenamiento**: Almacenamiento persistente en discos SSD (`pd-ssd`) con IOPS aprovisionados para soportar ≥ 1,500 transacciones por segundo.
-* **Escalera de Reintentos de Pagos**:
-  * Intento 1: Inmediato ($t = 0\text{ ms}$).
-  * Intento 2: Retraso de **1,000 ms**.
-  * Intento 3: Retraso de **5,000 ms**.
-  * Intento 4 (Final): Retraso de **30,000 ms**.
-  * Tiempo total acumulado de la escalera: **36,000 ms**.
-* **Frecuencia del Barrido de Reintentos (*Sweeper*)**: Cada **500 ms**.
 
-### 8.3 Confiabilidad, Soberanía de Datos y Almacenamiento de Objetos (MinIO vs Almacenamiento Gestionado)
+PostgreSQL sigue fuera del clúster. `dev` usa el sufijo **`_dev`** en sus cinco
+bases; comparte VMs, capacidad y fallo físico con producción. Un nombre
+separado no equivale a infraestructura dedicada.
 
-En la arquitectura de Bank USAC, la gestión de documentos de identidad (fotografías de DPI y pasaportes) se delega a un clúster de almacenamiento de objetos **MinIO (StatefulSet)** dentro de la VPC privada de Kubernetes, en lugar de utilizar un bucket público o multitenant de un proveedor de nube (como Google Cloud Storage estándar). Esta decisión responde a directrices estrictas de SRE y regulación bancaria:
+En GKE, RabbitMQ es un **Deployment de una réplica** con PVC `rabbitmq-data`
+(default **2 GiB**, `ReadWriteOnce`), nodo `rabbit@localhost` y rollout sin
+solapamiento. El volumen mejora la supervivencia a un reemplazo de pod, pero
+`helm uninstall` puede borrar el claim; no sustituye un backup ni recupera
+mensajes perdidos antes de instalarlo. Ver
+[recuperación del broker](../operations/runbooks/consumer-lag.md#rabbitmq-pvc-y-permisos-de-erlangcookie).
 
-1. **Aislamiento Perimetral y Modelo Zero Trust (Protección PII):**
-   * Los documentos de identificación contienen información personal sensible (*Personally Identifiable Information - PII*).
-   * Al ejecutarse MinIO dentro de la VPC privada (`10.10.0.0/20`), el tráfico de subida y validación criptográfica (hash SHA-256) **nunca transita por la red pública de Internet**, eliminando vectores de ataque por configuraciones erróneas de permisos en buckets globales.
-2. **Eliminación del Bloqueo de Proveedor (*Vendor Lock-in*) y Estrategia de Salida (*Exit Strategy*):**
-   * MinIO implementa la API estándar abierta de **Amazon S3** (`@aws-sdk/client-s3`).
-   * Los entes reguladores financieros (como la Superintendencia de Bancos - SIB) exigen planes de contingencia y salida multicloud: el banco puede migrar su plataforma entre GCP, AWS, Azure o centros de datos On-Premise sin modificar una sola línea de código fuente.
-3. **Métricas de Durabilidad y Disponibilidad de Almacenamiento:**
-   * **SLI de Durabilidad de Objetos**: **99.999999 % (8 Nueves)** sobre volúmenes persistentes SSD (`PersistentVolumeClaims`) con snapshots automatizados.
-   * **SLO de Latencia de Carga de Documentos (P95)**: $\le 400\text{ ms}$ (throughput interno dentro del clúster).
-   * **Cero Cobro por Operación (*Zero API Op Fees*)**: A diferencia de servicios gestionados que tarifan por cada operación Clase A/B (`PUT`/`GET`), MinIO permite millones de lecturas internas para validación de identidad con costo predecible y cero *egress fees*.
+El proveedor de pagos conserva **cuatro intentos**: inmediato y retrasos de
+1 s, 5 s y 30 s (**36 s acumulados**, más procesamiento). El sweeper usa
+500 ms cuando hay trabajo y backoff inactivo hasta 2 s por defecto, según
+[`environment.ts`](../../apps/services/payment-service/src/infrastructure/config/environment.ts).
+
+### 8.3 Almacenamiento de identidad y observabilidad
+
+MinIO usa la API S3 para el objeto temporal de identidad; Customer valida el
+digest y guarda su copia durable en su propia base. El despliegue in-cluster
+actual de MinIO es un **Deployment**, no un StatefulSet con garantía de
+multi-réplica. Su manifiesto no declara un PVC: la persistencia de RabbitMQ no
+cierra esa parte de TD-082.
+
+Prometheus, Tempo y Loki conservan **siete días** en cloud con volúmenes de
+**10 GiB** cada uno; Grafana tiene **2 GiB**. Son valores configurados, no una
+garantía de durabilidad del 99.999999 %, replicación de zona o snapshots
+automatizados. No se ha aportado aquí una prueba de restauración o de pérdida
+de disco. El tránsito público al Gateway y Grafana es HTTP en las URLs de
+entrega: la red privada entre componentes no hace privado el trayecto entero
+de una carga de fotografía.
 
 ---
 
 ## 9. Matriz Cruzada de Trazabilidad SLI ↔ SLO ↔ SLA
 
-| Componente del Banco | Indicador (SLI) | Objetivo Interno (SLO) | Compromiso Externo (SLA) | Comando / Evidencia de Validación |
-|---|---|---|---|---|
-| **API Gateway** | SLI-1, SLI-7, SLI-8 | **SLO-27** (≥ 99.0% no 5xx), SLO-6, SLO-7, SLO-8 (≥ 95.0% < 1s) | Disponibilidad 99.99%, respuesta < 5s | `pnpm --filter gateway test`; serie `http_server_request_duration_seconds_count` en Grafana (§5.3) |
-| **Transferencias (Saga)**| SLI-2, SLI-3, SLI-4 | SLO-2, SLO-4, SLO-17 (≥ 95.0% < 5s) | Reversas automáticas garantizadas ante fallo | `pnpm images:flow` |
-| **Libro Contable** | SLI-6, SLI-20, SLI-21 | SLO-3, SLO-15, SLO-16 (100% cuadre) | Tolerancia cero a saldos negativos o duplicados | `pnpm --filter account-service test` |
-| **Pagos a Terceros** | SLI-23, SLI-24 | SLO-11, SLO-14 (≥ 99.0% en escalera)| Transparencia y compensación tras 4 intentos | `pnpm --filter payment-service test` |
-| **Mensajería RabbitMQ** | SLI-5, SLI-19 | SLO-1, SLO-23 (≥ 99.0% sin DLQ) | Cero pérdida de mensajes válidos en tránsito | `pnpm test:contract` |
-| **Almacenamiento DPI (MinIO)** | SLI-9, SLI-10 | SLO-12 (P95 ≤ 400ms, 0 expuestos) | Soberanía perimetral privada y durabilidad 99.9999% | `pnpm --filter customer-service test` |
-| **Auditoría Forense** | SLI-16, SLI-17, SLI-18| SLO-20, SLO-21, SLO-22 (0 en claro) | Registro inmutable con datos sensibles ofuscados| `pnpm --filter notification-audit-service test`|
-| **Seguridad de Acceso** | SLI-28, SLI-29, SLI-30| SLO-24, SLO-25 (0 secretos) | Segregación de roles (D-06) y JWT inviolable | `pnpm images:smoke` |
-| **Plataforma K8s / Cloud**| SLI-11, SLI-12, SLI-13| SLO-9, SLO-10 (≥ 99.0% / < 90s) | Autoescalado al 80% CPU y RTO < 15 min | `pnpm k8s:evidence` |
-| **Banco pareja (interbancario)** | tasa de confirmación y p95 de la confirmación | **SLO-28** (≥ 95.0% y p95 < 5 s) | Compensación ante rechazo o timeout; ningún monto perdido | `pnpm obs:kind` para las series; `pnpm images:flow` para el dinero |
-| **Telemetría del sistema** | las señales de [`telemetry-catalog.md`](telemetry-catalog.md) | la cardinalidad acotada es condición de todos los anteriores | — | `pnpm --filter @bank/observability test` (prueba de cardinalidad) y `pnpm obs:kind` (comprobaciones 8 y 9) |
+| Componente | SLI / SLO | Evidencia adecuada |
+| --- | --- | --- |
+| Gateway | SLI-1, SLI-7; SLO-27, SLO-6, SLO-7 | Histogramas HTTP por entorno, reglas §5.3 y [runbooks](../operations/runbooks/README.md) |
+| Saga | SLI-2, SLI-3; SLO-2, SLO-4, SLO-17 | Latencia terminal y trazas; compensación contrastada con saldos |
+| Account | SLI-6, SLI-15, SLI-20, SLI-21; SLO-3, SLO-15, SLO-16, SLO-19 | Integración contra PostgreSQL de pruebas e `images:flow` |
+| Proveedor de pagos | SLI-23, SLI-24; SLO-11, SLO-14 | Intentos persistidos, `bank_payment_provider_*`, trazas y sweeper |
+| RabbitMQ | SLI-5; SLO-1 | Resultado de entregas y métricas detalladas por cola |
+| Identidad / MinIO | SLI-27; SLO-13 | Integración de almacenamiento y validación de digest; no demuestra durabilidad cloud |
+| Auditoría | SLI-16 a SLI-19; SLO-20 a SLO-23 | Filas redactadas, pruebas de redacción, métricas y evento de alerta recibido |
+| Acceso e imágenes | SLI-28 a SLI-30; SLO-24, SLO-25 | Pruebas de roles, JWT y `images:smoke` |
+| Plataforma | SLI-11 a SLI-14; SLO-9, SLO-10, SLO-26 | kube-state-metrics, eventos, sondas y logs anteriores |
+| Interbancario | SLO-28 por dirección | Decisión, callback, consulta/cancelación, saldos y alerta de liberación no verificada |
 
 ---
 
 ## Anexo: cómo se miden hoy los SLI de transferencias (Fase 3, T-43)
 
-`transaction-service` ya emite, contra `@opentelemetry/api`, las métricas con las que se calculan **SLI-2**, **SLI-3** y **SLO-2**. Desde T-48 el SDK está registrado y se exportan en cuanto el pod tiene `OTEL_EXPORTER_OTLP_ENDPOINT`; las consultas de abajo **todavía no se han ejecutado** contra un Prometheus, que llega con T-49.
+`transaction-service` ya emite, contra `@opentelemetry/api`, las métricas con las que se calculan **SLI-2**, **SLI-3** y **SLO-2**. Desde T-48 el SDK está registrado y se exportan en cuanto el pod tiene `OTEL_EXPORTER_OTLP_ENDPOINT`; T-49/T-50 incorporaron la exportación y las reglas; la evidencia histórica de kind no debe confundirse con una consulta actual de producción.
 
 | Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
 |---|---|---|
 | **SLI-2** Tasa de completitud | `bank.transfer.finished` (`result`, `reason`) | `sum(rate(bank_transfer_finished_total{result="completed"}[5m])) / sum(rate(bank_transfer_finished_total[5m]))` |
 | **SLI-3** Duración de la Saga (p50 / p95 / p99) | `bank.transfer.duration` (`s`, `result`) | `histogram_quantile(0.95, sum by (le) (rate(bank_transfer_duration_seconds_bucket[5m])))` |
-| **SLO-2** Completadas en menos de 5,0 s | la misma, con una frontera exacta en `le="5"` | `sum(rate(bank_transfer_duration_seconds_bucket{result="completed",le="5"}[5m])) / sum(rate(bank_transfer_finished_total[5m]))` |
+| **Línea base SLO-2**: exitosas hasta 5,0 s; difiere del proxy desplegado (§5.3) | la misma, con frontera de 5 s y selector que admite `5.0` | `sum(rate(bank_transfer_duration_seconds_bucket{result="completed",le=~"5(\\.0+)?"}[5m])) / sum(rate(bank_transfer_finished_total{result="completed"}[5m]))` |
 | Tasa de error | `bank.transfer.finished` | `sum(rate(bank_transfer_finished_total{result=~"failed\|compensated"}[5m])) / sum(rate(bank_transfer_finished_total[5m]))` |
 
 Dos precisiones. El inicio de la duración es el `occurredAt` del mensaje `transfer.requested.v1` (como define SLI-3), no el momento en que el servicio crea la fila. Y la etiqueta `reason` permite que la tasa de error excluya los rechazos del negocio (`KYC_NOT_VERIFIED`, `INSUFFICIENT_FUNDS`), que no son fallos del sistema: `sum(...{reason!~"KYC_NOT_VERIFIED\|INSUFFICIENT_FUNDS"})`.
@@ -485,7 +541,7 @@ Dos precisiones. El inicio de la duración es el `occurredAt` del mensaje `trans
 
 ## Anexo: cómo se mide hoy el proveedor de pagos simulado (Fase 3, T-44)
 
-`payment-service` emite, contra `@opentelemetry/api`, las métricas con las que se calculan la **tasa de fallos externos** y el **p95 de latencia del sistema externo simulado** (§4.1, *Payment Service*) y alimentan **SLI-23** y **SLO-11**. Desde T-48 el SDK está registrado y se exportan en cuanto el pod tiene `OTEL_EXPORTER_OTLP_ENDPOINT`; las consultas de abajo **todavía no se han ejecutado** contra un Prometheus, que llega con T-49.
+`payment-service` emite, contra `@opentelemetry/api`, las métricas con las que se calculan la **tasa de fallos externos** y el **p95 de latencia del sistema externo simulado** (§4.1, *Payment Service*) y alimentan **SLI-23** y **SLO-11**. Desde T-48 el SDK está registrado y se exportan en cuanto el pod tiene `OTEL_EXPORTER_OTLP_ENDPOINT`; T-49/T-50 incorporaron la exportación y las reglas; la evidencia histórica de kind no debe confundirse con una consulta actual de producción.
 
 | Indicador | Métrica OpenTelemetry | Consulta esperada (conversión por defecto a Prometheus) |
 |---|---|---|
@@ -493,7 +549,7 @@ Dos precisiones. El inicio de la duración es el `occurredAt` del mensaje `trans
 | **Latencia del proveedor simulado (p95)** | `bank.payment.provider.duration` (`s`, `result`) | `histogram_quantile(0.95, sum by (le) (rate(bank_payment_provider_duration_seconds_bucket[5m])))` |
 | Cambios de la simulación en caliente | `bank.payment.simulation.changes` (`action`) | `sum by (action) (increase(bank_payment_simulation_changes_total[1h]))` |
 
-Dos precisiones. La etiqueta `source` (`scenario` / `configuration`) separa los fallos que alguien guionó en la transferencia de los que produjo la perilla del administrador, de modo que un panel puede mostrar solo estos últimos: `...{source="configuration"}`. Y el latency es la espera simulada **medida**, no la configurada: con `latencyMs = 0` o con un `scenario` explícito el histograma registra cero.
+Dos precisiones. La etiqueta `source` (`scenario` / `configuration` / `runtime`) separa el guion de la transferencia, los valores de arranque y la configuración persistida por el administrador; esta última se filtra con `source="runtime"`. Todos pertenecen al proveedor simulado, no a fallos reales de un proveedor externo. Y el latency es la espera simulada **medida**, no la configurada: con `latencyMs = 0` o con un `scenario` explícito el histograma registra cero.
 
 
 ---

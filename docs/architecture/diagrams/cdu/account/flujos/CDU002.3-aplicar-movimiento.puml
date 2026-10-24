@@ -2,6 +2,7 @@
 title CDU002.3 - Aplicar movimiento de Saga
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -17,7 +18,7 @@ start
 if (¿Es un débito?) then (Sí)
     :Validar fondos suficientes;
     if (¿Fondos disponibles?) then (No)
-        :Publicar account.debit.rejected;
+        :Publicar account.debit.rejected.v1;
         stop
     else (Sí)
         :Aplicar débito;
@@ -30,4 +31,10 @@ endif
 :Actualizar lastActivityAt cuando corresponda;
 :Publicar el evento del movimiento;
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

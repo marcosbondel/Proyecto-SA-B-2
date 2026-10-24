@@ -2,6 +2,7 @@
 title CDU003.1 - Transferir fondos (Saga extendida con Gate KYC)
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -18,41 +19,41 @@ if (¿Solicitud válida?) then (No)
     stop
 else (Sí)
     :Crear Transaction en estado PENDING;
-    :Publicar customer.kyc.check.requested;
+    :Publicar customer.kyc.check.requested.v1;
 endif
 
 |Customer Service|
 :Consultar kycStatus del cuentahabiente;
 if (¿Cliente con KYC VERIFIED?) then (No)
-    :Responder customer.kyc.checked (verified: false);
+    :Responder customer.kyc.checked.v1 (allowed: false);
     |Transaction Service|
     :Transición PENDING -> FAILED;
-    :Publicar transaction.failed (motivo: KYC no verificado);
+    :Publicar transaction.failed.v1 (motivo: KYC no verificado);
     stop
 else (Sí)
-    :Responder customer.kyc.checked (verified: true);
+    :Responder customer.kyc.checked.v1 (allowed: true);
 endif
 
 |Transaction Service|
 :Transición PENDING -> DEBITING;
-:Solicitar débito a Account Service (account.debit.requested);
+:Solicitar débito a Account Service (account.debit.requested.v1);
 
 |Account Service|
 :Verificar saldo disponible y estado ACTIVE;
 note right
   Si cuenta es AHORRO:
-  aplica comisión por retiro.
+  aplica Q3.00 de comisión por débito.
   Si MONETARIA: sin comisión.
 end note
 if (¿Fondos suficientes y activa?) then (No)
-    :Publicar account.debit.rejected;
+    :Publicar account.debit.rejected.v1;
     |Transaction Service|
     :Transición DEBITING -> FAILED;
-    :Publicar transaction.failed;
+    :Publicar transaction.failed.v1;
     stop
 else (Sí)
     :Debitar monto (+ comisión si aplica);
-    :Publicar account.debited;
+    :Publicar account.debited.v1;
 endif
 
 |Transaction Service|
@@ -62,52 +63,58 @@ endif
 |Payment Service|
 :Ejecutar intento de pago externo (simulado);
 while (¿Error temporal / timeout y quedan reintentos?) is (Sí)
-    :Publicar payment.attempt.failed (observable);
+    :Publicar payment.attempt.failed.v1 (observable);
     :Esperar siguiente intento según escalera;
     :Reintentar cobro externo;
 endwhile (No)
 
 if (¿Pago autorizado exitosamente?) then (No)
-    :Publicar payment.failed (terminal);
+    :Publicar payment.failed.v1 (terminal);
     |Transaction Service|
-    :Ordenar compensación (account.debit.compensation.requested);
+    :Ordenar compensación (account.debit.compensation.requested.v1);
     |Account Service|
     :Acreditar el monto debitado (+ comisión revertida);
-    :Publicar account.debit.compensated;
+    :Publicar account.debit.compensated.v1;
     |Transaction Service|
     :Transición PAYMENT_PENDING -> COMPENSATED;
-    :Publicar transaction.compensated;
+    :Publicar transaction.compensated.v1;
     stop
 else (Sí)
-    :Publicar payment.succeeded;
+    :Publicar payment.succeeded.v1;
 endif
 
 |Transaction Service|
-:Ordenar crédito en cuenta destino (account.credit.requested);
+:Ordenar crédito en cuenta destino (account.credit.requested.v1);
 
 |Account Service|
 if (¿Crédito aplicado exitosamente?) then (No)
-    :Publicar account.credit.rejected;
+    :Publicar account.credit.rejected.v1;
     |Transaction Service|
     :Ordenar compensación del débito origen;
     |Account Service|
     :Revertir fondos al origen;
-    :Publicar account.debit.compensated;
+    :Publicar account.debit.compensated.v1;
     |Transaction Service|
     :Cerrar en COMPENSATED;
-    :Publicar transaction.compensated;
+    :Publicar transaction.compensated.v1;
     stop
 else (Sí)
     :Acreditar cuenta destino (sin cobrar comisión);
-    :Publicar account.credited;
+    :Publicar account.credited.v1;
 endif
 
 |Transaction Service|
 :Transición final a COMPLETED;
-:Publicar transaction.completed;
+:Publicar transaction.completed.v1;
 
 |Notification & Audit|
-:Registrar evento en auditoría (clasificación INFO/WARN/ERROR);
+:Registrar evento en auditoría (clasificación INFO/WARNING/ERROR);
 :Emitir notificación al usuario;
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

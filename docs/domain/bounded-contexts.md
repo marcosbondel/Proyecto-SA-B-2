@@ -1,119 +1,63 @@
-# Contextos Delimitados (Bounded Contexts) y Propiedad de Datos — Bank USAC
+# Contextos delimitados y propiedad de datos — Bank USAC
 
-> *"Bounded Contexts establece los límites de responsabilidad del dominio bancario, definiendo qué conceptos y reglas pertenecen a cada microservicio y evitando el acoplamiento entre ellos."* — Kevin Raúl Pozuelos Estrada (Auxiliar del Curso)
+> Revisión T-61, 2026-10-21. Contraste con contratos, casos de uso, repositorios y migraciones actuales. Las asociaciones funcionales de este documento no crean claves foráneas entre bases.
 
-Este documento define la frontera de responsabilidad de cada uno de los **cinco microservicios** de Bank USAC, la propiedad exclusiva de los datos (*Data Ownership*), qué servicios pueden leerlos mediante mensajería y qué datos **jamás deben cruzar** la frontera de su servicio de origen.
+## 1. Los cinco límites y sus escritores
 
----
+| Contexto | Responsabilidad y datos propios | Reglas que decide |
+| --- | --- | --- |
+| **Customer** | Identidad, documento/fotografía, credencial scrypt, activación, recuperación, roles, revisión de identidad y KYC | Unicidad, coherencia de datos, hash/tokens, verificación y autorización de revisión. |
+| **Account** | Cuenta UUID/número público, saldo exacto, libro DEBIT/CREDIT/COMMISSION/COMPENSATION, desactivación, anomalías y cuentas institucionales | Fondos, estado activo, bloqueo/versionado, comisión y devolución, frecuencia de uso. |
+| **Transaction** | Saga, eventos/transiciones, alias, identidad del solicitante, historial, referencia y contexto interbancario, outbox | Transición legal según eventos, KYC antes de débito y compensación tras un efecto aplicado. No decide fondos. |
+| **Payment** | Pago/intentos, simulación persistida, depósitos entrantes/salientes, conflictos, reversos, reserva/resolución, historial de envío y outbox | Respuesta del proveedor, reintento, admisión interbancaria, protocolo de consulta/cancelación/reembolso y publicación del veredicto. |
+| **Notification & Audit** | Auditoría redactada, clasificación, trazas de referencia, buzón, entrega y repetición de alertas SLO | Qué registrar, severidad y a quién/cuándo notificar. No decide crédito, débito o estados de Saga. |
 
-## 1. ¿Qué es un Bounded Context en Bank USAC?
+Cada servicio escribe sólo su propia base PostgreSQL. `schema_migrations` es una tabla técnica por base; las entidades no son un recuento de tablas. El [catálogo físico acumulado](../generated/db-schema.md) y los [ER](../architecture/diagrams/er/README.md) detallan las restricciones reales.
 
-En **Domain-Driven Design (DDD)**, un *Bounded Context* (Contexto Delimitado) es el límite explícito dentro del cual un modelo de dominio se aplica con un significado único y preciso:
+Gateway no tiene base ni capa de dominio. Autentica JWT o API key de banco, verifica permisos/formato, publica comandos y traduce respuestas. Componer `/api/accounts` con nombres o reunir secciones independientes de `/api/dashboard` es agregación. El frontend presenta la respuesta; no calcula el saldo oficial.
 
-* Un mismo concepto (por ejemplo, el "Cliente") no significa lo mismo en todas partes:
-  * Para **Customer Service**, el cliente es una **entidad de identidad**: tiene nombre, DPI, fotografía, contraseña `scrypt`, correo y estado de validación.
-  * Para **Account Service**, el cliente no es una persona ni tiene contraseña: es simplemente un identificador opaco (`customerId: UUID`) al que se le asocian cuentas y saldos monetarios.
-  * Para **Transaction Service**, el cliente ni siquiera existe directamente: solo existen identificadores de cuenta origen y cuenta destino.
+## 2. Referencias opacas y conversaciones
 
-Dividir el sistema en Bounded Contexts garantiza la regla de oro de la rúbrica: **ningún servicio es un "Objeto Dios" (God Object)** y **cada microservicio es dueño absoluto de su propia base de datos**.
+| Dato o decisión | Escritor | Otros participantes y transporte |
+| --- | --- | --- |
+| Identidad/rol del actor | Customer; Gateway verifica sesión y emite envelope | Los servicios reciben customerId/role, no el JWT, en comandos y seguimiento de la operación. |
+| KYC | Customer | Transaction pregunta por broker; usa `allowed` del evento y no lee su tabla. |
+| Nombre y correo de contacto | Customer | Gateway obtiene perfiles/nombres mediante consulta; Notification recibe los datos necesarios para entregar; auditoría elimina datos sensibles antes de guardar. |
+| Documento y fotografía | Customer | Gateway recibe/sube a MinIO; comando de registro lleva datos/referencia; Customer descarga, verifica digest y conserva bytes. Staff autorizado accede mediante Gateway y broker. |
+| Saldo y libro | **Sólo Account** | Consultas del Gateway; eventos de movimiento incluyen amount/balanceAfter. Transaction no consulta ni usa un saldo como precondición del débito. Audit redacta montos antes del INSERT. |
+| Cuenta y número público | Account | Los consumidores guardan referencias. Payment resuelve elegibilidad/crédito por broker, no SQL; el contrato externo usa número de hasta 34 caracteres, no UUID interno. |
+| Identidad/correlación de transferencia | Gateway acuña ID; Transaction conserva instancia/alias | Account y Payment reciben referencias; todas las etapas conservan correlationId y contexto W3C cuando existe. |
+| Monto y clave de negocio | Solicitante/Transaction; cada servicio valida su efecto | Viajan en órdenes/eventos necesarios; claves de idempotencia no se sustituyen por correlationId. |
+| Veredicto de pago | Payment | Transaction recibe succeeded/failed; audit recibe intentos y desenlaces. |
+| Depósito y reverso remoto | Payment | HTTP sólo a la base del banco configurado; Account aplica los movimientos por AMQP. |
+| Auditoría/buzón | Notification & Audit | Consulta por Gateway; cliente propio o consola administrativa según permiso. No hay escritura ajena sobre su base. |
 
----
+**Límite monetario:** que `balanceAfter` exista en un evento no autoriza a Transaction a aprobar fondos. El punto de decisión es el bloqueo de Account; una lectura previa, aun por broker, sería un saldo potencialmente obsoleto y no una reserva.
 
-## 2. Los Cinco Contextos Delimitados
+## 3. Datos sensibles: lo que cruza y lo que se persiste
 
-| Bounded Context | Responsabilidad Única | Entidades y Datos que Posee Exclusivamente |
-|---|---|---|
-| **Customer Service** | Identidad del cliente, autenticación y credenciales | `Customer`: datos personales, DPI, fotografía, username, credencial `scrypt`, rol, estado de activación y verificación de correo. |
-| **Account Service** | Cuentas bancarias y saldos contables exactos | `Account`: saldos en `NUMERIC(14,2)`, estado de cuenta, tipo (Monetaria/Ahorro), historial de operaciones y desactivación automática. |
-| **Transaction Service** | Orquestación y máquina de estados de transferencias (Saga) | `Transaction`: cuenta origen, cuenta destino, monto, correlación y estados de la Saga (`PENDING` a `COMPLETED` o `COMPENSATED`). |
-| **Payment Service** | Procesamiento de cobros a facturadores externos | `Payment`: referencia de transacción, estado de cobro, reintentos escalonados y escenarios de prueba. |
-| **Notification & Audit** | Bitácora global inmutable y buzón de notificaciones | `AuditEvent` (payloads redactados) y `Notification` (destinatario, canal, lectura). |
+No se confunde “privado en reposo” con “nunca transportado”. El sistema recibe datos por Gateway y los entrega al servicio dueño:
 
-### El API Gateway no es un Bounded Context de Dominio
-El API Gateway **no posee entidades de negocio y no tiene base de datos**. Su única función es perimetral: autenticar JWTs, validar autorizaciones RBAC, generar el `correlationId` y transformar peticiones HTTP en comandos AMQP. **El Gateway jamás toma decisiones de negocio** (como autorizar un saldo o validar una cuenta); de hacerlo, violaría la rúbrica al convertirse en un "Gateway Orquestador".
+- El **hash scrypt** no sale de Customer. Las credenciales de entrada sí viajan en los comandos de registro, autenticación y cambio/recuperación necesarios. No se publican en eventos ni respuestas, y no se registran en logs/auditoría.
+- El número de documento y la referencia de foto llegan en comandos de Customer. Los bytes se transfieren por MinIO y por la consulta autorizada de documento; no son un payload de evento financiero.
+- Un token de activación/recuperación debe llegar al canal que lo entrega y a la operación que lo consume; en las tablas se guarda su digest. No poner enlaces con tokens en evidencia publicada.
+- Los montos cruzan Account, Transaction y Payment cuando el movimiento los requiere; los eventos de Account pueden incluir saldo posterior. La bitácora transversal redacta montos, documento, dirección y credenciales **antes** del INSERT.
+- Entre bancos sólo se intercambian números de cuenta, importe y datos de protocolo; sin DPI, nombre, dirección ni credencial del cliente. Las API keys se cargan como secretos y no aparecen en documentación/capturas.
 
----
+La política de datos personales no puede garantizarse por una nota: contrastar contratos, redactor y canal de entrega. [SECURITY](../SECURITY.md) define los controles de acceso y su alcance.
 
-## 3. Propiedad de Datos vs. Referencia Opaca
+## 4. Comunicaciones y operación de Fase III
 
-Confundir propiedad con referencia es la principal causa de acoplamiento destructivo:
+La comunicación entre servicios propios usa RabbitMQ: comandos, eventos y request/reply. Ningún servicio importa código de otro ni lee su base. Las dos excepciones de salida HTTP son a **terceros**: Payment al banco pareja y Notification a Resend. [ADR-019](../architecture/adr/ADR-019-payment-http-egress.md) fija esa distinción; [ADR-021](../architecture/adr/ADR-021-interbank-protocol-v1.md) registra la ampliación actual del adaptador a consulta, cancelación y reverso.
 
-* **Propiedad (*Ownership*)**: Es el derecho exclusivo de un servicio a escribir y modificar un atributo en su base de datos. Solo un servicio puede ser dueño de un dato.
-* **Referencia Opaca**: Es almacenar el identificador (`UUID`) generado por otro servicio como un simple valor ciego.
-  * `Account Service` almacena `customerId`, pero no sabe ni le interesa el nombre, el teléfono ni la contraseña del cliente. Jamás consulta la base de datos de Customer Service para averiguarlo.
-  * `Transaction Service` almacena `sourceAccount` y `targetAccount`, pero **jamás lee ni modifica el saldo directamente**; emite un comando de débito y espera el veredicto en un evento asíncrono.
+Las señales OTLP, métricas y logs van a infraestructura de observabilidad, no a un sexto servicio de negocio. Una alerta Grafana entra por webhook protegido del Gateway y broker hasta Notification & Audit; que un SLO se incumpla no permite a observabilidad compensar una transferencia.
 
----
+Los cinco escritores mantienen bases separadas por servicio. Separación de **servicio** y separación de **entorno** son ejes distintos: los nombres `_dev`, credenciales, namespace y despliegue efectivo se verifican en [CLOUD](../operations/CLOUD.md), sin inferirlos del título `customer_db`. Una consulta sólo puede certificarse con el contexto correcto de ejecución.
 
-## 4. Matriz de Propiedad y Flujo de Datos
+## 5. Límites comprobados y diferencias abiertas
 
-Un único escritor por atributo. Los consumidores reciben datos únicamente mediante mensajes asíncronos por RabbitMQ. **Ninguna fila de esta matriz se satisface leyendo la base de datos de otro servicio.**
+- El requisito de recepción prohíbe crédito posterior al vencimiento. Payment expira antes de despachar; el comando de Account carece de expiresAt y su crédito ya en vuelo no se puede retirar. No se declara resuelta la carrera de AMQP retrasado; ver ADR-021 y #167.
+- La regla C-6 expresa que una cuenta de cliente pertenece a un CLIENTE. La apertura valida actor/alcance y niega al staff abrirse a sí mismo; **no consulta la existencia ni el rol del destinatario**. Las cuentas institucionales usan un holder sintético por diseño. No presentar la referencia opaca como una FK o validación remota inexistente.
+- Un mock demuestra el comportamiento del contrato de prueba, no la interoperabilidad con la pareja real ni cumplimiento TLS. El estado actual de cada entorno se registra como evidencia fechada.
 
-### A. Customer Service
-| Atributo | Dueño Exclusivo | Consumidores | Mecanismo de Transporte |
-|---|---|---|---|
-| `customerId` | Customer Service | Account (referencia opaca), Audit | Evento RabbitMQ |
-| Nombre completo | Customer Service | Notification & Audit | Evento RabbitMQ |
-| Documento DPI | Customer Service | Ninguno | **No cruza el límite** |
-| Contraseña / Credencial | Customer Service | Ninguno | **Jamás cruza (ni encriptada)** |
-| Fotografía de DPI | Customer Service | Ninguno (almacenada en MinIO) | **No cruza el límite** |
-| Correo electrónico | Customer Service | Notification & Audit | Evento (únicamente para despacho) |
-| Rol (`CLIENTE`, etc.) | Customer Service | API Gateway | Async Request/Reply tras Login |
-| Estado de validación | Customer Service | Notification & Audit | Evento RabbitMQ |
-
-### B. Account Service
-| Atributo | Dueño Exclusivo | Consumidores | Mecanismo de Transporte |
-|---|---|---|---|
-| `accountId` | Account Service | Transaction (referencia), Audit | Evento RabbitMQ |
-| `balance` (Saldo) | **Account, y solo Account** | Gateway (solo para consulta de saldo) | Async Request/Reply |
-| Estado de cuenta | Account Service | Notification & Audit | Evento RabbitMQ |
-| Tipo de cuenta | Account Service | Notification & Audit | Evento RabbitMQ |
-| `lastActivityAt` | Account Service | Ninguno (interno para desactivación) | **No cruza el límite** |
-
-> **Regla de Oro del Saldo:** El atributo `balance` es el más sensible del sistema. **Transaction Service jamás lo lee.** Ordena un débito y espera el evento `account.debited.v1` o el rechazo por fondos insuficientes. Diseñar una verificación previa de saldo desde Transaction Service viola el aislamiento del dominio.
-
-### C. Transaction Service
-| Atributo | Dueño Exclusivo | Consumidores | Mecanismo de Transporte |
-|---|---|---|---|
-| `transactionId` | Transaction Service | Payment (referencia), Audit | Evento RabbitMQ |
-| Cuentas origen / destino | Transaction Service | Account (como orden de débito/crédito), Audit | Evento RabbitMQ |
-| Monto (`amount`) | Transaction Service | Account, Payment, Audit | Evento RabbitMQ |
-| Estado de la Saga | Transaction Service | Notification & Audit | Evento RabbitMQ |
-| `correlationId` | API Gateway (lo acuña) | Todos los servicios | Envolvente estándar en cada mensaje |
-| `idempotencyKey` | Transaction Service | Ninguno | **No cruza el límite** |
-
-### D. Payment Service
-| Atributo | Dueño Exclusivo | Consumidores | Mecanismo de Transporte |
-|---|---|---|---|
-| `paymentId` | Payment Service | Notification & Audit | Evento RabbitMQ |
-| `status` de pago | Payment Service | Transaction Service | Evento (`succeeded` / `failed`) |
-| Contador de intentos | Payment Service | Notification & Audit | Evento `attempt.failed` |
-| Razón de fallo | Payment Service | Transaction Service, Audit | Evento RabbitMQ |
-
-### E. Notification & Audit Service
-| Atributo | Dueño Exclusivo | Consumidores | Mecanismo de Transporte |
-|---|---|---|---|
-| `AuditEvent` | Notification & Audit | Ninguno (servicio terminal) | Almacenamiento local inmutable |
-| `Notification` | Notification & Audit | Cliente (vía buzón personal) | Consulta en API Gateway |
-
----
-
-## 5. Datos que Jamás Deben Cruzar los Límites del Servicio
-
-| Dato Sensible | Permanece en | Justificación Arquitectónica y de Seguridad |
-|---|---|---|
-| Credenciales / Hash `scrypt` | Customer Service | Transmitir contraseñas por el broker, incluso cifradas, es una fuga de seguridad inaceptable. |
-| Fotografía del DPI | Customer Service | El dato biométrico y personal más sensible; ningún otro servicio tiene justificación para verlo. |
-| Número completo de DPI | Customer Service | La auditoría no lo persiste; para identificar a una persona se utiliza el identificador opaco `customerId`. |
-| Saldo (`balance`) | Account Service | Solo se expone al usuario final en la consulta de saldo. Jamás viaja en los eventos de la Saga. |
-| `lastActivityAt` | Account Service | Entrada privada del proceso automático de desactivación por inactividad. |
-
----
-
-## 6. Prohibición Absoluta de Bases de Datos Compartidas
-
-En cumplimiento estricto de la rúbrica del curso:
-* **Un microservicio que consulte directamente la base de datos de otro microservicio es penalizado con el 50% de la nota** (§4.2).
-* **Utilizar una sola base de datos compartida para todos los servicios es penalizado con el 100% de la nota (reprobación inmediata)** (§8.3).
-
-Por esta razón, Bank USAC despliega cinco instancias físicamente aisladas de PostgreSQL 18.4, comunicadas única y exclusivamente a través de mensajes asíncronos en RabbitMQ.
+Las diferencias quedan descritas para que las decisiones futuras se puedan revisar; T-61 no cambia los límites ni introduce una regla bancaria nueva.

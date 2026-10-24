@@ -1,0 +1,61 @@
+@startuml CDU-F3.2-recibir-deposito-interbancario
+title CDU-F3.2 - Recibir depósito interbancario
+
+skinparam shadowing false
+skinparam dpi 180
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Banco participante|
+start
+:Enviar POST /interbank/v1/deposits con X-Api-Key y traceparent;
+|API Gateway|
+:Autenticar cabecera X-Api-Key contra credencial autorizada;
+:Validar formato de sobre interbancario OpenAPI 3.0.3;
+:Extraer traceparent y correlationId;
+:Publicar comando interbank.inbound.received.v1 en AMQP;
+:Responder HTTP 202 ACCEPTED de recepción inmediata al banco emisor;
+|Payment Service|
+:Verificar clave de idempotencia (origin_bank_code, external_transfer_id);
+if (¿Depósito previamente procesado?) then (Sí)
+    :Recuperar resultado previo de interbank_deposits;
+    :Reenviar callback idéntico de forma idempotente;
+    stop
+else (No)
+    :Registrar recepción en interbank_deposits (etapa ELIGIBILITY);
+endif
+:Consultar elegibilidad de cuenta destino a Account Service;
+|Account Service|
+if (¿Cuenta destino existe, está ACTIVA y no bloqueada?) then (Sí)
+    :Responder elegible a Payment Service;
+    |Payment Service|
+    :Actualizar etapa a CREDIT;
+    :Solicitar abono a Account Service (account.credit.command.v1);
+    |Account Service|
+    :Acreditar monto a la cuenta destino de forma atómica;
+    :Registrar movimiento con tipo TRANSFER_INTERBANK_CREDIT;
+    :Confirmar crédito exitoso;
+    |Payment Service|
+    :Actualizar estado final a ACCEPTED en interbank_deposits;
+else (No)
+    :Responder no elegible (cuenta inexistente o inactiva);
+    |Payment Service|
+    :Actualizar estado a REJECTED con rejection_reason;
+endif
+|Payment Service|
+:Construir sobre de callback con veredicto final;
+:Enviar POST /interbank/v1/callback al banco pareja con X-Api-Key;
+:Registrar callback_delivered_at en interbank_deposits;
+|Notification & Audit|
+:Registrar evento de recepción interbancaria en la bitácora de auditoría;
+stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Protocolo externo: OpenAPI 3.0.3 / HTTP 202 + callback asíncrono.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; idempotencia garantizada en base de datos.
+  Persistencia: PostgreSQL 18.4 exclusivo por servicio; crédito transaccional en Account.
+endlegend
+@enduml

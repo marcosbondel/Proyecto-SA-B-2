@@ -1,0 +1,44 @@
+{
+  "observedAt": "2026-10-22T12:23:55.945Z",
+  "production": {
+    "/health": {
+      "httpStatus": 200,
+      "body": {
+        "status": "ok",
+        "application": "gateway"
+      }
+    },
+    "/ready": {
+      "httpStatus": 200,
+      "body": {
+        "status": "ready",
+        "application": "gateway",
+        "broker": "connected"
+      }
+    }
+  },
+  "development": {
+    "/health": {
+      "httpStatus": 200,
+      "body": {
+        "status": "ok",
+        "application": "gateway"
+      }
+    },
+    "/ready": {
+      "httpStatus": 200,
+      "body": {
+        "status": "ready",
+        "application": "gateway",
+        "broker": "connected"
+      }
+    },
+    "simulation": {
+      "failureRatePercent": 0,
+      "timeoutRatePercent": 0,
+      "latencyMs": 0,
+      "source": "RUNTIME",
+      "updatedAt": "2026-10-22T04:44:48.131Z"
+    }
+  }
+}

@@ -4,6 +4,7 @@ left to right direction
 title CDU001-CDU005 - Bank USAC: primera vista funcional
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam packageStyle rectangle
 skinparam usecase {
     BackgroundColor #FFFFFF
@@ -62,7 +63,7 @@ note bottom of bank
 end note
 
 legend right
-    |= Elemento |= Significado |
+|= Elemento |= Significado |
     | Actor (Izquierda) | Actor primario: rol humano que inicia operaciones |
     | Actor (Derecha) | Actor secundario: sistema externo de apoyo/notificación |
     | Caso de uso | Función principal de cada microservicio |
@@ -72,5 +73,10 @@ legend right
     notificaciones; la consulta de auditoría es del Administrador.
     Proveedor de Pagos autoriza liquidaciones externas en CDU004.
     Servicio de Correo entrega enlaces de activación y notificaciones.
+
+Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
 endlegend
 @enduml

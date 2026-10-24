@@ -1,111 +1,49 @@
-# Diagrama de Despliegue UML 2 — Bank USAC
+# Despliegue local y GCP — Fase III
 
-Este documento describe el despliegue del sistema bancario **Bank USAC**, especificando los nodos físicos y de virtualización, contenedores, servicios Kubernetes, puertos y protocolos de red.
+La política del 2026-10-22 pide edición nativa de estas vistas en Lucid y
+exportación sólo a PNG; los PUML se conservan como referencia semántica.
+[ADR-024](adr/ADR-024-native-lucid-and-png-delivery.md) describe el cambio.
+El estado de revisión/exportación se registra en la
+[auditoría T-61](../qa/T-61-documentation-audit.md); una imagen existente no
+certifica por sí sola que se haya completado la nueva edición.
 
-Para **ejecutar** este despliegue —prerrequisitos, comandos, verificación y
-resolución de fallos— el procedimiento está en
-[`docs/operations/DEPLOYMENT.md`](../operations/DEPLOYMENT.md). Este documento
-explica la forma; aquel explica cómo levantarla.
+## Local: kind, Docker y Helm
 
----
+![Despliegue local](diagrams/05-uml-despliegue.png)
 
-## 1. Diagrama de Despliegue Local (Fase 1)
+[PUML](diagrams/05-uml-despliegue.puml).
+Los siete componentes corren en kind; cinco PostgreSQL, RabbitMQ y MinIO están
+fuera del clúster en la red Docker. `kubectl port-forward` expone Web y Gateway
+al host. `bank-usac` y `bank-observability` son charts distintos. El overlay
+kind reduce recursos y retención: Prometheus 2h sin PVC, Tempo 24h/PVC 5Gi y
+Loki/PVC 2Gi. No demuestra siete días de historial ni escalado HPA sin
+metrics-server. Terraform corresponde al cloud, no crea el host local.
+Procedimiento: [DEPLOYMENT.md](../operations/DEPLOYMENT.md).
 
-![Diagrama de Despliegue Local — Bank USAC](diagrams/05-uml-despliegue.png)
+## GCP: Terraform, GKE, Cloud Run y Helm
 
-Fuentes de diagramación versionadas:
-* [PlantUML (`.puml`)](diagrams/05-uml-despliegue.puml)
+![Despliegue cloud](diagrams/08-despliegue-cloud-gcp.png)
 
-> **Los puertos reenviados, por escrito.** El `port-forward` mapea
-> `localhost:3000 → gateway` y `localhost:3010 → frontend`; así lo declara la
-> fuente `.puml`, así lo fija `pnpm k8s:forward` y así lo exigen
-> `web.apiBaseUrl` y `gateway.corsAllowedOrigins` en `values.yaml`. La imagen
-> exportada de esta sección fue recompuesta a mano y quedó por detrás de su
-> fuente en este punto: si la lees al revés, la fuente manda.
+[PUML](diagrams/08-despliegue-cloud-gcp.puml).
+Terraform declara VPC/subredes, Router/NAT, GKE, cinco VMs privadas PostgreSQL,
+Artifact Registry, IP reservada y Cloud Run. GitHub Actions publica imágenes
+versionadas y despliega por Helm mediante WIF; `terraform apply` sigue siendo
+un procedimiento humano. El clúster observado es `bank-usac-vpc-gke`,
+`us-central1-c`, tres nodos `e2-standard-2`, Dataplane V2.
 
-### Topología Local (Kind / Helm)
-* **Host de Desarrollo (`Developer Host` · `<<device>>`)**:
-  * Ejecuta los 5 contenedores de PostgreSQL 18.4 (puertos `:5433` a `:5437`), garantizando aislamiento físico de datos (*Database-per-Service*).
-  * Ejecuta el clúster RabbitMQ 4.3 (puertos `:5672` AMQP y `:15672` Management).
-  * Ejecuta MinIO S3 (puertos `:9000` API y `:9001` Console).
-* **Clúster Kubernetes Local (`kind cluster` / Helm)**:
-  * **Frontend**: Deployment `frontend` (Pod Nuxt 3) expuesto en `localhost:3010`.
-  * **API Gateway**: Deployment `gateway` (Pod NestJS) expuesto en `localhost:3000`.
-  * **5 Servicios de Dominio**: Deployments independientes (`customer`, `account`, `transaction`, `payment`, `notification-audit`) con `ClusterIP` interno.
-  * **Configuración y Secretos**: `ConfigMap/bank-usac-config` y `Secret/bank-usac-secrets`.
+| Límite | Estado contrastado el 2026-10-21 |
+| --- | --- |
+| `prod` | Siete aplicaciones v1.3.6, RabbitMQ con PVC 2Gi, MinIO y mock BANK99. |
+| `dev` | Siete aplicaciones, broker/PVC y MinIO propios; banco externo desactivado. |
+| Datos fuera de GKE | Cinco VMs sin IP pública; bases `customer`, `account`, `transaction`, `payment`, `notification_audit` y sus equivalentes `_dev`. |
+| Observabilidad | Collector, tres agentes de logs, Prometheus/Tempo/Loki PVC 10Gi cada uno; Grafana PVC 2Gi; retención cloud configurada 7d. |
+| Escalado | Siete HPA CPU 80%, mínimo 1/máximo 5; Account usa un lease distribuido. |
+| Acceso público | Cloud Run HTTPS; Gateway y Grafana observados por HTTP. Las API keys no cifran el canal. |
+| Red | Dataplane V2 habilitado; ninguna NetworkPolicy aplicada en los tres namespaces. |
 
----
-
-## 2. Diagrama de Despliegue en la Nube (GCP — Fase 2)
-
-![Diagrama de Despliegue en la Nube GCP — Bank USAC](diagrams/08-despliegue-cloud-gcp.png)
-
-Fuentes de diagramación versionadas:
-* [PlantUML (`.puml`)](diagrams/08-despliegue-cloud-gcp.puml)
-
-### Topología en Google Cloud Platform (IaC con Terraform)
-Para la **Fase 2**, la infraestructura se aprovisiona mediante Terraform (`infra/terraform/gcp/`) con una arquitectura segmentada y resiliente:
-
-1. **Frontend Serverless en Google Cloud Run**:
-   - Servicio `bank-usac-web` en Cloud Run ejecutando el contenedor Nitro/Nuxt 3 en el puerto `8080`.
-   - Autoescalado elástico de **0 a 5 instancias** (*scale-to-zero* en ausencia de tráfico).
-   - Consume la variable pública `NUXT_PUBLIC_API_BASE_URL` apuntando al API Gateway en GKE.
-
-2. **Red Virtual Privada (VPC `bank-usac-vpc`)**:
-   - **Subred GKE (`10.10.0.0/20`)**: Aloja el plano de datos de Kubernetes, con rangos secundarios para Pods (`10.20.0.0/16`) y Services (`10.30.0.0/20`).
-   - **Subred Bases de Datos (`10.40.0.0/24`)**: Subred privada dedicada exclusivamente a las máquinas virtuales de PostgreSQL.
-   - **Cloud Router & Cloud NAT**: Permite que las VMs privadas de base de datos descarguen actualizaciones y paquetes de software sin exponer IPs públicas a Internet.
-   - **Firewall VPC**: sin exposición pública. Tres reglas: tráfico entre los cuatro rangos internos (nodos, pods, services y VMs de base de datos), SSH únicamente desde el rango de Google IAP `35.235.240.0/20`, y los rangos de health check de los balanceadores. La regla interna abre **todos** los puertos TCP y UDP entre esos cuatro rangos, no sólo el 5432 — el radio de impacto lo contiene que la VPC no tenga otro inquilino, pero es más amplia de lo necesario y debería estrecharse a los puertos en uso.
-
-3. **Clúster Administrado de Google Kubernetes Engine (GKE)**:
-   - **Microservicios con HPA al 80% CPU**: API Gateway, Customer, Account, Transaction, Payment y Notification & Audit Service escalan automáticamente entre 1 y 5 réplicas ante incrementos de carga.
-   - **Broker RabbitMQ**: `Deployment` de una réplica en el puerto interno `5672`, **uno por namespace** (`rabbitmq.inCluster`), de modo que `dev` y `prod` no comparten mensajería.
-   - **MinIO Object Storage**: `Deployment` de una réplica en el puerto interno `9000` para las fotos de DPI, también uno por namespace (`minio.inCluster`).
-   - **Sin volúmenes persistentes en ninguno de los dos.** Ambos escriben en la capa de escritura del contenedor, así que su estado no sobrevive al reemplazo de un pod. Para MinIO es casi inocuo — la foto es un búfer de transferencia con ventana de retención de 24 h (ADR-012) y la copia durable vive en la base de Customer Service — y para RabbitMQ significa que los mensajes encolados y aún no consumidos se pierden en un reinicio del pod del broker. Registrado como **TD-082**.
-
-4. **Bases de Datos en Máquinas Virtuales Compute Engine**:
-   - 5 instancias Compute Engine independientes (`bank-db-customer`, `bank-db-account`, `bank-db-transaction`, `bank-db-payment`, `bank-db-audit`).
-   - Aprovisionadas con scripts desatendidos (*startup-scripts*) que instalan PostgreSQL, configuran `listen_addresses = '*'` y reglas de acceso en `pg_hba.conf` para la subred privada de GKE.
-
----
-
-## 3. Matriz Comparativa: Local (Fase 1) vs Cloud GCP (Fase 2)
-
-| Componente | Despliegue Local (Fase 1) | Despliegue Cloud GCP (Fase 2) | Beneficio Arquitectónico |
-|---|---|---|---|
-| **Frontend Web** | Pod en Kind (`localhost:3010`) | Google Cloud Run (Serverless) | Costo cero en reposo (*scale-to-zero*) y alta disponibilidad global |
-| **API Gateway y Microservicios** | Pods estáticos (1 réplica) en Kind | Pods en GKE con **HPA al 80% CPU** (1 a 5 réplicas) | Elasticidad automática ante picos de transacciones financieras |
-| **Bases de Datos (5 PostgreSQL)** | Contenedores en Docker Engine del host | **5 Máquinas Virtuales Compute Engine** | Aislamiento físico de cómputo por dominio y persistencia empresarial |
-| **Red y Seguridad** | Red interna Docker tipo puente (`bridge`) | **VPC de GCP** con subredes privadas, Cloud NAT y Firewall | Cero exposición pública de datos bancarios sensibles |
-| **Aprovisionamiento** | Docker Compose + Helm local | **Terraform (IaC)** + Helm sobre GKE | Despliegue 100% reproducible y auditable en código |
-
----
-
-## 4. Protocolos y Puertos de Comunicación
-
-* **HTTPS :443**: acceso de los cuentahabientes y cajeros al frontend en Cloud Run, con certificado gestionado por Google.
-* **HTTP :3000**: el API Gateway, expuesto por un `Service` de tipo `LoadBalancer` en GKE (REST / JSON). **Es HTTP, no HTTPS**, y por eso el navegador no puede llamarlo directamente desde una página servida por HTTPS: el frontend enruta sus peticiones por el proxy de mismo origen `server/routes/api/[...slug].ts` de Nitro, que sí puede. Ese `LoadBalancer` no está declarado en el chart (**TD-080**).
-* **AMQP 0-9-1 / TCP 5672**: Comunicación asíncrona bidireccional entre pods y RabbitMQ en GKE.
-* **PostgreSQL / TCP 5432**: Comunicación síncrona privada entre cada pod y su VM dedicada en Compute Engine (`10.40.0.0/24`).
-* **S3-compatible / TCP 9000**: Streaming de imágenes de DPI hacia MinIO.
-
----
-
-## 5. Justificación Arquitectónica: MinIO en GKE vs Almacenamiento Gestionado (Google Cloud Storage)
-
-Aun cuando la plataforma se despliega sobre Google Cloud Platform, el almacenamiento de objetos para documentos de identidad (DPI y pasaportes) se ejecuta mediante **MinIO en GKE** (hoy un `Deployment` de una réplica por namespace) en lugar de un bucket nativo de Google Cloud Storage (GCS). Esta decisión obedece a las mejores prácticas de la industria bancaria:
-
-1. **Soberanía y Perímetro de Seguridad (Modelo Zero Trust):**
-   * Los documentos de identificación son datos personales altamente sensibles (*PII*).
-   * Al alojarse en MinIO dentro de la VPC privada (`10.10.0.0/20`), el tráfico de subida, descarga y validación criptográfica nunca viaja por la Internet pública ni reside en almacenes multi-inquilino compartidos. Se eliminan riesgos de filtración por políticas erróneas de IAM público.
-2. **Mitigación de *Vendor Lock-In* y Cumplimiento Regulatorio (Estrategia de Salida):**
-   * MinIO implementa la API estándar abierta de **Amazon S3** (`@aws-sdk/client-s3`).
-   * Los entes reguladores del sector bancario (como la Superintendencia de Bancos - SIB) exigen planes de contingencia y portabilidad. Gracias al estándar S3, el banco puede trasladar su infraestructura entre GCP, AWS, Azure o data centers privados (On-Premise) sin modificar una sola línea de código fuente.
-3. **Paridad de Entornos (Principio X de The Twelve-Factor App):**
-   * El comportamiento del almacenamiento es exactamente el mismo en desarrollo local (Docker/Kind) que en el clúster de producción (GKE).
-   * Toda la suite de integración (`pnpm test`, `pnpm images:flow`) se ejecuta de manera determinista, reproducible y 100% offline sin incurrir en dependencias de conexión ni costos de nube por desarrollador.
-4. **Previsibilidad de Costos y Latencia Interna:**
-   * GCS factura por operaciones de API (Clase A y B) y transferencia de red (*egress*). En un sistema con alto volumen de transacciones y validaciones, estos cobros variables aumentan los costos operativos.
-   * MinIO opera dentro del clúster con costo fijo, cero cobro por petición y latencia de red sub-milisegundo dentro de la VPC. Hoy lo hace **sin volumen persistente**, que es una omisión y no parte del argumento: ver TD-082.
-
-
+El frontend Cloud Run y la carga `web` de GKE son despliegues distintos del
+mismo componente. Las VMs/capacidad y observabilidad son compartidas; los datos
+dev/prod están separados por nombre de base. No inferir aislamiento físico.
+La existencia de plantillas de seguridad no prueba su activación. Inventarios,
+pruebas y limitaciones: [evidencia cloud](../qa/backend/T-60-cloud-evidence.md).
+Runbook completo: [CLOUD.md](../operations/CLOUD.md).

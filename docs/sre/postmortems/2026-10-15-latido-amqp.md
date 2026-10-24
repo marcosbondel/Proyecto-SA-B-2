@@ -11,6 +11,13 @@ no hubo que inyectar: ocurrió solo.
 > valor por defecto de una librería, nunca se escribió en este repositorio y
 > ninguna prueba lo miraba. El defecto es que no lo miraba ninguna prueba.
 
+> **Relectura T-61 (2026-10-21):** informe histórico local, sin sustituir sus
+> logs o cifras. Las alertas de reinicio se añadieron después del incidente.
+> El estado pendiente descrito al final de la corrida no equivale a una
+> compensación ya demostrada: para cerrar su recuperación se necesita evidencia
+> posterior. Los plazos interbancarios actuales son 180 s más el protocolo de
+> consulta/cancelación; este informe conserva los anteriores.
+
 ## 1. Resumen en tres líneas
 
 Una carga de 4 depósitos interbancarios por segundo bloqueó el bucle de eventos

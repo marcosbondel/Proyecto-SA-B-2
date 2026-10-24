@@ -1,0 +1,452 @@
+{
+  "events": [
+    {
+      "at": "2026-10-22T04:28:33.059Z",
+      "event": "start",
+      "environment": "dev",
+      "gateway": "http://136.71.158.228:3000",
+      "scenario": "baseline",
+      "initialSimulation": {
+        "failureRatePercent": 0,
+        "timeoutRatePercent": 0,
+        "latencyMs": 0
+      }
+    },
+    {
+      "at": "2026-10-22T04:29:56.549Z",
+      "event": "load-finished",
+      "exitCode": 99,
+      "aborted": false
+    },
+    {
+      "at": "2026-10-22T04:30:41.551Z",
+      "event": "after-drain"
+    }
+  ],
+  "before": {
+    "accounts": [
+      {
+        "accountId": "b0000000-0000-4000-8000-000000000004",
+        "accountNumber": "02-000000009",
+        "customerId": "a0000000-0000-4000-8000-000000000005",
+        "accountType": "AHORRO",
+        "balance": {
+          "amountMinor": 80000,
+          "currency": "GTQ"
+        },
+        "status": "ACTIVE",
+        "lastActivityAt": "2026-10-19T20:41:10.059Z",
+        "openedAt": "2026-10-19T20:41:10.059Z"
+      },
+      {
+        "accountId": "b0000000-0000-4000-8000-000000000003",
+        "accountNumber": "02-000000008",
+        "customerId": "a0000000-0000-4000-8000-000000000005",
+        "accountType": "MONETARIA",
+        "balance": {
+          "amountMinor": 250000,
+          "currency": "GTQ"
+        },
+        "status": "ACTIVE",
+        "lastActivityAt": "2026-10-19T20:41:10.055Z",
+        "openedAt": "2026-10-19T20:41:10.055Z"
+      }
+    ],
+    "correlationId": "97d4dd9e-a525-4ee8-bed5-f67a6202751b"
+  },
+  "after": {
+    "accounts": [
+      {
+        "accountId": "b0000000-0000-4000-8000-000000000004",
+        "accountNumber": "02-000000009",
+        "customerId": "a0000000-0000-4000-8000-000000000005",
+        "accountType": "AHORRO",
+        "balance": {
+          "amountMinor": 96900,
+          "currency": "GTQ"
+        },
+        "status": "ACTIVE",
+        "lastActivityAt": "2026-10-22T04:29:53.168Z",
+        "openedAt": "2026-10-19T20:41:10.059Z"
+      },
+      {
+        "accountId": "b0000000-0000-4000-8000-000000000003",
+        "accountNumber": "02-000000008",
+        "customerId": "a0000000-0000-4000-8000-000000000005",
+        "accountType": "MONETARIA",
+        "balance": {
+          "amountMinor": 233100,
+          "currency": "GTQ"
+        },
+        "status": "ACTIVE",
+        "lastActivityAt": "2026-10-22T04:29:52.629Z",
+        "openedAt": "2026-10-19T20:41:10.055Z"
+      }
+    ],
+    "correlationId": "52c1cca4-fa9f-4b75-bb19-8bf2c61ff700"
+  },
+  "simulation": {
+    "failureRatePercent": 0,
+    "timeoutRatePercent": 0,
+    "latencyMs": 0,
+    "source": "DEFAULTS",
+    "updatedAt": null,
+    "correlationId": "8be58a79-83ce-4516-8b28-1d159ccbe814"
+  },
+  "transfers": {
+    "transactions": [
+      {
+        "transactionId": "f3dc0ded-b195-4ce3-8f8c-19aa9f066538",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:52.488Z",
+        "completedAt": "2026-10-22T04:29:53.181Z"
+      },
+      {
+        "transactionId": "e792651a-256b-4127-909f-87db72798926",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:52.007Z",
+        "completedAt": "2026-10-22T04:29:52.408Z"
+      },
+      {
+        "transactionId": "0d50919a-0bed-4574-a02a-a0af01975caf",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:51.109Z",
+        "completedAt": "2026-10-22T04:29:51.918Z"
+      },
+      {
+        "transactionId": "b838ea74-5895-4e08-bd66-7c54eb4c599b",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:50.559Z",
+        "completedAt": "2026-10-22T04:29:51.270Z"
+      },
+      {
+        "transactionId": "04dd5a76-0651-464a-9d93-2cdb3801d31d",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:49.834Z",
+        "completedAt": "2026-10-22T04:29:50.612Z"
+      },
+      {
+        "transactionId": "0880955c-b404-4459-9f8a-a759badf8aa3",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:49.693Z",
+        "completedAt": "2026-10-22T04:29:50.539Z"
+      },
+      {
+        "transactionId": "e8912336-5d12-467c-b27c-d676911fd628",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:48.439Z",
+        "completedAt": "2026-10-22T04:29:49.606Z"
+      },
+      {
+        "transactionId": "67ac15d3-b3f7-4c8d-8b2e-ed358564075e",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:48.415Z",
+        "completedAt": "2026-10-22T04:29:49.146Z"
+      },
+      {
+        "transactionId": "9a19699a-dbd5-4548-8e3b-93e6e64cb280",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:48.065Z",
+        "completedAt": "2026-10-22T04:29:48.859Z"
+      },
+      {
+        "transactionId": "c2703f97-fc23-4064-9a39-36eaa2063ad5",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:47.856Z",
+        "completedAt": "2026-10-22T04:29:49.315Z"
+      },
+      {
+        "transactionId": "59b9117e-eb05-4404-9207-32500fb37e00",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:47.445Z",
+        "completedAt": "2026-10-22T04:29:48.201Z"
+      },
+      {
+        "transactionId": "045a3e7a-c47e-41ef-8a74-4eb8479065d8",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:47.044Z",
+        "completedAt": "2026-10-22T04:29:47.643Z"
+      },
+      {
+        "transactionId": "8d727181-bd64-47a1-8741-a962aa123622",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:46.921Z",
+        "completedAt": "2026-10-22T04:29:47.660Z"
+      },
+      {
+        "transactionId": "6795690a-5739-445d-9a45-421beeabb12a",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:45.754Z",
+        "completedAt": "2026-10-22T04:29:46.862Z"
+      },
+      {
+        "transactionId": "07656217-7752-4ab9-92e0-caafd5a94f17",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:45.656Z",
+        "completedAt": "2026-10-22T04:29:46.845Z"
+      },
+      {
+        "transactionId": "d55c8d4d-6e42-4bf8-a340-b1f86933e63c",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:45.448Z",
+        "completedAt": "2026-10-22T04:29:46.732Z"
+      },
+      {
+        "transactionId": "0065ceab-dc3e-4e4e-9928-017fde1d3d02",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:45.273Z",
+        "completedAt": "2026-10-22T04:29:46.685Z"
+      },
+      {
+        "transactionId": "dfa411b3-91d7-41e6-b9e7-3d84f6dc9bcc",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:44.818Z",
+        "completedAt": "2026-10-22T04:29:46.188Z"
+      },
+      {
+        "transactionId": "bcd4f116-f23f-4abe-9ba4-b62901b002a6",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:44.223Z",
+        "completedAt": "2026-10-22T04:29:45.614Z"
+      },
+      {
+        "transactionId": "4a49c28f-eabc-4a00-a94c-1f9eeeae97e4",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:43.887Z",
+        "completedAt": "2026-10-22T04:29:45.704Z"
+      },
+      {
+        "transactionId": "0ef22e0c-f6ca-4b84-9002-7f03bb1dd04c",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:42.931Z",
+        "completedAt": "2026-10-22T04:29:45.444Z"
+      },
+      {
+        "transactionId": "a6c6c34d-dd49-45d7-b845-bd255370a793",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:42.836Z",
+        "completedAt": "2026-10-22T04:29:43.757Z"
+      },
+      {
+        "transactionId": "530875e7-a26c-4927-b5eb-a3911728cbe8",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:42.532Z",
+        "completedAt": "2026-10-22T04:29:44.689Z"
+      },
+      {
+        "transactionId": "41de6e03-4f70-4009-a21f-ba5893672e31",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:42.154Z",
+        "completedAt": "2026-10-22T04:29:44.759Z"
+      },
+      {
+        "transactionId": "bf9c6842-e79d-4bf9-8668-a10c7a28843a",
+        "sourceAccount": "b0000000-0000-4000-8000-000000000003",
+        "targetAccount": "b0000000-0000-4000-8000-000000000004",
+        "amount": {
+          "amountMinor": 100,
+          "currency": "GTQ"
+        },
+        "status": "COMPLETED",
+        "phaseStatus": "APPROVED",
+        "reason": null,
+        "createdAt": "2026-10-22T04:29:42.151Z",
+        "completedAt": "2026-10-22T04:29:43.882Z"
+      }
+    ],
+    "total": 169,
+    "correlationId": "28f34e13-73f6-4bcc-b2f0-8f0ade309afc"
+  }
+}

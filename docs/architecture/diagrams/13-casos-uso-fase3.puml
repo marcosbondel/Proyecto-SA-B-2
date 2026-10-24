@@ -1,0 +1,52 @@
+@startuml 13-casos-uso-fase3
+left to right direction
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam dpi 180
+skinparam ActorBorderColor #1168BD
+skinparam usecaseBackgroundColor #EAF2FF
+skinparam usecaseBorderColor #1168BD
+skinparam noteBackgroundColor #FFF8DC
+skinparam noteBorderColor #D6B656
+title UML - Casos de uso adicionales Fase III\nComplementa la jerarquía CDU de Fase I
+actor Cliente as C
+actor Cajero as T
+actor Administrador as A
+actor "Operador SRE\nAcceso separado" as S
+actor "Banco participante\nContrato v1 / X-Api-Key" as B
+rectangle "Bank USAC" {
+  usecase "Enviar depósito interbancario\nConsultar estado e historial propios" as U1
+  usecase "Recibir / consultar / cancelar depósito\nConciliar / reversar" as U2
+  usecase "Consultar notificaciones propias" as U3
+  usecase "Consultar depósitos interbancarios\nAlcance global para personal" as U10
+  usecase "Consultar pagos e intentos" as U4
+  usecase "Filtrar auditoría / traza\nConsultar rastro y payload redactado" as U9
+  usecase "Configurar simulación de pagos\nAPI administrativa (sin formulario UI)" as U5
+  usecase "Consultar reporte de anomalía N/M\nAccount reporta sin bloquear la cuenta" as U6
+  usecase "Consultar 9 dashboards / Explore\nInvestigar logs y trazas" as U7
+  usecase "Recibir 16 alertas SLO\nRegistrar y notificar al administrador" as U8
+}
+C --> U1
+C --> U3
+T --> U4
+A --> U10
+T --> U10
+A --> U3
+T --> U3
+A --> U4
+A --> U9
+A --> U5
+A --> U6
+A --> U8
+B --> U2
+S --> U7
+U7 ..> U8 : observación / diagnóstico
+note bottom of U6
+  Account calcula con sus movimientos y ventana N/M.
+  No requiere interfaz nueva ni autorización de una transferencia.
+end note
+note bottom of U2
+  Payment posee estados/plazos; Account posee dinero.
+  Gateway autentica y valida. Comunicación interna AMQP.
+end note
+@enduml

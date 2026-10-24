@@ -10,18 +10,20 @@ rápido de lo que la ventana admite**:
 
 | Alerta | Umbral | Qué implica |
 | --- | --- | --- |
-| `…FastBurn` | burn rate > **14.4×** durante 1 h | a este ritmo el presupuesto de 7 días se agota en ~12 h. Es una caída en curso |
-| `…SlowBurn` | burn rate > **6×** durante 6 h | se agota antes de cerrar la ventana. No es urgente esta hora, pero no se puede dejar pasar |
+| `GatewayAvailabilityFastBurn` | burn de **1 h > 14.4×**, condición sostenida **5 min** | agotaría un presupuesto íntegro de 7 d en **11 h 40 min** |
+| `GatewayAvailabilitySlowBurn` | burn de **6 h > 6×**, condición sostenida **30 min** | agotaría el presupuesto en **28 h** |
 
-Dos ventanas porque una sola corta alerta de cada pico y una sola larga avisa
-cuando el presupuesto ya se gastó.
+Cada regla del Gateway usa **una ventana de cálculo** y su período `for`.
+Las alertas de Saga sí combinan ventana larga y corta; no atribuir esa lógica a
+estas dos. Las fórmulas actuales están en
+[`values.yaml`](../../../infra/k8s/helm/bank-observability/values.yaml).
 
 ## Cómo diagnosticarla
 
 1. **¿Cuánto presupuesto queda?** Si es negativo, el SLO ya se incumplió en la
    ventana.
    ```promql
-   slo:gateway_availability:budget_remaining7d
+   slo:gateway_availability:budget_remaining7d{environment="prod"}
    ```
 2. **¿Qué ruta falla?** La disponibilidad es agregada; el detalle está en la
    serie cruda.
@@ -58,8 +60,8 @@ cuando el presupuesto ya se gastó.
   de datos ausente no provoca un bucle de reinicios.
 - **Saturación** → el HPA escala al 80 % de CPU. Si está en el máximo de
   réplicas, subir `maxReplicas` del componente en `values.yaml` y desplegar por
-  el pipeline. **Ojo**: `account-service` debe quedarse en **una** réplica, porque
-  también corre el barrido de cuentas inactivas sin elección de líder.
+  el pipeline. `account-service` también puede escalar: el barrido usa un arriendo con
+  `pg_try_advisory_lock`, incorporado antes de esta revisión.
 - **El broker** → ver [consumer-lag.md](consumer-lag.md).
 - **Un despliegue reciente** → el panel de SLO lleva los despliegues como
   anotaciones. Si la caída empieza en una de ellas, `helm rollback bank-usac -n prod`.
@@ -74,3 +76,11 @@ cuando el presupuesto ya se gastó.
   se decide, no se silencia.
 - Incluir `/health` y `/ready` en la consulta para "mejorar" el número: los pide
   el kubelet cada diez segundos y esconderían la caída real.
+
+## Confirmación de recuperación
+
+Verificar que las rutas de negocio responden, que cae el burn y termina el
+`for`, y que Grafana y Audit muestran la resolución. Las conexiones rechazadas
+antes de entrar al proceso no alimentan el histograma: conservar además la
+prueba externa de salud/ruta. No anunciar 99 % semanal si el stack no conserva
+una semana completa de muestras.

@@ -1,0 +1,194 @@
+40660d5 2026-10-21T00:33:24-06:00 Marcos Bonifasi Merge pull request #186 from marcosbondel/fix/T-60-traza-del-frontend
+0e2b18a 2026-10-21T00:08:49-06:00 Marcos Bonifasi fix(web): el proxy no reenvia el traceparent de Cloud Run (T-60)
+017698d 2026-10-20T16:08:08-06:00 Marcos Bonifasi Merge pull request #184 from marcosbondel/fix/T-60-contadores-en-cero
+5d37d25 2026-10-20T15:49:48-06:00 Marcos Bonifasi fix(observability): los contadores de bajo volumen nacen en cero (T-60)
+8c1dba3 2026-10-20T13:27:52-06:00 Marcos Bonifasi Merge pull request #182 from marcosbondel/feat/T-60-resend-en-la-nube
+2e7c2a0 2026-10-20T13:14:43-06:00 Marcos Bonifasi feat(cd): produccion envia el correo de activacion por Resend (T-60)
+018df89 2026-10-19T21:55:20-06:00 Marcos Bonifasi Merge pull request #180 from marcosbondel/feat/T-60-grafana-publico
+c64b8d7 2026-10-19T21:42:34-06:00 Marcos Bonifasi feat(observability): Grafana con IP publica para quien califica (T-60)
+771954b 2026-10-19T17:33:37-06:00 Marcos Bonifasi Merge pull request #178 from marcosbondel/fix/T-60-rabbitmq-cookie
+4f9593c 2026-10-19T17:19:11-06:00 Marcos Bonifasi fix(helm): RabbitMQ vuelve a arrancar tras un reinicio con su volumen (cookie con permisos de dueño)
+81bc2e5 2026-10-19T16:44:47-06:00 Marcos Bonifasi Merge pull request #176 from marcosbondel/fix/T-60-propiedad-de-la-cuenta-origen
+2564744 2026-10-19T16:30:06-06:00 Marcos Bonifasi fix(account): el débito de una transferencia sólo lo ordena el dueño de la cuenta origen (T-60)
+ea84e35 2026-10-19T16:28:18-06:00 Marcos Bonifasi Merge pull request #175 from marcosbondel/fix/T-60-gateway-resiliencia-y-autorizacion
+59e33a1 2026-10-19T16:12:34-06:00 Marcos Bonifasi Merge pull request #174 from marcosbondel/fix/T-60-slo28-y-traceid-en-pantallas
+03f7a86 2026-10-19T16:11:27-06:00 Marcos Bonifasi revert(helm): account-service vuelve a escalar; su barrido ya tiene lease (deshace D6b)
+6402d9b 2026-10-19T16:09:10-06:00 Marcos Bonifasi fix(helm): el RabbitMQ del cluster guarda sus colas en un PersistentVolumeClaim (T-60, D5, TD-082)
+a751757 2026-10-19T16:09:01-06:00 Marcos Bonifasi fix(helm): account-service no escala mas de una replica (T-60, D6b)
+e3497a0 2026-10-19T16:08:52-06:00 Marcos Bonifasi fix(gateway): el envio interbancario solo lo origina un CLIENTE y su reintento devuelve el mismo id (T-60, D7a, D7b)
+d642feb 2026-10-19T16:08:42-06:00 Marcos Bonifasi fix(gateway): un corte del broker ya no mata el proceso (T-60, D1)
+fef4b98 2026-10-19T15:55:30-06:00 Marcos Bonifasi fix(web): el detalle de transferencia y de pago muestra la traza junto al código de seguimiento (T-60)
+4b0de4b 2026-10-19T15:55:30-06:00 Marcos Bonifasi fix(observabilidad): el SLO-28 de los dashboards 00 y 02 muestra enviados y recibidos (T-60)
+24bd3f7 2026-10-19T14:53:04-06:00 Marcos Bonifasi Merge pull request #173 from marcosbondel/fix/T-60-reclamos-con-lease
+be4acd4 2026-10-19T14:37:47-06:00 Marcos Bonifasi Merge pull request #172 from marcosbondel/fix/terraform-reemplazo-vms-y-zona
+f53c5c1 2026-10-19T14:36:11-06:00 Marcos Bonifasi fix(payment,transaction): los sondeos se espacian en reposo y payment pide CPU realista (T-60)
+b1f569e 2026-10-19T14:35:55-06:00 Marcos Bonifasi fix(payment): los reclamos de los barridos son arrendamientos atomicos (T-60)
+8a901cd 2026-10-19T13:54:46-06:00 Marcos Bonifasi fix(terraform): reemplazar una VM cabe en la cuota de 8 instancias, y la zona es us-central1-c
+fd4c99c 2026-10-19T13:21:26-06:00 Marcos Bonifasi Merge pull request #170 from marcosbondel/fix/T-60-mock-en-produccion
+f35323c 2026-10-19T13:05:25-06:00 Marcos Bonifasi feat(cd): produccion despliega el banco pareja simulado y le apunta el envio (T-60)
+2bc30b1 2026-10-19T09:08:30-06:00 Marcos Bonifasi Merge pull request #169 from marcosbondel/feature/T-60-cierre-tecnico-fase-3
+12408ef 2026-10-19T08:50:37-06:00 Marcos Bonifasi fix(ci): promtool en Docker lee las reglas en Linux (--user del host) (T-60)
+7bed592 2026-10-19T08:33:06-06:00 Marcos Bonifasi test(account): el doble del pool tiene connect y la siembra de billers toma su lock (T-60)
+557f805 2026-10-19T08:24:22-06:00 Marcos Bonifasi fix(account): dos replicas arrancando a la vez ya no chocan al sembrar los facturadores (T-60)
+043064e 2026-10-19T08:15:29-06:00 Marcos Bonifasi chore(claude): la regla de lectura protege los .env reales y deja leer los .env.example (T-60)
+6b827e6 2026-10-19T08:15:28-06:00 Marcos Bonifasi docs(env): los .env.example documentan la Fase 3 y el contrato interbancario v1 (T-60, TD-085)
+b2def75 2026-10-19T08:08:58-06:00 Marcos Bonifasi fix(ci): ninguna tuberia con grep -q o head bajo pipefail falla por SIGPIPE (T-60)
+3e63f6c 2026-10-18T22:55:55-06:00 Marcos Bonifasi Merge T-60: budgets sin NaN, Tempo sin OOM y consumer lag en kind
+4afdfca 2026-10-18T22:55:14-06:00 Marcos Bonifasi fix(observability): obs-kind cierra sus port-forwards al terminar (T-60)
+c777c02 2026-10-18T22:54:42-06:00 Marcos Bonifasi fix(kind): Tempo con disco, consumer lag del broker de Docker y alertas del stack al Gateway local (T-60)
+6c31c81 2026-10-18T22:54:41-06:00 Marcos Bonifasi fix(observability): presupuestos sin NaN, Tempo sin OOM y paneles por namespace que sirven en kind (T-60)
+6ed4926 2026-10-18T22:38:27-06:00 Marcos Bonifasi Merge T-60: el seed no mueve dinero, source RUNTIME y reactivar sin motivo
+49a251a 2026-10-18T22:38:27-06:00 Marcos Bonifasi fix(payment): un reverso ya cerrado no tapa al reverso abierto del mismo monto (T-60, QA 13c)
+72b3710 2026-10-18T22:34:41-06:00 Marcos Bonifasi fix(gateway,account): reactivar una cuenta no exige motivo (T-60, QA 21)
+4f86ae2 2026-10-18T22:34:41-06:00 Marcos Bonifasi fix(payment): la etiqueta source de las metricas del proveedor distingue RUNTIME (T-60, QA 20)
+312f68f 2026-10-18T22:34:41-06:00 Marcos Bonifasi fix(account,customer,infra): arrancar un pod no mueve dinero ni deshace cambios (T-60, QA 20)
+7366d79 2026-10-18T22:30:08-06:00 Marcos Bonifasi Merge T-60: correlacion en el span SERVER y log de acceso del Gateway
+0c4260d 2026-10-18T22:30:08-06:00 Marcos Bonifasi Merge T-60: el mock acepta el callback de una transferencia mal dirigida
+a0d5557 2026-10-18T22:29:32-06:00 Marcos Bonifasi fix(gateway): bank.correlation_id en el span SERVER raiz y una linea de log por peticion (T-60)
+fb7472c 2026-10-18T22:25:24-06:00 Marcos Bonifasi fix(partner-mock): el callback de un banco con codigo distinto al pedido se acepta y se marca (T-60)
+7863468 2026-10-18T19:23:46-06:00 Marcos Bonifasi chore(qa): la memoria del rol QA sobre la verificacion en vivo en kind (T-60)
+4f10d51 2026-10-18T18:51:13-06:00 Marcos Bonifasi Merge T-60: el reembolso de un reverso va a la cuenta de liquidacion (QA 13c)
+183a60e 2026-10-18T18:50:47-06:00 Marcos Bonifasi fix(payment): el reembolso de un reverso no se acredita al cliente (T-60, QA 13c)
+080ecd4 2026-10-18T18:34:16-06:00 Marcos Bonifasi Merge T-60: el estado de cada deposito interbancario y el enlace a la traza (TD-090)
+961c256 2026-10-18T18:33:29-06:00 Marcos Bonifasi feat(web): el traceId abre la traza en Grafana cuando se sabe donde esta (T-60)
+80bca04 2026-10-18T18:33:23-06:00 Marcos Bonifasi feat(web): el estado de cada deposito interbancario (TD-090, T-60)
+d545c93 2026-10-18T18:33:18-06:00 Marcos Bonifasi fix(web): el formulario interbancario valida lo que el Gateway rechaza (T-60)
+5e49064 2026-10-18T18:23:19-06:00 Marcos Bonifasi fix(k8s): obs:forward fija su contexto y Tempo en kind tiene la memoria de la nube (T-60)
+693fc33 2026-10-18T18:20:50-06:00 Marcos Bonifasi fix(k8s): el chart gana los conflictos de server-side apply en kind (T-60)
+46ab008 2026-10-18T18:13:36-06:00 Marcos Bonifasi chore: ignorar los worktrees de agentes y las bitacoras locales de T-60
+012eff7 2026-10-18T18:11:20-06:00 Marcos Bonifasi Merge T-60: el emisor y el receptor interbancarios hablan el contrato v1
+37fe3b6 2026-10-18T18:06:29-06:00 Marcos Bonifasi refactor(payment): limpia un residuo del barrido del protocolo (T-60)
+87305d9 2026-10-18T18:06:12-06:00 Marcos Bonifasi fix(payment): grita al arrancar si hay URL de la pareja y no hay llave (T-60)
+b63785d 2026-10-18T18:03:33-06:00 Marcos Bonifasi test(payment): el envio y la recepcion interbancarios contra PostgreSQL de verdad (T-60)
+468a839 2026-10-18T17:59:15-06:00 Marcos Bonifasi Merge T-60: dashboards, alertas, redaccion en el Collector y pipeline sin pasos manuales
+bbdc675 2026-10-18T17:57:41-06:00 Marcos Bonifasi fix(cd): el token del webhook de alertas y las NetworkPolicy del stack sin pasos manuales (T-60)
+047edcd 2026-10-18T17:57:40-06:00 Marcos Bonifasi test(observability): cada consulta de los nueve dashboards se ejecuta y el secreto no llega a Tempo ni a Loki (T-60)
+3a9159d 2026-10-18T17:57:40-06:00 Marcos Bonifasi docs(runbooks): las alertas nuevas de latencia del Gateway y de burn rate tienen su runbook (T-60)
+5559ecd 2026-10-18T17:57:40-06:00 Marcos Bonifasi fix(observability): los dashboards consultan lo que existe y el Collector redacta los tokens (T-60)
+ad09f62 2026-10-18T17:54:48-06:00 Marcos Bonifasi chore(infra): la configuracion interbancaria usa las variables del acuerdo (T-60)
+78370e6 2026-10-18T17:54:32-06:00 Marcos Bonifasi feat(gateway): el envio interbancario lleva la cuenta origen y se consulta (T-60)
+796d546 2026-10-18T17:48:40-06:00 Marcos Bonifasi fix(payment): el emisor habla el contrato v1 y el protocolo de TIMEOUT se completa (T-60)
+b7425b5 2026-10-18T17:48:32-06:00 Marcos Bonifasi feat(contracts,account): Account acredita por numero de cuenta y los contratos de T-60
+e177fc6 2026-10-18T17:37:03-06:00 Marcos Bonifasi Merge T-60: el banco pareja simulado habla el contrato v1
+a3f1746 2026-10-18T17:35:24-06:00 Marcos Bonifasi Merge T-60: datos sensibles, trazas y alertas repetidas
+f5a590c 2026-10-18T17:34:30-06:00 Marcos Bonifasi feat(audit): una alerta de SLO repetida notifica una vez por (huella, estado) (TD-083)
+6a54313 2026-10-18T17:34:30-06:00 Marcos Bonifasi test: maxWorkers 1 en account y customer (TD-086)
+82cab39 2026-10-18T17:34:30-06:00 Marcos Bonifasi feat(gateway): el span HTTP lleva bank.correlation_id (T-60)
+a6373a6 2026-10-18T17:34:30-06:00 Marcos Bonifasi fix(notification): el enlace de activacion ya no llega a Loki por defecto (T-60)
+b2ef661 2026-10-18T17:34:18-06:00 Marcos Bonifasi fix(observability): ningun token llega a una traza, y fetch ya tiene spans CLIENT (T-60)
+f822f2d 2026-10-18T17:33:53-06:00 Marcos Bonifasi feat(partner-mock): chart, compose y carga hablan el contrato v1 del mock (T-60)
+2ba5f14 2026-10-18T17:30:08-06:00 Marcos Bonifasi feat(partner-mock): el banco simulado habla el contrato v1 en los dos roles (T-60)
+d36f977 2026-10-18T17:25:45-06:00 Marcos Bonifasi feat(k8s): metrics-server en kind, para ver el HPA escalar en local (T-60)
+b984248 2026-10-16T10:22:28-06:00 Marcos Bonifasi Merge pull request #166 from marcosbondel/feature/TD-093-TD-095-interbancario-fiabilidad
+c5af436 2026-10-16T09:32:42-06:00 Marcos Bonifasi fix(cd): produccion se niega a desplegar un tag que no contiene el commit
+a1d8ea0 2026-10-16T09:30:40-06:00 Marcos Bonifasi fix(payment): los tipos que Jest dejaba pasar y tsc no (TD-093, TD-095)
+db55931 2026-10-16T09:23:38-06:00 Marcos Bonifasi feat(observability): la alerta de reinicios y el hash del Secret (TD-091, TD-089)
+4881945 2026-10-16T09:15:16-06:00 Marcos Bonifasi fix(payment): el protocolo de TIMEOUT del emisor (TD-095)
+13bda81 2026-10-16T08:57:14-06:00 Marcos Bonifasi fix(payment): el veredicto interbancario comita con su transicion (TD-093)
+743215b 2026-10-15T22:04:29-06:00 Marcos Bonifasi Merge pull request #165 from marcosbondel/feature/T-54-dataplane-v2
+0bb949a 2026-10-15T21:14:26-06:00 Marcos Bonifasi Merge pull request #164 from marcosbondel/feature/T-55-T-56-contrato
+864d895 2026-10-15T21:12:32-06:00 Marcos Bonifasi docs(infra): el procedimiento de las politicas y el limite de TD-088 (T-54)
+860ad27 2026-10-15T21:12:32-06:00 Marcos Bonifasi feat(observability): quien puede escribir una traza, y el guard que lo verifica (T-54)
+a969a17 2026-10-15T21:12:32-06:00 Marcos Bonifasi feat(infra): Dataplane V2, la decision que no se puede tomar despues (T-54)
+9a9702d 2026-10-15T20:43:13-06:00 Marcos Bonifasi fix(payment): el doble del repositorio no declaraba la firma del puerto (T-56)
+9310fa6 2026-10-15T20:42:28-06:00 Marcos Bonifasi fix(interbank): dos esquemas eran mas estrictos que el contrato (T-56)
+495387c 2026-10-15T20:25:36-06:00 Marcos Bonifasi test(gateway): las siete rutas, contra el broker real (T-56)
+4bfca7d 2026-10-15T20:04:47-06:00 Marcos Bonifasi fix(contracts): los doce mensajes del contrato faltaban en el catalogo (T-56)
+4ed2ea6 2026-10-15T19:41:22-06:00 Marcos Bonifasi feat(payment): las siete operaciones del contrato, del lado que decide (T-56)
+ffff9b7 2026-10-15T19:29:18-06:00 Marcos Bonifasi feat(gateway): las siete operaciones del contrato oficial en /interbank/v1 (T-56)
+4160a15 2026-10-15T19:15:57-06:00 Marcos Bonifasi feat(account): el numero de cuenta que el contrato exige, y BANK02 (T-56)
+bc0dc68 2026-10-15T18:57:47-06:00 Marcos Bonifasi docs(interbank): el contrato oficial y el acuerdo como fuente de la verdad (T-55, T-56)
+3d5147e 2026-10-15T18:46:10-06:00 Marcos Bonifasi Merge pull request #163 from marcosbondel/feature/T-56
+163b1f8 2026-10-15T18:30:41-06:00 Marcos Bonifasi test(gateway): el fixture de la suite que solo ve CI (T-56)
+64e2b2c 2026-10-15T18:19:17-06:00 Marcos Bonifasi docs(interbank): lo reconciliado, lo verificado y lo que sigue bloqueado (T-56)
+5a77c36 2026-10-15T18:19:04-06:00 Marcos Bonifasi feat(payment): los estados del deposito recibido, como funcion pura (T-56)
+719da40 2026-10-15T18:18:44-06:00 Marcos Bonifasi feat(contracts): el cuerpo que el banco pareja puede mandar de verdad (T-56)
+e31a786 2026-10-15T16:06:57-06:00 Marcos Bonifasi Merge pull request #162 from marcosbondel/feature/T-59
+b993bc2 2026-10-15T15:34:12-06:00 Marcos Bonifasi docs(adr): ADR-019, las dos evidencias que faltaban y las deudas al dia (T-59)
+f2739f9 2026-10-15T15:18:17-06:00 Marcos Bonifasi Merge pull request #161 from marcosbondel/feature/T-51
+b7e2853 2026-10-15T14:43:40-06:00 Marcos Bonifasi docs(sre): los cuatro postmortems de la sesion de carga (T-51)
+11d6970 2026-10-15T14:43:20-06:00 Marcos Bonifasi test(load): los seis escenarios de fallo, de principio a fin (T-51)
+5c82bec 2026-10-15T14:43:03-06:00 Marcos Bonifasi feat(obs): el enlace interbancario tenia solo una mitad medida (T-51)
+a3ee8df 2026-10-15T14:42:44-06:00 Marcos Bonifasi feat(partner-mock): la direccion que el mock no sabia contestar (T-51)
+6dd0f15 2026-10-15T14:42:31-06:00 Marcos Bonifasi fix(k8s): sin INTERBANK_SEND_URL ningun despliegue enviaba depositos (T-51)
+f64a17a 2026-10-15T14:42:20-06:00 Marcos Bonifasi fix(messaging): el latido de 5 s que reiniciaba los siete servicios (T-51)
+cba8e8e 2026-10-15T08:49:58-06:00 Marcos Bonifasi test(load): la carga sobre transferencias y depositos interbancarios (T-51)
+d425960 2026-10-15T08:26:01-06:00 Marcos Bonifasi Merge pull request #160 from marcosbondel/feature/T-47
+88ebc77 2026-10-15T08:07:52-06:00 Marcos Bonifasi test(gateway): las dos rutas nuevas, en la suite que corre contra el broker real
+8774e98 2026-10-15T07:21:30-06:00 Marcos Bonifasi feat(web): la pantalla del deposito a otro banco, y T-47 cerrado (T-47)
+c86e744 2026-10-15T07:05:07-06:00 Marcos Bonifasi feat(gateway): las dos rutas del deposito saliente, y el ciclo se cierra (T-47)
+ddf2c13 2026-10-15T06:52:41-06:00 Marcos Bonifasi feat(transaction,account): la Saga lleva el destino y existe donde acreditar (T-47)
+e849231 2026-10-15T06:49:18-06:00 Marcos Bonifasi feat(payment): el repositorio, la salida HTTP y el cableado del envio (T-47)
+a9892e0 2026-10-14T21:29:34-06:00 Marcos Bonifasi feat(payment): la tabla, los puertos y el caso de uso del deposito saliente (T-47)
+2f45a63 2026-10-14T21:24:15-06:00 Marcos Bonifasi feat(contracts): el deposito interbancario saliente, como lo que ya es (T-47)
+53c7325 2026-10-14T20:09:43-06:00 Marcos Bonifasi Merge pull request #159 from marcosbondel/feature/T-57
+f6736ad 2026-10-14T19:48:58-06:00 Marcos Bonifasi fix(infra): los cinco defectos que solo aparecieron al levantar el camino local
+afed347 2026-10-14T19:21:32-06:00 Marcos Bonifasi feat(infra): el banco pareja simulado en el cluster, y todo el sistema en local (T-57)
+921c2f8 2026-10-14T14:30:33-06:00 Marcos Bonifasi Merge pull request #158 from marcosbondel/feature/T-50
+fcbe94d 2026-10-14T14:17:23-06:00 Marcos Bonifasi test(observability): dos casos de integracion que la piramide exigia, y que hacen falta
+1340ecb 2026-10-14T13:56:53-06:00 Marcos Bonifasi feat(sre): los nueve dashboards como codigo y las anotaciones de despliegue (T-50)
+d1a1cef 2026-10-14T13:48:26-06:00 Marcos Bonifasi feat(sre): reglas de grabacion, siete alertas y un runbook por alerta (T-50)
+81a57fa 2026-10-14T12:58:04-06:00 Marcos Bonifasi feat(sre): el catalogo de telemetria y los SLO que de verdad se miden (T-58)
+0e8d831 2026-10-14T08:01:05-06:00 Marcos Bonifasi Merge pull request #150 from marcosbondel/fix/cloud-apply-defects
+939a5a5 2026-10-13T20:59:30-06:00 Enner Mendizabal fix(cd): omitir el despliegue cuando no hay infraestructura, en vez de fallar
+fb3ea02 2026-10-13T20:52:01-06:00 Marcos Bonifasi Merge pull request #149 from marcosbondel/fix/cloud-apply-defects
+57e99fc 2026-10-13T20:08:47-06:00 Enner Mendizabal fix(obs): el servicio se nombra a si mismo en los logs, no lo nombra su pod
+ea700a3 2026-10-13T19:49:56-06:00 Enner Mendizabal fix(infra): construir las imagenes para linux/amd64, no para la arquitectura del que compila
+80fea01 2026-10-13T19:49:00-06:00 Enner Mendizabal fix(infra): los tres defectos que solo aparecieron al aplicar de verdad
+587b62a 2026-10-13T19:09:55-06:00 Enner Mendizabal feat(infra): encender y apagar la nube con coste verificado, y validar T-49 gratis
+321aefa 2026-10-13T18:32:09-06:00 Marcos Bonifasi Merge pull request #148 from marcosbondel/feature/T-49
+4332ac7 2026-10-13T18:30:19-06:00 Marcos Bonifasi Merge pull request #147 from marcosbondel/feature/T-46
+14be173 2026-10-13T18:11:22-06:00 Enner Mendizabal feat(obs): el stack de observabilidad, desplegado desde el pipeline (T-49)
+4687ce6 2026-10-13T18:10:54-06:00 Enner Mendizabal feat(infra): declarar en Terraform los tres recursos que se creaban a mano
+19ed922 2026-10-13T16:29:57-06:00 Enner Mendizabal test(gateway): cover interbank route on real broker
+b17df80 2026-10-13T13:44:57-06:00 Enner Mendizabal docs(infra): configure interbank secret and document local flow
+ab7c0ec 2026-10-13T13:44:51-06:00 Enner Mendizabal feat(mock): add configurable partner bank for local testing
+5f69069 2026-10-13T13:44:44-06:00 Enner Mendizabal feat(gateway): accept authenticated partner deposits
+3d2e1e8 2026-10-13T13:44:40-06:00 Enner Mendizabal feat(payment): persist interbank decisions and retry callbacks
+da30476 2026-10-13T13:44:32-06:00 Enner Mendizabal feat(account): credit eligible incoming interbank deposits
+83041bf 2026-10-13T13:44:27-06:00 Enner Mendizabal feat(contracts): define provisional incoming interbank messages
+835cd07 2026-10-12T13:17:58-06:00 Marcos Bonifasi Merge pull request #146 from marcosbondel/feature/T-48
+42743f7 2026-10-11T18:18:46-06:00 Marcos Bonifasi feat(observability): @bank/observability y el contexto W3C a traves del broker (T-48)
+58cb0ca 2026-10-08T10:18:03-06:00 Marcos Bonifasi Merge pull request #127 from marcosbondel/feature/actualizacion-diagramas
+c317fa4 2026-10-07T10:38:41-06:00 Marcos Bonifasi Merge pull request #144 from marcosbondel/feature/T-45
+14f5c13 2026-10-06T21:59:19-06:00 DavidBarrios45 test(e2e): recuento de la corrida completa, 152 de 152 (T-45)
+0592be6 2026-10-06T21:59:19-06:00 DavidBarrios45 docs: el defecto del rechazo manual (T-41) y la suite E2E de observabilidad (T-45)
+1f0c900 2026-10-06T21:59:19-06:00 DavidBarrios45 fix(customer): un rechazo manual de identidad se guarda y el cliente rechazado se puede consultar (T-41)
+7c60390 2026-10-06T21:20:32-06:00 DavidBarrios45 docs(infra): documenta ALERT_WEBHOOK_TOKEN en .env.example (T-45)
+44b6a23 2026-10-06T21:20:27-06:00 DavidBarrios45 test(e2e): que SEC-02 y la cola de validaciones midan lo que dicen medir
+5661da5 2026-10-06T21:20:26-06:00 DavidBarrios45 test(e2e): suite de observabilidad de la Fase 3, filtros, webhook, anomalia y simulacion (T-45)
+2027075 2026-10-06T16:47:39-06:00 Marcos Bonifasi Merge pull request #143 from marcosbondel/feature/T-44
+a857a88 2026-10-06T16:47:28-06:00 Marcos Bonifasi Merge pull request #142 from marcosbondel/feature/T-43
+7d53c8a 2026-10-06T16:47:16-06:00 Marcos Bonifasi Merge pull request #141 from marcosbondel/feature/T-42
+97984fd 2026-10-06T16:47:00-06:00 Marcos Bonifasi Merge pull request #140 from marcosbondel/feature/T-41
+f822043 2026-10-06T16:43:43-06:00 DavidBarrios45 test(payment): images:flow ejecuta la compensacion con 100 % de fallo fijado por el administrador (T-44)
+d214a9b 2026-10-06T16:25:34-06:00 DavidBarrios45 fix(audit): una anomalia sin customerId se notifica a los operadores y no queda FAILED (T-45)
+a18dff9 2026-10-06T16:13:13-06:00 DavidBarrios45 fix(customer): la verificacion y el rechazo son hijos del span de creacion, no un link (T-41)
+e885402 2026-10-05T22:39:43-06:00 DavidBarrios45 docs: anexo SLI de la auditoria, FRONTEND.md y las deudas que dejo T-45
+92fd850 2026-10-05T22:39:42-06:00 DavidBarrios45 feat(gateway): el contrato OpenAPI documenta los filtros de auditoria y el secreto del webhook (T-45)
+a7ed9f5 2026-10-05T22:39:42-06:00 DavidBarrios45 fix(audit): un solo worker de Jest, porque sus dos suites de integracion comparten base (T-45)
+ecb319b 2026-10-05T22:30:56-06:00 DavidBarrios45 docs: lo que las pantallas encontraron al verlas en el navegador (T-45)
+706b94f 2026-10-05T22:30:56-06:00 DavidBarrios45 fix(web): la comision de la cuenta de ahorro ya tiene nombre en el estado de movimientos
+5600343 2026-10-05T22:30:56-06:00 DavidBarrios45 fix(audit): la alerta de SLO tiene a quien avisar y deja de salir como no enviada (T-45)
+112b7f5 2026-10-05T22:15:56-06:00 DavidBarrios45 docs: evidencia de T-45 y la auditoria por traza en los documentos de referencia
+c477996 2026-10-05T22:15:56-06:00 DavidBarrios45 feat(infra): ALERT_WEBHOOK_TOKEN por Secret del chart y por Compose (T-45)
+5223317 2026-10-05T22:15:55-06:00 DavidBarrios45 feat(web): la traza de cada operacion y la consulta de auditoria con sus filtros (T-45)
+db5e4c3 2026-10-05T22:15:45-06:00 DavidBarrios45 feat(gateway): webhook de alertas de SLO, filtros de auditoria y X-Trace-Id (T-45)
+da08984 2026-10-05T22:15:44-06:00 DavidBarrios45 feat(audit): auditoria por traza, anomalias y alertas de SLO con su telemetria (T-45)
+b84c08d 2026-10-05T22:15:33-06:00 DavidBarrios45 chore(deps): @opentelemetry/api en el Gateway y en la auditoria (T-45)
+91a7030 2026-10-05T22:15:32-06:00 DavidBarrios45 feat(contracts): contrato alert.slo.received.v1 y los filtros de auditoria por traza (T-45)
+fd9a976 2026-10-05T22:15:24-06:00 Marcos Bonifasi test(transaction): que la prueba de privacidad no confunda una hora con un monto (T-43)
+0037bb3 2026-10-05T22:15:23-06:00 Enner Mendizabal test(payment): que la prueba de privacidad no confunda una hora con un monto (T-44)
+78f4232 2026-10-04T21:55:51-06:00 Enner Mendizabal test(payment): que la piramide y las suites de integracion pasen en el CI (T-44)
+d78a698 2026-10-04T21:39:08-06:00 Enner Mendizabal test: que las suites de integracion y la E2E no danen un stack vivo, y arreglar dos pruebas desactualizadas (T-44)
+b2bee5f 2026-10-04T19:23:53-06:00 Enner Mendizabal test(gateway): las rutas de la simulacion en reply-correlation, y evidencia contra RabbitMQ (T-44)
+02d000c 2026-10-04T18:48:19-06:00 Enner Mendizabal feat(infra): PAYMENT_SIM_* por ConfigMap, y documentacion de T-44
+d250576 2026-10-04T18:48:18-06:00 Enner Mendizabal feat(gateway): GET y PUT /api/payments/simulation, solo administrador (T-44)
+9ce2fa8 2026-10-04T18:48:07-06:00 Enner Mendizabal feat(payment): proveedor simulado con fallos, timeouts y latencia en caliente (T-44)
+1b4e54d 2026-10-04T17:55:22-06:00 Enner Mendizabal feat(contracts): contratos payment.simulation.* (T-44)
+7a8bdcc 2026-10-04T12:50:07-06:00 Marcos Bonifasi docs: evidencia de T-43 y cómo se miden los SLI de transferencias
+28a485e 2026-10-04T12:49:56-06:00 Marcos Bonifasi feat(transaction): medir el desempeño de las transferencias y trazar la Saga (T-43)
+e95ac91 2026-10-04T11:46:14-06:00 DavidBarrios45 feat(infra): N y M de la anomalía por ConfigMap, y documentación de T-42
+805e0e8 2026-10-04T11:46:02-06:00 DavidBarrios45 feat(account): detectar la alta frecuencia de operaciones en una cuenta (T-42)
+940d67a 2026-10-04T11:10:54-06:00 DavidBarrios45 feat(contracts): contrato account.anomaly.detected.v1 (T-42)
+f5e53a9 2026-10-04T10:34:04-06:00 Enner Mendizabal feat(customer): hacer observable el ciclo de vida del cliente (T-41)

@@ -1,0 +1,292 @@
+{
+  "baseline": {
+    "iterations": 169,
+    "httpRequests": 731,
+    "checks": {
+      "la transferencia fue aceptada (202)": {
+        "id": "1a38abd7b1ecb3eeddbfc0b6341a1dbb",
+        "passes": 169,
+        "fails": 0,
+        "name": "la transferencia fue aceptada (202)",
+        "path": "::la transferencia fue aceptada (202)"
+      },
+      "la respuesta trae su transactionId": {
+        "name": "la respuesta trae su transactionId",
+        "path": "::la respuesta trae su transactionId",
+        "id": "78d717f577b580e825fd926006fe694d",
+        "passes": 169,
+        "fails": 0
+      }
+    },
+    "accept": {
+      "avg": 254.31818343195263,
+      "min": 109.9651,
+      "med": 202.9676,
+      "max": 888.682,
+      "p(90)": 438.5869000000003,
+      "p(95)": 539.9048399999999,
+      "thresholds": {
+        "p(95)<3000": false
+      }
+    },
+    "saga": {
+      "max": 9011,
+      "p(90)": 5499.6,
+      "p(95)": 5807.6,
+      "avg": 3363.165680473373,
+      "min": 1219,
+      "med": 2996,
+      "thresholds": {
+        "p(95)<5000": true
+      }
+    },
+    "httpFailedRate": 0,
+    "before": {
+      "02-000000009": 80000,
+      "02-000000008": 250000
+    },
+    "after": {
+      "02-000000009": 96900,
+      "02-000000008": 233100
+    },
+    "totalBefore": 330000,
+    "totalAfter": 330000,
+    "timeline": [
+      {
+        "at": "2026-10-22T04:28:33.059Z",
+        "event": "start",
+        "environment": "dev",
+        "gateway": "http://136.71.158.228:3000",
+        "scenario": "baseline",
+        "initialSimulation": {
+          "failureRatePercent": 0,
+          "timeoutRatePercent": 0,
+          "latencyMs": 0
+        }
+      },
+      {
+        "at": "2026-10-22T04:29:56.549Z",
+        "event": "load-finished",
+        "exitCode": 99,
+        "aborted": false
+      },
+      {
+        "at": "2026-10-22T04:30:41.551Z",
+        "event": "after-drain"
+      },
+      {
+        "at": "2026-10-22T04:30:42.385Z",
+        "event": "finish"
+      }
+    ],
+    "prodReadySamples": [
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready"
+    ]
+  },
+  "provider": {
+    "iterations": 144,
+    "httpRequests": 759,
+    "checks": {
+      "la transferencia fue aceptada (202)": {
+        "name": "la transferencia fue aceptada (202)",
+        "path": "::la transferencia fue aceptada (202)",
+        "id": "1a38abd7b1ecb3eeddbfc0b6341a1dbb",
+        "passes": 145,
+        "fails": 0
+      },
+      "la respuesta trae su transactionId": {
+        "passes": 145,
+        "fails": 0,
+        "name": "la respuesta trae su transactionId",
+        "path": "::la respuesta trae su transactionId",
+        "id": "78d717f577b580e825fd926006fe694d"
+      }
+    },
+    "accept": {
+      "avg": 224.32492137931038,
+      "min": 104.5434,
+      "med": 171.7517,
+      "max": 773.9432,
+      "p(90)": 408.8357,
+      "p(95)": 454.92814,
+      "thresholds": {
+        "p(95)<3000": false
+      }
+    },
+    "saga": {
+      "p(90)": 9112.400000000003,
+      "p(95)": 10406.1,
+      "avg": 4249.326388888889,
+      "min": 1206,
+      "med": 3121.5,
+      "max": 15991,
+      "thresholds": {
+        "p(95)<5000": true
+      }
+    },
+    "httpFailedRate": 0,
+    "before": {
+      "02-000000009": 96900,
+      "02-000000008": 233100
+    },
+    "after": {
+      "02-000000009": 111200,
+      "02-000000008": 218800
+    },
+    "totalBefore": 330000,
+    "totalAfter": 330000,
+    "timeline": [
+      {
+        "at": "2026-10-22T04:42:37.351Z",
+        "event": "start",
+        "environment": "dev",
+        "gateway": "http://136.71.158.228:3000",
+        "scenario": "provider",
+        "initialSimulation": {
+          "failureRatePercent": 0,
+          "timeoutRatePercent": 0,
+          "latencyMs": 0
+        }
+      },
+      {
+        "at": "2026-10-22T04:44:04.501Z",
+        "event": "load-finished",
+        "exitCode": 99,
+        "aborted": false
+      },
+      {
+        "at": "2026-10-22T04:44:49.512Z",
+        "event": "after-drain"
+      },
+      {
+        "at": "2026-10-22T04:44:50.500Z",
+        "event": "simulation-restored",
+        "settings": {
+          "failureRatePercent": 0,
+          "timeoutRatePercent": 0,
+          "latencyMs": 0
+        }
+      },
+      {
+        "at": "2026-10-22T04:44:50.500Z",
+        "event": "finish"
+      }
+    ],
+    "prodReadySamples": [
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready"
+    ]
+  },
+  "pod": {
+    "iterations": 234,
+    "httpRequests": 856,
+    "checks": {
+      "la transferencia fue aceptada (202)": {
+        "name": "la transferencia fue aceptada (202)",
+        "path": "::la transferencia fue aceptada (202)",
+        "id": "1a38abd7b1ecb3eeddbfc0b6341a1dbb",
+        "passes": 234,
+        "fails": 0
+      },
+      "la respuesta trae su transactionId": {
+        "name": "la respuesta trae su transactionId",
+        "path": "::la respuesta trae su transactionId",
+        "id": "78d717f577b580e825fd926006fe694d",
+        "passes": 234,
+        "fails": 0
+      }
+    },
+    "accept": {
+      "max": 1161.2944,
+      "p(90)": 396.88643000000013,
+      "p(95)": 559.2345499999999,
+      "avg": 264.5365166666668,
+      "min": 104.3883,
+      "med": 219.8228,
+      "thresholds": {
+        "p(95)<3000": false
+      }
+    },
+    "saga": {
+      "max": 5152,
+      "p(90)": 3883.2000000000003,
+      "p(95)": 4314.4,
+      "avg": 2354.431623931624,
+      "min": 971,
+      "med": 2469,
+      "thresholds": {
+        "p(95)<5000": false
+      }
+    },
+    "httpFailedRate": 0,
+    "before": {
+      "02-000000009": 111200,
+      "02-000000008": 218800
+    },
+    "after": {
+      "02-000000009": 134600,
+      "02-000000008": 195400
+    },
+    "totalBefore": 330000,
+    "totalAfter": 330000,
+    "timeline": [
+      {
+        "at": "2026-10-22T04:46:28.854Z",
+        "event": "start",
+        "environment": "dev",
+        "gateway": "http://136.71.158.228:3000",
+        "scenario": "pod",
+        "initialSimulation": {
+          "failureRatePercent": 0,
+          "timeoutRatePercent": 0,
+          "latencyMs": 0
+        }
+      },
+      {
+        "at": "2026-10-22T04:46:56.187Z",
+        "event": "delete-dev-pod",
+        "pod": "bank-usac-dev-transaction-service-78bd4ccb75-hrsgn"
+      },
+      {
+        "at": "2026-10-22T04:47:51.113Z",
+        "event": "load-finished",
+        "exitCode": 0,
+        "aborted": false
+      },
+      {
+        "at": "2026-10-22T04:48:36.115Z",
+        "event": "after-drain"
+      },
+      {
+        "at": "2026-10-22T04:48:36.970Z",
+        "event": "finish"
+      }
+    ],
+    "prodReadySamples": [
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready",
+      "ready"
+    ]
+  }
+}

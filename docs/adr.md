@@ -63,16 +63,19 @@ Este documento unifica y traduce al español todas las decisiones distribuidas e
 | **ADR-010** | Autenticación y RBAC | **JWT Bearer + Hashing `scrypt` + Gateway `RolesGuard`** | Sesiones Stateful con Redis / OAuth2 externo | Autenticación stateless de alto rendimiento y control perimetral estricto (D-06). |
 | **ADR-011** | Toolchain de Diagramación | **Fuentes de Texto Versionadas (Mermaid `.mmd` y PlantUML `.puml`)** | Diagramas binarios (Visio, Draw.io XML) | Trazabilidad git, revisión de cambios en Pull Requests y generación automatizada. |
 | **ADR-012** | Almacenamiento de Objetos | **MinIO (S3-Compatible) + Hashes SHA-256 en Base de Datos** | BLOBs en PostgreSQL / FileSystem local | Desacoplamiento de almacenamiento no estructurado y aislamiento del broker. |
-| **ADR-013** | Toolchain de Diagramación (vigente) | **Mermaid `.mmd` + PlantUML `.puml` obligatorios; Lucid opcional** | Exigir además Lucid / prescindir de Mermaid | Notación UML nativa de casos de uso, que Mermaid no expresa. **Sustituye a ADR-011.** |
+| **ADR-013** | Toolchain de Diagramación (histórico; sustituido por ADR-022 y política gráfica ADR-024) | **Mermaid `.mmd` + PlantUML `.puml` obligatorios; Lucid opcional** | Exigir además Lucid / prescindir de Mermaid | Notación UML nativa de casos de uso, que Mermaid no expresa. **Sustituye a ADR-011.** |
 | **ADR-014** | Proveedor de Nube (Fase II) | **Google Cloud Platform** (GKE, Compute Engine, Cloud Run, Artifact Registry) | AWS (EKS factura el plano de control por hora) / Azure (Container Apps no es el servicio que nombra el enunciado) | El enunciado nombra Cloud Run como ejemplo aceptado; GKE incluye el HPA en el plano de control. |
 | **ADR-015** | Plataforma de CI/CD (Fase II) | **GitHub Actions**, cuatro workflows (`ci`, `changes`, `release`, `cd`) | GitLab CI (exigiría espejar el repositorio entregable) / Cloud Build (los triggers viven fuera del repositorio) / Jenkins | Las tres fases obligatorias son tres jobs y, por tanto, tres checks: «no se omitió ninguna etapa» se ve, no se afirma. |
 | **ADR-016** | Topología de Infraestructura (Fase II) | **Terraform**: VPC con dos subredes, 5 VMs Compute Engine sin IP pública, GKE zonal, Cloud Run, **y el mismo chart de Helm que en kind** | Cloud SQL (prohibido por §4.2) / GKE Autopilot / dos clústeres, uno por entorno | Reproducibilidad en un comando y paridad total entre el clúster local y el de la nube. |
 | **ADR-017** | Anomalía de Cuenta (Fase III) | **Reportar, no bloquear**: ventana deslizante de M minutos, conteo desde la base de datos, un evento por ventana y cuenta | Bloquear la cuenta / cubetas fijas / conteo en memoria | Una regla mal calibrada cuesta un panel ruidoso y no un cliente bloqueado |
 | **ADR-018** | Stack de Observabilidad (Fase III) | **Collector + Prometheus + Tempo + Loki + Grafana** en un chart propio, con los subcharts versionados en `charts/`, un solo stack para `dev` y `prod` y Grafana sin IP pública | ELK (no cabe en tres nodos) / Jaeger (interfaz y almacén duplicados) / `kube-prometheus-stack` (operador y dashboards que la rúbrica llamaría decorativos) / subcharts por referencia | La cuota da ocho instancias y ya se usan ocho: el stack cabe en los nodos que hay o no cabe. Versionar los `.tgz` cuesta 372 KB y quita tres repositorios de terceros del camino de un despliegue |
 
-> **ADR-011 está superada por ADR-013.** La fila de ADR-011 en esta matriz describe ya la
-> decisión vigente (fuentes de texto versionadas); el registro canónico de por qué Lucid dejó
-> de ser obligatorio es [`architecture/adr/ADR-013-diagramming-toolchain-revision.md`](architecture/adr/ADR-013-diagramming-toolchain-revision.md).
+> **Las filas ADR-011/013 conservan una política histórica.** La cadena de
+> sucesión continúa en ADR-022 y ADR-024. El registro de por qué Lucid dejó
+> entonces de ser obligatorio está en
+> [ADR-013](architecture/adr/ADR-013-diagramming-toolchain-revision.md);
+> [ADR-024](architecture/adr/ADR-024-native-lucid-and-png-delivery.md) exige de
+> nuevo edición nativa para casos de uso y despliegue, por petición del 22/oct.
 
 ---
 
@@ -580,3 +583,26 @@ dice, para que nadie las lea como decisiones tomadas después de los hechos.
      (**TD-088**) — para que una `NetworkPolicy` se aplique en GKE hace falta Dataplane V2, que
      es un cambio del clúster.
 * **Registro canónico:** [`architecture/adr/ADR-018-observability-stack.md`](architecture/adr/ADR-018-observability-stack.md)
+
+## Actualización Fase III — 2026-10-21
+
+La narrativa histórica anterior se complementa con los registros canónicos
+[ADR-020](architecture/adr/ADR-020-slo-error-budgets.md),
+[ADR-021](architecture/adr/ADR-021-interbank-protocol-v1.md),
+[ADR-022](architecture/adr/ADR-022-diagramming-sources-and-image-editing.md) y
+[ADR-023](architecture/adr/ADR-023-observability-evolution.md).
+ADR-022 sustituyó la obligación Mermaid/PlantUML de ADR-013; en esa revisión
+se registraron PUML, Structurizr DSL y DBML. ADR-023 amplía ADR-018 conservando su
+historia. No se modifican decisiones antiguas para simular que siempre fueron
+iguales a la implementación actual.
+
+## Revisión gráfica — 2026-10-22
+
+[ADR-024](architecture/adr/ADR-024-native-lucid-and-png-delivery.md) sustituye
+parcialmente la política gráfica de ADR-022: casos de uso y despliegue se
+editan con elementos nativos de Lucid y los diagramas se entregan sólo en
+PNG. Se conservan PUML semánticos, DSL para C4 y DBML físicos; las secuencias
+mantienen PUML. Se retiran SVG documentales y los cinco PNG ER generados;
+la exportación ER queda pendiente del solicitante. La auditoría registra el
+estado de las nuevas exportaciones y no se infiere su terminación de la
+aceptación de la política.

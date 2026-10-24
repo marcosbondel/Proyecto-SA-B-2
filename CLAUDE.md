@@ -15,178 +15,43 @@ conflicts with either, the repository wins.
 
 ## Repo Status
 
-A pnpm workspace with all code under `apps/`: Gateway and the Nuxt frontend at
-the top level, the five domain services under `apps/services/`, and
-`@bank/contracts`, `@bank/messaging`, `@bank/observability`, `@bank/tooling` under
-`apps/packages/`.
-Seven applications, all of them building, linting and testing. The Gateway
-carries twenty-five paths, JWT authentication, D-06 role authorization,
-request/reply with a five-second ceiling, seven error codes and a versioned
-OpenAPI contract; it has no `domain/` layer and never will.
+A pnpm/Turborepo workspace: seven applications under `apps/` (Gateway, Nuxt
+frontend and five domain services), and contracts, messaging, observability and
+tooling under `apps/packages/`. The optional partner-bank mock is a test
+application, not a sixth banking microservice.
 
-**`apps/web` implements the Claude Design prototype in full** — all thirty-four
-screens of `bonking.dc.html`, mapped route by route in
-[docs/FRONTEND.md](docs/FRONTEND.md#the-screen-inventory). Beyond the five
-original modules (`app/components/<module>/` + `app/pages/<module>/`) it carries
-password recovery, Mi perfil, the deposit window, the transfer history and Saga
-monitor, the service-payment product, the customer's notification inbox, and the
-three per-role dashboards behind one route — `/` is `A-01`, `D-01` and `D-02`,
-picked by `dashboardFor`, because "where do I land" must not be a URL somebody
-can be sent to by mistake.
+**Phase III is implemented and deployed.** It adds lifecycle/anomaly and
+transfer telemetry, runtime payment simulation, filtered audit and trace links,
+interbank send/receive/reconciliation, and the OpenTelemetry/Prometheus/Tempo/
+Loki/Grafana stack. Read [ARCHITECTURE.md](ARCHITECTURE.md) for boundaries,
+[docs/TECHNICAL_DOCUMENT.md](docs/TECHNICAL_DOCUMENT.md) for the deliverables and
+[docs/operations/CLOUD.md](docs/operations/CLOUD.md) for observed deployment.
 
-Two Gateway routes **compose** and are the only ones that do:
-`GET /api/accounts` merges Account Service's rows with Customer Service's names
-in one extra round trip, and `GET /api/dashboard` asks five services at once
-with every section independently optional. Neither computes anything.
+The Gateway owns no domain layer, database or internal HTTP client. Domain
+services communicate through AMQP and own their PostgreSQL databases outside
+Kubernetes. Payment's HTTP reaches the external bank; Notification's HTTP
+reaches Resend. Neither is an internal service-to-service exception.
 
-**Customer Service is implemented** (T-16) — its own PostgreSQL schema, the five
-message handlers, idempotency enforced by a unique constraint, scrypt
-credentials, activation by hashed token, and the simulated identity validation.
+The frontend maps the thirty-four prototype screens and adds Phase III routes;
+[docs/FRONTEND.md](docs/FRONTEND.md#the-screen-inventory) distinguishes source,
+Nitro tests and browser evidence. A `202` is acceptance, not business success;
+interbank TIMEOUT retains reservation during reconciliation.
 
-**Account Service is implemented** (T-17) — its own schema, eight message
-handlers, money as `NUMERIC(14,2)` never touched by a float, balances protected
-by a row lock plus an optimistic version plus a column `CHECK`, idempotency
-evaluated before any balance moves, the Saga's three movements, and the
-automatic deactivation job with an injected clock. Its concurrency and
-idempotency tests need a real PostgreSQL and skip without `DATABASE_URL`.
+**Operational snapshot, 2026-10-21:** GKE is in `us-central1-c`; `prod` and
+`dev` run separate workloads/brokers and distinct database names on shared VMs.
+Production has the partner mock; dev has none, so mock failure experiments
+require preparation. Observability has nine dashboards, sixteen alert rules
+and seven runbooks. Desired NetworkPolicies exist in source but were absent in
+the three live namespaces; RabbitMQ live was 3.13-management versus the desired
+4.3.4. Do not infer applied controls from chart defaults. The deployment and
+evidence documents record these differences without treating readiness as
+proof of SLO or fault tolerance.
 
-**Transaction Service is implemented** (T-18) — its own schema, nine message
-handlers over the two queues it owns, the six-state machine as one pure function
-that refuses every transition outside the diagram, transitions decided under a
-row lock, consumption deduplicated by the envelope's `messageId` before any
-state is touched, and an alias table so a retried `transactionId` resolves to
-the transfer that exists. **It decides no funds**: the debit verdict arrives as
-an event, and `test/isolation.spec.ts` fails the build if this service ever
-queries another's table or makes an HTTP call. Its concurrency and constraint
-tests need a real PostgreSQL and skip without `DATABASE_URL`.
-
-**Notification & Audit Service is implemented** (T-20) — its own schema, five
-queues instead of one (`audit.customer`, `audit.account`, `audit.transaction`,
-`audit.payment`, and `audit.query` for the two questions), deduplication as the
-primary key `(event_id, consumer)`, the payload redacted **before** the insert
-so the one database that hears every event stores no document, address or
-amount, and a simulated delivery channel that never throws. It takes no
-validator from the broker **on purpose** — a message it cannot parse is recorded
-`INVALID` rather than parked, because the service whose job is to record what
-arrived must not be the one that never sees it. It is the only service where the
-omission is deliberate, not the only one where it happens: `payment-service` is
-the sole caller that passes `validateMessage`, and customer, account and
-transaction simply never did (TD-046). It publishes replies and nothing else, and
-`test/isolation.spec.ts` fails the build if that changes.
-Its concurrency and constraint tests need a real PostgreSQL and skip without
-`DATABASE_URL`.
-
-**Payment Service is implemented** (the backend half of T-19, built in T-21):
-two tables of its own, three message handlers over `payment.commands`, the
-provider as a single pure function that decides an attempt with no clock and no
-database in sight, attempts serialised by `SELECT … FOR UPDATE` plus a check
-that the attempt number follows the row — so a redelivered command and the retry
-sweeper cannot both charge — and a retry ladder whose due time is a **column
-rather than a timer**, so a rescheduled pod does not forget a transfer
-mid-payment. It publishes `payment.attempt.failed.v1` for every failed attempt
-including the last, which is what makes the ladder observable while it is being
-climbed, and only the terminal event closes the Saga. It orders nothing from
-anybody: there is no `send` on its publisher and `test/isolation.spec.ts` fails
-the build if one appears.
-
-**The Saga now runs end to end, in all three of its shapes.**
-`pnpm images:flow` executes them against the built images and checks the
-balances before and after each: a transfer that COMPLETES, a refused payment
-that COMPENSATES on the first attempt, and one that climbs the ladder to its end
-and then COMPENSATES. The compensation is asserted as a fact about the money,
-not as a status somebody wrote down.
-
-Six of the debts that blocked screens are **closed** (TD-026, TD-027, TD-033,
-TD-035, TD-038, TD-041), and none by the remedy its own row proposed: the
-transfer's originator was already in the envelope, a holder's name needed one
-batch query rather than a projection, a service payment turned out to be a
-transfer to the biller's own account, and the notification's subject was already
-being computed and discarded. TD-021, TD-032, TD-037, TD-039 and TD-040 stand.
-Five deviations from the prototype are recorded as TD-050 to TD-054 — the last
-of which is that **the whole prototype was implemented without opening a
-browser**: lint, tests, typecheck and build are green, and that is not the
-evidence `docs/DESIGN.md` asks for.
-
-TD-020 and TD-023 (the Clientes read path and the
-teller identity-validation flow) are **closed** by the audit-remediation feature
-(`specs/008-audit-remediation`), which also added the Kubernetes deployment: a
-Helm chart at `infra/k8s/helm/bank-usac` plus a kind cluster config.
-
-**The local deployment runs and the repository proves it.** Seven pods at
-`1/1 Ready` against the PostgreSQL, RabbitMQ and MinIO outside the cluster, and
-a Gateway that answers through `port-forward`. The procedure is
-[docs/operations/DEPLOYMENT.md](docs/operations/DEPLOYMENT.md) — four commands
-from a clean machine; the cloud one is
-[docs/operations/CLOUD.md](docs/operations/CLOUD.md), and the **same chart**
-serves both — and `pnpm k8s:evidence` re-captures the cluster's state
-into `specs/008-audit-remediation/evidence/` on demand, so the evidence is a
-script rather than a paste. The first live run found two defects `helm lint` and
-`helm template` could not: a bash 4 associative array that broke on macOS's bash
-3.2, and `values.yaml` database defaults that pointed every pod at the wrong
-role and database.
-
-The chart carries one deliberate scaling constraint. `GATEWAY_INSTANCE_ID` names
-the Gateway replica's **broker-exclusive** reply queue, so it comes from the
-downward API (`metadata.name`) rather than the ConfigMap — a pinned value would
-make the second replica fail `RESOURCE_LOCKED`. `replicaCount` and `resources`
-are overridable per component; `account-service` is the one that must stay at
-one replica, because it also runs the inactive-account sweep on an interval with
-no leader election.
-
-**Every component is containerised** (T-21): seven multi-stage images, one
-Dockerfile each and no generic one, all running as `node` (uid 1000), with
-nothing but `NODE_ENV` baked in and every credential arriving at run time.
-`/health` and `/ready` answer different questions in all seven — the port now
-opens *before* the migrations and the broker, so a database that is briefly away
-no longer turns a liveness probe into a restart loop. `pnpm images:build` tags
-each image with the commit inside it, which is the value T-22 puts in
-`values.yaml`; `pnpm images:smoke` asserts the labels, the port, the user, the
-absence of secrets in any layer, and the degraded cases; `pnpm images:flow` runs
-the assignment's own flow — register, open accounts, transfer — through the
-images end to end. The inventory, the required variables per component and the
-base-image bump procedure are in
-[docs/operations/CONTAINERS.md](docs/operations/CONTAINERS.md).
-
-**Phase II is built and deployed, and the system is running on GCP.** The five
-functional extensions live **inside the transfer Saga** in this order: the KYC
-gate (a customer who is not `VERIFIED` closes the transfer in `FAILED` without
-moving money) → the account-type rule (`AHORRO` opens at Q100.00 and charges
-Q3.00 per debit in the same row lock; a compensation returns the commission too,
-which it did not until TD-065) → the history with its date and status filters →
-the external payment with `SUCCESS` / `FAILURE` / `TIMEOUT` over the
-1 s / 5 s / 30 s ladder → the notification classified `INFO`, `WARNING` or
-`ERROR`. The three states the assignment names — `PENDING`, `APPROVED`,
-`FAILED` — are a **projection** (`phaseStatus`) of the Saga's six, never a
-replacement for them.
-
-**The pipeline is four workflows, not one.** `ci.yml` runs Build → Test →
-Validación as three chained jobs on a push to `feature/**`, `fix/**`, `test/**`,
-`docs/**`, `chore/**` or `refactor/**`, and on a pull request into `develop` or
-`main`. **PostgreSQL 18.4 and RabbitMQ 4.3.4 run as service containers**, so the
-integration suites execute instead of skipping themselves — TD-069 is closed,
-and every integration step fails if Jest reports a suite as `skipped`.
-`changes.yml` decides which components a commit touched; `release.yml` publishes
-seven versioned images on a `v*` tag; `cd.yml` deploys the changed components to
-namespace `dev` on `develop`, and rolls production forward on `main` using only
-images `release.yml` already published. **No tag is ever `latest`**, and a
-deploy that does not reach `Ready` rolls itself back. `pnpm format:check` is
-still left out: the Helm templates under `infra/k8s/` are Go template syntax
-that Prettier's YAML parser rejects.
-
-**The cloud is one Terraform module** (`infra/terraform/gcp/`): a VPC with a
-private data subnet, five Compute Engine VMs with no public IP running one
-PostgreSQL each, a zonal GKE cluster of three `e2-standard-2` nodes, and Cloud
-Run for the frontend. Seven HPAs at 80 % CPU, with requests and limits. `dev`
-and `prod` are two namespaces of that one cluster, each with its own RabbitMQ
-and MinIO — but they **share the five databases** (TD-070), so a deploy to `dev`
-does touch production's rows. Three resources are still created by hand
-(TD-079, TD-080, TD-081): the Artifact Registry repository, the Gateway's public
-`LoadBalancer` and the Cloud Run revision that serves the frontend. Do not
-delete the Gateway Service, and do not install the release into a fresh
-namespace, without re-reading TD-080 first.
-
-The three Phase II decisions — cloud provider, CI/CD platform and cloud
-infrastructure — are ADR-014, ADR-015 and ADR-016.
+Terraform now declares Artifact Registry and the reserved Gateway IP; Helm owns
+the Gateway Service, and CD updates the Cloud Run image. Historical TD-070 and
+TD-079–081 must be read with their current entries in
+[docs/TECH_DEBT.md](docs/TECH_DEBT.md), not the old premise of shared database
+names or three wholly manual resources.
 
 ## Project Documentation
 

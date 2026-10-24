@@ -1,138 +1,60 @@
 @startuml 05-uml-despliegue
-
-' Bank USAC - UML 2 Deployment Diagram (Google Cloud Platform - Fase 2)
-title UML 2 - Diagrama de Despliegue en la Nube (GCP - Fase 2)\nBank USAC
-
-left to right direction
 skinparam shadowing false
-skinparam linetype ortho
-skinparam dpi 150
 skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam dpi 180
+skinparam ArrowColor #60666F
 skinparam defaultTextAlignment center
-skinparam wrapWidth 200
-
-skinparam node {
-    BackgroundColor #FFFFFF
-    BorderColor #1168BD
-    FontColor #1168BD
-}
-skinparam node<<gcpCloud>> {
-    BackgroundColor #F8FAFC
-    BorderColor #4285F4
-    FontColor #1A73E8
-}
-skinparam node<<vpc>> {
-    BackgroundColor #FFFFFF
-    BorderColor #34A853
-    FontColor #1E7E34
-}
-skinparam node<<subnet>> {
-    BackgroundColor #F1F8F4
-    BorderColor #34A853
-    FontColor #1E7E34
-}
-skinparam node<<gkeCluster>> {
-    BackgroundColor #E8F0FE
-    BorderColor #1A73E8
-    FontColor #1A73E8
-}
-skinparam node<<computeVM>> {
-    BackgroundColor #FFF9E6
-    BorderColor #FBBC04
-    FontColor #B06000
-}
-skinparam node<<serverless>> {
-    BackgroundColor #FCE8E6
-    BorderColor #EA4335
-    FontColor #C5221F
-}
-skinparam node<<pod>> {
-    BackgroundColor #FFFFFF
-    BorderColor #EF9425
-    FontColor #D06000
-}
-skinparam database<<postgres>> {
-    BackgroundColor #EBF3FB
-    BorderColor #336791
-    FontColor #336791
-}
-
-actor "Visitante / Cliente\nAdministrador / Cajero\n(Navegador Web)" as user
-
-node "Google Cloud Platform (GCP)" <<gcpCloud>> {
-
-    node "Cloud Run (Serverless)" <<serverless>> {
-        node "bank-usac-web" as cloudRunWeb {
-            artifact "Frontend Nuxt 3 (SSR/Nitro)\nPort 8080 | Autoescalado 0-5" as webArtifact
-        }
+skinparam linetype polyline
+skinparam nodesep 45
+skinparam ranksep 65
+skinparam nodeBackgroundColor #F7F7F7
+skinparam nodeBorderColor #7A7F87
+skinparam rectangleBackgroundColor #FFFFFF
+skinparam rectangleBorderColor #1168BD
+skinparam databaseBackgroundColor #EDF3F8
+skinparam databaseBorderColor #336791
+skinparam noteBackgroundColor #FFF8DE
+skinparam noteBorderColor #D6B656
+title UML - Despliegue LOCAL - Bank USAC Fase III\nVista distinta del despliegue GCP (diagrama 08)
+left to right direction
+actor "Desarrollador / navegador" as user
+node "Host local - Docker Engine" {
+  artifact "pnpm local:up\nkind + Helm\nchart bank-usac\nchart bank-observability" as tools
+  node "kind-bank-usac\nKubernetes" {
+    node "namespace bank-usac" {
+      artifact "7 Deployments\nGateway NestJS :3000\nWeb Nuxt 4 :3010\n5 servicios NestJS :3001-3005" as apps
+      artifact "Services ClusterIP\nConfigMap + Secret\nhealth / ready / HPA" as svc
+      artifact "partner-bank-mock\nopcional / HTTP :3021" as mock
     }
-
-    node "Virtual Private Cloud (VPC): bank-usac-vpc" <<vpc>> {
-        
-        node "Cloud NAT & Router" as cloudNat {
-            artifact "Salida segura a Internet\n(Actualizaciones / Paquetes apt)" as natArtifact
-        }
-
-        node "Subred Bases de Datos (10.40.0.0/24)" <<subnet>> {
-            node "VM: bank-db-customer" <<computeVM>> {
-                database "PostgreSQL :5432\n(customer)" <<postgres>> as dbCustomer
-            }
-            node "VM: bank-db-account" <<computeVM>> {
-                database "PostgreSQL :5432\n(account)" <<postgres>> as dbAccount
-            }
-            node "VM: bank-db-transaction" <<computeVM>> {
-                database "PostgreSQL :5432\n(transaction)" <<postgres>> as dbTransaction
-            }
-            node "VM: bank-db-payment" <<computeVM>> {
-                database "PostgreSQL :5432\n(payment)" <<postgres>> as dbPayment
-            }
-            node "VM: bank-db-audit" <<computeVM>> {
-                database "PostgreSQL :5432\n(notification_audit)" <<postgres>> as dbAudit
-            }
-        }
-
-        node "Subred GKE (10.10.0.0/20)" <<subnet>> {
-            node "GKE Managed Cluster" <<gkeCluster>> {
-                
-                node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
-                node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
-                node "Account Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAccount
-                node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
-                node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
-                node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit
-
-                node "Broker RabbitMQ\nStatefulSet (:5672)" <<pod>> as brokerRabbit
-                node "MinIO Object Storage\nStatefulSet (:9000)" <<pod>> as storageMinio
-            }
-        }
+    node "namespace observability" {
+      artifact "Collector Deployment\nOTLP :4317,:4318" as collector
+      artifact "Log agent DaemonSet\nfilelog /var/log/pods" as agent
+      artifact "Prometheus 2h / sin PVC\nTempo 24h / PVC 5 GiB\nLoki / PVC 2 GiB (overlay kind)" as stores
+      artifact "Grafana / kube-state-metrics\nport-forward" as grafana
     }
+  }
+  node "Fuera de kind - red Docker" {
+    database "5 PostgreSQL 18.4\npuertos host 5433-5437\nTCP :5432 desde pods" as pg
+    queue "RabbitMQ\nAMQP host :5673\nscrape :15692" as rabbit
+    database "MinIO\nAPI S3 host :9002" as minio
+  }
 }
-
-' Flujos de comunicación
-user --> cloudRunWeb : "HTTPS :443 (Interfaz Web)"
-user --> podGateway : "HTTPS / REST :3000\n(API Gateway Ingress)"
-
-cloudRunWeb ..> podGateway : "NUXT_PUBLIC_API_BASE_URL\n(Consumo cliente)"
-
-podGateway --> brokerRabbit : "AMQP Request/Reply (:5672)"
-podGateway --> storageMinio : "S3 Upload DPI (:9000)"
-
-podCustomer --> brokerRabbit : "AMQP (:5672)"
-podAccount --> brokerRabbit : "AMQP (:5672)"
-podTransaction --> brokerRabbit : "AMQP (:5672)"
-podPayment --> brokerRabbit : "AMQP (:5672)"
-podAudit --> brokerRabbit : "AMQP (:5672)"
-
-podCustomer --> dbCustomer : "TCP :5432 (Privado)"
-podAccount --> dbAccount : "TCP :5432 (Privado)"
-podTransaction --> dbTransaction : "TCP :5432 (Privado)"
-podPayment --> dbPayment : "TCP :5432 (Privado)"
-podAudit --> dbAudit : "TCP :5432 (Privado)"
-
-dbCustomer ..> cloudNat : "Acceso de salida seguro"
-dbAccount ..> cloudNat
-dbTransaction ..> cloudNat
-dbPayment ..> cloudNat
-dbAudit ..> cloudNat
+user --> svc : kubectl port-forward\nGateway :3000 / Web :3010
+tools ..> apps : Helm install/upgrade
+tools ..> collector : Helm install/upgrade
+apps --> pg : SQL / sólo su base
+apps <--> rabbit : AMQP 0-9-1\ncorrelationId + traceparent
+apps --> minio : Gateway escribe / Customer verifica
+apps ..> collector : OTLP / 6 NestJS
+agent --> stores : logs OTLP -> Loki
+collector --> stores : métricas y trazas
+grafana --> stores : PromQL / TraceQL / LogQL
+grafana --> apps : webhook /api/alerts/slo
+note bottom of tools
+  Terraform aprovisiona GCP (vista 08), no este host.
+  Endpoints de dependencias externas descubiertos por scripts.
+  No ejecutar suites con TRUNCATE contra bases de la demo.
+end note
 
 @enduml

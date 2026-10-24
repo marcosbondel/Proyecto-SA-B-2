@@ -1,7 +1,8 @@
 # Evidencia de pruebas
 
-Lo que se probó, cómo se probó y qué se vio. Las capturas de esta carpeta no se
-editan a mano: **las produce la suite**, y volver a correrla las reescribe.
+Lo que se probó, cómo se probó y qué se vio. Las capturas históricas de suites no se editan a mano; volver a correrlas las
+reescribe. Las nuevas capturas manuales del navegador se separan en
+`docs/images/fase3/`, con manifiesto y procedencia.
 
 ## Evidencia de backend (por ticket)
 
@@ -58,3 +59,13 @@ pnpm test:pyramid --require-executed # y lo convierte en fallo — así corre en
 
 Ocho pasos de [happypath.md](happypath.md) quedaron sin captura porque la última
 corrida no las guardó; están marcados en el texto como pendientes de recapturar.
+
+## Revisión Fase III de 2026-10-21
+
+- [Plan y matriz documental T-61](T-61-documentation-audit.md).
+- [Guía de 24 casos, con ejecución parcial explícita](guia-validacion-manual-fase3.md).
+- [Cloud: inventario, carga, HPA, saldos y fallos](backend/T-60-cloud-evidence.md).
+- [Recorrido real por roles (Fase III)](../manual-usuario.md#4-recorrido-visual-de-fase-iii-evidencia-real-en-producción).
+
+Los resultados históricos de abajo no se renuevan por cambiar documentación.
+Los archivos raw en `load/` conservan fallos y tiempos, no sólo los éxitos.

@@ -1,0 +1,22 @@
+[
+  {
+    "file": "02-c4-contexto.dsl",
+    "exitCode": 0,
+    "output": ""
+  },
+  {
+    "file": "03-c4-contenedores.dsl",
+    "exitCode": 0,
+    "output": ""
+  },
+  {
+    "file": "04-c4-componentes.dsl",
+    "exitCode": 0,
+    "output": ""
+  },
+  {
+    "file": "c4.dsl",
+    "exitCode": 0,
+    "output": ""
+  }
+]

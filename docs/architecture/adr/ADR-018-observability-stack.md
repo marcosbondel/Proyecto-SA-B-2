@@ -1,6 +1,6 @@
 # ADR-018: Collector, Prometheus, Tempo, Loki y Grafana en un chart propio, con los subcharts versionados
 
-- **Status**: Accepted
+- **Status**: Accepted — parcialmente sustituida por [ADR-023](ADR-023-observability-evolution.md) (2026-10-21): exposición de Grafana y evolución de NetworkPolicy. El texto siguiente conserva la decisión de 2026-10-13.
 - **Date**: 2026-10-13
 - **Deciders**: Bank USAC team
 - **Assignment reference**: Fase III (`docs/references/780_Proyecto_3_2S2026.pdf`), §4.2

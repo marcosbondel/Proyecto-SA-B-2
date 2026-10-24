@@ -1,0 +1,43 @@
+{
+  "observedAt": "2026-10-22T04:26:32.602Z",
+  "environment": "dev",
+  "gateway": "http://136.71.158.228:3000",
+  "prodReady": {
+    "status": "ready",
+    "application": "gateway",
+    "broker": "connected"
+  },
+  "devReady": {
+    "status": "ready",
+    "application": "gateway",
+    "broker": "connected"
+  },
+  "accounts": [
+    {
+      "accountId": "b0000000-0000-4000-8000-000000000004",
+      "accountType": "AHORRO",
+      "status": "ACTIVE",
+      "balance": {
+        "amountMinor": 80000,
+        "currency": "GTQ"
+      }
+    },
+    {
+      "accountId": "b0000000-0000-4000-8000-000000000003",
+      "accountType": "MONETARIA",
+      "status": "ACTIVE",
+      "balance": {
+        "amountMinor": 250000,
+        "currency": "GTQ"
+      }
+    }
+  ],
+  "simulation": {
+    "failureRatePercent": 0,
+    "timeoutRatePercent": 0,
+    "latencyMs": 0,
+    "source": "DEFAULTS",
+    "updatedAt": null,
+    "correlationId": "e2c83e97-4ec7-4151-a627-549f79f04c9e"
+  }
+}

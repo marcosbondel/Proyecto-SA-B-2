@@ -1,166 +1,123 @@
 @startuml 08-despliegue-cloud-gcp
-
-' Bank USAC - UML 2 Deployment Diagram (Google Cloud Platform - Fase 2)
-title UML 2 - Diagrama de Despliegue en la Nube (GCP - Fase 2)\nBank USAC
-
-left to right direction
 skinparam shadowing false
-skinparam linetype ortho
-skinparam dpi 150
 skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam dpi 180
+skinparam ArrowColor #60666F
 skinparam defaultTextAlignment center
-skinparam wrapWidth 200
-
-skinparam node {
-    BackgroundColor #FFFFFF
-    BorderColor #1168BD
-    FontColor #1168BD
+skinparam linetype polyline
+skinparam nodesep 45
+skinparam ranksep 65
+skinparam nodeBackgroundColor #F7F7F7
+skinparam nodeBorderColor #7A7F87
+skinparam rectangleBackgroundColor #FFFFFF
+skinparam rectangleBorderColor #1168BD
+skinparam databaseBackgroundColor #EDF3F8
+skinparam databaseBorderColor #336791
+skinparam noteBackgroundColor #FFF8DE
+skinparam noteBorderColor #D6B656
+title UML - Despliegue CLOUD - Bank USAC Fase III\nGKE verificado 2026-10-21 - prod v1.3.6
+left to right direction
+actor "Usuarios" as users
+actor "Operador SRE" as sre
+cloud "GitHub" {
+  artifact "GitHub Actions\nCI -> Release v* -> CD\nWIF / IAM github-actions-cd" as cicd
 }
-skinparam node<<gcpCloud>> {
-    BackgroundColor #F8FAFC
-    BorderColor #4285F4
-    FontColor #1A73E8
-}
-skinparam node<<vpc>> {
-    BackgroundColor #FFFFFF
-    BorderColor #34A853
-    FontColor #1E7E34
-}
-skinparam node<<subnet>> {
-    BackgroundColor #F1F8F4
-    BorderColor #34A853
-    FontColor #1E7E34
-}
-skinparam node<<gkeCluster>> {
-    BackgroundColor #E8F0FE
-    BorderColor #1A73E8
-    FontColor #1A73E8
-}
-skinparam node<<computeVM>> {
-    BackgroundColor #FFF9E6
-    BorderColor #FBBC04
-    FontColor #B06000
-}
-skinparam node<<serverless>> {
-    BackgroundColor #FCE8E6
-    BorderColor #EA4335
-    FontColor #C5221F
-}
-skinparam node<<namespace>> {
-    BackgroundColor #F5F0FF
-    BorderColor #7B4FBF
-    FontColor #4B2E83
-    BorderThickness 2
-}
-
-skinparam node<<namespaceOff>> {
-    BackgroundColor #F7F7F7
-    BorderColor #BBBBBB
-    FontColor #888888
-    BorderThickness 1
-}
-
-skinparam node<<pod>> {
-    BackgroundColor #FFFFFF
-    BorderColor #EF9425
-    FontColor #D06000
-}
-skinparam database<<postgres>> {
-    BackgroundColor #EBF3FB
-    BorderColor #336791
-    FontColor #336791
-}
-
-actor "Visitante / Cliente\nAdministrador / Cajero\n(Navegador Web)" as user
-
-node "Google Cloud Platform (GCP)" <<gcpCloud>> {
-
-    node "Cloud Run (Serverless)" <<serverless>> {
-        node "bank-usac-web" as cloudRunWeb {
-            artifact "Frontend Nuxt 3 (SSR/Nitro)\nPort 8080 | Autoescalado 0-5" as webArtifact
+cloud "Google Cloud Platform / us-central1" {
+  artifact "Terraform\nEstado remoto GCS\nVPC / subredes / NAT / GKE\n5 VMs / Registry / IP / Cloud Run" as tf
+  artifact "Artifact Registry\nbank-images / tags v* y dev-SHA" as registry
+  node "Cloud Run\nFrontend Nuxt 4 / Nitro\nHTTPS :443 / contenedor :8080" as cloudrun
+  node "VPC bank-usac-vpc" {
+    node "Subred GKE 10.10.0.0/20" {
+      node "GKE bank-usac-vpc-gke\nus-central1-c / 3 nodos e2-standard-2\nDataplane V2" as gke {
+        artifact "Helm chart bank-usac\nConfigMap / Secret / Services\nHPA 80% CPU / 1-5 réplicas" as helmapp
+        node "namespace prod\nrelease bank-usac / v1.3.6" {
+          artifact "Gateway LB\n34.69.101.197:3000\nIP estática" as prodgw
+          artifact "5 servicios NestJS\nSólo AMQP entre servicios" as prodapps
+          artifact "Web Nuxt / Nitro :3010\nCarga GKE distinta de Cloud Run\nGET /metrics (scrape)" as prodweb
+          queue "RabbitMQ :5672 / :15692\nDeployment / PVC 2 GiB\nImagen observada 3.13-management" as prodrabbit
+          database "MinIO S3 :9000\nDeployment" as prodminio
+          artifact "partner-bank-mock\nNode.js :3021 / BANK99" as mock
         }
+        node "namespace dev\nrelease bank-usac-dev / dev-SHA" {
+          artifact "Gateway LB\n136.71.158.228:3000" as devgw
+          artifact "5 servicios NestJS\nRabbitMQ + PVC / MinIO propios\nMock NO desplegado" as devapps
+          artifact "Web Nuxt / Nitro :3010\nGET /metrics (scrape)" as devweb
+        }
+        node "namespace observability\nHelm chart bank-observability" {
+          artifact "otel-gateway Deployment\nOTLP :4317,:4318 / métricas :8889" as collector
+          artifact "otel-log-agent DaemonSet\n3 agentes / filelog / stdout JSON" as agent
+          artifact "Prometheus / Tempo / Loki\nPVC 10 GiB cada uno\nRetención configurada 7 días" as stores
+          artifact "Grafana LB 35.255.103.13:80\nPVC 2 GiB / autenticación\n9 dashboards / 16 alertas" as grafana
+          artifact "kube-state-metrics :8080\nHPA / réplicas / despliegues" as ksm
+        }
+      }
     }
-
-    node "Virtual Private Cloud (VPC): bank-usac-vpc" <<vpc>> {
-        
-        node "Cloud NAT & Router" as cloudNat {
-            artifact "Salida segura a Internet\n(Actualizaciones / Paquetes apt)" as natArtifact
-        }
-
-        node "Subred Bases de Datos (10.40.0.0/24)" <<subnet>> {
-            node "VM: bank-db-customer" <<computeVM>> {
-                database "PostgreSQL :5432\n(customer)" <<postgres>> as dbCustomer
-            }
-            node "VM: bank-db-account" <<computeVM>> {
-                database "PostgreSQL :5432\n(account)" <<postgres>> as dbAccount
-            }
-            node "VM: bank-db-transaction" <<computeVM>> {
-                database "PostgreSQL :5432\n(transaction)" <<postgres>> as dbTransaction
-            }
-            node "VM: bank-db-payment" <<computeVM>> {
-                database "PostgreSQL :5432\n(payment)" <<postgres>> as dbPayment
-            }
-            node "VM: bank-db-audit" <<computeVM>> {
-                database "PostgreSQL :5432\n(notification_audit)" <<postgres>> as dbAudit
-            }
-        }
-
-        node "Subred GKE (10.10.0.0/20)" <<subnet>> {
-            node "GKE Managed Cluster: bank-usac-vpc-gke" <<gkeCluster>> {
-
-                node "Namespace: prod\nrelease bank-usac — imagenes vX.Y.Z" <<namespace>> {
-                    node "API Gateway Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podGateway
-                    node "Customer Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podCustomer
-                    node "Account Service Pods\n[1 Replica — barrido sin leader election]" <<pod>> as podAccount
-                    node "Transaction Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podTransaction
-                    node "Payment Service Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podPayment
-                    node "Notification/Audit Pods\n[HPA @ 80% CPU (1-5)]" <<pod>> as podAudit
-
-                    node "Broker RabbitMQ\n(:5672)" <<pod>> as brokerRabbit
-                    node "MinIO Object Storage\n(:9000)" <<pod>> as storageMinio
-                }
-
-                node "Namespace: dev\nrelease bank-usac-dev — imagenes dev-<sha>" <<namespace>> {
-                    node "Los mismos 7 componentes\n+ RabbitMQ y MinIO propios\n[HPA @ 80% CPU]" <<pod>> as podDev
-                }
-            }
-        }
-    }
+    node "Subred privada de datos 10.40.0.0/24\nFuera del clúster / sin IP pública" {
+      node "VM customer" {
+  database "PostgreSQL :5432\ncustomer / customer_dev" as dbc
 }
-
-note bottom of podDev
-  Mismo cluster, namespaces separados: cada uno
-  levanta su propio RabbitMQ y su propio MinIO.
-  Las cinco VMs de PostgreSQL SI son compartidas
-  entre los dos entornos (TD-070) — el aislamiento
-  hoy es de computo y mensajeria, no de datos.
+      node "VM account" {
+  database "PostgreSQL :5432\naccount / account_dev" as dba
+}
+      node "VM transaction" {
+  database "PostgreSQL :5432\ntransaction / transaction_dev" as dbt
+}
+      node "VM payment" {
+  database "PostgreSQL :5432\npayment / payment_dev" as dbp
+}
+      node "VM notification-audit" {
+  database "PostgreSQL :5432\nnotification_audit / notification_audit_dev" as dbn
+}
+    }
+    node "Cloud NAT + Router\nEgreso / API de terceros" as nat
+  }
+}
+cloud "Banco externo\nContrato v1 / X-Api-Key" as bank
+cloud "Resend / HTTPS :443" as resend
+users --> cloudrun : HTTPS
+cloudrun --> prodgw : proxy Nitro / HTTP
+sre --> grafana : HTTP / sesión admin
+cicd ..> tf : infraestructura / acción humana para apply
+cicd --> registry : build y publish
+cicd ..> helmapp : Helm upgrade --install
+cicd ..> collector : Helm upgrade bank-observability
+registry ..> prodapps : pull imagen versionada
+prodgw <--> prodrabbit : AMQP / request-reply
+prodapps <--> prodrabbit : AMQP / eventos / comandos
+prodgw --> prodminio : S3
+prodapps --> dbc : sólo Customer
+prodapps --> dba : sólo Account
+prodapps --> dbt : sólo Transaction
+prodapps --> dbp : sólo Payment
+prodapps --> dbn : sólo Notification & Audit
+devapps --> dbc : customer_dev
+devapps --> dba : account_dev
+devapps --> dbt : transaction_dev
+devapps --> dbp : payment_dev
+devapps --> dbn : notification_audit_dev
+prodapps --> bank : Payment -> HTTP(S) v1\ntraceparent / 202 + callback
+bank --> prodgw : /interbank/v1/*
+prodapps --> mock : alternativa configurada de prueba
+prodapps --> resend : Notification & Audit
+prodapps ..> collector : OTLP trazas y métricas
+devapps ..> collector : OTLP / environment=dev
+prodgw ..> collector : OTLP / environment=prod
+devgw ..> collector : OTLP / environment=dev
+stores --> prodweb : Prometheus scrape /metrics
+stores --> devweb : Prometheus scrape /metrics
+agent --> stores : logs -> Loki / OTLP HTTP
+collector --> stores : trazas -> Tempo\nPrometheus scrape :8889
+stores --> prodrabbit : scrape :15692
+stores --> ksm : scrape :8080
+grafana --> stores : PromQL / TraceQL / LogQL
+grafana --> prodgw : webhook POST /api/alerts/slo
+note bottom of gke
+  Secret: API keys interbancarias, JWT, credenciales BD,
+  ALERT_WEBHOOK_TOKEN, RESEND_API_KEY. Valores nunca dibujados.
+  NetworkPolicies: plantillas disponibles, NINGUNA aplicada
+  en dev/prod/observability en esta observación.
+  Flecha punteada: despliegue/telemetría; sólida: comunicación.
 end note
-
-' Flujos de comunicación
-user --> cloudRunWeb : "HTTPS :443 (Interfaz Web)"
-user --> podGateway : "HTTPS / REST :3000\n(API Gateway Ingress)"
-
-cloudRunWeb ..> podGateway : "NUXT_PUBLIC_API_BASE_URL\n(Consumo cliente)"
-
-podGateway --> brokerRabbit : "AMQP Request/Reply (:5672)"
-podGateway --> storageMinio : "S3 Upload DPI (:9000)"
-
-podCustomer --> brokerRabbit : "AMQP (:5672)"
-podAccount --> brokerRabbit : "AMQP (:5672)"
-podTransaction --> brokerRabbit : "AMQP (:5672)"
-podPayment --> brokerRabbit : "AMQP (:5672)"
-podAudit --> brokerRabbit : "AMQP (:5672)"
-
-podCustomer --> dbCustomer : "TCP :5432 (Privado)"
-podAccount --> dbAccount : "TCP :5432 (Privado)"
-podTransaction --> dbTransaction : "TCP :5432 (Privado)"
-podPayment --> dbPayment : "TCP :5432 (Privado)"
-podAudit --> dbAudit : "TCP :5432 (Privado)"
-
-dbCustomer ..> cloudNat : "Acceso de salida seguro"
-dbAccount ..> cloudNat
-dbTransaction ..> cloudNat
-dbPayment ..> cloudNat
-dbAudit ..> cloudNat
 
 @enduml

@@ -43,9 +43,16 @@ Porque afecta a quien despliegue esto y no leerá el otro repositorio:
   canal privado y se cargan en el `Secret` de Kubernetes. Los nombres de las variables
   sí están versionados (`INTERBANK_API_KEY_INBOUND`, `INTERBANK_API_KEY_OUTBOUND`), que
   es lo que evita tener que adivinarlos.
-- **Rotar una clave no rueda los pods**: hace falta un `kubectl rollout restart`
-  después (TD-089).
-- **Tenemos dos divergencias declaradas** con el contrato, y están en §13 del acuerdo:
-  HTTPS, y el protocolo de `TIMEOUT` del lado emisor
-  ([TD-095](../TECH_DEBT.md)). La segunda puede costar dinero real, así que conviene
-  leerla antes de una prueba conjunta.
+- **Rotación de claves:** el chart actual incluye checksum del Secret en los
+  seis componentes que lo consumen. Un `helm upgrade` que cambie el Secret
+  provoca rollout; una edición directa externa al release requiere reinicio
+  explícito. Verificar las dos direcciones de autenticación (TD-089).
+- **Estado del protocolo:** el emisor ya implementa TTL 180s, reserva durante
+  TIMEOUT, sondeo, cancelación, margen de 300s y reverso saliente automático
+  (migración 016). El acuerdo externo puede conservar un estado anterior;
+  contrastarlo con [INTERBANK.md](INTERBANK.md) y TD-095, sin cambiar aquí lo
+  que las dos partes deben aprobar allá.
+- **Divergencias vigentes:** los endpoints públicos observados usan HTTP; el
+  comando de crédito interno no lleva `expiresAt`, por lo que no se prueba
+  ausencia absoluta de crédito tardío en una cola demorada. Se documentan como
+  brechas, no como cumplimiento. El banco observado es el mock BANK99.
