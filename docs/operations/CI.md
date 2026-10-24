@@ -59,10 +59,11 @@ the same "do not recompile what did not change" guarantee `turbo run build
 
 ### Fase 2 — Test (`test`)
 
-The job declares PostgreSQL 18.4 and RabbitMQ 4.3.4 as service containers —
-the same versions `infra/docker/docker-compose.yml` runs, because testing
-against a different PostgreSQL than production ships checks something nobody
-will deploy.
+The job declares PostgreSQL 18.4 and RabbitMQ 4.3.4 as service containers,
+matching the local Compose targets. **GKE currently runs RabbitMQ
+`3.13-management`**, as observed on 2026-10-21; CI therefore does not prove
+compatibility with the deployed broker version (TD-097). Verify runtime database
+versions separately from the image selected for CI.
 
 | Step | Command | What it verifies | A failure means |
 | --- | --- | --- | --- |
@@ -202,8 +203,8 @@ prove:
 
 ## Secrets
 
-The workflow references no `secrets.*` value anywhere, so there is nothing
-that can leak into a log line. If a future step genuinely needs one:
+The CI workflow references no repository `secrets.*` value. This limits its
+credential inputs; it is not proof that arbitrary command output is secret-free. If a future step genuinely needs one:
 
 - Add it as a repository secret (Settings → Secrets and variables → Actions),
   never as a literal in the YAML.
@@ -278,13 +279,15 @@ to *see* a suite run, add `--force`.
 
 ## Delivery and Deployment
 
-CI is one of three workflows. The other two carry the assignment's delivery and
-deployment phases, and they are wired differently from each other on purpose.
+There are **four workflows**: `ci.yml`, reusable `changes.yml`,
+`release.yml` and `cd.yml`. The reusable classifier selects development image
+builds; release and CD implement delivery and deployment.
 
 | Workflow | Fires on | What it does |
 | --- | --- | --- |
 | `ci.yml` | push to any work branch (`feature/**`, `fix/**`, `test/**`, `docs/**`, `chore/**`, `refactor/**`), PR into `develop` or `main` | Build → Test → Validación |
-| `release.yml` | push to `release/**`, tag `v*` | Generates the version, **publishes** seven versioned images to Artifact Registry (`<region>-docker.pkg.dev/<project>/<repo>`) |
+| `changes.yml` | `workflow_call` from CD | Classifies shared and component paths for selective development builds |
+| `release.yml` | push to `release/**` or `release-*`, tag `v*`, or manual dispatch | Generates the version, **publishes** seven versioned images to Artifact Registry (`<region>-docker.pkg.dev/<project>/<repo>`) |
 | `cd.yml` | push to `develop` | Builds only the **modified** components and deploys them to GKE, namespace `dev` |
 | `cd.yml` | push to `main` | Deploys the newest `v*` tag's images to GKE, namespace `prod`, with a rolling update |
 
@@ -304,11 +307,13 @@ the rule holds even when the script is run by hand.
 
 ### Promoting to production: the order matters
 
-**`main` is 111 commits behind `develop` and the newest tag is `v1.2.2`** — from
-before Phase III. That combination is a trap, and it is worth stating plainly:
+**Historical diagnosis (2026-10-16):** `main` was behind development and the
+newest tag was `v1.2.2`, before Phase III. The production inventory of
+2026-10-21 now shows **v1.3.6**; the old commit counts are not the present state.
+The release-order failure described below remains relevant:
 
-> Merging `develop` into `main` without creating a tag deploys **the previous
-> version**. `cd.yml` resolves `git tag -l 'v*' --sort=-v:refname | head -n 1`,
+> Before the version-containment gate, merging without a new published tag
+> could deploy **the previous version**. `cd.yml` resolves `git tag -l 'v*' --sort=-v:refname | head -n 1`,
 > which is the highest tag *in the repository*, not the tag of the commit being
 > deployed. The rollout reaches `Ready`, the summary is green, and production
 > runs Phase II.
@@ -325,7 +330,7 @@ code, and the job fails naming how many commits ahead `HEAD` is.
 So the promotion is four steps, in this order:
 
 ```bash
-# 1. Merge. Rehearsed on 2026-10-16 against origin/main: no conflicts.
+# 1. Merge after review and current conflict checks; the old rehearsal is not a current guarantee.
 git checkout main && git pull && git merge --no-ff develop && git push
 
 # 2. Tag the commit that is now main's tip. This is what gets built.
@@ -360,7 +365,7 @@ Under *Settings → Secrets and variables → Actions*:
 | --- | --- | --- |
 | Variable | `GCP_PROJECT_ID` | the GCP project id |
 | Variable | `GKE_CLUSTER` | `bank-usac-vpc-gke` (see `infra/terraform/gcp/gke.tf`) |
-| Variable | `GKE_ZONE` | `us-central1-a` (see `variables.tf`) |
+| Variable | `GKE_ZONE` | `us-central1-c`, current Terraform default and live cluster |
 | Variable | `ARTIFACT_REPO` | the Artifact Registry repository, e.g. `bank-images` |
 | Variable | `GATEWAY_PUBLIC_URL` | the Gateway address **as a browser reaches it** (Terraform's `gateway_public_url`) |
 | Variable | `WEB_PUBLIC_URL` | *optional* — the frontend's origin, for the Gateway's `CORS_ALLOWED_ORIGINS` |
@@ -525,7 +530,7 @@ deployed and reachable in the cloud **on grading day**.
 `cd.yml` has a fifth job, **«Stack de observabilidad»**, that installs
 `infra/k8s/helm/bank-observability` as its own release in the `observability`
 namespace: the two OpenTelemetry Collectors, Prometheus, Tempo, Loki and
-Grafana (T-49, [ADR-018](../architecture/adr/ADR-018-observability-stack.md)).
+Grafana (T-49, [ADR-018](../architecture/adr/ADR-018-observability-stack.md) and its partial successor [ADR-023](../architecture/adr/ADR-023-observability-evolution.md)).
 
 Unlike every other deploy job, it does **not** run on a push to `develop`. The
 stack is *one* for both environments — `dev` and `prod` send their telemetry to
@@ -535,8 +540,8 @@ update it would change production's monitoring. That is the same class of
 problem as TD-070, except this one costs nothing to avoid. To iterate on the
 stack without a merge: *Actions → CD → Run workflow → `deploy_observability`*.
 
-It needs one secret the other jobs do not: `GRAFANA_ADMIN_PASSWORD`, at least 16
-characters. The job fails naming it rather than installing a Grafana with the
+It needs `GRAFANA_ADMIN_PASSWORD` (at least 16 characters) and
+`ALERT_WEBHOOK_TOKEN` (at least 32), shared with the Gateway alert webhook. The job fails naming it rather than installing a Grafana with the
 chart's public default password.
 
 The job runs no `helm dependency build`. The subcharts are vendored in
@@ -561,28 +566,17 @@ Two things it wires that are easy to miss:
 ### Environment separation, and what is *not* separated
 
 `dev` and `prod` are two namespaces in the same GKE cluster. Each gets its own
-pods, its own in-cluster RabbitMQ and its own MinIO, so compute and messaging
-are genuinely independent.
+pods, its own in-cluster RabbitMQ and its own MinIO. Messaging objects are
+separate; nodes, databases hosts and the observability stack still share capacity.
 
-**The five PostgreSQL databases are shared.** Both environments read the same
-`INFRA_ADDRESSES` and the same `HELM_SECRETS`, so a deploy to `dev` writes to
-production's rows and a migration that lands there alters production's schema.
-This is a known, accepted deviation from the assignment's "mantener separación
-entre entornos" — recorded as **TD-070** with the reason and the remedy.
-
-The remedy is databases per environment on the same VMs, which the assignment
-allows: it asks for databases *on VMs*, not for a VM per environment. It is not
-applied because it cannot be applied from the pipeline — Terraform gives the VMs
-no public IP, `pg_hba.conf` admits only `10.0.0.0/8`, and each service's role is
-created without `CREATEDB`. Creating those databases needs a person with access
-to the machines. See TD-070 for the exact commands.
-
-The chart's half is already in place: `databaseSuffix` appends a per-environment
-suffix to the five database names, and the `dev` job passes it from the
-`DEV_DATABASE_SUFFIX` repository variable. It is empty on purpose — a suffix
-pointing at databases that do not exist would leave every service unable to
-start. Once somebody creates `customer_dev`, `account_dev` and the rest, setting
-that variable to `_dev` separates the two environments with no code change.
+**Los datos dev/prod están separados por base desde la configuración actual.**
+`DEV_DATABASE_SUFFIX=_dev` llega al chart como `databaseSuffix`; las cinco URLs
+efectivas se comprobaron el 2026-10-21: `customer_dev`, `account_dev`,
+`transaction_dev`, `payment_dev`, `notification_audit_dev`, frente a las cinco
+bases sin sufijo en prod. Las VMs, la capacidad y observabilidad se comparten.
+La [evidencia sanitizada](../qa/load/2026-10-21-database-isolation.json) no
+contiene contraseñas. TD-070 queda cerrada en cuanto a mezcla de filas/esquemas;
+no demuestra aislamiento físico ni habilita ejecutar TRUNCATE en una demo viva.
 
 ### The `dev` deploy, and the two weeks it did not exist
 
@@ -597,7 +591,9 @@ more CPU than existed — 1911m requested of ~1930m allocatable, 99%, while
 actually using 11%. Production's first real deploy left seven pods in
 `FailedScheduling: Insufficient cpu`.
 
-The fix needed no code change, which is why the job could come back untouched:
+The historical fix needed no code change. The command below records that
+2026-09-26 operation in the old zone; it is **not** a command for the present
+`us-central1-c` cluster:
 
 ```bash
 gcloud container clusters resize bank-usac-vpc-gke \
@@ -611,3 +607,17 @@ its 450m. It is idempotent and needs no gcloud access. **Run it from a branch
 that is neither `develop` nor `main`** — the other jobs are gated on those refs,
 so dispatching from `develop` would retire `dev` and redeploy it in the same
 run, and dispatching from `main` would deploy production.
+
+## Verification snapshot — 2026-10-21
+
+The [production inventory](../qa/load/2026-10-21-gke-prod-inventory.txt),
+[development inventory](../qa/load/2026-10-21-gke-dev-inventory.txt) and
+[database names](../qa/load/2026-10-21-database-isolation.json) are evidence of
+those specific deployments, not proof that this branch passed every workflow.
+Grafana is public over HTTP, Dataplane V2 is active, and no NetworkPolicies
+were applied at inspection. The old `cd.yml`/Helm NOTES message saying Grafana
+has no LoadBalancer contradicts its current values (tracked under #167).
+
+The seven development applications can be Ready while interbank testing is
+unavailable: `INTERBANK_PARTNER_BASE_URL` is empty and no mock runs in `dev`.
+Do not substitute a production fault injection for that missing test setup.

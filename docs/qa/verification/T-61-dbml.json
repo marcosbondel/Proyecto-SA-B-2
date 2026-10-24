@@ -1,0 +1,49 @@
+{
+  "cliVersion": "10.3.1",
+  "cliAttempt": {
+    "valid": false,
+    "reason": "Windows CLI FilePath encodes absolute drive path; failure occurs before reading DBML. In-process official core API avoids path conversion."
+  },
+  "results": [
+    {
+      "file": "account-er.dbml",
+      "parser": "@dbml/core 10.3.1 dbmlv2",
+      "valid": true,
+      "tables": 6,
+      "foreignKeys": 2,
+      "sqlBytes": 4894
+    },
+    {
+      "file": "customer-er.dbml",
+      "parser": "@dbml/core 10.3.1 dbmlv2",
+      "valid": true,
+      "tables": 6,
+      "foreignKeys": 3,
+      "sqlBytes": 4539
+    },
+    {
+      "file": "notification-audit-er.dbml",
+      "parser": "@dbml/core 10.3.1 dbmlv2",
+      "valid": true,
+      "tables": 5,
+      "foreignKeys": 0,
+      "sqlBytes": 4276
+    },
+    {
+      "file": "payment-er.dbml",
+      "parser": "@dbml/core 10.3.1 dbmlv2",
+      "valid": true,
+      "tables": 10,
+      "foreignKeys": 2,
+      "sqlBytes": 13858
+    },
+    {
+      "file": "transaction-er.dbml",
+      "parser": "@dbml/core 10.3.1 dbmlv2",
+      "valid": true,
+      "tables": 7,
+      "foreignKeys": 4,
+      "sqlBytes": 5554
+    }
+  ]
+}

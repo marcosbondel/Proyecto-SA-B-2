@@ -8,15 +8,18 @@ not remove the shared work listed below.
 
 | Component | Type | Primary owner | Scope |
 | --- | --- | --- | --- |
-| Customer Service | Service | Enner Esai Mendizabal Castro (202302220) | Customer registration, identity validation, and customer data. |
-| Account Service | Service | Enner Esai Mendizabal Castro (202302220) | Account lifecycle, balances, and account state. |
-| Transaction Service | Service | David Estuardo Barrios Ramirez (202300670) | Transfer validation, transaction state, and Saga participation. |
-| Payment Service | Service | David Estuardo Barrios Ramirez (202300670) | Internal and external payment processing. |
-| Notification & Audit Service | Service | Marcos Daniel Bonifasi de Leon (202202410) | Notifications, audit records, and distributed logging foundations. |
+| Customer Service | Service | Enner Esai Mendizabal Castro (202302220) | Customer registration, identity/KYC lifecycle, customer data and lifecycle telemetry. |
+| Account Service | Service | Enner Esai Mendizabal Castro (202302220) | Account lifecycle, balances, state and activity/anomaly detection. |
+| Transaction Service | Service | David Estuardo Barrios Ramirez (202300670) | Transfer state, Saga coordination, history and transfer performance telemetry; funds verdicts remain in Account. |
+| Payment Service | Service | David Estuardo Barrios Ramirez (202300670) | Payment attempts, runtime failure simulation and interbank send/receive/reconciliation. |
+| Notification & Audit Service | Service | Marcos Daniel Bonifasi de Leon (202202410) | Notifications, redacted audit, traceability, inboxes and SLO alert ingestion. |
 | API Gateway | Gateway | Marcos Daniel Bonifasi de Leon (202202410) | External entry point, routing, authentication, and aggregation without domain logic. |
-| Frontend | Frontend | Marcos Daniel Bonifasi de Leon (202202410) | Nuxt shell, shared UI direction, and frontend integration. |
-| Infrastructure / SRE | Infrastructure | Marcos Daniel Bonifasi de Leon (202202410) | Docker, local kind cluster, reliability practices, and observability. |
+| Frontend | Frontend | Marcos Daniel Bonifasi de Leon (202202410) | Nuxt 4, shared UI, role workflows, audit/trace links and interbank screens. |
+| Infrastructure / SRE | Infrastructure | Marcos Daniel Bonifasi de Leon (202202410) | Docker/kind, Terraform/GKE/Cloud Run, Helm, CI/CD, telemetry, dashboards, alerts and runbooks. |
 | Documentation | Documentation | Marcos Daniel Bonifasi de Leon (202202410) | Project documentation, architecture records, Spec Kit constitution, and indexes. |
+
+Reviewed for Phase III on 2026-10-21. The primary owners are unchanged; this
+revision updates the scope they maintain, not authorship or ticket assignment.
 
 ## Shared Work
 

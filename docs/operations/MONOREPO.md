@@ -35,7 +35,10 @@ en ellos reconstruye los siete.
 
 `apps/partner-bank-mock/` es una aplicación auxiliar de T-46. Prueba depósitos
 entrantes y callbacks en local, con su propio Dockerfile y perfil opcional de
-Compose; no forma parte de las siete imágenes bancarias ni del chart de Helm.
+Compose y Deployment opcional en `templates/partner-mock/` del chart.
+No es un sexto microservicio bancario: es un doble de prueba. El inventario
+2026-10-21 lo muestra en prod v1.3.6 y ausente en dev. Su presencia no prueba
+interoperación con un banco independiente.
 
 ## Despliegue selectivo
 
@@ -61,7 +64,8 @@ apps/gateway/**                    → gateway
 apps/web/**                        → web
 apps/packages/**                   → los siete
 pnpm-lock.yaml, turbo.json         → los siete
-.github/workflows/**, infra/k8s/** → los siete
+.github/workflows/**, .github/scripts/**, infra/k8s/helm/** → los siete
+package.json, pnpm-workspace.yaml   → los siete
 ```
 
 **Lo compartido dispara todo, a propósito.** Un cambio de contrato que sólo
@@ -79,8 +83,8 @@ La otra mitad es el despliegue. `helm-deploy.sh` recibe `UPDATED_COMPONENTS` y
 sólo pone la etiqueta nueva en esos; para los demás **lee la que ya tenían** con
 `helm get values` y la vuelve a pasar tal cual.
 
-Esa lectura no es un adorno. Sin ella, no pasar el valor haría que Helm cayera
-al `tag: dev` por defecto del chart — una etiqueta que no existe en el
+Esa lectura no es un adorno. Sin conservar la etiqueta anterior, Helm podría usar
+el `tag: dev` por defecto del chart — una etiqueta que no existe en el
 registry — y el despliegue «selectivo» acabaría rompiendo los seis servicios
 que nadie tocó. En la primera instalación no hay release del que leer, así que
 todos reciben la etiqueta nueva.
@@ -102,3 +106,27 @@ encontrarlo completo.
 por caché lo que no cambió (`FULL TURBO` en el log), así que el ahorro existe
 sin que el pipeline tenga que decidirlo — y las pruebas de contrato son
 precisamente las que deben correr cuando cambia cualquier cosa.
+
+## Fase III — bibliotecas y chart de observabilidad
+
+`apps/packages/observability` es la cuarta biblioteca compartida, junto a
+contracts, messaging y tooling. Sus consumidores son los seis procesos
+NestJS; la dependencia forma parte del grafo de Turborepo y de los filtros de
+reconstrucción. Los cambios de telemetría también deben contrastarse con el
+[catálogo](../sre/telemetry-catalog.md), el chart `bank-observability` y sus
+nueve dashboards. `partner-bank-mock` es auxiliar y no eleva a ocho el número
+de aplicaciones bancarias. La publicación/deploy efectivo se gobierna por
+los filtros de `.github/workflows/changes.yml` y [CI.md](CI.md).
+
+## Límite de la selección y componentes auxiliares
+
+La lista anterior transcribe `changes.yml`: no equivale a todos los archivos de
+`infra/k8s/` ni al directorio del mock. Cambios sólo en documentación no
+construyen aplicaciones. El stack `bank-observability` tiene un release y un
+ciclo de vida propios; no se duplica por entorno.
+
+Las siete aplicaciones son la matriz bancaria; el mock tiene su Dockerfile y
+ruta de despliegue auxiliar. Verificar sus condiciones de build/tag en
+`release.yml` y `cd.yml` antes de asumir que el filtro bancario cubre cualquier
+cambio de `apps/partner-bank-mock/`. Una publicación `v*` y un rollout Ready
+requieren todavía comprobar versión efectiva, configuración y flujos.

@@ -4,8 +4,7 @@
 
 The domain model as a **functional contract**: which service owns which data, which
 invariants it protects, which commands it accepts, and which events it publishes or consumes.
-It is the agreement the five services implement separately, so it has to be true before any of
-them is written.
+It records the agreement the five implemented services uphold and the differences found when that agreement is compared with code. Revision T-61 (2026-10-21) covers Phase III; an observed difference is documented rather than silently declared correct.
 
 ## What this is not
 
@@ -54,7 +53,15 @@ recorded.
 | Notification | Notificación | A message delivered to a person |
 | Activation | Activación | Email verification that enables a client to operate |
 | Identity validation | Validación de identidad | Review of the identity-document photo. **Distinct from activation** |
-| Compensation | Compensación | The step that undoes an applied effect when a Saga cannot complete |
+| Compensation | Compensación | Restores an applied debit and its commission when the Saga cannot complete |
+| Account number | Número de cuenta | Public identifier `02-NNNNNNNNN`, distinct from the internal account UUID |
+| Interbank send | Depósito enviado | An external payment within the existing transfer Saga; has six states of its own |
+| Interbank receipt | Depósito recibido | Receiver decision and credit, projected as PROCESSING / ACCEPTED / REJECTED / CANCELLED |
+| Reserve | Reserva | Money debited from the source while the external decision remains unresolved; TIMEOUT does not release it |
+| Reversal | Reverso | Exceptional remote refund after late acceptance; distinct from local Saga compensation |
+| Settlement account | Cuenta de liquidación | Institutional account representing interbank obligations and absorbing a refund when the client is already compensated |
+| Anomaly | Anomalía | High frequency of movements; reports a WARNING without blocking the account |
+| SLO alert | Alerta SLO | Operational signal recorded/notified by Audit; never a business verdict |
 | Bounded context | Límite de contexto | The scope of one service: its data, its commands, its events |
 
 Enumeration literals keep the assignment's Spanish because they come from the document the
@@ -117,3 +124,7 @@ discovered later:
 
 Neither cost is incurred by deferring — only by never collecting it. Gathering the two remaining
 comments on issue #9 closes both.
+
+## Phase III implementation records
+
+Account usage follows [ADR-017](../architecture/adr/ADR-017-account-anomaly-reports-not-blocks.md); observability follows [ADR-018](../architecture/adr/ADR-018-observability-stack.md); external HTTP is confined by [ADR-019](../architecture/adr/ADR-019-payment-http-egress.md). [ADR-021](../architecture/adr/ADR-021-interbank-protocol-v1.md) records the current official protocol translation and its remaining gaps. These entries describe already implemented decisions; this documentation update does not collect the still-deferred historical approval or approve a new banking rule.

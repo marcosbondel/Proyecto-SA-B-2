@@ -2,6 +2,7 @@
 title CDU004.1 - Procesar pago
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -10,14 +11,14 @@ skinparam activity {
 
 |Transaction Service|
 start
-:Publicar comando payment.requested (en sobre AMQP);
+:Publicar comando payment.requested.v1 (en sobre AMQP);
 |Payment Service|
 :Validar operación y registrar en estado PENDING;
 :Ejecutar intento con proveedor externo simulado;
 while (¿Resultado TIMEOUT o fallo transitorio?) is (Sí)
     if (¿Quedan reintentos en la escalera?) then (Sí)
         :Registrar intento fallido;
-        :Publicar payment.attempt.failed (evento observable);
+        :Publicar payment.attempt.failed.v1 (evento observable);
         :Calcular fecha/hora de siguiente intento (next_attempt_at);
         :Esperar vencimiento programado (barrido del scheduler);
         :Ejecutar nuevo intento de pago;
@@ -28,12 +29,18 @@ endwhile (No)
 
 if (¿Autorización exitosa?) then (Sí)
     :Registrar estado SUCCEEDED en base de datos;
-    :Publicar evento payment.succeeded;
+    :Publicar evento payment.succeeded.v1;
 else (No)
     :Registrar estado FAILED con failureReason;
-    :Publicar evento terminal payment.failed;
+    :Publicar evento terminal payment.failed.v1;
 endif
 |Transaction Service|
 :Continuar la Saga según resultado (crédito o compensación);
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

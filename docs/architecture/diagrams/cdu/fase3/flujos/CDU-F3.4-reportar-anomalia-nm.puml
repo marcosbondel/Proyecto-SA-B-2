@@ -1,0 +1,47 @@
+@startuml CDU-F3.4-reportar-anomalia-nm
+title CDU-F3.4 - Detección y reporte de anomalías N/M
+
+skinparam shadowing false
+skinparam dpi 180
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Account Service|
+start
+:Recibir orden de movimiento o débito sobre una cuenta;
+:Ejecutar transacción bancaria y registrar movimiento en base de datos;
+:Consultar ventana temporal de actividad para la cuenta (últimos M minutos);
+:Contar número de débitos o transferencias ejecutadas en la ventana;
+if (¿Conteo de transacciones >= umbral N?) then (Sí)
+    :Generar registro de anomalía operativa;
+    note right
+      Invariante de diseño:
+      Account calcula con sus propios movimientos.
+      NO bloquea la cuenta automáticamente para
+      evitar denegación de servicio no autorizada.
+    end note
+    :Construir evento account.anomaly.detected.v1;
+    :Publicar evento en exchange AMQP bank.events;
+|Notification & Audit|
+    :Consumir evento account.anomaly.detected.v1;
+    :Clasificar criticidad como WARN / ALERTA DE SEGURIDAD;
+    :Persistir en bitácora audit_logs con payload redactado y traceparent;
+    :Actualizar contador de anomalías operativas;
+|Administrador / Auditor|
+    :Consultar consola de auditoría y eventos anómalos;
+    :Filtrar por tipo account.anomaly.detected.v1 o cuenta;
+    :Analizar frecuencia y decidir si requiere investigación o gestión manual;
+else (No)
+    :Operación dentro de los parámetros normales de frecuencia;
+endif
+stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Parámetros: Ventana de tiempo M y umbral de frecuencia N configurados en Account Service.
+  Comunicación: RabbitMQ / AMQP 0-9-1; evento observable con correlationId.
+  Persistencia: PostgreSQL 18.4 exclusivo por servicio; bitácora redactada en Audit.
+endlegend
+@enduml

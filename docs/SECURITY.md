@@ -1,104 +1,151 @@
-# Security
+# Seguridad — Bank USAC
 
-## Data Classes
+Revisión documental **2026-10-21**. Este documento describe controles presentes
+y límites comprobables; una prueba de código no sustituye verificar los valores
+efectivos del despliegue. La responsabilidad primaria consta en
+[OWNERSHIP](OWNERSHIP.md).
 
-The project assignment names these data classes as part of the service domain:
+## Clases de datos y destinos permitidos
 
-- Customer identification and identity-document images.
-- Full customer name, username, email, address, and date of birth.
-- Customer, account, and transaction identifiers.
-- Account balances and account state.
-- Payment identifiers, transaction references, and payment status.
-- Audit event identifiers, event types, timestamps, and payloads.
+| Clase | Dónde pertenece | Tratamiento en observabilidad y evidencia |
+| --- | --- | --- |
+| Credenciales, JWT, API keys y tokens de activación/recuperación | Runtime y secretos; Customer guarda credenciales derivadas y tokens resumidos | No publicar valores en Markdown, screenshots, logs, spans o capas de imágenes |
+| Identidad: documento, foto, nombre, correo, dirección, nacimiento | Customer; objeto temporal de fotografía en MinIO | Auditoría redacta antes del insert; logger/SDK/Collector aplican filtros distintos |
+| Saldos, montos y movimientos | Bases propietarias de Account, Transaction y Payment | La auditoría sustituye montos/saldos; los adaptadores de log evitan emitirlos |
+| Identificadores, estados y correlación | Contratos y bases del dominio propietario | Permitidos en logs y spans; no como etiquetas de métricas |
+| Alertas SLO y evidencia operativa | Grafana, Audit y documentos fechados | Entorno, versión, ventana y consultas; no credenciales ni datos personales reales |
 
-These classes require deliberate access and logging decisions before the
-services are implemented.
+No se guarda una copia del payload sin redactar en la base de auditoría.
+Los datos visibles en la interfaz del usuario requieren su autorización de
+negocio y no deben copiarse indiscriminadamente a evidencia pública.
 
-## Access Model
+## Autenticación y autorización
 
-The architectural boundary is already fixed: external traffic enters through the
-API Gateway, and a service never reads another service's database.
+El Gateway es la entrada externa de la aplicación. Las sesiones siguen
+[ADR-010](architecture/adr/ADR-010-authentication.md): JWT **HS256**, firmado y
+validado sólo por el Gateway, expiración configurable con default **3600 s**,
+sin refresh token ni revocación anterior a expiración. Los servicios reciben la
+identidad verificada en el envelope y aplican el alcance de su consulta; no
+validan la sesión otra vez.
 
-**Authentication is decided** —
-[ADR-010](architecture/adr/ADR-010-authentication.md). The Gateway issues the
-session JWT from the claims Customer Service returns, signs it with HS256, and is
-the **only** component that validates it. Verified identity (`customerId`, `role`)
-then travels to services inside the message envelope. Tokens live one hour and
-there is no refresh token.
+La autorización está **implementada**: `JwtGuard` y `RolesGuard` son globales,
+las rutas públicas se declaran y `@Roles` aplica D-06. Las restricciones de
+propiedad de filas se deciden en el servicio dueño; un UUID difícil de adivinar
+no reemplaza esa comprobación. Consultar la
+[matriz de actores](domain/actors.md) y el [OpenAPI](../apps/gateway/openapi/).
+No existe ya un bloqueo pendiente de T-15 para definir guardas.
 
-Two properties of that decision matter for security review:
+Las credenciales de máquina tienen límites separados:
 
-- **Revocation before expiry is out of scope in this phase.** A compromised token
-  stays valid for at most one hour. This is an accepted limitation, not an
-  oversight.
-- **Services trust the identity in the envelope rather than verifying it.** That
-  is only sound while nothing publishes to the broker without passing through the
-  Gateway. If that assumption ever stops holding, ADR-010 must be superseded by
-  per-service validation with an asymmetric algorithm.
+- **Grafana → `POST /api/alerts/slo`:** `AlertTokenGuard`, Bearer
+  `ALERT_WEBHOOK_TOKEN`; sin valor configurado rechaza la entrada. El token no
+  es una sesión de administrador.
+- **Contrato `/interbank/v1`:** `X-Api-Key` identifica el banco llamante.
+  `InterbankApiKeyGuard` compara digests con `timingSafeEqual` y propaga su
+  `bankCode`; consultas, cancelaciones y conciliación se limitan al participante.
+  La ruta de salud del contrato es pública.
+- **Rutas interbancarias heredadas bajo `/api/`:** conservan su autenticación
+  Bearer de integración. No intercambiarla con la API key oficial o con un JWT.
 
-The three roles — `ADMINISTRADOR`, `CAJERO_RECEPTOR`, `CLIENTE` — and which use
-case each may trigger are recorded in [`domain/actors.md`](domain/actors.md).
+Fuentes: [guardas](../apps/gateway/src/interfaces/guards/),
+[sesiones](../apps/gateway/src/infrastructure/auth/jwt.service.ts),
+[contrato interbancario](operations/INTERBANK.md).
 
-> **Blocked**: Per-endpoint authorization — how the actor matrix is enforced
-> through token scopes, guards and per-route rules — is not defined. Owner:
-> Marcos Bonifasi. Arrives with: T-15, the Gateway contract.
+## Aislamiento entre servicios y entornos
 
-### Cross-service access policy
+- Cada servicio usa únicamente su PostgreSQL; no hay consultas cruzadas ni HTTP
+  entre servicios internos. Las pruebas de aislamiento y ESLint comprueban
+  dependencias, no el estado de firewall de una VM.
+- Los productores internos comparten el usuario de aplicación RabbitMQ. Ese
+  usuario puede publicar mensajes: la confianza del envelope presupone un
+  runtime interno confiable y credenciales protegidas. No hay firma individual
+  de mensajes que haga imposible la suplantación por un pod comprometido.
+- `dev` emplea cinco bases con sufijo `_dev`; producción usa los nombres sin
+  sufijo. Comparten cinco VMs y capacidad, por lo que una caída o carga elevada
+  de la VM puede afectar ambos entornos. Comprobar nombre y usuario efectivos
+  antes de cualquier suite que haga `TRUNCATE` (TD-077).
+- Gateway sube la fotografía a MinIO; Customer lee, valida su digest y guarda su
+  copia. Los buckets y los procesos son internos; el tramo público hacia el
+  Gateway en la entrega actual sigue siendo HTTP.
 
-- A service may connect only to its own database. The credential isolation test
-  in T-06 proves this: each PostgreSQL user authenticates against one database
-  and is rejected by the other four.
-- A service may publish and consume only through the broker using the
-  application user (`bank_app`). The application user has no administrator tags
-  and can declare/assert the objects it needs, but it cannot modify users,
-  vhosts, or permissions.
-- A service may not read another service's database, call another service's
-  HTTP endpoint, or import another service's code.
-- The Gateway may write identity-document photos to MinIO and publish the
-  resulting reference. Customer Service reads and verifies the object, then
-  persists it in its own database. No service queries MinIO to make a decision.
+### Red de observabilidad y exposición pública
 
-## Secret Handling
+Terraform configura GKE con **Dataplane V2** (`ADVANCED_DATAPATH`), confirmado
+activo en la consulta del clúster del 2026-10-21. El chart
+contiene nueve NetworkPolicies, pero `networkPolicies.enabled` tiene default
+**false**. La inspección del clúster del 2026-10-21 encontró **cero políticas**
+en `observability`, `dev` y `prod`. Por tanto no se afirma aislamiento de
+telemetría por NetworkPolicy. Activarlas y demostrar tráfico permitido/denegado
+es trabajo operativo pendiente; el [inventario de observabilidad](qa/load/2026-10-21-gke-observability-inventory.txt) conserva Services/PVC, y la ausencia de políticas se consultó por separado. Ver
+[ADR-023](architecture/adr/ADR-023-observability-evolution.md).
 
-Real credentials, tokens, database passwords, and private keys MUST NOT be
-committed. Required environment variables are documented with names and sample
-placeholders only. Secrets belong to the local runtime or an approved secret
-store; they do not belong in Markdown, source, logs, or generated artifacts.
+Grafana usa **LoadBalancer, puerto 80**, con login y sin acceso anónimo. La URL
+entregada usa **HTTP**, igual que la entrada del Gateway. El HTTPS del frontend
+en Cloud Run no cifra por sí solo esos otros endpoints. No se incorpora la
+contraseña de Grafana ni API keys de integración a la documentación. Prometheus,
+Tempo, Loki y OTLP permanecen en Services `ClusterIP`; esto limita exposición
+pública directa, pero no impide acceso desde otro pod mientras falten políticas.
 
-### Local secret-loading mechanism
+## Secretos y rotación
 
-The local development stack loads secrets from `infra/docker/.env`, which is
-created by copying `infra/docker/.env.example` and filling in local values.
-`infra/docker/.env` is ignored by Git (see `.gitignore`). `validate-env.sh`
-fails fast if any required variable is missing or empty, so no component starts
-with a placeholder password.
+Los secretos llegan en runtime: `.env` local ignorado, Kubernetes Secrets y
+secretos/variables del pipeline. Los charts sólo definen nombres y referencias.
+Grafana usa `grafana-admin` y `grafana-alert-webhook`; ningún valor real debe
+aparecer en una captura de configuración o comando versionado.
 
-For the kind cluster, secrets reach the pods through Helm values or
-`--set-file` at release time (T-22). The chart's `secret.yaml` is a template;
-real values live in the release command, never in the repository.
+La carga de secretos de T-22 ya existe. **No hay una política completa de
+rotación periódica y revocación automatizada**: registrar responsable, ventana,
+servicios afectados y comprobación de recuperación por cada rotación. Cambiar
+un secreto JWT invalida sesiones firmadas con la clave anterior cuando los pods
+la adoptan; un despliegue con pods de claves distintas necesita coordinarse.
 
-The JWT signing secret of
-[ADR-010](architecture/adr/ADR-010-authentication.md) is a Kubernetes Secret
-supplied through Helm values or `--set-file` at release time. It is never
-committed — not in Markdown, not in a values file, not baked into an image.
+RabbitMQ con PVC conserva usuarios y contraseñas: cambiar sólo
+`RABBITMQ_DEFAULT_PASS` o el Secret **no** actualiza la contraseña ya persistida.
+El runbook del [broker](operations/runbooks/consumer-lag.md) exige coordinar
+cambio del usuario, clientes y prueba de conexión sin imprimir la clave.
+No borrar el volumen para rotarla.
 
-> **Blocked**: The rotation policy and cluster secret-loading mechanism are part
-> of the infrastructure decisions. Owner: Marcos Bonifasi. Arrives with: T-22.
+## Redacción y correo real
 
-## Verification
+Hay tres superficies con reglas propias:
 
-T-01 verifies the dependency cleanup with a successful web build. T-06 adds a
-credential audit that confirms no real values are committed in `infra/docker/`
-or the local evidence files. Security checks for authentication, authorization,
-persistence, file uploads, exports, and event payload handling begin when those
-surfaces exist.
+1. [Auditoría](../apps/services/notification-audit-service/src/domain/redaction.ts):
+   sustituye por `[redactado]` documento, correo, nombre, dirección, monto,
+   saldo, tokens y demás nombres sensibles **antes del insert**; limita
+   profundidad y longitud. No inspecciona semánticamente cualquier texto libre.
+2. [Logger](../apps/packages/observability/src/logger.ts): elimina campos por
+   nombre y enmascara JWT, Bearer y correo por forma. Su filtro **no contiene
+   `amount` ni `balance`**: los adaptadores deben omitirlos. No atribuirle una
+   garantía de redacción financiera universal.
+3. [SDK](../apps/packages/observability/src/redaction.ts) y Collector: redactan
+   URLs, atributos, eventos y texto de trazas; el agente limpia el cuerpo crudo
+   de logs antes de parsearlo. Sus patrones no sustituyen revisar un nuevo
+   campo o integración con datos sintéticos.
 
-## Review Triggers
+Con `NOTIFICATION_CHANNEL=resend`, `deliverableEmailFrom` permite dirección
+real para **cuatro tipos**: `customer.activation.requested.v1`,
+`customer.password-reset.issued.v1`, `customer.identity.rejected.v1` y
+`customer.password-changed.v1`, cuando `payload.email` existe. Los demás usan
+el canal simulado. La dirección real y el enlace son transitorios para la
+entrega; la fila conserva destinatario simulado y payload redactado. La lista
+ejecutable prevalece sobre comentarios antiguos que sólo mencionan activación.
+Ver [política de notificación](../apps/services/notification-audit-service/src/domain/notification.ts)
+y [Resend](operations/EMAIL_RESEND.md).
 
-Request a security review when a change adds or modifies:
+## Verificación y revisión
 
-- Authentication or authorization.
-- Persistence schemas or database access.
-- External integrations or message consumers.
-- File upload, export, or user-generated content.
-- Logging or telemetry that could contain customer or transaction data.
+- Pruebas de guardas, roles y alcance en Gateway y servicios; registrar
+  por separado suites unitarias e integración real.
+- `@bank/observability`: pruebas de logger, redacción de spans, contexto,
+  inicialización de contadores y cardinalidad. La allow-list métrica está en
+  el test y debe mantenerse junto al catálogo.
+- Notification & Audit: pruebas de redacción previa y deduplicación; un contador
+  no prueba que todas las filas de una base real estén limpias.
+- `images:smoke`: usuario, ausencia de credenciales en capas y comportamiento
+  de sondas. No demuestra TLS, NetworkPolicy o backup del despliegue cloud.
+- Antes de publicar capturas: ocultar credenciales completas y datos personales
+  reales, conservando entorno, fecha, consulta y resultado medido.
+
+Revisar seguridad ante cambios de autenticación, autorización, contratos,
+persistencia, integración externa, carga/exportación de archivos, telemetría,
+exposición de Services o mecanismos de secretos.

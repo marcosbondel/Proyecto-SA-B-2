@@ -1,0 +1,60 @@
+@startuml 10-secuencia-recepcion-interbancaria
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam dpi 180
+skinparam maxMessageSize 190
+skinparam ParticipantBorderColor #1168BD
+skinparam ParticipantBackgroundColor #EAF2FF
+skinparam QueueBorderColor #C11926
+skinparam QueueBackgroundColor #FFF0F0
+skinparam noteBackgroundColor #FFF8DC
+skinparam noteBorderColor #D6B656
+autonumber
+title UML - Recepción interbancaria v1 / idempotencia - Fase III
+participant "Banco emisor\nContrato v1" as X
+participant "Gateway\nX-Api-Key / validación" as G
+queue "RabbitMQ\ncorrelationId + traceparent" as B
+participant "Payment\nPostgreSQL / barrido" as P
+participant "Account\nPostgreSQL / row lock" as A
+participant "Notification & Audit" as N
+X -> G : POST /interbank/v1/transfers\nIdempotency-Key / amount string GTQ
+G ->> B : Comando v1 validado
+B ->> P : Registrar depósito y plazo
+alt misma clave y mismo cuerpo
+  P ->> B : Responder depósito existente
+else clave repetida con cuerpo distinto
+  P ->> B : CONFLICT / ningún crédito
+else depósito nuevo
+  P -> P : Persistir PROCESSING, origin_envelope y TTL\nRechazo de política también se persiste para callback
+  P ->> B : ACCEPTED_FOR_PROCESSING
+end
+B ->> G : Respuesta request/reply (ceiling 5 s)
+G --> X : HTTP 202 (nuevo) / respuesta de repetición o conflicto
+... trabajo asíncrono después de la admisión ...
+P ->> B : Consultar elegibilidad de cuenta por número 02-...
+B ->> A : Cuenta existente / activa / reglas
+A ->> B : Veredicto de elegibilidad
+B ->> P : Decidir siguiente etapa
+alt veredicto válido y depósito vigente
+  P ->> B : Orden CREDIT idempotente
+  B ->> A : Crédito bajo lock + clave única
+  A ->> B : Crédito confirmado o rechazado
+  B ->> P : Persistir ACCEPTED o REJECTED y callback
+else cuenta inválida / política / vencimiento
+  P -> P : Persistir REJECTED / reason
+end
+loop callback pendiente con backoff
+  P -> X : POST /interbank/v1/transfers/{id}/result\nX-Api-Key + traceparent
+  X --> P : Acuse de resultado
+end
+P ->> B : Evento observable / estado
+B ->> N : Redactar y registrar / notificar
+note over P,A
+  Una vez ordenado CREDIT, cancelar/expirar no puede declarar
+  que el dinero no se acreditó: debe resolverse el veredicto de Account.
+  Claves y restricciones de BD deduplican redelivery y reintentos.
+  Reversos y devolución usan identificadores distintos y liquidación.
+end note
+
+@enduml

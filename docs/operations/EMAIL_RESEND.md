@@ -1,17 +1,20 @@
 # Envío de correos reales con Resend
 
-Por defecto Bank USAC **no envía correos**: el canal es `simulated` y el enlace de
-activación se escribe en el log (§4.1 del enunciado, y es lo que lee
+Por defecto el canal de Bank USAC es `simulated` y **no envía correos**; el
+enlace sólo se revela en log cuando `REVEAL_ACTIVATION_LINKS=true` (§4.1 del enunciado, y es lo que lee
 `pnpm images:flow`). Este documento explica cómo activar el envío **real** del
 correo de activación a través de [Resend](https://resend.com), verificando un
 dominio alojado en **AWS Route 53**.
 
-Solo el **correo de activación** se envía de verdad: es la única notificación
-cuyo evento transporta una dirección real (`customer.activation.requested.v1`,
-excepción M-5 del contrato). Las demás notificaciones no llevan dirección real
-por diseño y siguen simuladas. La dirección real se usa solo para enviar y
-**nunca se almacena** — la base de auditoría sigue guardando la dirección
-simulada.
+El adaptador admite cuatro eventos con `payload.email`:
+`customer.activation.requested.v1`, `customer.password-reset.issued.v1`,
+`customer.identity.rejected.v1` y `customer.password-changed.v1`.
+La lista ejecutable `DELIVERABLE` en
+[`domain/notification.ts`](../../apps/services/notification-audit-service/src/domain/notification.ts) gobierna
+esta selección. Las demás notificaciones usan el canal simulado. La dirección
+real sirve para la entrega, se redacta antes del registro de auditoría y la
+notificación conserva su destinatario simulado. No confundir canal configurado
+con entrega efectivamente confirmada.
 
 ## Qué implementa el código
 
@@ -20,7 +23,8 @@ simulada.
 - El adaptador **nunca lanza**: una entrega fallida es un estado `FAILED` en una
   fila que alguien puede ver, no una excepción que reintente en vano.
 - El token nunca se registra: solo se registra el `id` que devuelve Resend.
-- El enlace se vuelve absoluto anteponiendo `APP_BASE_URL` al path `/activar?token=…`.
+- Los enlaces se vuelven absolutos con `APP_BASE_URL`: activación usa
+  `/activar?token=…` y recuperación el enlace que la política de dominio produce.
 
 ## Variables de entorno
 

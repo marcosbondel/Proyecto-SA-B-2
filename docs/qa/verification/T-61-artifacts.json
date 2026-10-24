@@ -1,0 +1,2163 @@
+{
+  "observedAtUtc": "2026-10-22T12:24:41.353924+00:00",
+  "branch": "feature/T-61",
+  "base": "40660d5",
+  "scope": "Documentation and evidence only; this manifest excludes its own hash and temporary tooling. Remote links are not certified by local-path checks.",
+  "checks": {
+    "explicitInventoryRows": 160,
+    "markdownProductDocumentsChecked": 159,
+    "relativeDestinations": 1878,
+    "markdownAnchorsChecked": 231,
+    "linkErrors": [],
+    "diagramCounts": {
+      "puml": 41,
+      "dsl": 4,
+      "dbml": 5,
+      "png": 66,
+      "svg": 51
+    },
+    "imageIntegrityChecked": 91,
+    "svgXmlChecked": 51,
+    "jsonParsed": 29,
+    "screenshotsInManifest": 25,
+    "assetErrors": [],
+    "scopeErrors": [],
+    "referenceFilesCompared": 5
+  },
+  "referenceFiles": [
+    {
+      "path": "docs/references/780_Proyecto_1_2S2026.pdf",
+      "gitNormalizedUnchanged": true,
+      "sha256WorkingFile": "8e7b7139a8ef0784d6968bc7d78e1c5bc93fda674719aaff7393b0bfe8fe4467",
+      "baseGitBlob": "b9c3a5c95a8db9a6b37e159fa69a07641559cbbf",
+      "workingGitBlob": "b9c3a5c95a8db9a6b37e159fa69a07641559cbbf"
+    },
+    {
+      "path": "docs/references/780_Proyecto_2_2S2026.pdf",
+      "gitNormalizedUnchanged": true,
+      "sha256WorkingFile": "066bae86cd2bdd3097566971e050cd5806ec21c5f6f0057bfa627151eaa8b9c5",
+      "baseGitBlob": "6a36873aefe67e9451b00da7330bf74c3d4ecd87",
+      "workingGitBlob": "6a36873aefe67e9451b00da7330bf74c3d4ecd87"
+    },
+    {
+      "path": "docs/references/780_Proyecto_3_2S2026.pdf",
+      "gitNormalizedUnchanged": true,
+      "sha256WorkingFile": "bc5ee9304ae827db7107cdbbad678e0353133331c391a8f9697eb90f824dbaeb",
+      "baseGitBlob": "0f7842c8a929f9101bde146058c44701de3a2611",
+      "workingGitBlob": "0f7842c8a929f9101bde146058c44701de3a2611"
+    },
+    {
+      "path": "docs/references/README.md",
+      "gitNormalizedUnchanged": true,
+      "sha256WorkingFile": "e444aeb9fadb6407e3f998747c70f395d879cbe54481c52455ef8adcc3b1049b",
+      "baseGitBlob": "0ebc2440cad1509c41703c0e05589cbaf7e4616d",
+      "workingGitBlob": "0ebc2440cad1509c41703c0e05589cbaf7e4616d"
+    },
+    {
+      "path": "docs/references/interbank-contract-v1.openapi.yaml",
+      "gitNormalizedUnchanged": true,
+      "sha256WorkingFile": "6a89c87806ab34bea37faa50be2007b61e158a7bb14a9d31b87fd8f9443563bd",
+      "baseGitBlob": "3b30d38cf41ebe34d76fcbdc5151e403c17169fc",
+      "workingGitBlob": "3b30d38cf41ebe34d76fcbdc5151e403c17169fc"
+    }
+  ],
+  "imageDimensions": [
+    {
+      "path": "docs/architecture/diagrams/01-arquitectura-general.png",
+      "width": 4969,
+      "height": 2095
+    },
+    {
+      "path": "docs/architecture/diagrams/02-c4-contexto-key.png",
+      "width": 532,
+      "height": 105
+    },
+    {
+      "path": "docs/architecture/diagrams/02-c4-contexto.png",
+      "width": 2496,
+      "height": 1300
+    },
+    {
+      "path": "docs/architecture/diagrams/03-c4-contenedores-key.png",
+      "width": 772,
+      "height": 259
+    },
+    {
+      "path": "docs/architecture/diagrams/03-c4-contenedores.png",
+      "width": 5352,
+      "height": 4208
+    },
+    {
+      "path": "docs/architecture/diagrams/04-c4-componentes.png",
+      "width": 1380,
+      "height": 1292
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-account.png",
+      "width": 1502,
+      "height": 1327
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-audit.png",
+      "width": 1575,
+      "height": 1523
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-customer.png",
+      "width": 1494,
+      "height": 1261
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-gateway.png",
+      "width": 1407,
+      "height": 1342
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-payment.png",
+      "width": 1572,
+      "height": 1556
+    },
+    {
+      "path": "docs/architecture/diagrams/05-uml-despliegue.png",
+      "width": 3731,
+      "height": 2248
+    },
+    {
+      "path": "docs/architecture/diagrams/06-uml-secuencia-crear-cuenta.png",
+      "width": 2225,
+      "height": 2313
+    },
+    {
+      "path": "docs/architecture/diagrams/07-uml-secuencia-transferencia.png",
+      "width": 3502,
+      "height": 4187
+    },
+    {
+      "path": "docs/architecture/diagrams/08-despliegue-cloud-gcp.png",
+      "width": 5298,
+      "height": 5127
+    },
+    {
+      "path": "docs/architecture/diagrams/09-secuencia-envio-interbancario.png",
+      "width": 2729,
+      "height": 4525
+    },
+    {
+      "path": "docs/architecture/diagrams/10-secuencia-recepcion-interbancaria.png",
+      "width": 2127,
+      "height": 2886
+    },
+    {
+      "path": "docs/architecture/diagrams/11-secuencia-reintentos-pago.png",
+      "width": 1944,
+      "height": 2980
+    },
+    {
+      "path": "docs/architecture/diagrams/12-observabilidad-y-alertas.png",
+      "width": 3789,
+      "height": 1458
+    },
+    {
+      "path": "docs/architecture/diagrams/13-casos-uso-fase3.png",
+      "width": 2081,
+      "height": 2306
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/01-arquitectura-general-editor.png",
+      "width": 1931,
+      "height": 814
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/05-uml-despliegue-editor.png",
+      "width": 1616,
+      "height": 973
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/06-uml-secuencia-crear-cuenta-editor.png",
+      "width": 1230,
+      "height": 1278
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/07-uml-secuencia-transferencia-editor.png",
+      "width": 1157,
+      "height": 1360
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/08-despliegue-cloud-gcp-editor.png",
+      "width": 1275,
+      "height": 1233
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/09-secuencia-envio-interbancario-editor.png",
+      "width": 974,
+      "height": 1615
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/10-secuencia-recepcion-interbancaria-editor.png",
+      "width": 1077,
+      "height": 1461
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/11-secuencia-reintentos-pago-editor.png",
+      "width": 1013,
+      "height": 1553
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/12-observabilidad-y-alertas-editor.png",
+      "width": 2021,
+      "height": 778
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/13-casos-uso-fase3-editor.png",
+      "width": 1191,
+      "height": 1321
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/00-alto-nivel.png",
+      "width": 1368,
+      "height": 1078
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/01-primera-descomposicion.png",
+      "width": 1478,
+      "height": 1804
+    },
+    {
+      "path": "docs/architecture/diagrams/er/account-er.png",
+      "width": 4144,
+      "height": 2036
+    },
+    {
+      "path": "docs/architecture/diagrams/er/customer-er.png",
+      "width": 4144,
+      "height": 2122
+    },
+    {
+      "path": "docs/architecture/diagrams/er/notification-audit-er.png",
+      "width": 4144,
+      "height": 1890
+    },
+    {
+      "path": "docs/architecture/diagrams/er/payment-er.png",
+      "width": 5534,
+      "height": 3572
+    },
+    {
+      "path": "docs/architecture/diagrams/er/transaction-er.png",
+      "width": 4144,
+      "height": 2210
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/account-casos-de-uso.png",
+      "width": 1983,
+      "height": 2473
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/customer-casos-de-uso.png",
+      "width": 1599,
+      "height": 3014
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/notification-audit-casos-de-uso.png",
+      "width": 1667,
+      "height": 1764
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/payment-casos-de-uso.png",
+      "width": 1800,
+      "height": 1711
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/transaction-casos-de-uso.png",
+      "width": 1736,
+      "height": 2407
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.1-abrir-cuenta.png",
+      "width": 3225,
+      "height": 1214
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.2-consultar-saldo.png",
+      "width": 1787,
+      "height": 1041
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.3-aplicar-movimiento.png",
+      "width": 1739,
+      "height": 1518
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.4-gestionar-estado.png",
+      "width": 2933,
+      "height": 1291
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.8-desactivar-cuentas-inactivas.png",
+      "width": 2329,
+      "height": 1502
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.9-registrar-deposito.png",
+      "width": 2906,
+      "height": 2299
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.1-registrar-cliente.png",
+      "width": 2821,
+      "height": 1394
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.11-solicitar-restablecimiento.png",
+      "width": 2598,
+      "height": 1509
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.12-restablecer-contrasena.png",
+      "width": 3023,
+      "height": 1679
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.13-cambiar-contrasena.png",
+      "width": 3020,
+      "height": 1585
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.2-activar-cliente.png",
+      "width": 2110,
+      "height": 1377
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.3-iniciar-sesion.png",
+      "width": 2553,
+      "height": 1523
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.4-actualizar-datos.png",
+      "width": 1386,
+      "height": 1144
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.5-cargar-fotografia.png",
+      "width": 1478,
+      "height": 1248
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.6-validar-identidad.png",
+      "width": 3367,
+      "height": 1347
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.1-registrar-auditoria.png",
+      "width": 1693,
+      "height": 1264
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.2-enviar-notificacion.png",
+      "width": 1122,
+      "height": 1309
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.3-consultar-auditoria.png",
+      "width": 1225,
+      "height": 1024
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.4-consultar-notificaciones.png",
+      "width": 2907,
+      "height": 1345
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/flujos/CDU004.1-procesar-pago.png",
+      "width": 1855,
+      "height": 1997
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/flujos/CDU004.2-consultar-historial.png",
+      "width": 1432,
+      "height": 1171
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.1-transferir-fondos.png",
+      "width": 5633,
+      "height": 5213
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.10-consultar-historial.png",
+      "width": 2227,
+      "height": 1614
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.2-consultar-estado.png",
+      "width": 1787,
+      "height": 1041
+    },
+    {
+      "path": "docs/images/fase3/manual/01-login.jpg",
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "path": "docs/images/fase3/manual/02-cliente-dashboard.jpg",
+      "width": 955,
+      "height": 1146
+    },
+    {
+      "path": "docs/images/fase3/manual/03-interbank-formulario.jpg",
+      "width": 955,
+      "height": 958
+    },
+    {
+      "path": "docs/images/fase3/manual/04-interbank-historial.jpg",
+      "width": 514,
+      "height": 554
+    },
+    {
+      "path": "docs/images/fase3/manual/05-interbank-detalle.jpg",
+      "width": 514,
+      "height": 1295
+    },
+    {
+      "path": "docs/images/fase3/manual/06-administrador-dashboard.jpg",
+      "width": 1265,
+      "height": 1111
+    },
+    {
+      "path": "docs/images/fase3/manual/07-auditoria-filtros.jpg",
+      "width": 955,
+      "height": 1876
+    },
+    {
+      "path": "docs/images/fase3/manual/08-auditoria-detalle-traza.jpg",
+      "width": 955,
+      "height": 3182
+    },
+    {
+      "path": "docs/images/fase3/manual/09-pagos-monitor.jpg",
+      "width": 955,
+      "height": 916
+    },
+    {
+      "path": "docs/images/fase3/manual/10-cajero-cuentas.jpg",
+      "width": 514,
+      "height": 951
+    },
+    {
+      "path": "docs/images/fase3/manual/11-notificaciones.jpg",
+      "width": 514,
+      "height": 554
+    },
+    {
+      "path": "docs/images/fase3/manual/12-grafana-explore.jpg",
+      "width": 1440,
+      "height": 934
+    },
+    {
+      "path": "docs/images/fase3/observability/01-banco-pareja-prod.jpg",
+      "width": 1425,
+      "height": 1749
+    },
+    {
+      "path": "docs/images/fase3/observability/02-consumer-lag-dev.jpg",
+      "width": 1425,
+      "height": 1407
+    },
+    {
+      "path": "docs/images/fase3/observability/03-plataforma-hpa-dev.jpg",
+      "width": 1425,
+      "height": 1103
+    },
+    {
+      "path": "docs/images/fase3/observability/04-errores-dev.jpg",
+      "width": 1425,
+      "height": 1103
+    },
+    {
+      "path": "docs/images/fase3/observability/05-estado-prod.jpg",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "path": "docs/images/fase3/observability/06-flujo-trazas-prod.jpg",
+      "width": 1425,
+      "height": 1181
+    },
+    {
+      "path": "docs/images/fase3/observability/07-logs-prod.jpg",
+      "width": 1425,
+      "height": 1295
+    },
+    {
+      "path": "docs/images/fase3/observability/08-metricas-sli-dev.jpg",
+      "width": 1425,
+      "height": 2091
+    },
+    {
+      "path": "docs/images/fase3/observability/09-slo-error-budget-prod.jpg",
+      "width": 1425,
+      "height": 1407
+    },
+    {
+      "path": "docs/images/fase3/observability/10-compensacion-tempo.jpg",
+      "width": 1440,
+      "height": 934
+    },
+    {
+      "path": "docs/images/fase3/observability/11-traza-a-logs.jpg",
+      "width": 1440,
+      "height": 934
+    },
+    {
+      "path": "docs/images/fase3/observability/12-log-a-traza.jpg",
+      "width": 1440,
+      "height": 934
+    },
+    {
+      "path": "docs/images/fase3/observability/13-marcas-despliegue-plataforma.jpg",
+      "width": 1265,
+      "height": 712
+    }
+  ],
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 23833,
+      "sha256": "014eeaa714edeafd10a830ed0599fb44f2c1f751153ef2e7da23aa3c4d8a6b12"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "bytes": 14987,
+      "sha256": "d30d437a82551068483f3858e33ad3cf32bed8ce94043752ba1a1e265f6e50ac"
+    },
+    {
+      "path": "CLAUDE.md",
+      "bytes": 12465,
+      "sha256": "3a139e54b6c5d0c51e1283d8c3267acf79f05f8dd50037df6d8f29d8a3361a00"
+    },
+    {
+      "path": "README.md",
+      "bytes": 43378,
+      "sha256": "af33646f839d26329ba954d08cd08f43c28f217e4a483c56472621131f4d0525"
+    },
+    {
+      "path": "apps/web/README.md",
+      "bytes": 2835,
+      "sha256": "5f6744eeb709d8890d2b8f1d309a38b4a50c6c3e25d4db47216bd1f1120a30a4"
+    },
+    {
+      "path": "docs/DESIGN.md",
+      "bytes": 13008,
+      "sha256": "28ed80e8b1f7c520a8bd002f51d24ca55596ced8514bc3811c742ce51cc8e447"
+    },
+    {
+      "path": "docs/DOC_INVENTORY.md",
+      "bytes": 29051,
+      "sha256": "18a41b45864201b6a0378b88461b1613319a797c42a78e1533cb71ecf984ab40"
+    },
+    {
+      "path": "docs/FRONTEND.md",
+      "bytes": 8598,
+      "sha256": "52296851b19be30d3160be11c7857fcfdaa168d75773c6df3dac0fff3700758c"
+    },
+    {
+      "path": "docs/METHODOLOGY.md",
+      "bytes": 4561,
+      "sha256": "4fb4e1843406b6fd95c021908e1195f37b826982d6ac28a877327e7587e64c60"
+    },
+    {
+      "path": "docs/OWNERSHIP.md",
+      "bytes": 2634,
+      "sha256": "bb889293391e373bed61e310ba3d9b4fb17f477de567332f007634998ec73002"
+    },
+    {
+      "path": "docs/PRODUCT_SENSE.md",
+      "bytes": 3792,
+      "sha256": "0791119df8fc522e682328754785b51119e4cc719f4922c54332fc2f0932c33a"
+    },
+    {
+      "path": "docs/QUALITY_SCORE.md",
+      "bytes": 1523,
+      "sha256": "41ceb4da5884f930cb18c7680db528e0f9446c22e0eebafd4183430d153b52c1"
+    },
+    {
+      "path": "docs/README.md",
+      "bytes": 12043,
+      "sha256": "855710d4cf2cf746e60eee2210ece104e6dfd7f59f0371e44128f7acd263f6e5"
+    },
+    {
+      "path": "docs/RELIABILITY.md",
+      "bytes": 6802,
+      "sha256": "c30dd4e9b917963cfc7a978a6427524b35c2d7ba0e31153690b49f1c1c2a267d"
+    },
+    {
+      "path": "docs/SECURITY.md",
+      "bytes": 9467,
+      "sha256": "bf6bd52a886b6b82f74a0a1b057d8c760442698f9204af7c746e4bbfcf85c630"
+    },
+    {
+      "path": "docs/TECHNICAL_DOCUMENT.md",
+      "bytes": 62054,
+      "sha256": "55394d5de137b1f50bde5a8cfbece720e685348a32c9741a957f41584eae764e"
+    },
+    {
+      "path": "docs/TECH_DEBT.md",
+      "bytes": 122209,
+      "sha256": "b5c5fb858322c2e4252917219519b0330977d4b46b995e4cbf3e8cc3da6f9c53"
+    },
+    {
+      "path": "docs/adr.md",
+      "bytes": 55324,
+      "sha256": "220976bd6b85539d244ae0eb8ff9e47b8000ed93bc3f5d92c6a5a28e8d47ce7d"
+    },
+    {
+      "path": "docs/architecture.md",
+      "bytes": 25711,
+      "sha256": "4ef37193ab9516765de5ecbc4e0cea565b4961273d21dd751e3e6eac1bab9bbe"
+    },
+    {
+      "path": "docs/architecture/README.md",
+      "bytes": 5443,
+      "sha256": "d30adf6c5735665327ad99d499134c76947ea45139ceeb1b9bc28b51380a0d39"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-013-diagramming-toolchain-revision.md",
+      "bytes": 5663,
+      "sha256": "5e3d8651edad07dc2374b95b4de5987e1e0e32c8d72c264d2609d87cbb1b7eaf"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-018-observability-stack.md",
+      "bytes": 13134,
+      "sha256": "8f7413135643ad8d062e019f61f7a1bf7c66d3a8348eadc8acf32d1f33752584"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-020-slo-error-budgets.md",
+      "bytes": 5272,
+      "sha256": "acf9ccc4d3f84aa0752ac17e7117538669d9116f8406bb860c298777f0007b3a"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-021-interbank-protocol-v1.md",
+      "bytes": 7843,
+      "sha256": "0bb2bd89af943994eb43f145c2dd1f359d9254c003e68ebaf25f5a0bf073b58b"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-022-diagramming-sources-and-image-editing.md",
+      "bytes": 2339,
+      "sha256": "b246de7626c45c9cb4e8a15bd1d3a9b2e46d093508c9bafca91ea03aeb164087"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-023-observability-evolution.md",
+      "bytes": 6616,
+      "sha256": "f53ad7058241de739522fd46ed5ad72dc789269189328b3ab2e6c0c24f115ffe"
+    },
+    {
+      "path": "docs/architecture/adr/README.md",
+      "bytes": 7330,
+      "sha256": "8dfa6dd69b3e02b2a24782520b717b837fb085666257aedaf6a4bc84e54898e4"
+    },
+    {
+      "path": "docs/architecture/c4-component.md",
+      "bytes": 1945,
+      "sha256": "a4611bdf4591faaca2398bf7666e5592deda182b61e53c0323c844a931140831"
+    },
+    {
+      "path": "docs/architecture/c4-container.md",
+      "bytes": 1448,
+      "sha256": "1f3df19e510cda75cd71b5d8ef77cc8a2e8227fbd75eca2abc9896f1627010c8"
+    },
+    {
+      "path": "docs/architecture/c4-context.md",
+      "bytes": 762,
+      "sha256": "a8b1053cfb2dd8fa1748a274d71adb746f8e9badedaf490b0c39adeca6ec9c57"
+    },
+    {
+      "path": "docs/architecture/decision-matrix.md",
+      "bytes": 17539,
+      "sha256": "d1e6f55e75ebd2b98e249f4bdb06e19ec2f26bff867aa16eb47aa38fe7ad2528"
+    },
+    {
+      "path": "docs/architecture/deployment.md",
+      "bytes": 2601,
+      "sha256": "0bcff30c59b5e4ca8f486baa46bb63f1695d5524dfe2de53c959981a8d936061"
+    },
+    {
+      "path": "docs/architecture/diagrams/01-arquitectura-general.png",
+      "bytes": 535150,
+      "sha256": "01b75bfe6e3094838f7c7548a1b8af1bd3eb2a7ab97d88ffb2aa39c622d02158"
+    },
+    {
+      "path": "docs/architecture/diagrams/01-arquitectura-general.puml",
+      "bytes": 3985,
+      "sha256": "76c04ea08069363b52000cf1b95990d500bf1a83bf6abb8a006c746d584ad760"
+    },
+    {
+      "path": "docs/architecture/diagrams/01-arquitectura-general.svg",
+      "bytes": 47097,
+      "sha256": "68f205796143c147ff0ef7f1fc0a06d5f03ade88eb56bb403009f98288aa9b8a"
+    },
+    {
+      "path": "docs/architecture/diagrams/02-c4-contexto-key.png",
+      "bytes": 6436,
+      "sha256": "bf4b0b6a22320e3019be3e334edc5794af1d19451cd8d442375500e9ec06fec0"
+    },
+    {
+      "path": "docs/architecture/diagrams/02-c4-contexto-key.svg",
+      "bytes": 2768,
+      "sha256": "39ed36f2b6a97af492a1a0bed098d482fceb174a86582bdee5294ae35a7b73eb"
+    },
+    {
+      "path": "docs/architecture/diagrams/02-c4-contexto.dsl",
+      "bytes": 379,
+      "sha256": "e0426f6e5d4b75b45bbdab32471009c37ea6f0ef0e564ec524b0d8f42bd9191d"
+    },
+    {
+      "path": "docs/architecture/diagrams/02-c4-contexto.png",
+      "bytes": 105824,
+      "sha256": "b9777c3b726070a62612f2e73d1f282837f888c00c3ce0518bcba2fe1065121d"
+    },
+    {
+      "path": "docs/architecture/diagrams/02-c4-contexto.svg",
+      "bytes": 24071,
+      "sha256": "1d7238f9bfdfd91bab0450457ba0b646f38e9319b84492239ddc6a105db8db33"
+    },
+    {
+      "path": "docs/architecture/diagrams/03-c4-contenedores-key.png",
+      "bytes": 26668,
+      "sha256": "b426c6c83b75c29b841121a113c1d4c8e7bd61d23712dc82514fbb26d5af5dd7"
+    },
+    {
+      "path": "docs/architecture/diagrams/03-c4-contenedores-key.svg",
+      "bytes": 5707,
+      "sha256": "55d6dd06d8eda7ae9c53be37f2fb68bee37647d221f62c37d52d2221a1e56715"
+    },
+    {
+      "path": "docs/architecture/diagrams/03-c4-contenedores.dsl",
+      "bytes": 338,
+      "sha256": "6b655e19220b2352b8b9c0b61f13c822962cd21855df706c69e78cbe9233cdb2"
+    },
+    {
+      "path": "docs/architecture/diagrams/03-c4-contenedores.png",
+      "bytes": 1009406,
+      "sha256": "9ecb9903244aa7a17487f44e70c10e67df6207328e8230ac209d1aec8de2a44a"
+    },
+    {
+      "path": "docs/architecture/diagrams/03-c4-contenedores.svg",
+      "bytes": 129634,
+      "sha256": "be96058f0fbec1a917b32d5d5ae1f18e0a874fc8cc9302811e8a9db53c92df2c"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-c4-componentes.dsl",
+      "bytes": 12458,
+      "sha256": "373c6b69582ef7564b9e1af6f9167f966669255ba33a5733d49f9740f523afbb"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-c4-componentes.png",
+      "bytes": 123739,
+      "sha256": "57e4da6b90d3bf64d5171c0d6645d7c0219f19e43ff558ad5b54d16b61bc7c4c"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-c4-componentes.svg",
+      "bytes": 26152,
+      "sha256": "ce3be0f0faddc5c0c514a14b78df65d5eacc474f6588d21326773f2e81068dff"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-account.png",
+      "bytes": 129380,
+      "sha256": "41120214d91aab0ef7885a21dbd0d5ca304798c2b92763aa2f93302edd671255"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-account.svg",
+      "bytes": 26933,
+      "sha256": "d6299deefb62e71e12bde0e8e80f4fc3c20deb4193993d8797a08eff98920384"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-audit.png",
+      "bytes": 141737,
+      "sha256": "3c06cd047e1b042a4c9e32df023f537fd563670b1f2976247af7e08e21fb977e"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-audit.svg",
+      "bytes": 27492,
+      "sha256": "01c638c649b01d48d8ec77a2f83803c3ebc2e01daced4920c71bcd8d125530ce"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-customer.png",
+      "bytes": 121712,
+      "sha256": "f6bd174c6c996a5af1bfe5543dd8092f3d9bc8d03581faf3d61a076661281334"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-customer.svg",
+      "bytes": 25568,
+      "sha256": "4b5a65bf115c2e37ec360720e4b4a3ec3f84957ccd99a266cefed8042a640c11"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-gateway.png",
+      "bytes": 76816,
+      "sha256": "ce43bd7243750ba9a0be24c539e3dd5054a8dcb9e84a4ddac7e02a858b625328"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-gateway.svg",
+      "bytes": 25639,
+      "sha256": "701cea85977c73af814205a63d2db8ea359810c0731a90feede129c01468c46f"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-payment.png",
+      "bytes": 163446,
+      "sha256": "8f83cee1e7fc2788c90c0afc7ceb3d8f74205ff2cc5a5ccac32caf46da29abd1"
+    },
+    {
+      "path": "docs/architecture/diagrams/04-componentes-payment.svg",
+      "bytes": 33107,
+      "sha256": "77e291dd0a75f0ba7cdf3bb8122ee5fc9e10fd59acb1eb647777aefb0da42440"
+    },
+    {
+      "path": "docs/architecture/diagrams/05-uml-despliegue.png",
+      "bytes": 377272,
+      "sha256": "a282b0793ae3843acef3615462ca725f3531a6081a874d2d18f5a34298c53b17"
+    },
+    {
+      "path": "docs/architecture/diagrams/05-uml-despliegue.puml",
+      "bytes": 2586,
+      "sha256": "683b54ef53cd88ed5b9b7ff88764b129e407cdf858797a6f2812a940ea5cb789"
+    },
+    {
+      "path": "docs/architecture/diagrams/05-uml-despliegue.svg",
+      "bytes": 29263,
+      "sha256": "7825e5a589291b7fd00b0f2f04fb27205375f52d4571d901b3fbb7d7e9270f15"
+    },
+    {
+      "path": "docs/architecture/diagrams/06-uml-secuencia-crear-cuenta.png",
+      "bytes": 258417,
+      "sha256": "47d2ecf08755eef7ef228584d8057e9b37cd0a53a8edd0cb3ccfb61484ccb369"
+    },
+    {
+      "path": "docs/architecture/diagrams/06-uml-secuencia-crear-cuenta.puml",
+      "bytes": 7150,
+      "sha256": "2e23ec8118cddd96b36cbd4e00412e06e593753f670ca425d8c12bb9123730ad"
+    },
+    {
+      "path": "docs/architecture/diagrams/06-uml-secuencia-crear-cuenta.svg",
+      "bytes": 93758,
+      "sha256": "24fa4d465967711a9b4b889c8f81e79c0d37796999769e60445944358e60a7ef"
+    },
+    {
+      "path": "docs/architecture/diagrams/07-uml-secuencia-transferencia.png",
+      "bytes": 575845,
+      "sha256": "8bee3d22af3750b09c86116216511529dafb66f9ce95b7977c558e1ed9f6fbba"
+    },
+    {
+      "path": "docs/architecture/diagrams/07-uml-secuencia-transferencia.puml",
+      "bytes": 3400,
+      "sha256": "dc24ce354878dc514b5ace1a178d14e6307957f1ac85fcfb2244155606e1508e"
+    },
+    {
+      "path": "docs/architecture/diagrams/07-uml-secuencia-transferencia.svg",
+      "bytes": 60126,
+      "sha256": "b65343900405545beb35180b8f26e81a0f202c6d83ada791aff3a1b206b3efe5"
+    },
+    {
+      "path": "docs/architecture/diagrams/08-despliegue-cloud-gcp.png",
+      "bytes": 1414255,
+      "sha256": "191cd39320a30c821d079445e11c3e409af1588b03178c799600701f90212a1d"
+    },
+    {
+      "path": "docs/architecture/diagrams/08-despliegue-cloud-gcp.puml",
+      "bytes": 5723,
+      "sha256": "7930d49b95d67684373fb2d1bc79f4a779e88378317a62f793c7c1425c24725c"
+    },
+    {
+      "path": "docs/architecture/diagrams/08-despliegue-cloud-gcp.svg",
+      "bytes": 86957,
+      "sha256": "f5b84e6622bfb27938edeeed015495171d9ce2fd26483ce7d8dc9b0db58b75e7"
+    },
+    {
+      "path": "docs/architecture/diagrams/09-secuencia-envio-interbancario.png",
+      "bytes": 532558,
+      "sha256": "ae6db245f45b5112f828791b34f4082cdd4a0feebf51dca5148b400bef046cf8"
+    },
+    {
+      "path": "docs/architecture/diagrams/09-secuencia-envio-interbancario.puml",
+      "bytes": 3204,
+      "sha256": "32f1e1ffab4eaf628c7685878b4b024335d1a69536f4d7084fe0ff3d715d2bd6"
+    },
+    {
+      "path": "docs/architecture/diagrams/09-secuencia-envio-interbancario.svg",
+      "bytes": 62823,
+      "sha256": "c6ac0141676844a650a2522bac56f4373e6b1268a0cf428cd9cd29845e8e7845"
+    },
+    {
+      "path": "docs/architecture/diagrams/10-secuencia-recepcion-interbancaria.png",
+      "bytes": 366963,
+      "sha256": "feda312071af9e1386d34573b396352fb49751e349316369320c0dfffb99aa0c"
+    },
+    {
+      "path": "docs/architecture/diagrams/10-secuencia-recepcion-interbancaria.puml",
+      "bytes": 2502,
+      "sha256": "87b200fb289b07c8dbaec9a2a4626d76ef57b4fcdf2cdfb84d3a4eeab44e3839"
+    },
+    {
+      "path": "docs/architecture/diagrams/10-secuencia-recepcion-interbancaria.svg",
+      "bytes": 49492,
+      "sha256": "d5f7b5fa08e819ecf9e0fa959f7acb70d1e9748a1dcaa064fe6da92b00612373"
+    },
+    {
+      "path": "docs/architecture/diagrams/11-secuencia-reintentos-pago.png",
+      "bytes": 342265,
+      "sha256": "3caa5c4ae6eb56cee43f77cdcd17397772c717aa9d05f7bac8aa9fe1d9cbaf5e"
+    },
+    {
+      "path": "docs/architecture/diagrams/11-secuencia-reintentos-pago.puml",
+      "bytes": 2309,
+      "sha256": "721ec83dc827d4ff9c6178c621023e68da971250a8d5b0db2d3a5b089557bd3b"
+    },
+    {
+      "path": "docs/architecture/diagrams/11-secuencia-reintentos-pago.svg",
+      "bytes": 44279,
+      "sha256": "ea53c9b6b27ff9ef43a03333c4d7a55eed1df82bce19ab5c8007d3a18fa8b5a8"
+    },
+    {
+      "path": "docs/architecture/diagrams/12-observabilidad-y-alertas.png",
+      "bytes": 378928,
+      "sha256": "812a6111bd168d35767f54e5b6c81564813c0440245f17edd09398909c9a2939"
+    },
+    {
+      "path": "docs/architecture/diagrams/12-observabilidad-y-alertas.puml",
+      "bytes": 2799,
+      "sha256": "b6622a6907472b781910b37c847a8d62b679eb414e31ac49866470d74382a1b8"
+    },
+    {
+      "path": "docs/architecture/diagrams/12-observabilidad-y-alertas.svg",
+      "bytes": 24919,
+      "sha256": "ad8939abf3aa78333a3e2f7a9c27094f6deebc4c0c2ce83024dfd66051566141"
+    },
+    {
+      "path": "docs/architecture/diagrams/13-casos-uso-fase3.png",
+      "bytes": 337179,
+      "sha256": "64fba2a0dbbf21cc55d7d19554263a6592e7fb67c02647f630c727e91646a6b4"
+    },
+    {
+      "path": "docs/architecture/diagrams/13-casos-uso-fase3.puml",
+      "bytes": 1882,
+      "sha256": "157733bd4f917d34c92fb30485b1479adcbd9970797b2ea83d15fe019d2f68bc"
+    },
+    {
+      "path": "docs/architecture/diagrams/13-casos-uso-fase3.svg",
+      "bytes": 20615,
+      "sha256": "f8d0cb5a616aa683ccef267bb9284aee5e26228a1d5ac46bdb578f739e63101a"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/01-arquitectura-general-editor.png",
+      "bytes": 1509977,
+      "sha256": "49383948e37bbcfd2b010a0cc30ffde19e1b289684b70325c7fcb1c3e63a58ed"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/05-uml-despliegue-editor.png",
+      "bytes": 1324428,
+      "sha256": "65e97e5a5984ccba34e811ba19cd0a46f3fb3fc0cf7f02c4c5a24f57fefe6e2b"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/06-uml-secuencia-crear-cuenta-editor.png",
+      "bytes": 1274052,
+      "sha256": "10a2d81ac87238aa780c758fe8d23e3475157d4e5c9be532b623999b4c48e48d"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/07-uml-secuencia-transferencia-editor.png",
+      "bytes": 1243518,
+      "sha256": "cabddac2939fc1949daf911a15d936c8bb5c47e6ddeb66710ea7a7a841ea19a7"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/08-despliegue-cloud-gcp-editor.png",
+      "bytes": 1720864,
+      "sha256": "fa84a045dac70fbd43807491660785bcd1533d72203a2f83a528610eb3b04038"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/09-secuencia-envio-interbancario-editor.png",
+      "bytes": 1237400,
+      "sha256": "476a761c382bc1845ca0cf2d4427b95adbff6e6d85dff8fb514d1679bcd03292"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/10-secuencia-recepcion-interbancaria-editor.png",
+      "bytes": 1272174,
+      "sha256": "f10e7733c5f5383db0a21592df1b5be45fd1ebb5f24b1bf01eaa3fd674e2fa98"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/11-secuencia-reintentos-pago-editor.png",
+      "bytes": 1266522,
+      "sha256": "37a9c19077e6f13df89522a2524ec5b098cf312d90c2a8a6bd8716d4d91dbbe2"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/12-observabilidad-y-alertas-editor.png",
+      "bytes": 1189014,
+      "sha256": "3b49c07984620142f84638215627e8da84811117e33ca45f55066ab0db362188"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/13-casos-uso-fase3-editor.png",
+      "bytes": 1474750,
+      "sha256": "eeca4256fee1a0c53a91afbe3039ddc274020097076c9cdd00bf39dd8e0167a2"
+    },
+    {
+      "path": "docs/architecture/diagrams/alternativas-editor/README.md",
+      "bytes": 4281,
+      "sha256": "6a5688fa6777b5b16aa40ec7f324c8b2f20da2fc46d1bc1ae5c5a1911961cb1f"
+    },
+    {
+      "path": "docs/architecture/diagrams/c4.dsl",
+      "bytes": 11302,
+      "sha256": "38c109d389efc9d321e5b24b2e352a2c990f9ea2d000d9ab3c50280972343626"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/00-alto-nivel.png",
+      "bytes": 155748,
+      "sha256": "6f30c780a70a7a377af6a407d80cd4240d4bbc9ce44351ab88472fb171cf8c40"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/00-alto-nivel.puml",
+      "bytes": 1638,
+      "sha256": "e50dfe8bdb896aab5ba511d9c40084b2f4954d92a9c7e3d2a3cd5c201b10d714"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/00-alto-nivel.svg",
+      "bytes": 9869,
+      "sha256": "d5b83de7c4d67d1eecc28d0445b0ce1572e29ab77e3096de1573115c477f7104"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/01-primera-descomposicion.png",
+      "bytes": 296673,
+      "sha256": "51106ff7dda5198dd5e92cf8229cc16fb24fc9895f29c229eb92ae9e88f86069"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/01-primera-descomposicion.puml",
+      "bytes": 2627,
+      "sha256": "b6a546221d8035f50b1fd226f55b017a365d7c074d5fa2e78863d862f12dde7a"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/01-primera-descomposicion.svg",
+      "bytes": 18164,
+      "sha256": "b234733b16247fcedd501cb0eed4bfdd683cd8df9f80ff496465682a37a51483"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/README.md",
+      "bytes": 10681,
+      "sha256": "f5f245625a602da0b08b0249d0e4cc595ec75d6d4039f851e7483bf6a06102cb"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/account-casos-de-uso.png",
+      "bytes": 385808,
+      "sha256": "dde53c0aa4a5b6c15e1e4ca445d4db34636ed3dd7f50bd511609735e603634cc"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/account-casos-de-uso.puml",
+      "bytes": 3378,
+      "sha256": "0c3c1f5e2d3ca1ef86d591a5fb200028c18591d54645609f5e14c64f9d4273ca"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/account-casos-de-uso.svg",
+      "bytes": 23164,
+      "sha256": "26b44c146e1d6949b55f450e698c4a50fd5205e830bac81651457b7d2dc1e579"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.1-abrir-cuenta.png",
+      "bytes": 93372,
+      "sha256": "dee3fd1949f5eef7c957af6bef78cb7b64024df2d58fccae6d9afe8f3764a0a2"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.1-abrir-cuenta.puml",
+      "bytes": 1223,
+      "sha256": "250c918c3ce2e039e8f8eba9f853927c90734fb85c192dd2e29f453f8f27979b"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.1-abrir-cuenta.svg",
+      "bytes": 11574,
+      "sha256": "d7c151ef4ca9b75d794d6bba1bcda14eb1226853e3e1bf2a9e1ce0cc30b0081f"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.2-consultar-saldo.png",
+      "bytes": 66048,
+      "sha256": "3359e0cab30843f1bb5960fd507fac84fd92c394848c2fa5de8c4838ca59285f"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.2-consultar-saldo.puml",
+      "bytes": 873,
+      "sha256": "1f36cf6ccb383174ecfa79773fb87d34e8b38f38fade952b1da4fb51bb386c40"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.2-consultar-saldo.svg",
+      "bytes": 8332,
+      "sha256": "29b8f3dfba54096a5870993b79b628de6bf0a7679b806dced40bf0c7fbdd1557"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.3-aplicar-movimiento.png",
+      "bytes": 87717,
+      "sha256": "7bac3db1ed525745e0d5270ca70ea7a8559dba1d36b3ef06c9db5d8af3cc557f"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.3-aplicar-movimiento.puml",
+      "bytes": 1173,
+      "sha256": "70f156b8f113ba50fb63cf2bf8ea78e482da7bd8043e3d8395c756f74d320267"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.3-aplicar-movimiento.svg",
+      "bytes": 13829,
+      "sha256": "7df28f1037109a0543a67b281eb29698ae2cfe695e8e04e491e0d4b3433cb4bd"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.4-gestionar-estado.png",
+      "bytes": 94234,
+      "sha256": "d8184ec42921c0bdad0d8e6e884facb650a89549a1587d3e7a3d967b9e72aa12"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.4-gestionar-estado.puml",
+      "bytes": 1202,
+      "sha256": "abce66ded8ade7352c06add8ba652cad688f9f8bf70f5dcfa40ac23180341753"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.4-gestionar-estado.svg",
+      "bytes": 12767,
+      "sha256": "34f78bb1b63c152c932fcc373869ea66d19f452c9591675e91ca9992bfe7905e"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.8-desactivar-cuentas-inactivas.png",
+      "bytes": 108867,
+      "sha256": "00dc8e404ef74edbc764dde1bd3b1569ff89b03780f7dbfe37c79ae9b2f2087d"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.8-desactivar-cuentas-inactivas.puml",
+      "bytes": 1377,
+      "sha256": "01ef1887e9d6c2524632a3a58ab09cb185c095aa93a87feab5e8262a3d31490d"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.8-desactivar-cuentas-inactivas.svg",
+      "bytes": 11492,
+      "sha256": "6f5036f42e2c7d5f433e41fba84dcf689bc186f736d13c010a0701e1822e9d68"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.9-registrar-deposito.png",
+      "bytes": 136790,
+      "sha256": "4588f6ed43754fa4849a5678859796412a42d327a2301a0973dd03dfcf5e7a8d"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.9-registrar-deposito.puml",
+      "bytes": 1663,
+      "sha256": "80e4a2dbfd64f6258ba40935a28621b63bcc3b40484616db51cadd261cac9f93"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/account/flujos/CDU002.9-registrar-deposito.svg",
+      "bytes": 19492,
+      "sha256": "47fcb73700a6f0560bf55bdddb4b5688cbcc851e865523224196fed6db5cc975"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/customer-casos-de-uso.png",
+      "bytes": 424205,
+      "sha256": "24fa5384bd34627b53c8ce0a8f01f9996019a54074ff5eb4438b7b9fa9ba0d5e"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/customer-casos-de-uso.puml",
+      "bytes": 3524,
+      "sha256": "0bfbdf8113df937f0d0b430e99936b4850a9ab508189ef19d812ba8ab7ecb989"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/customer-casos-de-uso.svg",
+      "bytes": 25369,
+      "sha256": "f2aabd28377b08a5b9675fadce4996878ac1ae7df36c9b552182c59f6eacbae8"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.1-registrar-cliente.png",
+      "bytes": 96700,
+      "sha256": "17ece64967ed439556c2fdc1ae8f40959af52f7d459241da3fa91b59189ba2b2"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.1-registrar-cliente.puml",
+      "bytes": 1263,
+      "sha256": "d57bda75c0a2319311380982456b43a6abde577d7f3550a7d045108e341edbfc"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.1-registrar-cliente.svg",
+      "bytes": 13626,
+      "sha256": "790af258725dc5e4005003dbd982de6dad09fdffcf938a37dd7769582233f11e"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.11-solicitar-restablecimiento.png",
+      "bytes": 105594,
+      "sha256": "b7f8d711ebbc8280cb73fbd520a3de8a020abe71890da7327b8dbfc410f7e905"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.11-solicitar-restablecimiento.puml",
+      "bytes": 1324,
+      "sha256": "318b20f94cb2650b47aa1ffd448121d5360bc95c3bb543244b55fbad8b4ce92b"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.11-solicitar-restablecimiento.svg",
+      "bytes": 12484,
+      "sha256": "4b7a6e0a72aefd20969c54cbc715bc4d39eeeed5536569f26c5dd41591503f27"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.12-restablecer-contrasena.png",
+      "bytes": 128840,
+      "sha256": "24be947967b3a7dffcf935abad08fab4cf699bec00e539b24a8d14498cd10a1f"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.12-restablecer-contrasena.puml",
+      "bytes": 1572,
+      "sha256": "34390c2cfb2ef528ee55b29740889db94b41389aa8c53e823d50c302e60e580d"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.12-restablecer-contrasena.svg",
+      "bytes": 13592,
+      "sha256": "78d22cd5f759b2f45298af5a1235c9ede271e80b3ae7133d1397411ee25a8837"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.13-cambiar-contrasena.png",
+      "bytes": 119143,
+      "sha256": "f0de7e94aeeac805e96f4e9866f709bd6cfb8beb20d4d9ba5d9d4ed7a8b4b179"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.13-cambiar-contrasena.puml",
+      "bytes": 1476,
+      "sha256": "f7c2b3c4f3de3d2b418541f2c2c291d2187a33d40a88189554a907b2c6c9017d"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.13-cambiar-contrasena.svg",
+      "bytes": 14278,
+      "sha256": "fee6c413550da5184c270fb348eafa4e39101a5779b221f7a56667fc154e1a8e"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.2-activar-cliente.png",
+      "bytes": 83053,
+      "sha256": "4189bd8d3600960fce37d02c8f65064f81d7e988c0d3929c22ff4723e0663abc"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.2-activar-cliente.puml",
+      "bytes": 1040,
+      "sha256": "89bde317f83fb212cbb927c53a163b2633acdee26dbdd0ab2e87f6f7012fe9f2"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.2-activar-cliente.svg",
+      "bytes": 11744,
+      "sha256": "b391e205e11e05781e80978d48c711232d33970dfd51337ebfcc9a92bc9a4298"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.3-iniciar-sesion.png",
+      "bytes": 92023,
+      "sha256": "94feda494898b8e0cf5a8ffd1642e24d9d033d48887939ee69092bb0b53cdeca"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.3-iniciar-sesion.puml",
+      "bytes": 1185,
+      "sha256": "1f9c51b344f71404a8382adeef2411ab525bd8aceb0e2e8f81b13d5a77ae946b"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.3-iniciar-sesion.svg",
+      "bytes": 14345,
+      "sha256": "1ae02d0429489fa29ff25b4f283163a279f9336f6f025ea7ba32d990e36c8237"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.4-actualizar-datos.png",
+      "bytes": 65711,
+      "sha256": "611d33e306c46206090bf3fcca78aa0eab498adba92c9c70cfeacf421130cedc"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.4-actualizar-datos.puml",
+      "bytes": 891,
+      "sha256": "ddaa2a37d920d990878f38225832efb79dc0066b8ad89e65c3ec5e8358bc0cc4"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.4-actualizar-datos.svg",
+      "bytes": 9225,
+      "sha256": "b661dcd6c990cccfe822f8d48ce6faa47bf4bc4c28e5fbd08c4ce41073d21f8f"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.5-cargar-fotografia.png",
+      "bytes": 70906,
+      "sha256": "74f156e4a12177cba40fc9b75cefbc5ed05ac1828c043ac5b74752445b3c87a4"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.5-cargar-fotografia.puml",
+      "bytes": 924,
+      "sha256": "5e5c058370cb9df221461286bea28b7747ec487225d2a30456a8a316e0a0aac5"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.5-cargar-fotografia.svg",
+      "bytes": 9803,
+      "sha256": "70fce0f078e64eebd48caece48fc6f7b158acaa68150e54be62b4b0e07191d5b"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.6-validar-identidad.png",
+      "bytes": 113520,
+      "sha256": "e858beefed8504ee5c44e1af783eddee4cca076b54188f919d262981f4d08ff6"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.6-validar-identidad.puml",
+      "bytes": 1424,
+      "sha256": "725acbf7a0061e9871ecc4d56c2a258c89c8d3cdbf0524b8d1317440b1cfe956"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/customer/flujos/CDU001.6-validar-identidad.svg",
+      "bytes": 12894,
+      "sha256": "d0bae71fa41fdc09238c95ed5b6d2f91c9a33500b1e6019d38c622b5829887a9"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.1-registrar-auditoria.png",
+      "bytes": 75788,
+      "sha256": "71d2e9570fa65f2669dc974b3d7b882467bcac005902ca603d3083cd81a97c55"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.1-registrar-auditoria.puml",
+      "bytes": 1035,
+      "sha256": "264403f8fab0e86b0cb7e923c9887e60fe12101272887a73a2fa286d250ccac0"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.1-registrar-auditoria.svg",
+      "bytes": 11450,
+      "sha256": "be861a31e51b3dd52c62a8684a0092eeee82adaf152dc485a6014b197432b782"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.2-enviar-notificacion.png",
+      "bytes": 72323,
+      "sha256": "6ffffa236810b95d81ebca72f506bd1ca762f89168f1b4adad023a81285e4212"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.2-enviar-notificacion.puml",
+      "bytes": 1037,
+      "sha256": "9481b8320b8e77118fa562eb605e3c4b1e16997760d11f294a50524df254cefa"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.2-enviar-notificacion.svg",
+      "bytes": 11114,
+      "sha256": "14d90b0da2dc1d7f8042ed588023ee293e200eafb81cf5d4100239db37894b14"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.3-consultar-auditoria.png",
+      "bytes": 57423,
+      "sha256": "aaafc3369fb640b05232ef4473db7893753b13c28915f49a9e9e42bb17aeb4ea"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.3-consultar-auditoria.puml",
+      "bytes": 806,
+      "sha256": "b91867c5b5aa6819c8dff4d5d9db87e3231fc805f94624084157e452eaf32e61"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.3-consultar-auditoria.svg",
+      "bytes": 6609,
+      "sha256": "7a36d8e52af9ab43d7825279640f46ae5ed062670f109f44f123736b6fb40a2b"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.4-consultar-notificaciones.png",
+      "bytes": 92030,
+      "sha256": "7708477a6051c7b57260ff2b1fa892f0b4b815d2a7a4e22ef0b09543a843981f"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.4-consultar-notificaciones.puml",
+      "bytes": 1230,
+      "sha256": "1763c872edc2d2369da1ebba471bbb0b7bd4828aca84a2b00bedd1b0244e0cb6"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/flujos/CDU005.4-consultar-notificaciones.svg",
+      "bytes": 13222,
+      "sha256": "ac4c62bdd34ed34450e070af0b10bb9ef9637b0c99f0f7495ea8a63968c90540"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/notification-audit-casos-de-uso.png",
+      "bytes": 131994,
+      "sha256": "d5ef264f57e2538de9f6001950d1438b01555161fde26729d0c3851d630227fe"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/notification-audit-casos-de-uso.puml",
+      "bytes": 2504,
+      "sha256": "d49762d6c695411db549d9ade84f46000e5ff62a67469a65e32ebe32faf30d61"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/notification-audit/notification-audit-casos-de-uso.svg",
+      "bytes": 16281,
+      "sha256": "c3eee64d3bcbd9f712eda4fada3759703af5951028c8e24fd078c5b1636c8088"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/flujos/CDU004.1-procesar-pago.png",
+      "bytes": 123605,
+      "sha256": "9376a1eaf49e3a9147668c27b507bef245f0ab90098790596adbc7ef7a94223b"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/flujos/CDU004.1-procesar-pago.puml",
+      "bytes": 1560,
+      "sha256": "4e82ecc9e8eab354eeb68685c2eb0bb92605b216278a7788a735fcb9106ed451"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/flujos/CDU004.1-procesar-pago.svg",
+      "bytes": 17292,
+      "sha256": "592ffcb1f6cc0d5ea85c982791909068908f771b9794a268cf8f7998692938e2"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/flujos/CDU004.2-consultar-historial.png",
+      "bytes": 67056,
+      "sha256": "1a3e14ec228f7a94c029be77813c0cc5dde0225fa854782960b78f6852062d9f"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/flujos/CDU004.2-consultar-historial.puml",
+      "bytes": 900,
+      "sha256": "bf5793c3b2dcff624ca7c952ab892f4457436e558938491acfa3ff600fc402f9"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/flujos/CDU004.2-consultar-historial.svg",
+      "bytes": 9437,
+      "sha256": "fa5c8155b64a9fc0d5b6f011820efd9055decda31b5ae47d36c7db77746ca2a1"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/payment-casos-de-uso.png",
+      "bytes": 258917,
+      "sha256": "31c80fce60991d41853874cd8d3d05e434812d3c802942d31692e04d98d6e83a"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/payment-casos-de-uso.puml",
+      "bytes": 2502,
+      "sha256": "1b3b6c852093207c96b7efd5c03ba72a5278192679c3dd5d2c0f13acdc15d4ff"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/payment-casos-de-uso.svg",
+      "bytes": 17148,
+      "sha256": "bdf2bc92a48b16cf2bf8700a54d5d9292ca18718e57c2921ab820261ede7b3e5"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.1-transferir-fondos.png",
+      "bytes": 348591,
+      "sha256": "376ad38e42fc5c32934d525bde44e1a6fb95b493f83f562a64183bec6efae23b"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.1-transferir-fondos.puml",
+      "bytes": 3710,
+      "sha256": "97424c28e8901695b631c9490e8cfd2f7dc4f299980d4eeaa3df047bf9c8d324"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.1-transferir-fondos.svg",
+      "bytes": 46072,
+      "sha256": "6503e580169bfe1a491b59b14022c9387095a8bcd163d1ad5836b7b8fc8f4d49"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.10-consultar-historial.png",
+      "bytes": 111029,
+      "sha256": "487f9343067a3d4ff7d938065f0383d0dd856452e24c90f648b4ee1ad33c630f"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.10-consultar-historial.puml",
+      "bytes": 1382,
+      "sha256": "21403db92f0db586ef7ba162a6bf55f568bca8131f037a971f0892730d1db9f0"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.10-consultar-historial.svg",
+      "bytes": 12587,
+      "sha256": "0bbd5ec5772f9e9debedc06bcf2f0419447967baeb41a39b4ac909d54e3d4409"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.2-consultar-estado.png",
+      "bytes": 69831,
+      "sha256": "66c315ea2cb1745880c7991eb47703f90f999873e78502a062ed98e6235c4f0b"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.2-consultar-estado.puml",
+      "bytes": 917,
+      "sha256": "4abaf4f895820372178959ce64d4d0f0403e78f39010d9db492cdd74f77512ca"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/flujos/CDU003.2-consultar-estado.svg",
+      "bytes": 8739,
+      "sha256": "e1f5b94c0e47b8b4fcc3d3ae04a73e45faeea0d3fed9335ef82eba9bfae0477d"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/transaction-casos-de-uso.png",
+      "bytes": 348922,
+      "sha256": "2896b0d329f2bbd520667348511736d8e17696835df1c242cbe0215715a1d561"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/transaction-casos-de-uso.puml",
+      "bytes": 3456,
+      "sha256": "cac5d2ff4623739126ce92b47b5d383e8624224910079d6ae2bfec20c8d0af21"
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/transaction/transaction-casos-de-uso.svg",
+      "bytes": 24562,
+      "sha256": "b6d30141be5ede411c6c5e6739a470e8e6c75f9c75ad8afc327dfd1b55d2a84b"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/README.md",
+      "bytes": 14013,
+      "sha256": "63291b34877f217cef87f4b5933b9cf8bd8a7f9274cc16632382c7c02e05530c"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/account-er.dbml",
+      "bytes": 4745,
+      "sha256": "771df5526ca46b04a5d1fb6a55e8061b4bd93c274302b0a3c80675ca50bb182a"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/account-er.png",
+      "bytes": 319482,
+      "sha256": "360ee88ef977963ff72fb1b914638b82f382ff369cbee290ac46587125dfe54c"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/customer-er.dbml",
+      "bytes": 4350,
+      "sha256": "44172667da0dee866216cc1fce720487857f76cc01e1c092e6b16de4eafbcacc"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/customer-er.png",
+      "bytes": 345721,
+      "sha256": "e42aeb24c4f49f27b922d362841e16f0b6058570e6ab2403019aa63d1f03ffe2"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/notification-audit-er.dbml",
+      "bytes": 4444,
+      "sha256": "713ae13736b166a39d24319350c1b703948934dc95e53e30918ac23117bdf8f3"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/notification-audit-er.png",
+      "bytes": 302637,
+      "sha256": "53dc0a83da55274ee98e5bdad3b61a35976f1c27e2a196be6f3870ebcdb840c9"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/payment-er.dbml",
+      "bytes": 13684,
+      "sha256": "e131cca7828f221f414e8d644e253f719bfbb08df2eccb833d3961bf5018e746"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/payment-er.png",
+      "bytes": 839516,
+      "sha256": "29c698b37f44bd1c8ff762998ba110417726b09cf9ab7b5e537a99f4ba0b0876"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/transaction-er.dbml",
+      "bytes": 5157,
+      "sha256": "3191eee459e058b09b9cc19d9fa57a360ff3ba2804f7e1b3ea77dc17e7d250c4"
+    },
+    {
+      "path": "docs/architecture/diagrams/er/transaction-er.png",
+      "bytes": 366295,
+      "sha256": "74a6feeb218927db8f03699fe7c4f66181869433c10ee5f2e22c612cc6ffaa71"
+    },
+    {
+      "path": "docs/architecture/sequence-create-account.md",
+      "bytes": 817,
+      "sha256": "8f582aa5824925ddb412a4cd7d84580e675d45764dc0cc825f507100feccee23"
+    },
+    {
+      "path": "docs/architecture/sequence-transfer.md",
+      "bytes": 1786,
+      "sha256": "276238ac3e356f5f108b4025805b07644cff8a8085da65e84efc52f6baf7ddd3"
+    },
+    {
+      "path": "docs/architecture/use-cases-uml.md",
+      "bytes": 9872,
+      "sha256": "493326f9b14514ff380f2bc422f6972cdb9658ccbbc4ab80c065aba727f224c5"
+    },
+    {
+      "path": "docs/dda.md",
+      "bytes": 63462,
+      "sha256": "70dfd1649b3de1fd749990d53a20d87692c8db02b7a0a01fe50a00e1c3897521"
+    },
+    {
+      "path": "docs/domain/README.md",
+      "bytes": 9969,
+      "sha256": "bf5cc23614c94bc51c2c42fa67212f3481ca4571f1a1897ac540bd99b1e975d7"
+    },
+    {
+      "path": "docs/domain/actors.md",
+      "bytes": 7748,
+      "sha256": "47a0fbb0ed8f044abe299e253da3fa517f69874acc3a211262fc1b453d3e8253"
+    },
+    {
+      "path": "docs/domain/bounded-contexts.md",
+      "bytes": 8279,
+      "sha256": "0f32b644904408086ea8731cf7f469aa32c927f9f06dc6c6d430b2f27b7e8922"
+    },
+    {
+      "path": "docs/domain/entities.md",
+      "bytes": 26939,
+      "sha256": "c722f40488dfb751c5ae816b94816c408b292527ef20ef5c6388162c9ab3130e"
+    },
+    {
+      "path": "docs/domain/message-catalog.md",
+      "bytes": 14019,
+      "sha256": "6876a856a73edd4c62cca1f6fdc33a7380ff4f9f66fd016c48348bab43ac5a26"
+    },
+    {
+      "path": "docs/domain/use-cases.md",
+      "bytes": 19384,
+      "sha256": "e4efc0435a348364ef397d2cd2379bc72ddc7cf47240483bbf030fb65abbee72"
+    },
+    {
+      "path": "docs/events/README.md",
+      "bytes": 10637,
+      "sha256": "57c26de3dcb52bcf2aab1610c049a2a8944eec38e60e3df361faef09d5aec67a"
+    },
+    {
+      "path": "docs/events/catalog.md",
+      "bytes": 116195,
+      "sha256": "5244014fd7b1e46212b635f507f4a8ccc41bfc20668940338ffb670e8c75d32f"
+    },
+    {
+      "path": "docs/events/envelope.md",
+      "bytes": 5593,
+      "sha256": "366fc256980dc299d7b948ea7dcc917a0c81498d5bff632d2503b9094c9eb9c3"
+    },
+    {
+      "path": "docs/events/examples/compensated.json",
+      "bytes": 7150,
+      "sha256": "799962d2cbefc544f4db80e282f4978ce962ac8cc7aaa307af16503a4237b3df"
+    },
+    {
+      "path": "docs/events/examples/happy-path.json",
+      "bytes": 7219,
+      "sha256": "3656db04779cd7fa90a526a0b9cd01af4a5cd9036d6b44e5488d2bf8f268d4ca"
+    },
+    {
+      "path": "docs/events/examples/rejected.json",
+      "bytes": 3786,
+      "sha256": "77a3c8122572b5a1b8a178fefa2029378b03ffd974e5d5b1b4c4bb7b7454c875"
+    },
+    {
+      "path": "docs/events/saga-transfer.md",
+      "bytes": 15403,
+      "sha256": "22663dfdb6a51ee42a37749756996bde777f61b167df079e1b8d38785b01a1d9"
+    },
+    {
+      "path": "docs/events/topology.md",
+      "bytes": 15274,
+      "sha256": "03e2266690583e50d8d9ecd6eb0436a3e421fad0b99e633536099f51078683b3"
+    },
+    {
+      "path": "docs/generated/db-schema.md",
+      "bytes": 49127,
+      "sha256": "6ceff5bf1f873cc3d6401db43a500c0a51c4fbdc6b4ae1f53705177186070a79"
+    },
+    {
+      "path": "docs/images/fase3/README.md",
+      "bytes": 4018,
+      "sha256": "538cdc066a933f1de4b34792fce0c93dd77b1530163aaa1e27ec204e4aaec3b8"
+    },
+    {
+      "path": "docs/images/fase3/manifest.json",
+      "bytes": 9799,
+      "sha256": "0dc3000ae37d435da007728be4156946e1072ec6b9b8c21675c201667910689e"
+    },
+    {
+      "path": "docs/images/fase3/manual/01-login.jpg",
+      "bytes": 22105,
+      "sha256": "4c61a4ca326a19bbeb954339ed07ee47223c09fea66b2a48baa80d95dc529931"
+    },
+    {
+      "path": "docs/images/fase3/manual/02-cliente-dashboard.jpg",
+      "bytes": 85736,
+      "sha256": "a0ae422f3581bb4747e607c0eac09b91a261132f1fa0d472289f487f7a989388"
+    },
+    {
+      "path": "docs/images/fase3/manual/03-interbank-formulario.jpg",
+      "bytes": 69365,
+      "sha256": "23720017f910ab7ad7e4d7376498cc3bf36d2389b20e0568b125eb448a48a59d"
+    },
+    {
+      "path": "docs/images/fase3/manual/04-interbank-historial.jpg",
+      "bytes": 32700,
+      "sha256": "145d26e71cbf7ec484937f658da544a698325991199e06b66f9dedd6a96b4b07"
+    },
+    {
+      "path": "docs/images/fase3/manual/05-interbank-detalle.jpg",
+      "bytes": 73840,
+      "sha256": "5fcc271e34f3aba2f3acdfd4d8ea8a38fcc1ff82d5022ee367e991e287097213"
+    },
+    {
+      "path": "docs/images/fase3/manual/06-administrador-dashboard.jpg",
+      "bytes": 81645,
+      "sha256": "be7de3dfa64c6857cf0b900af3e3b339082975032e038e25b41e4c1ec9748e78"
+    },
+    {
+      "path": "docs/images/fase3/manual/07-auditoria-filtros.jpg",
+      "bytes": 173327,
+      "sha256": "4a1af9ebce155b2dc05a34dc3afc07bd146e4e8febcc8f14af14d9642b369f6a"
+    },
+    {
+      "path": "docs/images/fase3/manual/08-auditoria-detalle-traza.jpg",
+      "bytes": 303768,
+      "sha256": "848f7817d71e101a7a071fb02bf060342084c669f72d51097745e4c8060216b7"
+    },
+    {
+      "path": "docs/images/fase3/manual/09-pagos-monitor.jpg",
+      "bytes": 91121,
+      "sha256": "a6a922e2c176782f7a1a149f461772cf667ae4b45c87fd8c7887b28ad25f6ad9"
+    },
+    {
+      "path": "docs/images/fase3/manual/10-cajero-cuentas.jpg",
+      "bytes": 59481,
+      "sha256": "12911db02f22a4796918d233fa2ffd37ec06d6f022d5a69bbf542ec22961f58b"
+    },
+    {
+      "path": "docs/images/fase3/manual/11-notificaciones.jpg",
+      "bytes": 33475,
+      "sha256": "5b11939e648c0b56cea6f42c61a68585b228cf0c23d2fcb6dc28f4cb2f473203"
+    },
+    {
+      "path": "docs/images/fase3/manual/12-grafana-explore.jpg",
+      "bytes": 130142,
+      "sha256": "e714d48f45bc9e1a39b1d2a62571e330ab4517bc14591c3d37769121a87347d1"
+    },
+    {
+      "path": "docs/images/fase3/observability/01-banco-pareja-prod.jpg",
+      "bytes": 40300,
+      "sha256": "1a6b5fee7e64019f41512461cfd3987662b77a00610d3e118885118a211455bc"
+    },
+    {
+      "path": "docs/images/fase3/observability/02-consumer-lag-dev.jpg",
+      "bytes": 40502,
+      "sha256": "ce3060c1e91b735baf60cade9b724ee1ab99b7026a79aeb6b2f99cf42923083f"
+    },
+    {
+      "path": "docs/images/fase3/observability/03-plataforma-hpa-dev.jpg",
+      "bytes": 38022,
+      "sha256": "f9364a533f661826d7edde472523acaafe5ea9e619a4abcff8fd4ac25baefb30"
+    },
+    {
+      "path": "docs/images/fase3/observability/04-errores-dev.jpg",
+      "bytes": 92672,
+      "sha256": "991198b224cba072949ffe1c639e87f7cf8e1c74804c8bd9ec6f7537327fa09a"
+    },
+    {
+      "path": "docs/images/fase3/observability/05-estado-prod.jpg",
+      "bytes": 124305,
+      "sha256": "afc56bdde25b337bbf5617e637f5c1b5bc0ce2f16cb52cd777d4400a9e2fca41"
+    },
+    {
+      "path": "docs/images/fase3/observability/06-flujo-trazas-prod.jpg",
+      "bytes": 40451,
+      "sha256": "cdf5d49589bfb903649524f2db577a1a8e6500dbd31ff3b809552f673803aaa1"
+    },
+    {
+      "path": "docs/images/fase3/observability/07-logs-prod.jpg",
+      "bytes": 71856,
+      "sha256": "0d067667cd1fccb6a65db86e9b3b2875881013eda3629473d8887097fc709875"
+    },
+    {
+      "path": "docs/images/fase3/observability/08-metricas-sli-dev.jpg",
+      "bytes": 46116,
+      "sha256": "654b27a515b6b896d19fdf01491691fdde28403a2bec207cfa66703431ee2f3f"
+    },
+    {
+      "path": "docs/images/fase3/observability/09-slo-error-budget-prod.jpg",
+      "bytes": 36079,
+      "sha256": "f1435136c471a02cdb4d5478e2c9c23a7f8685902f8540f83d387ef3ab7a165e"
+    },
+    {
+      "path": "docs/images/fase3/observability/10-compensacion-tempo.jpg",
+      "bytes": 131037,
+      "sha256": "5225cee7fe9067f64c6a7cbcbf2ce8f5d66894742b29e69a3ef6fbfb7dbdf35c"
+    },
+    {
+      "path": "docs/images/fase3/observability/11-traza-a-logs.jpg",
+      "bytes": 102037,
+      "sha256": "27416265567a8790ea45dde54be5d01dfd2d38b72d0ade4af5444e5bc5b0ddd8"
+    },
+    {
+      "path": "docs/images/fase3/observability/12-log-a-traza.jpg",
+      "bytes": 116992,
+      "sha256": "f431e2d849e1a34db5467eb7c9759b8fb902d608925d55c2bd06249e0ae658c3"
+    },
+    {
+      "path": "docs/images/fase3/observability/13-marcas-despliegue-plataforma.jpg",
+      "bytes": 100443,
+      "sha256": "7b3c2206db4a9bf2f7a5e0b162d527945b1ed91eea78ad8fe8acb0bc385c2680"
+    },
+    {
+      "path": "docs/images/kubernetes/README.md",
+      "bytes": 3136,
+      "sha256": "7f8948b6086645ab1c7faff84d9f414a7b3f4fb1f54e5e095208ca399ee29512"
+    },
+    {
+      "path": "docs/manual-tecnico.md",
+      "bytes": 11577,
+      "sha256": "3755d3b88fdc9d767cd3be9ef8c76a6b08a6798d4c7974a16deb7197b48d547d"
+    },
+    {
+      "path": "docs/manual-usuario.md",
+      "bytes": 17471,
+      "sha256": "b5cad35f5b1e12f705ca3b53c238d0397cae5089c1a3f19cf325ed63aa57500a"
+    },
+    {
+      "path": "docs/manual/README.md",
+      "bytes": 1527,
+      "sha256": "68c190b9b84c9da64caeaa1701d3fa9447a51a986c100677577943d5cd78a0f8"
+    },
+    {
+      "path": "docs/manual/recorrido-fase3.md",
+      "bytes": 5334,
+      "sha256": "b1eab3c16a4fa84ca9d12a85bd93092bf5b267422c5a62ed5ac140bcddcc401e"
+    },
+    {
+      "path": "docs/manual/recorrido-visual.md",
+      "bytes": 131561,
+      "sha256": "4c857758dc7f800fd1018e08dbfda546d6908084988e99340fb72f1533a8a902"
+    },
+    {
+      "path": "docs/manual/rol-administrador.md",
+      "bytes": 5537,
+      "sha256": "5ab32adbc5a90c57e60e1b7179e6bdbc5cfdcb7766e8a1c7d6d257800a633976"
+    },
+    {
+      "path": "docs/manual/rol-cajero-receptor.md",
+      "bytes": 4505,
+      "sha256": "aae7902acee8d0d654fbf247eb305c13d74dbd0101b6216deb47c3e816535c66"
+    },
+    {
+      "path": "docs/manual/rol-cliente.md",
+      "bytes": 5096,
+      "sha256": "7fc4bc076b892a3489c57bef0fccab997dc1eced3a474d3933856b2bf8291b34"
+    },
+    {
+      "path": "docs/operations/CI.md",
+      "bytes": 35871,
+      "sha256": "1c1ee59eac48618b82d99fcb74597a91ddd02562c6b9881b4d6fa5c38f31d0e0"
+    },
+    {
+      "path": "docs/operations/CLOUD.md",
+      "bytes": 38811,
+      "sha256": "a7379592a6413e0a2045328781fa4def5858ffd79b6f7c7d2702e13f4f93c7af"
+    },
+    {
+      "path": "docs/operations/CONTAINERS.md",
+      "bytes": 22913,
+      "sha256": "96e392cc5a943dced73908205799e24513a6d0dd84987a99c8f747077c631a38"
+    },
+    {
+      "path": "docs/operations/DEPLOYMENT.md",
+      "bytes": 17059,
+      "sha256": "4d5e37ba38a4dda08aee261e3445c415384bccddfd66671de3fc6b980941bc79"
+    },
+    {
+      "path": "docs/operations/EMAIL_RESEND.md",
+      "bytes": 9478,
+      "sha256": "e30abf429eb82a0b00b314217d1805fce76634787900a31b0fb9ddfd78b464c8"
+    },
+    {
+      "path": "docs/operations/INTERBANK-AGREEMENT.md",
+      "bytes": 3884,
+      "sha256": "8a10c53ed44ef56653df6d8e32b705ad7c0d11a6bf382a74e96cf8575a21df3b"
+    },
+    {
+      "path": "docs/operations/INTERBANK.md",
+      "bytes": 18468,
+      "sha256": "e758e7e8b2110dea934b25ea4bbf64ba50d6c607fc483cc2f97f111f8ed70ab0"
+    },
+    {
+      "path": "docs/operations/MONOREPO.md",
+      "bytes": 6862,
+      "sha256": "e9be7b5d8aeaf901d9dfc01c078a447825fef6eff84da7c6b150713ade9ef9e6"
+    },
+    {
+      "path": "docs/operations/README.md",
+      "bytes": 3632,
+      "sha256": "1355825531ce981a3752fccc7ce787ae8e518f0f2c65de7379a8dfca606b7ed0"
+    },
+    {
+      "path": "docs/operations/runbooks/README.md",
+      "bytes": 4474,
+      "sha256": "780453a3122fd4097b69ba28ffa5a00bbef906c8c221661f9cad73f05090d422"
+    },
+    {
+      "path": "docs/operations/runbooks/consumer-lag.md",
+      "bytes": 7190,
+      "sha256": "4554b7deb4dfefaf0a1e78ccc3e96bec48e3cdfde42dc9dddf54d5eea1e60df7"
+    },
+    {
+      "path": "docs/operations/runbooks/dead-letter.md",
+      "bytes": 3585,
+      "sha256": "53874efa132fe9bfc317f173415e9753c5881a49166cd5ec83e73ae840c35618"
+    },
+    {
+      "path": "docs/operations/runbooks/gateway-availability-burn.md",
+      "bytes": 4143,
+      "sha256": "a4a7ab1a183b3529e522e891587bb35bb0d69ec211eee3260c37654bfc523557"
+    },
+    {
+      "path": "docs/operations/runbooks/gateway-latency.md",
+      "bytes": 3552,
+      "sha256": "fdb7c1cc31e6b8101f9178197355248ad9d7ead552f098ce5640ff9a400ff087"
+    },
+    {
+      "path": "docs/operations/runbooks/partner-bank.md",
+      "bytes": 8800,
+      "sha256": "9ff8b7d378ac3759cf0cc370573f894bdc29a4928b2cba6f62d0becbc06f0af6"
+    },
+    {
+      "path": "docs/operations/runbooks/restarts.md",
+      "bytes": 7069,
+      "sha256": "5de779d662edbb1bd9c4132d355dfaf8459d89cfe968538199568f78873dd20c"
+    },
+    {
+      "path": "docs/operations/runbooks/transfer-latency.md",
+      "bytes": 5811,
+      "sha256": "768fe6100194c058d7b23887d4228703cbca3909aae1984428f5c6108108d906"
+    },
+    {
+      "path": "docs/qa/README.md",
+      "bytes": 4115,
+      "sha256": "d3bde0e1dd1d734eea6b307c6b81596de303b3992e6a1cd65204143ee7334100"
+    },
+    {
+      "path": "docs/qa/T-61-documentation-audit.md",
+      "bytes": 7789,
+      "sha256": "14fc8053efe558228c5fab17898ada8595ec5ae413a9faccc534c21c3bb91134"
+    },
+    {
+      "path": "docs/qa/backend/T-60-cloud-evidence.md",
+      "bytes": 13282,
+      "sha256": "b2b75ce6697b52593fbebad6dc1e08cb89eba5f6575b4300b7652747d0baeef2"
+    },
+    {
+      "path": "docs/qa/guia-validacion-manual-fase3.md",
+      "bytes": 9921,
+      "sha256": "a2c2942f3978536c579b1046a380cc5bb277325ed2ffa5457a6ad8d1a9a0c668"
+    },
+    {
+      "path": "docs/qa/happypath.md",
+      "bytes": 26345,
+      "sha256": "090f69a4effbbcfe5107264acab537e408b942558e03a91968477c27d61fb462"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-baseline/k6-output.txt",
+      "bytes": 12531,
+      "sha256": "95e2e9af49b6032cecd16a78ac54f1e5144404eeedd090609ae606c7ff5e9f02"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-baseline/k6-summary.json",
+      "bytes": 4771,
+      "sha256": "f348a6020258ab43812980cd31967e614ae3a4ae2307b6d5c856fc1672705fd1"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-baseline/platform-samples.json",
+      "bytes": 47064,
+      "sha256": "cdaa5fadc41fd5c6c75490d1309bcf887c98ae0718cc9b01e0b1a2dbbf1b128e"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-baseline/state.json",
+      "bytes": 15082,
+      "sha256": "c2dfd28c035b40a8af9e9a6b90921394d0732d9200f696efd9f70f1b91f2e7ed"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-baseline/timeline.json",
+      "bytes": 548,
+      "sha256": "f3a8d7b89e3c6026e9398bf270d06f2a6ac12f0de837523f2986e7025fd32fcc"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-database-isolation.json",
+      "bytes": 1356,
+      "sha256": "4befab39e4b9ccc9faf97b3ff6d45e3e8c11e191146d49533f2bd63848bb23bb"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-dev-preflight.json",
+      "bytes": 973,
+      "sha256": "4f957c7af938cd6e2aa6b03a577eaef1b0a7d3799fed178687a15ed2e29ce920"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-fase3-history.txt",
+      "bytes": 25003,
+      "sha256": "47d5e8b04c1cd2edb28c4ac3128d46d88109fae13e8e795a4824a5b8eedfc437"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-gke-dev-inventory.txt",
+      "bytes": 8593,
+      "sha256": "0219e74098b7f82d9b949c27230821a37cdffecae6cf2f433f95b5b05c2d5947"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-gke-observability-inventory.txt",
+      "bytes": 5964,
+      "sha256": "0b950605f47c1c681485380c231fcdeacf8a13b2054c5ba3a28e3355cbc935a9"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-gke-prod-inventory.txt",
+      "bytes": 8541,
+      "sha256": "d8ac443a93c62ddf3d531ae21033f4dd986db40a80dcfdb30b784533c2ea485e"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-pod/k6-output.txt",
+      "bytes": 12427,
+      "sha256": "334c6c803cde0f91cae46862b14da7eb64087d82c6756d54e8df5008327cd989"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-pod/k6-summary.json",
+      "bytes": 4874,
+      "sha256": "0ec4f63a07c9d274d39ac0acbc2bdeed85bb605713b4ab09948ab3e381ad3679"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-pod/platform-samples.json",
+      "bytes": 58339,
+      "sha256": "056cacf317132d2914a61d15d2b168b71b22f889eb4e1cc449dade7f6662314a"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-pod/state.json",
+      "bytes": 15251,
+      "sha256": "59f762b0751212c83314cd74a1fd54f93e39907f7c1fe50edfcdf07a4c6cefc0"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-pod/timeline.json",
+      "bytes": 684,
+      "sha256": "45e02f452123022cb7fda29909ec4dc8488624724931ff55bc8dfc2d35996cb8"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-prometheus-snapshot.json",
+      "bytes": 44500,
+      "sha256": "13920cf7e2fc8da336e0b8f2d86f0dac6dfc0a877762af39954588f12dfb4887"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-provider/k6-output.txt",
+      "bytes": 13116,
+      "sha256": "e794b6d1c17efc9450feec13a67ac94ab0aaf37d21d4a7eaa85b361301f4154d"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-provider/k6-summary.json",
+      "bytes": 4902,
+      "sha256": "785fccb2b861daa621c2638ad90b9c93a5a9254e9bbf9e3264b7a43996e0f21a"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-provider/platform-samples.json",
+      "bytes": 44425,
+      "sha256": "9c251011812f24fdac1926f03df9bd1890d8f4fe1f800b0e04e0f6b5c91d1364"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-provider/state.json",
+      "bytes": 15106,
+      "sha256": "65c50dffe0915e98ca495d43c9d455c4470d5807fed59e7ee0ad6c31bca17c2a"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-provider/timeline.json",
+      "bytes": 738,
+      "sha256": "56c3961e1994f831d3335c32e4a88e45e01ef6112d3831fd7bc0bc50e393f306"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-summary.json",
+      "bytes": 7135,
+      "sha256": "37b2753bde0b16d38ccb85d0ed03c24c7386481cd3a20c055f124ed4076ac2b2"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-transaction-counts.json",
+      "bytes": 1381,
+      "sha256": "d87b1d78c4604353e59db7f9794c6b1f266ffc1b98b29f16227ebf7984c46373"
+    },
+    {
+      "path": "docs/qa/load/2026-10-21-window-metrics.json",
+      "bytes": 22494,
+      "sha256": "6f2f1acad324a5a5093eadee4ae3385cc3725f9529c503c600d99aaf206210a2"
+    },
+    {
+      "path": "docs/qa/load/2026-10-22-final-readiness.json",
+      "bytes": 862,
+      "sha256": "bfea51ce5e9aad9f151c82edc5c0caaef0e2d3b6e9c8832a7164613e7fec20e0"
+    },
+    {
+      "path": "docs/qa/verification/T-61-cardinality.txt",
+      "bytes": 171,
+      "sha256": "c4790d593e831196c4290e4dab83429c60299aaed759b680f58f601667f2f94e"
+    },
+    {
+      "path": "docs/qa/verification/T-61-dbml.json",
+      "bytes": 1149,
+      "sha256": "0ceac989a6741ebfd62a3e3b5c8b9765a8c7587c598cb1e6f6252ac1d7c3a6df"
+    },
+    {
+      "path": "docs/qa/verification/T-61-plantuml.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/qa/verification/T-61-structurizr.json",
+      "bytes": 336,
+      "sha256": "987de8887c5f3c5c80bba3bfcc8e9541a2729746231a1a169571f0f0e3868321"
+    },
+    {
+      "path": "docs/qa/verification/T-61-verification.md",
+      "bytes": 6427,
+      "sha256": "9e7b675d80ef4eebbfe9cbf671099769a697560aeeb4a93f58b5c66e8dd0794e"
+    },
+    {
+      "path": "docs/qa/verification/T-61-web-lint.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/qa/verification/T-61-web-unit.txt",
+      "bytes": 36808,
+      "sha256": "d4477a9263bee07dc4e0741cd2b6cd2fdf7ccfe9ae2e0ebe4684488b792aa09d"
+    },
+    {
+      "path": "docs/qa/verification/T-61-workspace-lint-attempt.txt",
+      "bytes": 4015,
+      "sha256": "441926182e34e0d258fddd2e174bc8e35401951baa59d367098fab01e8db3ee2"
+    },
+    {
+      "path": "docs/sre/postmortems/2026-10-15-banco-pareja.md",
+      "bytes": 9310,
+      "sha256": "4a7bee5fb808960e95c94ac32423461727156014f9cb520140ba1f8ecffe9031"
+    },
+    {
+      "path": "docs/sre/postmortems/2026-10-15-latido-amqp.md",
+      "bytes": 10329,
+      "sha256": "b78dd29ebbef245f9252c070330a5ae01650bf36e94c7a4ac2964bb164a81662"
+    },
+    {
+      "path": "docs/sre/postmortems/2026-10-15-pod-eliminado.md",
+      "bytes": 5880,
+      "sha256": "e1d16cc834480a1e8c7821e740ecb4ab876ce90d3f583d2f6614294b0672d083"
+    },
+    {
+      "path": "docs/sre/postmortems/2026-10-15-proveedor-de-pagos.md",
+      "bytes": 5271,
+      "sha256": "dff0dbcc565971f8a99b2902e61a4bc62b8258928c7c6e0825dce4639eec74e8"
+    },
+    {
+      "path": "docs/sre/postmortems/2026-10-19-rabbitmq-persistence-cookie.md",
+      "bytes": 5451,
+      "sha256": "ccfe667de7e11cfd9945aade281672e796c957b9ecdfc05dbcc06b569adc4a3c"
+    },
+    {
+      "path": "docs/sre/postmortems/2026-10-21-cloud-baseline-latency.md",
+      "bytes": 2322,
+      "sha256": "a0c896f9e240f4843c7080786ed255ca2468b01e37acc7367dddad273c5fdf82"
+    },
+    {
+      "path": "docs/sre/postmortems/2026-10-21-cloud-pod.md",
+      "bytes": 2342,
+      "sha256": "837b665f31a22ced865a26637e4c5fe8b92adc39361c138c11da8085b1adcb2b"
+    },
+    {
+      "path": "docs/sre/postmortems/2026-10-21-cloud-provider.md",
+      "bytes": 2339,
+      "sha256": "89d2f4068e9f414c8bc82390d845af443dbf7250227bb6c65d0f3fa53aa68628"
+    },
+    {
+      "path": "docs/sre/postmortems/README.md",
+      "bytes": 4549,
+      "sha256": "31617ce9519a8cd714897d4e801e66e62afd6826d0f05763801b25acef80c58b"
+    },
+    {
+      "path": "docs/sre/sli-slo-sla.md",
+      "bytes": 48832,
+      "sha256": "498327e01b15067cceceba3b872f0fc780131291ecf6d790517a9168f9ff6e02"
+    },
+    {
+      "path": "docs/sre/telemetry-catalog.md",
+      "bytes": 23162,
+      "sha256": "43d49348f43e3dddc643695e315be4a077d6996c0a7f6a1717bb50a51b5ebd1a"
+    },
+    {
+      "path": "infra/docker/README.md",
+      "bytes": 9910,
+      "sha256": "0c949da561145edde91524ad1457a37643836087e36805c1d47ceb5030a1b8a6"
+    },
+    {
+      "path": "infra/k8s/README.md",
+      "bytes": 6718,
+      "sha256": "df36098ca3b9b15ace60443a9edb0e844e10f8a83fca48364c7c42ea91758723"
+    },
+    {
+      "path": "infra/k8s/helm/bank-observability/dashboards/README.md",
+      "bytes": 5784,
+      "sha256": "26a1398aacfc505c3653fe73b7b6a59367c8e2f555b2385b2359b24fa241eb92"
+    },
+    {
+      "path": "infra/terraform/gcp/README.md",
+      "bytes": 9266,
+      "sha256": "bbdbba295f2fc3573b473a1b8e509f4a50c238b46397a42d1918e96fcd308351"
+    }
+  ]
+}

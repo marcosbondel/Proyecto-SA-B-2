@@ -1,7 +1,7 @@
 # Despliegue en la nube (GCP)
 
 De un proyecto de Google Cloud vacío a un sistema que responde. Es el
-procedimiento de la **Fase 2**; su equivalente local —kind, Docker, un solo
+procedimiento de **Fase II y Fase III**; su equivalente local —kind, Docker, un solo
 comando— es [DEPLOYMENT.md](DEPLOYMENT.md), que sigue siendo el camino corto
 para desarrollar y no está sustituido por éste.
 
@@ -11,7 +11,13 @@ en [ADR-015](../architecture/adr/ADR-015-ci-cd-platform.md); y por qué esta
 topología —GKE para las cargas, cinco VMs para las bases, Cloud Run para el
 frontend, un solo chart— en
 [ADR-016](../architecture/adr/ADR-016-cloud-infrastructure.md). Lo que hace cada
-workflow está en [CI.md](CI.md). Este documento es sólo el orden de los pasos.
+workflow está en [CI.md](CI.md). Este documento conserva el orden de aprovisionamiento y operación. Revisión
+**2026-10-21** contra Terraform, Helm, workflows y la instantánea GKE de
+[producción](../qa/load/2026-10-21-gke-prod-inventory.txt),
+[desarrollo](../qa/load/2026-10-21-gke-dev-inventory.txt) y
+[observabilidad](../qa/load/2026-10-21-gke-observability-inventory.txt).
+Los comandos de creación, actualización y destrucción son procedimientos; no
+se ejecutaron para esta revisión documental.
 
 ## Lo que queda corriendo al final
 
@@ -20,14 +26,25 @@ workflow está en [CI.md](CI.md). Este documento es sólo el orden de los pasos.
 | Frontend Nuxt | Cloud Run, `bank-usac-web`, público por HTTPS | `cd.yml` al mergear a `main`, si existe la variable `CLOUD_RUN_SERVICE` |
 | API Gateway | GKE, namespace `prod`, `Service` de tipo `LoadBalancer` en el puerto 3000, sobre la IP reservada por Terraform | `cd.yml` al mergear a `main` |
 | Cinco servicios de dominio | GKE, namespace `prod` | `cd.yml` al mergear a `main` |
-| RabbitMQ y MinIO | GKE, uno por namespace, sin volumen (TD-082) | con el resto del release |
-| Cinco bases PostgreSQL | Cinco VMs de Compute Engine, subred privada, sin IP pública | `terraform apply` las aprovisiona; después, nada las toca |
+| RabbitMQ y MinIO | GKE, un Deployment de cada uno por namespace; RabbitMQ con PVC de 2 GiB y nodo estable, MinIO sin PVC en su manifiesto | con el resto del release |
+| Cinco PostgreSQL | Cinco VMs de Compute Engine, subred privada, sin IP pública; cada instancia tiene base productiva y base `_dev` | Terraform aprovisiona VMs; las aplicaciones migran su propia base |
 | Entorno `dev` | GKE, namespace `dev`, con broker y MinIO propios | `cd.yml` al mergear a `develop`, sólo los componentes que cambiaron |
 | Stack de observabilidad | GKE, namespace `observability`: Collector, agente de logs, Prometheus, Tempo, Loki y Grafana. Uno para los dos entornos | `cd.yml` al mergear a `main`, o a mano con `workflow_dispatch` |
 
-**Los dos entornos comparten las cinco bases de datos.** Es una desviación
-conocida y aceptada del enunciado, registrada como **TD-070** con su remedio;
-léela antes de desplegar a `dev` creyendo que no toca producción.
+**Los datos están separados por base, la capacidad no.** `DEV_DATABASE_SUFFIX`
+vale `_dev` en GitHub y el despliegue dev lo pasa como `DATABASE_SUFFIX`; se
+verificaron las diez URLs efectivas, cinco bases por entorno
+([evidencia](../qa/load/2026-10-21-database-isolation.json)). Las cinco VMs y el stack
+de observabilidad siguen compartidos. Confirmar las cinco URLs efectivas antes
+de una prueba que borre tablas; no inferir aislamiento físico de ese sufijo.
+
+**Instantánea de entrega:** siete aplicaciones bancarias `v1.3.6` en `prod`,
+Gateway público `34.69.101.197:3000`, frontend Cloud Run y Grafana
+`35.255.103.13:80`. `dev` usa Gateway `136.71.158.228:3000` y carece de mock;
+`INTERBANK_PARTNER_BASE_URL` está vacío, de modo que el envío interbancario
+está desactivado allí. Producción **sí contiene el mock BANK99**: no se
+presenta la integración observada como un banco independiente. No ejecutar
+fallos/carga de prueba en producción.
 
 ---
 
@@ -38,7 +55,7 @@ léela antes de desplegar a `dev` creyendo que no toca producción.
 | Google Cloud SDK | `gcloud version` |
 | Terraform ≥ 1.5 | `terraform version` |
 | kubectl | `kubectl version --client` |
-| Helm 3 | `helm version` |
+| Helm (comprobar versión antes del rollout; se han usado 3 y 4) | `helm version` |
 
 Y un proyecto de GCP con facturación habilitada, sobre el que tengas `owner` o,
 como mínimo, permiso para crear redes, VMs, clústeres, repositorios de Artifact
@@ -142,8 +159,11 @@ de observabilidad— y las tres deudas están **cerradas**:
 - **El frontend de Cloud Run** lo actualiza `cd.yml` en cada merge a `main`,
   siempre que exista la variable `CLOUD_RUN_SERVICE`.
 
-Queda **una** desviación conocida, y no es un recurso: `dev` y `prod` comparten
-las cinco bases de datos (**TD-070**).
+La separación de nombres de base ya está configurada mediante `_dev`; no
+supone separación de las VMs. Otros límites actuales son MinIO sin PVC,
+NetworkPolicies no aplicadas y acceso HTTP público a Gateway/Grafana. El
+inventario de deuda debe contrastarse con esta instantánea antes de anunciar
+que no queda ninguna desviación.
 
 ### Lo que esto cuesta
 
@@ -152,9 +172,9 @@ Consideraciones de costo). Con los valores por defecto de `terraform.tfvars`:
 
 | Recurso | Dimensión | Nota |
 | --- | --- | --- |
-| GKE, un pool zonal | 3 × `e2-standard-2` (6 vCPU, 24 GiB) | Las siete cargas piden 50 m de CPU cada una; el stack de observabilidad de T-49 (Collector, Prometheus, Tempo, Loki, Grafana, kube-state-metrics) cabe en torno a 1,3 vCPU y 4 GiB, así que **no hace falta subir el tipo de máquina** — sí vigilar el pico del HPA durante las pruebas de carga de T-51 |
+| GKE, un pool zonal | 3 × `e2-standard-2` (6 vCPU, 24 GiB) | Requests/limits y HPA compiten con dos entornos y observabilidad. Verificar presión y réplicas durante carga; el tamaño declarado no prueba capacidad ni que cinco réplicas de cada componente quepan a la vez |
 | Cinco VMs de PostgreSQL | 5 × `e2-medium`, sin IP pública | Una por servicio, por el aislamiento de datos de la Fase 1 |
-| Cloud Run | `min_instance_count = 0` | No cuesta nada mientras nadie abra el portal |
+| Cloud Run | `min_instance_count = 0` | Cero instancias mínimas; revisar facturación de red, imágenes y otros recursos por separado |
 | IP reservada del Gateway | 1 dirección regional | Se cobra igual reservada que en uso; por eso `dev` usa una efímera |
 | Artifact Registry | 7 imágenes por versión | La política de limpieza evita acumular una copia del sistema por commit |
 
@@ -166,7 +186,7 @@ Retención de telemetría: **7 días**, la que fija T-49, por la misma razón.
 | Cuota | Límite | Lo que consume el sistema | Margen |
 | --- | --- | --- | --- |
 | `INSTANCES` | 8 | cinco VMs de PostgreSQL + tres nodos de GKE = **8** | **cero** |
-| `IN_USE_ADDRESSES` | 4 | Cloud NAT, el Gateway de `prod` y el de `dev` = 3 | 1 |
+| `IN_USE_ADDRESSES` | 4 (medición histórica) | NAT, Gateway `prod`, Gateway `dev` y Grafana = 4 según el uso documentado actual | comprobar cuota efectiva antes de crear otra dirección |
 | `CPUS` | 32 | 6 (nodos) + 10 (VMs) = 16 | 16 |
 
 De ahí dos reglas para el stack de observabilidad:
@@ -174,9 +194,11 @@ De ahí dos reglas para el stack de observabilidad:
 1. **Cabe en los tres nodos que ya hay o no cabe.** No se puede añadir un cuarto
    nodo sin pedir un aumento de cuota, así que el stack se dimensiona con
    requests explícitas y se verifica con `kubectl describe node`.
-2. **No se expone por un `LoadBalancer` propio.** Grafana se alcanza por
-   `kubectl port-forward`, no por una cuarta IP pública: queda una sola libre y
-   es el margen de seguridad de la entrada del banco.
+2. **Grafana ya usa el cuarto LoadBalancer público.** La decisión vigente
+   prioriza acceso del evaluador por navegador; puerto 80 con login y sin TLS.
+   [ADR-023](../architecture/adr/ADR-023-observability-evolution.md) sustituye
+   esa parte de ADR-018. Volver a consultar cuotas antes de dimensionar otra
+   entrada; el margen histórico no está disponible por defecto.
 
 `E2_CPUS` aparece con límite 8 en la salida de `gcloud` y **no se aplica**: E2
 comparte el pool `CPUS` con N1 y no tiene cuota propia
@@ -213,16 +235,16 @@ con sus valores reales; la tabla es para saber qué significa cada una.
 | --- | --- | --- |
 | Variable | `GCP_PROJECT_ID` | el id del proyecto |
 | Variable | `GKE_CLUSTER` | `bank-usac-vpc-gke` |
-| Variable | `GKE_ZONE` | `us-central1-a` |
+| Variable | `GKE_ZONE` | `us-central1-c` |
 | Variable | `ARTIFACT_REPO` | `bank-images` |
 | Variable | `GATEWAY_PUBLIC_URL` | `http://<gateway_public_ip>:3000` |
 | Variable | `GATEWAY_STATIC_IP` | `terraform output -raw gateway_public_ip`. **Sólo producción**: fija la dirección del `Service` para que sobreviva a un reinstalado (TD-080). Sin ella el balanceador toma una efímera y el acuerdo con el banco pareja se queda apuntando a una IP que ya no es |
 | Variable | `CLOUD_RUN_SERVICE` | `bank-usac-web`. Sin ella, `cd.yml` despliega el backend y **deja el portal público en la versión anterior** sin decirlo (TD-081) |
 | Variable | `WEB_PUBLIC_URL` | la URL de Cloud Run, para el CORS del Gateway |
-| Variable | `OTEL_EXPORTER_OTLP_ENDPOINT` | opcional — el Collector de T-49. Sin ella los pods instrumentan y no exportan |
+| Variable | `OTEL_EXPORTER_OTLP_ENDPOINT` | opcional para override; CD usa por defecto `http://otel-gateway.observability.svc.cluster.local:4318` |
 | Variable | `WIF_PROVIDER` | del paso 2 |
 | Variable | `WIF_SERVICE_ACCOUNT` | del paso 2 |
-| Variable | `DEV_DATABASE_SUFFIX` | vacío hoy; ver TD-070 |
+| Variable | `DEV_DATABASE_SUFFIX` | `_dev`, verificado en GitHub; las cinco bases deben existir antes del arranque |
 | Secret | `HELM_SECRETS` | los nueve valores que el chart marca `required`, **más las dos banderas `inCluster`**, uno por línea |
 | Secret | `INFRA_ADDRESSES` | las cinco IP privadas de las bases de datos, una por línea |
 
@@ -432,13 +454,13 @@ Lo despliega el mismo pipeline, en un release y un namespace propios
 ejecuta el job **«Stack de observabilidad»** de `cd.yml`. Para iterar sin merge,
 *Actions → CD → Run workflow → `deploy_observability`*.
 
-Hace falta **un secreto más** que los del paso 3, y dos opcionales de T-50:
+El pipeline de observabilidad exige los secretos siguientes; el comportamiento opcional del pod no sustituye los requisitos de CD:
 
 | Tipo | Nombre | Valor |
 | --- | --- | --- |
 | Secret | `GRAFANA_ADMIN_PASSWORD` | la contraseña de `admin`. Mínimo 16 caracteres; el job falla diciéndolo si falta o es más corta, en vez de instalar un Grafana con la contraseña pública que trae el chart |
-| Secret de K8s | `grafana-alert-webhook` (clave `token`) | el `ALERT_WEBHOOK_TOKEN` del Gateway, para que las alertas lleguen a la bitácora de auditoría (T-45). **Opcional**: sin él Grafana arranca igual y la alerta se ve en su consola, pero el Gateway la rechaza con `401`. Debe ser el **mismo valor** que `ALERT_WEBHOOK_TOKEN` en `HELM_SECRETS` |
-| Variable + Secret | `GRAFANA_URL` y `GRAFANA_TOKEN` | para que `cd.yml` anote la *release* en Grafana. **Opcionales**: sin ellos el paso se omite con su motivo en el resumen, y los dashboards siguen marcando los despliegues por consulta |
+| Secret de GitHub → Secret K8s | `ALERT_WEBHOOK_TOKEN` → `grafana-alert-webhook` (`token`) | CD lo exige (≥ 32 caracteres) y lo pasa también a los Gateway. El pod lo declara opcional para arrancar sin él, pero eso dejaría alertas sin entrega a Audit |
+| Autenticación de anotaciones | `GRAFANA_ADMIN_PASSWORD` | CD abre port-forward a Grafana y usa la credencial de administrador para anotar la release; no depende del antiguo par `GRAFANA_URL` / `GRAFANA_TOKEN` |
 
 **No se despliega desde `develop` a propósito.** El stack es uno para los dos
 entornos —`dev` y `prod` mandan su telemetría al mismo Collector y se miran en el
@@ -458,10 +480,10 @@ mismo release y sin un paso aparte:
 
 | Qué | Dónde vive | Cuántos |
 | --- | --- | --- |
-| Reglas de grabación de los SLI | `values.yaml` → `prometheus.serverFiles.recording_rules.yml` | 30 |
-| Alertas, contact points y política | `values.yaml` → `grafana.alerting` | 7 alertas, 2 contact points |
+| Reglas de grabación de SLI, SLO y budget | `values.yaml` → `prometheus.serverFiles.recording_rules.yml` | 71 |
+| Alertas, contact points y política | `values.yaml` → `grafana.alerting` | 16 alertas, 3 contact points (`prod`, `dev`, `local`) |
 | Dashboards | `dashboards/*.json` → ConfigMaps con `grafana_dashboard: "1"` | 9 |
-| Runbooks | [`runbooks/`](runbooks/README.md), enlazados desde cada alerta | 5 |
+| Runbooks | [`runbooks/`](runbooks/README.md), enlazados desde cada alerta | 7 procedimientos para las 16 alertas |
 
 Nada de eso se crea a mano en la interfaz, y lo que se cree a mano se pierde en
 el siguiente `helm upgrade` — que es la mitad del criterio 2.6 de la rúbrica.
@@ -469,11 +491,13 @@ Antes de subir un cambio: `pnpm obs:check:dashboards` (falla si un panel cita un
 SLI que nadie graba) y `pnpm obs:kind` (la única forma de ver que una consulta
 devuelve algo).
 
-**Grafana no tiene IP pública.** Queda una sola libre en la cuota y es el margen
-de la entrada del banco (ver la tabla de cuotas del paso 1):
+**Grafana tiene IP pública:** [consola de entrega](http://35.255.103.13),
+LoadBalancer HTTP con login. No versionar su contraseña. Para operación también
+se puede usar el túnel local; fijar `OBS_CONTEXT` al contexto GKE, porque el
+script de paquete usa kind por defecto:
 
 ```bash
-pnpm obs:forward      # kubectl port-forward -n observability svc/grafana 3002:80
+OBS_CONTEXT="<contexto-gke-verificado>" pnpm obs:forward
 # http://localhost:3002 — usuario `admin`
 ```
 
@@ -505,7 +529,7 @@ juntos — `pnpm obs:check` y CI fallan si se separan.
 
 ## 5.4 Las políticas de red del namespace (T-54)
 
-El stack llega con **nueve `NetworkPolicy`** —un `default-deny`, el DNS y una
+El chart contiene **nueve plantillas de `NetworkPolicy`** —un `default-deny`, el DNS y una
 por componente— y **apagadas**: `networkPolicies.enabled` es `false`. Encenderlas
 es un `--set`, pero el orden importa, y la razón del orden es la trampa de esta
 API.
@@ -521,20 +545,24 @@ y el tráfico pasa igual. Eso significa dos cosas incómodas a la vez:
   se puede poner al crear el clúster**). Y ahí un selector equivocado no es un
   aviso: es el componente incomunicado.
 
-De modo que la secuencia es instalar → comprobar → encender → **volver a
-comprobar**:
+La inspección del **2026-10-21** confirmó **Dataplane V2 activo** y **ninguna
+NetworkPolicy** en `observability`, `dev` o `prod`: las plantillas no se han
+aplicado. El procedimiento siguiente es para una activación operativa futura,
+no evidencia de protección existente. Comprobar contexto y respaldar los
+valores efectivos antes del cambio. La secuencia es instalar → comprobar →
+encender → **volver a comprobar**:
 
 ```bash
 # 1. El clúster tiene aplicador. Sin esto, todo lo demás es decorativo.
-gcloud container clusters describe bank-usac --region "$REGION"   --format='value(networkConfig.datapathProvider)'      # => ADVANCED_DATAPATH
+gcloud container clusters describe "$GKE_CLUSTER" --location "$GKE_ZONE"   --format='value(networkConfig.datapathProvider)'      # => ADVANCED_DATAPATH
 
 # 2. El stack, verde y ANTES de las políticas. Ésta es la línea base: si algo
 #    ya estaba roto, no se le puede echar la culpa a la política.
-kubectl get pods -n observability          # los 7, 1/1 Ready
+kubectl get pods -n observability          # instantánea actual: 9 pods Ready
 pnpm obs:forward                           # y que Grafana muestre los 9 dashboards
 
 # 3. Encenderlas. Sobre el release que el pipeline ya instaló, sin reinstalar.
-helm upgrade bank-observability infra/k8s/helm/bank-observability   --namespace observability --reuse-values   --set networkPolicies.enabled=true   --set networkPolicies.apiServerCidr="$(gcloud container clusters describe bank-usac       --region "$REGION" --format='value(endpoint)')/32"
+helm upgrade bank-observability infra/k8s/helm/bank-observability   --namespace observability --reuse-values   --set networkPolicies.enabled=true   --set networkPolicies.apiServerCidr="$(gcloud container clusters describe "$GKE_CLUSTER"       --location "$GKE_ZONE" --format='value(endpoint)')/32"
 
 # 4. Y volver a comprobar — en este orden, porque cada fallo apunta a una regla
 #    distinta.
@@ -638,7 +666,9 @@ kubectl get pods,hpa -n prod
 kubectl get pods,hpa -n dev
 ```
 
-Nueve Deployments a `1/1` por namespace y siete HPA con objetivo `80%`. Un HPA
+La instantánea tiene **10 Deployments en prod** (siete aplicaciones, RabbitMQ,
+MinIO y mock) y **9 en dev** (sin mock), y siete HPA por entorno con CPU objetivo
+`80%`, mínimo 1 y máximo 5. El conteo de pods puede variar con el HPA. Un HPA
 recién creado muestra `cpu: <unknown>/80%` durante el primer minuto, mientras se
 recolecta la primera métrica; si sigue en `<unknown>` pasados unos minutos, eso
 sí es un problema y el autoescalado no va a ocurrir.
@@ -656,21 +686,18 @@ curl -s "http://$IP:3000/ready"    # {"status":"ready",...,"broker":"connected"}
 curl -s -o /dev/null -w '%{http_code}\n' "$(cd infra/terraform/gcp && terraform output -raw cloud_run_web_url)"
 ```
 
-Y que la IP sobrevive, que es lo que TD-080 cerró y lo que el acuerdo con el
-banco pareja da por supuesto:
+Comparar la IP reservada con `EXTERNAL-IP` es una comprobación read-only.
+La supervivencia a una recreación del Service es una prueba destructiva
+separada: requiere una ventana aprobada y un entorno aislado. **No borrar el
+Service de producción como parte de una comprobación de salud.**
 
-```bash
-kubectl delete svc bank-usac-gateway -n prod
-# el siguiente despliegue —o un `helm upgrade`— lo recrea sobre la MISMA IP
-```
-
-Y la comprobación que realmente importa, porque atraviesa el proxy, el Gateway y
-el broker de una vez:
+La consulta de autenticación siguiente recorre proxy, Gateway y broker sin
+crear una operación financiera:
 
 ```bash
 curl -s -X POST "<URL de Cloud Run>/api/auth/login" \
   -H 'Content-Type: application/json' \
-  -d '{"email":"noexiste@example.com","password":"contrasena-larga"}'
+  -d '{"email":"noexiste@example.com","credential":"contrasena-larga"}'
 ```
 
 Una respuesta con `correlationId` significa que la petición llegó hasta el
@@ -685,25 +712,19 @@ desplegado.
 
 ## 8. Apagarlo
 
-El clúster y las cinco VMs cuestan crédito mientras existan.
+El clúster, las VMs, los discos y las entradas públicas pueden generar coste.
+El procedimiento integral está en `pnpm cloud:down`, descrito en §5.2: retira
+releases y balanceadores, PVC cuando corresponde y después recursos Terraform.
+**Es destructivo y no es un procedimiento de pausa con conservación de datos**.
+Antes de ejecutarlo, respaldar y acordar qué bases, claims e imágenes deben
+conservarse; verificar proyecto y contexto.
 
-```bash
-# Liberar sólo el entorno de desarrollo (idempotente, no necesita gcloud):
-#   Actions → CD → Run workflow → retire_dev, desde una rama que no sea develop ni main.
+Para retirar sólo desarrollo existe `workflow_dispatch` con `retire_dev` desde
+una rama que no sea `develop`/`main`. El release dev se llama **`bank-usac-dev`**;
+no usar `helm uninstall bank-usac -n dev` como si fuese su nombre.
 
-# Todo:
-helm uninstall bank-usac --namespace prod
-helm uninstall bank-usac --namespace dev
-cd infra/terraform/gcp && terraform destroy
-```
-
-`terraform destroy` ya sí retira todo lo que el sistema necesita, incluidos el
-repositorio de Artifact Registry y la IP reservada del Gateway: ésa es la mitad
-práctica de haber cerrado TD-079 y TD-080. Dos cosas sobreviven a propósito:
-
-- **El bucket de estado** (`bootstrap/`). Tiene `force_destroy = false`, así que
-  Terraform se niega a borrarlo mientras guarde objetos. Es lo correcto: es el
-  registro de lo que existió.
-- **Los `Service` de tipo `LoadBalancer`** que Helm creó. Borra el release
-  *antes* del `destroy` —las dos primeras líneas— o GKE deja balanceadores
-  huérfanos que siguen costando y que Terraform no conoce.
+El bucket de estado de `bootstrap/` conserva su ciclo de vida separado y tiene
+`force_destroy = false`. Los LoadBalancer creados por Helm no son recursos del
+módulo Terraform: retirarlos antes de destruir GKE evita recursos huérfanos.
+No afirmar que `terraform destroy` por sí solo elimina todos los recursos o
+conserva los mensajes del PVC del broker.

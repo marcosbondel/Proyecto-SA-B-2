@@ -1,6 +1,6 @@
 # ADR-013: Require PlantUML alongside Mermaid; Lucid becomes optional
 
-- **Status**: Accepted
+- **Status**: Superseded by [ADR-022](ADR-022-diagramming-sources-and-image-editing.md)
 - **Date**: 2026-08-20
 - **Deciders**: Bank USAC team
 - **Supersedes**: [ADR-011](ADR-011-diagramming-toolchain.md)

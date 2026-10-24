@@ -7,6 +7,13 @@
 **Inyectado con:** `kubectl delete pod --grace-period=0 --force` sobre
 `transaction-service`, a los 25 segundos de los 80 de la ventana.
 
+> **Relectura T-61 (2026-10-21):** cifras y cronología históricas de kind.
+> La explicación de Account limitado a una réplica quedó obsoleta: existe
+> `PostgresSweepLease` con `pg_try_advisory_lock` y el HPA permite 1–5. Un
+> máximo de Saga inferior a los 11 s de ausencia no demuestra por sí solo que
+> hubo una Saga activa esperando todo el hueco; el recuento prueba las
+> operaciones observadas, no cualquier momento posible de fallo.
+
 ## 1. Resumen en tres líneas
 
 Se mató sin aviso al servicio que **decide** la Saga, en caliente, mientras 15

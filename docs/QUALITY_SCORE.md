@@ -1,25 +1,18 @@
-# Quality Score
+# Evaluación de calidad — T-61, 2026-10-21
 
-Scores use a five-point scale:
+Escala: 5 verificado sin brecha material conocida; 4 sólido con pendientes
+acotados; 3 utilizable con brechas relevantes; 2 riesgoso; 1 insuficiente.
+La puntuación es una evaluación documental, no una aprobación de producción.
 
-- **5:** Excellent; verified, documented, and low-risk.
-- **4:** Good; a small number of known gaps remain.
-- **3:** Usable; meaningful gaps are explicitly tracked.
-- **2:** Risky; important behavior is under-specified.
-- **1:** Poor; focused repair is required before expansion.
-
-## Current Scores
-
-| Area | Score | Rationale for the post-T-01 assessment |
+| Área | Puntuación | Evidencia y límite |
 | --- | ---: | --- |
-| Product clarity | 4 | Bank USAC users and five core workflows are recorded; the concise north-star statement and detailed acceptance criteria remain with T-02. |
-| Architecture | 4 | Stack, service boundaries, data ownership, asynchronous rules, Saga, Kubernetes, and SRE constraints are documented, and all seven applications are implemented and deployed to a local kind cluster from one Helm chart. T-32 added a GitHub Actions pipeline over `feature/*` and pull requests into `develop`; automatic scaling remains future work. |
-| Reliability | 4 | Required SRE concerns and correlation tracing are explicit, and T-03 defined six SLI with formulas and sources, five SLO with numeric thresholds, and an academic SLA. Runtime evidence arrives with T-24, which measures these definitions rather than creating them. |
-| Security | 3 | Assignment-derived data classes and the Gateway/database boundaries are recorded, and T-03 fixed the authentication model in ADR-010. Per-endpoint authorization arrives with T-15 and secret loading with T-06. |
-| Documentation | 4 | The project now has an ownership record, methodology, design system, inventory, architecture, and adapted guides; test and lint automation remain TD-004. |
+| Producto | 4 | Manuales por rol y funciones Fase III contrastados con rutas; capturas reales y guía de validación. No todos los casos mutantes se ejecutaron en prod. |
+| Arquitectura | 4 | Siete aplicaciones, cuatro bibliotecas; límites AMQP/BD, C4 por contenedor, despliegue Terraform/Helm y cinco esquemas acumulados. |
+| Confiabilidad | 3 | Stack operativo, nueve dashboards, 16 alertas/runbooks y pruebas cloud dev. Latencia baseline/proveedor incumple p95; presupuestos prod negativos; falta banco externo dev. |
+| Seguridad | 3 | JWT/roles, redacción y secretos runtime verificados en fuentes. Gateway/Grafana públicos HTTP y ausencia de NetworkPolicies aplicadas siguen como brechas. |
+| Documentación | 4 | Fuentes y renders técnicos, ADR sucesores, inventario y evidencia con procedencia. El catálogo automático de flujos sólo clasifica 48/134 contratos; no se encubre esa limitación. |
 
-## Review Cadence
-
-Review this file at each milestone boundary and whenever a major architecture,
-security, reliability, or delivery decision changes. Update the score with the
-evidence that caused the movement.
+[Informe y validaciones](qa/T-61-documentation-audit.md),
+[evidencia cloud](qa/backend/T-60-cloud-evidence.md),
+[deuda](TECH_DEBT.md). Revisar al cerrar #167 y en cada hito; no subir un
+puntaje por tener una prueba omitida o una captura sin datos.

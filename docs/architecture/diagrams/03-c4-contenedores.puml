@@ -1,0 +1,271 @@
+@startuml
+title <size:28>Bank USAC - C4 L2: Contenedores (Fase III - Vista Espaciada y Diferenciada)</size>\n<size:16>Líneas diferenciadas por color: Azul (HTTP/Ingress), Rojo (AMQP/RabbitMQ), Azul Marino (PostgreSQL), Púrpura Discontinuo (Telemetría OTel), Naranja (Bancos Externos)</size>\n<size:24>C4 L2: componentes desplegables, datos, observabilidad y protocolos.</size>
+
+set separator none
+left to right direction
+skinparam ranksep 280
+skinparam nodesep 160
+hide stereotype
+skinparam defaultFontName "Segoe UI"
+skinparam dpi 160
+skinparam shadowing false
+skinparam roundcorner 12
+skinparam padding 20
+skinparam arrowThickness 2
+skinparam linetype polyline
+skinparam minClassWidth 240
+
+
+<style>
+  root {
+    BackgroundColor: #ffffff;
+    FontColor: #444444;
+  }
+  // Element,Container
+  .Element-RWxlbWVudCxDb250YWluZXI= {
+    BackgroundColor: #ffffff;
+    LineColor: #1168bd;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #1168bd;
+    FontSize: 22;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 390;
+  }
+  // Element,Container,Broker
+  .Element-RWxlbWVudCxDb250YWluZXIsQnJva2Vy {
+    BackgroundColor: #ffffff;
+    LineColor: #c11926;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #c11926;
+    FontSize: 22;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 390;
+  }
+  // Element,Container,Database
+  .Element-RWxlbWVudCxDb250YWluZXIsRGF0YWJhc2U= {
+    BackgroundColor: #f1f4f8;
+    LineColor: #336791;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #336791;
+    FontSize: 22;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 390;
+  }
+  // Element,Container,Telemetry
+  .Element-RWxlbWVudCxDb250YWluZXIsVGVsZW1ldHJ5 {
+    BackgroundColor: #f6f0ff;
+    LineColor: #70519b;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #70519b;
+    FontSize: 22;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 390;
+  }
+  // Element,Person
+  .Element-RWxlbWVudCxQZXJzb24= {
+    BackgroundColor: #ffffff;
+    LineColor: #398819;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #398819;
+    FontSize: 22;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 390;
+  }
+  // Element,Software System
+  .Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0= {
+    BackgroundColor: #ffffff;
+    LineColor: #ef9425;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ef9425;
+    FontSize: 22;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+    MaximumWidth: 390;
+  }
+  // Relationship
+  .Relationship-UmVsYXRpb25zaGlw {
+    LineThickness: 2;
+    LineStyle: 0;
+    LineColor: #707070;
+    FontColor: #707070;
+    FontSize: 16;
+  }
+  // Bank USAC
+  .Boundary-QmFuayBVU0FD {
+    BackgroundColor: #ffffff;
+    LineColor: #ef9425;
+    LineStyle: 0;
+    LineThickness: 2;
+    FontColor: #ef9425;
+    FontSize: 22;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+  }
+  // Compute Engine - cinco VMs privadas fuera de GKE
+  .Group-Q29tcHV0ZSBFbmdpbmUgLSBjaW5jbyBWTXMgcHJpdmFkYXMgZnVlcmEgZGUgR0tF {
+    BackgroundColor: #ffffff;
+    LineColor: #444444;
+    LineStyle: 2-2;
+    LineThickness: 2;
+    FontColor: #444444;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+  }
+  // GKE - namespace dev o prod
+  .Group-R0tFIC0gbmFtZXNwYWNlIGRldiBvIHByb2Q= {
+    BackgroundColor: #ffffff;
+    LineColor: #444444;
+    LineStyle: 2-2;
+    LineThickness: 2;
+    FontColor: #444444;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+  }
+  // GKE - namespace observability
+  .Group-R0tFIC0gbmFtZXNwYWNlIG9ic2VydmFiaWxpdHk= {
+    BackgroundColor: #ffffff;
+    LineColor: #444444;
+    LineStyle: 2-2;
+    LineThickness: 2;
+    FontColor: #444444;
+    FontSize: 24;
+    HorizontalAlignment: center;
+    Shadowing: 0;
+  }
+
+  // Custom Colored Relationship Styles
+  .Rel-AMQP {
+    LineColor: #c11926;
+    FontColor: #c11926;
+    LineThickness: 2.5;
+    FontSize: 15;
+  }
+  .Rel-Database {
+    LineColor: #1a5276;
+    FontColor: #1a5276;
+    LineThickness: 3;
+    FontSize: 15;
+  }
+  .Rel-Telemetry {
+    LineColor: #70519b;
+    FontColor: #70519b;
+    LineStyle: 3-3;
+    LineThickness: 2;
+    FontSize: 14;
+  }
+  .Rel-External {
+    LineColor: #d35400;
+    FontColor: #d35400;
+    LineThickness: 2.5;
+    FontSize: 15;
+  }
+  .Rel-Ingress {
+    LineColor: #0d47a1;
+    FontColor: #0d47a1;
+    LineThickness: 2.5;
+    FontSize: 15;
+  }
+</style>
+
+
+person "==Cliente\n<size:15>[Person]</size>\n\nConsulta y opera sus cuentas; consulta seguimiento y notificaciones." <<Element-RWxlbWVudCxQZXJzb24=>> as Cliente
+person "==Cajero receptor\n<size:15>[Person]</size>\n\nAtiende clientes en ventanilla con permisos D-06." <<Element-RWxlbWVudCxQZXJzb24=>> as Cajeroreceptor
+person "==Administrador\n<size:15>[Person]</size>\n\nConsulta auditoría, pagos y notificaciones; configura la simulación por API." <<Element-RWxlbWVudCxQZXJzb24=>> as Administrador
+person "==Operador / SRE\n<size:15>[Person]</size>\n\nDiagnostica métricas, trazas, logs y alertas en Grafana." <<Element-RWxlbWVudCxQZXJzb24=>> as OperadorSRE
+rectangle "==Banco externo\n<size:15>[Software System]</size>\n\nContrato interbancario v1: HTTP 202, callback, consulta, cancelación y reverso." <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0=>> as Bancoexterno
+rectangle "==Resend\n<size:15>[Software System]</size>\n\nEntrega real del correo de activación. También admite recuperación, rechazo de identidad y cambio de contraseña según evento." <<Element-RWxlbWVudCxTb2Z0d2FyZSBTeXN0ZW0=>> as Resend
+
+rectangle "Bank USAC\n<size:15>[Software System]</size>" <<Boundary-QmFuayBVU0FD>> {
+  rectangle "Compute Engine - cinco VMs privadas fuera de GKE" <<Group-Q29tcHV0ZSBFbmdpbmUgLSBjaW5jbyBWTXMgcHJpdmFkYXMgZnVlcmEgZGUgR0tF>> as groupQ29tcHV0ZSBFbmdpbmUgLSBjaW5jbyBWTXMgcHJpdmFkYXMgZnVlcmEgZGUgR0tF {
+    database "==Customer DB\n<size:15>[Container: PostgreSQL 18.4 / pg]</size>\n\ncustomer / customer_dev; exclusiva de Customer." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YWJhc2U=>> as BankUSAC.CustomerDB
+    database "==Account DB\n<size:15>[Container: PostgreSQL 18.4 / pg]</size>\n\naccount / account_dev; exclusiva de Account." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YWJhc2U=>> as BankUSAC.AccountDB
+    database "==Transaction DB\n<size:15>[Container: PostgreSQL 18.4 / pg]</size>\n\ntransaction / transaction_dev; exclusiva de Transaction." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YWJhc2U=>> as BankUSAC.TransactionDB
+    database "==Payment DB\n<size:15>[Container: PostgreSQL 18.4 / pg]</size>\n\npayment / payment_dev; exclusiva de Payment." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YWJhc2U=>> as BankUSAC.PaymentDB
+    database "==Audit DB\n<size:15>[Container: PostgreSQL 18.4 / pg]</size>\n\nnotification_audit / notification_audit_dev; exclusiva de Audit." <<Element-RWxlbWVudCxDb250YWluZXIsRGF0YWJhc2U=>> as BankUSAC.AuditDB
+  }
+
+  rectangle "GKE - namespace dev o prod" <<Group-R0tFIC0gbmFtZXNwYWNlIGRldiBvIHByb2Q=>> as groupR0tFIC0gbmFtZXNwYWNlIGRldiBvIHByb2Q= {
+    rectangle "==Customer Service\n<size:15>[Container: Node.js 24 / NestJS]</size>\n\nIdentidad, KYC, credenciales y eventos del ciclo de vida; verifica foto." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.CustomerService
+    rectangle "==Account Service\n<size:15>[Container: Node.js 24 / NestJS]</size>\n\nSaldo exacto, comisión, liquidación y compensación; anomalía de frecuencia N/M." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.AccountService
+    rectangle "==Transaction Service\n<size:15>[Container: Node.js 24 / NestJS]</size>\n\nSaga de seis estados, historial, outbox y medición de transiciones." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.TransactionService
+    rectangle "==Payment Service\n<size:15>[Container: Node.js 24 / NestJS]</size>\n\nReintentos persistidos; simulación en caliente; envío/recepción y protocolo TIMEOUT interbancario." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.PaymentService
+    rectangle "==Notification & Audit\n<size:15>[Container: Node.js 24 / NestJS]</size>\n\nAuditoría redactada, notificaciones y alertas; consulta por correlación, traza, servicio y nivel." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.NotificationAudit
+    queue "==RabbitMQ\n<size:15>[Container: RabbitMQ / AMQP 0-9-1 (GKE observado: 3.13-management)]</size>\n\nComandos, eventos y request/reply. Volumen persistente por entorno." <<Element-RWxlbWVudCxDb250YWluZXIsQnJva2Vy>> as BankUSAC.RabbitMQ
+    rectangle "==MinIO\n<size:15>[Container: API S3 compatible]</size>\n\nObjetos de identidad; Gateway escribe y Customer verifica." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.MinIO
+    rectangle "==partner-bank-mock (opcional)\n<size:15>[Container: Node.js / HTTP :3021]</size>\n\nSimula contrato v1 y fallos. Observado en prod v1.3.6; ausente en dev el 2026-10-21; no es un sexto servicio de dominio." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.partnerbankmockopcional
+    rectangle "==API Gateway\n<size:15>[Container: Node.js 24 / NestJS]</size>\n\nJWT y roles; REST, interbank/v1, alertas SLO y simulación. Sin BD ni lógica de negocio." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.APIGateway
+  }
+
+  rectangle "GKE - namespace observability" <<Group-R0tFIC0gbmFtZXNwYWNlIG9ic2VydmFiaWxpdHk=>> as groupR0tFIC0gbmFtZXNwYWNlIG9ic2VydmFiaWxpdHk= {
+    rectangle "==otel-gateway\n<size:15>[Container: OpenTelemetry Collector / OTLP :4317,:4318]</size>\n\nDeployment: recibe trazas y métricas; redacta atributos sensibles." <<Element-RWxlbWVudCxDb250YWluZXIsVGVsZW1ldHJ5>> as BankUSAC.otelgateway
+    rectangle "==otel-log-agent\n<size:15>[Container: OpenTelemetry Collector / filelog]</size>\n\nDaemonSet: lee stdout JSON en /var/log/pods, extrae contexto y redacta." <<Element-RWxlbWVudCxDb250YWluZXIsVGVsZW1ldHJ5>> as BankUSAC.otellogagent
+    rectangle "==Prometheus\n<size:15>[Container: Prometheus / PromQL]</size>\n\nScrape, reglas de grabación y SLO; PVC 10 GiB, retención 7 días." <<Element-RWxlbWVudCxDb250YWluZXIsVGVsZW1ldHJ5>> as BankUSAC.Prometheus
+    rectangle "==Tempo\n<size:15>[Container: Grafana Tempo / TraceQL]</size>\n\nTrazas correlacionadas; PVC 10 GiB, retención 7 días." <<Element-RWxlbWVudCxDb250YWluZXIsVGVsZW1ldHJ5>> as BankUSAC.Tempo
+    rectangle "==Loki\n<size:15>[Container: Grafana Loki / LogQL]</size>\n\nLogs y metadatos de correlación; PVC 10 GiB, retención 7 días." <<Element-RWxlbWVudCxDb250YWluZXIsVGVsZW1ldHJ5>> as BankUSAC.Loki
+    rectangle "==Grafana\n<size:15>[Container: Grafana 12.3.1 / PVC 2 GiB]</size>\n\nNueve dashboards, 16 alertas y Explore. LoadBalancer público; autenticación admin." <<Element-RWxlbWVudCxDb250YWluZXIsVGVsZW1ldHJ5>> as BankUSAC.Grafana
+    rectangle "==kube-state-metrics\n<size:15>[Container: Kubernetes metrics / HTTP :8080]</size>\n\nEstado de Deployments, réplicas y HPA; señal de anotación de despliegue." <<Element-RWxlbWVudCxDb250YWluZXIsVGVsZW1ldHJ5>> as BankUSAC.kubestatemetrics
+  }
+
+  rectangle "==Frontend\n<size:15>[Container: Nuxt 4 / Vue 3 / Nitro]</size>\n\nSSR en Cloud Run; proxy Nitro hacia el Gateway. También existe carga web en GKE." <<Element-RWxlbWVudCxDb250YWluZXI=>> as BankUSAC.Frontend
+}
+
+Cliente --> BankUSAC.Frontend <<Rel-Ingress>> : "Opera\n<size:11>[HTTPS :443]</size>"
+Cajeroreceptor --> BankUSAC.Frontend <<Rel-Ingress>> : "Atiende\n<size:11>[HTTPS :443]</size>"
+Administrador --> BankUSAC.Frontend <<Rel-Ingress>> : "Supervisa\n<size:11>[HTTPS :443]</size>"
+OperadorSRE --> BankUSAC.Grafana <<Rel-Telemetry>> : "Diagnostica y consulta\n<size:11>[HTTP :80 / sesión autenticada]</size>"
+BankUSAC.Frontend --> BankUSAC.APIGateway <<Rel-Ingress>> : "Proxy SSR/API\n<size:11>[HTTP :3000 / REST JSON / correlationId]</size>"
+BankUSAC.APIGateway --> BankUSAC.RabbitMQ <<Rel-AMQP>> : "Comandos, consultas y callback traducido a mensaje\n<size:11>[AMQP 0-9-1 :5672 / request-reply <=5 s]</size>"
+BankUSAC.RabbitMQ --> BankUSAC.APIGateway <<Rel-AMQP>> : "Respuestas de dominio\n<size:11>[AMQP :5672 / correlationId + traceparent]</size>"
+BankUSAC.RabbitMQ --> BankUSAC.CustomerService <<Rel-AMQP>> : "Comandos y KYC\n<size:11>[AMQP / asíncrono]</size>"
+BankUSAC.CustomerService --> BankUSAC.RabbitMQ <<Rel-AMQP>> : "Respuestas y eventos de ciclo de vida\n<size:11>[AMQP / asíncrono]</size>"
+BankUSAC.RabbitMQ --> BankUSAC.AccountService <<Rel-AMQP>> : "Movimientos y consultas\n<size:11>[AMQP / asíncrono]</size>"
+BankUSAC.AccountService --> BankUSAC.RabbitMQ <<Rel-AMQP>> : "Veredictos y account.anomaly.detected.v1\n<size:11>[AMQP / asíncrono]</size>"
+BankUSAC.RabbitMQ --> BankUSAC.TransactionService <<Rel-AMQP>> : "Solicitudes y eventos de Saga\n<size:11>[AMQP / asíncrono]</size>"
+BankUSAC.TransactionService --> BankUSAC.RabbitMQ <<Rel-AMQP>> : "KYC, débito, pago, crédito y compensación\n<size:11>[AMQP / outbox / asíncrono]</size>"
+BankUSAC.RabbitMQ --> BankUSAC.PaymentService <<Rel-AMQP>> : "Pagos, depósitos y resultados v1\n<size:11>[AMQP / asíncrono]</size>"
+BankUSAC.PaymentService --> BankUSAC.RabbitMQ <<Rel-AMQP>> : "Veredictos, acciones de Account y respuestas\n<size:11>[AMQP / outbox / asíncrono]</size>"
+BankUSAC.RabbitMQ --> BankUSAC.NotificationAudit <<Rel-AMQP>> : "Eventos y consultas de auditoría\n<size:11>[AMQP / asíncrono]</size>"
+BankUSAC.NotificationAudit --> BankUSAC.RabbitMQ <<Rel-AMQP>> : "Sólo respuestas\n<size:11>[AMQP / request-reply]</size>"
+BankUSAC.APIGateway --> BankUSAC.MinIO <<Rel-Ingress>> : "Deposita foto\n<size:11>[S3 / HTTP :9000]</size>"
+BankUSAC.CustomerService --> BankUSAC.MinIO <<Rel-Ingress>> : "Verifica objeto y digest\n<size:11>[S3 / HTTP :9000]</size>"
+BankUSAC.CustomerService --> BankUSAC.CustomerDB <<Rel-Database>> : "Sólo su base\n<size:11>[TCP :5432 / pg / SQL parametrizado]</size>"
+BankUSAC.AccountService --> BankUSAC.AccountDB <<Rel-Database>> : "Sólo su base; row lock\n<size:11>[TCP :5432 / NUMERIC(14,2)]</size>"
+BankUSAC.TransactionService --> BankUSAC.TransactionDB <<Rel-Database>> : "Sólo su base; estado + outbox\n<size:11>[TCP :5432 / transacción local]</size>"
+BankUSAC.PaymentService --> BankUSAC.PaymentDB <<Rel-Database>> : "Sólo su base; reintentos y leases\n<size:11>[TCP :5432 / transacción local]</size>"
+BankUSAC.NotificationAudit --> BankUSAC.AuditDB <<Rel-Database>> : "Sólo su base; payload redactado\n<size:11>[TCP :5432 / deduplicación]</size>"
+BankUSAC.PaymentService --> Bancoexterno <<Rel-External>> : "Contrato v1: envío, sondeo, cancelación y reverso\n<size:11>[HTTP(S) / JSON / X-Api-Key / traceparent]</size>"
+Bancoexterno --> BankUSAC.APIGateway <<Rel-External>> : "Depósitos y callbacks /interbank/v1/*\n<size:11>[HTTP :3000 / X-Api-Key / traceparent]</size>"
+BankUSAC.PaymentService --> BankUSAC.partnerbankmockopcional <<Relationship-UmVsYXRpb25zaGlw>> : "Alternativa de prueba configurada explícitamente\n<size:11>[HTTP :3021 / contrato v1]</size>"
+BankUSAC.partnerbankmockopcional --> BankUSAC.APIGateway <<Rel-Ingress>> : "Callback de prueba\n<size:11>[HTTP /interbank/v1/*]</size>"
+BankUSAC.NotificationAudit --> Resend <<Rel-External>> : "Correo de activación\n<size:11>[HTTPS :443 / API Resend]</size>"
+BankUSAC.APIGateway --> BankUSAC.otelgateway <<Rel-Telemetry>> : "Trazas y métricas\n<size:11>[OTLP gRPC :4317 o HTTP :4318]</size>"
+BankUSAC.CustomerService --> BankUSAC.otelgateway <<Rel-Telemetry>> : "Trazas y métricas\n<size:11>[OTLP / @bank/observability]</size>"
+BankUSAC.AccountService --> BankUSAC.otelgateway <<Rel-Telemetry>> : "Trazas y métricas\n<size:11>[OTLP / @bank/observability]</size>"
+BankUSAC.TransactionService --> BankUSAC.otelgateway <<Rel-Telemetry>> : "Trazas y métricas\n<size:11>[OTLP / @bank/observability]</size>"
+BankUSAC.PaymentService --> BankUSAC.otelgateway <<Rel-Telemetry>> : "Trazas y métricas\n<size:11>[OTLP / @bank/observability]</size>"
+BankUSAC.NotificationAudit --> BankUSAC.otelgateway <<Rel-Telemetry>> : "Trazas y métricas\n<size:11>[OTLP / @bank/observability]</size>"
+BankUSAC.otelgateway --> BankUSAC.Tempo <<Rel-Telemetry>> : "Exporta spans redactados\n<size:11>[OTLP gRPC :4317]</size>"
+BankUSAC.Prometheus --> BankUSAC.otelgateway <<Rel-Telemetry>> : "Scrape de métricas\n<size:11>[HTTP :8889 /metrics]</size>"
+BankUSAC.otellogagent --> BankUSAC.Loki <<Rel-Telemetry>> : "Logs de stdout; sin broker\n<size:11>[OTLP HTTP :3100 /otlp]</size>"
+BankUSAC.Prometheus --> BankUSAC.Frontend <<Rel-Telemetry>> : "Métricas web\n<size:11>[HTTP /metrics (carga web de GKE)]</size>"
+BankUSAC.Prometheus --> BankUSAC.RabbitMQ <<Rel-Telemetry>> : "Scrape del broker\n<size:11>[HTTP :15692 /metrics]</size>"
+BankUSAC.Prometheus --> BankUSAC.kubestatemetrics <<Rel-Telemetry>> : "Scrape de plataforma\n<size:11>[HTTP :8080 /metrics]</size>"
+BankUSAC.Grafana --> BankUSAC.Prometheus <<Rel-Telemetry>> : "SLI, SLO y error budget\n<size:11>[PromQL / HTTP]</size>"
+BankUSAC.Grafana --> BankUSAC.Tempo <<Rel-Telemetry>> : "Trazas\n<size:11>[TraceQL / HTTP :3200]</size>"
+BankUSAC.Grafana --> BankUSAC.Loki <<Rel-Telemetry>> : "Logs y salto a traza\n<size:11>[LogQL / HTTP :3100]</size>"
+BankUSAC.Grafana --> BankUSAC.APIGateway <<Rel-Telemetry>> : "Webhook POST /api/alerts/slo\n<size:11>[HTTP :3000 / token secreto]</size>"
+
+@enduml

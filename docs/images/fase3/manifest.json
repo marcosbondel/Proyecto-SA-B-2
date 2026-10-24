@@ -1,0 +1,255 @@
+[
+  {
+    "file": "manual/01-login.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/login",
+    "role": "Invitado",
+    "capturedFileUtc": "2026-10-22T04:22:50.876112+00:00",
+    "width": 1280,
+    "height": 720,
+    "sha256": "4c61a4ca326a19bbeb954339ed07ee47223c09fea66b2a48baa80d95dc529931",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/02-cliente-dashboard.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/",
+    "role": "Cliente",
+    "capturedFileUtc": "2026-10-22T05:11:31.638840+00:00",
+    "width": 955,
+    "height": 1146,
+    "sha256": "a0ae422f3581bb4747e607c0eac09b91a261132f1fa0d472289f487f7a989388",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/03-interbank-formulario.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias/interbancaria",
+    "role": "Cliente",
+    "capturedFileUtc": "2026-10-22T05:15:39.386935+00:00",
+    "width": 955,
+    "height": 958,
+    "sha256": "23720017f910ab7ad7e4d7376498cc3bf36d2389b20e0568b125eb448a48a59d",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/04-interbank-historial.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias/interbancarias",
+    "role": "Cliente",
+    "capturedFileUtc": "2026-10-22T05:19:40.680048+00:00",
+    "width": 514,
+    "height": 554,
+    "sha256": "145d26e71cbf7ec484937f658da544a698325991199e06b66f9dedd6a96b4b07",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/05-interbank-detalle.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/transferencias/interbancarias/93c51d22-70dd-4ded-8c1f-bd62c9d882a5",
+    "role": "Cliente",
+    "capturedFileUtc": "2026-10-22T05:20:38.133962+00:00",
+    "width": 514,
+    "height": 1295,
+    "sha256": "5fcc271e34f3aba2f3acdfd4d8ea8a38fcc1ff82d5022ee367e991e287097213",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/06-administrador-dashboard.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/",
+    "role": "Administrador",
+    "capturedFileUtc": "2026-10-22T04:25:47.906636+00:00",
+    "width": 1265,
+    "height": 1111,
+    "sha256": "be7de3dfa64c6857cf0b900af3e3b339082975032e038e25b41e4c1ec9748e78",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/07-auditoria-filtros.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/auditoria",
+    "role": "Administrador",
+    "capturedFileUtc": "2026-10-22T04:54:55.020628+00:00",
+    "width": 955,
+    "height": 1876,
+    "sha256": "4a1af9ebce155b2dc05a34dc3afc07bd146e4e8febcc8f14af14d9642b369f6a",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/08-auditoria-detalle-traza.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/auditoria?correlationId=b5334b14-fd87-4f64-a209-d1720436e891",
+    "role": "Administrador",
+    "capturedFileUtc": "2026-10-22T04:59:35.801925+00:00",
+    "width": 955,
+    "height": 3182,
+    "sha256": "848f7817d71e101a7a071fb02bf060342084c669f72d51097745e4c8060216b7",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/09-pagos-monitor.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/pagos/monitor",
+    "role": "Administrador",
+    "capturedFileUtc": "2026-10-22T05:02:17.602651+00:00",
+    "width": 955,
+    "height": 916,
+    "sha256": "a6a922e2c176782f7a1a149f461772cf667ae4b45c87fd8c7887b28ad25f6ad9",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/10-cajero-cuentas.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/cuentas/deposito",
+    "role": "Cajero receptor",
+    "capturedFileUtc": "2026-10-22T05:22:57.838274+00:00",
+    "width": 514,
+    "height": 951,
+    "sha256": "12911db02f22a4796918d233fa2ffd37ec06d6f022d5a69bbf542ec22961f58b",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/11-notificaciones.jpg",
+    "url": "https://bank-usac-web-mn2e6zhkwq-uc.a.run.app/notificaciones",
+    "role": "Cliente",
+    "capturedFileUtc": "2026-10-22T05:20:58.622019+00:00",
+    "width": 514,
+    "height": 554,
+    "sha256": "5b11939e648c0b56cea6f42c61a68585b228cf0c23d2fcb6dc28f4cb2f473203",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "manual/12-grafana-explore.jpg",
+    "url": "http://35.255.103.13/explore",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:21:48.966649+00:00",
+    "width": 1440,
+    "height": 934,
+    "sha256": "e714d48f45bc9e1a39b1d2a62571e330ab4517bc14591c3d37769121a87347d1",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/01-banco-pareja-prod.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:13:52.702860+00:00",
+    "width": 1425,
+    "height": 1749,
+    "sha256": "1a6b5fee7e64019f41512461cfd3987662b77a00610d3e118885118a211455bc",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/02-consumer-lag-dev.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:10:01.242720+00:00",
+    "width": 1425,
+    "height": 1407,
+    "sha256": "ce3060c1e91b735baf60cade9b724ee1ab99b7026a79aeb6b2f99cf42923083f",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/03-plataforma-hpa-dev.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:02:18.847081+00:00",
+    "width": 1425,
+    "height": 1103,
+    "sha256": "f9364a533f661826d7edde472523acaafe5ea9e619a4abcff8fd4ac25baefb30",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/04-errores-dev.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:11:33.297572+00:00",
+    "width": 1425,
+    "height": 1103,
+    "sha256": "991198b224cba072949ffe1c639e87f7cf8e1c74804c8bd9ec6f7537327fa09a",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/05-estado-prod.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:09:29.623994+00:00",
+    "width": 1440,
+    "height": 1000,
+    "sha256": "afc56bdde25b337bbf5617e637f5c1b5bc0ce2f16cb52cd777d4400a9e2fca41",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/06-flujo-trazas-prod.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:15:34.147546+00:00",
+    "width": 1425,
+    "height": 1181,
+    "sha256": "cdf5d49589bfb903649524f2db577a1a8e6500dbd31ff3b809552f673803aaa1",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/07-logs-prod.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:19:32.512120+00:00",
+    "width": 1425,
+    "height": 1295,
+    "sha256": "0d067667cd1fccb6a65db86e9b3b2875881013eda3629473d8887097fc709875",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/08-metricas-sli-dev.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:03:33.178146+00:00",
+    "width": 1425,
+    "height": 2091,
+    "sha256": "654b27a515b6b896d19fdf01491691fdde28403a2bec207cfa66703431ee2f3f",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/09-slo-error-budget-prod.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:01:32.774293+00:00",
+    "width": 1425,
+    "height": 1407,
+    "sha256": "f1435136c471a02cdb4d5478e2c9c23a7f8685902f8540f83d387ef3ab7a165e",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/10-compensacion-tempo.jpg",
+    "url": "http://35.255.103.13",
+    "role": "Operador SRE",
+    "capturedFileUtc": "2026-10-22T05:22:53.990709+00:00",
+    "width": 1440,
+    "height": 934,
+    "sha256": "5225cee7fe9067f64c6a7cbcbf2ce8f5d66894742b29e69a3ef6fbfb7dbdf35c",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/11-traza-a-logs.jpg",
+    "url": "http://35.255.103.13/explore",
+    "role": "Operador SRE",
+    "observation": "Tempo→Loki; traceId 97bff970a9e803898725a7722ad35608",
+    "capturedFileUtc": "2026-10-22T05:26:56.674300+00:00",
+    "width": 1440,
+    "height": 934,
+    "sha256": "27416265567a8790ea45dde54be5d01dfd2d38b72d0ade4af5444e5bc5b0ddd8",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/12-log-a-traza.jpg",
+    "url": "http://35.255.103.13/explore",
+    "role": "Operador SRE",
+    "observation": "Loki detalle; enlaces derivados TraceID",
+    "capturedFileUtc": "2026-10-22T05:27:40.919890+00:00",
+    "width": 1440,
+    "height": 934,
+    "sha256": "f431e2d849e1a34db5467eb7c9759b8fb902d608925d55c2bd06249e0ae658c3",
+    "origin": "Browser screenshot; unedited"
+  },
+  {
+    "file": "observability/13-marcas-despliegue-plataforma.jpg",
+    "url": "http://35.255.103.13/d/bank-plataforma/bank-usac-c2b7-cpu-memoria-pods-y-hpa?var-environment=prod&var-namespace=prod&from=2026-10-21T00:00:00.000Z&to=2026-10-21T08:00:00.000Z",
+    "role": "Operador SRE",
+    "observation": "Marcas visibles; detalle de versión no observado",
+    "capturedFileUtc": "2026-10-22T12:10:12.983838+00:00",
+    "width": 1265,
+    "height": 712,
+    "sha256": "7b3c2206db4a9bf2f7a5e0b162d527945b1ed91eea78ad8fe8acb0bc385c2680",
+    "origin": "Browser screenshot; unedited"
+  }
+]

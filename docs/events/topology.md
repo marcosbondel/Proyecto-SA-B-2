@@ -14,12 +14,12 @@ Four, all `topic`, all `durable`.
 
 | Exchange | Carries | Published by |
 | --- | --- | --- |
-| `bank.commands` | The 40 commands and requests | Gateway, Transaction |
-| `bank.events` | The 33 events | Customer, Account, Transaction, Payment |
-| `bank.replies` | The 24 replies | Customer, Account, Transaction, Payment, Audit |
+| `bank.commands` | 58 commands and requests | Gateway, Transaction, Payment |
+| `bank.events` | 43 events | Customer, Account, Transaction, Payment |
+| `bank.replies` | 33 replies | Customer, Account, Transaction, Payment, Audit |
 | `bank.errors` | Whatever exhausted its retries or arrived invalid | Any consumer |
 
-Ninety-seven contracts in total, counted from
+134 contracts in total (T-61, 2026-10-21), counted from
 [`../../apps/packages/contracts/src/events/`](../../apps/packages/contracts/src/events/) and
 listed message by message in [`catalog.md`](catalog.md).
 
@@ -51,9 +51,9 @@ assignment refuses to award (§8.2, page 25).
 | `customer.commands` | Customer | `customer.#` on `bank.commands` |
 | `account.commands` | Account | `account.#` on `bank.commands` |
 | `transaction.commands` | Transaction | `transfer.requested.v1`, `transaction.status.requested.v1`, `transaction.list.query.v1`, `transaction.stats.query.v1` on `bank.commands` |
-| `transaction.saga` | Transaction | The seven Saga events, plus `payment.attempt.failed.v1`, on `bank.events` |
+| `transaction.saga` | Transaction | Eight Saga verdicts, plus `payment.attempt.failed.v1`, on `bank.events` |
 | `payment.commands` | Payment | `payment.#` on `bank.commands` |
-| `payment.interbank` | Payment | `account.interbank.eligibility.replied.v1` on `bank.replies`; `account.interbank.credited.v1` and `account.interbank.credit.rejected.v1` on `bank.events` |
+| `payment.interbank` | Payment | `account.interbank.eligibility.replied.v1` on `bank.replies`; `account.interbank.credited.v1`, `account.interbank.credit.rejected.v1` and `account.debit.compensated.v1` on `bank.events` |
 | `audit.customer` | Notification & Audit | `customer.#` on `bank.events` |
 | `audit.account` | Notification & Audit | `account.#` on `bank.events` |
 | `audit.transaction` | Notification & Audit | `transaction.#` on `bank.events` |
@@ -63,7 +63,7 @@ assignment refuses to award (§8.2, page 25).
 
 Twelve declared queues, plus one more that is not declared here — see below.
 
-**Seven of them are wildcards and four enumerate their messages, and the split is deliberate.**
+**Seven of them are wildcards and five enumerate their messages, and the split is deliberate.**
 The wide ones are wide because enumerating names in the broker means every new question needs a
 broker change as well as a contract, and the one that gets forgotten is the binding — which is
 how a route returns a timeout that nothing in the code explains. `customer.commands` is
@@ -87,7 +87,7 @@ Transaction Service owns two queues rather than one because its two roles are di
 takes commands from outside, and it reacts to the Saga's events. Separating them means a
 backlog of Saga events cannot delay a new transfer request.
 
-Notification & Audit owns five, for the same kind of reason taken further. T-06 gave it a
+Notification & Audit owns six: four event families, audit.query and audit.alert. The original split into five and the additional alert queue follow the same principle. T-06 gave it a
 single `audit.all` bound to `#`, and T-20 split it: one queue per event family, plus one for
 the questions it answers — two at first, five now. A single queue makes every family share one
 head of line and one retry ladder, so a malformed `payment.*` event that fails its way down the
@@ -118,8 +118,8 @@ not survive that process. The name is the replica's rather than the broker's —
 exposes it precisely so evidence can name the queue it found in the broker — but the properties
 are what actually matter, and those are unchanged.
 
-It binds `#` on `bank.replies` — every reply in the catalogue is addressed to the Gateway — and
-also **eight event patterns**, which are not a second consumer of those events:
+It binds `#` on `bank.replies` — it receives the replies addressed to Gateway and drops unmatched correlations; Account eligibility replies are also consumed durably by Payment — and
+also **ten event patterns**, which are not a second consumer of those events:
 
 | Pattern on `bank.events` | Why the Gateway overhears it |
 | --- | --- |
@@ -127,6 +127,7 @@ also **eight event patterns**, which are not a second consumer of those events:
 | `customer.password-reset.completed.v1`, `customer.password-reset.rejected.v1` | Somebody who just chose a new password is holding a connection open |
 | `customer.password-changed.v1`, `customer.password-change.rejected.v1` | The same shape again, from inside a session |
 | `account.deposited.v1`, `account.deposit.rejected.v1` | A teller is standing in front of somebody who just handed over cash |
+| `customer.registered.v1`, `customer.register.rejected.v1` | Registration waits for the service verdict instead of inventing success before persistence |
 
 Each of these is a flow that ends in an **event rather than a reply**, because what happened is
 worth recording for everyone, and yet somebody is watching a spinner. "202, go read the audit
@@ -218,10 +219,20 @@ connection string or a fragment of a payload into a queue that outlives the inci
 
 `persistent: true`, `contentType: application/json`, and `messageId`, `correlationId`, `type`
 and `timestamp` mirroring envelope fields so the management UI is readable without decoding
-bodies. `replyTo` is left unset — see [The reply queue](#the-reply-queue) for how the twenty-one
-requests that expect an answer get one without it.
+bodies. `replyTo` is left unset — see [The reply queue](#the-reply-queue) for how requests that expect an answer get one without it.
 
 ## What this document does not decide
 
 Replica counts, memory policy, broker users and permissions, and each application's
 `RABBITMQ_URL` belong to **T-06**. This fixes the names and the arguments, not the deployment.
+
+
+## Phase III persistence and tracing
+
+The twelve work queues yield 60 declared queues with their three retry queues and DLQ; runtime Gateway queues and the error drain are additional objects. These are logical descriptors, not a claim that a queried broker currently has exactly that inventory.
+
+`traceparent`, and configured W3C tracestate/baggage, are AMQP headers injected under a PRODUCER span and extracted into a CONSUMER span. A broker retry preserves the parent headers and creates another consumer span; it does not mint another business correlation. Payment stores trace context for deferred attempts/callbacks, timeout resolution and reversal; Customer stores a creation trace for a later review link.
+
+The 1 s/5 s/30 s transport retry does not decide a provider attempt or the 180 s interbank TTL. Business retry due times, leases and the 300 s release margin are persisted in service tables. A redelivery remains possible, so queue durability and outbox publication require consumer/business idempotency together.
+
+`audit.alert` isolates monitoring bursts from financial event families. An alert is a command on bank.commands; Notification & Audit still publishes no domain commands/events. Its query replies and external email do not introduce a dependency into the Saga.

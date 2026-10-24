@@ -2,6 +2,7 @@
 title CDU003.10 - Consultar historial con filtros
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -14,19 +15,25 @@ start
 (fechas, estado/fase, cuenta, cliente);
 |Gateway|
 :Verificar autenticación JWT y extraer identidad;
-:Publicar transaction.list.requested;
+:Publicar transaction.list.query.v1;
 |Transaction Service|
 :Determinar el alcance de consulta según el rol;
 if (¿El rol es CLIENTE?) then (Sí)
-    :Restringir ownerId al customerId autenticado
+    :Restringir customerId al cliente autenticado
     (un cliente solo ve sus propias transferencias);
 else (No (Personal))
     :Permitir consulta global o filtro por cualquier cliente;
 endif
-:Aplicar filtros de fecha (from/to), estado y paginación;
+:Aplicar filtros de fecha (from/to), estado y limit de 1 a 100 (sin cursor/página);
 :Consultar transacciones ordenadas por created_at DESC;
-:Publicar respuesta transaction.list.replied;
+:Publicar respuesta transaction.list.replied.v1;
 |Gateway|
 :Retornar código 200 con la lista de transferencias;
 stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
+endlegend
 @enduml

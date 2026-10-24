@@ -25,9 +25,9 @@ Gateway, el frontend Nuxt y los cinco microservicios de dominio. Cada uno es un
 Deployment más un Service `ClusterIP`.
 
 **Fuera del clúster** corren las cinco bases PostgreSQL, RabbitMQ y MinIO, como
-contenedores Docker. No es una simplificación: el enunciado lo exige
-(§4.2, *"bases de datos externas al cluster"*) y la constitución del proyecto lo
-recoge como principio III. Los pods las alcanzan por Services sin selector
+contenedores Docker. No es una simplificación: el enunciado y el principio III exigen las **bases de datos** fuera del
+clúster. Mantener broker y MinIO fuera es la topología de este camino local;
+el chart cloud sí permite desplegarlos dentro. Los pods las alcanzan por Services sin selector
 respaldados por Endpoints que apuntan a la IP real de cada contenedor en la red
 Docker compartida `bank-usac-local`.
 
@@ -206,18 +206,25 @@ Lo que añade sobre el camino corto:
 
 | Qué | Dónde | Para qué |
 | --- | --- | --- |
-| Collector, Prometheus, Tempo, Loki, Grafana | namespace `observability` | ver una transferencia real como **una** traza, las 30 reglas de T-50 calculando sobre datos de verdad y los nueve dashboards con datos |
+| Collector, Prometheus, Tempo, Loki, Grafana | namespace `observability` | ver una transferencia real como **una** traza, las 71 reglas de grabación actuales calculando sobre datos de verdad y los nueve dashboards con datos |
 | `partner-bank-mock` | namespace `bank-usac`, etiquetado `role: test-double` | enviar y recibir depósitos interbancarios, e **inyectar fallos** sin tocar el sistema de nadie |
 | `ALERT_WEBHOOK_TOKEN` compartido | Secret del banco y Secret de Grafana | que una alerta llegue al webhook del Gateway y quede en `/auditoria/notificaciones` — el último salto que no se puede probar sin un Gateway |
 
 Las sobrescrituras están en dos archivos, y **no tocan los valores con los que
 se despliega la nube**: `infra/k8s/kind/local.values.yaml` (telemetría al
 Collector del propio clúster, entorno `local`, mock encendido) y
-`observability.values.yaml` (sin volúmenes salvo Loki, dos horas de retención).
+`observability.values.yaml` (Loki con PVC 2 GiB, Tempo con PVC 5 GiB y retención
+24 h; Prometheus sin disco, retención 2 h; Grafana sin disco). El override no
+cambia los siete días de retención de los values cloud.
 Los dos instaladores se niegan a trabajar contra un contexto que no sea
 `kind-*`.
 
 ### Los tres escenarios de fallo, en local
+
+Guardar modos y simulación anteriores, ejecutar la carga elegida con ventana y
+saldos, y restaurar los mismos valores aun si falla el escenario. Los ejemplos
+siguientes son locales, no comandos para producción.
+
 
 ```bash
 # el banco pareja rechaza
@@ -230,7 +237,7 @@ pnpm k8s:install -- --values infra/k8s/kind/local.values.yaml \
 
 # el proveedor de pagos falla siempre (T-44, en caliente, sin desplegar)
 curl -X PUT localhost:3000/api/payments/simulation -H "Authorization: Bearer <JWT admin>" \
-  -H 'Content-Type: application/json' -d '{"failureRate":1}'
+  -H 'Content-Type: application/json' -d '{"failureRatePercent":100,"timeoutRatePercent":0,"latencyMs":0}'
 
 # matar un pod durante la carga
 kubectl delete pod -n bank-usac -l app.kubernetes.io/component=payment-service
@@ -238,12 +245,14 @@ kubectl delete pod -n bank-usac -l app.kubernetes.io/component=payment-service
 
 ### Dos cosas que muerden
 
-**Tocar un Secret no rueda los pods** (TD-089). Un pod lee un Secret una vez, al
-arrancar, y el chart hashea el ConfigMap pero no el Secret. Si añades o rotas
-una credencial, `kubectl rollout restart deployment -n bank-usac` después, o el
-servicio seguirá usando la anterior — y el síntoma es un rechazo correcto de un
-valor equivocado, que es lo más difícil de diagnosticar. El Deployment del mock
-sí lleva `checksum/secret`, por esto mismo.
+**El checksum de Secret ya está implementado** (TD-089). Los seis procesos
+que leen el Secret bancario anotan `checksum/config` y `checksum/secret`; web
+sólo hashea ConfigMap, porque no consume ese Secret. El mock lleva ambos.
+Cambiarlo mediante `helm upgrade` actualiza la plantilla y rueda los pods;
+mutar el Secret por fuera de Helm no recalcula el hash. Verificar el entorno
+nuevo tras una rotación. En RabbitMQ con PVC, cambiar el Secret no actualiza
+la contraseña ya persistida del usuario: seguir el
+[runbook del broker](runbooks/consumer-lag.md).
 
 **El puerto 3000 ya no lo quieren dos.** `pnpm k8s:forward` pone el Gateway en
 3000 y la web en 3010; `pnpm obs:forward` pone Grafana en **3002**. Chocaban
@@ -252,8 +261,8 @@ que es cuando una colisión documentada deja de ser aceptable.
 
 ### Lo que este camino NO prueba
 
-El **HPA** (kind no trae `metrics-server`), el **error budget de siete días**
-(la retención local es de dos horas) y la **IP pública** del Gateway. Eso
+El **HPA**, salvo que se instale y verifique `metrics-server` con `pnpm k8s:metrics`, el **error budget de siete días**
+(Prometheus local conserva dos horas; Tempo conserva 24 h) y la **IP pública** del Gateway. Eso
 necesita la nube, y está en [CLOUD.md](CLOUD.md).
 
 Para apagarlo:
@@ -277,11 +286,11 @@ Qué se puede escalar y qué no:
 | --- | --- |
 | `gateway`, `web` | Sí. El Gateway nombra su cola de respuestas con el nombre del pod (downward API), así que dos réplicas no colisionan. |
 | `customer`, `transaction`, `payment`, `notification-audit` | Sí. Consumen colas durables compartidas; el broker reparte el trabajo entre réplicas, que es lo buscado. |
-| `account` | **Todavía no.** Además de atender mensajes corre el trabajo periódico de desactivación de cuentas inactivas, y nada elige un único ejecutor: N réplicas harían la pasada N veces. |
+| `account` | Sí. El trabajo periódico adquiere exclusión distribuida mediante advisory lock PostgreSQL; varias réplicas no ejecutan la misma pasada simultáneamente (commit `79e0a9a`). |
 
-No hay HPA ni metrics-server: el escalado es manual y declarado. Un clúster kind
-de un nodo no da margen para autoescalar de forma significativa, y un HPA que no
-puede medir es peor que ninguno.
+El chart declara HPA opcional, pero kind no incluye metrics-server por defecto.
+Sin ese proveedor no se demuestra autoescalado; usar réplicas declaradas para
+la demo local. En GKE sí se observaron siete HPA al 80% CPU, mínimo 1/máximo 5.
 
 ## Cuando algo falla
 

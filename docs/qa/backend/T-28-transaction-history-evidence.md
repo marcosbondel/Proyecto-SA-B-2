@@ -161,8 +161,8 @@ Postgres y corre siempre.
 Probando los filtros desde la interfaz con sesión de cliente, se detectó que la tarjeta
 *"Consultar una transferencia"* de `/transferencias` estaba condicionada a `v-if="isStaff"` —
 un `CLIENTE` nunca la veía. No es un efecto de este ticket: la condición ya existía antes de
-T-28. Pero contradice la propia documentación del proyecto — `docs/manual/rol-cliente.md` y
-`docs/manual/README.md §6.4` describen esa búsqueda como parte del flujo del cliente ("se pega
+T-28. Pero contradice la propia documentación del proyecto — `docs/manual-usuario.md §3.1` y
+`docs/manual/README.md` describen esa búsqueda como parte del flujo del cliente ("se pega
 en *Transferencias → Consultar una transferencia*") — y el backend ya estaba preparado para
 ello: `GetTransactionStatusUseCase` aplica `mayReadTransaction` y responde `NOT_FOUND` tanto a
 un identificador inexistente como a uno de otro cliente, así que mostrar la caja a todos los

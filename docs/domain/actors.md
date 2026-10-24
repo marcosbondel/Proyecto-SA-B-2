@@ -65,6 +65,10 @@ Two consequences worth stating, because code will otherwise assume otherwise:
 | Register a deposit at a window | ✘ | ✔ | ✔ |
 | Read the biller catalogue | ✔ | ✔ | ✔ |
 | Read the dashboard counters | ✘ (own money instead) | ✔ own shift | ✔ system-wide |
+| Send an interbank deposit | ✔ own source only | ✘ | ✘ |
+| List/read interbank sends | ✔ own only | ✔ all | ✔ all |
+| Read/update provider simulation | ✘ | ✘ | ✔ |
+| Record identity/KYC verdict | ✘ | ✔ | ✔ |
 
 The nine rows below the audit line were added after the Claude Design prototype
 was implemented in full. Six of them close TD-027, TD-033, TD-035, TD-037 and
@@ -110,16 +114,14 @@ What each role **may not** do matters as much as what it may.
 - May not alter an `AuditEvent`. The record is append-only and immutable **for everyone**
   (invariant E-3). An administrator who can rewrite the audit trail makes the audit trail
   worthless.
-- May not read an access credential. Credentials never leave Customer Service in readable form,
+- May not read an access credential. Stored credential hashes never leave Customer; plaintext input travels only in the commands needed to authenticate or replace a credential,
   regardless of who is asking.
 
 ## What is deliberately not modelled
 
-**Cash deposit and withdrawal.** The assignment names the receiving teller but describes no
-cash operation anywhere, and this model does not invent one. The teller is given the operations
-that do exist in the assignment: registering clients, opening accounts, querying balances and
-transferring at the counter. If the team decides to add deposits and withdrawals, they are new
-use cases against Account Service and a model change requiring a new approval.
+**Cash operations.** The implemented deposit window lets CAJERO_RECEPTOR and ADMINISTRADOR record a deposit; Account owns the credit. Cash withdrawal remains absent. The added deposit is already listed in the matrix; this revision does not add a withdrawal use case.
+
+**Bank and monitoring actors.** A participating bank uses its API key on `/interbank/v1` and sees only operations it participates in. It is not a fourth customer role. The Grafana webhook uses its own secret and can submit an SLO notification, not order money movements. The official health endpoint is public.
 
 **Endpoint-level authorization.** This document fixes the minimum the domain needs: who may
 trigger which use case. How that is enforced — token scopes, guards, per-route rules — is
@@ -130,3 +132,7 @@ trigger which use case. How that is enforced — token scopes, guards, per-route
 > assigns enforcement to the Gateway, which is T-15. The guards that implement this matrix
 > live in `apps/gateway/src/interfaces/guards/`, and a test in `apps/web` fails if the
 > frontend's copy of the matrix and the Gateway's ever disagree.
+
+## Verification of scope (T-61)
+
+The interbank send restriction is enforced by `@Roles('CLIENTE')` and Account ownership lookup; a foreign customer send returns 404 on detail as an unknown one does. Simulation is ADMINISTRADOR-only. These are current route/service rules, not broader permission implied by staff being able to read all accounts. The original D-06 approval history remains in README; this documentation records the implemented extensions.

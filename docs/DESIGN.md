@@ -173,20 +173,19 @@ change rather than the code:
 | `P-07b` says the reset link lasts 24 hours; the build says one | The build. This link replaces a credential; the activation link's 24 hours only prove an address was reachable. |
 | `A-05`'s receipt says `transactionId`; the build says `operationId` | The build. A deposit belongs to no transaction. |
 | `G-03` is drawn as a payment list; the build reads the transfer list | The build. A service payment *is* a transfer to the biller's collection account. |
-| Nothing was checked in a browser | **The prototype.** TD-054 — static checks are not this evidence. |
+| The original parity delivery lacked browser review | **Historical gap (TD-054).** Later captures and tests must be evaluated by their date, route, state and comparison reference. |
 
-The last row is the one that matters. Lint, tests, typecheck and build are green
-across the workspace and every pure function the screens depend on is asserted.
+The original parity delivery's static checks did not prove visual fidelity.
+The repository now contains the [visual walkthrough](manual-usuario.md#5-recorrido-visual-paso-a-paso-del-flujo-práctico-integral)
+and Nitro HTTP integration suites, including SSR, guards, proxy, audit and
+interbank screens. Those are different evidence: HTTP tests do not prove pixel
+parity, and a screenshot of one route does not prove all thirty-four screens.
 
-A live run of `pnpm dev:host` has since exercised the **API**: the migrations
-land, the billers seed, and a service payment completes end to end with the
-money on the biller's collection account, the row in the customer's history and
-the notification unread in their inbox. That run found a defect no test could —
-a stats handler that was never registered, which showed as an empty dashboard
-tile rather than as an error.
-
-**No screen has been rendered.** Closing TD-054 means walking the thirty-four in
-a browser and attaching the notes.
+The [Fase III validation guide](qa/guia-validacion-manual-fase3.md) distinguishes
+source inspection, executed browser observations and pending scenarios. Closing
+TD-054 still requires evidence of comparison with `bonking.dc.html`, naming
+states and intentional deviations. This documentation review does not replace
+that reference or change its tokens.
 
 ## Brand & Style
 

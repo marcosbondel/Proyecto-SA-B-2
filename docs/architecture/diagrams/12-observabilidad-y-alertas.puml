@@ -1,0 +1,58 @@
+@startuml 12-observabilidad-y-alertas
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam dpi 180
+skinparam ArrowColor #60666F
+skinparam defaultTextAlignment center
+skinparam linetype polyline
+skinparam nodesep 45
+skinparam ranksep 65
+skinparam nodeBackgroundColor #F7F7F7
+skinparam nodeBorderColor #7A7F87
+skinparam rectangleBackgroundColor #FFFFFF
+skinparam rectangleBorderColor #1168BD
+skinparam databaseBackgroundColor #EDF3F8
+skinparam databaseBorderColor #336791
+skinparam noteBackgroundColor #FFF8DE
+skinparam noteBorderColor #D6B656
+title Flujo técnico de observabilidad - Bank USAC Fase III\nLogs fuera del broker / auditoría por eventos
+left to right direction
+rectangle "6 aplicaciones NestJS\n@bank/observability\nSDK / logger JSON / traceparent" as apps
+rectangle "Frontend Nuxt 4\n/metrics / Nitro proxy" as web
+queue "RabbitMQ\nAMQP :5672 / métricas :15692" as broker
+rectangle "otel-gateway Deployment\nOTLP :4317,:4318\nmemory_limiter / redacción / batch" as collector
+rectangle "otel-log-agent DaemonSet\nfilelog /var/log/pods\nparse_bank_json / redacción" as agent
+rectangle "Prometheus\nScrape :8889 / :15692 / :8080\nPromQL / recording rules" as prom
+database "Tempo\nOTLP :4317 / TraceQL :3200\nPVC 10 GiB / 7 días" as tempo
+database "Loki\nOTLP HTTP :3100 / LogQL\nPVC 10 GiB / 7 días" as loki
+rectangle "kube-state-metrics\nRéplicas / HPA / ReplicaSets" as ksm
+rectangle "Grafana\n9 dashboards / 16 alertas\nExplore / PVC 2 GiB / LB :80" as grafana
+rectangle "Gateway\nPOST /api/alerts/slo\nALERT_WEBHOOK_TOKEN" as gateway
+rectangle "Notification & Audit\nAuditoría / notificación SLO\nINFO / WARNING / ERROR" as audit
+actor "Operador SRE" as sre
+apps <--> broker : comandos / eventos\npropagación W3C por AMQP
+apps --> collector : trazas + métricas OTLP
+apps ..> agent : stdout JSON\ntraceId / spanId / correlationId
+collector --> tempo : spans redactados / OTLP
+prom --> collector : scrape HTTP :8889
+prom --> broker : scrape HTTP :15692
+prom --> ksm : scrape HTTP :8080
+prom --> web : scrape HTTP /metrics
+agent --> loki : logs / OTLP HTTP
+grafana --> prom : PromQL / SLO / budget
+grafana --> tempo : TraceQL / trazas
+grafana --> loki : LogQL / logs
+grafana --> gateway : webhook autenticado
+gateway -> broker : evento SLO por AMQP
+broker -> audit : registrar y notificar
+sre --> grafana : sesión / Explore
+note bottom of grafana
+  Log -> traza por traceId; span -> logs; métrica -> exemplar.
+  Métricas: etiquetas acotadas, sin customerId ni accountId.
+  Logs: IDs como campos/metadatos, no etiquetas indexadas.
+  No guardar JWT, tokens de enlace, correo, documento ni foto.
+  Un stack compartido; environment distingue dev/prod.
+end note
+
+@enduml

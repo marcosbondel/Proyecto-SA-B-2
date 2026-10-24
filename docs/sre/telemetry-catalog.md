@@ -6,9 +6,11 @@ multiplica las series. Es el documento que el enunciado pide **antes** de
 implementar (§6, Paso 2) y la fuente única de la que T-50 construye las
 *recording rules*, los paneles y las alertas.
 
-Lo que **no** es: una descripción de cómo se obtuvo cada número. Eso está en los
-anexos de [`sli-slo-sla.md`](sli-slo-sla.md), uno por ticket (T-43 a T-48), y no
-se repite aquí.
+Revisión **2026-10-21**, contrastada con los adaptadores de telemetría y
+[`@bank/observability`](../../apps/packages/observability/src/sdk.ts). Los nombres
+y conjuntos se describen como los emite el código; las mediciones y sus ventanas
+están en [`sli-slo-sla.md`](sli-slo-sla.md). Un nombre de instrumento no demuestra
+que el Collector esté recibiéndolo en un entorno concreto.
 
 ## Cómo leer la columna de Prometheus
 
@@ -56,7 +58,7 @@ etiqueta de recurso existe.
 > Recomendaciones: *"Evitar etiquetas de alta cardinalidad (accountId,
 > customerId) en las métricas"*.
 
-Por eso el sistema tiene **tres planos y cada identificador vive en uno solo**:
+Por eso el sistema tiene **tres planos; los identificadores pueden aparecer en trazas y logs**:
 
 | Plano | Qué lleva | Cardinalidad |
 | --- | --- | --- |
@@ -69,7 +71,9 @@ campos de log. Lo que ninguna métrica puede tener es uno de ellos como etiqueta
 y eso lo hace cumplir una prueba, no la buena intención:
 `apps/packages/observability/test/metric-cardinality.spec.ts` barre el código de
 los siete componentes, extrae las claves de atributo de cada `.add(` y
-`.record(`, y **falla si aparece una que no esté en este catálogo**. Añadir una
+`.record(`, y **falla si aparece una clave fuera de su allow-list estática**, sincronizada
+manualmente con este catálogo. La prueba no parsea el Markdown ni valida por
+sí sola los valores de las etiquetas. Añadir una
 etiqueta nueva obliga a añadir su fila aquí, que es exactamente el acoplamiento
 que se busca.
 
@@ -101,7 +105,7 @@ cada dominio.
 
 ### 2.2 HTTP — Gateway y mock (instrumentación del SDK, T-48)
 
-El Gateway **no declara métricas propias**: su latencia y su disponibilidad
+El Gateway **no declara métricas de dominio propias**: su latencia y su disponibilidad
 salen de la instrumentación HTTP, con convenciones semánticas estables
 (`@opentelemetry/instrumentation-http` 0.223.0 emite
 `http.server.request.duration`, verificado en el paquete instalado).
@@ -112,7 +116,7 @@ salen de la instrumentación HTTP, con convenciones semánticas estables
 | `http.client.request.duration` | Histogram | `s` | `http.request.method`, `http.response.status_code`, `server.address` | `http_client_request_duration_seconds` |
 
 `http.route` es la **plantilla** de la ruta (`/api/accounts/:id`), no la URL con
-el identificador dentro: veinticinco rutas, no una por cuenta. Los sondeos
+el identificador dentro: un conjunto acotado de plantillas registradas, no una serie por cuenta. El inventario HTTP vigente está en [OpenAPI](../../apps/gateway/openapi/). Los sondeos
 `/health` y `/ready` quedan fuera de las consultas de disponibilidad: los pide
 el kubelet cada pocos segundos y diluirían la medida con tráfico que no es de
 ningún cliente.
@@ -125,7 +129,7 @@ ningún cliente.
 | `bank.customer.kyc.time_to_decision` | Histogram | `s` | `path` | `bank_customer_kyc_time_to_decision_seconds` |
 | `bank.customer.registration.refusals` | Counter | `{registration}` | `reason` | `bank_customer_registration_refusals_total` |
 
-`path` es por dónde entró el cliente (autoservicio o ventanilla). Los *buckets*
+`path` ∈ `counter` · `review`: decisión de ventanilla o revisión posterior del cliente. Las negativas de registro usan los códigos cerrados `DOCUMENT_ALREADY_REGISTERED`, `EMAIL_ALREADY_REGISTERED`, `INVALID_BIRTH_DATE` y `ROLE_NOT_ELIGIBLE`. Los *buckets*
 del histograma llegan a siete días a propósito: una verificación de identidad
 puede tardar lo que tarde una persona, y los *buckets* por defecto se detienen
 en diez segundos, lo que dejaría todo en el último y haría el p95 ilegible.
@@ -137,10 +141,10 @@ consulta sobre `result`, no dos contadores.
 
 | Métrica | Tipo | Unidad | Etiquetas | En Prometheus |
 | --- | --- | --- | --- | --- |
-| `bank.account.operations` | Counter | `{operation}` | `account_type` (`AHORRO` · `CORRIENTE`), `operation` (`debit` · `credit`) | `bank_account_operations_total` |
+| `bank.account.operations` | Counter | `{operation}` | `account_type` (`AHORRO` · `MONETARIA`), `operation` (`debit` · `credit` · `compensation`) | `bank_account_operations_total` |
 | `bank.account.anomalies` | Counter | `{anomaly}` | `account_type`, `rule` (`HIGH_FREQUENCY`) | `bank_account_anomalies_total` |
 
-Cuatro series para el primero y dos para el segundo. **El `accountId` no está**:
+Seis combinaciones de etiquetas de dominio para el primero y dos para el segundo, por recurso/scope exportado. **El `accountId` no está**:
 va al span `account.activity anomaly` y a la línea de log, que es donde §4.1
 dice que se consulta el detalle por cuenta.
 
@@ -152,10 +156,8 @@ dice que se consulta el detalle por cuenta.
 | `bank.transfer.finished` | Counter | `{transfer}` | `result`, `reason` | `bank_transfer_finished_total` |
 | `bank.transfer.duration` | Histogram | `s` | `result` | `bank_transfer_duration_seconds` |
 
-`result` ∈ `COMPLETED` · `FAILED` · `COMPENSATED`: los tres estados finales de
-la máquina de seis. `reason` es un conjunto cerrado de motivos de cierre. Los
-límites de *bucket* están densos alrededor de los cinco segundos porque **SLO-2
-se lee exactamente en `le="5"`**: un histograma sólo responde "¿cuántas bajo
+`result` ∈ **`completed` · `failed` · `compensated`**, en minúsculas; el estado persistido permanece en mayúsculas. Son los tres estados finales de la máquina de seis. `reason` es `NONE` para éxito y un conjunto cerrado de códigos de rechazo para los otros cierres; véase [el adaptador](../../apps/services/transaction-service/src/infrastructure/telemetry/otel-transfer.telemetry.ts). Los
+límites de *bucket* están densos alrededor de los cinco segundos porque **SLO-2 se lee en el bucket de 5 s con `le=~"5(\\.0+)?"`**: un histograma sólo responde "¿cuántas bajo
 cinco segundos?" si hay un límite justo ahí.
 
 ### 2.6 Payment Service — proveedor simulado (T-44)
@@ -166,10 +168,13 @@ cinco segundos?" si hay un límite justo ahí.
 | `bank.payment.provider.duration` | Histogram | `s` | `result` | `bank_payment_provider_duration_seconds` |
 | `bank.payment.simulation.changes` | Counter | `{change}` | `action` | `bank_payment_simulation_changes_total` |
 
-`source` dice **quién decidió** el resultado: la escalera normal o una
-simulación fijada por un administrador. Es lo que permite distinguir un fallo
-externo real de uno inyectado para una prueba, y sin ella la *tasa de fallos
-externos* mezclaría las dos cosas.
+`result` ∈ `success` · `failure` · `timeout`; `source` ∈ `scenario` ·
+`configuration` · `runtime`; `action` ∈ `update` · `reset` · `denied`, todos en
+minúsculas. `scenario` viene del guion de la transferencia, `configuration` de
+los valores de arranque y `runtime` de los ajustes persistidos por el
+administrador. **Todo el proveedor de pagos de servicios es simulado**; estas
+etiquetas no distinguen un proveedor real de uno simulado. El banco pareja HTTP
+se mide por separado (§2.7 y §2.10).
 
 ### 2.7 Payment Service — interbancario entrante (T-46)
 
@@ -177,7 +182,7 @@ externos* mezclaría las dos cosas.
 | --- | --- | --- | --- | --- |
 | `bank.interbank.deposits` | Counter | `{deposit}` | `result` (`accepted` · `rejected`) | `bank_interbank_deposits_total` |
 | `bank.interbank.deposit.duration` | Histogram | `s` | `result` | `bank_interbank_deposit_duration_seconds` |
-| `bank.interbank.callbacks` | Counter | `{attempt}` | `result` | `bank_interbank_callbacks_total` |
+| `bank.interbank.callbacks` | Counter | `{attempt}` | `result` (`delivered` · `failed`) | `bank_interbank_callbacks_total` |
 
 El **motivo** del rechazo (`ACCOUNT_NOT_FOUND`, `UNSUPPORTED_CURRENCY`, …) no es
 etiqueta de la métrica: es atributo del span `payment.interbank state` y campo
@@ -196,21 +201,27 @@ un contrato ajeno es una etiqueta que no controlamos.
 `family` es la primera palabra del tipo de mensaje con un conjunto cerrado
 (`customer`, `account`, `transaction`, `payment`, `alert`, `other`): un nombre
 imprevisto cae en `other` y **no** crea una serie nueva. `severity` es la
-clasificación que pide el enunciado: `INFO` · `WARNING` · `ERROR`.
+clasificación de eventos que pide el enunciado: `INFO` · `WARNING` · `ERROR`
+para `events` y `notifications`. En `alerts.received`, `severity` ∈ `critical` ·
+`warning` · `info`, y `status` ∈ `firing` · `resolved`. Además, `outcome` ∈
+`recorded` · `duplicate`; `processing` ∈ `processed` · `invalid` · `error`;
+resultado de notificación ∈ `sent` · `failed` · `suppressed`. No intercambiar las
+mayúsculas del nivel bancario con la severidad operativa de Grafana.
 
 ### 2.9 Lo que no emite la aplicación
 
 | Señal | Quién la expone | Cómo llega |
 | --- | --- | --- |
-| **Consumer lag** del broker | RabbitMQ con `rabbitmq_prometheus` (`:15692`) | job `rabbitmq` de Prometheus, un target por namespace con la etiqueta `environment` |
+| **Consumer lag** del broker | RabbitMQ con `rabbitmq_prometheus` (`:15692`) | jobs `rabbitmq` y **`rabbitmq-detailed`**, targets por namespace con `environment` |
 | CPU y memoria por contenedor | cAdvisor del kubelet | job `kubernetes-nodes-cadvisor` del chart |
 | Pods, Deployments, réplicas y **HPA** | `kube-state-metrics` | subchart de Prometheus |
 | Salud del propio Collector | su auto-telemetría en `:8888` | job del chart |
 
-Los nombres exactos de las series de RabbitMQ (`rabbitmq_queue_messages_ready`,
-`rabbitmq_queue_messages_unacked`) se confirman en kind antes de escribir la
-*recording rule* del consumer lag: son del plugin, no nuestros. T-50 no debe dar
-ninguno por supuesto.
+El plugin básico agrega colas y no proporciona la etiqueta `queue` necesaria
+para este diagnóstico. Las reglas usan **`rabbitmq_detailed_queue_messages_ready`**
+y **`rabbitmq_detailed_queue_messages_unacked`**, provenientes del endpoint
+detallado, y agrupan por `environment, queue`. La disponibilidad del scrape se
+comprueba antes de interpretar una ausencia como cola vacía.
 
 ### 2.10 El envío interbancario (T-47, medido desde T-51)
 
@@ -227,8 +238,11 @@ pide §4.1 (*"tasa de éxito de depósitos interbancarios (enviados y recibidos)
 **Tres valores de `result` y no cuatro.** La reserva preveía un `reversed`, y no
 se emite: `REVERSED` es la constancia de haber devuelto un depósito que ya se
 contó como `rejected` o `timeout`, así que contarlo otra vez duplicaría el
-denominador de la tasa de éxito. Los estados en vuelo —`PENDING` y `SENT`— no
-cuentan por lo mismo.
+denominador de la tasa de éxito. Los estados en vuelo `PENDING` y `SENT` no cuentan. **`timeout` se cuenta al
+entrar en `TIMEOUT`**, aunque éste aún no sea una decisión financiera final.
+Una aceptación/rechazo posterior a ese timeout no vuelve a incrementar el
+contador, para conservar un resultado por envío. Por tanto una recuperación
+tardía puede dejar el ratio de éxito bajo sin significar pérdida de dinero.
 
 El **número de timeouts** que pide el enunciado es
 `bank_interbank_sent_total{result="timeout"}`, no un contador aparte: un
@@ -236,7 +250,10 @@ contador separado se desincroniza del total en cuanto alguien añade un estado.
 
 Los límites del histograma son `[0.25, 0.5, 1, 2, 3, 5, 10, 20, 30, 60]`: densos
 alrededor de los 5 s, que es el umbral de `PartnerBankSendConfirmationSlow`, y
-largos hasta pasado el vencimiento de 30 s. Un histograma sólo puede responder
+hasta 60 s. El TTL actual del contrato es **180 s** y luego se consulta o
+cancela; el timeout **no se observa en este histograma**, porque su duración es
+un plazo de protocolo y no una confirmación recibida. Esto evita presentar el
+p95 de respuestas como si incluyera los envíos que nunca recibieron respuesta. Un histograma sólo puede responder
 «cuántas por debajo de cinco segundos» si hay una frontera exactamente ahí.
 
 Las cuatro reglas que las consumen —la tasa, el presupuesto, el p95 y los
@@ -264,7 +281,8 @@ correlación y posiblemente varias trazas.
 | `saga.compensation ordered` · `saga.compensation completed` | Transaction | las compensaciones que el criterio 2.2 exige ver en la traza |
 | `saga.payment attempt` | Transaction | un span por escalón de la escalera |
 | `payment.provider call` | Payment | con el evento `simulated_failure` cuando el fallo fue inyectado |
-| `payment.interbank state` | Payment | un span por cambio de estado del depósito |
+| `payment.interbank state` | Payment | un span por cambio de estado del depósito entrante |
+| `payment.interbank send` · `payment.interbank.resolve` | Payment | estado del envío y resolución persistida de timeout; consulta, cancelación y reverso se siguen por HTTP/Undici |
 | `audit.record` | Audit | el asiento de auditoría, con severidad y resultado |
 
 ---
@@ -290,19 +308,58 @@ por el broker.
 Un campo que el emisor no dio **se omite**, nunca va en `null`: un `traceId`
 vacío se leería como una traza que alguien puede buscar.
 
-**Lo que ninguna línea lleva**, por tipo y por `redactFields`: número de
-documento, correo, fotografía, contraseña, token JWT, dirección, monto o saldo.
-Las dos barreras son el tipo `LogFields` de cada componente (lo que *puede*
-decir) y el barrido por nombre de campo (para cuando se derrama un objeto más
-ancho).
+**Redacción implementada y límites.** El logger elimina campos por nombre
+(credenciales, tokens, correos, documentos, fotografías, teléfonos y direcciones)
+y enmascara formas de JWT, Bearer y correo en texto. **Su deny-list no elimina
+`amount` o `balance`**: los adaptadores de dominio evitan emitirlos. La
+redacción de auditoría es diferente y sí sustituye montos/saldos antes del
+insert. No se debe atribuir a un filtro una garantía que sólo aporta la
+selección de campos del emisor.
+
+El SDK aplica `RedactingSpanProcessor` antes del exportador: cubre atributos,
+eventos, links, nombre y estado del span, y parámetros sensibles de URL. El
+Collector repite la redacción en spans y sobre el cuerpo crudo de logs antes
+de parsear JSON. Son defensas por nombre y forma; un nuevo campo de texto libre
+requiere prueba con datos sintéticos. Fuentes:
+[logger](../../apps/packages/observability/src/logger.ts),
+[spans](../../apps/packages/observability/src/redaction.ts),
+[auditoría](../../apps/services/notification-audit-service/src/domain/redaction.ts).
+
+Loki indexa solamente `service_name`, `deployment_environment` y
+`k8s_namespace_name`. `traceId`, `spanId`, `correlationId`, versión y demás
+campos JSON son **metadatos estructurados**, no etiquetas indexadas. Consulta:
+
+```logql
+{service_name="payment-service", deployment_environment="dev"}
+  | correlationId="<correlationId>"
+```
+
+### 4.1 Exportación, retención y muestreo
+
+- El SDK se registra primero en `instrumentation.ts`; sin endpoint OTLP conserva
+  contexto y logs pero no exporta métricas/trazas. `OTEL_SDK_DISABLED=true`
+  desactiva el SDK. Intervalo de exportación métrica por defecto: **15 s**.
+- La propagación HTTP y los headers AMQP `traceparent`/`tracestate` permiten
+  reconstruir el flujo. Reintentos, un contexto inválido o un banco externo sin
+  instrumentación pueden impedir que todos los spans aparezcan juntos: se
+  conserva el `correlationId` para cruzar trazas.
+- El código y el chart no declaran una política propia de muestreo probabilístico
+  ni `tail_sampling`. No se presume una garantía de captura del 100 %; el padre
+  W3C puede marcar una traza como no muestreada y un exportador puede perderla.
+- Cloud configura **7 d** para métricas, logs y trazas; kind reduce Prometheus
+  a **2 h** y Tempo a **24 h**. Una traza de KYC cuya creación ocurrió fuera de
+  la retención puede conservar su contexto sin conservar su span inicial.
+- El Collector agrega `service_name` y `environment` a las métricas de
+  aplicación. Las etiquetas de infraestructura (`pod`, `node`, `queue`) vienen
+  de los jobs correspondientes y no invalidan esa lista de recursos promovidos.
 
 ---
 
 ## 5. Qué hacer al añadir una señal
 
 1. Añadir su fila aquí, con unidad, etiquetas y la justificación de cardinalidad.
-2. Si es una etiqueta nueva, añadirla al conjunto permitido de
-   `metric-cardinality.spec.ts`, que falla hasta que esté.
+2. Si es una clave de etiqueta nueva, actualizar la allow-list estática de
+   `metric-cardinality.spec.ts` junto con su justificación en este catálogo.
 3. Registrarla en la descripción del PR.
 4. Si alimenta un SLI, decirlo en [`sli-slo-sla.md`](sli-slo-sla.md) §5.3.
 

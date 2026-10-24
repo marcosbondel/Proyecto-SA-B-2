@@ -2,6 +2,7 @@
 title CDU002.9 - Registrar depósito en ventanilla
 
 skinparam shadowing false
+skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
     BorderColor #1168BD
@@ -28,10 +29,10 @@ else (No)
     else (Sí)
         :Acreditar con la misma regla que el crédito de la Saga;
         if (¿La cuenta estaba INACTIVE?) then (Sí)
-            :Reactivarla y publicar account.reactivated;
+            :Reactivarla y publicar account.reactivated.v1;
         else (No)
         endif
-        :Publicar account.deposited;
+        :Publicar account.deposited.v1;
         :Responder el saldo resultante;
         |Notification & Audit|
         :Registrar el depósito;
@@ -40,9 +41,14 @@ endif
 stop
 
 legend right
-    Es la única ruta de dinero síncrona: no hay Saga que esperar,
+Es la única ruta de dinero síncrona: no hay Saga que esperar,
     así que el saldo viaja en la misma respuesta.
     Un depósito no lleva transactionId; su deduplicación descansa
     en la restricción (idempotency_key, tipo).
+
+Implementación: Node.js 24 / NestJS / TypeScript.
+  Mensajes internos: RabbitMQ / AMQP 0-9-1; correlationId y traceparent.
+  Persistencia: PostgreSQL exclusivo por servicio. Entrada: Gateway HTTP / JWT / roles.
+  Vistas complementarias de Fase III: diagrama 13 e índice de arquitectura.
 endlegend
 @enduml

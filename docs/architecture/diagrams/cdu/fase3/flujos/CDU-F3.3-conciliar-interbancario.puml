@@ -1,0 +1,56 @@
+@startuml CDU-F3.3-conciliar-interbancario
+title CDU-F3.3 - Conciliación diaria y liquidación de reversos
+
+skinparam shadowing false
+skinparam dpi 180
+skinparam activity {
+    BackgroundColor #F4F8FF
+    BorderColor #1168BD
+    FontColor #1168BD
+}
+
+|Scheduler / Personal Operativo|
+start
+:Iniciar proceso de conciliación (automático por scheduler o POST /api/interbank/reconciliation);
+|Payment Service|
+:Consultar depósitos salientes en estado TIMEOUT o sin veredicto definitivo;
+:Consultar depósitos entrantes en el período de conciliación;
+while (¿Hay depósitos pendientes de resolución?) is (Sí)
+    :Seleccionar depósito y construir consulta de estado;
+    :Enviar GET /interbank/v1/deposits/:id al banco pareja;
+    |Banco participante|
+    :Consultar estado local del depósito;
+    :Responder estado (ACCEPTED, REJECTED o NOT_FOUND);
+    |Payment Service|
+    if (¿Banco pareja reporta ACCEPTED?) then (Sí)
+        :Actualizar estado a ACCEPTED en interbank_sends;
+        :Confirmar liquidación de la reserva en Account Service;
+    elseif (¿Banco pareja reporta REJECTED o NOT_FOUND?) then (Rechazado)
+        :Actualizar estado a REJECTED con motivo de conciliación;
+        :Generar orden de restitución de reserva;
+        :Publicar comando account.reversal.command.v1;
+        |Account Service|
+        :Acreditar fondos retenidos a la cuenta origen del cliente;
+        :Registrar movimiento con tipo TRANSFER_INTERBANK_REVERSAL;
+    else (Sin respuesta del banco pareja)
+        :Mantener en estado TIMEOUT con reserva intacta;
+        :Generar alerta para revisión de personal SRE;
+    endif
+endwhile (No)
+
+|Payment Service|
+:Generar informe consolidado de conciliación;
+:Calcular balance neto de transferencias enviadas vs recibidas;
+:Publicar evento interbank.reconciliation.completed.v1;
+|Notification & Audit|
+:Persistir resumen de conciliación en la bitácora de auditoría;
+|Personal Operativo|
+:Consultar reporte en pantalla de Auditoría Interbancaria;
+stop
+legend bottom
+  Implementación: Node.js 24 / NestJS / TypeScript.
+  Regla de negocio: Un TIMEOUT nunca libera fondos sin verificación previa.
+  Invariante: Saldo del cliente se preserva íntegro ante cualquier discrepancia.
+  Persistencia: PostgreSQL 18.4 exclusivo por servicio; trazabilidad en auditoría.
+endlegend
+@enduml

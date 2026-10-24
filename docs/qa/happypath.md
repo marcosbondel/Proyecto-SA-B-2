@@ -1,5 +1,11 @@
 # Guía Integral de Pruebas: Happy Path, Validaciones y Casos de Error
 
+> **Evidencia histórica anterior a T-61.** Conserva los resultados y capturas
+> de su corrida local original; no certifica el despliegue Fase III actual.
+> Las credenciales, permisos y límites vigentes se consultan en el
+> [manual actual](../manual/README.md) y la
+> [validación Fase III](guia-validacion-manual-fase3.md).
+
 Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral** de **Bank USAC**. Detalla la totalidad de los flujos del sistema bancario distribuido interactuando con los tres actores (**Cliente**, **Cajero Receptor** y **Administrador**), contrastando en cada módulo el **Camino Exitoso (Happy Path)** frente a los **Caminos de Validación y Manejo de Errores (Unhappy / Edge Cases)**, respaldado por evidencias visuales de alta resolución tomadas en tiempo real durante la ejecución automatizada.
 
 ---
@@ -27,8 +33,8 @@ Este documento constituye la **Guía Maestra de Pruebas y Demostración Integral
 7. [Módulo 7: Transferencia Bancaria con Saga Coreografiada](#módulo-7-transferencia-bancaria-con-saga-coreografiada)
 8. [Módulo 8: Administración, Auditoría Global y Observabilidad](#módulo-8-administración-auditoría-global-y-observabilidad)
 9. [Módulo 9: Escenarios Cruzados Multi-Actor de Alta Complejidad](#módulo-9-escenarios-cruzados-multi-actor-de-alta-complejidad)
-10. [Diagnóstico de Casos Borde y Pruebas no Superadas](#diagnóstico-de-casos-borde-y-pruebas-no-superadas)
-11. [Conclusiones del Reporte de Pruebas](#conclusiones-del-reporte-de-pruebas)
+10. [Diagnóstico de Casos Borde y Pruebas no Superadas](#-diagnóstico-de-casos-borde-y-pruebas-no-superadas)
+11. [Conclusiones del Reporte de Pruebas](#-conclusiones-del-reporte-de-pruebas)
 
 ---
 

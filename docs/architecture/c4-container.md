@@ -1,32 +1,26 @@
-# C4 Nivel 2 — Diagrama de Contenedores
+# C4 L2 — Contenedores
 
-Este documento describe el **Nivel 2 (Contenedores)** de la arquitectura C4 para **Bank USAC**, detallando las aplicaciones ejecutables, los almacenes de datos y el intermediario de mensajería.
+![Contenedores](diagrams/03-c4-contenedores.png)
 
----
+[Fuente PlantUML](diagrams/03-c4-contenedores.puml), [fuente DSL](diagrams/03-c4-contenedores.dsl), [modelo](diagrams/c4.dsl), [PNG ampliado](diagrams/03-c4-contenedores.png).
 
-## 1. Diagrama de Contenedores
+Diagrama optimizado con espaciado amplio (`ranksep 280`, `nodesep 160`), curvas suaves (`polyline`) y diferenciación cromática de relaciones (Azul: Ingress/HTTP, Rojo: AMQP/RabbitMQ, Azul Marino: PostgreSQL, Púrpura discontinuo: OTLP/Observabilidad, Naranja: Externos) para trazabilidad clara y sin congestión visual.
 
-![C4 Contenedores — Bank USAC](diagrams/03-c4-contenedores.png)
+Nuxt 4/Vue 3/Nitro sirve la interfaz; su proxy llama al Gateway NestJS. Los
+cinco servicios NestJS/Node 24 se comunican exclusivamente por RabbitMQ AMQP
+0-9-1, con `correlationId` y `traceparent`. Cada servicio posee una base
+PostgreSQL; el Gateway carece de base y dominio. Gateway deposita la foto en
+MinIO S3 y Customer verifica su digest.
 
-Fuentes de diagramación versionadas:
-* [Structurizr DSL (`.dsl`)](diagrams/03-c4-contenedores.dsl)
-* [Structurizr DSL Workspace Maestro (`c4.dsl`)](diagrams/c4.dsl)
+Payment es el único adaptador HTTP al banco externo; Notification & Audit
+entrega correo por Resend. Los demás intercambios internos siguen en el broker.
+La telemetría tiene otra ruta: seis cargas NestJS → Collector OTLP → Tempo y
+exportador de métricas; Prometheus hace scrape del Collector, RabbitMQ,
+kube-state-metrics y `/metrics` de web. El DaemonSet lee stdout JSON y envía
+logs a Loki. Grafana consulta los tres almacenes y su webhook autenticado entra
+por Gateway hacia auditoría. Los IDs viven en logs/trazas, no labels de métricas.
 
----
-
-## 2. Inventario de Contenedores
-
-### Frontend y Perímetro
-1. **Web App (`apps/web`)**: SPA/SSR moderna en **Nuxt 4 / Vue 3** servida sobre el puerto `:3010`. Implementa las 34 pantallas del diseño de prototipo, control de sesión y vistas segregadas por rol.
-2. **API Gateway (`apps/gateway`)**: Servicio perimetral en **NestJS** sobre el puerto `:3000`. Expone 24 rutas REST públicas y protegidas con JWT, validación de schemas con Zod y agregación de respuestas.
-
-### Servicios de Dominio (Núcleo Bancario)
-3. **Customer Service (`apps/services/customer-service`)**: Microservicio NestJS. Posee la base de datos `customer_db` (PostgreSQL en `:5433`). Maneja identidades, credenciales scrypt, activación por correo y verificación de DPI.
-4. **Account Service (`apps/services/account-service`)**: Microservicio NestJS. Posee la base de datos `account_db` (PostgreSQL en `:5434`). Maneja cuentas monetarias/ahorro, saldos exactos en `NUMERIC(14,2)` y proceso automático de desactivación.
-5. **Transaction Service (`apps/services/transaction-service`)**: Microservicio NestJS. Posee la base de datos `transaction_db` (PostgreSQL en `:5435`). Orquestador de la máquina de estados de transferencias y coordinador de la Saga.
-6. **Payment Service (`apps/services/payment-service`)**: Microservicio NestJS. Posee la base de datos `payment_db` (PostgreSQL en `:5436`). Procesa pagos externos con escalera de reintentos resiliente.
-7. **Notification & Audit Service (`apps/services/notification-audit-service`)**: Microservicio NestJS. Posee la base de datos `notification_audit_db` (PostgreSQL en `:5437`). Bitácora global inmutable de auditoría y buzón de notificaciones.
-
-### Infraestructura Compartida
-* **Message Broker (`RabbitMQ 4.3`)**: Broker de eventos y comandos asíncronos AMQP sobre los puertos `:5672` (tráfico) y `:15672` (consola de gestión).
-* **Almacenamiento de Objetos (`MinIO`)**: Servidor de almacenamiento compatible con Amazon S3 sobre `:9000` (API) y `:9001` (consola web) para resguardo de fotografías de documentos de identidad.
+Las versiones objetivo y las observadas se distinguen: GKE usa RabbitMQ
+`3.13-management`, mientras el repositorio declara `4.3.4` para otros entornos.
+La ubicación física, almacenamiento, Helm y Terraform están en
+[despliegue](deployment.md), no se infieren de esta vista lógica.

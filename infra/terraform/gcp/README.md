@@ -1,11 +1,11 @@
 # Infraestructura como Código (IaC) en Google Cloud Platform — Bank USAC
 
-Este directorio contiene la definición completa en **Terraform** para aprovisionar la infraestructura cloud de **Bank USAC** en **Google Cloud Platform (GCP)**, conforme a los requerimientos de la **Fase 2 / Proyecto 2**:
+Este directorio contiene el módulo **Terraform** para aprovisionar la infraestructura cloud de **Bank USAC** en **Google Cloud Platform (GCP)**, conforme a los requerimientos de la **Fase 2 / Proyecto 2**:
 
 1. **Red Virtual Privada (VPC)** con subredes separadas para GKE y Bases de Datos, reglas de firewall internas y salida segura a Internet vía **Cloud NAT**.
 2. **Máquinas Virtuales (Compute Engine)** para hospedar de forma independiente las 5 bases de datos relacionales PostgreSQL con scripts de aprovisionamiento desatendido (*startup-script*).
 3. **Clúster de Kubernetes (GKE)** administrado para desplegar los microservicios backend, el API Gateway, el broker de mensajería (RabbitMQ) y el almacenamiento de objetos (MinIO).
-4. **Google Cloud Run** para el despliegue serverless de la aplicación frontend Web (Nuxt 3).
+4. **Google Cloud Run** para el despliegue serverless de la aplicación frontend Web (Nuxt 4).
 5. **Configuración de Autoescalado Horizontal (HPA)** integrado en los templates de Helm al 80% de utilización de CPU.
 6. **Artifact Registry** como repositorio de las imágenes que publica el pipeline, con política de limpieza (TD-079).
 7. **IP pública reservada** para el `Service` de tipo `LoadBalancer` del API Gateway, de modo que la entrada al sistema sobreviva a que se borre el Service, se reinstale el release o se recree el namespace (TD-080).
@@ -46,7 +46,7 @@ infra/terraform/gcp/
    ```bash
    terraform version
    ```
-3. **Helm** (v3.x) y **kubectl**:
+3. **Helm** (comprobar versión; se han usado 3 y 4) y **kubectl**:
    ```bash
    helm version
    kubectl version --client
@@ -98,7 +98,7 @@ network_name        = "bank-usac-vpc"
 gke_machine_type    = "e2-standard-2"
 gke_node_count      = 3
 vm_machine_type     = "e2-medium"
-db_default_password = "BankUsacSecurePassword#2026"
+db_default_password = "<secreto-local-no-versionado>"
 deploy_cloud_run    = true
 ```
 
@@ -159,42 +159,49 @@ El procedimiento completo de extremo a extremo —identidad del pipeline, variab
    terraform output -raw helm_external_ips_example
    ```
 
-   El comando tendrá la siguiente estructura:
-   ```bash
-   helm upgrade --install bank-usac ../../k8s/helm/bank-usac \
-     --set external.mode=dockerNetwork \
-     --set external.postgresCustomer.dockerNetwork.host=<IP_VM_CUSTOMER> \
-     --set external.postgresAccount.dockerNetwork.host=<IP_VM_ACCOUNT> \
-     --set external.postgresTransaction.dockerNetwork.host=<IP_VM_TRANSACTION> \
-     --set external.postgresPayment.dockerNetwork.host=<IP_VM_PAYMENT> \
-     --set external.postgresNotificationAudit.dockerNetwork.host=<IP_VM_NOTIFICATION_AUDIT> \
-     --set secrets.jwtSecret="BankUsacSecret2026" \
-     --set secrets.rabbitmq.password="changeme" \
-     --set secrets.objectStorage.accessKey="minioadmin" \
-     --set secrets.objectStorage.secretKey="minioadmin" \
-     --set secrets.databases.customer.password="BankUsacSecurePassword#2026" \
-     --set secrets.databases.account.password="BankUsacSecurePassword#2026" \
-     --set secrets.databases.transaction.password="BankUsacSecurePassword#2026" \
-     --set secrets.databases.payment.password="BankUsacSecurePassword#2026" \
-     --set secrets.databases.notificationAudit.password="BankUsacSecurePassword#2026"
-   ```
+   Ese output es una ayuda para mapear direcciones, **no un release completo**:
+   también hacen falta tags, namespaces, URL pública y secretos de runtime.
+   Usar el pipeline descrito en
+   [CLOUD](../../../docs/operations/CLOUD.md) o su script
+   `.github/scripts/helm-deploy.sh` con `HELM_SECRETS`/`INFRA_ADDRESSES` cargados
+   desde almacenamiento seguro. No copiar contraseñas en flags `--set` de un
+   comando versionado. `dev` usa release `bank-usac-dev` y bases `_dev`.
 
 4. **Verificar el Autoescalado (HPA):**
    ```bash
    kubectl get hpa
    ```
-   Comprobarás que los pods escalan automáticamente cuando el consumo de CPU supera el umbral del **80%**.
+   El manifiesto solicita CPU objetivo **80 %**, mínimo 1 y máximo 5. Ver HPA
+   no demuestra que haya escalado: conservar CPU, réplicas y eventos durante
+   una corrida; los límites dependen de capacidad disponible.
 
 ---
 
 ## 6. Limpieza de Recursos (Destrucción)
 
-Para evitar consumos innecesarios de créditos o facturación en GCP una vez finalizada la evaluación:
+La retirada requiere respaldar y acordar qué datos deben conservarse.
+`terraform destroy` es destructivo y sólo conoce los recursos de este módulo;
+no elimina por sí solo los LoadBalancer/PVC creados por Helm. El procedimiento
+integral `pnpm cloud:down` y sus límites están en
+[CLOUD §5.2](../../../docs/operations/CLOUD.md#52-encender-y-apagar-la-nube-para-una-sesión-corta).
 
-```bash
-# 1. Desinstalar el release de Helm en el clúster
-helm uninstall bank-usac
+Verificar proyecto/contexto y retirar releases antes del clúster evita dejar
+balanceadores facturando. El release dev se llama `bank-usac-dev`, el productivo
+`bank-usac` y el de observabilidad `bank-observability`. El bucket de estado de
+`bootstrap/` tiene ciclo separado y `force_destroy=false`.
 
-# 2. Destruir toda la infraestructura aprovisionada por Terraform
-terraform destroy
-```
+## Estado contrastado de Fase III
+
+La zona vigente es **`us-central1-c`**, con tres nodos y **Dataplane V2** activo.
+Las cinco instancias PostgreSQL tienen bases distintas por entorno (`_dev`),
+pero comparten VMs/capacidad. Terraform crea red, VMs, GKE, Artifact Registry,
+IP reservada y Cloud Run; **Helm**, no Terraform, instala los charts bancario y
+de observabilidad. El default de imagen `hello` de Cloud Run es bootstrap; CD
+actualiza el frontend y Terraform ignora ese campo para no revertirlo.
+
+Hay nueve plantillas NetworkPolicy en el chart de observabilidad, desactivadas
+por defecto, y **ninguna aplicada** en el clúster inspeccionado. La retención
+cloud configurada es siete días; no demuestra por sí sola una semana de datos
+ni recuperación ante pérdida de zona. Ver
+[inventario](../../../docs/qa/load/2026-10-21-gke-observability-inventory.txt) y
+[ADR-023](../../../docs/architecture/adr/ADR-023-observability-evolution.md).
