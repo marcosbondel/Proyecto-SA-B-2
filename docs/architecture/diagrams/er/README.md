@@ -69,10 +69,12 @@ Los modelos DBML y sus exportaciones gráficas corresponden a las 5 bases de dat
    Windows. El SQL exportado es sólo una comprobación de sintaxis: **no es
    una migración**, no debe aplicarse y no preserva por sí solo los CHECK o
    predicados WHERE documentados como notas.
-3. El solicitante exportará los ER en PNG. Antes de volver a incrustarlos,
-   revisar nombres, claves, cardinalidades, direcciones, nulabilidad,
-   legibilidad y ausencia de recortes contra DBML y el catálogo acumulado.
-   La validación de sintaxis no demuestra esa revisión visual.
+3. El solicitante aportó los cinco PNG y se revisaron el 23/oct/2026: tablas,
+   relaciones locales visibles y ausencia de recortes, contra DBML y el catálogo.
+   Los CHECK, índices parciales, claves compuestas y nulabilidad se consultan
+   en el DBML/DDL: el estilo de estas imágenes no muestra todas esas restricciones.
+   Payment es denso y debe consultarse ampliado. No se regeneraron ni retocaron
+   estos PNG; la procedencia y los hashes constan en la verificación final.
 
 ### Validación DBML ejecutada en T-61 (Windows)
 

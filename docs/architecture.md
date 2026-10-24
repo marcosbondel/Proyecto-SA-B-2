@@ -35,9 +35,7 @@
     - [5.3. Descripción de Capas](#53-descripción-de-capas)
   - [6. Decisiones Arquitectónicas Clave](#6-decisiones-arquitectónicas-clave)
   - [7. Infraestructura, Despliegue y Topología de Red](#7-infraestructura-despliegue-y-topología-de-red)
-    - [7.1. Diagramas de Despliegue (UML)](#71-diagramas-de-despliegue-uml)
-      - [7.1.1. Despliegue Local (Fase 1: Kubernetes con kind)](#711-despliegue-local-fase-1-kubernetes-con-kind)
-      - [7.1.2. Despliegue en la Nube (Fase 2: Google Cloud Platform con Terraform)](#712-despliegue-en-la-nube-fase-2-google-cloud-platform-con-terraform)
+    - [7.1. Diagrama de Despliegue en GCP (UML)](#71-diagrama-de-despliegue-en-gcp-uml)
     - [7.2. Matriz de Puertos y Variables de Entorno](#72-matriz-de-puertos-y-variables-de-entorno)
     - [7.3. Estrategia de Resiliencia y Healthchecks](#73-estrategia-de-resiliencia-y-healthchecks)
 
@@ -203,7 +201,7 @@ La arquitectura de Bank USAC se fundamenta en decisiones versionadas en el [índ
 * **ADR-001 / ADR-002:** Ecosistema homogéneo TypeScript con NestJS en backend y Nuxt 4 en frontend sobre monorepo Turborepo.
 * **ADR-003 / ADR-004:** Desacoplamiento asíncrono puro con RabbitMQ 4.x, eliminando llamadas HTTP síncronas entre microservicios de dominio.
 * **ADR-005:** Persistencia aislada con PostgreSQL 18 (*Database per Service*), precisión decimal exacta `NUMERIC(14,2)` y bloqueos `SELECT ... FOR UPDATE`.
-* **ADR-006 / ADR-007:** Contenerización multi-stage sin privilegios root (`node`) y Compose para desarrollo; kind/Helm para Kubernetes local y GKE/Helm en cloud, con aprovisionamiento Terraform.
+* **ADR-006 / ADR-016:** Contenerización multi-stage sin privilegios root (`node`), despliegue de cargas en GKE mediante Helm y aprovisionamiento cloud mediante Terraform.
 * **ADR-008 / ADR-009:** Clean Architecture interna y patrón Saga Coreografiada con compensación determinista ante fallos.
 * **ADR-010 / ADR-012:** Seguridad stateless con JWT, hashing `scrypt`, control RBAC perimetral (D-06) y almacenamiento S3 en MinIO para fotografías de DPI.
 
@@ -211,15 +209,7 @@ La arquitectura de Bank USAC se fundamenta en decisiones versionadas en el [índ
 
 ## 7. Infraestructura, Despliegue y Topología de Red
 
-### 7.1. Diagramas de Despliegue (UML)
-
-#### 7.1.1. Despliegue Local (Fase 1: Kubernetes con kind)
-
-![Diagrama de Despliegue Local UML / Kubernetes](architecture/diagrams/05-uml-despliegue.png)
-
-> **Descripción:** Topología local en kind, instalada por Helm; la observabilidad es un segundo chart. Cada microservicio corre como un Pod/Deployment dentro del namespace `bank-usac` con su Service ClusterIP, consumiendo configuración de ConfigMaps y credenciales de Secrets, interactuando con PostgreSQL, RabbitMQ y MinIO externos por la red Docker y Services/Endpoints; `host.docker.internal` es una alternativa configurada, no la única ruta.
-
-#### 7.1.2. Despliegue en la Nube (Fase 2: Google Cloud Platform con Terraform)
+### 7.1. Diagrama de Despliegue en GCP (UML)
 
 La vista se actualiza a Fase III: **Terraform** aprovisiona infraestructura,
 **Helm** mantiene `bank-usac` y `bank-observability`, y **GitHub Actions**

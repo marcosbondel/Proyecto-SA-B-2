@@ -57,3 +57,13 @@ finales se regeneran después de ese paso. La adopción de esta política no es
 evidencia de que Lucid esté terminado, de que un PNG se haya exportado desde él
 ni de que la exportación ER pendiente exista. El estado de ejecución se registra
 en [la auditoría T-61](../../qa/T-61-documentation-audit.md).
+
+## Registro de ejecución — 2026-10-23
+
+El solicitante incorporó los cinco PNG ER; se revisaron sin regenerarlos.
+Las vistas nativas y sus exportaciones se registran en la
+[auditoría T-61](../../qa/T-61-documentation-audit.md). L2 y Transaction conservan
+los ajustes de presentación PUML aportados después por el solicitante,
+derivados del DSL: el modelo semántico y sus relaciones siguen en DSL. El
+[procedimiento de C4](../c4-component.md#render-c4)
+distingue la exportación del modelo del render de esos ajustes de distribución.
