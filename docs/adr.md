@@ -603,6 +603,7 @@ parcialmente la política gráfica de ADR-022: casos de uso y despliegue se
 editan con elementos nativos de Lucid y los diagramas se entregan sólo en
 PNG. Se conservan PUML semánticos, DSL para C4 y DBML físicos; las secuencias
 mantienen PUML. Se retiran SVG documentales y los cinco PNG ER generados;
-la exportación ER queda pendiente del solicitante. La auditoría registra el
-estado de las nuevas exportaciones y no se infiere su terminación de la
-aceptación de la política.
+el solicitante incorporó sus cinco exportaciones ER el 23/oct y se revisaron.
+La auditoría registra las exportaciones nativas y el cierre de archivos.
+Los ajustes de presentación PUML de L2/Transaction conservan el modelo DSL
+y sus relaciones; el procedimiento reproducible distingue ambos pasos.

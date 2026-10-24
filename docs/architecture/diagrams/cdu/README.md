@@ -157,17 +157,32 @@ Cada diagrama tiene su fuente PlantUML versionada y el PNG que se entrega.
 | CDU-F3 | **Diagrama de casos de uso de Fase III** | [`.puml`](fase3/fase3-casos-de-uso.puml) | [`.png`](fase3/fase3-casos-de-uso.png) |
 | CDU-F3.1 | Enviar depósito interbancario | [`.puml`](fase3/flujos/CDU-F3.1-enviar-deposito-interbancario.puml) | [`.png`](fase3/flujos/CDU-F3.1-enviar-deposito-interbancario.png) |
 | CDU-F3.2 | Recibir depósito interbancario | [`.puml`](fase3/flujos/CDU-F3.2-recibir-deposito-interbancario.puml) | [`.png`](fase3/flujos/CDU-F3.2-recibir-deposito-interbancario.png) |
-| CDU-F3.3 | Conciliación diaria y liquidación de reversos | [`.puml`](fase3/flujos/CDU-F3.3-conciliar-interbancario.puml) | [`.png`](fase3/flujos/CDU-F3.3-conciliar-interbancario.png) |
+| CDU-F3.3 | Resolución de TIMEOUT, reversos y consulta diaria | [`.puml`](fase3/flujos/CDU-F3.3-conciliar-interbancario.puml) | [`.png`](fase3/flujos/CDU-F3.3-conciliar-interbancario.png) |
 | CDU-F3.4 | Detección y reporte de anomalías N/M | [`.puml`](fase3/flujos/CDU-F3.4-reportar-anomalia-nm.puml) | [`.png`](fase3/flujos/CDU-F3.4-reportar-anomalia-nm.png) |
 | CDU-F3.5 | Configuración de simulación de pagos en caliente | [`.puml`](fase3/flujos/CDU-F3.5-configurar-simulacion-pagos.puml) | [`.png`](fase3/flujos/CDU-F3.5-configurar-simulacion-pagos.png) |
 | CDU-F3.6 | Diagnóstico SRE con dashboards, trazas y alertas SLO | [`.puml`](fase3/flujos/CDU-F3.6-diagnostico-observabilidad-sre.puml) | [`.png`](fase3/flujos/CDU-F3.6-diagnostico-observabilidad-sre.png) |
 
 ## Revisión Fase III — T-61
 
-Las 37 fuentes y sus PNG se revisaron manteniendo su estilo azul: depósito
+Las 38 fuentes bajo esta carpeta incluyen 31 base, la vista Fase III y seis
+actividades. Estas últimas conservan el estilo azul; las ocho vistas nativas
+de casos de uso se exportan desde Lucid. Se cotejaron: depósito
 Ahorro Q100, comisión Q3 por débito, dedup de auditoría por consumidor,
 registro INVALID y redacción antes de insertar, canales reales/simulados y
 monitor Payment sólo para personal. Las etiquetas de mensajes llevan `.v1`.
 La nota tecnológica identifica la implementación sin sustituir el flujo de
 negocio. Las extensiones interbancarias, anomalía y SRE se encuentran integradas
 con sus flujos en [CDU-F3](fase3/fase3-casos-de-uso.png) y [casos actuales](../../../domain/use-cases.md).
+
+Los identificadores de actividades `CDU-F3.*` y de óvalos nativos `F3.*`
+son series diferentes: envío F3.1 → actividad CDU-F3.1; recepción F3.5 →
+CDU-F3.2; resolución F3.4 → CDU-F3.3; simulación F3.6 → CDU-F3.5.
+Las actividades CDU-F3.4 (anomalía N/M) y CDU-F3.6 (SRE) son complementarias.
+F3.3 es validación del contrato compartida; F3.7 registra el intento dentro
+del envío. No interpretar el mismo sufijo numérico como una equivalencia.
+La vista raíz `13-casos-uso-fase3` es una copia de esta vista por compatibilidad.
+
+La revisión del 23/oct cotejó rutas y mensajes con los controladores y casos de
+uso: envío sólo CLIENTE, `X-Api-Key` e `Idempotency-Key`, reserva durante TIMEOUT,
+consulta diaria sin endpoint administrativo para forzar el barrido, umbral
+estrictamente mayor que N y simulación por `GET/PUT /api/payments/simulation`.

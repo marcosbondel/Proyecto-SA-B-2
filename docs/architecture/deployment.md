@@ -1,30 +1,19 @@
-# Despliegue local y GCP — Fase III
+# Despliegue en GCP — Fase III
 
-La política del 2026-10-22 pide edición nativa de estas vistas en Lucid y
-exportación sólo a PNG; los PUML se conservan como referencia semántica.
-[ADR-024](adr/ADR-024-native-lucid-and-png-delivery.md) describe el cambio.
-El estado de revisión/exportación se registra en la
-[auditoría T-61](../qa/T-61-documentation-audit.md); una imagen existente no
-certifica por sí sola que se haya completado la nueva edición.
-
-## Local: kind, Docker y Helm
-
-![Despliegue local](diagrams/05-uml-despliegue.png)
-
-[PUML](diagrams/05-uml-despliegue.puml).
-Los siete componentes corren en kind; cinco PostgreSQL, RabbitMQ y MinIO están
-fuera del clúster en la red Docker. `kubectl port-forward` expone Web y Gateway
-al host. `bank-usac` y `bank-observability` son charts distintos. El overlay
-kind reduce recursos y retención: Prometheus 2h sin PVC, Tempo 24h/PVC 5Gi y
-Loki/PVC 2Gi. No demuestra siete días de historial ni escalado HPA sin
-metrics-server. Terraform corresponde al cloud, no crea el host local.
-Procedimiento: [DEPLOYMENT.md](../operations/DEPLOYMENT.md).
+La única vista de despliegue del entregable representa GCP: Terraform, GKE,
+Cloud Run y Helm. Se edita con figuras y conectores nativos en Lucid y se
+exporta sólo a PNG. El PUML conserva el contenido para cotejo semántico;
+renderizarlo no reproduce la distribución manual de Lucid.
+[ADR-024](adr/ADR-024-native-lucid-and-png-delivery.md),
+[procedencia y hashes](../qa/verification/T-61-diagram-provenance.json) y
+[auditoría](../qa/T-61-documentation-audit.md).
 
 ## GCP: Terraform, GKE, Cloud Run y Helm
 
 ![Despliegue cloud](diagrams/08-despliegue-cloud-gcp.png)
 
-[PUML](diagrams/08-despliegue-cloud-gcp.puml).
+[PUML](diagrams/08-despliegue-cloud-gcp.puml),
+[página nativa cloud](https://lucid.app/lucidchart/c7a15874-cdcd-42fa-a48c-b6c4124a6fbc/edit?page=K~JxJFM6TNS-).
 Terraform declara VPC/subredes, Router/NAT, GKE, cinco VMs privadas PostgreSQL,
 Artifact Registry, IP reservada y Cloud Run. GitHub Actions publica imágenes
 versionadas y despliega por Helm mediante WIF; `terraform apply` sigue siendo
@@ -47,3 +36,18 @@ dev/prod están separados por nombre de base. No inferir aislamiento físico.
 La existencia de plantillas de seguridad no prueba su activación. Inventarios,
 pruebas y limitaciones: [evidencia cloud](../qa/backend/T-60-cloud-evidence.md).
 Runbook completo: [CLOUD.md](../operations/CLOUD.md).
+
+## Lectura de los bloques y conexiones
+
+Los nombres de infraestructura, entornos y componentes aparecen en negrita;
+las tecnologías, puertos y límites operativos mantienen peso normal. La paleta
+gris y las figuras nativas conservan el estilo del documento original.
+
+La línea **OTLP :4317 / :4318 — Trazas y métricas** es un canal de comunicación
+hacia el Collector, no un componente independiente. Conecta el Gateway con
+el bloque de observabilidad mediante una línea sin puntas de flecha; su
+etiqueta identifica el protocolo, los puertos y la telemetría transportada.
+El bloque también recibe telemetría de los otros cinco procesos NestJS, como
+se indica dentro de la figura. `observability` es un namespace de GKE separado
+de `prod` y `dev`; su ubicación fuera del marco de `prod` no significa que
+esté fuera del clúster. Prometheus obtiene las métricas Web por scraping.

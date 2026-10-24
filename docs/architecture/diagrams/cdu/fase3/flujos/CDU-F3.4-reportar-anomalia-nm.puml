@@ -1,7 +1,8 @@
 @startuml CDU-F3.4-reportar-anomalia-nm
-title CDU-F3.4 - Detección y reporte de anomalías N/M
+title CDU-F3.4 - Reportar más de N operaciones en M minutos
 
 skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
 skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
@@ -11,37 +12,31 @@ skinparam activity {
 
 |Account Service|
 start
-:Recibir orden de movimiento o débito sobre una cuenta;
-:Ejecutar transacción bancaria y registrar movimiento en base de datos;
-:Consultar ventana temporal de actividad para la cuenta (últimos M minutos);
-:Contar número de débitos o transferencias ejecutadas en la ventana;
-if (¿Conteo de transacciones >= umbral N?) then (Sí)
-    :Generar registro de anomalía operativa;
-    note right
-      Invariante de diseño:
-      Account calcula con sus propios movimientos.
-      NO bloquea la cuenta automáticamente para
-      evitar denegación de servicio no autorizada.
-    end note
-    :Construir evento account.anomaly.detected.v1;
-    :Publicar evento en exchange AMQP bank.events;
-|Notification & Audit|
-    :Consumir evento account.anomaly.detected.v1;
-    :Clasificar criticidad como WARN / ALERTA DE SEGURIDAD;
-    :Persistir en bitácora audit_logs con payload redactado y traceparent;
-    :Actualizar contador de anomalías operativas;
-|Administrador / Auditor|
-    :Consultar consola de auditoría y eventos anómalos;
-    :Filtrar por tipo account.anomaly.detected.v1 o cuenta;
-    :Analizar frecuencia y decidir si requiere investigación o gestión manual;
+:Confirmar el movimiento y terminar su transacción;
+:Invocar el monitor de actividad después del commit,\nla detección no retiene el bloqueo del saldo;
+:Tomar advisory lock por cuenta,\nrevisar cooldown y claim durable;
+:Contar DEBIT y CREDIT propios en (ahora - M, ahora];
+if (¿Conteo estrictamente mayor que N?) then (Sí)
+  if (¿Ventana ya cubierta y publicación vigente?) then (Sí)
+    :No anunciar de nuevo la misma anomalía;
+    stop
+  else (Nueva o claim pendiente recuperable)
+    :Persistir/recuperar account_anomalies,\nclaim vencido a 60 s puede retomarse;
+  endif
+  :Publicar account.anomaly.detected.v1,\nmarcar published_at después del envío;
+  |Notification & Audit|
+  :Consumir con deduplicación,\nregistrar WARNING con payload redactado;
+  |Administrador|
+  :Consultar auditoría global por tipo, entidad o correlationId,\nabrir la traza si existe traceId;
 else (No)
-    :Operación dentro de los parámetros normales de frecuencia;
+  |Account Service|
+  :No generar anomalía, N exacto todavía está permitido;
 endif
 stop
 legend bottom
-  Implementación: Node.js 24 / NestJS / TypeScript.
-  Parámetros: Ventana de tiempo M y umbral de frecuencia N configurados en Account Service.
-  Comunicación: RabbitMQ / AMQP 0-9-1; evento observable con correlationId.
-  Persistencia: PostgreSQL 18.4 exclusivo por servicio; bitácora redactada en Audit.
+  Defaults N = 10, M = 5: la operación 11 dispara, no la 10.
+  Una anomalía no bloquea la cuenta ni revierte el movimiento ya confirmado.
+  Fallos del monitor se registran sin invalidar el movimiento; no se promete entrega infalible.
+  PostgreSQL 18.4 / advisory lock; AMQP; correlationId no es etiqueta de métricas.
 endlegend
 @enduml

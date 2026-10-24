@@ -1,7 +1,8 @@
 @startuml CDU-F3.2-recibir-deposito-interbancario
-title CDU-F3.2 - Recibir depósito interbancario
+title CDU-F3.2 - Recibir un depósito con contrato interbancario v1
 
 skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
 skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
@@ -11,51 +12,50 @@ skinparam activity {
 
 |Banco participante|
 start
-:Enviar POST /interbank/v1/deposits con X-Api-Key y traceparent;
+:POST /interbank/v1/transfers,\nX-Api-Key + Idempotency-Key + traceparent;
 |API Gateway|
-:Autenticar cabecera X-Api-Key contra credencial autorizada;
-:Validar formato de sobre interbancario OpenAPI 3.0.3;
-:Extraer traceparent y correlationId;
-:Publicar comando interbank.inbound.received.v1 en AMQP;
-:Responder HTTP 202 ACCEPTED de recepción inmediata al banco emisor;
+:Autenticar al banco, validar contrato, clave igual al UUID,\nimporte decimal GTQ y expiresAt = createdAt + 180 s;
+:Request/reply AMQP\npayment.interbank.v1.transfer.query.v1;
 |Payment Service|
-:Verificar clave de idempotencia (origin_bank_code, external_transfer_id);
-if (¿Depósito previamente procesado?) then (Sí)
-    :Recuperar resultado previo de interbank_deposits;
-    :Reenviar callback idéntico de forma idempotente;
-    stop
-else (No)
-    :Registrar recepción en interbank_deposits (etapa ELIGIBILITY);
+if (¿Mismo ID ya registrado?) then (Sí)
+  if (¿Mismo contenido?) then (Sí)
+    :Devolver el depósito existente sin un segundo crédito;
+    |API Gateway|
+    :Responder 200 con el resultado ya registrado;
+  else (Conflicto)
+    |API Gateway|
+    :Responder 409;
+  endif
+  stop
+else (Nuevo)
+  |Payment Service|
+  :Persistir recepción y plazo, etapa ELIGIBILITY,\nrechazos de política también conservan su resultado;
 endif
-:Consultar elegibilidad de cuenta destino a Account Service;
+|API Gateway|
+:Responder admisión 202 tras la respuesta de Payment,\nel resultado de negocio llega después;
+|Payment Service|
+:Consultar Account por AMQP\naccount.interbank.eligibility.query.v1;
 |Account Service|
-if (¿Cuenta destino existe, está ACTIVA y no bloqueada?) then (Sí)
-    :Responder elegible a Payment Service;
-    |Payment Service|
-    :Actualizar etapa a CREDIT;
-    :Solicitar abono a Account Service (account.credit.command.v1);
-    |Account Service|
-    :Acreditar monto a la cuenta destino de forma atómica;
-    :Registrar movimiento con tipo TRANSFER_INTERBANK_CREDIT;
-    :Confirmar crédito exitoso;
-    |Payment Service|
-    :Actualizar estado final a ACCEPTED en interbank_deposits;
-else (No)
-    :Responder no elegible (cuenta inexistente o inactiva);
-    |Payment Service|
-    :Actualizar estado a REJECTED con rejection_reason;
-endif
+:Resolver el número público y la elegibilidad;
 |Payment Service|
-:Construir sobre de callback con veredicto final;
-:Enviar POST /interbank/v1/callback al banco pareja con X-Api-Key;
-:Registrar callback_delivered_at en interbank_deposits;
+if (¿Elegible y vigente antes de ordenar crédito?) then (Sí)
+  :Persistir etapa CREDIT,\npublicar account.interbank.credit.requested.v1;
+  |Account Service|
+  :Revalidar cuenta ACTIVE bajo bloqueo,\nacreditar con clave única y emitir veredicto;
+  |Payment Service|
+  :Guardar ACCEPTED o REJECTED según Account;
+else (No)
+  :Guardar REJECTED con reason oficial;
+endif
+:Persistir result_envelope y callback pendiente;
+:POST /interbank/v1/transfers/{id}/result al emisor,\nX-Api-Key y contexto W3C, reintentar con backoff;
 |Notification & Audit|
-:Registrar evento de recepción interbancaria en la bitácora de auditoría;
+:Consumir eventos por AMQP, redactar antes de persistir;
 stop
 legend bottom
-  Implementación: Node.js 24 / NestJS / TypeScript.
-  Protocolo externo: OpenAPI 3.0.3 / HTTP 202 + callback asíncrono.
-  Mensajes internos: RabbitMQ / AMQP 0-9-1; idempotencia garantizada en base de datos.
-  Persistencia: PostgreSQL 18.4 exclusivo por servicio; crédito transaccional en Account.
+  Una cuenta INACTIVE no se reactiva con un depósito interbancario.
+  CREDIT significa orden en vuelo: cancelar o expirar espera el veredicto de Account.
+  Límite #167: Account no recibe expiresAt; una entrega tardía puede superar el TTL.
+  El callback se reintenta hasta 24 h desde la decisión; no deshace un crédito aplicado.
 endlegend
 @enduml

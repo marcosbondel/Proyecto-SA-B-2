@@ -18,7 +18,6 @@ certifica la nueva edición o exportación desde Lucid.
 | Vista | Render técnico | Alternativa editada | Cotejo y límite |
 | --- | --- | --- | --- |
 | General | [PNG](../01-arquitectura-general.png) | [Editor](01-arquitectura-general-editor.png) | Paleta pastel por servicio y límites GCP/GKE/datos. Se iteró al detectar broker duplicado; sólo se conserva aquí la última variante. |
-| Despliegue local | [PNG](../05-uml-despliegue.png) | [Editor](05-uml-despliegue-editor.png) | Cubos grises y retención kind. El texto pequeño y las conexiones deben leerse en la fuente. |
 | Crear cuenta | [PNG](../06-uml-secuencia-crear-cuenta.png) | [Editor](06-uml-secuencia-crear-cuenta-editor.png) | Conserva azul/rojo/verde y notas amarillas; la numeración y notación de retorno del editor no certifican equivalencia UML. |
 | Saga | [PNG](../07-uml-secuencia-transferencia.png) | [Editor](07-uml-secuencia-transferencia-editor.png) | El render técnico distingue `X-Trace-Id` como cabecera. La variante anterior a esa precisión conserva una etiqueta abreviada en la respuesta. |
 | Despliegue GCP | [PNG](../08-despliegue-cloud-gcp.png) | [Editor](08-despliegue-cloud-gcp-editor.png) | **No equivalente en todas las conexiones:** conserva Terraform/Helm, namespaces y cinco VMs, pero la edición altera flechas/etiquetas alrededor de MinIO, AMQP y telemetría. Usar el render técnico para protocolos y destinos. |
@@ -30,7 +29,7 @@ certifica la nueva edición o exportación desde Lucid.
 
 Las primeras iteraciones descartadas permanecen fuera del repositorio. C4
 conserva Structurizr DSL; los cinco ER se entregan como DBML y su exportación
-PNG queda pendiente del solicitante. Los PUML de CDU y despliegue conservan
+PNG fue incorporada por el solicitante y revisada. Los PUML de CDU y despliegue conservan
 su contenido para cotejar la edición nativa de Lucid, cuya revisión y
 exportación se registran por separado. El [índice general](../../README.md)
 explica el procedimiento vigente. Las capturas de navegador se conservan sin

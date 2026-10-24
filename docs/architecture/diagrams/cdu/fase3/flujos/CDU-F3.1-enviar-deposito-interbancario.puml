@@ -1,7 +1,8 @@
 @startuml CDU-F3.1-enviar-deposito-interbancario
-title CDU-F3.1 - Enviar depósito interbancario
+title CDU-F3.1 - Enviar depósito interbancario mediante la Saga
 
 skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
 skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
@@ -11,59 +12,57 @@ skinparam activity {
 
 |Cliente / Web|
 start
-:Ingresar cuenta origen, banco destino, cuenta destino, monto y concepto;
-:Confirmar transferencia interbancaria (POST /api/interbank/transfers);
+:POST /api/interbank/transfers\nJWT + Idempotency-Key;
 |API Gateway|
-:Autenticar JWT y validar rol CLIENTE;
-:Validar esquema JSON y generar correlationId;
-:Publicar comando interbank.transfer.requested.v1;
-|Payment Service|
-:Registrar solicitud en interbank_sends (estado PENDING);
-:Generar interbank_transfer_id e idempotency_key;
-:Solicitar reserva y débito de fondos a Account Service;
-|Account Service|
-:Bloquear cuenta origen (SELECT ... FOR UPDATE);
-if (¿Saldo disponible suficiente?) then (Sí)
-    :Debitar saldo y retener monto en reserva;
-    :Registrar movimiento con tipo TRANSFER_INTERBANK_DEBIT;
-    :Responder reserva exitosa a Payment Service;
+:Exigir CLIENTE, validar GTQ, banco configurado y límite,\nconsultar por AMQP el número de la cuenta propia;
+:Derivar IDs estables y publicar transfer.requested.v1;
+|Transaction / RabbitMQ|
+:Persistir PENDING e iniciar KYC con Customer;
+|API Gateway|
+:Responder 202 con transactionId, interbankTransferId\ny correlationId, no es confirmación del banco;
+|Transaction / RabbitMQ|
+if (¿KYC permite continuar?) then (Sí)
+  :Solicitar account.debit.requested.v1;
 else (No)
-    :Responder saldo insuficiente (rechazo);
-    |Payment Service|
-    :Marcar interbank_sends en estado REJECTED;
-    |API Gateway|
-    :Retornar HTTP 422 Unprocessable Entity al cliente;
-    stop
+  :Finalizar FAILED, no debitar;
+  stop
+endif
+|Account Service|
+:Validar propietario, estado y saldo bajo bloqueo,\naplicar débito idempotente y emitir veredicto;
+|Transaction / RabbitMQ|
+if (¿account.debited.v1?) then (Sí)
+  :Persistir PAYMENT_PENDING,\npublicar payment.requested.v1 con datos interbank;
+else (Rechazo)
+  :Finalizar FAILED, no enviar al banco;
+  stop
 endif
 |Payment Service|
-:Enviar POST /interbank/v1/deposits al banco pareja con X-Api-Key y traceparent;
-if (¿Respuesta HTTP 202 ACCEPTED?) then (Sí)
-    :Actualizar estado a SENT;
-    :Esperar callback asíncrono o vencimiento de confirmation_due_at;
-    if (¿Callback ACCEPTED recibido antes del timeout?) then (Sí)
-        :Actualizar estado terminal ACCEPTED en interbank_sends;
-        :Confirmar liquidación definitiva de la reserva en Account;
-        :Publicar evento interbank.transfer.completed.v1;
-    else (Callback REJECTED o Fallo definitivo)
-        :Actualizar estado REJECTED;
-        :Solicitar compensación/reverso a Account Service;
-        |Account Service|
-        :Acreditar monto retenido de vuelta a la cuenta origen;
-        |Payment Service|
-        :Publicar evento interbank.transfer.failed.v1;
-    endif
-else (Fallo HTTP o Timeout de conexión)
-    :Registrar estado TIMEOUT en interbank_sends;
-    :Mantener reserva de fondos sin compensar prematuramente;
-    :Programar para conciliación y consulta periódica;
+:Persistir interbank_sends PENDING, contexto y plazos;
+:POST /interbank/v1/transfers al banco configurado,\nX-Api-Key + Idempotency-Key + traceparent;
+if (¿202 nuevo o 200 repetido?) then (Sí)
+  :Persistir SENT, esperar resultado por callback o consulta;
+else (Respuesta perdida / error)
+  :Conservar la incertidumbre y la reserva,\nresolver según estado remoto y plazos persistidos;
 endif
-|API Gateway|
-:Notificar resultado o aceptación al cliente;
+if (¿Resultado definitivo ACCEPTED?) then (Sí)
+  :Persistir ACCEPTED y payment.succeeded.v1 en outbox;
+  |Transaction / RabbitMQ|
+  :Solicitar crédito a liquidación en Account,\nCOMPLETED sólo tras su confirmación;
+elseif (¿REJECTED o cancelación definitiva?) then (Sí)
+  |Payment Service|
+  :Persistir REJECTED y payment.failed.v1 en outbox;
+  |Transaction / RabbitMQ|
+  :Pedir compensación a Account,\nAccount confirma account.debit.compensated.v1;
+  |Payment Service|
+  :Registrar REVERSED tras devolución confirmada;
+else (Vence expiresAt)
+  |Payment Service|
+  :TIMEOUT sin publicar fallo,\ncontinuar resolución CDU-F3.3 con reserva retenida;
+endif
 stop
 legend bottom
-  Implementación: Node.js 24 / NestJS / TypeScript.
-  Protocolo externo: OpenAPI 3.0.3 / HTTP 202 + callback asíncrono.
-  Mensajes internos: RabbitMQ / AMQP 0-9-1; W3C traceparent propagado.
-  Persistencia: PostgreSQL 18.4 exclusivo por servicio; reserva atómica en Account.
+  Contrato v1: GTQ decimal exacto; TTL 180 s; resultado en /transfers/{id}/result.
+  Sólo CLIENTE origina el envío. Account posee el dinero; Payment no accede a su BD.
+  Comunicación interna AMQP 0-9-1; PostgreSQL 18.4 por servicio; outbox e idempotencia.
 endlegend
 @enduml

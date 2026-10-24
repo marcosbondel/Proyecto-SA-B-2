@@ -1,7 +1,8 @@
 @startuml CDU-F3.3-conciliar-interbancario
-title CDU-F3.3 - Conciliación diaria y liquidación de reversos
+title CDU-F3.3 - Resolver TIMEOUT y consultar conciliación diaria
 
 skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
 skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
@@ -9,48 +10,46 @@ skinparam activity {
     FontColor #1168BD
 }
 
-|Scheduler / Personal Operativo|
+|Payment / barrido automático|
 start
-:Iniciar proceso de conciliación (automático por scheduler o POST /api/interbank/reconciliation);
-|Payment Service|
-:Consultar depósitos salientes en estado TIMEOUT o sin veredicto definitivo;
-:Consultar depósitos entrantes en el período de conciliación;
-while (¿Hay depósitos pendientes de resolución?) is (Sí)
-    :Seleccionar depósito y construir consulta de estado;
-    :Enviar GET /interbank/v1/deposits/:id al banco pareja;
-    |Banco participante|
-    :Consultar estado local del depósito;
-    :Responder estado (ACCEPTED, REJECTED o NOT_FOUND);
-    |Payment Service|
-    if (¿Banco pareja reporta ACCEPTED?) then (Sí)
-        :Actualizar estado a ACCEPTED en interbank_sends;
-        :Confirmar liquidación de la reserva en Account Service;
-    elseif (¿Banco pareja reporta REJECTED o NOT_FOUND?) then (Rechazado)
-        :Actualizar estado a REJECTED con motivo de conciliación;
-        :Generar orden de restitución de reserva;
-        :Publicar comando account.reversal.command.v1;
-        |Account Service|
-        :Acreditar fondos retenidos a la cuenta origen del cliente;
-        :Registrar movimiento con tipo TRANSFER_INTERBANK_REVERSAL;
-    else (Sin respuesta del banco pareja)
-        :Mantener en estado TIMEOUT con reserva intacta;
-        :Generar alerta para revisión de personal SRE;
+:Reclamar envío pendiente con lease claimed_until,\nrespetar resolve_not_before persistido;
+:Al vencer expiresAt, persistir TIMEOUT,\nconservar reserva sin publicar payment.failed.v1;
+:GET /interbank/v1/transfers/{id} al banco pareja;
+if (¿ACCEPTED?) then (Sí)
+  :Persistir ACCEPTED y encolar payment.succeeded.v1,\nTransaction coordina la liquidación con Account;
+elseif (¿REJECTED o CANCELLED?) then (Sí)
+  :Persistir REJECTED y encolar payment.failed.v1,\nTransaction solicita compensación a Account;
+else (404 / PROCESSING / indisponible)
+  :404 no autoriza liberar, consultar/reintentar\ny POST /interbank/v1/transfers/{id}/cancel;
+  if (¿ALREADY_ACCEPTED?) then (Sí)
+    :Confirmar aceptación una sola vez;
+  elseif (¿CANCELLED o ALREADY_REJECTED?) then (Sí)
+    :Solicitar compensación una sola vez;
+  else (Sin resolución)
+    if (¿expiresAt + 300 s y hubo intento de cancelar?) then (Sí)
+      :Liberar según política de contingencia,\nencolar fallo para compensación;
+      :Registrar ERROR RELEASED_NO_ANSWER\no RELEASED_UNKNOWN_AT_PARTNER;
+    else (Aún no)
+      :Mantener reserva, persistir siguiente reintento\ncon backoff, base 5 s y techo 60 s;
+      stop
     endif
-endwhile (No)
-
+  endif
+endif
+if (¿ACCEPTED tardío después de liberar?) then (Sí)
+  :Registrar LATE_ACCEPT_AFTER_RELEASE,\npersistir reverso saliente idempotente;
+  :POST /interbank/v1/reversals y consultar su estado,\nreembolso mediante depósito nuevo a liquidación;
+else (No)
+  :Conservar resultado y trazabilidad;
+endif
+|Banco participante / API Gateway|
+:GET /interbank/v1/reconciliation?date=&page=&pageSize=\ncon X-Api-Key, consulta diaria paginada por banco;
 |Payment Service|
-:Generar informe consolidado de conciliación;
-:Calcular balance neto de transferencias enviadas vs recibidas;
-:Publicar evento interbank.reconciliation.completed.v1;
-|Notification & Audit|
-:Persistir resumen de conciliación en la bitácora de auditoría;
-|Personal Operativo|
-:Consultar reporte en pantalla de Auditoría Interbancaria;
+:Responder la página de conciliación,\nno es un endpoint para forzar el barrido;
 stop
 legend bottom
-  Implementación: Node.js 24 / NestJS / TypeScript.
-  Regla de negocio: Un TIMEOUT nunca libera fondos sin verificación previa.
-  Invariante: Saldo del cliente se preserva íntegro ante cualquier discrepancia.
-  Persistencia: PostgreSQL 18.4 exclusivo por servicio; trazabilidad en auditoría.
+  No existe POST /api/interbank/reconciliation ni liberación inmediata por 404.
+  La contingencia permite liberar sin respuesta sólo tras los plazos e intentos requeridos.
+  Account confirma la devolución; REVERSED no prueba que un reverso remoto haya terminado.
+  AMQP, outbox y PostgreSQL; HTTP sólo para el banco externo y el borde Gateway.
 endlegend
 @enduml
