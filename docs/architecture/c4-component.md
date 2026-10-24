@@ -95,16 +95,25 @@ Consumidores por familia, redacción antes de insertar, dedup por evento y
 consumidor, consultas por correlación/traza/servicio/nivel, notificaciones e
 ingreso de alertas SLO. Sólo publica respuestas; nunca ordena negocio.
 
+<a id="render-c4"></a>
+
 ## Render reproducible: DSL → CLI → PlantUML → PNG
 
-Los ocho PNG C4 se generaron desde los DSL con
-[Structurizr CLI 2025.11.09](https://github.com/structurizr/cli/releases/tag/v2025.11.09)
-y [PlantUML 1.2026.9](https://github.com/plantuml/plantuml/releases/tag/v1.2026.9),
-sin editar el PUML intermedio ni los píxeles resultantes. En esta revisión se
-usó OpenJDK 25.0.4.1 y el Graphviz 2.44.1 que extrae PlantUML en Windows. La
-fuente Arial y la versión de Graphviz afectan las medidas; otro sistema debe
-registrar su entorno si busca comparar píxeles. No se generan SVG ni se usa
-un editor de imágenes para estos C4.
+El modelo semántico sigue en DSL. L1 y las cinco L3 complementarias se obtienen
+con [Structurizr CLI 2025.11.09](https://github.com/structurizr/cli/releases/tag/v2025.11.09)
+y [PlantUML 1.2026.9](https://github.com/plantuml/plantuml/releases/tag/v1.2026.9).
+El solicitante ajustó después los PUML de **L2 y Transaction**: colores por
+relación, Segoe UI, DPI 160 y separación mayor. Sus PUML versionados son la
+fuente de presentación de esos dos PNG; no afirmar que hoy son exportaciones
+DSL sin ajustes. El [cotejo del 23/oct](../qa/verification/T-61-source-review.json)
+compara relaciones dirigidas y etiquetas con una exportación nueva del DSL,
+y verifica el código PlantUML incrustado en los PNG.
+
+Se conservó la distribución aportada, sin editar píxeles. El entorno de revisión
+usa OpenJDK 25 y Graphviz 2.44.1; fuentes y versiones afectan las medidas.
+La vista L2 mide 9670×12671 y Transaction 11785×6365: abrir los PNG a escala
+real o ampliados para leerlos. No son imágenes para reducir a una página A4.
+No se generan SVG.
 
 Desde la raíz, con Java disponible y PowerShell, descargar los binarios
 oficiales a una carpeta temporal y crear la configuración de presentación:
@@ -136,14 +145,12 @@ foreach ($c4level in '02', '03', '04') {
 ```
 
 El exportador también escribe vistas heredadas del modelo compartido y sus
-leyendas `*-key.puml`. Se seleccionan explícitamente las ocho vistas que se
-publican, para no confundir una vista heredada con la entrega de Fase III:
+leyendas `*-key.puml`. Se seleccionan las seis vistas que conservan render directo desde DSL;
+las otras dos se renderizan desde sus PUML versionados:
 
 ```powershell
 $c4renders = [ordered]@{
     '02/structurizr-Contexto_Fase_III' = '02-c4-contexto'
-    '03/structurizr-Contenedores_Fase_III' = '03-c4-contenedores'
-    '04/structurizr-Diagrama_Componentes_Transaction' = '04-c4-componentes'
     '04/structurizr-Componentes_gateway' = '04-componentes-gateway'
     '04/structurizr-Componentes_customer' = '04-componentes-customer'
     '04/structurizr-Componentes_account' = '04-componentes-account'
@@ -155,6 +162,16 @@ foreach ($c4render in $c4renders.GetEnumerator()) {
     & $c4java -DPLANTUML_LIMIT_SIZE=24000 -jar "$c4work/plantuml-1.2026.9.jar" -config "$c4work/layout.config" -charset UTF-8 -tpng $c4input
     if ($LASTEXITCODE -ne 0) { throw "Render fallido: $c4input" }
     Copy-Item ($c4input -replace '\.puml$', '.png') "docs/architecture/diagrams/$($c4render.Value).png"
+}
+```
+
+Para conservar los dos ajustes manuales, ejecutar aparte, **sin** aplicar la
+configuración Arial del exportador sobre sus parámetros Segoe UI:
+
+```powershell
+foreach ($c4presentation in '03-c4-contenedores', '04-c4-componentes') {
+    & $c4java -DPLANTUML_LIMIT_SIZE=24000 -jar "$c4work/plantuml-1.2026.9.jar" -charset UTF-8 -tpng "docs/architecture/diagrams/$c4presentation.puml"
+    if ($LASTEXITCODE -ne 0) { throw "Render fallido: $c4presentation" }
 }
 ```
 
@@ -171,10 +188,10 @@ exportador, no unidades de píxel finales de Graphviz:
 
 | Entrada | Efecto comprobado en este procedimiento |
 | --- | --- |
-| `autoLayout lr rango nodo` | Exporta `left to right direction`, `ranksep = entero(rango / 5)` y `nodesep = entero(nodo / 10)`. L1/L2 usan `lr 900 500`: 180 y 50. Las seis L3 usan `lr 600 400`: 120 y 40. |
+| `autoLayout lr rango nodo` | Exporta `left to right direction`, `ranksep = entero(rango / 5)` y `nodesep = entero(nodo / 10)`. El DSL L1/L2 usa `lr 900 500`: 180 y 50, y L3 `lr 600 400`: 120 y 40. Los PUML de presentación sustituyen esos valores: L2 280/160 y Transaction 260/80. |
 | Colores, formas, `fontSize`, estilo de borde y línea del DSL | Se trasladan a estilos PlantUML. Componentes L3: fuente 20; relaciones: 16. El estilo discontinuo `Implements` diferencia las realizaciones. |
 | `width` de elementos | Se exporta como `MaximumWidth` del texto; no fija coordenadas ni el ancho exacto del rectángulo. Se usan 390 en el modelo compartido y 360 en componentes. |
-| Configuración PlantUML | `linetype polyline` elige trazos por segmentos; `Padding 12` añade margen interior, `shadowing false` quita sombras y Arial fija la familia tipográfica. Se aplica con `-config`, después de exportar. |
+| Configuración PlantUML | `linetype polyline` elige trazos por segmentos; `Padding 12` añade margen interior, `shadowing false` quita sombras y Arial fija la familia tipográfica. Se aplica sólo a las seis vistas de exportación directa; L2/Transaction llevan su propia configuración versionada. |
 | Coordenadas o vértices guardados en Structurizr, `routing` y ancho de etiqueta de una relación | Este exportador no los reproduce como restricciones de ruta. Cambiarlos no garantiza otra trayectoria en estos PNG. No se añadieron para aparentar control del resultado. |
 
 Graphviz decide las posiciones y los cruces finales a partir del grafo y esos

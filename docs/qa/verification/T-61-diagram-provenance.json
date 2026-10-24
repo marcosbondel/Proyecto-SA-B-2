@@ -1,0 +1,151 @@
+{
+  "reviewedAtUtc": "2026-10-24T02:15:29.145839+00:00",
+  "baseline": "4458d2f",
+  "policy": "PNG only. Native Lucid nodes/connectors edited through the browser; no image/file imports. ER supplied by the user, preserved. PUML references do not encode Lucid geometry. No credentials or invitation tokens are recorded.",
+  "nativeExports": [
+    {
+      "path": "docs/architecture/diagrams/08-despliegue-cloud-gcp.png",
+      "pixels": [6000, 4478],
+      "bytes": 921605,
+      "sha256": "fdd542028279b5254253e1e74b5a39a3f13af715f081070f489262df978a50c3",
+      "pageUrl": "https://lucid.app/lucidchart/c7a15874-cdcd-42fa-a48c-b6c4124a6fbc/edit?page=K~JxJFM6TNS-",
+      "pageName": "despliegue",
+      "exportQualityPpi": 160,
+      "downloadedFilename": "SA - despliegue (10).png",
+      "downloadBytesMatchRepository": true,
+      "visualReview": "Full image and readable details checked; no native files imported.",
+      "notes": "Original native cloud page, retained by explicit user decision; experimental UML copy is excluded. Component/namespace/infrastructure headings are bold, technical details use normal weight. The formerly detached OTLP line was rebuilt between Gateway and the Collector stack, with ports 4317/4318; the final channel has no arrowheads. Cloud Run/GKE Web distinction is specified in the technical note, preserving original AMQP edges without a misleading Web-to-broker overlap. HTTP/S3 labels corrected. BANK99 prod-only is specified in the technical note; no extra broker or mock with misleading AMQP connections was added. Snapshot is 2026-10-21, not a new cloud observation."
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/payment/payment-casos-de-uso.png",
+      "pixels": [1580, 1165],
+      "bytes": 65328,
+      "sha256": "f48f044fd7147afb57536fa10359f12ca061fbbb8696531278fcd54b60aac9b2",
+      "pageUrl": "https://lucid.app/lucidchart/c7a15874-cdcd-42fa-a48c-b6c4124a6fbc/edit",
+      "pageName": "cdu - CDU004",
+      "exportQualityPpi": 160,
+      "downloadedFilename": "SA - cdu - CDU004.png",
+      "downloadBytesMatchRepository": true,
+      "visualReview": "Full image and readable details checked; no native files imported.",
+      "notes": "Original CDU004 native page. X-Api-Key, payment.requested.v1, staff monitoring and administrative simulation API corrected."
+    },
+    {
+      "path": "docs/architecture/diagrams/13-casos-uso-fase3.png",
+      "pixels": [3000, 2184],
+      "bytes": 138922,
+      "sha256": "bc49aac164fb50c757ae79ad8a53caf74483bd58851d3370198eac0610a65f67",
+      "pageUrl": "https://lucid.app/lucidchart/c7a15874-cdcd-42fa-a48c-b6c4124a6fbc/edit?page=slRF5eEglc33",
+      "pageName": "cdu - Fase III",
+      "exportQualityPpi": null,
+      "downloadedFilename": "SA - cdu - Fase III.png",
+      "downloadBytesMatchRepository": true,
+      "visualReview": "Full image and readable details checked; no native files imported.",
+      "notes": "Native Fase III page. CLIENTE only sends; Cajero/Admin consult. Contract uses X-Api-Key and Idempotency-Key, scheduler resolves TIMEOUT. Identical PNG also at cdu/fase3/fase3-casos-de-uso.png."
+    }
+  ],
+  "userSuppliedEr": [
+    {
+      "path": "docs/architecture/diagrams/er/account-er.png",
+      "pixels": [1024, 782],
+      "bytes": 147897,
+      "sha256": "8b0bd7483d2a22f7bd2b2c38c27a0660c137da04f4f73a4e9621090fa0d42909",
+      "provenance": "User-supplied file at baseline 4458d2f; preserved during this review.",
+      "review": "Tables, visible local relations and crop checked against DBML/DDL. Image styling does not display every constraint, nullability rule or composite key. Payment requires zoom."
+    },
+    {
+      "path": "docs/architecture/diagrams/er/customer-er.png",
+      "pixels": [1024, 843],
+      "bytes": 144563,
+      "sha256": "b782c1e1d8f2c66881ad9eca77eab6f9dfb0951c0c448b4628586c9c3585eaa0",
+      "provenance": "User-supplied file at baseline 4458d2f; preserved during this review.",
+      "review": "Tables, visible local relations and crop checked against DBML/DDL. Image styling does not display every constraint, nullability rule or composite key. Payment requires zoom."
+    },
+    {
+      "path": "docs/architecture/diagrams/er/notification-audit-er.png",
+      "pixels": [1024, 698],
+      "bytes": 115720,
+      "sha256": "73b695e9b602be712a26fd2e1a7c4f408536a8d7fc314eec3808833ab172dd7c",
+      "provenance": "User-supplied file at baseline 4458d2f; preserved during this review.",
+      "review": "Tables, visible local relations and crop checked against DBML/DDL. Image styling does not display every constraint, nullability rule or composite key. Payment requires zoom."
+    },
+    {
+      "path": "docs/architecture/diagrams/er/payment-er.png",
+      "pixels": [1024, 928],
+      "bytes": 207893,
+      "sha256": "56228b4f1f80999a2913822c8aacd58a328b4cec9df5730ca7e99e9ad9960f1d",
+      "provenance": "User-supplied file at baseline 4458d2f; preserved during this review.",
+      "review": "Tables, visible local relations and crop checked against DBML/DDL. Image styling does not display every constraint, nullability rule or composite key. Payment requires zoom."
+    },
+    {
+      "path": "docs/architecture/diagrams/er/transaction-er.png",
+      "pixels": [1024, 529],
+      "bytes": 108922,
+      "sha256": "a7d44e7ff0f0ed8a16af01e28ea4355132b8856a399eccd429b68fdebd18cece",
+      "provenance": "User-supplied file at baseline 4458d2f; preserved during this review.",
+      "review": "Tables, visible local relations and crop checked against DBML/DDL. Image styling does not display every constraint, nullability rule or composite key. Payment requires zoom."
+    }
+  ],
+  "activities": [
+    {
+      "path": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.1-enviar-deposito-interbancario.png",
+      "pixels": [4614, 2751],
+      "bytes": 207581,
+      "sha256": "7a7cbdc5204e91813198b013a6c06e2f60c377db42b458237d0e35cb4a2e7471",
+      "source": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.1-enviar-deposito-interbancario.puml",
+      "embeddedSourceMatches": true,
+      "renderer": "PlantUML 1.2026.9, UTF-8, PLANTUML_LIMIT_SIZE=24000",
+      "review": "Controller/routes, events and service ownership checked. Full image reviewed after removing default 4096-pixel crop."
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.2-recibir-deposito-interbancario.png",
+      "pixels": [4444, 2683],
+      "bytes": 185888,
+      "sha256": "628c2ca32adbbee6532e577d3582f2dab347a58887bc07db84d6defe60696d66",
+      "source": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.2-recibir-deposito-interbancario.puml",
+      "embeddedSourceMatches": true,
+      "renderer": "PlantUML 1.2026.9, UTF-8, PLANTUML_LIMIT_SIZE=24000",
+      "review": "Controller/routes, events and service ownership checked. Full image reviewed after removing default 4096-pixel crop."
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.3-conciliar-interbancario.png",
+      "pixels": [4172, 2283],
+      "bytes": 199639,
+      "sha256": "3abb7abf5f89850d5abf77ed4e8c172d2fe4417e189592c962c5c1af224cff32",
+      "source": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.3-conciliar-interbancario.puml",
+      "embeddedSourceMatches": true,
+      "renderer": "PlantUML 1.2026.9, UTF-8, PLANTUML_LIMIT_SIZE=24000",
+      "review": "Controller/routes, events and service ownership checked. Full image reviewed after removing default 4096-pixel crop."
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.4-reportar-anomalia-nm.png",
+      "pixels": [2871, 1827],
+      "bytes": 122535,
+      "sha256": "e5149116318469d8664a435c4a9082339b409b27f06d83c46eb57db2209e7c89",
+      "source": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.4-reportar-anomalia-nm.puml",
+      "embeddedSourceMatches": true,
+      "renderer": "PlantUML 1.2026.9, UTF-8, PLANTUML_LIMIT_SIZE=24000",
+      "review": "Controller/routes, events and service ownership checked. Full image reviewed after removing default 4096-pixel crop."
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.5-configurar-simulacion-pagos.png",
+      "pixels": [2894, 1947],
+      "bytes": 130542,
+      "sha256": "7a3c2308f3c58b46ee5f91b642d9451c1b821d257c900924572cb2838a16c667",
+      "source": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.5-configurar-simulacion-pagos.puml",
+      "embeddedSourceMatches": true,
+      "renderer": "PlantUML 1.2026.9, UTF-8, PLANTUML_LIMIT_SIZE=24000",
+      "review": "Controller/routes, events and service ownership checked. Full image reviewed after removing default 4096-pixel crop."
+    },
+    {
+      "path": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.6-diagnostico-observabilidad-sre.png",
+      "pixels": [4498, 2115],
+      "bytes": 169180,
+      "sha256": "702b454fff27bc32f87894462fcdf51a128824c4198bdd20499551dc91dbd2a7",
+      "source": "docs/architecture/diagrams/cdu/fase3/flujos/CDU-F3.6-diagnostico-observabilidad-sre.puml",
+      "embeddedSourceMatches": true,
+      "renderer": "PlantUML 1.2026.9, UTF-8, PLANTUML_LIMIT_SIZE=24000",
+      "review": "Controller/routes, events and service ownership checked. Full image reviewed after removing default 4096-pixel crop."
+    }
+  ],
+  "phase3CompatibilityCopyMatches": true
+}

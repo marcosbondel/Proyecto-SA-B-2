@@ -1,52 +1,43 @@
 @startuml 13-casos-uso-fase3
+' Referencia semántica de la vista nativa Lucid, no su geometría ni su render.
 left to right direction
 skinparam shadowing false
 skinparam defaultFontName "Segoe UI"
-skinparam dpi 180
-skinparam ActorBorderColor #1168BD
-skinparam usecaseBackgroundColor #EAF2FF
-skinparam usecaseBorderColor #1168BD
-skinparam noteBackgroundColor #FFF8DC
-skinparam noteBorderColor #D6B656
-title UML - Casos de uso adicionales Fase III\nComplementa la jerarquía CDU de Fase I
-actor Cliente as C
-actor Cajero as T
+skinparam usecaseBackgroundColor White
+skinparam usecaseBorderColor #444444
+skinparam ActorBorderColor #444444
+skinparam noteBackgroundColor #FFFFCC
+title Bank USAC — Fase III\nInterbancaria y operación
 actor Administrador as A
-actor "Operador SRE\nAcceso separado" as S
-actor "Banco participante\nContrato v1 / X-Api-Key" as B
+actor Cliente as C
+actor "Cajero Receptor" as T
+actor "Banco participante\nContrato interbancario v1" as B
+actor "Planificador automático" as P
 rectangle "Bank USAC" {
-  usecase "Enviar depósito interbancario\nConsultar estado e historial propios" as U1
-  usecase "Recibir / consultar / cancelar depósito\nConciliar / reversar" as U2
-  usecase "Consultar notificaciones propias" as U3
-  usecase "Consultar depósitos interbancarios\nAlcance global para personal" as U10
-  usecase "Consultar pagos e intentos" as U4
-  usecase "Filtrar auditoría / traza\nConsultar rastro y payload redactado" as U9
-  usecase "Configurar simulación de pagos\nAPI administrativa (sin formulario UI)" as U5
-  usecase "Consultar reporte de anomalía N/M\nAccount reporta sin bloquear la cuenta" as U6
-  usecase "Consultar 9 dashboards / Explore\nInvestigar logs y trazas" as U7
-  usecase "Recibir 16 alertas SLO\nRegistrar y notificar al administrador" as U8
+  usecase "F3.1: Enviar interbancaria" as U1
+  usecase "F3.2: Consultar operaciones" as U2
+  usecase "F3.3: Validar contrato y X-Api-Key" as U3
+  usecase "F3.4: Reconciliar TIMEOUT" as U4
+  usecase "F3.5: Recibir transferencia" as U5
+  usecase "F3.6: Configurar simulación" as U6
+  usecase "F3.7: Registrar intento y resultado" as U7
 }
-C --> U1
-C --> U3
-T --> U4
-A --> U10
-T --> U10
-A --> U3
-T --> U3
-A --> U4
-A --> U9
-A --> U5
-A --> U6
-A --> U8
-B --> U2
-S --> U7
-U7 ..> U8 : observación / diagnóstico
-note bottom of U6
-  Account calcula con sus movimientos y ventana N/M.
-  No requiere interfaz nueva ni autorización de una transferencia.
-end note
-note bottom of U2
-  Payment posee estados/plazos; Account posee dinero.
-  Gateway autentica y valida. Comunicación interna AMQP.
+C -- U1
+C -- U2
+A -- U2
+A -- U6
+T -- U2
+B -- U5
+P -- U4
+U1 ..> U3 : <<include>>
+U1 ..> U7 : <<include>>
+U5 ..> U3 : <<include>>
+U4 ..> U1 : <<extend>>
+note bottom
+  Sólo CLIENTE envía desde sus cuentas. Consultas limitadas por alcance.
+  X-Api-Key + Idempotency-Key; contrato v1 y TTL de 180 s.
+  TIMEOUT conserva reserva; consultar/cancelar y aplicar plazos persistidos.
+  No hay API ADMIN para forzar la resolución; simulación runtime sólo ADMINISTRADOR.
+  Anomalía N/M y diagnóstico SRE tienen actividades complementarias CDU-F3.4 y CDU-F3.6.
 end note
 @enduml

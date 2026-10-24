@@ -1,0 +1,72 @@
+{
+  "observedAtUtc": "2026-10-24T02:15:29.229194+00:00",
+  "base": "4458d2f",
+  "tools": {
+    "plantuml": "1.2026.9",
+    "structurizrCli": "2025.11.09"
+  },
+  "puml": {
+    "count": 49,
+    "exitCode": 0,
+    "output": ""
+  },
+  "dsl": {
+    "02-c4-contexto.dsl": {
+      "exitCode": 0,
+      "output": ""
+    },
+    "03-c4-contenedores.dsl": {
+      "exitCode": 0,
+      "output": ""
+    },
+    "04-c4-componentes.dsl": {
+      "exitCode": 0,
+      "output": ""
+    },
+    "c4.dsl": {
+      "exitCode": 0,
+      "output": ""
+    }
+  },
+  "c4Presentation": {
+    "03-c4-contenedores": {
+      "export": {
+        "exitCode": 0,
+        "output": "Exporting workspace from C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\docs\\architecture\\diagrams\\03-c4-contenedores.dsl\n - exporting with StructurizrPlantUMLExporter\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\03-c4-contenedores\\structurizr-Diagrama_Contexto.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\03-c4-contenedores\\structurizr-Diagrama_Contexto-key.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\03-c4-contenedores\\structurizr-Diagrama_Contenedores.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\03-c4-contenedores\\structurizr-Diagrama_Contenedores-key.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\03-c4-contenedores\\structurizr-Contenedores_Fase_III.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\03-c4-contenedores\\structurizr-Contenedores_Fase_III-key.puml\n - finished\n"
+      },
+      "imageSize": [9670, 12671],
+      "pngEmbeddedSourceMatchesPuml": true,
+      "embeddedRendererFooter": "1.2026.9",
+      "elementAliasesMatch": true,
+      "elementCount": 28,
+      "relationsInDslExport": 45,
+      "relationsInPresentation": 45,
+      "removedRelations": [],
+      "addedRelations": [],
+      "pumlSha256": "e13e0a3bc1c380e408757cf79021612ae4f0a45963caa76f4b13b6737d318ca6"
+    },
+    "04-c4-componentes": {
+      "export": {
+        "exitCode": 0,
+        "output": "Exporting workspace from C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\docs\\architecture\\diagrams\\04-c4-componentes.dsl\n - exporting with StructurizrPlantUMLExporter\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_gateway.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_gateway-key.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_customer.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_customer-key.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_account.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_account-key.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Diagrama_Componentes_Transaction.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Diagrama_Componentes_Transaction-key.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_payment.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_payment-key.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_audit.puml\n - writing C:\\Users\\Enner\\Desktop\\Proyecto-SA-B-2\\tmp\\t61-final\\04-c4-componentes\\structurizr-Componentes_audit-key.puml\n - finished\n"
+      },
+      "imageSize": [11785, 6365],
+      "pngEmbeddedSourceMatchesPuml": true,
+      "embeddedRendererFooter": "1.2026.9",
+      "elementAliasesMatch": true,
+      "elementCount": 28,
+      "relationsInDslExport": 45,
+      "relationsInPresentation": 45,
+      "removedRelations": [],
+      "addedRelations": [],
+      "pumlSha256": "b35072fc882e9c05401a66ce6df4e08f1b8ff51a0a1408090815c0784cf86374"
+    }
+  },
+  "dbmlHashes": {
+    "account-er.dbml": "771df5526ca46b04a5d1fb6a55e8061b4bd93c274302b0a3c80675ca50bb182a",
+    "customer-er.dbml": "44172667da0dee866216cc1fce720487857f76cc01e1c092e6b16de4eafbcacc",
+    "notification-audit-er.dbml": "713ae13736b166a39d24319350c1b703948934dc95e53e30918ac23117bdf8f3",
+    "payment-er.dbml": "e131cca7828f221f414e8d644e253f719bfbb08df2eccb833d3961bf5018e746",
+    "transaction-er.dbml": "3191eee459e058b09b9cc19d9fa57a360ff3ba2804f7e1b3ea77dc17e7d250c4"
+  }
+}

@@ -4,8 +4,8 @@ Este documento consolida la especificación formal y la jerarquía de **Casos de
 
 La política del 2026-10-22 exige figuras y conectores nativos de Lucid para los
 casos de uso y entrega sólo en PNG. Los enlaces PlantUML de abajo conservan
-la fuente semántica para cotejo; no certifican la nueva edición o exportación
-de Lucid. [ADR-024](adr/ADR-024-native-lucid-and-png-delivery.md) registra la
+la fuente semántica para cotejo. Las exportaciones nativas revisadas se
+registran en la verificación final; las actividades conservan render PlantUML. [ADR-024](adr/ADR-024-native-lucid-and-png-delivery.md) registra la
 decisión y la [auditoría T-61](../qa/T-61-documentation-audit.md) su avance.
 
 ---

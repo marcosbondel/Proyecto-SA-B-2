@@ -1,20 +1,40 @@
 # Verificación documental T-61
 
-Revisión iniciada el 21 de octubre y cierre de comprobaciones el
-**22 de octubre de 2026, Guatemala**. Rama `feature/T-61`, base `40660d5`.
-El [informe](../T-61-documentation-audit.md) enlaza alcance, evidencia y
-pendientes de #167/#168. Los resultados no certifican un cambio de aplicación.
+Revisión iniciada el 21/oct/2026 y cierre de archivos del **23/oct/2026,
+Guatemala**. Rama `feature/T-61`. La auditoría original partió de `40660d5`;
+esta revisión adicional partió de `4458d2f`, que ya incorporaba los commits del
+solicitante. Para el PR se adelantó la rama a `develop` en `bdeb606`; el
+manifiesto final usa esa base para excluir cambios ajenos ya integrados.
+[Informe de alcance](../T-61-documentation-audit.md).
 
-**Revisión de formato del 22/oct, posterior a las comprobaciones de abajo:**
-se retiraron los SVG documentales y los cinco PNG ER generados; se conservaron
-los cinco DBML y sus hashes durante el retiro. [ADR-024](../../architecture/adr/ADR-024-native-lucid-and-png-delivery.md)
-adopta UML de casos de uso/despliegue nativo en Lucid y diagramas sólo PNG.
-Las exportaciones Lucid/C4 siguen su revisión propia y el solicitante
-exportará los ER. Los manifiestos JSON y los conteos previos conservados a
-continuación requieren regeneración al terminar esa revisión: no describen
-el conjunto actual ni certifican exportaciones pendientes.
+## Comprobación actual del 23/oct
 
-## Comandos ejecutados
+- **49 PUML y cuatro DSL válidos**, comprobados de nuevo con PlantUML 1.2026.9
+  y Structurizr CLI 2025.11.09. [Salida estructurada](T-61-source-review.json).
+- **158 filas explícitas** en DOC_INVENTORY, tras la consolidación del manual
+  y la incorporación de la guía de validación en producción llegada de develop.
+  Se conservan el manual unificado, su índice y el recorrido Fase III.
+- **69 PNG, cero SVG, cinco DBML** bajo diagramas. Los cinco ER fueron aportados
+  por el solicitante y se revisaron visualmente. Su tabla/relación visible no
+  sustituye los CHECK, índices o claves compuestas del DBML/DDL. El parseo previo
+  de 34 tablas y 11 FK se conserva como evidencia fechada, sin presentarlo como
+  una nueva ejecución del parser el 23/oct.
+- Seis actividades Fase III corregidas y regeneradas; vistas nativas cloud, Payment y Fase III revisadas/exportadas desde Lucid. Las dos rutas PNG
+  de Fase III contienen la misma exportación. [Procedencia](T-61-diagram-provenance.json).
+- L2 y Transaction conservan sus ajustes PUML de presentación, con 45 relaciones
+  dirigidas cada uno cotejadas contra exportaciones DSL nuevas. El código
+  incrustado en los PNG coincide con esos PUML (el footer añade la versión del
+  renderizador). Los otros seis C4 conservan el procedimiento desde DSL.
+- El [manifiesto final](T-61-artifacts.json) registra rutas/anclas locales,
+  integridad de todas las imágenes y JSON de docs, hashes, inventario, alcance
+  Git y las cinco referencias inmutables de `40660d5`. Las 25 capturas originales
+  del [manifiesto de navegador](../../images/fase3/manifest.json) conservan sus hashes.
+
+No se volvió a ejecutar la aplicación, carga, fallos cloud o pruebas bancarias
+para esta revisión de archivos. Las lecturas de operación corresponden a las
+fechas originales. El siguiente bloque conserva sus resultados históricos.
+
+## Comandos ejecutados en la auditoría del 21–22/oct
 
 | Comprobación | Resultado y evidencia |
 | --- | --- |
@@ -30,33 +50,16 @@ el conjunto actual ni certifican exportaciones pendientes.
 | Cloud dev | Baseline/proveedor exit 99 por umbral de seguimiento, pod exit 0. No se alteraron umbrales. [Evidencia](../backend/T-60-cloud-evidence.md). |
 | Estado final | [22/oct UTC](../load/2026-10-22-final-readiness.json): ambos Gateways HTTP 200 en health/ready; simulación dev 0/0/0. Sólo lectura, sin transferencias nuevas. |
 
-## Comprobación anterior a la revisión de formato
+## Archivo de la primera comprobación
 
-El manifiesto de revisión enumera cada archivo, su SHA-256 y las validaciones
-de enlaces, fuentes, tipos y render. Las incidencias de documentos históricos
-se separan de enlaces introducidos por T-61; no se da por aprobada una ruta que
-no existe. Las capturas originales tienen un
-[manifiesto independiente](../../images/fase3/manifest.json).
+Antes de la revisión gráfica se verificaron 41 PUML, cuatro DSL, cinco DBML,
+66 PNG, 51 SVG y 25 JPEG. Esos conteos describen la primera ejecución, no el
+estado final. El manifiesto actual los sustituye; las salidas históricas de
+tests y del parser DBML conservan su fecha y no se reetiquetan como nuevas.
 
-Resultado previo en [T-61-artifacts.json](T-61-artifacts.json): 160 entradas
-documentales; 159 Markdown de producto analizados y una plantilla de catálogo
-clasificada aparte. La plantilla contiene rutas relativas al archivo que
-genera, por lo que no se resuelven como si se ejecutara desde su directorio.
-La comprobación de rutas/anclas locales dio cero incidencias; no certifica
-disponibilidad futura de enlaces remotos.
-
-Activos comprobados antes del retiro: **41 PUML, cuatro DSL, cinco DBML, 66 PNG y 51 SVG**, más **25 JPEG
-originales** del navegador. Se comprobaron apertura/integridad de 91 imágenes,
-XML de 51 SVG, JSON y correspondencia de los renders PUML con sus fuentes.
-Los 66 PNG incluyen 56 renders técnicos y diez alternativas del editor.
-El manifiesto registra dimensiones y SHA-256 de cada artefacto cambiado,
-excepto su propio hash, para evitar una referencia circular.
-
-Las cinco referencias versionadas conservaron el blob Git de la base
-`40660d5`, incluidos PDF y contrato OpenAPI oficial. En Windows la comparación
-usa el contenido normalizado por Git; las diferencias LF/CRLF del checkout no
-se presentan como una modificación del contrato. Se registran además los
-SHA-256 de los archivos del workspace.
+Las referencias versionadas conservaron el blob Git de `40660d5`, incluido
+el contrato OpenAPI oficial. La comparación usa normalización Git para no
+tratar LF/CRLF de Windows como un cambio del contrato.
 
 Ningún resultado `skipped`, `No data`, `NaN` o umbral cruzado se convirtió en
 un pase. La traza de compensación y Tempo→Loki se observaron; la apertura
@@ -73,7 +76,10 @@ no se cambió infraestructura ni configuración Helm/Terraform. La simulación
 runtime dev se modificó temporalmente y sus valores volvieron a 0/0/0.
 La fila de override permanece con `source=RUNTIME` y su `updatedAt`, frente a
 `DEFAULTS`/null del preflight; no se afirma haber restaurado esa procedencia.
-No se creó commit ni PR.
+El solicitante ya integró los commits anteriores. Esta revisión del 23/oct se
+entrega en un PR documental desde `feature/T-61` hacia `develop`; la autoría del
+commit fue confirmada por el solicitante como Enner Mendizabal. La copia UML
+alternativa de Lucid queda fuera de esta entrega por decisión del solicitante.
 
 
 ## Reproducir la comprobación documental
@@ -90,7 +96,8 @@ No se creó commit ni PR.
    su existencia; para anclas, normalizar los headings con los slugs de
    GitHub y sus sufijos para duplicados, además de IDs HTML explícitos.
 3. Abrir PNG/JPEG con Pillow `Image.verify()` y JSON con `json.loads()`.
-   Comprobar que no queden SVG documentales ni enlaces a los ER retirados.
+   Comprobar que no queden SVG documentales y que estén los cinco PNG ER
+   aportados por el solicitante, junto a sus DBML.
    Comparar cada
    SHA-256 del manifiesto de capturas con su original, sin transformar imágenes.
 4. Comparar las referencias con `git rev-parse 40660d5:<ruta>` y
@@ -98,6 +105,6 @@ No se creó commit ni PR.
    completo, incluidos nuevos archivos. El manifiesto conserva la lista de
    archivos y hashes usada en este cierre.
 
-Las herramientas temporales se retiraron del workspace tras la validación;
+Las herramientas de comprobación permanecen en `tmp/`, ignorado por Git;
 no se añadieron dependencias ni scripts al producto. Las salidas de tests
 conservan la ejecución real y no son una nueva certificación del código.

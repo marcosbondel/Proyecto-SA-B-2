@@ -14,7 +14,7 @@
    - [3.2 Modelo C4 — Nivel 1: Contexto del Sistema](#32-modelo-c4--nivel-1-contexto-del-sistema)
    - [3.3 Modelo C4 — Nivel 2: Contenedores](#33-modelo-c4--nivel-2-contenedores)
    - [3.4 Modelo C4 — Nivel 3: Componentes y Arquitectura Limpia](#34-modelo-c4--nivel-3-componentes-y-arquitectura-limpia)
-   - [3.5 Diagrama UML de Despliegue](#35-diagrama-uml-de-despliegue-local-kind)
+   - [3.5 Diagrama UML de Despliegue](#35-diagrama-uml-de-despliegue-gcp)
    - [3.6 Diagrama UML de Secuencia: Creación de Cuenta](#36-diagrama-uml-de-secuencia-creación-de-cuenta)
    - [3.7 Diagrama UML de Secuencia: Transferencia con Saga Coreografiada](#37-diagrama-uml-de-secuencia-transferencia-con-saga-coreografiada)
    - [3.8 Diagramas UML de Casos de Uso (Jerarquía y Roles)](#38-diagramas-uml-de-casos-de-uso-jerarquía-y-roles)
@@ -110,15 +110,13 @@ El diagrama de arquitectura general ilustra la división entre la red perimetral
 ![Arquitectura General](architecture/diagrams/01-arquitectura-general.png)
 
 #### Explicación Técnica
-* **Perímetro exterior:** En local, Web usa HTTP :3010 y Gateway HTTP :3000.
-  En cloud, Web se sirve por HTTPS :443 desde Cloud Run; el Gateway observado
+* **Perímetro exterior:** Web se sirve por HTTPS :443 desde Cloud Run; el Gateway observado
   sigue en HTTP :3000. El proxy Nitro evita contenido mixto en el navegador,
   pero no cifra ese segundo tramo.
 * **Límite del Clúster / Entorno de Aplicaciones:** El API Gateway actúa como frontera de seguridad; valida credenciales y convierte las peticiones entrantes en comandos asíncronos encolados en RabbitMQ.
-* **Infraestructura:** En kind local, PostgreSQL, RabbitMQ y MinIO están fuera
-  del clúster sobre Docker. En GKE, PostgreSQL sigue fuera en cinco VMs,
-  mientras RabbitMQ y MinIO residen en cada namespace bancario. Los puertos
-  publicados locales se comprueban con Docker; no son las direcciones cloud.
+* **Infraestructura:** PostgreSQL está fuera de GKE, en cinco VMs privadas.
+  RabbitMQ y MinIO residen en los namespaces bancarios `prod` y `dev`, con
+  cargas separadas. La observabilidad compartida ocupa su propio namespace.
 
 ---
 
@@ -190,18 +188,15 @@ Customer, Account, Payment y Notification & Audit:
 
 ---
 
-### 3.5 Diagrama UML de Despliegue (local, kind)
+### 3.5 Diagrama UML de Despliegue (GCP)
 
-![Despliegue local con kind, Docker y Helm](architecture/diagrams/05-uml-despliegue.png)
+![Despliegue GCP con Terraform, GKE, Cloud Run y Helm](architecture/diagrams/08-despliegue-cloud-gcp.png)
 
-La fuente [05-uml-despliegue.puml](architecture/diagrams/05-uml-despliegue.puml)
-representa el host Docker, kind y el namespace `bank-usac`. Helm instala los
-siete componentes; `bank-observability` es un segundo chart en su namespace.
-PostgreSQL, RabbitMQ y MinIO locales se alcanzan por red Docker mediante
-Services/Endpoints; `host.docker.internal` es un fallback configurado.
-
-Las sondas, HPA, ConfigMaps, Secrets y protocolos pertenecen al despliegue local;
-no confundirlo con Cloud Run, VMs y GKE del diagrama 08.
+La [fuente semántica](architecture/diagrams/08-despliegue-cloud-gcp.puml)
+representa la infraestructura cloud: frontend en Cloud Run, cargas en GKE,
+PostgreSQL en cinco VMs privadas y observabilidad compartida. Terraform declara
+la infraestructura y Helm administra las cargas del clúster. Es la única
+vista de despliegue del entregable; §3.10 desarrolla su lectura técnica.
 
 ---
 
@@ -348,9 +343,8 @@ bases de otros servicios.
 
 ### 3.10 Diagrama de Despliegue en la Nube (GCP — Fase II)
 
-La vista cloud se actualiza para Fase III y se mantiene distinta de la local.
-
-![Despliegue cloud: Terraform, Helm, GKE y observabilidad](architecture/diagrams/08-despliegue-cloud-gcp.png)
+Esta sección desarrolla la única vista de despliegue GCP mostrada en §3.5,
+actualizada para Fase III.
 
 Fuente: [08-despliegue-cloud-gcp.puml](architecture/diagrams/08-despliegue-cloud-gcp.puml).
 
@@ -447,7 +441,6 @@ conservan el razonamiento de las decisiones históricas.
 | **ADR-004** | RabbitMQ como Message Broker | Apache Kafka, NATS | Soporte nativo para topic exchanges, colas durables y patrón request/reply. |
 | **ADR-005** | PostgreSQL 18.4 independiente por servicio | MySQL, MongoDB | Integridad ACID, bloqueos `SELECT ... FOR UPDATE` y soporte `NUMERIC(14,2)`. |
 | **ADR-006** | Contenedores Docker multi-stage | Imágenes convencionales | Separar build y runtime, ejecutar como `node` y verificar las imágenes con `images:smoke`; no se afirma un tamaño sin medirlo. |
-| **ADR-007** | Orquestación local con kind y Helm | Minikube, Docker Compose puro | Reproduce fielmente la topología de clúster K8s de producción. |
 | **ADR-008** | Clean Architecture / Puertos y Adaptadores | Arquitectura en capas tradicional | Independencia de frameworks y pruebas de dominio aisladas sin base de datos. |
 | **ADR-009** | Transacciones distribuidas con Saga Coreografiada | Saga Orquestada, 2PC (Two-Phase Commit) | Reacciona a eventos; Transaction coordina sus transiciones y emite comandos. No hay transacción global ACID ni coordinador HTTP externo. |
 | **ADR-010** | JWT HS256 + scrypt para contraseñas | Sesiones en Redis, Bcrypt | Seguridad contra ataques de fuerza bruta y validación de tokens sin consultar DB. |
@@ -492,7 +485,7 @@ Proyecto-SA-B-2/
 ├── docs/                         # Documentación técnica, diagramas y manuales
 ├── infra/
 │   ├── docker/                   # Docker Compose de infraestructura (Postgres, Rabbit, MinIO)
-│   ├── k8s/                      # Chart de Helm y configuración del clúster kind
+│   ├── k8s/                      # Charts de Helm y configuración de Kubernetes
 │   └── terraform/gcp/            # Infraestructura como código: VPC, VMs, GKE y Cloud Run
 ├── .github/
 │   ├── workflows/                # ci.yml, changes.yml, release.yml, cd.yml
@@ -511,21 +504,16 @@ directorio sin que exista un segundo original que mantener. El detalle está en
 
 ## 9. Contenedores y despliegue en Kubernetes
 
-Esta sección es la evidencia del clúster **local**. El despliegue en la nube —GKE con dos namespaces, las VM de Compute Engine y Cloud Run— es §14, y su topología, §3.10.
+Esta sección describe las cargas de GKE y sus imágenes. La única vista de
+despliegue está en §3.5; §3.10 detalla su lectura y §14 el aprovisionamiento.
 
-### Evidencias de Despliegue en Clúster Local (kind)
-
-| Captura de Ejecución | Descripción Técnica de la Evidencia |
-| :---: | :--- |
-| ![Construcción de las siete imágenes](images/kubernetes/01-build-imagenes.png) | **Construcción multi-stage:** Siete imágenes construidas y etiquetadas con el commit actual, cargadas en el nodo de kind sin subir a registros públicos. |
-| ![helm upgrade --install](images/kubernetes/02-helm-install.png) | **Instalación de Helm:** Despliegue exitoso del chart `bank-usac` con los 7 Deployments y Services. |
-| ![Los siete pods en ejecución](images/kubernetes/03-pods-running.png) | **Pods en estado 1/1 Running:** Todos los microservicios activos dentro del namespace `bank-usac`. |
-| ![Las dependencias fuera del clúster](images/kubernetes/04-dependencias-fuera-del-cluster.png) | **Dependencias externas al clúster:** Salida de `docker ps` que demuestra las 5 bases PostgreSQL, RabbitMQ y MinIO corriendo fuera del clúster en la red del host. |
-| ![/ready por componente](images/kubernetes/05-ready-por-componente.png) | **Sondas `/ready` en verde:** Cada microservicio confirma conexión exitosa a su base de datos y al broker RabbitMQ. |
-| ![La Saga en sus tres formas](images/kubernetes/06-saga-completed.png) | **Ejecución de la Saga:** Demostración con saldos auditados de los flujos completado y compensado con `pnpm images:flow`. |
-| ![Caso degradado](images/kubernetes/07-degradado-not-ready.png) | **Tolerancia a fallos:** Al detener una base de datos, el pod pasa a `0/1 Running` (no `CrashLoopBackOff`) y se recupera automáticamente al restablecerla. |
-| ![/health responde, /ready no](images/kubernetes/07b-health-ok-ready-503.png) | **Separación de sondas:** Con la dependencia caída, `/health` responde `200 OK` (liveness vivo) y `/ready` devuelve `503` (sin recibir tráfico). |
-| ![El frontend servido por el clúster](images/kubernetes/08-frontend-desde-el-cluster.png) | **Frontend operativo:** Acceso a la interfaz web mediante `kubectl port-forward` con sesión activa. |
+| Componente | Despliegue cloud y evidencia |
+| --- | --- |
+| Imágenes | Siete aplicaciones construidas por CI, publicadas en Artifact Registry y desplegadas con etiquetas versionadas; [inventario de contenedores](operations/CONTAINERS.md). |
+| GKE / Helm | Cargas bancarias en `prod` y `dev`, más `observability`; charts, sondas y HPA descritos en [CLOUD.md](operations/CLOUD.md). |
+| Datos | Cinco VMs PostgreSQL privadas fuera de GKE; nombres de bases distintos para producción y desarrollo. RabbitMQ y MinIO pertenecen al namespace bancario correspondiente. |
+| Frontend | Cloud Run sirve la entrada pública HTTPS y Nitro realiza el proxy al Gateway. La carga Web de GKE es un despliegue adicional del mismo componente. |
+| Verificación | [Evidencia cloud T-60](qa/backend/T-60-cloud-evidence.md): lecturas del clúster, carga y fallos dev, con resultados y límites conservados. Readiness no prueba cumplimiento de SLO. |
 
 ---
 

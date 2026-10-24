@@ -1,7 +1,8 @@
 @startuml CDU-F3.5-configurar-simulacion-pagos
-title CDU-F3.5 - Configuración de simulación de pagos en caliente
+title CDU-F3.5 - Configurar la simulación de pagos por API
 
 skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
 skinparam dpi 180
 skinparam activity {
     BackgroundColor #F4F8FF
@@ -11,41 +12,33 @@ skinparam activity {
 
 |Administrador|
 start
-:Definir parámetros de simulación (failureRatePercent, timeoutRatePercent, latencyMs);
-:Enviar petición PUT /api/payment/simulation con token administrativo;
+:GET /api/payments/simulation con sesión ADMINISTRADOR;
+:PUT /api/payments/simulation con las tres propiedades\no bien el cuerpo {"reset": true};
 |API Gateway|
-:Autenticar JWT y verificar rol ADMIN;
-:Validar esquema JSON del payload;
-:Reenviar comando payment.simulation.update.v1 a Payment Service;
-|Payment Service|
-:Verificar restricciones de negocio SQL;
-if (¿Tasas válidas (0 <= tasa <= 100 y suma <= 100%) y latencia (0 <= ms <= 30000)?) then (Sí)
-    :Actualizar registro único (id = 1) en payment_simulation_settings;
-    :Registrar timestamp de actualización updated_at;
-    :Publicar evento payment.simulation.updated.v1;
-    |Notification & Audit|
-    :Registrar cambio de configuración de simulación en bitácora de auditoría;
-    |API Gateway|
-    :Responder HTTP 200 OK con la configuración aplicada;
-    |Administrador|
-    :Confirmar parámetros activos en pantalla de administración;
+:Autenticar JWT y exigir ADMINISTRADOR;
+if (¿Payload válido?) then (Sí)
+  :Request/reply AMQP payment.simulation.update.v1;
 else (No)
-    |Payment Service|
-    :Rechazar configuración con error de validación;
-    |API Gateway|
-    :Responder HTTP 400 Bad Request con mensaje de error descriptivo;
-    |Administrador|
-    :Corregir valores ingresados;
-    stop
+  :Responder 400 sin cambiar la simulación;
+  stop
 endif
-
 |Payment Service|
-:En ejecuciones posteriores de pagos, aplicar tasas y retardos configurados;
+:Revalidar identidad y contrato en el servicio dueño;
+if (¿reset?) then (Sí)
+  :Eliminar override id = 1 de payment_simulation_settings,\nvolver a defaults de configuración;
+else (Configuración completa)
+  :Validar porcentajes 0..100 y suma <= 100,\nlatencyMs entero 0..30000;
+  :Upsert id = 1 con updated_at,\nregistrar telemetría de UPDATE;
+endif
+:Responder payment.simulation.replied.v1 con settings,\nsource DEFAULTS/RUNTIME y updatedAt;
+|API Gateway|
+:Responder 200 con la configuración vigente;
+|Payment Service|
+:Leer la configuración vigente en el siguiente intento\nsi la transferencia no indicó scenario explícito;
 stop
 legend bottom
-  Implementación: Node.js 24 / NestJS / TypeScript.
-  Propósito: Pruebas de resiliencia, verificación de SLOs y disparo de alertas en caliente.
-  Persistencia: PostgreSQL 18.4 exclusivo de Payment Service (tabla payment_simulation_settings).
-  Aislamiento: API administrativa protegida por roles JWT; sin formulario público en cliente.
+  No existe payment.simulation.updated.v1 ni un formulario de administración para esta función.
+  Reset recupera DEFAULTS; guardar ceros conserva source RUNTIME y la fila de override.
+  PostgreSQL 18.4 propio; no HTTP interno; la consulta y la modificación son sólo de ADMINISTRADOR.
 endlegend
 @enduml
