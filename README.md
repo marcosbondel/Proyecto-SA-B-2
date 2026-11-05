@@ -407,8 +407,11 @@ it.
 ```bash
 pnpm build          # tasks in dependency order, the independent ones at once
 pnpm build          # again, unchanged: FULL TURBO — a cache hit, in milliseconds
-turbo run build --force   # bypass the cache when you want to watch it compile
+pnpm exec turbo run build --force   # bypass the cache when you want to watch it compile
 ```
+
+The examples invoke the workspace-local CLI with `pnpm exec`; a global Turbo
+installation is not required. Run `pnpm install` at the root first.
 
 The cache is in `.turbo/`, git-ignored, and **local only** — no remote cache is
 configured, and none should be added without deciding first what a shared cache
@@ -441,15 +444,15 @@ Turbo 2.10 still defaults to `stream` — the prefixed, interleaved output — w
 is why the key is set explicitly. It is a preference and not a requirement:
 outside an interactive terminal (a pipe, a container, CI) Turbo falls back to
 `stream` on its own, so `pnpm dev:host | tee dev.log` and the Compose stack
-behave exactly as before. `turbo run <task> --ui=stream` forces it for one run.
+behave exactly as before. `pnpm exec turbo run <task> --ui=stream` forces it for one run.
 
 Filters take a task to one application and bring its dependencies with it,
 which is the difference that matters in a fresh clone:
 
 ```bash
-turbo run test --filter=customer-service   # builds the shared packages first
-turbo run dev  --filter=gateway            # the Gateway alone, watchers included
-turbo run build --filter=web
+pnpm exec turbo run test --filter=customer-service   # builds the shared packages first
+pnpm exec turbo run dev  --filter=gateway            # the Gateway alone, watchers included
+pnpm exec turbo run build --filter=web
 
 pnpm --filter customer-service test        # still works — but builds nothing
 ```
@@ -461,7 +464,7 @@ and `@bank/tooling`.
 
 **`pnpm --filter <app> <task>` builds nothing.** The shared packages are
 consumed from `dist/`, so on a fresh clone that form needs a `pnpm build` first.
-`turbo run <task> --filter=<app>` does not — the build is a declared dependency
+`pnpm exec turbo run <task> --filter=<app>` does not — the build is a declared dependency
 of the task.
 
 ### Isolation rules
@@ -686,7 +689,7 @@ Invalid environment for "gateway". Offending variables: JWT_SECRET
 pnpm dev:host                 # the seven applications + the two package watchers
 ```
 
-That is `turbo run dev`. It compiles `@bank/contracts` and `@bank/messaging`
+That is `pnpm exec turbo run dev`. It compiles `@bank/contracts` and `@bank/messaging`
 once, then starts nine watchers at once — the six NestJS applications, Nuxt, and
 a `tsc --watch` over each shared package so a change to a contract reaches
 everything that imports it without a restart.
@@ -701,9 +704,9 @@ running first, every pane fills with `ECONNREFUSED`.
 Or a subset, which is what `--filter` is for:
 
 ```bash
-turbo run dev --filter=gateway              # http://localhost:3000
-turbo run dev --filter=web                  # http://localhost:3010
-turbo run dev --filter=gateway --filter=customer-service --filter=account-service
+pnpm exec turbo run dev --filter=gateway              # http://localhost:3000
+pnpm exec turbo run dev --filter=web                  # http://localhost:3010
+pnpm exec turbo run dev --filter=gateway --filter=customer-service --filter=account-service
 ```
 
 Start them in any order. `apps/web`'s `dev` script pins `--port 3010`, so Nuxt

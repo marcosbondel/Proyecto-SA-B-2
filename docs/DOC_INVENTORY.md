@@ -96,7 +96,7 @@ The primary component owners remain those in [OWNERSHIP](OWNERSHIP.md). A prior 
 | `docs/architecture/c4-context.md` | project | Enner Mendizabal | current | 2026-10-21 |
 | `docs/architecture/decision-matrix.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `docs/architecture/deployment.md` | project | Marcos Bonifasi | current | 2026-10-21 |
-| `docs/architecture/diagrams/alternativas-editor/README.md` | project | Enner Mendizabal | current | 2026-10-22 |
+| `docs/architecture/diagrams/alternativas-editor/README.md` | project | Enner Mendizabal | current; index restored with explicit missing-image notice | 2026-11-05 |
 | `docs/architecture/diagrams/cdu/README.md` | project | Enner Mendizabal | current | 2026-10-21 |
 | `docs/architecture/diagrams/er/README.md` | project | Enner Mendizabal | current | 2026-10-21 |
 | `docs/architecture/sequence-create-account.md` | project | Enner Mendizabal | current | 2026-10-21 |
@@ -209,7 +209,7 @@ The patterns below cover existing historical assets and additions in T-61. A gro
 | `docs/architecture/diagrams/12-observabilidad-y-alertas.{puml,png}` | project / generated | Enner Mendizabal | New telemetry, collectors, engines and alert return path. |
 | `docs/architecture/diagrams/13-casos-uso-fase3.{puml,png}` | project / generated | Enner Mendizabal | Phase III use-case semantic source and PNG; native Lucid export requires separate verification. |
 | `docs/architecture/diagrams/**/*.png` outside the named main/ER families | generated | Enner Mendizabal | CDU exports and historical editor variants; identify source/version before claiming parity or native Lucid provenance. |
-| `docs/architecture/diagrams/alternativas-editor/*-editor.png` | generated | Enner Mendizabal | Ten ImageGen alternatives for 01 and 05–13; labels/source comparisons in the directory README; canonical technical renders remain separate. |
+| `docs/architecture/diagrams/alternativas-editor/*-editor.png` | generated | Enner Mendizabal | Historical alternatives referenced by T-61; PNG files absent from the main tree reviewed on 2026-11-05. The restored directory README records the gap; canonical technical renders remain separate. |
 | `docs/images/fase3/manifest.json` | evidence | Marcos Bonifasi | Manifest of actual JPEG captures: source URL, role, UTC file timestamp, dimensions and SHA-256. The 22/oct inventory contains 25 JPEG originals; compare each manifest entry with its file and record any missing entry. Audit review date does not replace capture time. |
 | `docs/images/fase3/manual/*.{jpg,png}` | evidence | Marcos Bonifasi | Actual browser captures; role, URL and date in manual/evidence. No generated substitute for a missing screen. |
 | `docs/images/fase3/observability/*.{jpg,png}` | evidence | Marcos Bonifasi | Actual Grafana/Explore captures, with environment, filters and time window. |
