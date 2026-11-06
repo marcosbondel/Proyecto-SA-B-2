@@ -1,12 +1,67 @@
-# Bank USAC
+<div align="center">
+
+# 🏦 Bank USAC
+
+**Event-driven banking · Five domain services · Observable distributed workflows**
+
+![TypeScript](https://img.shields.io/badge/TypeScript-NestJS-3178C6?style=for-the-badge)
+![Frontend](https://img.shields.io/badge/Frontend-Nuxt%204-00DC82?style=for-the-badge)
+![Messaging](https://img.shields.io/badge/Messaging-RabbitMQ-FF6600?style=for-the-badge)
+![Data](https://img.shields.io/badge/Data-PostgreSQL-4169E1?style=for-the-badge)
+![Deployment](https://img.shields.io/badge/Deployment-Kubernetes-326CE5?style=for-the-badge)
+
+[Project overview](#project-overview) · [Architecture](ARCHITECTURE.md) · [Quick start](#quick-start--run-the-app) · [Evidence](#evidence-and-reading-paths) · [Team](#team)
+
+</div>
+
+---
+
 
 **Software Avanzado | Second Semester 2026 | Section B | Group 2**
 
-Bank USAC is a distributed banking system built as an academic project. It
-uses five independently owned microservices, an API Gateway, asynchronous
-RabbitMQ messaging, separate PostgreSQL databases outside Kubernetes, and a Nuxt 4 frontend.
-It supports local kind and GKE deployments, with Cloud Run for the public web. The architecture applies Clean Architecture and
-Saga choreography so distributed operations remain observable and resilient.
+## Project overview
+
+Bank USAC is an academic distributed banking system that connects customer
+registration, account management, transfers, payments and audit through
+asynchronous messaging. The repository includes the domain services, a web
+frontend, deployment infrastructure and technical evidence for the three phases.
+
+| System boundary | Implementation |
+| --- | --- |
+| Entry point | NestJS API Gateway: authentication, authorization and AMQP request/reply. |
+| Domain | Exactly five independently owned services, using Clean Architecture. |
+| Consistency | Saga choreography, idempotency, reservations and compensation. |
+| Persistence | One PostgreSQL database per service, outside Kubernetes. |
+| Experience | Nuxt 4 frontend with role-specific banking flows. |
+| Operation | Docker/kind locally; documented GKE and Cloud Run deployment. |
+| Observability | OpenTelemetry, metrics, traces, logs, dashboards and runbooks. |
+
+![Bank USAC system architecture](docs/architecture/diagrams/01-arquitectura-general.png)
+
+*Versioned architecture artifact. The [architecture guide](ARCHITECTURE.md)
+and [domain model](docs/domain/README.md) define the boundaries behind this view.*
+
+The workspace contains **seven applications**: one Gateway, one frontend and
+five domain services. Its four shared packages cover contracts, messaging,
+observability and tooling. The optional partner-bank mock is a test application,
+not an additional banking domain service.
+
+## Evidence and reading paths
+
+| What to evaluate | Where to start |
+| --- | --- |
+| System design and trade-offs | [Architecture](ARCHITECTURE.md), [ADRs](docs/architecture/adr/README.md) and [domain ownership](docs/domain/README.md). |
+| Functional delivery | [Technical document](docs/TECHNICAL_DOCUMENT.md) and [user manual](docs/manual-usuario.md). |
+| Transfer consistency | [Transfer sequence](docs/architecture/diagrams/07-uml-secuencia-transferencia.png), [event documentation](docs/events/README.md) and the test instructions below. |
+| Runtime and infrastructure | [Local deployment](docs/operations/DEPLOYMENT.md), [cloud runbook](docs/operations/CLOUD.md) and [CI/CD](docs/operations/CI.md). |
+| Reliability and observability | [SRE framework](docs/sre/sli-slo-sla.md), [telemetry catalogue](docs/sre/telemetry-catalog.md) and [runbooks](docs/operations/runbooks/README.md). |
+| Test evidence and its limits | [QA index](docs/qa/README.md) and [Phase III validation guide](docs/qa/guia-validacion-manual-fase3.md). |
+| Individual responsibilities | [Team](#team) and the named [component owners](docs/OWNERSHIP.md). |
+
+The operation documents distinguish **desired configuration, dated observations
+and executed evidence**. The cloud snapshot below is historical; the presence
+of manifests, dashboards or test scripts does not establish current production
+health. Use the linked runbooks and record a new execution when evaluating it.
 
 ## Team
 
@@ -22,6 +77,8 @@ single primary owner of every component.
 
 ## Table of Contents
 
+- [Project overview](#project-overview)
+- [Evidence and reading paths](#evidence-and-reading-paths)
 - [Team](#team)
 - [**Quick Start — run the app**](#quick-start--run-the-app) — one command, test
   users, where to go next
@@ -45,11 +102,14 @@ single primary owner of every component.
 
 ## Quick Start — run the app
 
-Everything runs in Docker; nothing to configure per application. You need
-**Docker** installed and running.
+The development runtime runs in Docker and does not require one environment
+file per application. Install and start **Docker**, and use the host
+**Node 24.19.0 / pnpm 11.21.0** toolchain declared in the
+[prerequisites](#prerequisites) to launch the root commands.
 
 ```bash
-git clone <this-repo> && cd Proyecto-SA-B-2
+git clone https://github.com/marcosbondel/Proyecto-SA-B-2.git
+cd Proyecto-SA-B-2
 cp infra/docker/.env.example infra/docker/.env   # then fill in the credentials
 pnpm dev                                         # infra + all 7 apps, in watch mode
 ```
