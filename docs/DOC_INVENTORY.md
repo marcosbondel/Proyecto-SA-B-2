@@ -30,7 +30,7 @@ The primary component owners remain those in [OWNERSHIP](OWNERSHIP.md). A prior 
 | `ARCHITECTURE.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `CLAUDE.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `E2E.md` | project | Enner Mendizabal | current | 2026-10-21 |
-| `README.md` | project | Marcos Bonifasi | current | 2026-10-21 |
+| `README.md` | project | Marcos Bonifasi | current; portfolio entry and source-linked reading paths | 2026-11-05 |
 | `apps/gateway/src/application/README.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `apps/gateway/src/domain/README.md` | project | Marcos Bonifasi | current | 2026-10-21 |
 | `apps/packages/contracts/scripts/catalog-preamble.md` | template | Marcos Bonifasi | current | 2026-10-21 |
