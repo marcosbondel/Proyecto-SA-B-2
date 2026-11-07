@@ -1,12 +1,67 @@
-# Bank USAC
+<div align="center">
+
+# 🏦 Bank USAC
+
+**Event-driven banking · Five domain services · Observable distributed workflows**
+
+![TypeScript](https://img.shields.io/badge/TypeScript-NestJS-3178C6?style=for-the-badge)
+![Frontend](https://img.shields.io/badge/Frontend-Nuxt%204-00DC82?style=for-the-badge)
+![Messaging](https://img.shields.io/badge/Messaging-RabbitMQ-FF6600?style=for-the-badge)
+![Data](https://img.shields.io/badge/Data-PostgreSQL-4169E1?style=for-the-badge)
+![Deployment](https://img.shields.io/badge/Deployment-Kubernetes-326CE5?style=for-the-badge)
+
+[Project overview](#project-overview) · [Architecture](ARCHITECTURE.md) · [Quick start](#quick-start--run-the-app) · [Evidence](#evidence-and-reading-paths) · [Team](#team)
+
+</div>
+
+---
+
 
 **Software Avanzado | Second Semester 2026 | Section B | Group 2**
 
-Bank USAC is a distributed banking system built as an academic project. It
-uses five independently owned microservices, an API Gateway, asynchronous
-RabbitMQ messaging, separate PostgreSQL databases outside Kubernetes, and a Nuxt 4 frontend.
-It supports local kind and GKE deployments, with Cloud Run for the public web. The architecture applies Clean Architecture and
-Saga choreography so distributed operations remain observable and resilient.
+## Project overview
+
+Bank USAC is an academic distributed banking system that connects customer
+registration, account management, transfers, payments and audit through
+asynchronous messaging. The repository includes the domain services, a web
+frontend, deployment infrastructure and technical evidence for the three phases.
+
+| System boundary | Implementation |
+| --- | --- |
+| Entry point | NestJS API Gateway: authentication, authorization and AMQP request/reply. |
+| Domain | Exactly five independently owned services, using Clean Architecture. |
+| Consistency | Saga choreography, idempotency, reservations and compensation. |
+| Persistence | One PostgreSQL database per service, outside Kubernetes. |
+| Experience | Nuxt 4 frontend with role-specific banking flows. |
+| Operation | Docker/kind locally; documented GKE and Cloud Run deployment. |
+| Observability | OpenTelemetry, metrics, traces, logs, dashboards and runbooks. |
+
+![Bank USAC system architecture](docs/architecture/diagrams/01-arquitectura-general.png)
+
+*Versioned architecture artifact. The [architecture guide](ARCHITECTURE.md)
+and [domain model](docs/domain/README.md) define the boundaries behind this view.*
+
+The workspace contains **seven applications**: one Gateway, one frontend and
+five domain services. Its four shared packages cover contracts, messaging,
+observability and tooling. The optional partner-bank mock is a test application,
+not an additional banking domain service.
+
+## Evidence and reading paths
+
+| What to evaluate | Where to start |
+| --- | --- |
+| System design and trade-offs | [Architecture](ARCHITECTURE.md), [ADRs](docs/architecture/adr/README.md) and [domain ownership](docs/domain/README.md). |
+| Functional delivery | [Technical document](docs/TECHNICAL_DOCUMENT.md) and [user manual](docs/manual-usuario.md). |
+| Transfer consistency | [Transfer sequence](docs/architecture/diagrams/07-uml-secuencia-transferencia.png), [event documentation](docs/events/README.md) and the test instructions below. |
+| Runtime and infrastructure | [Local deployment](docs/operations/DEPLOYMENT.md), [cloud runbook](docs/operations/CLOUD.md) and [CI/CD](docs/operations/CI.md). |
+| Reliability and observability | [SRE framework](docs/sre/sli-slo-sla.md), [telemetry catalogue](docs/sre/telemetry-catalog.md) and [runbooks](docs/operations/runbooks/README.md). |
+| Test evidence and its limits | [QA index](docs/qa/README.md) and [Phase III validation guide](docs/qa/guia-validacion-manual-fase3.md). |
+| Individual responsibilities | [Team](#team) and the named [component owners](docs/OWNERSHIP.md). |
+
+The operation documents distinguish **desired configuration, dated observations
+and executed evidence**. The cloud snapshot below is historical; the presence
+of manifests, dashboards or test scripts does not establish current production
+health. Use the linked runbooks and record a new execution when evaluating it.
 
 ## Team
 
@@ -22,6 +77,8 @@ single primary owner of every component.
 
 ## Table of Contents
 
+- [Project overview](#project-overview)
+- [Evidence and reading paths](#evidence-and-reading-paths)
 - [Team](#team)
 - [**Quick Start — run the app**](#quick-start--run-the-app) — one command, test
   users, where to go next
@@ -45,11 +102,14 @@ single primary owner of every component.
 
 ## Quick Start — run the app
 
-Everything runs in Docker; nothing to configure per application. You need
-**Docker** installed and running.
+The development runtime runs in Docker and does not require one environment
+file per application. Install and start **Docker**, and use the host
+**Node 24.19.0 / pnpm 11.21.0** toolchain declared in the
+[prerequisites](#prerequisites) to launch the root commands.
 
 ```bash
-git clone <this-repo> && cd Proyecto-SA-B-2
+git clone https://github.com/marcosbondel/Proyecto-SA-B-2.git
+cd Proyecto-SA-B-2
 cp infra/docker/.env.example infra/docker/.env   # then fill in the credentials
 pnpm dev                                         # infra + all 7 apps, in watch mode
 ```
@@ -407,8 +467,11 @@ it.
 ```bash
 pnpm build          # tasks in dependency order, the independent ones at once
 pnpm build          # again, unchanged: FULL TURBO — a cache hit, in milliseconds
-turbo run build --force   # bypass the cache when you want to watch it compile
+pnpm exec turbo run build --force   # bypass the cache when you want to watch it compile
 ```
+
+The examples invoke the workspace-local CLI with `pnpm exec`; a global Turbo
+installation is not required. Run `pnpm install` at the root first.
 
 The cache is in `.turbo/`, git-ignored, and **local only** — no remote cache is
 configured, and none should be added without deciding first what a shared cache
@@ -441,15 +504,15 @@ Turbo 2.10 still defaults to `stream` — the prefixed, interleaved output — w
 is why the key is set explicitly. It is a preference and not a requirement:
 outside an interactive terminal (a pipe, a container, CI) Turbo falls back to
 `stream` on its own, so `pnpm dev:host | tee dev.log` and the Compose stack
-behave exactly as before. `turbo run <task> --ui=stream` forces it for one run.
+behave exactly as before. `pnpm exec turbo run <task> --ui=stream` forces it for one run.
 
 Filters take a task to one application and bring its dependencies with it,
 which is the difference that matters in a fresh clone:
 
 ```bash
-turbo run test --filter=customer-service   # builds the shared packages first
-turbo run dev  --filter=gateway            # the Gateway alone, watchers included
-turbo run build --filter=web
+pnpm exec turbo run test --filter=customer-service   # builds the shared packages first
+pnpm exec turbo run dev  --filter=gateway            # the Gateway alone, watchers included
+pnpm exec turbo run build --filter=web
 
 pnpm --filter customer-service test        # still works — but builds nothing
 ```
@@ -461,7 +524,7 @@ and `@bank/tooling`.
 
 **`pnpm --filter <app> <task>` builds nothing.** The shared packages are
 consumed from `dist/`, so on a fresh clone that form needs a `pnpm build` first.
-`turbo run <task> --filter=<app>` does not — the build is a declared dependency
+`pnpm exec turbo run <task> --filter=<app>` does not — the build is a declared dependency
 of the task.
 
 ### Isolation rules
@@ -686,7 +749,7 @@ Invalid environment for "gateway". Offending variables: JWT_SECRET
 pnpm dev:host                 # the seven applications + the two package watchers
 ```
 
-That is `turbo run dev`. It compiles `@bank/contracts` and `@bank/messaging`
+That is `pnpm exec turbo run dev`. It compiles `@bank/contracts` and `@bank/messaging`
 once, then starts nine watchers at once — the six NestJS applications, Nuxt, and
 a `tsc --watch` over each shared package so a change to a contract reaches
 everything that imports it without a restart.
@@ -701,9 +764,9 @@ running first, every pane fills with `ECONNREFUSED`.
 Or a subset, which is what `--filter` is for:
 
 ```bash
-turbo run dev --filter=gateway              # http://localhost:3000
-turbo run dev --filter=web                  # http://localhost:3010
-turbo run dev --filter=gateway --filter=customer-service --filter=account-service
+pnpm exec turbo run dev --filter=gateway              # http://localhost:3000
+pnpm exec turbo run dev --filter=web                  # http://localhost:3010
+pnpm exec turbo run dev --filter=gateway --filter=customer-service --filter=account-service
 ```
 
 Start them in any order. `apps/web`'s `dev` script pins `--port 3010`, so Nuxt
